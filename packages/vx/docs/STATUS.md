@@ -866,13 +866,23 @@ built behind a failure`). Two claims were not.
       every task alone. Both directions come from asserting a platform
       unit instead of measuring it, which is a rule this repo already
       wrote down after paying for it once.
-      So measure. `ownRssHighWater()` is bytes from a source vx
-      controls, and this process's OWN `resourceUsage().maxRSS` is
-      whatever unit the runtime reports for a child; their ratio
-      answers the question once per process. Near 1024 means kilobytes,
-      anything else means take the number as it comes. The band is
-      generous because the two marks are read at different moments, and
-      it closes well before a plain factor-of-ten could reach it.
+      The first fix compared this process's OWN
+      `process.resourceUsage().maxRSS` against `ownRssHighWater()` and
+      took the ratio. It passed the whole gate here and turned CI RED
+      on BOTH platforms, which is the correction this entry exists for:
+      `process.resourceUsage()` is the node-COMPATIBLE API and reports
+      kilobytes even where `Subprocess.resourceUsage()` reports bytes.
+      On a runtime already handing over bytes the ratio still read
+      1024, so it multiplied — reinstating the 64 GB defect this file's
+      history warns about. It agreed here only because both APIs use
+      kilobytes on this Bun. Compare like with like, or do not compare.
+      What shipped decides from the number in hand instead: no process
+      peaks under a megabyte — a bare `true` costs a couple — so a
+      reading below that is the kernel's kilobytes and multiplying is
+      right by the same margin that makes the test safe. A real byte
+      figure is never near the threshold, and neither is a real
+      kilobyte one: the two live 1024× apart. No spawn, no memo, no
+      second API to disagree with.
       Six rows green here: the two converter rows, `vx last`, the
       remote-usage e2e, and both schedule-history reservation rows —
       that last pair being the ones whose absence made the RSS family
@@ -883,12 +893,14 @@ built behind a failure`). Two claims were not.
       the runtime's normalization and wrong the moment core started
       measuring it. The probe is gone; core's converter rows are where
       the unit is pinned, and the file says so.
-      One row of my own had to be corrected by the gate, and it is the
-      same lesson one level up: `rssUnitScale(undefined, …)` asks for
-      the DEFAULT argument, which is this process's live mark, so the
-      row turned on how heavy the test process happened to be — it
-      passed alone and failed in the sharded gate. A row that moves
-      with the harness is pinning the harness.
+      Two of my own rows had to be corrected on the way. One asked for
+      a DEFAULT argument (`rssUnitScale(undefined, …)`), which was this
+      process's live mark, so it turned on how heavy the test process
+      happened to be: green alone, red in the shard. A row that moves
+      with the harness is pinning the harness. The other is the
+      calibration above — and the gate could not catch it, because the
+      gate runs on the one runtime where the two APIs agree. CI caught
+      it. A green gate here is not a green gate.
 
 438.  DONE (2026-09-20, `bin.ts`'s truncated pipe — the row whose
       defect the Rules section already records as FIXED, which is what
