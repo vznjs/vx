@@ -1082,6 +1082,57 @@ return cfg`), so every variant it built skipped the projection
       both sit behind an exhaustive `switch`, so the compiler is
       already the pin.
 
+402.  DONE (2026-09-20). Two more claims derived, and two floored
+      sweeps that found nothing, which is the finding.
+      `inputs-resolution.test.ts` — "excludes every ALWAYS_IGNORE
+      pattern", twice (top level and nested), over two SIX-entry
+      fixture lists that restate the six patterns `inputs.ts` owns. A
+      seventh pattern there leaves both rows passing with nothing
+      covering it, on the list whose job is keeping a dependency tree
+      out of every cache key. The new row reads `ALWAYS_IGNORE` from
+      source (module-private: cache is a leaf module) and matches each
+      pattern against the fixtures with `Bun.Glob`, the engine
+      `resolveFiles` itself uses, requiring a hit in BOTH lists.
+      Differential: a `**/.turbo/**` seventh fails it.
+      Its selector was wrong first, the usual way: the array's own
+      comments hold an apostrophe and a `]` (they quote
+      `inputs.files: ['**/*']`), so a slice to the first `]` returned
+      two comment fragments as patterns. The slice now ends at the
+      bracket on its own line and drops comment lines before reading a
+      quote.
+      `workflow-runner.unsafe.test.ts` — the other half of "a skip is
+      a silent pass". `VX_REQUIRE_SANDBOX` and `VX_REQUIRE_REAPI`
+      exist because a suite that skips itself reports green, and both
+      are set by hand in `ci.yml`, with nothing catching the next gate
+      of that shape never being enabled or renamed on one side only.
+      The new rows discover the gates by SHAPE — a bare
+      `const X = process.env['VX_…']` makes the value itself the
+      resource, so its absence skips; a read compared to a literal or
+      given a `??` default is a knob with a working default — and
+      require each to be set by some workflow. Three today
+      (`VX_SMALL_DISK`, `VX_REAPI_TEST_ENDPOINT`,
+      `VX_REAPI_EXEC_ENDPOINT`), all set. Differentials: renaming
+      `VX_SMALL_DISK` in `ci.yml` and adding an unenabled gate to a
+      test file each fail it.
+      The sweeps that found nothing, both floored: 2 852 `it` blocks
+      parsed, and every name claiming exactness ("exactly", "only",
+      "nothing else", "no others") whose body has only `toContain` /
+      `toMatch` — six candidates, all six sound (an anchored
+      `toMatch(/^[0-9a-f]{16}$/)` IS exact; a `toContain` paired with
+      the `not.toContain` that carries the "only"). And the remaining
+      quantifier candidates from 401: `tally`'s buckets are a
+      `Record<TaskStatus, …>`, so the compiler demands every status;
+      `watch-rules`' seven-manager list and `sandbox-hint`'s field
+      list are already derived-plus-control.
+      The probe itself needed a third rewrite to get there: a JS
+      cleaner that blanks comments and strings still mis-slices a
+      body holding a REGEX with a backtick in it
+      (`/`([^`]+)`/g`is everywhere in the doc pins), which is what
+inflated the exactness sweep to twenty candidates. It now
+tokenizes a regex literal by the character before the`/`.
+      Three rewrites for one sweep is the cost of asking a regex to
+      read a language.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

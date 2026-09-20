@@ -23,7 +23,7 @@
 // rediscovering it. Each is marked and states what the correct behaviour would
 // be.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -392,6 +392,37 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     })
     return got.files.map((f) => path.relative(projectDir, f))
   }
+
+  // "Every ALWAYS_IGNORE pattern" is a claim about a list `inputs.ts` owns,
+  // and the two rows below quantify over the FIXTURES instead. A seventh
+  // pattern added there would leave both of them passing while nothing
+  // covered it — the restated-list drift of items 400 and 401, here on a
+  // list whose job is to keep a dependency tree out of every cache key.
+  // `ALWAYS_IGNORE` is module-private (cache is a leaf module), so it is
+  // read from the source and matched with the glob engine that uses it.
+  it('the fixtures below cover every ALWAYS_IGNORE pattern, top-level and nested', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
+      'utf8',
+    )
+    // The array's own comments hold both an apostrophe and a `]` (they quote
+    // `inputs.files: ['**/*']`), so the slice ends at the closing bracket on
+    // its OWN line and the comment lines go before any quote is read — the
+    // first draft returned two fragments of a comment as patterns.
+    const block = src.slice(src.indexOf('const ALWAYS_IGNORE = ['))
+    const body = block
+      .slice(0, block.indexOf('\n]'))
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//'))
+      .join('\n')
+    const patterns = [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]!)
+    expect(patterns.length).toBeGreaterThan(5)
+    const uncovered = patterns.filter((pattern) => {
+      const glob = new Bun.Glob(pattern)
+      return !IGNORED_TOP.some((f) => glob.match(f)) || !IGNORED_NESTED.some((f) => glob.match(f))
+    })
+    expect(uncovered).toEqual([])
+  })
 
   it('excludes every ALWAYS_IGNORE pattern at the top level of a project', async () => {
     for (const rel of IGNORED_TOP) await write(path.join(projectDir, rel))
