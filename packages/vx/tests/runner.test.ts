@@ -6,6 +6,7 @@ import {
   execWrap,
   ownRssHighWater,
   resourceUsageToCpuRss,
+  rssUnitScale,
   runCommand,
   runPersistent,
   shellQuote,
@@ -435,7 +436,9 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
       // Above the floor's slack (a bare floor of 0 still has it), so it passes through.
       maxRSS: 480 * 1024 * 1024,
     } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
-    const r = resourceUsageToCpuRss(usage)
+    // Scale 1 explicitly: this row is about the pass-through and the cpu
+    // conversion, and the measured unit factor is `rssUnitScale`'s own rows.
+    const r = resourceUsageToCpuRss(usage, 0, 1)
     expect(r.peakRssBytes).toBe(480 * 1024 * 1024)
     expect(r.cpuMs).toBe(1500)
   })
@@ -449,13 +452,43 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
         typeof resourceUsageToCpuRss
       >[0]
     const floor = 480 * MB
-    expect(resourceUsageToCpuRss(at(floor), floor)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(at(floor - 1), floor)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(at(floor + RSS_FLOOR_SLACK_BYTES), floor)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(at(floor + RSS_FLOOR_SLACK_BYTES + 1), floor)).toEqual({
+    // Scale 1: these are bytes by construction, so the unit factor is not
+    // this row's subject (`rssUnitScale` has its own).
+    const conv = (maxRSS: number) => resourceUsageToCpuRss(at(maxRSS), floor, 1)
+    expect(conv(floor)).toEqual({ cpuMs: 1500 })
+    expect(conv(floor - 1)).toEqual({ cpuMs: 1500 })
+    expect(conv(floor + RSS_FLOOR_SLACK_BYTES)).toEqual({ cpuMs: 1500 })
+    expect(conv(floor + RSS_FLOOR_SLACK_BYTES + 1)).toEqual({
       cpuMs: 1500,
       peakRssBytes: floor + RSS_FLOOR_SLACK_BYTES + 1,
     })
+  })
+
+  it('the unit factor is measured against a known-bytes mark, not assumed', () => {
+    // `rssUnitScale(reported, knownBytes)` answers one question: is the
+    // runtime handing us kilobytes? Both directions of this file's history
+    // are here — the unconditional ×1024 that made 64 MB read as 64 GB, and
+    // the "bytes on every platform" that made a 200 MB child read as 235 KB
+    // and vanish under the floor (item 418).
+    const MB = 1024 * 1024
+    // A runtime already reporting bytes: the two marks agree.
+    expect(rssUnitScale(300 * MB, 300 * MB)).toBe(1)
+    // Kilobytes: the known-bytes mark is ~1024× the reported number.
+    expect(rssUnitScale(300 * 1024, 300 * MB)).toBe(1024)
+    // The marks are taken at different moments, so the band is generous on
+    // both sides of 1024 — and closes well before it could swallow a plain
+    // factor-of-ten difference in when the two were read.
+    expect(rssUnitScale(300 * MB, 3000 * MB)).toBe(1)
+    expect(rssUnitScale(300 * MB, 30 * MB)).toBe(1)
+    // Nothing to calibrate against: take the number as it comes. (Not
+    // `undefined` for the first argument — that asks for the DEFAULT, which
+    // is this process's own live mark, and the row then turns on how big the
+    // test process happens to be: it passed alone and failed in the sharded
+    // gate, where the parent is heavier. A row that moves with the harness
+    // is pinning the harness.)
+    expect(rssUnitScale(0, 300 * MB)).toBe(1)
+    expect(rssUnitScale(-1, 300 * MB)).toBe(1)
+    expect(rssUnitScale(300 * MB, 0)).toBe(1)
   })
 
   it('reads a known allocation back as bytes, on THIS platform', async () => {

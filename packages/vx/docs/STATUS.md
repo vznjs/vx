@@ -852,6 +852,44 @@ built behind a failure`). Two claims were not.
       vanished — or a flapper looks like a regression and a real
       regression hides behind one that flapped out.
 
+437.  DONE (2026-09-20, the RSS family — six baseline rows, and the
+      third label in a row that pointed at the runtime and turned out
+      to point at vx). `runner.ts` said it plainly: "`maxRSS` is BYTES
+      on every platform: Bun normalizes the kernel's `ru_maxrss` …
+      as its typing says." That is a guarantee the code did not have.
+      Bun >= 1.4 does normalize, and 1.3.11 does not — item 418
+      measured the consequence (a 200 MB child reads 235604, which is
+      kilobytes, falls under the parent floor and records nothing).
+      The same file's history holds the OPPOSITE mistake: an
+      unconditional ×1024 on Linux, which made a 64 MB suite read as
+      64 GB and, once reservations were learned from that history, ran
+      every task alone. Both directions come from asserting a platform
+      unit instead of measuring it, which is a rule this repo already
+      wrote down after paying for it once.
+      So measure. `ownRssHighWater()` is bytes from a source vx
+      controls, and this process's OWN `resourceUsage().maxRSS` is
+      whatever unit the runtime reports for a child; their ratio
+      answers the question once per process. Near 1024 means kilobytes,
+      anything else means take the number as it comes. The band is
+      generous because the two marks are read at different moments, and
+      it closes well before a plain factor-of-ten could reach it.
+      Six rows green here: the two converter rows, `vx last`, the
+      remote-usage e2e, and both schedule-history reservation rows —
+      that last pair being the ones whose absence made the RSS family
+      worth chasing at all. The plugin pair needed one more edit, and
+      it is a nice illustration of a guard outliving its premise: item
+      418 gave that file a probe that REFUSED to run the rows when the
+      runtime answered kilobytes, which was right while core trusted
+      the runtime's normalization and wrong the moment core started
+      measuring it. The probe is gone; core's converter rows are where
+      the unit is pinned, and the file says so.
+      One row of my own had to be corrected by the gate, and it is the
+      same lesson one level up: `rssUnitScale(undefined, …)` asks for
+      the DEFAULT argument, which is this process's live mark, so the
+      row turned on how heavy the test process happened to be — it
+      passed alone and failed in the sharded gate. A row that moves
+      with the harness is pinning the harness.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
@@ -876,7 +914,8 @@ with its own version error (3), `tar-stream` fails inside
 `Bun.Archive` (1), `project-loader` got a `BuildMessage` where 1.4
 gives an Error — item 436 measured that and fixed the guard behind it,
 so those three are no longer in the set (3), the
-runner reads no `peakRssBytes` at all (2), and `bin.ts` truncates a
+runner read no `peakRssBytes` at all until item 437 measured the unit
+instead of trusting it (2), and `bin.ts` truncates a
 2 MiB pipe write to 219 KB, the very defect the Rules section records
 as fixed (1). Four more are downstream of that missing usage number
 (`vx last`, the remote-usage e2e, both schedule-history reservation

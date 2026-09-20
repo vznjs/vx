@@ -16,45 +16,15 @@ const TIMEOUT = 20_000
 let root: string
 
 /**
- * Both memory rows need vx to have RECORDED a peak for their hog, and
- * that is a RUNTIME capability rather than anything this plugin does:
- * `resourceUsage().maxRSS` must arrive normalized to BYTES, as Bun
- * documents from the version this repo declares (>= 1.4). A runtime that
- * hands back the kernel's `ru_maxrss` in kilobytes reads 1024× small, so
- * every peak falls under core's parent-RSS floor and nothing is recorded
- * — and the rows below then failed on a null with "Expected and actual
- * values must be numbers", which names neither the cause nor the fix.
- * Measured here rather than asserted, and named when it is missing
- * (2026-09-20; core's `resourceUsageToCpuRss — peak RSS is bytes` is the
- * canary that measures the unit itself).
+ * These rows need vx to have RECORDED a peak for the task, which core now
+ * guarantees on any runtime: it measures whether `resourceUsage().maxRSS`
+ * arrives in bytes or the kernel's kilobytes and scales accordingly (item
+ * 437). This file used to probe the runtime itself and refuse to run when
+ * it answered kilobytes — the right question while core trusted the
+ * runtime's normalization, and the wrong one once core stopped. Core's
+ * `resourceUsageToCpuRss` rows are where the unit is pinned; if a peak
+ * ever goes missing again, that is the canary, not this.
  */
-async function runtimeReportsPeakInBytes(): Promise<boolean> {
-  const mb = 200
-  const proc = Bun.spawn({
-    cmd: ['bun', '-e', `const b = Buffer.alloc(${mb} * 1024 * 1024, 1); console.log(b.length)`],
-    stdout: 'pipe',
-    stderr: 'ignore',
-  })
-  await new Response(proc.stdout).text()
-  await proc.exited
-  const usage = proc.resourceUsage() as { maxRSS?: number } | null
-  // A byte value lands at or above the allocation; a kilobyte value read
-  // as bytes lands ~1024× below it.
-  return typeof usage?.maxRSS === 'number' && usage.maxRSS >= mb * 1024 * 1024
-}
-const PEAK_RSS_IN_BYTES = await runtimeReportsPeakInBytes()
-
-function requirePeakRss(): void {
-  if (PEAK_RSS_IN_BYTES) return
-  throw new Error(
-    'this runtime does not report a child’s peak RSS in bytes, so vx records no peak and there is ' +
-      'nothing for the plugin to learn from — Bun >= 1.4 (the declared floor) normalizes ' +
-      '`resourceUsage().maxRSS`; an older one hands back the kernel’s kilobytes. Core’s ' +
-      '“resourceUsageToCpuRss — peak RSS is bytes” row is the canary for the unit: when it is red, ' +
-      'this row is downstream of it, not a plugin break.',
-  )
-}
-
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-schedule-history-'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
@@ -152,8 +122,7 @@ describe('schedule-history plugin end to end', () => {
       // task's peak RSS: ~250 MB × 1.25 → 320 MB each, 640 > 512, so the
       // second waits for the first (no overlap). The differential is the
       // overlap itself; a run that reserved nothing would overlap both times.
-      requirePeakRss()
-      const hog =
+          const hog =
         'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(400); console.log(b.length)"\' } } } }\n'
       await pkg('a', hog)
       await pkg('b', hog)
@@ -195,8 +164,7 @@ describe('schedule-history plugin end to end', () => {
   it(
     '`vx history` shows what the plugin learned per task and the reservation it packs',
     async () => {
-      requirePeakRss()
-      // One ~200 MB task and two trivial tasks, run once; then the verb,
+          // One ~200 MB task and two trivial tasks, run once; then the verb,
       // through the real dispatcher. The hog's row carries its peak RSS
       // and a learned reservation (its peak × 1.25, up to 64 MB); a
       // declared reservation shows as declared.
