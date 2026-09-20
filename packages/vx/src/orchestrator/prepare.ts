@@ -191,6 +191,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   }
   const seeds: 'all' | string[] =
     options.projects !== undefined ? [...options.projects, ...anchored] : hasBare ? 'all' : anchored
+  // Its own mark: the package graph is the bulk of what used to be charged
+  // to `open cache` (measured on a 1,000-project tree, 2026-09-20 — the
+  // graph 3-8 ms against the cache open's ~1 ms and the fingerprints' ~0.3),
+  // so a reader profiling that stage was sent to the wrong code.
+  mark('package graph')
 
   // The local cache opens BEFORE the configs load: it is also where their
   // cached evaluations live. `--cache-dir <path>` (RunOptions.cacheDir)
