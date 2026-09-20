@@ -2025,6 +2025,42 @@ non-empty string` is caught by exactly ONE row, and it is the
       reaches for, and for a comparison the rule is now simply: assert
       AT the boundary, not around it.
 
+504.  DONE (2026-09-20, `cache/cache.ts`'s SCHEMA_VERSION reset — the
+      DROP list, swept as a LIST. The hazard is a table added later and
+      left out of it: stale rows under a new schema, read by code that
+      assumes they match).
+      First the list against the schema. Three tables the schema
+      CREATES are not named in it — `schema_meta`, `output_dirs`,
+      `config_closures` — and one name in it, `run_task_inputs`, is
+      created nowhere (a leftover, harmless under IF EXISTS, and worth
+      keeping so an old DB still loses it).
+      Measured what actually survives, planting a row in every table
+      and forcing a reset:
+      `schema_meta` survives and must (it holds the sentinel the gate
+      just wrote). `output_dirs` does NOT survive despite being
+      unnamed — with foreign_keys on, DROP TABLE fires the ON DELETE
+      CASCADE from its `entries(hash)` reference. `config_closures`
+      DOES survive, and that is safe rather than lucky: a closure is a
+      stat-index feeding config key derivation, so a stale one changes
+      the KEY (a miss, then a rewrite), never the answer.
+      So the DROP list is not the mechanism it looks like. Differential
+      per member: removing `runs`, `file_hashes`, `invocations` or
+      `config_evals` reddens; removing `entry_inputs` or
+      `output_files` does NOT, because they cascade off `entries` like
+      `output_dirs`. Four of the list's members are load-bearing and
+      three are already covered by the cascade.
+      Pinned with the law rather than the list: plant a row in EVERY
+      table the schema creates, force the reset, and assert the exact
+      surviving set is `['config_closures', 'schema_meta']`. A table
+      added later and forgotten reddens it unless it cascades — which
+      is the only case where forgetting it is harmless anyway.
+      Method note, and it is 488's trap sprung on me again: the first
+      probe reported that NOTHING survived, because it planted
+      `created_at = 1` and the config TTL sweep deletes anything that
+      old. The payload has to be one the code would really see. Re-run
+      with a recent timestamp, `config_closures` appeared — the whole
+      finding was hiding behind a placeholder value.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
