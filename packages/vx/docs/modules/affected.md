@@ -82,10 +82,17 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
      `workspaceGlobOwners` (`cli/run.ts`) asks which projects declare
      a matching `cache.inputs.workspaceFiles` glob — through the run
      path's staged load, so a glob a `project` plugin gave a
-     config-less package counts.
+     config-less package counts. The match runs the entries through
+     `asTrees`, the same rule `resolveWorkspaceFiles` applies, because
+     this answers the question the KEY answers: with the entries raw,
+     `./shared/**` and the literal `shared` folded a changed file into
+     a project's key while selecting nothing, so `--affected` skipped a
+     project its own key called stale (item 445).
 
 Selection is never hashed, so widening it changes no cache key: every
-channel here may over-select safely. It does NOT follow that selection
+channel here may over-select safely — but it may not UNDER-select, and
+a channel that reads a declaration differently from the key does
+exactly that. It does NOT follow that selection
 is complete — the config-import channel stops at project boundaries and
 [documents what that misses](./config-imports.md#where-this-stops).
 

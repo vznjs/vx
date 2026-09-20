@@ -15,6 +15,7 @@ export {
   expandRequested,
   isGroupTask,
   markSurfacedDeps,
+  outputsOverlap,
   splitTaskId,
   type TaskNode,
   unresolvedRequests,

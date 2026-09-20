@@ -50,6 +50,12 @@ export function unresolvedRequests(
 // Flags the display-only `surfaced` tasks a requested GROUP stands for;
 // returns how many it flagged. See "transparent folders" in cli.md.
 export function markSurfacedDeps(nodes: Map<string, TaskNode>): number
+
+// True only when two output globs PROVABLY select an overlapping set —
+// the test behind the refusal below, on the façade because
+// `@vzn/vx-migrate` asks the same question at migration time and used to
+// ask it with a copy that drifted (item 445).
+export function outputsOverlap(a: string, b: string): boolean
 ```
 
 ## Construction rules

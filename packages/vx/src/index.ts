@@ -77,7 +77,7 @@ export type {
 // with only `taskId()` to JOIN an id and nothing exported to SPLIT one,
 // consumers roll their own `split('#', 2)` and drift from the graph, which
 // splits on the FIRST '#'.
-export { splitTaskId } from './graph/index.js'
+export { outputsOverlap, splitTaskId } from './graph/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency).

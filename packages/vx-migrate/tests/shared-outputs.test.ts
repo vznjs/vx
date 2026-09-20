@@ -54,6 +54,40 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     expect(tasks[3]!.task!['cache']).toBeUndefined()
   })
 
+  it('sees every overlap the LOADER sees, because it asks the loader’s own rule', () => {
+    // The gap this file had while it carried a copy of core's function:
+    // each pair below is refused by `buildTaskGraph`, and each was missed
+    // here, so the migration wrote a config that would not load. The
+    // second pair is the commonest turbo.json shape there is —
+    // `"outputs": ["dist"]` — against a sibling target's file.
+    const pairs: [string, string][] = [
+      ['./dist/**', 'dist/**'],
+      ['dist', 'dist/app.js'],
+      ['dist//**', 'dist/**'],
+      ['dist/', 'dist/sub/x.txt'],
+    ]
+    for (const [a, b] of pairs) {
+      const tasks = resolveSharedOutputs([task('one', [a]), task('two', [b])])
+      expect([a, b, tasks[1]!.task!['cache']]).toEqual([a, b, undefined])
+      expect([a, b, tasks[0]!.task!['cache'] !== undefined]).toEqual([a, b, true])
+    }
+  })
+
+  it('CONTROL: distinct trees stay cached however they are spelled', () => {
+    // Folding the spelling must not make disjoint paths overlap, or the
+    // row above would pass by uncaching everything — and an over-eager
+    // migration silently drops caching a repo was entitled to.
+    for (const [a, b] of [
+      ['./dist/**', 'build/**'],
+      ['dist', 'distant/app.js'],
+      ['dist/a', 'dist/b'],
+    ] as [string, string][]) {
+      const tasks = resolveSharedOutputs([task('one', [a]), task('two', [b])])
+      expect([a, b, tasks[0]!.task!['cache'] !== undefined]).toEqual([a, b, true])
+      expect([a, b, tasks[1]!.task!['cache'] !== undefined]).toEqual([a, b, true])
+    }
+  })
+
   it('ignores tasks with no cache, no outputs or no representation', () => {
     const bare: GeneratedTask = { name: 'x', todos: [], task: { exec: { command: 'x' } } }
     const skipped: GeneratedTask = { name: 'y', todos: ['no shell equivalent'], task: null }
