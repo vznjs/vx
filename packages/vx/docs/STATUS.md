@@ -1804,6 +1804,165 @@ non-empty string` is caught by exactly ONE row, and it is the
       only red rows are the LIST ASSERTING ITSELF is the one with no
       behavioural witness.
 
+498.  DONE (2026-09-20, `cache/git-inputs.ts`'s `parseStatusOutput` —
+      497 proved git's enumeration is the LIVE guard that made
+      `**/.git/**` redundant, and the enumeration itself had never
+      been swept). Started with the two set-valued predicates there,
+      member by member. `autocrlfConverts` is pinned exactly: dropping
+      `'input'` fails "is true only for the values that actually
+      convert".
+      The rename/copy branch is not. `x === 'R'` and `x === 'C'` both
+      survive on their own, and so does removing the branch outright —
+      nothing in the suite changes.
+      Classification took three probes and the first reading was
+      WRONG. Measured: for a rename the source has left the index, so
+      it never had a trusted OID to delete; for a copy (which git only
+      reports under `status.renames=copies`, and only when the source
+      is ALSO modified — measured both) the source is separately
+      reported `M` and is already dirty. So `dirty.add(source)` is
+      indistinguishable in both reachable states, and on that reading
+      the whole branch looked like 497's `.git` again.
+      It is not. The branch's real job is CONSUMING the source token,
+      and that is load-bearing: unconsumed, the loop reads the source
+      path as a status line of its own and adds `slice(3)` of it to
+      the dirty set. `'orig.txt'.slice(3)` is `'g.txt'` — a real,
+      clean, entirely unrelated file, which then loses its trusted OID
+      and is rehashed from the worktree, its key part flipping
+      representation for the duration of somebody else's rename.
+      Measured end to end: `trusted` is `[g.txt, other.txt]` with the
+      branch and `[other.txt]` without.
+      Pinned with a bystander: a root-level rename plus a tracked
+      `g.txt`, asserting the bystander keeps its index OID, with a
+      CONTROL that the rename's own target does NOT (so the row cannot
+      pass on an enumeration that trusts everything). Both
+      differentials red — removing the branch, and keeping the branch
+      but not the `i++`.
+      Note the existing row "staged rename drops trust on both sides"
+      cannot see any of this: it has no bystander, and its `old.ts`
+      half holds either way, since a renamed-away path has left the
+      index and never had an OID to lose. Half of a two-assertion row
+      was already vacuous.
+      Method note: this is the first survivor in the sequence where
+      "redundant" was the WRONG answer, and the thing that caught it
+      was refusing to write the conclusion before probing the third
+      state. The `dirty.add` half really is redundant; the branch
+      containing it is not. A guard can be load-bearing for a reason
+      that is not the one its code appears to be about — so a survivor
+      is classified by what BREAKS when it goes, never by what it
+      looks like it does.
+      Also swept clean in the same pass: `resolveInputs`' boundary
+      rules (3 rows on the outputs side, 7 on the inputs side,
+      principle 6 well held) and the own-outputs exclusion (10+ rows).
+
+499.  DONE (2026-09-20, `git-inputs.ts`'s `parseLsFilesOutput` — the
+      mode set the OID fast path trusts, swept member by member).
+      `100644` and `120000` each fail rows in `git-oid.test.ts`.
+      `100755` — EXECUTABLE — fails nothing, whole suite. Every
+      `scripts/*.sh` in a repo loses its trusted index OID and goes
+      back through `hashFile`, so its key part flips representation
+      and the read the fast path exists to avoid happens anyway. COST,
+      not correctness (dropping an OID is the safe direction), and
+      pinned because executables are not exotic.
+      Pinned as one exact object over the three modes plus the gitlink,
+      so a dropped member names itself. Three differentials red, one
+      per mode.
+      THE HONEST PART: my first version called the gitlink line a
+      CONTROL, and it is inert. Measured: adding `160000` to the
+      trusted set leaves `sub` without an OID anyway, with or without
+      a directory on disk — a second mechanism downstream keeps a
+      non-file out of the map. It is now labelled a recorded fact
+      rather than a guard. That is 496's inert-control trap, caught
+      in my own new row this time, one item after writing the rule
+      down.
+      AND A HARNESS DEFECT, which is the more useful find: two of the
+      three mode mutations were reported as SURVIVING by the sweep and
+      both were lies. The loop packed "replacement|tag" into one shell
+      variable and split it with `%%|*` — but the replacement contains
+      `||`, so the payload was truncated mid-expression and the file
+      no longer parsed. The whole-suite verdict then showed no new
+      failing NAMES (a file that cannot be imported emits no `(fail)`
+      rows at all) and I read that as "nothing caught it".
+      Caught by running the one file directly, which is the check that
+      should have come first: `100644` dropped fails three rows there
+      in under a second. New rule, earned: a mutation that SURVIVES is
+      confirmed against the single most-relevant test file before the
+      whole-suite verdict is believed, because an empty NEW list means
+      either "nothing caught it" or "nothing ran", and those look
+      identical. And never pack a payload containing `|` into a
+      `|`-delimited loop variable — the repo already has this lesson
+      for `pkill -f` patterns matching their own shell.
+
+500.  DONE (2026-09-20, `git-inputs.ts`'s `gitPathspecs` — four
+      conjuncts deciding whether git scans a handful of directories or
+      the whole tree, and the function had NO direct row: the only
+      mention of it in the tests was a header comment).
+      Swept clause by clause. `!workspaceWide` is pinned elsewhere (2
+      rows in the workspace-wide partition suite) and the
+      project-is-the-root guard is pinned hard (8+ rows, including the
+      boundary and stale-hit suites). The `> 0` guard and the `<= 64`
+      CAP are not: moving the cut to 63, or removing it entirely,
+      passes the whole suite.
+      That is expected and it is why the cap needed a row anyway: both
+      sides of a perf boundary are CORRECT, so no behavioural test can
+      ever separate them, and the number stops being a decision and
+      becomes a coincidence. It is a measured decision (75 ms → 11 ms
+      scoped on an 11k-file repo; above the cut the arg and exec
+      overhead wins), so the row asserts BOTH sides — 64 dirs still
+      scope, 65 do not.
+      Five rows now, one per clause, each reddening alone: scoped,
+      workspaceWide, no projects, project-is-root, and the cap. Five
+      differentials, five singles.
+      Method note, correcting 499's new rule in the same breath it was
+      written: the fast single-file pre-check said all five clauses
+      survived, and TWO of them were pinned — in other files. So the
+      pre-check is a filter for whether to BELIEVE a survivor, never a
+      substitute for the verdict: it can only say "not here". 499's
+      rule stands in the direction it was written (a survivor is
+      confirmed against the obvious file before the verdict is
+      trusted), but the converse does not follow, and I acted as if it
+      did for one step.
+
+501.  DONE (2026-09-20, `git-inputs.ts`'s `dropFilteredOids` — the
+      clean-filter gate, and the worst failure class in the repo:
+      an index OID is the FILTERED blob, so trusting one where a
+      `text`/`eol`/`ident` filter applies folds the SAME key for the
+      CRLF and the LF state).
+      The gate first asks whether any attributes source exists at all,
+      and there are three. `attributesAbove` (the walk added for the
+      measured `--filter` stale hit) is pinned by its own row. The
+      other three conjuncts — the in-tree `.gitattributes` scan,
+      `core.attributesFile`, and `$GIT_DIR/info/attributes` — ALL
+      survive the whole suite. Three stale-hit holes in one function.
+      Each proven reachable, one placement per source (`a.txt`
+      trusted, false is correct):
+      in-tree scan dropped → a `pkg/sub/.gitattributes` goes
+      false → TRUE; `core.attributesFile` dropped → a user-global
+      attributes file goes false → TRUE; `info/attributes` dropped →
+      the repo-local one goes false → TRUE.
+      And the first classification was WRONG AGAIN, which is now the
+      third time in this sequence. The in-tree scan looked REDUNDANT:
+      with `.gitattributes` at the project dir, dropping the scan
+      changed nothing, because `attributesAbove` walks repo-root →
+      project and finds it there. The deeper placement is what
+      separates them — BELOW the project dir nothing else looks — and
+      only probing that state turned "redundant" into a hole.
+      Pinned as three rows, one per source, each with the placement
+      that isolates it and a CONTROL in the same repo (a `plain.md`
+      the filter does not name keeps its OID, so no row can pass on a
+      gate that distrusts everything). Three differentials, each
+      reddening its own row alone.
+      Also swept and pinned already: `parseCheckAttrOutput`'s value
+      pair (`unspecified` 2 rows, `unset` 1).
+      Method note: 496, 498 and 501 are now three straight items where
+      the FIRST probe supported "redundant" and a second placement
+      refuted it. The pattern is specific enough to name: when a guard
+      looks redundant because a LATER guard also covers the case,
+      check whether the later guard's reach is NARROWER somewhere —
+      a walk that stops at a directory, a check that needs a file to
+      exist, a detection that needs a modified source. The overlap is
+      usually partial, and the part that does not overlap is the whole
+      reason the first guard is there.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

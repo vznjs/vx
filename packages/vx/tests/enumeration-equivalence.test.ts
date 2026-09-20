@@ -16,6 +16,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { gitInit, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
+import { gitPathspecs } from '../src/cache/git-inputs.js'
 
 // mulberry32: a seed reproduces a tree exactly, so a failing seed is a
 // fixture, not a flake.
@@ -185,4 +186,45 @@ describe('scoped and whole-repo git enumeration agree on every project partition
       expect(scoped.worktreeDirty).toBe(whole.worktreeDirty)
     })
   }
+})
+
+describe('gitPathspecs — when a run may scope the scan, clause by clause', () => {
+  // The header above names this function and nothing asserted it. It is
+  // four independent conjuncts, and each one decides whether git scans a
+  // handful of directories or the whole tree — so each gets its own row
+  // rather than one row over the conjunction, which any single clause
+  // could carry alone (items 494, 497, 499).
+  const ROOT = '/w'
+  const dirs = (n: number): string[] => Array.from({ length: n }, (_, i) => `${ROOT}/p${i}`)
+
+  it('scopes an ordinary scoped run to its project dirs', () => {
+    expect(gitPathspecs(ROOT, dirs(3), false)).toEqual(['p0', 'p1', 'p2'])
+  })
+
+  it('a workspaceWide run always scans the whole tree', () => {
+    expect(gitPathspecs(ROOT, dirs(3), true)).toEqual(['.'])
+  })
+
+  it('no projects means the whole tree, not an empty pathspec list', () => {
+    // `[]` would let git scan the CWD by default, which is the same set by
+    // accident; `['.']` says it.
+    expect(gitPathspecs(ROOT, [], false)).toEqual(['.'])
+  })
+
+  it('a project that IS the workspace root forces the whole tree', () => {
+    // Its relative path is '' (or '.'), which is not a pathspec git can
+    // scope to, and scoping to the rest would drop the root project's own
+    // files from the enumeration.
+    expect(gitPathspecs(ROOT, [ROOT, `${ROOT}/p1`], false)).toEqual(['.'])
+  })
+
+  it('64 dirs still scope and 65 do not — the documented cut, both sides', () => {
+    // The cap is a measured perf boundary (75 ms → 11 ms scoped on an 11k
+    // file repo; above it the arg and exec overhead wins). Both sides are
+    // CORRECT, so nothing else in the suite can tell them apart: moving the
+    // cut to 63 passes the entire suite. Asserting the boundary is what
+    // makes the number a decision rather than a coincidence.
+    expect(gitPathspecs(ROOT, dirs(64), false).length).toBe(64)
+    expect(gitPathspecs(ROOT, dirs(65), false)).toEqual(['.'])
+  })
 })

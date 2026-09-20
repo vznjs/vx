@@ -15,7 +15,7 @@
 //   conflict (stage 1/2/3)       → path repeated once per stage, same as
 //                                  the old `--cached` listing
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
@@ -204,6 +204,149 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     expect(oids!.has(path.join(pkgDir, 'src', 'renamed.ts'))).toBe(false)
     expect(oids!.has(path.join(pkgDir, 'src', 'old.ts'))).toBe(false)
   })
+
+  it('trusts every FILE mode git can stage, and nothing else', async () => {
+    // The fast path trusts an index OID for three modes — regular,
+    // EXECUTABLE and symlink — and the executable one had no witness:
+    // dropping `100755` from the set passed the entire suite (item 499),
+    // while dropping either of its neighbours fails rows here. An
+    // executable is not exotic (every `scripts/*.sh`), and losing its OID
+    // sends it back through `hashFile`, so its key part flips
+    // representation for no reason and the read the fast path exists to
+    // avoid happens anyway.
+    //
+    // Asserted mode by mode: dropping any ONE of the three reddens this
+    // row and nothing else in the suite reddens for the executable.
+    //
+    // The gitlink line below (`160000`, a submodule pointer, whose OID is a
+    // COMMIT in another repository rather than this path's content) is NOT
+    // a control, and saying so is the point. Measured: adding `160000` to
+    // the trusted set leaves `sub` without an OID anyway, with or without
+    // the directory on disk, because a second mechanism downstream keeps a
+    // non-file out of the map. So the assertion cannot fail and is here as
+    // a recorded fact, not as a guard — labelling it a control would be
+    // the inert-control trap item 496 already paid for once.
+    await writeFile(path.join(pkgDir, 'plain.ts'), 'plain\n')
+    await writeFile(path.join(pkgDir, 'run.sh'), '#!/bin/sh\necho hi\n')
+    await chmod(path.join(pkgDir, 'run.sh'), 0o755)
+    await symlink('plain.ts', path.join(pkgDir, 'link.ts'))
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    const head = git(root, 'rev-parse', 'HEAD')
+    git(root, 'update-index', '--add', '--cacheinfo', `160000,${head},pkg/sub`)
+
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [pkgDir], memo)
+    const oids = memo.oidsFor(pkgDir)
+    const trusted = (rel: string): string | undefined => oids!.get(path.join(pkgDir, rel))
+    expect({
+      plain: trusted('plain.ts'),
+      exec: trusted('run.sh'),
+      link: trusted('link.ts'),
+      gitlink: trusted('sub'),
+    }).toEqual({
+      plain: indexOid(root, 'pkg/plain.ts'),
+      exec: indexOid(root, 'pkg/run.sh'),
+      link: indexOid(root, 'pkg/link.ts'),
+      gitlink: undefined,
+    })
+  })
+
+  it('a rename CONSUMES its source token, so a bystander keeps its OID', async () => {
+    // The header above pins the format — `X∈{R,C}` carries the old path as
+    // a SEPARATE NUL token — and the parser's job there is to CONSUME that
+    // token, not to record it. Nothing asserted the consumption. Measured
+    // (item 498): with the branch removed, the source token is read as a
+    // status line of its own, and `'orig.txt'.slice(3)` is `'g.txt'` — so a
+    // real, clean, entirely unrelated file loses its trusted OID and is
+    // rehashed from the worktree, its key part flipping representation for
+    // the duration of somebody else's rename.
+    //
+    // The row above it ("staged rename drops trust on both sides") cannot
+    // see this: it has no bystander, and its own `old.ts` assertion holds
+    // either way, because a renamed-away path has left the index and never
+    // had an OID to lose.
+    //
+    // Project dir IS the workspace root here, so the paths the status walk
+    // emits are the ones asserted — a rename under `pkg/` would slice to
+    // `/src/…`, which names nothing and hides the defect.
+    await writeFile(path.join(root, 'orig.txt'), 'rename me\n')
+    await writeFile(path.join(root, 'g.txt'), 'innocent bystander\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    git(root, 'mv', 'orig.txt', 'new.txt')
+
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [root], memo)
+    const oids = memo.oidsFor(root)
+    expect(oids!.get(path.join(root, 'g.txt'))).toBe(indexOid(root, 'g.txt'))
+    // CONTROL: the rename's own target IS dirty, so this row cannot pass on
+    // an enumeration that trusts everything.
+    expect(oids!.has(path.join(root, 'new.txt'))).toBe(false)
+  })
+
+  // Item 501. An index OID is only the file's content hash when git stores
+  // the worktree bytes VERBATIM; under a clean filter (`text`/`eol`/`ident`)
+  // the blob is the normalized form while the task reads the worktree file,
+  // so a trusted OID folds the SAME key for the CRLF and LF states. The gate
+  // that prevents that first asks whether any attributes source exists AT
+  // ALL, and there are three of them — each its own conjunct, each dropped
+  // separately here.
+  //
+  // Measured, one placement per source (`a.txt` trusted, false is correct):
+  //
+  //   detector dropped        placement that breaks it        trusted
+  //   in-tree .gitattributes  pkg/sub/.gitattributes          false → TRUE
+  //   core.attributesFile     a user-global attributes file   false → TRUE
+  //   $GIT_DIR/info/attributes  the repo-local one            false → TRUE
+  //
+  // The in-tree one needed the DEEPER placement to show itself: a
+  // `.gitattributes` at the project dir is also found by `attributesAbove`,
+  // which walks repo-root→project, so the first probe said "redundant" and
+  // was wrong. Below the project dir nothing else looks.
+  const ATTR_SOURCES: Array<[string, (root: string, pkgDir: string) => Promise<void>]> = [
+    [
+      'a .gitattributes BELOW the project dir, which no ancestor walk reaches',
+      async (_root, pkgDir) => {
+        await mkdir(path.join(pkgDir, 'sub'), { recursive: true })
+        await writeFile(path.join(pkgDir, 'sub', '.gitattributes'), '*.txt text\n')
+      },
+    ],
+    [
+      'core.attributesFile, which lives outside the repository entirely',
+      async (root, _pkgDir) => {
+        const f = path.join(root, 'global-attrs')
+        await writeFile(f, '*.txt text\n')
+        git(root, 'config', 'core.attributesFile', f)
+      },
+    ],
+    [
+      '$GIT_DIR/info/attributes, which is tracked by nothing',
+      async (root, _pkgDir) => {
+        await mkdir(path.join(root, '.git', 'info'), { recursive: true })
+        await writeFile(path.join(root, '.git', 'info', 'attributes'), '*.txt text\n')
+      },
+    ],
+  ]
+  for (const [what, plant] of ATTR_SOURCES) {
+    it(`distrusts a filtered OID declared by ${what}`, async () => {
+      await mkdir(path.join(pkgDir, 'sub'), { recursive: true })
+      await writeFile(path.join(pkgDir, 'sub', 'a.txt'), 'line\r\n')
+      // The control's file: no `.txt`, so no rule names it.
+      await writeFile(path.join(pkgDir, 'plain.md'), 'plain\n')
+      await plant(root, pkgDir)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'init')
+
+      const memo = new GitFilesCache()
+      await populateGitFilesCache(root, [pkgDir], memo)
+      const oids = memo.oidsFor(pkgDir)
+      expect(oids!.has(path.join(pkgDir, 'sub', 'a.txt'))).toBe(false)
+      // CONTROL, in the same repo: a path the filter does NOT name keeps its
+      // OID, so the row cannot pass on a gate that distrusts everything.
+      expect(oids!.get(path.join(pkgDir, 'plain.md'))).toBe(indexOid(root, 'pkg/plain.md'))
+    })
+  }
 
   it('merge-conflict paths (stage > 0) carry no OID but stay in the file list', async () => {
     await writeFile(path.join(pkgDir, 'f.ts'), 'base\n')
