@@ -805,6 +805,42 @@ fallback (and stay cache-hits)`. 471's fast filter simply did
       already held at its source, and a second pin on the reader would
       duplicate it. Unlike 463, where the layer WAS the guarantee and
       nothing else carried it.
+474.  DONE (2026-09-20, `cache/inputs.ts` — 818 lines, the largest
+      unswept file and the resolver every cache key is built from).
+      The fast filter was built from `grep -rl` per exported symbol
+      and every path checked to EXIST first, which is 473's amendment:
+      `bun test` ignores a path that is not there and reports a clean
+      pass meaning nothing (469 and 473 both).
+      Six mutations, four caught, and the project boundary is held
+      hard — principle 6 in the tests as well as the prose. Dropping
+      `boundaryIgnorePatterns` fails EIGHT rows, one of them "a
+      sibling whose name EXTENDS the nested project's name is not
+      excluded"; dropping it from the OUTPUT side fails three. The
+      per-declaration memo is pinned both ways: a key that forgets the
+      task's own outputs fails a row, and comparing snapshots by
+      length instead of identity fails the row named for it.
+      THE FIND is the memo's COPY. The resolver stores `resolved` and
+      returns `[...resolved]` on both the store path and the memo-hit
+      path, so what a caller receives is never what the cache holds.
+      Return `memo.result` directly and the repo stays green, because
+      no caller mutates today — a property of today's CALLERS, not a
+      guarantee, and nothing else carries it. The memo is shared by
+      every task in the project, so one caller sorting or splicing in
+      place rewrites what the next task resolves: a wrong input set,
+      therefore a wrong key. Pinned as the guarantee itself (463's
+      genre, not 473's): a caller mutates what it was handed and the
+      next call must still see the real file.
+      Left unpinned, measured: the memo key's boundary component. The
+      nested-project set is per project and the memo lives one run, so
+      for a given `projectDir` that component is constant and removing
+      it cannot change an answer. Redundant within the memo's scope.
+      NOTED, not yet acted on: `output-memory.test.ts`'s `none`
+      discard row failed on the first gate of this item. It passes 3/3
+      alone and the immediate gate re-run was clean, so it is
+      load-sensitive rather than broken — but both of its failures
+      this session came AFTER 465 added two more subprocess probes to
+      it, taking it from four to six. That is a plausible cause and
+      not an established one. Next item.
 
 ## In flight
 
