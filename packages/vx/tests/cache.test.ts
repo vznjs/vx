@@ -13,6 +13,7 @@ import {
   parseCachePolicy,
   zstdContentSize,
 } from '../src/cache/cache.js'
+import { decodedTar } from '../src/cache/zstd.js'
 import { UserError, xxh3hex } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
@@ -887,6 +888,51 @@ describe('Cache storage (v10)', () => {
     ).rejects.toThrow(CorruptArtifactError)
     expect(existsSync(path.join(cacheDir, 'h-not-tar.tar.zst'))).toBe(false)
     expect(await cache.get('h-not-tar')).toBeNull()
+  })
+
+  // Item 487. The ceiling has two LIVE halves and the four ingest rows
+  // above assert only `CorruptArtifactError`, which both produce — so
+  // removing either one left the repo green. The declared half is cheap to
+  // reach (a forged header, 20 bytes, the row below); the STREAMING half
+  // needs a frame that actually expands past the cap, and the cap is 2 GiB.
+  // That is why it had nothing: not a gap in reasoning, a gap in what a
+  // test can afford. `decodedTar` takes the cap as a parameter for exactly
+  // this row and nothing else.
+  //
+  // A sizeless frame is the one a streamed producer emits — vx's own, above
+  // 4 MiB — so this is the bomb shape the module's comment promises has
+  // "nowhere to expand", asserted by its own message rather than by the
+  // class the declared half shares with it.
+  it('a SIZELESS frame is refused by the streaming count, naming that half', async () => {
+    const body = new Uint8Array(64 * 1024)
+    const sizeless = new Uint8Array(
+      await new Response(
+        new Blob([body]).stream().pipeThrough(new CompressionStream('zstd')),
+      ).arrayBuffer(),
+    )
+    expect(zstdContentSize(sizeless)).toBeNull() // CONTROL: it really declares nothing
+
+    const stream = await decodedTar(sizeless, 'h-stream-bomb', 4096)
+    const reader = stream.getReader()
+    const drain = (async () => {
+      for (;;) {
+        const { done } = await reader.read()
+        if (done) break
+      }
+    })()
+    await expect(drain).rejects.toThrow(/decompresses past 4096 bytes/)
+
+    // CONTROL: under a cap it fits, the same frame decodes and yields the
+    // bytes — so the row above is the ceiling firing, not a broken decode.
+    const ok = await decodedTar(sizeless, 'h-stream-ok', 1024 * 1024)
+    const okReader = ok.getReader()
+    let n = 0
+    for (;;) {
+      const { done, value } = await okReader.read()
+      if (done) break
+      n += value.byteLength
+    }
+    expect(n).toBe(body.byteLength)
   })
 
   it('ingest() rejects a zstd frame declaring an oversize decompressed length (bomb)', async () => {
