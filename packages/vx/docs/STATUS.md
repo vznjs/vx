@@ -1336,6 +1336,43 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       escape sequence, because the guarantee IS the disjointness while
       the hue values are free to change; both rows carry non-vacuity
       guards and each is red for its own collision.
+467.  DONE (2026-09-20, `orchestrator/upstream.ts` — 162 lines, chosen
+      by claim density now that the large files are swept; it is the
+      fold every cache key depends on).
+      Six mutations, and the honest headline is that this module is
+      ALREADY WELL HELD — the best-covered file the loop has swept.
+      Its 19 rows earn their keep: matching a pattern name LITERALLY
+      (the stale-hit trap its own comment names, where a filter
+      silently selects zero upstream and decouples the task) fails
+      seven rows; dropping negation fails five; an empty filter
+      contributing everything instead of nothing fails four, one of
+      them e2e; losing the first-id-wins dedup fails the row named for
+      it.
+      ONE survivor: the `!u.hash` skip. `TaskOutcome.hash` is
+      optional and core does build outcomes without one — the
+      scheduler's skipped / aborted branch omits it — so the fold
+      would put `undefined` where an upstream's identity belongs.
+      Reachability was MEASURED rather than argued, and the first
+      probe was worthless: instrumenting the guard and running the
+      gate wrote nothing, because a sandboxed task cannot write to the
+      scratchpad. A negative case needs a positive control, and with
+      one the unsandboxed probe logged 134 upstream entries across the
+      continue-taint, abort, restore-tier and e2e orchestrator suites
+      and NOT ONE without a hash. A dependent of a skipped task is
+      itself skipped rather than keyed, so the guard is defensive
+      today.
+      Pinned anyway, and the genre matters: at the FUNCTION's own
+      boundary, where "an upstream with no hash contributes nothing"
+      is a statable contract over an input the type already permits —
+      not by asserting that nothing upstream can reach it, which would
+      pin the reachability, i.e. the implementation (the 463 line).
+      One row covers BOTH folds (filtered and unfiltered) and carries
+      a control; red for either guard removed.
+      Recorded, not actioned: `filterUpstreamHashes` still does not
+      guard `u !== undefined`, while `taintTracker` beside it does.
+      464 established what keeps holes away from it — the restore-tier
+      bypass — and that is now pinned, so the asymmetry is covered by
+      that row rather than by a second one here.
 
 ## In flight
 
