@@ -1191,6 +1191,41 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       461 found has now been swept to its edge rather than left as a
       standing worry.
 
+463.  DONE (2026-09-20, `workspace/affected.ts` beyond what 445 fixed —
+      and 461's layered blindness turned up again, this time on a
+      SECURITY boundary).
+      `--affected`'s base is guarded TWICE, deliberately and in
+      writing: a pre-spawn check that refuses an option-like `since`
+      (`--output=<path>` is a real `git diff` option and an arbitrary
+      file write), and `--end-of-options` on every git call "so a
+      second caller cannot lose the guard by accident".
+      LAYER 1 is well pinned: removing the check fails four rows, each
+      naming a concrete attack value (`-`, `--`, `--output=OUT`,
+      `--upload-pack=OUT`).
+      LAYER 2 had NOTHING. Removing all five `--end-of-options`
+      occurrences leaves the whole repo green.
+      Classified before acting, as 460(d) taught: its behaviour is not
+      observable today, because every guarded helper (`verifyRef`,
+      `mergeBase`, the diff) is reached only with the already-checked
+      `since`, and `defaultAffectedBase`'s answer flows in through that
+      same check. So the layer is exactly what its comment says —
+      insurance against the future second caller — and deleting it
+      would be wrong even though no behaviour test can catch it.
+      That makes it a LAW rather than a behaviour, which is a genre
+      this repo already has (`module-boundaries`, the doc pins). Pinned
+      as one: every git argument array in the module that passes a
+      VALUE (a template interpolation or a bare identifier) must carry
+      `--end-of-options`; all-literal arrays need no guard, and a pure
+      spread forwards a caller-built array that is itself checked. The
+      row asserts the regex still matches at least four arrays, so it
+      cannot go vacuous by silently matching nothing. Red with the five
+      occurrences stripped, green with them.
+      The distinction worth keeping: 460(d) was defensive AND left
+      unpinned because pinning it would have pinned the lane ordering
+      that makes it unreachable — the implementation. Here the layer IS
+      the guarantee ("every call ends its options"), so a law states it
+      without pinning anything incidental.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
