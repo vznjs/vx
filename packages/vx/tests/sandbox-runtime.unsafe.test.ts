@@ -1051,27 +1051,36 @@ describe.skipIf(!available)('a cache declaration grants the sandbox nothing', ()
   )
 })
 
-describe.skipIf(!available)('the BARE baseline, which is what the type describes', () => {
-  // Every row above declares an explicit `sandbox.allow`. The shape
-  // `SandboxConfig`'s own doc comment describes — `sandbox: {}`, no allow
-  // block at all — had nothing, and that is how the comment came to
-  // promise a baseline derived from `cache` for a fortnight after the
-  // code stopped deriving one (item 443). `sandboxRequestFor` builds the
-  // request with `baseAllowWrite: []`, so a declared `cache.outputs` buys
-  // the task no write at all.
-  let fixture: Fixture
+describe.skipIf(!available || process.platform !== 'linux')(
+  'the BARE baseline, which is what the type describes',
+  () => {
+    // Every row above declares an explicit `sandbox.allow`. The shape
+    // `SandboxConfig`'s own doc comment describes — `sandbox: {}`, no allow
+    // block at all — had nothing, and that is how the comment came to
+    // promise a baseline derived from `cache` while the code granted none
+    // (item 443). `sandboxRequestFor` builds the request with
+    // `baseAllowWrite: []`, so a declared `cache.outputs` buys the task no
+    // write at all.
+    //
+    // Linux-only for the same reason as the row further down: `Read-only
+    // file system` is the bwrap denial, verified in a Linux container, and
+    // macOS seatbelt refuses differently. What is NOT platform-specific is
+    // the claim itself — that a declared `cache.outputs` contributes
+    // nothing to the request — and `sandbox-request.test.ts` pins that
+    // directly, on every platform.
+    let fixture: Fixture
 
-  beforeEach(async () => {
-    fixture = await makeWorkspace()
-  })
-  afterEach(async () => {
-    await rm(fixture.root, { recursive: true, force: true })
-  })
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
 
-  const project = async (write: string | undefined): Promise<string> =>
-    addProject(fixture.root, 'app', {
-      files: { 'src/x.txt': 'hi' },
-      config: `
+    const project = async (write: string | undefined): Promise<string> =>
+      addProject(fixture.root, 'app', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
         export default {
           tasks: {
             build: {
@@ -1087,43 +1096,44 @@ describe.skipIf(!available)('the BARE baseline, which is what the type describes
           },
         }
       `,
-    })
+      })
 
-  it(
-    'declaring cache.outputs grants no write: the task is denied, loudly',
-    async () => {
-      // The neighbouring row proves this for a task that declares
-      // `allow.read` and no write. This is the case the TYPE describes:
-      // no allow block at all. The project tree is read-only, so the
-      // task's own `mkdir` is refused by the OS and the run fails —
-      // which is the honest outcome, not a silent empty artifact.
-      const dir = await project(undefined)
-      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-      expect(r.ok).toBe(false)
-      expect(r.outcomes[0]?.status).toBe('failed')
-      expect(fixture.log.join('\n')).toContain('Read-only file system')
-      expect(existsSync(path.join(dir, 'dist', 'app.js'))).toBe(false)
-    },
-    TIMEOUT,
-  )
+    it(
+      'declaring cache.outputs grants no write: the task is denied, loudly',
+      async () => {
+        // The neighbouring row proves this for a task that declares
+        // `allow.read` and no write. This is the case the TYPE describes:
+        // no allow block at all. The project tree is read-only, so the
+        // task's own `mkdir` is refused by the OS and the run fails —
+        // which is the honest outcome, not a silent empty artifact.
+        const dir = await project(undefined)
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.ok).toBe(false)
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(fixture.log.join('\n')).toContain('Read-only file system')
+        expect(existsSync(path.join(dir, 'dist', 'app.js'))).toBe(false)
+      },
+      TIMEOUT,
+    )
 
-  it(
-    'CONTROL: the same task with the write grant declared lands its output',
-    async () => {
-      // One line of config apart, and the cache block is identical — so
-      // the row above is about where a write grant comes from, not about
-      // the sandbox refusing everything. `dist/` with the slash, because a
-      // bare literal would be bound as a FILE (schema.md, "A write
-      // grant's shape").
-      const dir = await project('dist/')
-      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-      expectOk(r, fixture)
-      expect(await readFile(path.join(dir, 'dist', 'app.js'), 'utf8')).toBe('OUT')
-      expect(fixture.log.join('\n')).not.toContain('Read-only file system')
-    },
-    TIMEOUT,
-  )
-})
+    it(
+      'CONTROL: the same task with the write grant declared lands its output',
+      async () => {
+        // One line of config apart, and the cache block is identical — so
+        // the row above is about where a write grant comes from, not about
+        // the sandbox refusing everything. `dist/` with the slash, because a
+        // bare literal would be bound as a FILE (schema.md, "A write
+        // grant's shape").
+        const dir = await project('dist/')
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(dir, 'dist', 'app.js'), 'utf8')).toBe('OUT')
+        expect(fixture.log.join('\n')).not.toContain('Read-only file system')
+      },
+      TIMEOUT,
+    )
+  },
+)
 
 describe.skipIf(!available || process.platform !== 'linux')(
   'a write grant widens what a task can READ, and that is the cache-relevant half',
