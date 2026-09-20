@@ -1089,6 +1089,48 @@ built behind a failure`). Two claims were not.
       literal directory does not swallow a sibling or a same-prefix
       name (`dist` vs `distant/app.js`), and a literal file's `/**`
       twin matches nothing (`dist/app.js` vs `dist/app.js.map`).
+443.  DONE (2026-09-20, the one real finding left from 442's probing —
+      a comment claiming a guarantee the code lacks, on a security
+      boundary, which CLAUDE.md names as a defect class). `SandboxConfig`
+      in `src/config.ts` is the type a user reads in their editor. It
+      said the sandbox baseline "may read its resolved
+      `cache.inputs.files`, write the prefixes of its
+      `cache.outputs.files`", and said it again on `read` ("beyond the
+      resolved `cache.inputs.files`") and on `write` ("beyond the
+      `cache.outputs.files` prefixes").
+      The code derives NOTHING from `cache`, deliberately (owner,
+      2026-09-05; pinned by 433). Read at the source rather than
+      inferred: `sandboxRequestFor` builds the request with
+      `baseAllowRead: depDirs` — project `node_modules`, workspace-root
+      `node_modules`, and the real paths of the workspace symlinks
+      inside them — and `baseAllowWrite: []`, literally empty; it passes
+      `sandbox.allow?.write ?? []` to `prepareOutputsForBind`;
+      `resolveSandboxConfig` reads only `cfg.allow.read` /
+      `cfg.allow.write`. `schema.md` already stated it correctly and
+      more sharply than I first wrote it ("the task reads nothing,
+      writes nothing … not even its own project directory"), so the
+      comment now matches that wording and points at it.
+      De-claimed, not implemented: the behaviour is the owner's call.
+      The drift channel is the part worth keeping. Every existing
+      sandbox row — 433's, and "a declared OUTPUT is not a write grant:
+      the task fails" — declares an EXPLICIT `allow` block. The BARE
+      `sandbox: {}` baseline, which is precisely what the comment
+      described, had no test at all. A security-boundary claim that no
+      test reads is how a comment gets to say the opposite of its own
+      file's neighbour. It has two rows now, one line of config apart:
+      with no grant the task's `mkdir` is refused (`Read-only file
+system`, run failed, nothing on disk), and with
+      `allow: { write: ['dist/'] }` the same task lands `dist/app.js`.
+      A correction to my own probe, found by writing the row: in a
+      normal workspace the baseline denies the write LOUDLY and the run
+      fails. My scratch probe — a single package whose project dir was
+      the workspace root — instead went green with the bytes evaporating
+      silently. I tried to replicate that with the suite's helper and
+      the attempt was not faithful (no task ran at all), so WHY those
+      differ is open and NOT established. It is written here as a
+      question, not a cause; anyone taking it should start by building
+      the root-as-project layout faithfully and confirming the
+      difference exists before explaining it.
 
 ## In flight
 
@@ -1423,7 +1465,7 @@ Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
 No open issues.
-Next: the loop holds 413–442, so the trim is due at 452. For work, the
+Next: the loop holds 413–443, so the trim is due at 452. For work, the
 shape that has paid every time in this arc is a claim whose halves live
 apart. Still untried: `vx watch`'s cycle against the run's admission
 dedup (430 opened it and only took the branch), and the sandbox's

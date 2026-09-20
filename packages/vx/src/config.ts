@@ -157,10 +157,29 @@ export interface TaskConfig {
  * cannot express is an error rather than a silent no-op. None of that
  * reaches the config.
  *
- * The baseline is always the task's own declarations: it may read its
- * resolved `cache.inputs.files`, write the prefixes of its
- * `cache.outputs.files`, and reach nothing else. Everything here is on top
- * of that.
+ * The baseline (`sandbox: {}`) grants almost nothing: the task reads
+ * nothing, writes nothing and reaches no network — NOT EVEN ITS OWN
+ * PROJECT DIRECTORY, which is why `allow: { read: ['.'] }` opens almost
+ * every real block. The one grant vx makes for you is dependencies:
+ * `node_modules`, and through it the real path of every workspace
+ * package linked there.
+ *
+ * `cache` grants no access in either direction: `cache.inputs` says what
+ * INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
+ * from the other coupled them both ways — a declaration added for
+ * caching silently widened the sandbox, and a path the task needed had
+ * to be laundered through the cache key to get it (owner, 2026-09-05).
+ * A declared `cache.outputs` is NOT a write grant; `sandbox-request.ts`
+ * builds the request with an empty `baseAllowWrite` and binds
+ * `allow.write` alone. This comment claimed the opposite — here and on
+ * both grant fields — while the file beside it and `schema.md` both said
+ * the truth, and no test read the bare baseline it described (item 443).
+ * That case has a test of its own now.
+ *
+ * Enforcement anchors at the WORKSPACE ROOT, so a task cannot leave its
+ * project whatever it declares here. The full account, including what a
+ * write grant costs on Linux, is in `docs/schema.md` under
+ * `exec.sandbox`.
  *
  * Paths are project-relative, absolute, or `~`-expanded — and are path
  * PREFIXES, never globs (a glob cannot be enforced by a mount).
@@ -204,9 +223,18 @@ export interface SandboxConfig {
 }
 
 export interface SandboxGrants {
-  /** Readable path prefixes, beyond the resolved `cache.inputs.files`. */
+  /**
+   * Readable path prefixes, added to the baseline — which is
+   * `node_modules`, NOT `cache.inputs.files`. A task that reads its own
+   * source in the sandbox says so here.
+   */
   read?: string[]
-  /** Writable path prefixes, beyond the `cache.outputs.files` prefixes. */
+  /**
+   * Writable path prefixes. The task can write NOTHING without these:
+   * declaring `cache.outputs.files` grants no write, and a task whose
+   * only declaration is its outputs writes into a tmpfs that evaporates
+   * (vx then warns that `cache.outputs` matched no files).
+   */
   write?: string[]
   /**
    * Reachable domains. `true` allows all, `['*.example.com']` a pattern.
