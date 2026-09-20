@@ -835,7 +835,9 @@ project-relative `files` whenever the task can write inside its own
 dir. Two tasks whose workspace outputs provably overlap (equal
 literals, or a literal a glob matches) are refused at graph build, like
 overlapping `files`: vx cleans declared outputs before a run and before
-a restore, so the second would delete the first's. Globs that only
+a restore, so the second would delete the first's. The comparison is by
+PATH, not by spelling — `./dist/**` and `dist/**` are one declaration,
+and so are `dist//**` and `dist/./app.js` (item 441). Globs that only
 _might_ overlap are let through; there, last restore wins.
 
 ### `exec.sandbox` (optional)

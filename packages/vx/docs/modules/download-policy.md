@@ -54,7 +54,12 @@ matters:
 - the producer declaring `cache.outputs.workspaceFiles` (root-anchored).
 
 A leading wildcard yields prefix `.` and reaches everything; a cacheable
-task with no declared `files` counts as reading its whole project.
+task with no declared `files` counts as reading its whole project. The
+prefixes are compared as PATHS, not as strings: `staticPrefix` normalizes
+the spelling, because `./out/**` and `out/**` name one tree to the input
+resolver and two different prefixes to a raw comparison — which deferred
+a producer its own reader could see, and moved that reader's key with a
+transfer flag (item 441).
 
 ## Invariants
 
@@ -66,4 +71,6 @@ task with no declared `files` counts as reading its whole project.
 ## Tests
 
 `tests/download-policy.test.ts` (gate both directions incl. the
-false-positive controls, mode resolution, and the e2e lifecycle).
+false-positive controls, mode resolution, the e2e lifecycle, and a
+same-project reader whose key must not move with `--download` however
+its glob is spelled).

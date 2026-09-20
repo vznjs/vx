@@ -503,3 +503,23 @@ describe('staticPrefix and a brace set', () => {
     expect(staticPrefix('dist/**')).toBe('dist')
   })
 })
+
+describe('staticPrefix normalizes the spelling before it takes the prefix', () => {
+  it('folds every spelling `normalizeGlob` exists for onto one prefix', () => {
+    // Two callers compare or join these: the sandbox baseline joins the
+    // prefix onto a directory (and `path.join` folded these on the way, so
+    // it never saw the difference), and the deferral gate compares two raw
+    // strings (so it did). The spellings below all name `out`.
+    for (const g of ['out/**', './out/**', 'out//**', 'out/./**', './out/./**', 'out/']) {
+      expect([g, staticPrefix(g)]).toEqual([g, 'out'])
+    }
+    expect(staticPrefix('./out/sub/**')).toBe('out/sub')
+    expect(staticPrefix('./out/app.js')).toBe('out/app.js')
+    // A negation keeps its marker — it is a prefix of what is SUBTRACTED,
+    // and no caller may read it as a positive reach.
+    expect(staticPrefix('!./out/**')).toBe('!out')
+    // The controls the folding must not disturb.
+    expect(staticPrefix('{dist,build}/**')).toBe('.')
+    expect(staticPrefix('**/*.js')).toBe('.')
+  })
+})

@@ -1005,6 +1005,53 @@ built behind a failure`). Two claims were not.
       (431's two, this item's seventeen, and the RSS family's
       downstream that 437 made recordable), and what is left is the harness and a
       Bun version this repo does not claim to support.
+441.  DONE (2026-09-20, the halves-apart thesis again, and this time
+      the halves were a shared function and the two callers that read
+      its answer differently). `staticPrefix` carries a comment saying
+      two callers share it deliberately, "a second copy is how the two
+      would disagree about what a prefix is" — and they disagreed
+      anyway. The sandbox baseline joins the prefix onto a directory,
+      so `path.join` folded `./`, `//` and `/./` before it ever saw
+      one; the deferral gate compares two prefixes as raw strings, so
+      it did not. Sharing the function shared only half the rule.
+      Two defects, both measured, both with controls that pass either
+      way:
+      (a) `deferralEligibility` decides which producers may leave their
+      outputs remote under `--download=none`. Its one real channel is a
+      same-project reader whose `cache.inputs.files` can match the
+      producer's outputs on disk — and `./out/**` against `out/**`
+      compared as different prefixes, so the producer deferred. A local
+      consumer materialises a deferred producer only AFTER missing, and
+      `execute-task` derives the key first, so the consumer keyed two
+      ways: `32aa46f2…` eager against `8136fcc5…` deferred, through a
+      real `run()`, on one unchanged tree. `--download` is transfer
+      tuning and is documented never to move a key; it moved one. Four
+      of the five spellings `normalizeGlob` exists for defeated the
+      gate (the trailing slash on a PATTERN happened to survive).
+      (b) Then the class grep, which is where the second one came from:
+      `outputsOverlap` refuses two tasks that declare the same output,
+      because vx cleans declared outputs before a run and before a
+      restore, so the second silently deletes the first's — the file's
+      own words are "data loss with a green summary". It compares
+      spellings three ways (literal = literal, `Bun.Glob` against a
+      literal, glob = glob) and every one said "no overlap" for
+      `./dist/app.js` against `dist/app.js`. Probed one spelling at a
+      time: six pairs allowed that name one path.
+      The fix is one rule in one place — `staticPrefix` normalizes
+      before it takes the prefix, `outputsOverlap` normalizes both
+      sides — plus a third gap the first test row found on its own: a
+      literal's trailing slash survives `normalizeGlob` by design
+      (`asTrees` owns `out/` → the tree), but it made `out/` compare
+      unequal to `out`, so the prefix drops it. Normalizing is not a
+      widening, and the controls say so: the disjoint pairs stay
+      eligible, and `./dist/vx-*` against `dist/other.txt` — the
+      measured case that killed the static-prefix approach for the
+      refusal in the first place — still goes through.
+      Ten new rows, all ten red without the fix, every pre-existing row
+      green both ways. What made this findable was not reading a file:
+      it was asking which OTHER consumer of a shared rule applies it
+      differently, and the second defect came from grepping the class
+      the first one belonged to, exactly as CLAUDE.md says to.
 
 ## In flight
 
@@ -1026,7 +1073,10 @@ box ships **Bun 1.3.11** while both `package.json` files declare
 `Bun.Archive` (item 389 corrected the claim that core DEPENDS on it —
 it does not; the oracle is where the failure lands).
 Ten of the 23 are that, verified — `@vzn/vx-reapi` refuses to load
-with its own version error (3), `tar-stream` fails inside
+with its own version error (3 in the failing set, but SEVENTEEN rows
+behind it: the task stops at the first file, so the count was never the
+population — item 440 gated them all and that task is green here now),
+`tar-stream` fails inside
 `Bun.Archive` (1), `project-loader` got a `BuildMessage` where 1.4
 gives an Error — item 436 measured that and fixed the guard behind it,
 so those three are no longer in the set (3), the
@@ -1043,6 +1093,9 @@ the four e2e rows assert per delivery mode (the poll coalesces the
 follower, so two executions there and three under events), the two
 `armWatcher` rows are gated on the probe landing at all, and the
 seventh was load and passes alone.
+The baseline stands at THREE failing tests as of item 440
+(`armWatcher` non-recursive, the watch watched-set row, the
+`Bun.Archive` tar oracle) and three failing tasks.
 Bun 1.3.11's `fs.watch` never reports a DOT-prefixed filename — a
 plain file is delivered, `.vx-watch-probe` is dropped, in both
 recursive modes — and that probe is exactly how `armWatcher` proves a
@@ -1249,8 +1302,8 @@ state of each:
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287, 293, 299, 305, 312, 319, 326, 332, 383 and
     394, 400, 403, 409, 412, 419 and 426 (14–14am) are in
-    `docs/history/2026-09-status-next-log.md`; 14an below is the
-    current one.
+    `docs/history/2026-09-status-next-log.md`; 14ao below is the
+    current one, and 14an above it is the one before.
 
 14an. **Handoff after item 432 (2026-09-20).** Six items since 14am,
 and they are one thread: the sweep method 427 closed, the thesis 428
@@ -1303,6 +1356,45 @@ shape, untried: `vx watch`'s cycle against the run's admission dedup
 (430 opened it and only took the branch), and the sandbox's grants
 against what `cache.outputs` declares, which 428 touched from the read
 side only. Never end with "what next?".
+
+14ao. **Handoff after item 441 (2026-09-20).** Nine items since 14an,
+and the arc ends with the baseline honest and the method sharper than
+the finds.
+433–440 were the baseline: every row that read "the runtime" got read
+instead of believed, and five of them were vx's own code (435 a git
+fixture, 436 an `instanceof Error` guard, 437 a platform unit asserted
+instead of measured, 438 a flush pinned to one runtime's timing). 440
+gated seventeen reapi rows on the Bun floor the plugin itself declares,
+using the convention the repo already owns for bwrap and for a live
+endpoint. Twenty-three failing tests this morning, three now — and all
+three are honestly the harness or a Bun this repo does not claim to
+support. DO NOT chase them, and do not invent work to reach zero.
+441 is the one to copy. It came from asking which OTHER consumer of a
+shared rule applies it differently — not from reading a file — and it
+found a key that moved with `--download` and an output-collision
+refusal that missed the same path spelled two ways. The second came
+from grepping the class the first belonged to, which is a standing rule
+here and paid a defect this time.
+The method, after four corrections in one day (430, 436, 439, 440):
+mutate and run the whole suite; check the mutated area against the red
+baseline BEFORE reading a verdict; diff both yardsticks, failing TASKS
+and failing TESTS, in both directions; never let a check's exit hide
+behind `&& echo ok` or a pipe; and remember a fail-fast loop truncates
+the failing set, so run a package's files individually before believing
+a count.
+Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
+noise floor and no arms to A/B until the run path changes. The owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues.
+Next: the loop holds 413–441, so the trim is due at 452. For work, the
+shape that has paid every time in this arc is a claim whose halves live
+apart. Still untried: `vx watch`'s cycle against the run's admission
+dedup (430 opened it and only took the branch), and the sandbox's
+grants against what `cache.outputs` declares, which 428 touched from
+the read side only and 433 pinned from the derive side. And the shape
+441 adds to that list: a rule shared by three consumers where only some
+of them apply it — `asTrees`, `normalizeGlob` and `staticPrefix` each
+have more than two callers. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

@@ -56,6 +56,45 @@ describe('deferralEligibility', () => {
     expect(out.has('a#build')).toBe(false)
   })
 
+  it('the OVERLAP is a path question, not a spelling one', () => {
+    // `./gen/**` and `gen/**` name one tree to the input resolver, the
+    // sandbox and the watcher — and, before item 441, two different static
+    // prefixes to this gate, which then deferred a producer its reader can
+    // see. Every spelling `normalizeGlob` exists for, on either side, plus
+    // the literal directory entry `asTrees` expands to a whole tree.
+    const spellings: [string, string][] = [
+      ['./gen/**', 'gen/**'],
+      ['gen/**', './gen/**'],
+      ['gen//**', 'gen/sub/**'],
+      ['gen/./sub/**', 'gen/sub/**'],
+      ['gen/*/', 'gen/x/**'],
+      ['gen/**', 'gen/'],
+    ]
+    for (const [out, read] of spellings) {
+      const nodes = graph(
+        node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: [out] } }),
+        node('a#build', { inputs: { files: [read] }, outputs: { files: ['dist/**'] } }),
+      )
+      expect([out, read, deferralEligibility(nodes).has('a#gen')]).toEqual([out, read, true])
+    }
+  })
+
+  it('CONTROL: the folding does not make disjoint prefixes overlap', () => {
+    // The same spellings on trees that really are disjoint stay eligible —
+    // otherwise the row above would pass by refusing everything.
+    for (const [out, read] of [
+      ['./gen/**', 'src/**'],
+      ['gen//**', './src/**'],
+      ['gen/', 'src/'],
+    ] as [string, string][]) {
+      const nodes = graph(
+        node('a#gen', { inputs: { files: ['src2/**'] }, outputs: { files: [out] } }),
+        node('a#build', { inputs: { files: [read] }, outputs: { files: ['dist/**'] } }),
+      )
+      expect([out, read, deferralEligibility(nodes).has('a#gen')]).toEqual([out, read, false])
+    }
+  })
+
   it('a leading wildcard reads everything, so it forces eager', () => {
     const nodes = graph(
       node('a#build', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
@@ -701,4 +740,107 @@ describe('--download end to end', () => {
       a.cleanup()
     }
   })
+})
+
+// ── the gate's own failure mode, end to end ─────────────────────────
+
+/**
+ * A SAME-project reader of the producer's outputs: `gen` runs on the fake
+ * remote executor, `use` runs locally and reads what it wrote. The gate is
+ * the only thing keeping `use`'s key from moving with `--download`, because
+ * a local consumer materialises its deferred producers only after missing —
+ * `execute-task` computes the key first, over whatever is on disk then.
+ */
+async function sameProjectFixture(
+  readGlob: string,
+): Promise<{ root: string; cleanup: () => void }> {
+  const root = mkdtempSync(path.join(tmpdir(), 'vx-download-same-'))
+  await Bun.write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+  await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+  await mkdir(path.join(root, 'packages', 'pkg-a', 'src'), { recursive: true })
+  await Bun.write(
+    path.join(root, 'packages', 'pkg-a', 'package.json'),
+    JSON.stringify({ name: 'pkg-a', version: '0.0.0' }),
+  )
+  await Bun.write(path.join(root, 'packages', 'pkg-a', 'src', 'in.txt'), 'seed\n')
+  await Bun.write(
+    path.join(root, 'packages', 'pkg-a', 'vx.config.mjs'),
+    `export default { tasks: {
+       gen: {
+         exec: { command: 'true' },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+       },
+       use: {
+         exec: { command: 'cat out/gen.txt > used.txt' },
+         dependsOn: ['gen'],
+         cache: {
+           inputs: { files: ${JSON.stringify([readGlob])} },
+           outputs: { files: ['used.txt'] },
+         },
+       },
+     } }`,
+  )
+  await Bun.write(
+    path.join(root, 'vx.workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/fake-remote',
+        `{ executor() {
+           return {
+             name: 'fake-remote',
+             remote: true,
+             accepts: (t) => t.taskId.endsWith('#gen'),
+             async execute(req) {
+               const write = async () => {
+                 const { mkdir } = await import('node:fs/promises')
+                 const p = await import('node:path')
+                 await mkdir(p.join(req.cwd, 'out'), { recursive: true })
+                 await Bun.write(p.join(req.cwd, 'out', 'gen.txt'), 'GENERATED')
+               }
+               const base = { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+               if (req.download === 'deferred') {
+                 return { ...base, outputs: { kind: 'deferred', materialize: write } }
+               }
+               await write()
+               return base
+             },
+           }
+         },
+       }`,
+      ),
+    ]),
+  )
+  await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
+}
+
+async function consumerKey(readGlob: string, download?: 'none'): Promise<string> {
+  const f = await sameProjectFixture(readGlob)
+  try {
+    const r = await run({
+      cwd: f.root,
+      tasks: ['use'],
+      log: silent(),
+      handleSignals: false,
+      ...(download === undefined ? {} : { download }),
+    })
+    const use = r.outcomes.find((o) => o.node.taskName === 'use')!
+    expect(use.status).toBe('success')
+    return use.hash!
+  } finally {
+    f.cleanup()
+  }
+}
+
+describe('a reader that can see the producer keeps its key under --download', () => {
+  it('holds however the read glob is spelled', async () => {
+    // `--download` is transfer tuning and is never folded into a key, so
+    // the ONLY way it can move one is through what is on disk when the key
+    // is derived — the channel `deferralEligibility` closes. Before item
+    // 441 the plain spelling held and `./out/**` did not: the same tree,
+    // two keys, decided by a flag.
+    for (const glob of ['out/**', './out/**', 'out//**', 'out/']) {
+      expect([glob, await consumerKey(glob, 'none')]).toEqual([glob, await consumerKey(glob)])
+    }
+  }, 60_000)
 })

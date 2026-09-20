@@ -137,6 +137,11 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 - `excludeDependencies: 'all'` skips everything but requested
 - `excludeDependencies: [...]` drops named edges only
 
+`tests/output-collision.test.ts` covers the overlapping-output refusal:
+what is refused, the spellings that name one path (`./dist/**` against
+`dist/**`), and the false-positive controls — the refusal aborts the run,
+so a widening breaks a build that works today.
+
 ## Replacing this module
 
 - **Lazier graphs** — return an iterator instead of a Map, useful for
