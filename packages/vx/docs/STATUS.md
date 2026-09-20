@@ -1360,6 +1360,55 @@ built behind a failure`). Two claims were not.
       when a member is), so the second row is `wa#gen` → `wa#all`
       (group) → `wa#consume`. Each row fails under its own mutation and
       only its own.
+427.  DONE (2026-09-20, and it is a ZERO-YIELD report — `cache/cache.ts`,
+      1,637 lines, the local store itself, where wrong bytes under an
+      unchanged key are the one situation a `CACHE_VERSION` bump exists
+      for). Eleven claim families read and checked against the suites,
+      every one already pinned, so the useful artifact is the map:
+      the restore refusals (a vanished artifact, an archive missing a
+      recorded output, the EISDIR/ENOTDIR stray, the `.vx-tmp-` race)
+      in `artifact-roundtrip.test.ts` and `cache.test.ts`; the ingest
+      boundary — corrupt zstd, valid zstd that is not a vx artifact, a
+      declared bomb, a sizeless frame, a mid-stream cut, each asserting
+      no artifact, no row and no temp — in `cache.test.ts`; the
+      ms-precision output fingerprint on BOTH the save and the ingest
+      path in `cache-baseline.test.ts` and `cache.test.ts`; `getMany`'s
+      "same answers as N calls to `get`" in `cache-get-many.test.ts`,
+      down to the read gate, the deferred `accessed_at` touch and (in
+      `output-dirs-snapshot.test.ts`) the dir rows; orphan reaping with
+      its grace window and four controls, and `orphanStats` agreeing
+      with what prune reaps, in `cache.test.ts`; the key fold's order
+      check including the inversion at the LAST pair and the
+      workspace-root memo; the temp cleanup on both the in-memory and
+      the streamed save path, each with its control; retention pruning
+      `invocations` on the same window as `runs`; and the
+      exit-code laundering defence, pinned twice — at runtime in
+      `execute-task.test.ts` and at the TYPE level by a
+      `@ts-expect-error` whose unused-directive error is the assertion,
+      which only the lint gate can see.
+      The most promising hole was the directory short-circuit, whose
+      halves DO live apart — `hit-restore.ts` skips the output walk when
+      every directory recorded at the last save still has its mtime,
+      which is sound only if a snapshot covers the tree recursively and
+      is all-or-nothing. It is both, deliberately (`output-index.ts`
+      walks every subdirectory, abandons over `OUTPUT_DIRS_CAP`, and
+      drops a snapshot holding any directory inside the racy window),
+      and `output-dirs.test.ts` plus `output-dirs-snapshot.test.ts` pin
+      the cap, the racy window and the absent-prefix row.
+      One interaction is not pinned directly: a `vx cache prune`
+      running while a save is mid-flight. It is not a gap worth a racy
+      test — the mechanism that protects it is the orphan grace window,
+      and that IS pinned deterministically (a fresh row-less artifact
+      and a fresh temp are controls in the reaping row). A timed
+      version would only prove that this box is slow enough.
+      CLOSING THE METHOD. Four surfaces deep (423 `execute-task.ts`,
+      424 `cache/inputs.ts` + `git-inputs.ts`, 426 the stability gate,
+      427 here) the yield is 2, 0-then-a-composite, 2, 0 — and the
+      finds cluster where a claim spans two files or two stages, never
+      where one function does one thing. Sweeping a fifth file by line
+      count is not the way to the next one; the next reader should look
+      for a claim whose halves live apart, which is what 424 and 426
+      both turned out to be.
 
 ## In flight
 
