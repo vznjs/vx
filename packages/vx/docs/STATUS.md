@@ -1549,6 +1549,38 @@ prune` for eviction), a typo of `prune` still gets the
       with a line, and `cache: true` with no declared inputs defaults
       to `['**/*']` with a TODO to narrow it.
 
+411.  DONE (2026-09-20, the rest of the Nx input surface, same walk).
+      Item 410 read the dependency forms; this one reads the INPUT
+      forms, built into the same hand-written graph and checked by
+      RUNNING the migrated config, not by reading what it printed.
+      One more defect: `{ runtime: "<cmd>" }` fell through to the
+      report line `input {…} not representable in vx` while
+      `docs/schema.md` documents `cache.inputs.runtime` as
+      "the runtime-output analog of `inputs.env`. The Nx `runtime`
+      input equivalent" — the one field written FOR this mapping was
+      the one the mapper did not reach. It now emits
+      `runtime: ['node --version']`, and the migrated workspace runs
+      and caches on it (second run reads up-to-date).
+      The other shapes were already covered and are recorded so they
+      are not re-walked: `{ env }` maps to `cache.inputs.env` AND
+      `exec.env.passThrough` (a vx task's env is isolated, so hashing
+      a variable is not enough to pass it), `{ fileset }` expands,
+      `{ externalDependencies }` and `{ dependentTasksOutputFiles }`
+      each become a TODO that says why vx needs neither, and a
+      `{token}` vx has no answer for becomes a TODO rather than a
+      silent drop. The guide's table now has a row for `{ env }` and
+      `{ runtime }` beside the `files` ones.
+      Also fixed: the implicit-dep note counted without naming, so
+      "1 implicit Nx dep not representable" sent a reader through the
+      whole graph for the pair they have to write the `dependsOn`
+      from. It now names them — `(pkg-a → pkg-b)`, capped at five
+      with "and N more".
+      Not a defect, checked: `targetDefaults` are not applied by the
+      migrator because the project-graph snapshot is ALREADY
+      resolved — my first fixture put defaults in `nx.json` and
+      expected them merged, which no real `nx graph` output would
+      have. The unrealistic fixture was the bug, not the mapper.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

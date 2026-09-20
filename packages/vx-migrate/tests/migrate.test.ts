@@ -375,6 +375,7 @@ const NX_GRAPH = {
                 '^production',
                 '{workspaceRoot}/babel.config.json',
                 { env: 'NODE_ENV' },
+                { runtime: 'node --version' },
                 { externalDependencies: ['webpack'] },
               ],
               outputs: [
@@ -473,10 +474,15 @@ describe('vx migrate (nx)', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('exits 0, notes the frozen-snapshot semantics and implicit deps', () => {
+  it('exits 0, notes the frozen-snapshot semantics and NAMES the implicit dep', () => {
     expect(result.code).toBe(0)
     expect(result.out).toContain('plugin-inferred targets are frozen as static config')
-    expect(result.out).toContain('1 implicit Nx dep not representable; review dependsOn')
+    // The pair, not just the count: a reader given "1 implicit Nx dep" has
+    // to search the graph for it, and the pair is what they write the
+    // dependsOn from (2026-09-20).
+    expect(result.out).toContain(
+      '1 implicit Nx dep not representable (pkg-a → pkg-b); review dependsOn',
+    )
   })
 
   it(
@@ -496,6 +502,11 @@ describe('vx migrate (nx)', () => {
       // {env: X} → cache input AND passThrough (isolated child env).
       expect(build.cache?.inputs.env).toEqual(['NODE_ENV'])
       expect(build.exec?.env?.passThrough).toEqual(['NODE_ENV'])
+      // {runtime: "<cmd>"} → cache.inputs.runtime, which schema.md calls
+      // the Nx runtime input's equivalent. It used to reach the
+      // fall-through and be reported "not representable in vx"
+      // (2026-09-20).
+      expect(build.cache?.inputs.runtime).toEqual(['node --version'])
       // outputs: dir heuristic (a leading dot is a hidden directory, not
       // an extension — a bare `.output` would save nothing, the output
       // scan lists files), {options.*} resolution + project-prefix strip,
