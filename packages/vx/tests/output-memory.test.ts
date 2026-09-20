@@ -83,8 +83,24 @@ describe('logger per-task buffering', () => {
       // here rather than passing vacuously on the bounded side.
       const fullFew = probeRssMib(loggerProbe('full', FEW_CHUNKS))
       const fullMany = probeRssMib(loggerProbe('full', MANY_CHUNKS))
-      const noneFew = probeRssMib(loggerProbe('none', FEW_CHUNKS))
-      const noneMany = probeRssMib(loggerProbe('none', MANY_CHUNKS))
+
+      // The delta for a mode that must NOT grow with volume, MIN-OF-2 and
+      // only on a miss. RSS is a high-water mark, and the residual below is
+      // load-dependent: on this container under a full `vx run ci` it reached
+      // 88 MiB against the 80 MiB bound (2026-09-20), an order of magnitude
+      // above the ~8 MiB the note below estimated from a quiet machine. A
+      // second reading costs nothing when the first already passes, and
+      // min-of-N is this repo's standing answer to a loaded measurement
+      // (CLAUDE.md, perf first). It cannot mask a real regression: retention
+      // costs the FULL 160 MiB every time, so both readings miss.
+      const flatDelta = (mode: string): number => {
+        const once = (): number => {
+          const few = probeRssMib(loggerProbe(mode, FEW_CHUNKS))
+          return probeRssMib(loggerProbe(mode, MANY_CHUNKS)) - few
+        }
+        const first = once()
+        return first < EXTRA_MIB * 0.5 ? first : Math.min(first, once())
+      }
 
       // `full` prints this output, so it must still hold it — the deliberate
       // boundary, not an oversight: silently truncating a build log is worse
@@ -107,9 +123,9 @@ describe('logger per-task buffering', () => {
       // across reps) and still failed on a loaded CI runner.
       //
       // 0.5 keeps the assertion sharp: retention costs the FULL 160 MiB, which
-      // is 2x this bound, while the observed noise is ~10x below it. Verified
-      // by mutation — making `none` retain fails this line.
-      expect(noneMany - noneFew).toBeLessThan(EXTRA_MIB * 0.5)
+      // is 2x this bound. Verified by mutation — making `none` retain fails
+      // this line, on both readings.
+      expect(flatDelta('none')).toBeLessThan(EXTRA_MIB * 0.5)
 
       // `hash-only` is the OTHER half of the same boundary — the set is
       // exactly {none, hash-only}, the two modes whose contract promises
@@ -118,9 +134,7 @@ describe('logger per-task buffering', () => {
       // green. It prints one audit line per task and no log bytes ever,
       // so no behaviour row can see it retain them; this measurement is
       // the only thing that can.
-      const hashFew = probeRssMib(loggerProbe('hash-only', FEW_CHUNKS))
-      const hashMany = probeRssMib(loggerProbe('hash-only', MANY_CHUNKS))
-      expect(hashMany - hashFew).toBeLessThan(EXTRA_MIB * 0.5)
+      expect(flatDelta('hash-only')).toBeLessThan(EXTRA_MIB * 0.5)
     },
     TIMEOUT,
   )

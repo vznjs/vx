@@ -841,6 +841,31 @@ fallback (and stay cache-hits)`. 471's fast filter simply did
       this session came AFTER 465 added two more subprocess probes to
       it, taking it from four to six. That is a plausible cause and
       not an established one. Next item.
+475.  DONE (2026-09-20, the measurement row 474 saw go red, and a
+      CORRECTION to what 474 said about it).
+      474 recorded the failure as load-sensitive and floated 465's two
+      extra probes as a plausible cause. Reading the actual assertion
+      killed that theory: the probes 465 added run AFTER the `none`
+      pair and cannot raise `noneMany`. The real number is the
+      interesting part —
+      `expect(noneMany - noneFew).toBeLessThan(80)` received 88 — and
+      the row's own note estimated the noise at "~10x below" the
+      bound, i.e. about 8 MiB. On this container under a full
+      `vx run ci` it is 88. The calibration was taken from a quiet
+      machine and the note said so ("a tighter 0.25 bound passed here
+      and still failed on a loaded CI runner"); 0.5 is the same
+      mistake one notch out.
+      Fixed with MIN-OF-2 ON A MISS rather than a looser bound: the
+      delta is re-measured once, and only when the first reading
+      already exceeds the bound, so a quiet machine pays nothing. That
+      is CLAUDE.md's own answer to a loaded measurement rather than an
+      invention.
+      It cannot mask a real regression, and that is measured, not
+      argued: with `discardsOutput` forced false the delta is 160 —
+      the FULL retained volume, every time — against a bound of 80.
+      160 and 88 are two very different numbers, which is exactly why
+      the bound stays sharp instead of being widened to swallow the
+      noise it was never meant to cover.
 
 ## In flight
 
