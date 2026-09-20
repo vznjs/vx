@@ -1057,6 +1057,37 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       they are named here so the next session can take them without
       re-running the query.
 
+459.  DONE (2026-09-20, taking 458's two named survivors — no re-query
+      needed, the corrected silencing run had already established them).
+      THE FIND IS BIGGER THAN 458 RECORDED. 458 said the scheduler's
+      observer NOTICE was unpinned. Mutating further shows the
+      BEHAVIOUR was unpinned too: deleting the try/catch around
+      `onStart` — so a throwing observer escapes into the dispatch loop
+      — is caught by nothing in the repo except the row written here.
+      That matters because the scheduler holds the worker slot across
+      the hook, so an escaping throw strands the tick with the slot
+      held and the run never finishes. An observer is someone else's
+      code (a reporter, an embedder's progress bar, the MCP server),
+      which is exactly why it is wrapped.
+      Pinned as one row per side: a throwing `onStart` and a throwing
+      `onFinish`, asserting the graph still completes AND the notice
+      names the task and carries the observer's own message. Red both
+      ways — with the phrase removed (the notice half) and with the
+      catch removed (the behaviour half).
+      MY OWN HYPOTHESIS REFUTED, recorded so it is not re-raised: I
+      expected CLAUDE.md's live invariant "Observability never breaks a
+      run" to be overclaiming, since its stated proof is the telemetry
+      suite. It is not. The line says SINKS are crash-isolated, and
+      sinks are proven where it says they are; the scheduler's
+      observers are a different seam that the invariant never claimed.
+      The invariant stands as written — the gap was beside it, not in
+      it.
+      STILL UNPINNED, with the reason: `sandbox cleanup failed`. It
+      needs `resetSandbox()` to throw, and there is no seam that makes
+      it throw from a test — only mocking the ESM binding would, which
+      pins the mock rather than the guarantee. Left as 456(c) was left,
+      named rather than forced.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
