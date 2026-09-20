@@ -727,6 +727,33 @@ built behind a failure`). Two claims were not.
       clause in all ten. Match on what the sentence says, never on where
       it wraps.
 
+433.  DONE (2026-09-20, the pair handoff 14an named: the sandbox's
+      grants against what `cache` declares — 428 came at it from the
+      READ side, this is the write side, and it is the same shape).
+      "The sandbox derives NOTHING from `cache`" is an owner call
+      (2026-09-05) written into `sandbox-request.ts` and into
+      `schema.md`: `cache.inputs` says what INVALIDATES a task,
+      `sandbox.allow` says what it may TOUCH, and deriving one from the
+      other coupled them in both directions — a declaration added for
+      caching silently widened the sandbox, and a path the task needed
+      had to be laundered through the cache key to get it.
+      Nothing pinned it. The broad mutation (fold `cache.outputs.files`
+      into every task's write grants) is caught, but only incidentally,
+      by a row about a literal grant's failure MESSAGE. The surgical
+      one — derive from `cache.outputs` only when the task declares no
+      write grant of its own — survives every package's tests. That is
+      the dangerous direction by construction: the task it widens is
+      the one that asked for no write access at all.
+      Two rows now, one config line apart with an identical cache
+      block: a task declaring `cache.outputs.files: ['dist/out.txt']`
+      and no write grant FAILS and leaves nothing on disk, and the same
+      task with `write: ['dist/']` succeeds and writes the bytes. The
+      pair fails under the surgical mutation and passes without it.
+      Method note, because 430's correction is what made this verdict
+      trustworthy: the sandbox family has ZERO rows in this container's
+      red baseline, so "nothing caught it" here is a real answer rather
+      than a blind spot — checked before the claim, not after.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
