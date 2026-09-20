@@ -955,6 +955,38 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       A fixture that commits is a fixture that needs the sandbox's
       permission, and running it alone does not test that.
 
+456.  DONE (2026-09-20, the pair CLAUDE.md names stale-hit-critical in
+      its own words: `hit-restore.ts` against `miss-save.ts` — what a
+      hit restores against what a miss saved). Three claims mutated one
+      at a time. Two CAUGHT, one SURVIVED and is recorded as COST after
+      a probe refuted my correctness theory for it.
+      (a) The skip-restore short-circuit requires BOTH that the output
+      walk yields exactly the expected set AND that every file's
+      fingerprint matches. Mutating the DIRECTORY short-circuit to
+      trust its recorded set unconditionally — a perf gate deciding
+      whether the integrity walk runs at all, which is the shape that
+      found 451's stale hit — fails two rows, one named "an added stray
+      still forces the restore".
+      (b) The other half of that BOTH: dropping the per-file
+      fingerprint check fails four rows, including 451's own new row.
+      (c) SURVIVED: `markWorkspaceOutputsChanged`, which marks a
+      workspace output's exact paths against every partition that can
+      see them, including a project partition whose dir contains the
+      path — the no-boundary escape hatch. Dropping it breaks nothing.
+      My theory was a cross-project stale hit, and the probe REFUTED
+      it. Built the fixture on the real CLI: `a#gen` writes into `b`'s
+      directory through `outputs.workspaceFiles`, `b#build` reads it.
+      Correct with the fix and correct WITHOUT it, because architecture
+      principle 5 does the work — `b` folds `a`'s INPUT key, so `b`'s
+      key moves whether or not the snapshot was marked. The only shape
+      the marking could decide is a reader that does not declare the
+      dependency, and that is undeclared ordering, outside the
+      contract.
+      So it is cost and defence-in-depth, not correctness, and it is
+      deliberately left UNPINNED for 447's reason: a test would have to
+      count git spawns, pinning the implementation rather than a
+      guarantee. Recorded here so it is not rediscovered as a find.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
