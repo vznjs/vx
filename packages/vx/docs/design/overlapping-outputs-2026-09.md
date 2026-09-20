@@ -64,25 +64,41 @@ So the design needs a second stability axis. Today's gate
 whether an upstream writes where this task READS. The overlap case is
 about where this task WRITES. The two do not coincide:
 
-- **Same project** (strapi, refine): already covered by accident of the
-  conservative gate — `upstreamOutputProjects.has(node.projectName)`
-  makes any same-project dependent of an output-declaring task unstable,
-  so B is not restore-tier and not prefetched. The shape the design
-  targets is safe today for the reason the gate exists, not for this one.
+- **Same project** (strapi, refine): covered by the conservative gate —
+  `upstreamOutputProjects.has(node.projectName)` makes any same-project
+  dependent of an output-declaring task unstable, so B is not
+  restore-tier and not prefetched.
 - **Cross project**: B's project-relative outputs land in B's own
   directory, so an overlap requires root-anchored (`workspaceFiles`)
-  outputs on one side. A `workspaceFiles` producer upstream already
-  forces instability. A `workspaceFiles` WRITER — B writing into A's
-  directory — does not: B's key is unaffected by its own outputs, so B
-  can be stable, restore-tier, and restored before A has run. **That is
-  the case the implementation must exclude explicitly**, in the same
-  function, or an overlap-narrowed artifact will be restored into a tree
-  that has nothing to merge with.
+  outputs on one side — and `local-shortcircuit.ts` already disables the
+  restore tier GRAPH-WIDE the moment any task declares
+  `cache.outputs.workspaceFiles`, for exactly this reason ("the
+  boundary-ignoring escape hatch could let a task write where a restore
+  touches — a blanket conservative exclusion"). Probe reuse still
+  applies, so those tasks are not probed twice; they simply stay
+  dep-gated.
 
-A pin for that exclusion belongs in `tests/local-shortcircuit*.test.ts`
-beside the existing stability rows, and it should fail without the
-exclusion — a cross-project `workspaceFiles` writer whose narrowed
-artifact restores early is a partial tree under a green run.
+**Measured, because an earlier draft of this note got it wrong.** The
+first version claimed the cross-project case was unguarded and that an
+implementation would have to exclude it. It is guarded. The fixture:
+`a#build` writes `dist/**`, `b#build` declares
+`outputs.workspaceFiles: ['pkgs/a/dist/b.txt']`, depends on `a#build`,
+and detaches its key with `cache.inputs.tasks: []` so it can HIT while A
+misses — the only arrangement in which B could restore into a directory
+A is about to clean. Polling the directory through the run put `b.txt`
+at 1142 ms and `a.txt` at 1131 ms: B restored AFTER A, because with a
+workspace output in the graph nothing is restore-tier at all. Ten
+further reps with A's artifact at 2000 files left a correct tree every
+time.
+
+So the constraint for an implementation is not "add an exclusion" but
+**"do not remove the one that exists"**. The blanket rule is expensive —
+one `workspaceFiles` output anywhere costs the whole graph its restore
+tier — and narrowing it is the obvious future optimisation. Whoever
+narrows it owns this case: a pin belongs in
+`tests/local-shortcircuit*.test.ts` proving that a cross-project
+`workspaceFiles` writer is still kept out of the tier, and it should
+fail against a narrowed rule that forgets it.
 
 ## Why the rewrite stays refused
 
@@ -108,8 +124,10 @@ paying for.
 
 1. A third repository shows the ADDITION shape (Next 16's own gate; the
    two known repositories are one of each, which is not a pattern yet).
-2. The exclusion above lands first, with its failing-without-it pin —
-   a narrowed artifact is only safe once it cannot be restored early.
+2. The restore-tier exclusion above still holds — today it does, via the
+   blanket `workspaceFiles` rule; a narrowed artifact is only safe while
+   it cannot be restored early, so anyone narrowing that rule pins this
+   case first.
 3. The snapshot/diff lands in `execute-task.ts`'s clean + save path,
    where `cleanOutputs` already returns the paths it removed and already
    marks them in the git files cache; the narrowed set flows to the same
