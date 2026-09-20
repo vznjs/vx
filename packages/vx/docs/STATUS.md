@@ -1191,6 +1191,80 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       461 found has now been swept to its edge rather than left as a
       standing worry.
 
+463.  DONE (2026-09-20, `workspace/affected.ts` beyond what 445 fixed —
+      and 461's layered blindness turned up again, this time on a
+      SECURITY boundary).
+      `--affected`'s base is guarded TWICE, deliberately and in
+      writing: a pre-spawn check that refuses an option-like `since`
+      (`--output=<path>` is a real `git diff` option and an arbitrary
+      file write), and `--end-of-options` on every git call "so a
+      second caller cannot lose the guard by accident".
+      LAYER 1 is well pinned: removing the check fails four rows, each
+      naming a concrete attack value (`-`, `--`, `--output=OUT`,
+      `--upload-pack=OUT`).
+      LAYER 2 had NOTHING. Removing all five `--end-of-options`
+      occurrences leaves the whole repo green.
+      Classified before acting, as 460(d) taught: its behaviour is not
+      observable today, because every guarded helper (`verifyRef`,
+      `mergeBase`, the diff) is reached only with the already-checked
+      `since`, and `defaultAffectedBase`'s answer flows in through that
+      same check. So the layer is exactly what its comment says —
+      insurance against the future second caller — and deleting it
+      would be wrong even though no behaviour test can catch it.
+      That makes it a LAW rather than a behaviour, which is a genre
+      this repo already has (`module-boundaries`, the doc pins). Pinned
+      as one: every git argument array in the module that passes a
+      VALUE (a template interpolation or a bare identifier) must carry
+      `--end-of-options`; all-literal arrays need no guard, and a pure
+      spread forwards a caller-built array that is itself checked. The
+      row asserts the regex still matches at least four arrays, so it
+      cannot go vacuous by silently matching nothing. Red with the five
+      occurrences stripped, green with them.
+      The distinction worth keeping: 460(d) was defensive AND left
+      unpinned because pinning it would have pinned the lane ordering
+      that makes it unreachable — the implementation. Here the layer IS
+      the guarantee ("every call ends its options"), so a law states it
+      without pinning anything incidental.
+464.  DONE (2026-09-20, `orchestrator/admission.ts` — the seam between
+      the scheduler and executeTask, never swept; 434 took its
+      `taintTracker` and stopped there).
+      Eight mutations, one control. Three claims are well held, each
+      turning both dedup rows red: the joiner that drops its stale
+      up-front probe (the control), the barrier that lifts only once
+      the deferred SAVE has landed, and the deliberate `return await`
+      that keeps the `finally` behind the task rather than behind its
+      promise.
+      THE FIND: the restore-tier bypass. A confirmed local hit runs
+      BEFORE its dependencies, so the `upstream` array it is handed
+      holds a HOLE where a dep's outcome will go, and the dedup path
+      would recompute the task's hash from that array. Remove the
+      bypass and the upstream fold reads that `undefined`: the run
+      dies with an internal error instead of restoring bytes it
+      already has. The whole repo stayed green without it. Both dedup
+      rows run COLD, so nothing is ever in the restore tier, and every
+      restore-tier row runs with no registry — the intersection of the
+      two halves had no test anywhere.
+      Pinned with the fixture that reaches it: two projects, so an
+      edit to `lib` evicts `lib#build` alone while `app#build` stays
+      stable and warm (it folds no upstream key), leaving it
+      restore-tier with its dependency still running; then two
+      concurrent runs share a registry. Both restore. Red without the
+      bypass, green with it, and the three older rows pass both ways.
+      Left unpinned, measured and classified:
+      (a) the `canWrite` half of the dedup gate is a COST claim. Drop
+      it and the joiner waits for a sibling that will never save, then
+      executes anyway — correct, just slower.
+      (b) the persistent and group conjuncts are redundant with the
+      SCHEMA, which refuses `cache` on a persistent task and on a task
+      with no `exec` (pinned in `project-loader.test.ts`) and is
+      re-run after EVERY `project`-stage plugin (pinned in
+      `plugin-pipeline.test.ts`). No path reaches admission with such
+      a node, so there is no behaviour to pin.
+      (c) the join's `.catch` on the barrier swallows a rejection core
+      never produces: the barrier promise is built here and only ever
+      resolved. What it actually guards is the embedder-supplied Map,
+      which is a real boundary.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family

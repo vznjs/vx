@@ -1190,6 +1190,40 @@ describe('affectedProjects: a workspace whose ROOT is itself a project', () => {
   })
 })
 
+// `--affected`'s base is a SECURITY boundary, and it is guarded twice: a
+// pre-spawn check that refuses an option-like `since`, and
+// `--end-of-options` on every git call "so a second caller cannot lose
+// the guard by accident". The check has four rows naming concrete attack
+// values; the second layer had NOTHING — removing all five occurrences
+// left the whole repo green (item 463), which is 461's layered blindness
+// on a security boundary this time.
+//
+// Its behaviour is not observable today: every guarded helper is reached
+// only with the already-checked `since`, so the layer is insurance
+// against the future caller its own comment names. That makes it a LAW
+// rather than a behaviour — the same genre as the module-boundary test —
+// and the law is what stops it being deleted as dead code.
+describe('every git call that passes a VALUE ends its options', () => {
+  it('holds for every argument array in affected.ts', async () => {
+    const src = await Bun.file(
+      path.join(import.meta.dir, '..', 'src', 'workspace', 'affected.ts'),
+    ).text()
+    const arrays = [...src.matchAll(/spawnGit(?:Sync)?\(\s*(\[[^\]]*\])/gs)].map((m) => m[1]!)
+    // The module is expected to spawn git in a handful of places; if this
+    // drops to nothing the regex has stopped matching and the law is vacuous.
+    expect(arrays.length).toBeGreaterThanOrEqual(4)
+    const offenders = arrays.filter((a) => {
+      // A pure spread forwards a caller-built array; the caller carries the
+      // guard (and is itself one of these arrays).
+      if (/^\[\s*\.\.\.[A-Za-z_$][\w$]*\s*,?\s*\]$/.test(a)) return false
+      // All-literal argument lists cannot carry a user value.
+      const passesAValue = /\$\{/.test(a) || /,\s*[A-Za-z_$][\w$]*\s*[,\]]/.test(a)
+      return passesAValue && !a.includes('--end-of-options')
+    })
+    expect(offenders).toEqual([])
+  })
+})
+
 describe("workspaceGlobOwners: the run path's staged load", () => {
   let root: string
   beforeEach(async () => {

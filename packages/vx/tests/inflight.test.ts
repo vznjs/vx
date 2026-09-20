@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { gitInitCommit } from './helpers/workspace.js'
@@ -55,6 +55,69 @@ async function counter(root: string): Promise<string> {
   }
 }
 
+// Two projects, so a restore-tier task can exist with an UNFINISHED
+// dependency. `app#build`'s key is stable (its inputs live in its own
+// directory, `lib`'s declared output in `lib`'s), and `cache.inputs.tasks: []`
+// folds no upstream key, so editing `lib/src.txt` evicts `lib#build` alone
+// and leaves `app#build` a warm, confirmed local hit — the restore tier.
+// The scheduler makes it ready at once, dep-independently, so its `upstream`
+// array holds a HOLE where `lib#build`'s outcome will go.
+async function makeCrossProject(): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), 'vx-inflight-x-'))
+  await writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'demo', version: '1.0.0', workspaces: ['packages/*'] }),
+  )
+  await writeLocalWorkspace(root)
+  const pkgs: Array<[string, string[]]> = [
+    [
+      'lib',
+      [
+        'export default {',
+        '  tasks: {',
+        '    build: {',
+        "      exec: { command: 'sleep 0.5 && printf L >> ../../counter.txt && printf lib > out.txt' },",
+        "      cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },",
+        '    },',
+        '  },',
+        '}',
+        '',
+      ],
+    ],
+    [
+      'app',
+      [
+        'export default {',
+        '  tasks: {',
+        '    build: {',
+        "      exec: { command: 'printf A >> ../../counter.txt && printf app > out.txt' },",
+        "      dependsOn: ['lib#build'],",
+        "      cache: { inputs: { files: ['src.txt'], tasks: [] }, outputs: { files: ['out.txt'] } },",
+        '    },',
+        '  },',
+        '}',
+        '',
+      ],
+    ],
+  ]
+  for (const [name, body] of pkgs) {
+    const dir = path.join(root, 'packages', name)
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({
+        name,
+        version: '1.0.0',
+        ...(name === 'app' ? { dependencies: { lib: '*' } } : {}),
+      }),
+    )
+    await writeFile(path.join(dir, 'src.txt'), name)
+    await writeFile(path.join(dir, 'vx.config.mjs'), body.join('\n'))
+  }
+  gitInitCommit(root)
+  return root
+}
+
 describe('in-flight dedup', () => {
   it('a shared registry makes a concurrent duplicate task execute ONCE', async () => {
     const root = await makeWorkspace()
@@ -97,6 +160,40 @@ describe('in-flight dedup', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it('a restore-tier task skips dedup — its live upstream has a hole', async () => {
+    // A confirmed local hit runs BEFORE its dependencies (restore tier), so
+    // the `upstream` it is handed is incomplete. The dedup path would
+    // recompute the task's hash from that array, and the fold reads every
+    // entry: one `undefined` and the run dies with an internal error rather
+    // than restoring bytes it already has. `admitTasks` routes a restorable
+    // node straight to executeTask, which reuses the up-front probe instead.
+    // Reachable only where both halves meet — a shared registry AND a
+    // restore-tier node — which is why neither row above sees it: they run
+    // cold, so nothing is ever in the restore tier.
+    const root = await makeCrossProject()
+    try {
+      const warm = await run({ cwd: root, tasks: ['build'], log: silent })
+      expect(warm.ok).toBe(true)
+      // Evict `lib#build` alone. `app#build` folds no upstream key, so it
+      // stays warm and becomes the restore-tier node with a running dep.
+      await writeFile(path.join(root, 'packages', 'lib', 'src.txt'), 'lib2')
+
+      const inflight = new Map<string, Promise<void>>()
+      const opts: RunOptions = { cwd: root, tasks: ['build'], log: silent, inflight }
+      const [a, b] = await Promise.all([run(opts), run(opts)])
+      expect(a.ok).toBe(true)
+      expect(b.ok).toBe(true)
+      // Both runs restored `app#build` from the artifact the warm run saved.
+      expect(
+        [...a.outcomes, ...b.outcomes]
+          .filter((o) => o.node.id === 'app#build')
+          .map((o) => o.status),
+      ).toEqual(['cache-hit', 'cache-hit'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 60_000)
 
   it('without a shared registry, concurrent duplicates BOTH execute', async () => {
     const root = await makeWorkspace()
