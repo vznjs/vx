@@ -1250,6 +1250,48 @@ await resetSandbox()`, whose comment says "otherwise SRT keeps
       untestable-here shape as 477(a), with a concrete observable a
       future pin could use (count the bridges before and after a
       sandboxed run) if it is ever worth a `.unsafe` row.
+485.  DONE (2026-09-20, `cache/archive.ts` — 659 lines, and the one
+      place the repo calls "attacker-reachable" in as many words).
+      `assertSafeName` is a SEVEN-clause shape class over every entry
+      name at read time — 479's `SHELL_CONTROL` again, on a security
+      boundary. Five clauses are pinned by name (absolute, `..` in
+      three shapes, backslash, drive prefix, extended-length prefix)
+      and the `//` clause turns out to be what two "absolute path"
+      rows actually exercise. TWO had nothing, and both looked
+      unreachable, which is why they had nothing: a ustar name field
+      is NUL-terminated and cannot be empty.
+      The door is pax. A pax `path` record is LENGTH-prefixed rather
+      than NUL-terminated, and it OVERRIDES the header name — the
+      suite already has a row for that override carrying a traversal.
+      So both clauses are reachable, and the first probe proved the
+      reader passes a NUL straight through: a pax
+      `path=outputs/safe.txt\0../../evil` was refused by the `..`
+      clause while the message printed the name truncated at the NUL.
+      That is the second-path check 480 and 481 asked for, and it says
+      reachable rather than dead.
+      Isolated with payloads carrying ONE unsafe property each, both
+      read off a probe:
+      EMPTY NAME is the serious one. Pristine refuses it
+      ("archive entry has an empty name"); with the clause removed the
+      restore RESOLVES — no throw, no file, a green cache hit over an
+      entry dropped on the floor. That is the same
+      "restoring successfully leaves a hole nothing detects" hazard
+      `restoreOutputs` names one file over, arriving through the
+      container instead.
+      NUL is the classification one. Removing the clause lets nothing
+      through — the runtime's own path validation refuses it ("The
+      argument 'path' must be a string, Uint8Array, or URL without
+      null bytes") — so the SAFETY is held twice and what the clause
+      carries alone is that the refusal is an `ArchiveSecurityError`
+      rather than a raw TypeError. That distinction is load-bearing:
+      `restoreOutputs` re-throws `ArchiveSecurityError` unchanged and
+      turns anything else into a corrupt-artifact or an internal
+      error, and a filesystem refusal surfacing as an internal error
+      is a defect by this repo's own rule. 481 and 483's shape a third
+      time, now on a security path.
+      Both pinned through the pax door, the NUL row asserting the
+      CLASS and not only that it threw. Differential per clause: each
+      removal reddens its own row and leaves the other green.
 
 ## In flight
 
