@@ -26,7 +26,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { relPosix as relPosixViaBarrel, staticPrefix } from '../src/util/index.js'
+import { isLiteralPattern, relPosix as relPosixViaBarrel, staticPrefix } from '../src/util/index.js'
 import { relPosix, toPosix } from '../src/util/paths.js'
 
 /**
@@ -521,5 +521,42 @@ describe('staticPrefix normalizes the spelling before it takes the prefix', () =
     // The controls the folding must not disturb.
     expect(staticPrefix('{dist,build}/**')).toBe('.')
     expect(staticPrefix('**/*.js')).toBe('.')
+  })
+})
+
+describe('isLiteralPattern — the wildcard ALPHABET, one member at a time', () => {
+  // This predicate decides whether a declaration is MATCHED or compared as
+  // a string, and one of its three former copies had a smaller character
+  // set: `graph/task-graph.ts` omitted `{}`, so `dist/{a,b}.txt` counted as
+  // a literal and the overlapping-output refusal compared it to
+  // `dist/a.txt` as two unequal strings. Both tasks were accepted and then
+  // deleted each other's outputs on every run, green — the exact hazard
+  // that refusal exists to prevent (item 495).
+  //
+  // So the set is asserted MEMBER BY MEMBER rather than as a whole: a row
+  // that only tried `*` is what let the gap live, and narrowing the class
+  // by one character has to redden something.
+  const wildcards: Array<[string, string]> = [
+    ['star', 'dist/*.js'],
+    ['globstar', 'dist/**'],
+    ['question mark', 'dist/a?.txt'],
+    ['character class open', 'dist/[ab].txt'],
+    ['character class close', 'dist/ab].txt'],
+    ['brace open', 'dist/{a,b}.txt'],
+    ['brace close', 'dist/a}.txt'],
+  ]
+  for (const [what, pattern] of wildcards) {
+    it(`treats ${what} as a wildcard`, () => {
+      expect([pattern, isLiteralPattern(pattern)]).toEqual([pattern, false])
+    })
+  }
+
+  it('CONTROL: an ordinary path carrying none of them is a literal', () => {
+    // Without this the rows above would also pass on `() => false`, which
+    // would turn every literal into a glob and stop `asTrees` giving it a
+    // subtree — the item 442 data loss, from the other side.
+    for (const lit of ['dist', 'dist/', './dist/app.js', 'a.b.c', 'src/nested/deep.ts']) {
+      expect([lit, isLiteralPattern(lit)]).toEqual([lit, true])
+    }
   })
 })

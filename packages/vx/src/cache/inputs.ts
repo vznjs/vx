@@ -19,7 +19,13 @@ import path from 'node:path'
 import { lstatSync } from 'node:fs'
 import { realpath, rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
-import { asTrees, isExecutableMissing, normalizeGlob, UserError } from '../util/index.js'
+import {
+  asTrees,
+  isExecutableMissing,
+  isLiteralPattern,
+  normalizeGlob,
+  UserError,
+} from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
@@ -254,7 +260,7 @@ async function resolveWorkspaceFilesOver(
   // silently-folds-nothing hazard exists here — and a fix applied only to the
   // project half would pass that half's tests while leaving this one live.
   const unmatchedLiterals = new Set(
-    positive.map(normalizeGlob).filter(isLiteralPath).map(stripTrailingSlash),
+    positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
   )
   const candidates: string[] = []
   for (const rel of gitFiles) {
@@ -575,10 +581,6 @@ export async function cleanWorkspaceOutputs(args: {
   return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
 }
 
-function isLiteralPath(glob: string): boolean {
-  return !/[*?[\]{}]/.test(glob)
-}
-
 function stripTrailingSlash(p: string): string {
   return p.replace(/\/+$/, '')
 }
@@ -716,7 +718,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
   const unmatchedLiterals = new Set(
-    positive.map(normalizeGlob).filter(isLiteralPath).map(stripTrailingSlash),
+    positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
   )
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []

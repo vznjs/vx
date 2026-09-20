@@ -1628,6 +1628,100 @@ non-empty string` is caught by exactly ONE row, and it is the
       the shape where the wrong rule orders differently — a fixture
       where both rules agree is a test of neither.
 
+494.  DONE (2026-09-20, `graph/task-graph.ts`, 625 lines — the other
+      half of the graph module, and stale-hit/data-loss class: a wrong
+      edge folds a wrong upstream key, and two tasks claiming one
+      output delete each other's work under a green summary). Nine
+      mutations, EIGHT caught, and the file earns the held report —
+      it is the best-pinned surface swept so far, which is what 441,
+      442 and 445 bought.
+      Caught, each by rows naming the claim: dropping either direction
+      of the literal-vs-glob comparison (8 rows), the identical-globs
+      case (7), the deps dedup, the deps sort, the origin seeding the
+      package-cycle `visited` set (5), walking past the nearest holder
+      (3), and both of `markSurfacedDeps`'s stated hard limits — one
+      row each, exactly named.
+      THE SURVIVOR is `isLiteralGlob`, and it is a hole with the worst
+      consequence in the file. The refusal turns on CLASSIFYING a
+      spelling as literal or glob: classified literal, a pattern is
+      compared by string equality, never matches the file it actually
+      claims, and the collision is allowed through — so the two tasks
+      clean each other's outputs on every run and the run reports
+      success. Narrow the classifier from `[*?[\]]` to `[*]` and the
+      WHOLE SUITE passes, because every fixture in the file spells its
+      wildcard `*`. Measured on the predicate: `dist/a?.txt` vs
+      `dist/ab.txt` and `dist/[ab].txt` vs `dist/a.txt` both go
+      true → false, while `Bun.Glob` matches both pairs — so the
+      globs really do claim those files.
+      Pinned one character at a time, with a control: `?` over a
+      matching literal, a character class over a matching literal,
+      both in either declaration order, plus a CONTROL that neither
+      refuses a literal it does not match (without it the rows would
+      also pass on a rule that refused any pair containing a `?` or a
+      bracket). Differential per character: narrowing to `[*]` reddens
+      both rows, narrowing to `[*?]` reddens only the character-class
+      one.
+      Method note: this is 493's shape a third time, and the sharpest
+      instance yet — not a graph whose shape makes two rules agree,
+      but an ALPHABET. Every fixture wrote its wildcard the same way,
+      so the classifier was only ever asked about one of the three
+      characters it classifies. When a predicate switches on a SET of
+      spellings, the fixtures have to spell it every way the set
+      allows, and one row per member is what makes the mutation of
+      each member visible.
+
+495.  DONE (2026-09-20, `util/paths.ts` + `cache/inputs.ts` +
+      `graph/task-graph.ts` — 494's method found a LIVE defect, not a
+      testing gap, one file over). Applying 494's lens to
+      `cache/inputs.ts` started with its own literal-vs-glob
+      classifier, `isLiteralPath`, and the first thing it showed was
+      that its character set is `[*?[\]{}]` while the one 494 had just
+      pinned in `graph/task-graph.ts` was `[*?[\]]`. Same question,
+      two answers, and the SMALLER set is the one deciding a refusal.
+      Measured on shipped code before any change:
+      `Bun.Glob('dist/{a,b}.txt').match('dist/a.txt')` is true, and
+      `outputsOverlap('dist/{a,b}.txt', 'dist/a.txt')` was FALSE. So
+      two tasks, one declaring the brace pattern and one declaring the
+      file it matches, were accepted by the graph builder and then
+      cleaned each other's outputs on every run, green. That is the
+      exact hazard `detectOutputCollisions` exists to prevent, live,
+      and 494's new rows did not reach it because braces were a
+      fourth spelling nobody had tried.
+      There were FOUR copies of the predicate: `util/paths.ts`
+      (private, behind `asTrees`), `cache/inputs.ts` (private,
+      identical), `normalizeGlob`'s own inline `/[*?[\]{}]/`, and
+      task-graph's smaller one. One rule, one place now:
+      `isLiteralPattern` is exported from `util/paths.ts` and all four
+      sites read it — the same remedy `asTrees` got in 442 and
+      `outputsOverlap` got in 445, for the same reason.
+      Pinned member by member. `isLiteralPattern` gets a row per
+      wildcard character (star, globstar, `?`, both brackets, both
+      braces) plus a control that an ordinary path is still a literal
+      — without the control the rows also pass on `() => false`, which
+      would strip every literal of its subtree and reopen 442 from the
+      other side. The collision table gains the brace pair and its
+      non-matching control. Differential per character: narrowing the
+      class to `[*]` reddens 8 rows, `[*?]` reddens 6, `[*?[\]]` — the
+      exact classifier that shipped — reddens the 3 brace rows, and
+      `[*{}]` reddens the 5 `?`/bracket rows. Every member is load-
+      bearing and every member is visible.
+      NOT fixed here, recorded as the next target: the same predicate
+      is written out four more times in `exec/sandbox-runtime.ts`,
+      `exec/sandbox-binds.ts` and `orchestrator/sandbox-request.ts`,
+      each with `[*?[\]]` and no braces, while
+      `orchestrator/stable-keys.ts` carries the full set. Those answer
+      a DIFFERENT question — whether a bind spec needs a directory
+      walk — so a wrong answer there is a task that cannot read its
+      file rather than a silent deletion, and it deserves its own
+      measurement rather than a speculative edit riding this one.
+      Method note: 494 said "when a predicate switches on a set of
+      spellings, spell it every way the set allows". 495 is the
+      correction that rule needed: FIRST check whether the codebase
+      agrees on what the set IS. The gap was not that a test forgot a
+      character — it was that two functions answering one question had
+      drifted, and the test could only ever be as complete as the
+      narrower one.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
