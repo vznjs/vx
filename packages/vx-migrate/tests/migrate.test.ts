@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { loadProjectConfig } from '@vzn/vx'
+import { loadProjectConfig, type TaskConfig } from '@vzn/vx'
 import { parseMigrateArgs } from '../src/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -643,6 +643,73 @@ describe('vx migrate (nx) — noop and root', () => {
   it('the root project node migrates to a root vx.config.ts', async () => {
     const config = await loadProjectConfig(path.join(root, 'vx.config.ts'))
     expect(config.tasks!['ci-all']!.exec?.command).toBe('echo root ci')
+  })
+})
+
+// Nx separates a specific project's target with a COLON; vx's separator is
+// `#`. The object form (`{ target, projects: ['pkg-b'] }`) was mapped, the
+// STRING form was passed through verbatim, and the migrated workspace then
+// refused to run: "depends on pkg-a#pkg-b:tool but no such task is
+// declared", out of a config vx-migrate wrote (walked the Nx path,
+// 2026-09-20).
+describe('vx migrate (nx) — a project:target string dependency', () => {
+  let root: string
+  let tasks: Record<string, TaskConfig>
+  beforeAll(async () => {
+    root = await makeRoot('vx-migrate-nx-colon-')
+    await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })
+    await writeFile(
+      path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+      JSON.stringify({
+        nodes: {
+          'pkg-a': {
+            name: 'pkg-a',
+            type: 'lib',
+            data: {
+              root: 'packages/pkg-a',
+              targets: {
+                build: {
+                  executor: 'nx:run-commands',
+                  options: { command: 'echo a' },
+                  dependsOn: ['^build', 'pkg-b:tool', 'pkg-b:tool:production', 'ghost:build'],
+                },
+              },
+            },
+          },
+          'pkg-b': {
+            name: 'pkg-b',
+            type: 'lib',
+            data: {
+              root: 'packages/pkg-b',
+              targets: { tool: { executor: 'nx:run-commands', options: { command: 'echo b' } } },
+            },
+          },
+        },
+        dependencies: { 'pkg-a': [], 'pkg-b': [] },
+      }),
+    )
+    await addPackage(root, 'pkg-a', {})
+    await addPackage(root, 'pkg-b', {})
+    await vx(root, [])
+    const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.config.ts'))
+    tasks = config.tasks as Record<string, TaskConfig>
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('becomes `project#target`, and `^build` is left alone', () => {
+    expect(tasks.build!.dependsOn).toEqual(['^build', 'pkg-b#tool', 'pkg-b#tool'])
+  })
+
+  it('says a configuration is dropped, and names the edge it kept', async () => {
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    expect(text).toContain('vx has no target configurations — depending on pkg-b#tool')
+  })
+
+  it('drops an edge to a project the graph does not have, and says so', async () => {
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    expect(text).toContain('"ghost:build" names "ghost", which is not a workspace package')
   })
 })
 

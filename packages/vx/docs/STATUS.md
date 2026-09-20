@@ -1515,6 +1515,40 @@ prune` for eviction), a typo of `prune` still gets the
       first", which is the right sentence for the most likely
       first-time failure.
 
+410.  DONE (2026-09-20, a real defect in the Nx migration, found by
+      walking it). The trim is NOT due: the loop holds 373–410, and
+      item 373's line is forty — checked rather than assumed, since
+      the check-in that scheduled this item guessed it was close.
+      The Nx path needs no `nx` install: the migrator reads
+      `.nx/workspace-data/project-graph.json`, so a hand-written
+      graph walks it. One covering `nx:run-commands` (both `command`
+      and `commands`), `nx:run-script`, a bare `command`, `nx:noop`,
+      a foreign executor, `namedInputs` (including `production` and
+      `sharedGlobals`), `{projectRoot}` and `{workspaceRoot}` output
+      tokens, `continuous: true` and a cross-project dependency.
+      The defect: Nx separates a specific project's target with a
+      COLON (`ui:build`); vx's separator is `#`. The OBJECT form
+      (`{ target: 'tool', projects: ['pkg-b'] }`) was mapped
+      correctly, the STRING form was pushed through verbatim, and the
+      migrated workspace then refused to run — "Task web#build
+      depends on web#ui:build but no such task is declared", out of a
+      config `vx-migrate` had just written and called migrated. It
+      now maps `project:target` to `project#target`, says so for a
+      `project:target:configuration` (vx has no configurations, so
+      the suffix is dropped and the kept edge named), and drops an
+      edge to a project the graph does not contain with a TODO that
+      names it. Three pins, each failing without the fix; the guide's
+      dependsOn row says the mapping.
+      What else the walk confirmed, so it is not re-walked: named
+      inputs expand (`production` → `['**/*', '!**/*.spec.ts']`,
+      `sharedGlobals` → `workspaceFiles`), a `{workspaceRoot}` output
+      becomes `outputs.workspaceFiles`, a missing `package.json`
+      script for `nx:run-script` becomes a TODO and a command that
+      fails loudly rather than a silent no-op, `nx:noop` with
+      `dependsOn` becomes a group task and without one is skipped
+      with a line, and `cache: true` with no declared inputs defaults
+      to `['**/*']` with a TODO to narrow it.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
