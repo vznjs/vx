@@ -49,10 +49,10 @@ Two tools, and they answer different questions:
 
 - **`VX_TIMING=1 vx run …`** prints a stage table to stderr at the end of
   the run — `startup`, `workspace config`, `discover projects`,
-  `open cache`, `load configs`, `git enumeration`, `build graph`,
-  `plugin stages`, `classify + probe`, `run graph`, `record history`,
-  `save lane`, `output dir snapshots`, `close` — with each stage's own and
-  cumulative time, plus accumulated per-task spans (`cache.get`,
+  `package graph`, `open cache`, `load configs`, `git enumeration`,
+  `build graph`, `plugin stages`, `classify + probe`, `run graph`,
+  `record history`, `save lane`, `output dir snapshots`, `close` — with
+  each stage's own and cumulative time, plus accumulated per-task spans (`cache.get`,
   `output glob`, `output stat` and `task hash` among them;
   [`modules/timing.md`](./modules/timing.md) lists every one). This is the first thing to
   read: it says WHICH stage moved. The per-task spans run under the

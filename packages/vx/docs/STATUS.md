@@ -1211,6 +1211,56 @@ tokenizes a regex literal by the character before the`/`.
       (`CACHE_VERSION`, `SCHEMA_VERSION`, the hook list, the layout
       paths, the two sandbox-less tasks) are all derivable.
 
+404.  DONE (2026-09-20). Back to the run path, which is where 14ai
+      said to go: thirty items had changed docs and tests only and
+      Next 6's re-measure was the oldest debt.
+      The find is an observability one, and I walked into it myself
+      while looking for a target: the `VX_TIMING` stage table charged
+      ~12 ms of a 1,000-project warm run to `open cache`, so that is
+      where a profiler looks — but the cache open is ~1 ms warm
+      in-process and the stage also covered `buildPackageGraph`,
+      which is the bulk of it. Measured on the bench workspace:
+      `new Cache` + `assertWritable` 0.74–3.77 ms,
+      `computeWorkspaceFingerprints` 0.20–1.40 ms,
+      `buildPackageGraph` 2.19–8.02 ms over 1,000 projects. The stage
+      now splits: `package graph` 7.5–7.7 ms, `open cache` 7.7–9.5 ms
+      in a cold process. A mark is not free to ADD to the docs
+      though — `module-shape-drift` pins the list to `prepare.ts` on
+      one side and `timing.md` plus `benchmarks.md` on the other, so
+      the pin failed until both pages carried it, which is the
+      machinery working.
+      Then the measurement Next 6 is owed, with the control that
+      makes it mean something. Interleaved min-of-7, one workspace
+      copy per arm pre-warmed by that arm, the before arm from an
+      immutable `git worktree` at origin/main: 232.1 ms before,
+      218.9 ms after. The A/A control — the SAME arm against both
+      copies — read 246.4 against 259.0, a 12.6 ms spread between
+      identical code against the A/B's 13.2 ms. So the mark costs
+      nothing measurable, and the honest reading is that this shared
+      4-core container resolves nothing below about 6 % even at
+      min-of-7. That number is the item's real product: every future
+      perf claim gated here needs an A/A control beside it, or it is
+      reporting the box.
+      Also read and left alone, so the next session does not redo it:
+      `deriveStableKeys` is 30 ms of the 51 ms `classify + probe`
+      stage (1,000 × ~25 µs of `computeTaskHash`, mostly the config
+      `JSON.stringify` and the xxh3 chain — CPU, so the serial topo
+      walk is not the cost), `probe` is one batched `getMany` at
+      10.5 ms, and the `run graph` stage's 37.8 ms is ~38 µs per
+      up-to-date task across four workers. The accumulated span table
+      says `output dirs` 124 µs per task, which is the
+      overlap-not-cost trap item 254 recorded: `outputDirsCurrent` is
+      a handful of `lstatSync` calls.
+      Correction to item 403's lead, in place: CLAUDE.md is NOT
+      unpinned. `doc-references.unsafe` holds its core file paths, its
+      § Live invariants constants, the suites its invariants cite and
+      its Bun API list; `plugin-hooks-doc-drift.unsafe` holds the
+      pipeline sentence against `PLUGIN_HOOKS`. What is unpinned
+      there is small — the two sandbox-less tasks are pinned against
+      the SITE's sandboxing guide, not against CLAUDE.md's copy of the
+      same sentence. I wrote that lead without checking; the check
+      took one grep.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
@@ -1381,7 +1431,18 @@ state of each:
    a shared 4-core container whose own baseline fails 23 tests for
    environmental reasons — an absolute figure from it is not comparable
    to the table above, and an A/B has no arms. Re-measure on the first
-   run-path change.
+   run-path change. UNPARKED 2026-09-20 (item 404), with the container's
+   own noise floor measured first: interleaved min-of-7, one workspace
+   copy per arm pre-warmed by that arm, 1,000 projects warm all-hit —
+   the A/B read 232.1 ms before against 218.9 ms after, and the A/A
+   CONTROL (the same arm against both copies) read 246.4 against
+   259.0. A 12.6 ms spread between identical code is the same size as
+   the 13.2 ms "difference", so this box resolves nothing below about
+   6 % even at min-of-7. Absolute figures here, for the record and not
+   for the table: 1,000 projects warm 194–204 ms total
+   (`bun packages/vx-bench/run.ts 300 3`: no-cache 987 ms, warm
+   172 ms, warm-restore 329 ms). Any future claim on this container
+   needs an A/A control beside it.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
