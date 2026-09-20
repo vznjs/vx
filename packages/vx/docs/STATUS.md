@@ -754,6 +754,42 @@ built behind a failure`). Two claims were not.
       red baseline, so "nothing caught it" here is a real answer rather
       than a blind spot — checked before the claim, not after.
 
+434.  DONE (2026-09-20, the other pair 14an named — `vx watch`'s cycle
+      against the run's ADMISSION — which turned into a find one level
+      down, in admission's own taint rule).
+      `taintTracker` treats four upstream outcomes as poison: `failed`,
+      `aborted`, `skipped`, and anything already tainted (the
+      transitive case, "or a grand-dependent would cache the same
+      partial tree one hop later"). The e2e file reaches exactly two of
+      them — a failed upstream and the hop through it. Dropping
+      `'aborted'` from the rule, or `'skipped'`, survives every test in
+      the repo.
+      430's check first, because this area IS red here: the two
+      `--continue=always` rows are in the container's baseline, so a
+      full-suite diff cannot witness them. Run alone they pass, and
+      alone they still pass under both mutations — the verdict is the
+      file's own, not the diff's.
+      Why an e2e cannot close it: the run shapes that produce an
+      `aborted` or `skipped` upstream UNDER `--continue=always` are the
+      ones a SIGINT or a filter creates, and arranging them races the
+      thing being tested. `taintTracker` is an exported pure function
+      taking the upstream outcomes directly, which is exactly the
+      fabrication an e2e cannot do — so the rule is pinned there: one
+      row per poison status, one for a clean upstream, one for the
+      transitive hop, one for the disabled gate every other mode uses.
+      Each fails under its own mutation; the transitive row fails under
+      its own and takes the e2e with it.
+      They live in a file of their own, and the reason is a small find
+      in itself: written into `continue-taint.test.ts` they passed
+      alone and failed all six in the sharded gate, because that file's
+      module-level `beforeEach` builds a git repo per case and its
+      commit fails under twelve-way load, printing a stray namespace
+      debug line. Pure rows had inherited a fixture they have no use
+      for. That same `beforeEach` is the likeliest cause of the two
+      `--continue=always` rows in this container's baseline — not test
+      timing but the fixture's commit — which is worth the next
+      reader's attention; it is a lead here, not a measurement.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
