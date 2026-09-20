@@ -956,6 +956,42 @@ fallback (and stay cache-hits)`. 471's fast filter simply did
       this container cannot do. Flagged rather than guessed at,
       because an untested change to a security path that also
       regresses ordinary users is worse than a recorded finding.
+479.  DONE (2026-09-20, `exec/runner.ts` — 773 lines: spawn, kill
+      grace, stream capture). Four mutations. The two guarantees the
+      file states loudest are held exactly: removing the SIGKILL
+      escalation in `armTimeout` fails "a timed-out task that IGNORES
+      SIGTERM is SIGKILLed after the grace — the run is bounded, not
+      hung", and letting `drainOrAbort` never abort fails "returns
+      promptly when a backgrounded grandchild holds the pipe open (no
+      hang)". Each names the hang its guard prevents; each has one row.
+      THE FIND is in `SHELL_CONTROL`, the character class that decides
+      whether `execWrap` may `exec` a command. Dropping BOTH separators
+      `;` and `\n` fails five e2e rows — so the class looks covered.
+      Dropping `\n` ALONE leaves the whole repo green: `;` carries the
+      class, and the newline half has nothing. That matters because
+      `exec` REPLACES the wrapping `sh`, so an exec-wrapped
+      `a<newline>b` runs `a` and DROPS `b` — no error, exit 0. A task
+      declaring a two-line command would report success having run half
+      of it, and cache the half-built tree under a green key. Of the
+      class's members only the separators can do that (`$`, `*`, `<`,
+      `>` expand and redirect identically under `exec`; `(`, `{`, `!`
+      turn into a loud syntax error), and of the three separators `&`
+      and `;` were pinned while the newline was not — 465, 469, 471 and
+      477 again, one boundary with a side unasserted.
+      Pinned in `runner.test.ts` as the GUARANTEE first (a real
+      `runCommand` of a two-line command must print both lines) and the
+      mechanism second, so a regression reddens on the behaviour. The
+      command is `/bin/echo`, not `echo`: a builtin would keep the
+      shell for a SECOND reason and the newline guard could rot
+      unnoticed — the same several-guards-one-guarantee arrangement 461
+      and 468 needed. Differential both ways: with `\n` dropped from the
+      class the row receives `['one']` where it expects `['one','two']`.
+      Carry-forward, recorded not pinned: `shell-verdict.ts` is the
+      second consumer of the same guard, where `execWord` names the
+      program a 127 blames. Under the same mutation a multi-line
+      command's 127 is attributed to its FIRST word whatever line
+      failed — a wrong diagnostic riding the same regex, now held by
+      the row above.
 
 ## In flight
 
