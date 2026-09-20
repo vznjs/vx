@@ -928,9 +928,10 @@ built behind a failure`). Two claims were not.
       `Bun.Archive` tar oracle, `armWatcher` non-recursive, and the
       watch watched-set row.
 
-440.  DONE (2026-09-20, the verdict method's THIRD correction, and
-      this one is embarrassing in the useful way). CI stayed red on
-      439's fix, and the failing check was not a test at all:
+439.  DONE (2026-09-20, the verdict method's THIRD correction, and
+      this one is embarrassing in the useful way; the RSS re-fix it
+      follows is recorded inside 437's entry, where the mistake was).
+      CI stayed red on that fix, and the failing check was not a test at all:
       `@vzn/vx-schedule-history#lint.oxfmt`. My edit in 437 left two
       over-indented lines in that package's test file, and the
       formatter said so — in the LOCAL gate, twice, in the runs I
@@ -947,12 +948,23 @@ built behind a failure`). Two claims were not.
       container is four: shards 2, 7 and 8 (the reapi CAS trio, the tar
       oracle, `armWatcher`, the watch row) plus `@vzn/vx-reapi#test`.
       Anything else appearing there is mine.
+      And then the same shape a second time in one turn, on the fix
+      for it: the STATUS entry you are reading broke the formatter,
+      and the command I checked it with was
+      `bunx oxfmt --check docs/ >/dev/null && echo ok`. The "ok" never
+      printed and I did not look for it. `CLAUDE.md` has that rule
+      twice over — read the scan's exit, never a chain's last line —
+      and I wrote a chain whose only evidence was a message that
+      silently did not appear. What the formatter actually objected to
+      is worth keeping too: it renumbered the entry from 440 to 439,
+      because the ordered list has no 439 — the RSS re-fix rode inside
+      437's entry rather than taking a number of its own.
       Three corrections to this method in one day — 430 (a red
       baseline cannot witness a mutation), 436 (refresh from one run
-      and a flapper reads as new), 440 (a signal the diff never
-      looked at) — and every one of them was found by something
-      outside the diff. A verdict procedure needs its own controls as
-      much as a test does.
+      and a flapper reads as new), and this one (a signal the diff
+      never looked at, and then a check whose exit I masked) — and
+      every one was found by something outside the diff. A verdict
+      procedure needs its own controls as much as a test does.
 
 ## In flight
 
