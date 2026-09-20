@@ -7,7 +7,7 @@
 // skipping, because a skipped suite reports green and this one covers
 // the isolation boundary. A local host without the deps still skips.
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -835,7 +835,60 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     expect((r as Error).message).toContain('unknown field "sandbox"')
   })
 
+  // "Every capability" is a claim about a LIST the schema owns, so the list
+  // is read from `config-schema.ts` rather than restated here: a capability
+  // added to `GRANT_FIELDS` without a value below fails this test instead of
+  // quietly falling out of its name (the restated-list drift items 374-398
+  // chased through the docs, in a test name).
   it('accepts every capability the schema defines (parses + runs)', async () => {
+    const schema = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'config-schema.ts'),
+      'utf8',
+    )
+    // `GRANT_FIELDS` spreads three `as const` arrays and adds literals of its
+    // own, so both shapes are resolved.
+    const arrays = new Map<string, string[]>(
+      [...schema.matchAll(/const (\w+) = \[([^\]]*)\] as const/g)].map((m) => [
+        m[1]!,
+        [...m[2]!.matchAll(/'([^']+)'/g)].map((f) => f[1]!),
+      ]),
+    )
+    const fieldsOf = (name: string): string[] => {
+      const m = new RegExp(`const ${name} = new Set(?:<string>)?\\(\\[([^\\]]*)\\]`).exec(schema)
+      const body = m?.[1] ?? ''
+      return [
+        ...[...body.matchAll(/'([^']+)'/g)].map((f) => f[1]!),
+        ...[...body.matchAll(/\.\.\.(\w+)/g)].flatMap((sp) => arrays.get(sp[1]!) ?? []),
+      ].sort()
+    }
+
+    const allow: Record<string, string> = {
+      read: `['.', 'src/**', '/etc/hosts']`,
+      write: `['out.txt']`,
+      network: `['*.example.com']`,
+      systemInfo: `['vfs.disk-space']`,
+      unixSockets: `['/var/run/nothing.sock']`,
+      localBinding: 'false',
+      machLookup: '[]',
+      pty: 'false',
+      gitConfig: 'false',
+    }
+    const deny: Record<string, string> = { network: `['blocked.example.com']` }
+    const render = (o: Record<string, string>): string =>
+      Object.entries(o)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(', ')
+    const sandbox: Record<string, string> = {
+      allow: `{ ${render(allow)} }`,
+      deny: `{ ${render(deny)} }`,
+      ignore: `{ read: ['/tmp/noisy'] }`,
+      weakerWhenNested: 'false',
+      weakerNetworkIsolation: 'false',
+    }
+    expect(Object.keys(sandbox).sort()).toEqual(fieldsOf('SANDBOX_FIELDS'))
+    expect(Object.keys(allow).sort()).toEqual(fieldsOf('GRANT_FIELDS'))
+    expect(Object.keys(deny).sort()).toEqual(fieldsOf('DENY_FIELDS'))
+
     await addProject(fixture.root, 'full', {
       files: { 'src/x.txt': 'hi' },
       config: `
@@ -844,23 +897,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             x: {
               exec: {
                 command: 'cat src/x.txt > out.txt',
-                sandbox: {
-                allow: {
-                  read: ['.', 'src/**', '/etc/hosts'],
-                  write: ['out.txt'],
-                  network: ['*.example.com'],
-                  systemInfo: ['vfs.disk-space'],
-                  unixSockets: ['/var/run/nothing.sock'],
-                  localBinding: false,
-                  machLookup: [],
-                  pty: false,
-                  gitConfig: false,
-                },
-                deny: { network: ['blocked.example.com'] },
-                weakerWhenNested: false,
-                weakerNetworkIsolation: false,
-                ignore: { read: ['/tmp/noisy'] },
-                },
+                sandbox: { ${render(sandbox)} },
               },
               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
             },

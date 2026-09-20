@@ -96,8 +96,8 @@ function tarWithEntry(name: string, body: Uint8Array, typeFlag = '0'): Uint8Arra
 }
 
 /** The composition the cache uses, over odd-sized chunks so entry boundaries never line up. */
-async function restore(bytes: Uint8Array, dest: string, wsDest?: string): Promise<void> {
-  await extractArtifactStream(streamOf(bytes), dest, wsDest)
+async function restore(bytes: Uint8Array, dest: string, wsDest?: string): Promise<Set<string>> {
+  return await extractArtifactStream(streamOf(bytes), dest, wsDest)
 }
 
 const scan = (bytes: Uint8Array) => scanArtifact(streamOf(bytes))
@@ -238,10 +238,26 @@ describe('archive restore — path-traversal defense', () => {
 
   it('ignores an entry whose resolved path is destDir itself', async () => {
     // An entry that resolves exactly to destDir (without a basename)
-    // would clobber the directory. Empty rel after the strip → no file
-    // to write; a no-op, not a crash.
+    // would clobber the directory: the stage target IS destDir, so the
+    // commit renames a file over it (EISDIR). Two layers stop it, and
+    // this drives both at once through the public stream:
+    //   1. the reader normalizes a regular entry's trailing slash away
+    //      (`tar-stream.ts`), so `outputs/` arrives as `outputs` — no
+    //      longer under the `outputs/` prefix, so `destFor` returns null;
+    //   2. the extractor skips an empty `rel` even if one reaches it.
+    // Proven belt-and-braces: mutating either alone keeps this green,
+    // mutating both raises EISDIR from `commit`. So this pins the
+    // OUTCOME, and tar-stream.test.ts pins layer 1 on its own.
+    //
+    // "Ignores" is three claims, and not throwing is only the third of
+    // them: the entry must not be reported as provided (a restore that
+    // counts it would call the artifact complete), the destination must
+    // still be the directory it was, and nothing may land inside it.
     const tar = tarWithEntry('outputs/', new Uint8Array(0))
-    await restore(tar, dest)
+    const provided = await restore(tar, dest)
+    expect(provided).toEqual(new Set())
+    expect((await stat(dest)).isDirectory()).toBe(true)
+    expect(await readdir(dest)).toEqual([])
   })
 })
 

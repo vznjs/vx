@@ -51,6 +51,14 @@ const padTo512 = (b: Uint8Array): Uint8Array => {
 const concat = (...parts: Uint8Array[]): Uint8Array => new Uint8Array(Buffer.concat(parts))
 const EOF_BLOCKS = new Uint8Array(1024)
 
+/** One pax record: `<len> <k>=<v>\n`, where len counts itself. */
+const paxRecord = (k: string, v: string): string => {
+  let len = k.length + v.length + 3
+  len += String(len).length
+  if (String(len).length !== String(len - 1).length) len++
+  return `${len} ${k}=${v}\n`
+}
+
 describe('tarEntries', () => {
   it('round-trips what Bun.Archive writes, across chunk boundaries of every size', async () => {
     const long = 'outputs/' + 'd'.repeat(120) + '/' + 'f'.repeat(90) + '.txt' // uses the prefix field
@@ -78,14 +86,7 @@ describe('tarEntries', () => {
 
   it('a pax header (x) overrides the path and size of the entry that follows it', async () => {
     const name = 'outputs/' + 'p'.repeat(300) + '.txt'
-    const rec = (k: string, v: string): string => {
-      // `<len> <k>=<v>\n` where len counts itself.
-      let len = k.length + v.length + 3
-      len += String(len).length
-      if (String(len).length !== String(len - 1).length) len++
-      return `${len} ${k}=${v}\n`
-    }
-    const pax = enc.encode(rec('path', name) + rec('size', '5'))
+    const pax = enc.encode(paxRecord('path', name) + paxRecord('size', '5'))
     const tar = concat(
       header({ name: 'PaxHeader/x', size: pax.byteLength, type: 'x' }),
       padTo512(pax),
@@ -119,6 +120,31 @@ describe('tarEntries', () => {
     const names: string[] = []
     for await (const e of tarEntries(streamOf(tar))) names.push(`${e.type}:${e.name}`) // bodies never read
     expect(names).toEqual(['2:outputs/link', '5:outputs/dir/', '0:outputs/f.txt'])
+  })
+
+  it("strips a regular entry's trailing slashes, from the header and from a pax path", async () => {
+    // A directory keeps its slash (the row above pins that); a REGULAR
+    // entry loses every trailing one. The extractor leans on this: a
+    // `outputs/` file entry would otherwise resolve to destDir itself and
+    // the commit would rename a file over the directory
+    // (archive-security.test.ts drives that pairing end to end). The pax
+    // arm matters because the override lands BEFORE the normalization —
+    // a path that skipped it would carry its slash straight through.
+    const pax = enc.encode(paxRecord('path', 'outputs/trailing//'))
+    const tar = concat(
+      header({ name: 'outputs/', size: 0, type: '0' }),
+      header({ name: 'outputs/a.txt/', size: 3, type: '0' }),
+      padTo512(enc.encode('abc')),
+      header({ name: 'PaxHeader', size: pax.byteLength, type: 'x' }),
+      padTo512(pax),
+      header({ name: 'unused', size: 0, type: '0' }),
+      EOF_BLOCKS,
+    )
+    expect((await collect(tar)).map((e) => `${e.type}:${e.name}`)).toEqual([
+      '0:outputs',
+      '0:outputs/a.txt',
+      '0:outputs/trailing',
+    ])
   })
 
   it('reads a GNU base-256 size field', async () => {
