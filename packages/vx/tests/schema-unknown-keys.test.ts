@@ -5,6 +5,8 @@
 // walk over a full config injects an unknown key at each level, so a new
 // level cannot ship without the check.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { validateProjectConfig } from '../src/workspace/index.js'
 
@@ -78,6 +80,30 @@ describe('an unknown key is refused at every object level of a config', () => {
       'tasks.c.cache.inputs',
       'tasks.c.cache.outputs',
     ])
+
+    // The list above pins the FIXTURE — it says what `full()` builds, which
+    // is not what the name claims. A level added to the SCHEMA and not to
+    // `full()` would leave that list matching and the level unwalked, which
+    // is the shape this file exists to prevent. So the claim is read from the
+    // schema: every level it guards is an `assertKnownFields` call whose
+    // `where` says where the level sits.
+    const schema = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'config-schema.ts'),
+      'utf8',
+    )
+    const suffixes = [
+      ...new Set(
+        [...schema.matchAll(/assertKnownFields\([^,]+,\s*\w+,\s*`\$\{where\}([^`]*)`/g)].map(
+          (m) => m[1]!,
+        ),
+      ),
+    ]
+    expect(suffixes.length).toBeGreaterThan(8)
+    expect(suffixes.filter((suffix) => !levels.some((l) => l.endsWith(suffix)))).toEqual([])
+    // The two levels whose `where` is a bare identifier rather than a
+    // template: the config root, and a task under `tasks`.
+    expect(levels).toContain('')
+    expect(levels.some((l) => /^tasks\.[^.]+$/.test(l))).toBe(true)
   })
 
   it('the full config itself validates (the control)', () => {

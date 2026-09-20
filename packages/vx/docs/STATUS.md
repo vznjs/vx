@@ -1036,6 +1036,52 @@ package.json)` too, where the value is the file's git blob OID —
       sandbox row; retuning one budget fails the baseline row;
       removing the trailing-slash strip fails the tar-stream row.
 
+401.  DONE (2026-09-20, the direction 14ah names, first pass). Not
+      "does the body assert" but "does it assert what the name
+      says". Two finds, both in suites the docs arc leaned on.
+      `task-hash-derive.test.ts` — "STABILITY: stripping remote
+      leaves the REST of exec folded" varied ONE sibling
+      (`timeout`). `EXEC_FIELDS` has seven, so a projection
+      rewritten as a whitelist could have dropped `sandbox`,
+      `persistent` or `env` with `remote` and nothing would have
+      moved: two different tasks sharing a key, the stale hit that
+      file exists to stop. The new row reads `EXEC_FIELDS` and
+      `TASK_FIELDS` from `config-schema.ts` and the strip from
+      `hashableConfig`'s own destructuring, requires a value for
+      every field (so a new field fails here rather than falling out
+      of the name), and asserts each one moves the key except the
+      stripped one.
+      The first draft of it PASSED under a real defect, which is the
+      lesson of the item: `hashableConfig` fast-paths when no
+      `remote` is declared (`if (cfg.exec?.remote === undefined)
+return cfg`), so every variant it built skipped the projection
+      — a `delete execRest.sandbox` mutation went green. It now
+      varies each field twice, once beside a declared `remote` and
+      once without; all three widened-strip mutations (`sandbox`,
+      `persistent`, `env`) fail, and a whitelist rewrite fails on the
+      "nothing is stripped" floor.
+      `schema-unknown-keys.test.ts` — "the walk covers every level
+      the schema has" asserted the walk EQUALS a hand-written list of
+      the levels its own fixture builds. It pinned the fixture and
+      called it the schema: a level added to `config-schema.ts` and
+      not to `full()` leaves that list matching and the level
+      unwalked, which is precisely what the file was written to
+      prevent (`exec.env` shipped unchecked until 2026-09-10). The
+      claim is now read from the schema — every guarded level is an
+      `assertKnownFields` call and its `where` template says where it
+      sits — floored at eight suffixes, with the two bare-`where`
+      levels (the config root, a task) asserted separately.
+      Differential: a new `${where}.cache.outputs.deep` guard the
+      fixture does not build fails the row.
+      The survey behind it: 185 test names quantify (every / each /
+      all) across the non-doc-drift suites. Most quantify over data
+      the test itself builds, which is sound; the ones worth reading
+      quantify over a list the SOURCE owns. Two more were read and
+      left alone — `events.test.ts`'s seven event kinds and
+      `telemetry.test.ts`'s six statuses are both complete today and
+      both sit behind an exhaustive `switch`, so the compiler is
+      already the pin.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
