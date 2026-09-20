@@ -135,3 +135,45 @@ describe('a suite that skips without an env var', () => {
     expect(unset).toEqual([])
   })
 })
+
+// The OTHER other half. The law above proves a gate is SET by a workflow; it
+// says nothing about whether the value survives the trip to the test process,
+// and `vx run` isolates a task's environment on purpose — a var absent from
+// the task's `exec.env.passThrough` is dropped, and the gate it was meant to
+// arm becomes a no-op that reports green.
+//
+// That is a hard defect to notice from a run, because a gate is only
+// OBSERVABLE when it fires: VX_REQUIRE_NONROOT on a non-root runner behaves
+// identically whether it arrived or was dropped (item 482, which found it by
+// trying to write the run-time assertion and discovering it cannot exist).
+// So assert it statically, on the two lists, where it is decidable.
+describe('a VX_ var a workflow sets reaches the task that reads it', () => {
+  const declaredInWorkflows = new Set<string>()
+  for (const file of files) {
+    for (const m of readFileSync(path.join(workflowDir, file), 'utf8').matchAll(
+      /^\s+(VX_\w+):/gm,
+    )) {
+      declaredInWorkflows.add(m[1]!)
+    }
+  }
+
+  const forwarded = new Set<string>()
+  const configs = [path.join(repo, 'vx.config.ts')]
+  for (const pkg of readdirSync(path.join(repo, 'packages'))) {
+    configs.push(path.join(repo, 'packages', pkg, 'vx.config.ts'))
+  }
+  for (const file of configs.filter((f) => existsSync(f))) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/'(VX_\w+)'/g)) {
+      forwarded.add(m[1]!)
+    }
+  }
+
+  it('is found by the shape, not by a list — and there are some', () => {
+    expect(declaredInWorkflows.size).toBeGreaterThan(3)
+  })
+
+  it('appears in some task’s passThrough, or `vx run` drops it on the way in', () => {
+    const dropped = [...declaredInWorkflows].filter((n) => !forwarded.has(n)).sort()
+    expect(dropped).toEqual([])
+  })
+})

@@ -9,7 +9,6 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   SETTLE_MS,
-  deliveryMode,
   executions,
   initialOnly,
   startWatch,
@@ -40,11 +39,14 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
     await initialOnly(w, f.log)
     expect(w.cycles()).toBe(0)
 
-    // Under a 250 ms poll the edit and the task's own write land in the
-    // same sample, so the follower never happens: one cycle, not two. The
-    // claim both modes share — it SETTLES — is the exact count below.
-    const events = deliveryMode(w) === 'events'
-    const runs = events ? 3 : 2
+    // One number for BOTH delivery modes. It used to be three under events
+    // and two under polling, explained as the edit and the task's own write
+    // landing in the same 250 ms sample. That explanation was wrong: the
+    // poller never sampled the write at all, because `POLL_SKIP` refused to
+    // descend into `dist` whether or not a task declared it (item 482). With
+    // the poller reading the run's own ignore filter instead of a hard-coded
+    // name, the two watchers report the same tree and cost the same cycles.
+    const runs = 3
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
     await until(
       async () => (await executions(f.log)) === runs,
@@ -53,7 +55,7 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(runs)
     expect(w.cycles()).toBe(runs - 1)
-    if (events) expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
+    expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
   }, 40_000)
 
   it.each([
@@ -82,8 +84,7 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
       await Bun.sleep(SETTLE_MS)
       await initialOnly(w, f.log)
 
-      const events = deliveryMode(w) === 'events'
-      const runs = events ? 3 : 2
+      const runs = 3 // both modes; see the row above
       await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
       await until(
         async () => (await executions(f.log)) === runs,
@@ -93,9 +94,9 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
       expect(await executions(f.log)).toBe(runs)
       expect(w.cycles()).toBe(runs - 1)
       // The follower is labelled by what arrived — the task's own dist —
-      // not by the edit that started the cycle it landed in. Under polling
-      // there is no follower to label; the settled count above is the claim.
-      if (events) {
+      // not by the edit that started the cycle it landed in. Asserted in
+      // both modes since item 482: the poller sees the same write now.
+      {
         expect(w.out().split('re-running...')[2]).not.toContain('src/a.txt')
         expect(w.out()).toContain('vx watch: app dist')
       }

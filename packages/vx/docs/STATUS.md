@@ -1032,6 +1032,122 @@ args.taintedUpstream !== true`) fails "--continue=always never
       not (or every ordinary run pays a remote re-execution), and an
       uncacheable task never does. Differential BOTH ways — never set
       and always set each redden a different assertion of the row.
+481.  DONE (2026-09-20, `cache/cache.ts` — 1637 lines, the largest file
+      in the repo). Five mutations, three caught: letting
+      `restoreOutputs` under-restore fails "throws when the artifact
+      cannot produce an output the index recorded", expecting the
+      workspace rows on a project-only restore fails "without
+      workspaceRoot, restore materializes only the project namespace",
+      and dropping `skipLocalWrite` fails "save packs the shared local
+      artifact ONCE, not once per layer".
+      FIND ONE, a diagnostic. Deleting the vanished-artifact check
+      (`if (!exists) throw`) leaves the repo green, and the reason is
+      that its guarantee is held TWICE: without it the decode reaches
+      the same missing file and throws `CorruptArtifactError` from the
+      extract catch. The row asserted `/corrupt artifact/i`, which both
+      paths satisfy — 470's shape, `ok === false` for an incidental
+      reason. What the check carries alone is the MESSAGE, and the two
+      point at opposite remedies: "artifact file vanished before
+      restore" (a prune raced this run — re-run) versus "artifact is
+      not a readable archive" (the cache holds bad bytes — a reason to
+      throw the cache dir away). Both messages read off a probe, not
+      reasoned. The row now asserts the vanished one and carries a
+      control proving a present-but-garbled artifact still reports the
+      other; the source comment is de-claimed to say what it actually
+      buys.
+      FIND TWO came out of the fourth mutation and is the bigger one.
+      Making `assertWritable` a no-op survives the whole suite — yet a
+      row exists asserting its exact message. It is
+      `it.skipIf(process.getuid?.() === 0)`, with a comment reading
+      "CI's runner is not root". That comment is a CLAIM about the
+      environment and NOTHING checked it. Six such rows across five
+      suites assert what a permission bit does; root bypasses every
+      permission bit, so on a root runner all of them vanish under a
+      green check. Measured in this container: cache 3 skips,
+      cache-dir-selection 4, inputs 1, watch-rules 2.
+      That is exactly the silent pass `CLAUDE.md` names, and the repo
+      already has the remedy twice — `VX_REQUIRE_SANDBOX` and
+      `VX_REQUIRE_REAPI`, each turning an unavailable capability into a
+      failure on the machine whose result gates a merge. Added
+      `VX_REQUIRE_NONROOT` on the same pattern
+      (`tests/helpers/nonroot-gate.ts`), set in CI, forwarded through
+      both `passThrough` lists — a gate CI sets but the task's isolated
+      env drops would be a no-op, which is the same defect one layer
+      down. Differential, in this ROOT container: unset, each file
+      skips as before; set, each file errors with the reason named.
+      Follow-on, verified after the fact: CI came back GREEN with the
+      gate on, so the hosted runner is not root and those ten rows
+      genuinely ran there — the first check the claim ever had.
+      But a gate is only OBSERVABLE when it fires. On a non-root runner
+      `VX_REQUIRE_NONROOT` behaves identically whether it arrived or
+      `vx run`'s env isolation dropped it, so NO run-time assertion can
+      prove the `passThrough` wiring. Found by trying to write one and
+      watching the local gate reject it: the gate sets
+      `VX_REQUIRE_SANDBOX` and deliberately NOT the non-root one, so
+      "wherever one is set the other is" is false there.
+      Asserted statically instead, as the half the neighbouring law
+      ("a suite that skips without an env var") was missing: that law
+      proves a gate is SET by a workflow and says nothing about whether
+      the value survives the trip. Every `VX_` var a workflow sets must
+      appear in some task's `passThrough`, or the gate it arms is a
+      no-op reporting green. Eight declared, eight forwarded today;
+      differential by renaming one side.
+482.  DONE (2026-09-20, `cli/watch.ts` — 1152 lines). The ignore class
+      itself is exemplary and nothing is owed there: every member of
+      `IGNORED_SEGMENTS` and `IGNORED_SUFFIXES` has its own row, on
+      BOTH sides, with the controls that separate a segment rule from a
+      substring one (`node_modules-shim.ts` is source) and an anchored
+      suffix from a mid-name one (`a~b.ts` is source). That is what 479
+      wished for.
+      THE FIND is one directory down, in `POLL_SKIP` — the set the
+      polling fallback never descends into. Its comment justifies the
+      set: `makeWatchIgnore` "already drops their EVENTS, so the walk
+      buys nothing". That is true of `node_modules`, `.git` and `.vx`,
+      which ARE `IGNORED_SEGMENTS`. It is NOT true of the fourth name,
+      `dist`, which is dropped only when a project DECLARES it as an
+      output. A project that does not declare it had every edit under
+      its `dist/` silently invisible to `vx watch` — on exactly the
+      hosts the poller exists for (a macOS sandbox with no
+      `machLookup` for FSEvents, a network mount, a container bind),
+      while the native watcher delivered the same edit. Two watchers
+      disagreeing about what an edit IS, and the disagreement is
+      silence: no error, no cycle, the loop just sits there. A
+      committed `dist/` consumed as an input is an ordinary JS
+      monorepo shape.
+      Read off a probe, not reasoned: the poller reported only
+      `src/index.ts` while `isIgnoredWatchPath('dist/vendored.js')` is
+      false, so the native watcher would have delivered it.
+      Fixed at the seam rather than by deleting the name.
+      `POLL_SKIP` is now `IGNORED_SEGMENTS` — the set its own comment
+      describes — and `pollWatcher` takes a `skipDir` predicate the
+      watch loop fills with its OWN `isIgnoredPath`. The poller then
+      skips exactly what the event filter would drop anyway, per
+      project: every declared output container, including the
+      `build/out` and `gen` shapes the hard-coded name never covered,
+      and `dist` when and only when a task declares it.
+      Cost, measured (2000-file `dist`, min-of-7, interleaved A/B):
+      2.84 ms per scan walking it against 0.25 ms skipping it — 2.6 ms
+      once every 250 ms, ~1% of one core, and paid ONLY by a project
+      that does not declare the directory. A declared `dist/**` costs
+      exactly what it did.
+      Pinned both halves in one row: an undeclared `dist` edit is
+      reported, a declared one is not, with `src.ts` as the control
+      that the second watcher was live at all. Differential both ways —
+      `dist` back in the default set reddens it, and so does the whole
+      pre-fix source.
+      The gate then went red on FOUR watch e2e rows, which is the part
+      worth keeping. Each asserted three executions under events and
+      TWO under polling, explained by the edit and the task's own write
+      landing in the same 250 ms sample — `deliveryMode` (item 418)
+      existed to pick the arm. That explanation was a plausible cause
+      nobody had measured, and it is wrong: the poller never sampled
+      the write at all, because `dist` was skipped. With the skip gone
+      all four settle at THREE with the labels the events arm asserts,
+      so the mode branch is deleted, each row states one number, and
+      `deliveryMode` is retired with the record of what it was for. The
+      rows are stronger for it: they now assert that the two watchers
+      agree, which is the guarantee, instead of encoding the way they
+      differed.
 
 ## In flight
 

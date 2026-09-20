@@ -959,10 +959,19 @@ export class Cache implements CacheLayer {
     // replay through the logger.
     const src = this.tarPath(hash)
     // The caller already committed to this hit and WIPED the declared
-    // outputs, so returning quietly here would report a green cache hit over
-    // an emptied output tree. The artifact existed when `get()` probed it, so
-    // its absence now means something removed it underneath us (a concurrent
-    // `vx cache prune` is the documented way) — fail loud; the task re-runs.
+    // outputs, so a restore that did not fail here would report a green cache
+    // hit over an emptied output tree. The artifact existed when `get()`
+    // probed it, so its absence now means something removed it underneath us
+    // (a concurrent `vx cache prune` is the documented way) — fail loud; the
+    // task re-runs.
+    //
+    // The FAILING is held twice: without this check the decode below reaches
+    // the same missing file and throws `CorruptArtifactError` from the
+    // extract catch. What this check carries alone is the MESSAGE, and the
+    // two point at opposite remedies — a prune raced this run (re-run) versus
+    // the cache holds bad bytes (a reason to throw the cache dir away). That
+    // is what the roundtrip row asserts (item 481); a test that only asserts
+    // "corrupt artifact" passes with this check deleted.
     const endExists = span('restore: exists')
     const exists = await Bun.file(src).exists()
     endExists()

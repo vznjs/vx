@@ -14,6 +14,7 @@ import {
   zstdContentSize,
 } from '../src/cache/cache.js'
 import { UserError, xxh3hex } from '../src/util/index.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 describe('zstdContentSize (frame-header parse)', () => {
   const MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
@@ -625,8 +626,13 @@ describe('Cache storage (v10)', () => {
     expect(await readFile(path.join(projectDir, 'dist', 'out.txt'), 'utf8')).toBe('produced')
   })
 
-  // Root writes anywhere, so the case skips there; CI's runner is not root.
-  it.skipIf(process.getuid?.() === 0)(
+  // Root writes anywhere, so the case skips there — unless VX_REQUIRE_NONROOT says CI
+  // expected to run it (helpers/nonroot-gate.ts).
+  it.skipIf(
+    skipAsRoot(
+      'restoreOutputs() into a directory this user cannot write names the tree, not the artifact',
+    ),
+  )(
     'restoreOutputs() into a directory this user cannot write names the tree, not the artifact',
     async () => {
       const { chmod, mkdir, writeFile } = await import('node:fs/promises')
@@ -665,8 +671,9 @@ describe('Cache storage (v10)', () => {
     expect(() => cache.assertWritable()).not.toThrow()
   })
 
-  // Root writes anywhere, so the case skips there; CI's runner is not root.
-  it.skipIf(process.getuid?.() === 0)(
+  // Root writes anywhere, so the case skips there — unless VX_REQUIRE_NONROOT says CI
+  // expected to run it (helpers/nonroot-gate.ts).
+  it.skipIf(skipAsRoot('assertWritable() names a cache directory this user cannot write into'))(
     'assertWritable() names a cache directory this user cannot write into',
     async () => {
       const { chmod, readdir } = await import('node:fs/promises')
@@ -696,8 +703,9 @@ describe('Cache storage (v10)', () => {
     },
   )
 
-  // Root creates anywhere, so the case skips there; CI's runner is not root.
-  it.skipIf(process.getuid?.() === 0)(
+  // Root creates anywhere, so the case skips there — unless VX_REQUIRE_NONROOT says CI
+  // expected to run it (helpers/nonroot-gate.ts).
+  it.skipIf(skipAsRoot('a cache directory that cannot be created is named with its remedies'))(
     'a cache directory that cannot be created is named with its remedies',
     async () => {
       const { chmod } = await import('node:fs/promises')
