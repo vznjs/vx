@@ -926,6 +926,36 @@ fallback (and stay cache-hits)`. 471's fast filter simply did
       471 again, and this time the unasserted side is a GRANT. Pinned
       at `resolveSandboxConfig` with a control proving the shallow
       pattern still grants what it names.
+478.  OPEN FINDING, not fixed (2026-09-20, following 477's carry-
+      forward into `macProfileRules`). The seatbelt profile's
+      injection boundary has a hole, and it is one line.
+      `sbplToken` and `sbplPath` exist because a value carrying a
+      quote, paren or backslash "could rewrite the policy or escape
+      the argument", and the stated posture is to REFUSE rather than
+      escape. Every interpolation in `macProfileRules` honours that —
+      `systemInfo`, `machLookup`, and the declared socket path —
+      except one:
+      the unix-socket loop interpolates BOTH the checked declared
+      path and `toRealPath(sock)`, and the resolved form goes in
+      unchecked. `toRealPath` is `realpathSync` with a parent-walk
+      fallback and sanitises nothing, so a symlink whose TARGET
+      carries SBPL metacharacters puts them straight into the
+      profile. The check is on the string the user wrote, the
+      interpolation is of the string the kernel resolves, and a
+      symlink is exactly what separates them.
+      NOT FIXED HERE, deliberately. The one-line fix — wrapping the
+      resolved path in `sbplPath` — refuses any path outside
+      `[A-Za-z0-9._\-/@+]`, which includes a SPACE. Quoted SBPL
+      handles a space fine, so that fix would refuse
+      `/Users/Jane Smith/...` and regress a legitimate macOS layout
+      to close a hole. The allowlist was written for values a user
+      declares, not for paths a filesystem hands back.
+      What a fix needs: refuse only what can leave the quoted string
+      (quote, backslash, and the paren that ends the form), not the
+      broader allowlist — and it must be exercised on macOS, which
+      this container cannot do. Flagged rather than guessed at,
+      because an untested change to a security path that also
+      regresses ordinary users is worse than a recorded finding.
 
 ## In flight
 
