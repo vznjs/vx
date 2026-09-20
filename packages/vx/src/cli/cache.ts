@@ -1,6 +1,6 @@
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { seeHelp } from './help.js'
-import { parseDecimalInt, parseSize } from '../util/index.js'
+import { nearest, parseDecimalInt, parseSize } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
@@ -8,6 +8,34 @@ import { formatBytes } from './format.js'
 // parseSize moved to `util` (the orchestrator's resource resolver needs it
 // and can't import cli); re-exported here so existing callers are unchanged.
 export { parseSize } from '../util/index.js'
+
+/**
+ * `vx cache stats` is a habit from the other runners, and vx's answer is a
+ * different VERB rather than a missing one — saying so where the user typed
+ * it beats sending them to a help screen that lists only `prune` (walked the
+ * first-run path, 2026-09-20). A typo of `prune` itself gets the same
+ * nearest-neighbour hint a task, flag or project name gets.
+ */
+const CACHE_ELSEWHERE: Record<string, string> = {
+  stats: '`vx info` reports the cache directory, its entry count and its size',
+  status: '`vx info` reports the cache directory, its entry count and its size',
+  size: '`vx info` reports the cache directory, its entry count and its size',
+  entries: '`vx info` reports the cache directory, its entry count and its size',
+  dir: '`vx info` prints the cache directory this workspace uses',
+  path: '`vx info` prints the cache directory this workspace uses',
+  clean: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  clear: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  rm: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  delete: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  evict: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+}
+
+function cacheSubHint(sub: string): string {
+  const elsewhere = CACHE_ELSEWHERE[sub]
+  if (elsewhere !== undefined) return ` — ${elsewhere}`
+  const best = nearest(sub, ['prune'])
+  return best === undefined ? '' : `. Did you mean ${best}?`
+}
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args
@@ -18,7 +46,9 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
       process.stderr.write('vx cache: missing subcommand. Try `vx cache prune`.\n')
       return 1
     default:
-      process.stderr.write(`vx cache: unknown subcommand: ${sub}${seeHelp('cache')}\n`)
+      process.stderr.write(
+        `vx cache: unknown subcommand: ${sub}${cacheSubHint(sub)}${seeHelp('cache')}\n`,
+      )
       return 1
   }
 }

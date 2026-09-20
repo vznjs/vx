@@ -1404,11 +1404,12 @@ tokenizes a regex literal by the character before the`/`.
       single piece inside any stage is under 4 ms — so the next win
       is STRUCTURAL, not a micro-optimization. The structure worth
       naming: about half the run (105 ms) is preamble before a task
-      is considered, and the one overlap still available there is the
-      cache open (8.5 ms of SQLite + fingerprints) against discovery
-      and the package graph (27 ms); ~4 % of the run, which this
-      box's wall clock cannot resolve, so whoever takes it measures
-      the stage table, not the clock.
+      is considered. CORRECTED by item 408 — the overlap this entry
+      proposed there is worth ~1.4 ms, not ~8: `new Cache`,
+      `assertWritable` and `noteSchemaReset` are SYNCHRONOUS, and a
+      single-threaded runtime cannot overlap them with anything. Only
+      `computeWorkspaceFingerprints` (0.2–1.4 ms) can move. Do not
+      take that lead.
       REFUTED, in order. (a) `probe` at 12–13 ms looked like 1,000
       `existsSync` calls inside the batched `getMany`; isolated, a
       thousand of them cost 1.7–2.6 ms, and the split is entries SQL
@@ -1433,6 +1434,44 @@ tokenizes a regex literal by the character before the`/`.
       Also read and left: `listProjects` reads each `package.json`
       once and `hashProjectPackageJson` takes the git OID, so there
       is no duplicate read to remove on a clean tree.
+
+408.  DONE (2026-09-20). The perf arc closed with a correction, and
+      then the first-run path walked end to end — the DX read Next 7
+      did on 2026-09-04, on a workspace a beginner would actually
+      have: three packages, `package.json` scripts, a dependency
+      edge, a persistent `dev`.
+      The correction first, because it stops a wrong lead: 407 named
+      an overlap of the cache open against discovery and put it at
+      ~4 % of the run. It is worth ~1.4 ms. `new Cache`,
+      `assertWritable` and `noteSchemaReset` are synchronous, and
+      nothing overlaps synchronous work in a single-threaded runtime;
+      only `computeWorkspaceFingerprints` is awaited. Fixed in 407's
+      entry in place.
+      The walk, fifteen probes. What already teaches, recorded so it
+      is not re-walked: a bare `vx run build --all` in an
+      unconfigured workspace names `vx init`; `init` writes a config
+      per package, reports "3 tasks migrated clean, 4 TODOs" and puts
+      the exact `cache` block to paste in the TODO; a typo'd task and
+      a typo'd filter each get "Did you mean"; a `dependsOn` naming
+      nothing says which task and which package; an `outputs` glob
+      that matches nothing says an empty artifact is saved and a hit
+      restores nothing; a `..` in `inputs` or `outputs` is refused
+      with the FILE, the field, the value, the reason and the
+      alternative (`workspaceFiles`); exit 127 gets a hint naming the
+      two `.bin` directories vx puts on PATH; `vx why` names the
+      upstream whose key moved, with both digests; `vx show` prints
+      each task's command, deps, inputs and outputs; `lock` +
+      `--frozen` round-trips; a gitignored `dist/` caches, restores
+      ("3 local"), and reads up-to-date on the next run.
+      The one gap, fixed: `vx cache stats` — what the other runners
+      call it — answered "unknown subcommand" and sent the reader to
+      a help screen listing only `prune`, which teaches what vx does
+      NOT have. `stats`, `status`, `size`, `entries`, `dir`, `path`,
+      `clean`, `clear`, `rm`, `delete` and `evict` now name the verb
+      that answers them (`vx info` for the statistics, `vx cache
+prune` for eviction), a typo of `prune` still gets the
+      nearest-neighbour hint every other surface gives, and the help
+      screen and `cli.md` say where the statistics live.
 
 ## In flight
 

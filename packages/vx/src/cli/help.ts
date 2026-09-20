@@ -120,6 +120,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --cache-dir <path>              The cache a run with the same flag uses (why, last, info too).',
     '',
     '  Duration units: s, m, h, d. Size units: K, M, G, T (powers of 1024).',
+    '  Cache statistics — directory, entry count, size — are part of `vx info`.',
     '',
     'Introspection:',
     '  vx show              List every project: name, dir, declared task count.',

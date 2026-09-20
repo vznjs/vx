@@ -1693,6 +1693,36 @@ describe('vx cache prune command', () => {
     expect(code).toBe(1)
     expect(stderr).toContain('unknown subcommand')
   })
+
+  // The words a user arrives with: `stats` is what the other runners call
+  // it, and vx's answer is a different VERB, not a missing one. Walked the
+  // first-run path to find this (2026-09-20) — the help screen lists only
+  // `prune`, so a reader sent there learns what vx does not have.
+  it.each([
+    ['stats', '`vx info` reports the cache directory'],
+    ['clean', '`vx cache prune` is the eviction verb'],
+    ['dir', '`vx info` prints the cache directory'],
+  ])('points %s at the verb that answers it', async (sub, hint) => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    expect(await run(['cache', sub])).toBe(1)
+    expect(stderr).toContain(hint)
+  })
+
+  it('still offers the nearest subcommand for a typo of one that exists', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    expect(await run(['cache', 'prun'])).toBe(1)
+    expect(stderr).toContain('Did you mean prune?')
+  })
 })
 
 describe('formatRunReportMarkdown', () => {
