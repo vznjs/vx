@@ -1277,6 +1277,60 @@ built behind a failure`). Two claims were not.
       the clean on `willRead` fails BOTH halves of the asymmetry (which
       is what makes the pair a pair), and ignoring `remoteOnly` fails
       the third row alone.
+424.  DONE (2026-09-20, the same standard applied to the OTHER
+      stale-hit-critical surface: `src/cache/inputs.ts` (glob resolution,
+      boundaries) and `src/cache/git-inputs.ts` (the git enumeration the
+      key trusts), where a wrong answer is a wrong KEY rather than a
+      crash). The unit-level sweep found nothing: prefix-stripping and
+      "a modified tracked file is pruned from the trusted OID set" are
+      pinned in `git-subdir-workspace.test.ts`; OID equality against
+      git's own `hash-object`, sha256 repos, a symlink hashed as a blob,
+      the mtime+size memo, dirty/untracked exclusion, a staged rename
+      and merge-conflict stages in `git-oid.test.ts`; boundary
+      non-crossing both ways, `ALWAYS_IGNORE` and `vx-lock.json` in
+      `inputs.test.ts`; negation semantics and the `!!` inversion
+      refusal in `inputs-resolution.test.ts`; the `..` segment refusal
+      in `project-loader.test.ts`. Recorded as zero-yield rather than
+      dressed up as work.
+      What WAS missing is the composite. Each exclusion is pinned
+      alone, on the resolver; none of them together on a real run with
+      real discovery and a real git repo. `orchestrator-run.test.ts`
+      now carries one: a project declaring the widest glob there is,
+      `**/*`, with a declared workspace member nested INSIDE it,
+      `node_modules` beside it and a sibling next door — change all
+      four at once and the run must still HIT, then change the
+      project's own file and it must miss. Differential twice over:
+      returning `[]` from `boundaryIgnorePatterns` fails it, and so
+      does dropping `**/node_modules/**` from `ALWAYS_IGNORE`.
+      The fixture taught the rule it tests. The first version gave the
+      nested member a `package.json` and no config, and the run MISSED
+      — correctly: boundary geometry is built from CONFIG-BEARING
+      projects (`prepare.ts`), so a bare manifest under a project is
+      deliberately part of that project, not a fence. The test says so
+      in a comment, because the shape is one a reader would otherwise
+      read as a bug.
+425.  DONE (2026-09-20, the pin item 421's design note asks for by name).
+      That note ends with a constraint rather than a feature: the
+      cross-project overlapping-outputs case is safe today only because
+      `local-shortcircuit.ts` disables the restore tier GRAPH-WIDE the
+      moment any task declares `cache.outputs.workspaceFiles`, and
+      "whoever narrows that rule owns this case". A constraint nothing
+      tests is a comment, so the tier's suite now carries it.
+      The gap was specific. The existing row pins the DEPENDENT of a
+      workspace-output producer — and that dependent is excluded for a
+      second reason anyway (it is unstable). Narrow the rule to "the
+      declarer and its dependents" and that row still passes. The new
+      row uses a project with NO edge to the writer at all: `solo` and
+      `wsw` share nothing but the graph, and `solo#build` must stay out
+      of the tier while `wsw` declares a root-anchored output.
+      The control is the same workspace with the writer's declaration
+      changed to a project-relative output and nothing else — `solo`'s
+      key is untouched and its artifact is the one the cold run just
+      stored — and `solo#build` is restore-tier again. Without it the
+      assertion would pass for a `solo` that simply never hit.
+      Differential against the narrowing it exists to catch: scoping the
+      exclusion to the declaring node fails the new row and leaves the
+      neighbour green, which is the whole argument for adding it.
 
 ## In flight
 

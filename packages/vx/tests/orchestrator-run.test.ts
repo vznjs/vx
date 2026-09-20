@@ -1360,3 +1360,93 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
     TIMEOUT,
   )
 })
+
+describe('the widest glob still stops at the project boundary', () => {
+  let fixture: Fixture
+
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'a task declaring `**/*` folds nothing outside its own project',
+    async () => {
+      // Each exclusion is pinned on its own — nested projects, ALWAYS_IGNORE,
+      // sibling projects, the `..` refusal. This is the COMPOSITE, on a real
+      // run with real discovery and real git: the widest glob there is, with
+      // a declared workspace member nested INSIDE the project, node_modules
+      // beside it and a sibling next door. A boundary that leaked would show
+      // up here as a miss where the run should hit (2026-09-20).
+      const a = await addProject(fixture.root, 'a', {
+        files: { 'src/own.txt': 'own-1\n' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+        } } }`,
+      })
+      const b = await addProject(fixture.root, 'b', {
+        files: { 'src/b.txt': 'b-1\n' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        } } }`,
+      })
+      // A workspace MEMBER nested inside a. Both halves are load-bearing:
+      // without the second workspace glob it is not a member at all, and
+      // without its own config it is not config-bearing — the boundary
+      // geometry is built from config-bearing projects (prepare.ts), so a
+      // bare package.json under `a` is deliberately just part of `a`.
+      await writeFile(
+        path.join(fixture.root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "packages/*"\n  - "packages/a/nested"\n',
+      )
+      const nested = path.join(a, 'nested')
+      await mkdir(path.join(nested, 'src'), { recursive: true })
+      await writeFile(
+        path.join(nested, 'package.json'),
+        JSON.stringify({ name: 'nested', version: '0.0.0' }),
+      )
+      await writeFile(
+        path.join(nested, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await writeFile(path.join(nested, 'src', 'their.txt'), 'their-1\n')
+      await mkdir(path.join(a, 'node_modules', 'dep'), { recursive: true })
+      await writeFile(path.join(a, 'node_modules', 'dep', 'index.js'), 'dep-1\n')
+
+      const build = async (): Promise<string> => {
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          projects: ['a'],
+          log: silentLogger(fixture),
+        })
+        expect(r.ok).toBe(true)
+        return r.outcomes[0]!.status
+      }
+
+      expect(await build()).toBe('success')
+
+      // Everything a leaking boundary would fold, changed at once.
+      await writeFile(path.join(nested, 'src', 'their.txt'), 'their-2\n')
+      await writeFile(
+        path.join(nested, 'package.json'),
+        JSON.stringify({ name: 'nested', version: '0.0.1' }),
+      )
+      await writeFile(path.join(a, 'node_modules', 'dep', 'index.js'), 'dep-2\n')
+      await writeFile(path.join(b, 'src', 'b.txt'), 'b-2\n')
+      expect(await build()).toBe('cache-hit')
+
+      // CONTROL: the project's OWN file still moves it.
+      await writeFile(path.join(a, 'src', 'own.txt'), 'own-2\n')
+      expect(await build()).toBe('success')
+    },
+    TIMEOUT,
+  )
+})
