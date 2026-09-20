@@ -1342,6 +1342,52 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       finding is not wrong code — it is a true claim nothing was
       holding.
 
+449.  DONE (2026-09-20, `cli/watch.ts` — 1,145 lines, the LAST of the
+      four files Next 8(d) names as large; `cache/cache.ts` was 427's
+      zero, `orchestrator/run.ts` 447 and `exec/sandbox-runtime.ts`
+      448). Three claims mutated one at a time. All three SURVIVED, and
+      the file is now the richest single haul of the arc — which is the
+      thesis of 427 holding, because watch is where a claim's halves
+      are furthest apart: a helper in one place, the loop that asks it
+      in another, and a container whose watcher mode is neither of the
+      two the comments were written about.
+      (a) A first sighting is a change only if the path moved since the
+      arm. `modifiedBefore` is pinned as a FUNCTION in
+      `watch-rules.test.ts` — three cases and an unreadable path — and
+      the loop's one call to it was pinned by nothing: dropping the
+      whole branch (`return false`, the pre-2026-09-11 "a first sighting
+      always re-runs") passes the entire repo. That is the defect the
+      macOS flake of 2026-09-11 was, exactly: FSEvents hands a fresh
+      stream what landed just before it started, so the initial run's
+      own writes re-ran it.
+      (b) `judge` evaluates `sameState(p)` BEFORE it tests whether a
+      winner has been picked, and the order is the whole point:
+      `sameState` is what RECORDS a path's state, so every path a
+      judgement saw must be recorded even though only the first change
+      names the cycle.
+      Reversing the operands short-circuits after the winner. Nothing
+      in the repo noticed, and the consequence is the M8 rule ("the
+      same bytes are not a change") failing for any path that arrived
+      in a BATCH: the other nineteen of a `git checkout` are left
+      unjudged, and each one's next event is a first sighting stamped
+      after the arm. The line carried no comment at all; it has one now.
+      (c) `armWatcher` drops an event naming the watched directory
+      itself (`''`, `'.'`) and one with no filename (`null`). Removing
+      either guard passes: no e2e row can deliver them on a host whose
+      probe never lands (this container polls), and the fake-`fs.watch`
+      seam that could delivered only the probe.
+      Pinned: (a) as an e2e pair — two files that existed before the
+      arm, the SAME operation (`utimes`) on both, one stamped an hour
+      before the arm and one after, asserting no cycle then exactly one;
+      red 3/3 under the mutation. (b) on the existing `git checkout`
+      row, by rewriting all twenty files with their own bytes (at most
+      one can be the recorded winner) and requiring the cycle count to
+      hold. (c) through the fake watcher, delivering `''`, `'.'`, `null`
+      and one real name and asserting the caller sees the exact set
+      `['src/a.ts']`.
+      Four files swept now (427, 447, 448, 449): ten claims, five
+      finds, five refutations.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family

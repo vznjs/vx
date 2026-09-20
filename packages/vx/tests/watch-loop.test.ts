@@ -7,7 +7,7 @@
 // `watch-loop-uncached.test.ts`: one file was a 24 s serial chain of
 // settle windows, a shard on its own (2026-09-16).
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -53,6 +53,40 @@ describe('vx watch loop (e2e)', () => {
     await until(async () => (await executions(f.log)) === 3, 'the re-run after a second edit')
     await Bun.sleep(SETTLE_MS)
     expect(w.cycles()).toBe(2)
+  }, 40_000)
+
+  it('a first sighting is a change only when its mtime falls after the arm', async () => {
+    // The loop has never judged either path, so each is a FIRST sighting,
+    // and the mtime is all it has to say which side of the arm the change
+    // belongs to. macOS hands a fresh FSEvents stream what landed just
+    // before it started (CI, 2026-09-11: `app dist; re-running...` with no
+    // edit made), and a first sighting used to pass unconditionally — the
+    // initial run's own writes re-ran it. `modifiedBefore` is pinned as a
+    // function in `watch-rules.test.ts`; this is the loop asking it.
+    // The two halves are the SAME operation on two files, so the only
+    // variable is the timestamp. Neither file is an input, so a cycle here
+    // is a hit — the cycle COUNT is the claim, not the execution count.
+    const stale = path.join(f.dir, 'stale.txt')
+    const fresh = path.join(f.dir, 'fresh.txt')
+    await writeFile(stale, 'x\n')
+    await writeFile(fresh, 'x\n')
+
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    const before = new Date(Date.now() - 3_600_000)
+    await utimes(stale, before, before)
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(0)
+
+    const after = new Date()
+    await utimes(fresh, after, after)
+    await until(() => w.cycles() === 1, 'the cycle for the path stamped after the arm')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(1)
+    expect(await executions(f.log)).toBe(1)
   }, 40_000)
 
   it('an edit to vx.workspace.mjs is one cycle that runs under the new workspace config', async () => {
@@ -106,5 +140,18 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(1)
     const out = await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')
     expect(out).toBe(['a1\n', ...names.map((n) => `${n} v2\n`)].join(''))
+
+    // M8 for a path that arrived in a BATCH. One judgement reports one
+    // label, but it must record the settled state of every path it judged
+    // — `judge` evaluates `sameState` before the `first === undefined`
+    // test for exactly that reason. Read the other way round it
+    // short-circuits after the winner, leaving the other nineteen
+    // unjudged, and each one's next event is a FIRST sighting stamped
+    // after the arm, i.e. a change: rewriting their own bytes re-runs.
+    // Writing all twenty means at most one can be the recorded winner.
+    for (const n of names) await writeFile(path.join(f.dir, 'src', n), `${n} v2\n`)
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(1)
+    expect(await executions(f.log)).toBe(2)
   }, 40_000)
 })
