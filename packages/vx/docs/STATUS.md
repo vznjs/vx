@@ -1329,6 +1329,70 @@ tokenizes a regex literal by the character before the`/`.
       with the reason written beside it: a generated tree is not a
       stable input for a concurrent reader.
 
+406.  DONE (2026-09-20). 405's own map said what to read next, and
+      after the memo landed the split had MOVED: on this repo's
+      44-task `run ci --all --dry`, `cache.key` is now the biggest
+      at 23.5 ms of `task hash`'s 44.9, against `resolveKeyInput`'s
+      21.4 (input resolution 16.3, OID map 2.9, upstream 0.7, the
+      config hash 0.5, package.json 0.3). The reason is the shape of
+      THIS repo rather than the bench's: `packages/vx` declares a
+      whole-tree glob, so the fold walks ~3,000 files per task, 534 µs
+      each, where a bench project's two files cost 5 µs.
+      Split further, `cache.key`'s ~24 ms is gather 8.4 (a
+      `Promise.all` over 3,000 entries the caller already holds), sort
+      7.4 (a copy-and-sort of an array `resolveFiles` already sorted)
+      and fold 6.4 (`relPosix` + `xxh3` per file). All three are
+      key-IDENTICAL to fix:
+      the order is checked instead of re-sorted (one comparison per
+      file; an unsorted caller still gets a sort), the digests are
+      gathered in a plain loop when the OID map covers them (the
+      first gap falls back to the awaited form for the whole list),
+      and `relPosix` is memoized per Cache while the workspace root
+      holds — 132,000 calls for 3,000 answers on this gate.
+      Proof the key did not move: every task hash of a `--dry` plan
+      compared between origin/main and this tree — 34 on this repo,
+      then 1,000 on the bench workspace, all identical. Two lessons
+      in that check. The first version extracted ZERO rows and
+      printed "IDENTICAL" over an empty diff, so the floor
+      (`-ge 30`, then `-ge 900`) is what made it a real pass — the
+      third time this arc that the selector, not the claim, was the
+      bug. And this repo is the WRONG tree for a second look: its
+      own sources are its tasks' inputs, so editing a test moves the
+      keys legitimately; the bench workspace, whose files nothing
+      touches, is where the comparison means something.
+      Measured, disjoint sets, five reps each: `task hash`
+      49.1–61.3 ms on origin/main, 41.5–42.9 with 405 alone,
+      26.3–34.7 with both — about −45 % against main. Control on the
+      1,000-project bench, where each task has two input files and
+      nothing repeats: 21.8–24.9 before, 20.8–28.0 after, overlapping
+      — no win, no regression, which is what a per-file cost should
+      look like when there are two files.
+      Two pins, each with a differential: a list whose only inversion
+      is at the END (an off-by-one in the order scan lets it through,
+      and the existing order row breaks at the first pair instead),
+      and a Cache asked for a second workspace root (an uncleared
+      memo folds one tree's names under another's). The second was
+      vacuous when first written — the file sat outside BOTH roots,
+      so `../shared.txt` was the answer either way and the broken
+      memo passed; it now lives inside root-a.
+      And the intermittent item 403 recorded came back on this gate,
+      which made it a second sighting and therefore work. It is a
+      REAL defect, not test noise: a persistent task that fails
+      readiness sweeps its placeholders TWICE — once from the child's
+      exit handler, once from the readiness catch — and
+      `sweepPlaceholders` returns only what IT removed, so whenever
+      the exit handler won the race the "write grant `.cache` named
+      nothing on disk" hint was never printed and the failure said
+      only "File exists", which is the message the hint exists to
+      explain. The catch now reports the UNION of both sweeps.
+      It does not reproduce in isolation (8/8 under four CPU burners,
+      5/5 alone), so the differential forces the race instead: a
+      150 ms sleep before the catch's sweep makes the exit handler
+      win every time — the old code fails that, the new code passes.
+      The ingredient is pinned where it is deterministic, in
+      `sandbox-request.test.ts`: a second sweep names nothing,
+      because the first one took it.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

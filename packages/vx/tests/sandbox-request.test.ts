@@ -90,6 +90,19 @@ describe('sweepPlaceholders takes back what the task never wrote', () => {
     expect(await kind(path.join(dir, 'dist/vx'))).toBe('none')
   })
 
+  // The property the persistent path's two sweeps race over: the SECOND
+  // sweep returns nothing, because the first one already removed the file.
+  // Reading only the second one lost the "named nothing on disk" hint
+  // whenever the child's exit handler swept first, and the failure then
+  // said only "File exists" — the message the hint exists to explain
+  // (seen twice under the gate's parallel load, 2026-09-20). execute-task
+  // now reports the union of both sweeps.
+  it('a second sweep names nothing: the first one took it', async () => {
+    const r = await requestFor(['dist/vx'])
+    expect(await sweepPlaceholders(r.placeholders)).toEqual([path.join(dir, 'dist/vx')])
+    expect(await sweepPlaceholders(r.placeholders)).toEqual([])
+  })
+
   it('a placeholder the task wrote is its output and stays', async () => {
     const r = await requestFor(['dist/vx'])
     await writeFile(path.join(dir, 'dist/vx'), 'bytes')
