@@ -12,7 +12,7 @@ import {
   type CheckRunEnv,
   type FetchFn,
 } from './checks.js'
-import { renderJobSummary } from './summary.js'
+import { clampJobSummary, renderJobSummary } from './summary.js'
 
 export interface GithubPluginOptions {
   /**
@@ -67,7 +67,10 @@ export class GithubSummarySink implements TelemetrySink {
     // runner costs the PR its check — the more visible of the two. Reported,
     // not thrown: a telemetry sink may never break a run.
     try {
-      await this.append(this.file, markdown)
+      // Clamped: past GitHub's 1 MiB cap the runner drops the summary whole,
+      // so a bounded page beats none. The check-run payload has its own,
+      // smaller cap and is clamped where it is built.
+      await this.append(this.file, clampJobSummary(markdown))
     } catch (err) {
       this.warn(
         `vx-github: could not write the job summary to ${this.file}: ${err instanceof Error ? err.message : String(err)}`,

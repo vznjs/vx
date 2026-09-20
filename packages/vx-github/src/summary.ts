@@ -34,6 +34,24 @@ function statusLabel(t: TaskTelemetry): string {
   return STATUS_LABEL[t.status] ?? t.status
 }
 
+/**
+ * GitHub caps a step's job summary at 1 MiB and REJECTS the upload past it,
+ * so an unbounded summary costs the whole page rather than its tail. At the
+ * measured ~55 bytes a row that is about 19 000 tasks — a scale this repo's
+ * own bench generates (5 000 projects × four tasks), so it is reachable
+ * rather than theoretical. Cut from the END: the verdict, the stats line and
+ * the Failures section are rendered first, and they are what a reader needs.
+ * This bounds vx's OWN contribution; the file is shared with whatever else
+ * the step wrote.
+ */
+export const MAX_JOB_SUMMARY_BYTES = 1024 * 1024
+
+export function clampJobSummary(markdown: string): string {
+  if (markdown.length <= MAX_JOB_SUMMARY_BYTES) return markdown
+  const suffix = '\n\n…truncated by @vzn/vx-github (GitHub caps a job summary at 1 MiB)\n'
+  return markdown.slice(0, MAX_JOB_SUMMARY_BYTES - suffix.length) + suffix
+}
+
 /** Render the whole job summary. Deterministic for a given record. */
 export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string {
   const failed = summary.tasks.filter((t) => t.status === 'failed')
