@@ -1075,6 +1075,23 @@ args.taintedUpstream !== true`) fails "--continue=always never
       env drops would be a no-op, which is the same defect one layer
       down. Differential, in this ROOT container: unset, each file
       skips as before; set, each file errors with the reason named.
+      Follow-on, verified after the fact: CI came back GREEN with the
+      gate on, so the hosted runner is not root and those ten rows
+      genuinely ran there — the first check the claim ever had.
+      But a gate is only OBSERVABLE when it fires. On a non-root runner
+      `VX_REQUIRE_NONROOT` behaves identically whether it arrived or
+      `vx run`'s env isolation dropped it, so NO run-time assertion can
+      prove the `passThrough` wiring. Found by trying to write one and
+      watching the local gate reject it: the gate sets
+      `VX_REQUIRE_SANDBOX` and deliberately NOT the non-root one, so
+      "wherever one is set the other is" is false there.
+      Asserted statically instead, as the half the neighbouring law
+      ("a suite that skips without an env var") was missing: that law
+      proves a gate is SET by a workflow and says nothing about whether
+      the value survives the trip. Every `VX_` var a workflow sets must
+      appear in some task's `passThrough`, or the gate it arms is a
+      no-op reporting green. Eight declared, eight forwarded today;
+      differential by renaming one side.
 
 ## In flight
 
