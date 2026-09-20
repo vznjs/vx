@@ -1440,3 +1440,41 @@ Start with the suites the docs arc leaned on — `task-hash-derive`,
 `telemetry-lifecycle`, `layered-cache`, `execute-task` — and carry
 the floor-assertion habit: a sweep that finds nothing must be able to
 fail. Never end with "what next?".
+
+## Handoff 14ai (moved 2026-09-20 with item 409)
+
+14ai. **Handoff after item 403 (2026-09-20).** Four items since 14ah,
+all the same idea pushed one layer further each time: a claim is
+checked where it is CHEAPEST to state, not where it is TRUE. 400 found
+a test whose name made three claims and whose body made none; 401 two
+that quantified over a source list by restating it; 402 a fixture list
+standing in for `ALWAYS_IGNORE` and the env gates nothing required CI
+to set; 403 the layer under all of them — a file no task launches, and
+a helper whose own guarantee nothing tested.
+What the four taught, beyond the shape. A probe over SOURCE needs a
+parser: three rewrites of one sweep (an apostrophe in a comment, a
+backtick inside a regex, then the regex literal itself) and every
+draft's output was a candidate list to READ, never a verdict. A
+derived law must drive every path its subject has: 401's first draft
+passed under a real defect because `hashableConfig` fast-paths when no
+`remote` is declared, so every variant it built skipped the projection
+it was testing. And a floor is what makes "found nothing" a result —
+two sweeps in 402 returned empty against floors of 2 852 blocks and
+six candidates, which is why they are worth recording at all.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 PARKED since
+item 374 and now the oldest debt — items 374 through 403 changed docs,
+tests and comments only, so there has been no run-path delta to A/B,
+and the first change that touches the warm path owes one. The owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The container's baseline is 20-23 failing tests and
+ten failing tasks, with shard 9 intermittently making it eleven on a
+SIGILL that names no test; the clean-tree control settles that, not
+the streak.
+Next: the test-name arc is done — four items, seven derived laws, and
+the last two sweeps found nothing. Go back to the product. Next 6's
+re-measure is owed on the first run-path change, so make one worth
+measuring: `cache/cache.ts` is 1,583 lines and Next 8(d) names its
+split as item 8's, `cli/watch.ts` is 1,121, and the warm path's stage
+table (discover / load configs / classify / run graph) is where a
+5,000-project run spends its 687 ms. Read the table first, pick the
+stage, and bring a number. Never end with "what next?".
