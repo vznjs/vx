@@ -1963,6 +1963,38 @@ non-empty string` is caught by exactly ONE row, and it is the
       usually partial, and the part that does not overlap is the whole
       reason the first guard is there.
 
+502.  DONE (2026-09-20, `cli/watch.ts`'s event filters — the half 482
+      left, where a wrong answer is a watch that silently stops
+      re-running or one that never settles).
+      Both ignore SETS are pinned member by member:
+      `IGNORED_SEGMENTS` (node_modules 3 rows, .git 1, .vx 2) and
+      `IGNORED_SUFFIXES` (.tsbuildinfo 1, ~ 1). `watch-rules.test.ts`
+      has a table row per member, which is what 494 and 497 had to add
+      elsewhere — this file already had it.
+      `makeRootEventFilter`'s clauses: the fingerprint arm (3 rows),
+      the workspace-config arm (2), the glob arm (3) and the
+      negations-are-not-consulted filter (7) all fail when dropped.
+      THE ONE SURVIVOR is the depth test, `!rel.includes('/')`, and it
+      is REDUNDANT — measured this time before writing it down, over
+      eleven spellings including `nested/bun.lock`, `./bun.lock` and
+      `a/b/c/pnpm-workspace.yaml`: every answer identical with the test
+      removed. Both predicates it guards are exact membership in a set
+      of BARE names, so a `rel` carrying a slash cannot be in one.
+      Kept as a reading aid and now says so.
+      Worth the note it got in the test table: the two rows that LOOK
+      like they pin it (`nested/pnpm-lock.yaml → false`,
+      `nested/vx.workspace.ts → false`) pass either way. What they
+      really pin is that the predicates stay EXACT — a basename or
+      suffix match would fail them, and that is the change that would
+      make the depth test load-bearing. Same shape as 498's vacuous
+      half, found on purpose this time rather than by accident.
+      Method note: 501 said to check whether the later guard's reach is
+      narrower somewhere before calling the earlier one redundant.
+      Here the later guard's reach is strictly WIDER — set membership
+      rejects everything the depth test rejects and more — which is
+      the case where "redundant" is the right answer. The rule cuts
+      both ways, and the check is what tells them apart.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

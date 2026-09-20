@@ -226,6 +226,9 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['.turbo/daemon.log', false],
     ['packages/other/src/index.ts', false],
     ['tsconfig.json', false],
+    // These two pin the predicates' EXACTNESS, not the filter's depth test:
+    // that test is redundant while the predicates are bare-name set membership
+    // (measured, item 502). A basename or suffix match would fail them.
     ['nested/pnpm-lock.yaml', false], // a fingerprint NAME below the root is not the fingerprint
     ['vx.workspace.ts', true], // the one root file that shapes a run without being an input
     ['vx.workspace.mjs', true],
