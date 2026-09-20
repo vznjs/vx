@@ -783,12 +783,37 @@ built behind a failure`). Two claims were not.
       in itself: written into `continue-taint.test.ts` they passed
       alone and failed all six in the sharded gate, because that file's
       module-level `beforeEach` builds a git repo per case and its
-      commit fails under twelve-way load, printing a stray namespace
-      debug line. Pure rows had inherited a fixture they have no use
-      for. That same `beforeEach` is the likeliest cause of the two
-      `--continue=always` rows in this container's baseline — not test
-      timing but the fixture's commit — which is worth the next
-      reader's attention; it is a lead here, not a measurement.
+      commit fails there. Pure rows had inherited a fixture they have
+      no use for. I wrote "under twelve-way load" here first; item 435
+      measured it and it is not load at all — see there, and take this
+      sentence as the lead it was rather than the cause.
+
+435.  DONE (2026-09-20, chasing 434's lead — and the lead's own
+      wording was wrong, which is the point of chasing one). Two rows
+      of this container's red baseline are the `--continue=always`
+      pair, recorded since 2026-09-19 as load ("they pass 3/3 in
+      isolation and fail only beside eleven other shards"). They are
+      not load. Shard 7 ALONE, with nothing else running, fails both.
+      The cause is one line of the host's git configuration. This
+      container signs commits through an external helper
+      (`gpg.format=ssh`, `gpg.ssh.program` pointing at a signer that
+      dials an MCP server on loopback), and a task sandbox denies the
+      network — so `git commit` inside a sandboxed test task cannot
+      reach its signer and exits non-zero. Unsandboxed, the same commit
+      succeeds; that is why running the file directly passes and why
+      the failure looked like concurrency.
+      The repo already knew this. `tests/helpers/workspace.ts` runs git
+      with `commit.gpgsign=false` and `tag.gpgSign=false`, which is
+      exactly the guard, and that helper exists because "forty test
+      files carried a private copy of the same scaffold". This file
+      kept its own copy, without the flags. It uses the shared
+      `gitInitCommit` now, and both rows pass inside the sandbox.
+      The class is closed, not just the case: every other test that
+      commits either passes `gpgsign` itself or goes through the
+      helper — grepped, one file was unguarded, and it was this one.
+      Baseline now 15–16 rows, from 23 this morning: 431 took six, this
+      takes two more. Each one removed is a blind spot removed from
+      every future mutation verdict, which is 430's whole point.
 
 ## In flight
 
@@ -828,9 +853,13 @@ Bun 1.3.11's `fs.watch` never reports a DOT-prefixed filename — a
 plain file is delivered, `.vx-watch-probe` is dropped, in both
 recursive modes — and that probe is exactly how `armWatcher` proves a
 watcher is live. So 21 of the 23 are the runtime, not 10. That leaves TWO — the
-`--continue=always` pair — which pass 3/3 in isolation and fail only
-beside eleven other shards, as `output-memory`'s RSS case does. Those
-two are the whole of what load explains. The controlled comparison closes it: CI pins
+`--continue=always` pair — which item 435 measured and which are NOT
+load either: this host signs commits through a helper that dials
+loopback, a task sandbox denies the network, and that file was the one
+test with a private git runner missing the `commit.gpgsign=false` guard
+the shared helper carries. Fixed there, so load explains none of the
+23; what it explains is the SIGILL shape below and the watch timing 431
+left in place. The controlled comparison closes it: CI pins
 `bun-version: 1.4.2` in `ci.yml` and every PR of this arc went green
 there — same tree, same tests, 23 red here and none there. Upgrading
 is not available in the container: `bun upgrade` is refused by this
