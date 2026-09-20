@@ -774,6 +774,41 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     ])
   })
 
+  it('hands out a COPY: a caller that mutates its result cannot poison the memo', async () => {
+    // The resolver stores `resolved` and returns `[...resolved]` on both the
+    // store path and the memo-hit path, so the array a caller receives is
+    // never the one the cache holds. Nothing else protects this: the memo is
+    // shared by every task in the project, and the returned list is a plain
+    // array, so one caller sorting or splicing in place would rewrite what
+    // the next task resolves — a wrong input set, which is a wrong key.
+    //
+    // No caller mutates today, which is why returning `memo.result` directly
+    // leaves the whole suite green. This row is the guarantee itself rather
+    // than a property of today's callers.
+    const git = new GitFilesCache()
+    const files: ProjectFilesCache = new Map()
+    const first = await resolve({ files: ['**/*'] }, git, files)
+    expect(first).toEqual(['src.ts'])
+
+    // A second call takes the memo path; mutate what IT returns.
+    const second = await resolveInputs({
+      projectDir,
+      workspaceRoot,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: git,
+      projectFilesCache: files,
+    })
+    expect(second.files.length).toBe(1)
+    second.files.length = 0
+    second.files.push('/poisoned.ts')
+
+    // The third call must still see the real file.
+    expect(await resolve({ files: ['**/*'] }, git, files)).toEqual(['src.ts'])
+  })
+
   it('a different declaration in the same project does not', async () => {
     const git = new GitFilesCache()
     const files: ProjectFilesCache = new Map()

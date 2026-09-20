@@ -772,6 +772,128 @@ test is telling the truth.
       is about to move (exactly twenty items, 433 first and 452 last;
       both handoffs present and no unwritten third) rather than
       trusting a line range.
+473.  DONE (2026-09-20, the two threads 471 left OPEN in
+      `orchestrator/hit-restore.ts`). Both close, and ONE OF THEM
+      CORRECTS 471's own report.
+      (b) FIRST, THE CORRECTION. 471 recorded the post-restore
+      `markOutputsChanged` as an unmeasured survivor. It is not a
+      survivor: removing it fails
+      `restore-path git spawns > overlapping globs keep the re-spawn
+fallback (and stay cache-hits)`. 471's fast filter simply did
+      not include `restore-git-spawns.test.ts`, and the whole-suite
+      run says so. That is 466's lesson — a fast-filter survival is
+      PROVISIONAL — landing for the third time in this arc, and this
+      time it reached a shipped STATUS entry before the whole-suite
+      run caught it. Read 471's "open" line as closed and wrong.
+      (a) `covers` in the directory short-circuit is genuinely
+      unpinned, and it guards a state that cannot arise. Three
+      fixtures failed to build one before the right question turned
+      up, which was not about the reader at all: `recordOutputDirs`
+      is ALL OR NOTHING in one transaction — it deletes every row for
+      the hash, then inserts the full set only if every prefix walked
+      and none is racy-young — so the only states are COMPLETE and
+      EMPTY. The empty case is already refused by
+      `outputDirsCurrent`'s own `rows.length === 0`, which its row
+      pins; the complete case is what `covers` tests for and always
+      finds. The instrumented probe is what settled it: after deleting
+      one row by hand the next hit read `rows=[]`, not a partial set.
+      So `covers` restates, on the read side, an invariant the WRITER
+      holds — and the writer is well pinned: inserting partial rows on
+      a failed walk fails two rows, never clearing stale rows fails
+      two, dropping the racy-young check fails one.
+      Recorded, not pinned, for 471(c)'s reason: the guarantee is
+      already held at its source, and a second pin on the reader would
+      duplicate it. Unlike 463, where the layer WAS the guarantee and
+      nothing else carried it.
+474.  DONE (2026-09-20, `cache/inputs.ts` — 818 lines, the largest
+      unswept file and the resolver every cache key is built from).
+      The fast filter was built from `grep -rl` per exported symbol
+      and every path checked to EXIST first, which is 473's amendment:
+      `bun test` ignores a path that is not there and reports a clean
+      pass meaning nothing (469 and 473 both).
+      Six mutations, four caught, and the project boundary is held
+      hard — principle 6 in the tests as well as the prose. Dropping
+      `boundaryIgnorePatterns` fails EIGHT rows, one of them "a
+      sibling whose name EXTENDS the nested project's name is not
+      excluded"; dropping it from the OUTPUT side fails three. The
+      per-declaration memo is pinned both ways: a key that forgets the
+      task's own outputs fails a row, and comparing snapshots by
+      length instead of identity fails the row named for it.
+      THE FIND is the memo's COPY. The resolver stores `resolved` and
+      returns `[...resolved]` on both the store path and the memo-hit
+      path, so what a caller receives is never what the cache holds.
+      Return `memo.result` directly and the repo stays green, because
+      no caller mutates today — a property of today's CALLERS, not a
+      guarantee, and nothing else carries it. The memo is shared by
+      every task in the project, so one caller sorting or splicing in
+      place rewrites what the next task resolves: a wrong input set,
+      therefore a wrong key. Pinned as the guarantee itself (463's
+      genre, not 473's): a caller mutates what it was handed and the
+      next call must still see the real file.
+      Left unpinned, measured: the memo key's boundary component. The
+      nested-project set is per project and the memo lives one run, so
+      for a given `projectDir` that component is constant and removing
+      it cannot change an answer. Redundant within the memo's scope.
+      NOTED, not yet acted on: `output-memory.test.ts`'s `none`
+      discard row failed on the first gate of this item. It passes 3/3
+      alone and the immediate gate re-run was clean, so it is
+      load-sensitive rather than broken — but both of its failures
+      this session came AFTER 465 added two more subprocess probes to
+      it, taking it from four to six. That is a plausible cause and
+      not an established one. Next item.
+475.  DONE (2026-09-20, the measurement row 474 saw go red, and a
+      CORRECTION to what 474 said about it).
+      474 recorded the failure as load-sensitive and floated 465's two
+      extra probes as a plausible cause. Reading the actual assertion
+      killed that theory: the probes 465 added run AFTER the `none`
+      pair and cannot raise `noneMany`. The real number is the
+      interesting part —
+      `expect(noneMany - noneFew).toBeLessThan(80)` received 88 — and
+      the row's own note estimated the noise at "~10x below" the
+      bound, i.e. about 8 MiB. On this container under a full
+      `vx run ci` it is 88. The calibration was taken from a quiet
+      machine and the note said so ("a tighter 0.25 bound passed here
+      and still failed on a loaded CI runner"); 0.5 is the same
+      mistake one notch out.
+      Fixed with MIN-OF-2 ON A MISS rather than a looser bound: the
+      delta is re-measured once, and only when the first reading
+      already exceeds the bound, so a quiet machine pays nothing. That
+      is CLAUDE.md's own answer to a loaded measurement rather than an
+      invention.
+      It cannot mask a real regression, and that is measured, not
+      argued: with `discardsOutput` forced false the delta is 160 —
+      the FULL retained volume, every time — against a bound of 80.
+      160 and 88 are two very different numbers, which is exactly why
+      the bound stays sharp instead of being widened to swallow the
+      noise it was never meant to cover.
+476.  DONE (2026-09-20, `cache/git-inputs.ts` — 711 lines, the git
+      enumeration the whole input resolver trusts, and the last large
+      file in the cache module; 451 and 455 touched only parts of it).
+      A WELL-HELD report with one cost survivor. Filter built from
+      `grep -rl` over twelve exports, every path checked to exist.
+      Five mutations, four caught, and what catches them is the
+      stale-hit family itself. Letting a scoped enumeration accept an
+      empty or `.` rel fails SEVEN rows, among them "a CRLF-to-LF
+      change under a text filter is not served from cache", "a content
+      change that preserves mtime is not served from the file-hash
+      memo", "editing an assume-unchanged input moves the key" and
+      "materialising a skip-worktree input moves the key". The scope
+      decision is load-bearing for the whole OID-trust story, not just
+      for speed. Scoping a workspace-wide run fails two; dropping
+      `markOutputsChanged`'s forward to the workspace partition fails
+      the row named for it; breaking `autocrlfConverts` fails its own
+      row and "core.autocrlf alone is enough to distrust index OIDs".
+      THE SURVIVOR is the 64-directory cap on scoping, and its own
+      comment says what it is: "Above 64 dirs (or when a project IS
+      the root) the whole-tree scan wins on arg/exec overhead anyway."
+      A perf CROSSOVER, not a correctness rule — either side of it the
+      enumeration answers the same, only slower or faster — so no test
+      can catch it and none should. 469's genre.
+      Worth noting rather than acting on: that comment carries a
+      measured number for the scoping benefit (75 ms → 11 ms on an
+      11k-file repo) and none for the crossover itself. Re-measuring
+      where 64 actually sits is a perf task rather than a pinning one,
+      and the number should stay free to move.
 
 ## In flight
 
