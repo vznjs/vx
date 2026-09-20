@@ -1695,3 +1695,239 @@ shape, untried: `vx watch`'s cycle against the run's admission dedup
 (430 opened it and only took the branch), and the sandbox's grants
 against what `cache.outputs` declares, which 428 touched from the read
 side only. Never end with "what next?".
+
+14ao. **Handoff after item 441 (2026-09-20).** Nine items since 14an,
+and the arc ends with the baseline honest and the method sharper than
+the finds.
+433–440 were the baseline: every row that read "the runtime" got read
+instead of believed, and five of them were vx's own code (435 a git
+fixture, 436 an `instanceof Error` guard, 437 a platform unit asserted
+instead of measured, 438 a flush pinned to one runtime's timing). 440
+gated seventeen reapi rows on the Bun floor the plugin itself declares,
+using the convention the repo already owns for bwrap and for a live
+endpoint. Twenty-three failing tests this morning, three now — and all
+three are honestly the harness or a Bun this repo does not claim to
+support. DO NOT chase them, and do not invent work to reach zero.
+441 is the one to copy. It came from asking which OTHER consumer of a
+shared rule applies it differently — not from reading a file — and it
+found a key that moved with `--download` and an output-collision
+refusal that missed the same path spelled two ways. The second came
+from grepping the class the first belonged to, which is a standing rule
+here and paid a defect this time.
+The method, after four corrections in one day (430, 436, 439, 440):
+mutate and run the whole suite; check the mutated area against the red
+baseline BEFORE reading a verdict; diff both yardsticks, failing TASKS
+and failing TESTS, in both directions; never let a check's exit hide
+behind `&& echo ok` or a pipe; and remember a fail-fast loop truncates
+the failing set, so run a package's files individually before believing
+a count.
+Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
+noise floor and no arms to A/B until the run path changes. The owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues.
+Next: the loop holds 413–448, so the trim is due at 452. For work, the
+shape that has paid every time in this arc is a claim whose halves live
+apart. Still untried: `vx watch`'s cycle against the run's admission
+dedup — REFUTED in 446, and 434 had already taken the pair proper —
+and the sandbox's grants against what `cache.outputs` declares, which
+428 touched from the read side only and 433 pinned from the derive
+side. And the shape
+441 adds to that list: a rule shared by three consumers where only some
+of them apply it — `asTrees`, `normalizeGlob` and `staticPrefix` each
+have more than two callers. Item 442 took `asTrees` the same turn and
+found the third consumer reading it differently, so the remaining one
+of that shape is `normalizeGlob`'s own callers.
+
+LEAD RESOLVED the same turn, and it corrects ME twice before it
+corrects anything else (2026-09-20, while probing 442). The lead was
+"a sandboxed task reported success having produced nothing, with no
+violation and no warning, contradicting a row that passes here".
+Both halves of that sentence were wrong, and the way each was wrong is
+the part worth keeping.
+There was no contradiction. The suite's row declares an explicit
+`sandbox: { allow: { read: [...] } }` with no write; my probe declared
+the bare baseline `sandbox: {}`. Two different configurations, so the
+two results never disagreed — I compared a row's CONCLUSION with a
+probe's, without comparing their fixtures.
+And vx did warn, in the exact words miss-save has for it:
+`[vx] app#build: cache.outputs matched no files (dist/**) — an empty
+artifact is saved; a later hit restores nothing`. My probe's logger
+implemented `taskStdout`/`taskStderr` and dropped `log.status`, which
+is the channel that line uses. A probe that silences a channel cannot
+report what that channel said — the same shape as 439's `&& echo ok`,
+one level up: I read an absence that my own instrument created.
+What the probing DID establish, item 443's and the only one of the two
+that is real:
+(a) `SandboxConfig` in `src/config.ts` — the type a user reads in
+their editor — says the baseline "may read its resolved
+`cache.inputs.files`, write the prefixes of its `cache.outputs.files`",
+and says it again on `read` ("beyond the resolved `cache.inputs.files`")
+and on `write` ("beyond the `cache.outputs.files` prefixes"). The code
+deliberately derives NOTHING from `cache` (owner, 2026-09-05; stated in
+`sandbox-request.ts`, pinned by 433, and `sandbox-request.ts:140` binds
+`sandbox.allow?.write ?? []`, never the cache). `schema.md` already
+says it correctly. So the prose doc is right, the code is right, and
+the TYPE's own comment promises a grant the sandbox does not make — on
+a security boundary. CLAUDE.md names this exactly: a comment claiming a
+guarantee the code lacks is a defect, de-claim or implement.
+(b) NOT A FINDING, and the third correction in this thread — recorded
+so that nobody "fixes" it. A write grant spelled as a bare literal
+directory, `sandbox: { allow: { write: ['dist'] } }`, becomes a
+placeholder FILE at `dist`, and the task dies on `mkdir: cannot create
+directory 'dist': File exists`. I measured that and was about to write
+it up as 442's ambiguity reaching the sandbox. It is a DECIDED
+behaviour, and both halves of the decision were already written down
+before I got there: `prepareOutputsForBind`'s own comment describes
+this exact scenario, dated 2026-09-16, down to the tool the user meets
+it from — "a literal that names nothing yet is a FILE — `dist/vx` for
+`bun build --outfile dist/vx`" — and concludes "so a directory is
+spelled `dist/`"; and `schema.md` says the same to users under "A write
+grant's shape". bwrap cannot bind a path that does not exist and vx
+cannot know which an absent grant means, so the spelling is the answer.
+This is 429's lesson with the grep actually done: I looked before
+claiming, and the claim did not survive. Never end with "what next?".
+
+15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
+    (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
+    (item 141) and four Nx repos (items 142–144, 150) are in.
+    Both gaps from the first Nx repos (item 142) are closed: `.mjs`
+    output is item 145, two targets on one output path item 146. Then the harness on more
+    Nx repos (owner: 3–5 popular ones; only
+    `nx:run-commands`, `nx:run-script`, a plain `command` and
+    `nx:noop` targets are supported, anything else is out): the
+    remaining candidate was storybook (483 targets inheriting a plain
+    `command`; its placeholders and root cwd map since item 147): its
+    install does not fit this box — the fetch step filled the 6 GB
+    left on the disk with the yarn cache alone (ENOSPC, 2026-09-11) —
+    so it waits for a bench host with room; redwood is dropped — its
+    `build` declares no outputs, so Nx's cache replays the log and a
+    restore arm restores nothing under either tool (REPOS.md). Parity
+    is the task graph as above.
+
+16. **Two cached tasks on one output path, when one depends on the
+    other.** Two of the five Nx repos have it: strapi's `build:types`
+    and refine's `types` write `dist/**/*.d.ts` into the `dist` their
+    package's `build` fills, and both declare `dist` as the output of
+    both targets; Nx caches both, vx leaves the dependent one uncached
+    (item 146 resolves the overlap at migration time). What blocks it
+    is the clean: vx removes a task's declared outputs before it runs
+    and before a restore, so a `types` miss under a `build` hit would
+    delete the `dist` that `types` reads. A design that admits it:
+    when B's outputs overlap A's and B depends on A, B's own output
+    set is the files its run ADDED or CHANGED (a snapshot of the
+    overlap before B runs, diffed after — size + mtime, the proof the
+    hit path already trusts), B's clean removes only that set, and B's
+    artifact holds only that set; the restore order follows the edge.
+    Cost: one stat walk of the overlap per B miss, none on a hit. The
+    catch, seen while writing this: refine's `types` ADDS nothing —
+    `build` is `tsup && node ../shared/generate-declarations.js` and
+    `types` is the second half again, so it REWRITES `build`'s `.d.ts`
+    files with the same bytes and new mtimes. Under the design above
+    B's own set is empty (same bytes) but A's proof is size + mtime,
+    so the next no-op finds A's outputs moved and restores them — a
+    restore where there was nothing to restore, every run. Either the
+    proof compares content for files a downstream task touched (a hash
+    per overlapped file, the cost the proof avoids by design), or a
+    rewrite-in-place stays refused and only additions are admitted.
+    strapi's `build:types` (tsc into the `dist` rollup filled) is the
+    addition case; refine's is the rewrite. Not started; do it if a
+    third repo shows the addition shape, and leave the rewrite refused.
+    THE DESIGN NOTE IS WRITTEN (item 421,
+    `docs/design/overlapping-outputs-2026-09.md`): read it first, because
+    it found a conflict this sketch does not mention — point 4's "restore
+    order follows the edge" contradicts the restore tier, and an
+    implementation must add a second stability axis (where a task WRITES,
+    not only where it reads) before a narrowed artifact is safe.
+
+17. DONE 2026-09-12 as item 158 — the producing execution's usage rides
+    the artifact's sidecar; a hit's entry is the history's record.
+18. DONE 2026-09-15 as item 176 — measured a 21% loss (132 vs 160 s
+    on 92 builds); cores are declared, never learned.
+
+19. DONE 2026-09-16 as item 216, as a per-RUN lock (the per-task grain is a refinement, see 216). Was: **A per-task lock for two runs on one workspace (from item 215).**
+    Two vx processes that clean and restore the same output tree race;
+    today the loser fails plainly ("was interrupted … another vx run").
+    A per-task advisory lock (`flock` on `<cacheDir>/locks/<taskId>`,
+    taken around clean + restore or execute, released with the task)
+    would make the second run wait for the first and then see its
+    outputs current. Cost to measure before shipping: one open + flock
+    per task on the warm path (expected microseconds against a 0.2 ms
+    task floor), and what a waiting run prints (the admit-held line's
+    shape, item 171). Not started.
+
+20. DONE 2026-09-16 as item 229 — the retained copy is bounded (8 MiB head + 8 MiB tail, the middle named). Was: **A task's captured output has no cap.** Measured 2026-09-16
+    (item 225's probe): a task printing 200 MB costs vx 620 MB of RSS
+    on the miss AND on every hit (the string, its encodings, the row),
+    and its stdout lands in `cache.db` whole — 193 MB of `.vx/cache`
+    beside an 18 KB `tar.zst` that holds the same bytes compressed —
+    since the replay reads the row, not the archive. A realistic chatty
+    suite is 5–20 MB (62 MB of RSS, a 20 MB row), so this is an
+    outlier's cost today. When it is not: bound what a task's capture
+    RETAINS (chunks, a head and a tail, the dropped middle counted and
+    said in the replay — `[vx] … 180 MB of output not kept`), store
+    the same bounded text once, and measure RSS per chatty task before
+    and after. Not started; the number that decides is a real
+    workspace whose logs pass ~50 MB per task.
+
+21. DONE 2026-09-16 as item 239 — refused before the evaluation, the install named. Was: **A config's bare import that no `node_modules` can serve reaches
+    the npm registry before it fails.** Bun auto-installs a package a
+    module cannot resolve when no `node_modules` exists above it —
+    measured 2026-09-16: sixteen connections to the registry and 150 ms
+    before "cannot find", and a sandbox violation on the macOS job; with
+    a `node_modules` present, 0 connections and 1 ms; `bun --no-install`
+    stops it too. A fresh clone before its install, or a typo in an
+    import, should be refused by vx before evaluation: `config-imports`
+    already lists a config's specifiers, so a bare one with no
+    `node_modules/<name>` above the config is a `UserError` naming the
+    install, never an import. Not started; the pin is a config importing
+    a name no `node_modules` serves, evaluated with no network.
+
+14ap. **Handoff after item 452 (2026-09-20).** Eleven items since 14ao,
+and the arc has one shape running through all of them: the correctness
+sweep, and the thesis 427 left behind about WHERE it pays.
+442–446 finished the halves-apart query on the three path rules and
+then retired it, honestly — 446 pointed the same question at the
+sibling packages and came back mostly refuting, so the query stopped
+being the default.
+447–449 revived the method on the three large files Next 8(d) named
+and 427 had not taken: `orchestrator/run.ts`, `exec/sandbox-runtime.ts`
+and `cli/watch.ts`. Ten claims, five finds, five refutations, and
+`watch.ts` alone gave three — the richest single file of the arc, which
+is the thesis holding rather than luck, because watch is where a
+helper and the loop that asks it sit furthest apart. With `cache.ts`
+(427's zero) that closes 8(d)'s four.
+450 and 451 are the two that matter most, and neither came from a line
+count. 450 root-caused the gate's OWN flapper instead of re-running it,
+and both my theories were wrong before the third was right: a
+two-asker race on the placeholder sweep where the union that was
+supposed to close it only covers an asker that FINISHED. 451 took the
+`inputs.ts` + `git-inputs.ts` pair and found a STALE HIT — a scoped run
+lists only the project dirs, so a workspace-root `.gitattributes` was
+invisible to the gate that decides whether to ask `git check-attr`, and
+`--filter app` replayed an artifact the same fixture got right under
+`--all`. A perf decision in one function silently deciding correctness
+in another.
+What to carry, beyond the method itself. First: pick the next target by
+CLAIM DENSITY, not by line count — every find since 441 came from two
+halves in different files or stages, and the two largest came from a
+flaky test and a pair, not from a big file. Second: probe the tool
+rather than trust a comment about it. 451(a) turned on running `git
+ls-files -v` and reading the letters (`h` for assume-unchanged, `S` for
+skip-worktree) instead of believing the sentence next to the code, and
+the untested half was the one the sentence covered least.
+UNRESOLVED, and recorded as unresolved rather than explained: main's
+push run for `05d428a` failed one task of 44 in the Linux job while the
+identical tree was green on two PR runs. The task's NAME was never
+obtained — the log tail did not reach its block and the signed blob URL
+is refused by this container's egress proxy — so the cause is unknown.
+450's race fits the shape (red under parallel load, green alone) but
+that is a guess, and a guess is not a cause. If it recurs, get the name
+with `get_job_logs` and `failed_only` before theorising.
+NEXT, in order: the two `sweepPlaceholders` call sites on
+`execute-task.ts`'s ONE-SHOT path (~588, ~596), which 450 did not
+touch and which may carry the same two-asker shape; then
+`workspace/config-eval.ts` + `orchestrator/projects.ts`, the staged
+load every reader shares. `attributesAbove` has no worktree or
+submodule fixture either — it derives the repo root from `git
+rev-parse --git-dir` and stops at the filesystem root, which is
+untested. Never end with "what next?".
