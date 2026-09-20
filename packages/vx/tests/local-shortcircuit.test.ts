@@ -380,6 +380,134 @@ describe('local cache short-circuit', () => {
   )
 
   it(
+    'a CROSS-PROJECT dependent inherits its dep’s instability, which no producer set carries',
+    async () => {
+      // The third carrier in `deriveStableKeys`, and the one nothing drove.
+      // 426 pinned the producer-set fold; this is the `unstable` FLAG that
+      // travels along an edge, and removing it alone left the whole repo
+      // green because the fold covers the same ground wherever the dependent
+      // shares a project with the producer.
+      //
+      // The arrangement that isolates it inverts the fold rows above: the
+      // producer and the unstable reader are the SAME project (so the reader
+      // is caught by the direct gate), and the DEPENDENT is another project
+      // reading only its own dir. Its producer set is {ia}, its own project
+      // is ib, and the gate's documented answer for that is STABLE ("a
+      // project-relative reader whose only upstream producer is ANOTHER
+      // project"). So the flag is the only thing that can carry.
+      //
+      // It has to carry: ib#app folds ia#read's key, and that key is
+      // PRELIMINARY until ia#codegen has run. Probing ib#app up front would
+      // key it on a number that is not yet the number.
+      await addProject(fixture.root, 'ia', {
+        files: { 'src/seed.txt': 'seed' },
+        config: `
+          export default {
+            tasks: {
+              codegen: {
+                exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > generated.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] } },
+              },
+              read: {
+                dependsOn: ['codegen'],
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'ib', {
+        files: { 'src/m.txt': 'm' },
+        config: `
+          export default {
+            tasks: {
+              app: {
+                dependsOn: ['ia#read'],
+                exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      const cold = await run({ cwd: fixture.root, tasks: ['app'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+
+      const c = await classify(fixture, ['app'])
+      expect(c.preProbedIds.has('ib#app')).toBe(false)
+      expect(c.restoreTier.has('ib#app')).toBe(false)
+      // CONTROLS. `ia#read` is unstable by the GATE, so it is the source of
+      // the flag rather than another inheritor; and the producer, with
+      // nothing upstream of itself, keeps its own short-circuit — so the
+      // fixture is not simply classifying everything unstable.
+      expect(c.restoreTier.has('ia#read')).toBe(false)
+      expect(c.restoreTier.has('ia#codegen')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a GROUP carries its members’ instability to the group’s dependents',
+    async () => {
+      // The same flag across a group. A group is never gated (no cache), so
+      // the ONLY way instability reaches past it is the member check — and
+      // dropping that also left the whole repo green. Note the difference
+      // from the workspace-output row below, which needs the group to stay
+      // STABLE: there the producer's own dependents are unstable outright,
+      // so a group whose member is the producer inherits nothing.
+      //
+      // ga#codegen → ga#read (unstable by the gate) → ga#all (group) →
+      // gb#app (another project, reads only its own dir).
+      await addProject(fixture.root, 'ga', {
+        files: { 'src/seed.txt': 'seed' },
+        config: `
+          export default {
+            tasks: {
+              codegen: {
+                exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > generated.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] } },
+              },
+              read: {
+                dependsOn: ['codegen'],
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+              all: { dependsOn: ['read'] },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'gb', {
+        files: { 'src/m.txt': 'm' },
+        config: `
+          export default {
+            tasks: {
+              app: {
+                dependsOn: ['ga#all'],
+                exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      const cold = await run({ cwd: fixture.root, tasks: ['app'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+
+      const c = await classify(fixture, ['app'])
+      expect(c.preProbedIds.has('gb#app')).toBe(false)
+      expect(c.restoreTier.has('gb#app')).toBe(false)
+      // CONTROLS, as above.
+      expect(c.restoreTier.has('ga#read')).toBe(false)
+      expect(c.restoreTier.has('ga#codegen')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the workspace-output flag crosses a GROUP intermediate too',
     async () => {
       // The second half of the same fold. `wsOutputUpstream` is a separate
