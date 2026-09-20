@@ -135,6 +135,12 @@ describe('package boundaries', () => {
       'machineMemoryBytes',
       'machineParallelism',
       'nearMatches',
+      // Widened 2026-09-20 (item 445): `@vzn/vx-migrate` asks the same
+      // "do these two output globs provably overlap?" question at
+      // migration time, and asked it with a COPY of core's function. The
+      // copy missed items 441 and 442, so the migration reported clean on
+      // configs core then refused to load. One rule, one place.
+      'outputsOverlap',
       'planRun',
       'prepareRun',
       'quoteTsLiteral',

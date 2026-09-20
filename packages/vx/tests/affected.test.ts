@@ -866,6 +866,43 @@ describe('workspaceGlobsMatch', () => {
     expect(workspaceGlobsMatch(['!shared/**'], 'shared/a.txt')).toBe(false)
     expect(workspaceGlobsMatch([], 'shared/a.txt')).toBe(false)
   })
+
+  it('reads a spelling the way the KEY reads it, or --affected skips a stale project', () => {
+    // This function decides whether a changed workspace-root file marks a
+    // project affected; `resolveWorkspaceFiles` decides whether the same
+    // file is folded into that project's key. They have to agree, and on
+    // five spellings they did not: the key folded the file and this
+    // matched nothing, so `vx run --affected` left out a project its own
+    // key called stale (item 445). `asTrees` on both sides is what the
+    // resolver does.
+    for (const glob of ['./shared/**', 'shared', 'shared/', 'shared//**', 'shared/./**']) {
+      expect([glob, workspaceGlobsMatch([glob], 'shared/schema.txt')]).toEqual([glob, true])
+    }
+  })
+
+  it('a negation reads the same way, so a loose spelling still subtracts', () => {
+    // The other half of the partition. Left raw, `!./shared/ignored/**`
+    // excluded nothing, so a file the config meant to drop stayed an
+    // owner — the opposite error to the row above, and the one that makes
+    // `--affected` too WIDE.
+    expect(workspaceGlobsMatch(['shared/**', '!./shared/ignored/**'], 'shared/ignored/a.txt')).toBe(
+      false,
+    )
+    expect(workspaceGlobsMatch(['shared/**', '!shared/ignored'], 'shared/ignored/a.txt')).toBe(
+      false,
+    )
+  })
+
+  it('CONTROL: the folding does not make an unrelated path match', () => {
+    // Passes with and without the fix, which is what makes it a control:
+    // otherwise the two rows above would be satisfied by a function that
+    // says yes to everything, and `--affected` that selects everything is
+    // no longer `--affected`.
+    for (const glob of ['./shared/**', 'shared', 'shared/']) {
+      expect([glob, workspaceGlobsMatch([glob], 'other/schema.txt')]).toEqual([glob, false])
+      expect([glob, workspaceGlobsMatch([glob], 'shared-ish/schema.txt')]).toEqual([glob, false])
+    }
+  })
 })
 
 describe('affectedProjects workspaceFiles gate', () => {

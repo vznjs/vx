@@ -25,7 +25,7 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (42 runtime symbols, a deliberate
+through two seams: the public API (43 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map

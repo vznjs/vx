@@ -435,8 +435,16 @@ function isLiteralGlob(g: string): boolean {
  *
  * Neither is a widening. Both read the declaration the way the code that
  * deletes reads it, which is the only reading that decides the hazard.
+ *
+ * Exported through the façade because `@vzn/vx-migrate` asks the same
+ * question at MIGRATION time — it uncaches the losers so the generated
+ * config loads — and it used to ask it with a copy of this function. The
+ * copy did not get items 441 and 442, so it reported clean on configs
+ * core then refused, including `outputs: ['dist']` against
+ * `dist/app.js`, which is the commonest turbo.json shape there is (item
+ * 445). One rule, one place: the copy is gone.
  */
-function outputsOverlap(rawA: string, rawB: string): boolean {
+export function outputsOverlap(rawA: string, rawB: string): boolean {
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
       if (isLiteralGlob(a) && isLiteralGlob(b)) {

@@ -1179,6 +1179,49 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       places nobody was looking at. Trace every consumer of a value
       before removing it, then measure what removing it does to the
       claims OTHER tests make.
+445.  DONE (2026-09-20, the last rule of the halves-apart shape —
+      `normalizeGlob`'s own callers — and it found TWO consumers
+      reading it differently, one of them created by items 441 and 442
+      themselves).
+      The query was mechanical: every `new Bun.Glob(` on a path that
+      comes from user config, then ask whether the rule is applied
+      before the match. Nine sites, two gaps.
+      (a) `@vzn/vx-migrate`'s `shared-outputs.ts` carried a verbatim
+      COPY of core's `outputsOverlap`, and said so: "core's
+      task-graph.ts, the same conservative test". It stopped being the
+      same test the moment 441 and 442 widened core's, and the file's
+      own header says what that costs — "the refusal came at load time,
+      after the migration had reported clean". Measured: the copy
+      missed `./dist/**` vs `dist/**`, `dist//**` vs `dist/**`, and the
+      literal `dist` against both `dist/app.js` and `dist/**` — and
+      `outputs: ["dist"]` is the commonest turbo.json shape there is
+      (442), so this is the ordinary Turbo migration, not an exotic
+      one. Fixed by deleting the copy: `outputsOverlap` is exported
+      through the façade (a deliberate widening, Rule 3, snapshot
+      updated with the reason) and vx-migrate asks core's own question.
+      (b) `workspaceGlobsMatch` in `workspace/affected.ts` decides
+      whether a changed workspace-root file marks a project affected,
+      and its doc says it "mirrors `resolveWorkspaceFiles`' partition".
+      The resolver runs `asTrees` on both sides; the mirror built raw
+      globs. Five spellings where the KEY folds the file and the mirror
+      matched nothing, so `vx run --affected` left out a project its
+      own key called stale — a missed rebuild, which is the one
+      direction selection may never take. `asTrees` on both sides now.
+      The rest of the sweep, recorded because a refutation is worth as
+      much: `workspace.ts` already normalizes at its partition (with a
+      2026-09-10 comment recording that exact fix), and `filter.ts`,
+      `sandbox-runtime.ts` and `sandbox-request.ts` are safe by
+      construction — `path.resolve` / `path.relative` / `path.join`
+      fold the spellings before the glob is built, which is why 441's
+      two callers disagreed in the first place. One site left
+      deliberately: the sandbox's `ignore` patterns, documented as
+      patterns rather than paths, where a missed match still REPORTS
+      the violation — the fail-safe direction.
+      Method note: the (b) rows first shipped with a "CONTROL" that
+      failed without the fix, because I had put a real fix assertion
+      (a loosely-spelled negation) inside it. A control that moves with
+      the change is not a control; it was split into its own row so the
+      differential means what it says.
 
 ## In flight
 
@@ -1513,7 +1556,7 @@ Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
 No open issues.
-Next: the loop holds 413–444, so the trim is due at 452. For work, the
+Next: the loop holds 413–445, so the trim is due at 452. For work, the
 shape that has paid every time in this arc is a claim whose halves live
 apart. Still untried: `vx watch`'s cycle against the run's admission
 dedup (430 opened it and only took the branch), and the sandbox's

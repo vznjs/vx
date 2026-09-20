@@ -1,27 +1,22 @@
 // Two targets of one project on one output path. vx cleans a task's
 // declared outputs before it runs and before a cache-hit restore, so the
-// loader refuses two cached tasks whose outputs provably overlap (core's
-// task-graph.ts, the same conservative test: equal literals, a literal a
-// glob matches, identical globs). strapi (2026-09-11) declares `build`,
-// `build:code` and `build:types` all on `dist/**`, and the refusal came
-// at load time, after the migration had reported clean. The mapping
-// resolves it: the task with a `^` edge keeps its cache (it is the one a
-// dependant waits for), or the first declared when none has one; every
-// other task on that path runs uncached, with a todo that names the
-// keeper and the fix (its own output path).
+// loader refuses two cached tasks whose outputs provably overlap. strapi
+// (2026-09-11) declares `build`, `build:code` and `build:types` all on
+// `dist/**`, and the refusal came at load time, after the migration had
+// reported clean. The mapping resolves it: the task with a `^` edge keeps
+// its cache (it is the one a dependant waits for), or the first declared
+// when none has one; every other task on that path runs uncached, with a
+// todo that names the keeper and the fix (its own output path).
+//
+// The overlap question is core's own `outputsOverlap`, asked through the
+// façade. It used to be a COPY of it here, and the copy stopped being the
+// same test the moment core's grew: `./dist/**` against `dist/**` (item
+// 441) and the literal `dist` against `dist/app.js` (item 442) are
+// refused by the loader and were missed here — so the migration reported
+// clean on a config core would not load, which is the exact failure this
+// file exists to prevent (item 445).
 
-import type { GeneratedTask } from '@vzn/vx'
-
-function isLiteralGlob(g: string): boolean {
-  return g.search(/[*?[\]]/) === -1
-}
-
-function outputsOverlap(a: string, b: string): boolean {
-  if (isLiteralGlob(a) && isLiteralGlob(b)) return a === b
-  if (isLiteralGlob(a)) return new Bun.Glob(b).match(a)
-  if (isLiteralGlob(b)) return new Bun.Glob(a).match(b)
-  return a === b
-}
+import { outputsOverlap, type GeneratedTask } from '@vzn/vx'
 
 interface Cached {
   index: number

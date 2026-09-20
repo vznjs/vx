@@ -8,7 +8,7 @@
 
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import { UserError, gitSpawnRefusal, isExecutableMissing } from '../util/index.js'
+import { asTrees, UserError, gitSpawnRefusal, isExecutableMissing } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners } from './config-imports.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
@@ -212,17 +212,27 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
  * with no positive glob nothing matches. Paths are workspace-root-relative and
  * POSIX-separated, which is the form both git enumeration and the glob
  * resolver already speak.
+ *
+ * `asTrees` on BOTH sides, because the resolver runs it on both and this
+ * has to answer the same question the KEY answers. It did not, and the
+ * gap decided whether a changed file rebuilt anything: with
+ * `workspaceFiles: ['./generated/**']` or the literal `['generated']` —
+ * five spellings in all — the resolver folds `generated/x.txt` into the
+ * project's key while a raw `Bun.Glob` matched none of them, so
+ * `--affected` left the project out of a run its own key says is stale
+ * (item 445). A mirror that normalizes differently from what it mirrors
+ * is not a mirror.
  */
 export function workspaceGlobsMatch(globs: readonly string[], rel: string): boolean {
-  const positive: Bun.Glob[] = []
-  const negative: Bun.Glob[] = []
+  const positive: string[] = []
+  const negative: string[] = []
   for (const entry of globs) {
-    if (entry.startsWith('!')) negative.push(new Bun.Glob(entry.slice(1)))
-    else positive.push(new Bun.Glob(entry))
+    if (entry.startsWith('!')) negative.push(entry.slice(1))
+    else positive.push(entry)
   }
   if (positive.length === 0) return false
-  if (!positive.some((g) => g.match(rel))) return false
-  return !negative.some((g) => g.match(rel))
+  if (!asTrees(positive).some((g) => new Bun.Glob(g).match(rel))) return false
+  return !asTrees(negative).some((g) => new Bun.Glob(g).match(rel))
 }
 
 /**
