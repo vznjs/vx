@@ -1892,6 +1892,36 @@ non-empty string` is caught by exactly ONE row, and it is the
       `|`-delimited loop variable — the repo already has this lesson
       for `pkill -f` patterns matching their own shell.
 
+500.  DONE (2026-09-20, `git-inputs.ts`'s `gitPathspecs` — four
+      conjuncts deciding whether git scans a handful of directories or
+      the whole tree, and the function had NO direct row: the only
+      mention of it in the tests was a header comment).
+      Swept clause by clause. `!workspaceWide` is pinned elsewhere (2
+      rows in the workspace-wide partition suite) and the
+      project-is-the-root guard is pinned hard (8+ rows, including the
+      boundary and stale-hit suites). The `> 0` guard and the `<= 64`
+      CAP are not: moving the cut to 63, or removing it entirely,
+      passes the whole suite.
+      That is expected and it is why the cap needed a row anyway: both
+      sides of a perf boundary are CORRECT, so no behavioural test can
+      ever separate them, and the number stops being a decision and
+      becomes a coincidence. It is a measured decision (75 ms → 11 ms
+      scoped on an 11k-file repo; above the cut the arg and exec
+      overhead wins), so the row asserts BOTH sides — 64 dirs still
+      scope, 65 do not.
+      Five rows now, one per clause, each reddening alone: scoped,
+      workspaceWide, no projects, project-is-root, and the cap. Five
+      differentials, five singles.
+      Method note, correcting 499's new rule in the same breath it was
+      written: the fast single-file pre-check said all five clauses
+      survived, and TWO of them were pinned — in other files. So the
+      pre-check is a filter for whether to BELIEVE a survivor, never a
+      substitute for the verdict: it can only say "not here". 499's
+      rule stands in the direction it was written (a survivor is
+      confirmed against the obvious file before the verdict is
+      trusted), but the converse does not follow, and I acted as if it
+      did for one step.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
