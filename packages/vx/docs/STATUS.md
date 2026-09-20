@@ -1017,6 +1017,46 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       and appears exactly ONCE across two punches of the same grant, so
       a thousand-task run says it once. Red 3 of 3 under the mutation.
 
+458.  DONE (2026-09-20, and it is a QUERY rather than a file: 444, 450
+      and 457 were all the same shape — a message that exists because
+      the failure is otherwise inexplicable, held by nothing — so ask
+      it of the whole repo at once). Enumerated every diagnostic in
+      `src/`, then checked which have a row asserting their text.
+      TWO CORRECTIONS TO MY OWN METHOD, both caught by the differential
+      rather than by care, and both worth more than the item's finds.
+      First: the batch "survival" run was INVALID. My silencing inserted
+      a marker at the template literal's OPENING backtick, which
+      prefixes the message and leaves the distinctive phrase intact —
+      so a row asserting that phrase would still pass, and the green
+      run proved nothing. Caught only because the rows I then wrote
+      passed under the same "silencing", which is the differential
+      doing its job. Redone by replacing the PHRASE itself.
+      Second: the coverage table was wrong. `teardown timed out after`
+      read as zero-coverage and is in fact pinned by a row named "a
+      teardown that never settles is named, not silently dropped" — it
+      asserts a different substring. That is item 429's lesson exactly:
+      grep proves absence only where you grep. One candidate removed
+      from the list before any work was done on it.
+      The properly-established survivors: the nameless-package skip,
+      the scheduler's `onStart`/`onFinish` observer isolation, the
+      sandbox cleanup failure, and the `--summarize` / `--profile`
+      write failures. All silenced together, whole repo green.
+      PINNED the three where the message is the only trace of something
+      the user asked for. A nameless manifest WITH a vx config vanishes
+      (vx identifies projects by name), and the existing neighbour row
+      covers only the silent half — the config-less one — so the new
+      row asserts the notice names the directory AND stays silent for
+      the config-less sibling, which is the distinction the warning
+      exists to draw. `--summarize` and `--profile` are asked for
+      explicitly: the new rows point each at a path whose parent is a
+      FILE, and require the run to stay GREEN (the tasks did their
+      work) while naming the artifact it could not write. All three red
+      with their phrase removed.
+      LEFT UNPINNED and recorded: the observer-isolation and
+      sandbox-cleanup notices. Both are real gaps of the same class;
+      they are named here so the next session can take them without
+      re-running the query.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family

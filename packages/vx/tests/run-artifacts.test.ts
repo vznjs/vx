@@ -5,12 +5,14 @@
 // each consumer (CI summaries, chrome://tracing) depends on.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { writeRunProfile, writeRunSummary } from '../src/orchestrator/run-artifacts.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
+import { run, type Logger } from '../src/orchestrator/index.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 function makeNode(
   project: string,
@@ -567,4 +569,69 @@ describe('writeRunProfile', () => {
     // ts is necessarily lossy past 2^53 us, but should not be NaN.
     expect(Number.isFinite(parsed.traceEvents[0]!.ts)).toBe(true)
   })
+})
+
+// The writers above are pinned; the CALLER's failure handling was not.
+// `--summarize` and `--profile` are asked for explicitly, so when the
+// write fails the user gets no file — and the status line is the only
+// thing that says why. Silencing both broke nothing in the repo (item
+// 458), which is the same shape as 444, 450 and 457: a message that
+// exists because the failure is otherwise inexplicable, held by
+// nothing. A failed artifact write must also NOT fail the run: the
+// tasks did their work.
+describe('an artifact write that fails is a status line, not a failed run', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-artifact-fail-' })
+    await addProject(
+      root,
+      'app',
+      "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
+    )
+    // A FILE where a directory has to be: the writer's mkdir gets ENOTDIR.
+    await writeFile(path.join(root, 'blocker'), 'not a directory\n')
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const statuses = (): { log: Logger; lines: string[] } => {
+    const lines: string[] = []
+    return {
+      lines,
+      log: {
+        status(line: string) {
+          lines.push(line)
+        },
+        taskStart() {},
+        taskStdout() {},
+        taskStderr() {},
+        taskComplete() {},
+      } as unknown as Logger,
+    }
+  }
+
+  // The option is `summarize`; the artifact it writes is the `summary`.
+  for (const [kind, noun] of [
+    ['summarize', 'summary'],
+    ['profile', 'profile'],
+  ] as const) {
+    it(`names the ${noun} it could not write, and the run still succeeds`, async () => {
+      const { log, lines } = statuses()
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        [kind]: path.join(root, 'blocker', 'out.json'),
+        log,
+        handleSignals: false,
+      })
+      // The run is green: the task ran, only the artifact did not land.
+      expect(summary.ok).toBe(true)
+      const said = lines.filter((l) => l.includes(`failed to write ${noun}`))
+      expect(said).toHaveLength(1)
+      // Actionable means naming the cause, not just the verb.
+      expect(said[0]).toMatch(/blocker/)
+    }, 30_000)
+  }
 })
