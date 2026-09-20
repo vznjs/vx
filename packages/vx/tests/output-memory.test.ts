@@ -110,6 +110,17 @@ describe('logger per-task buffering', () => {
       // is 2x this bound, while the observed noise is ~10x below it. Verified
       // by mutation — making `none` retain fails this line.
       expect(noneMany - noneFew).toBeLessThan(EXTRA_MIB * 0.5)
+
+      // `hash-only` is the OTHER half of the same boundary — the set is
+      // exactly {none, hash-only}, the two modes whose contract promises
+      // never to print task output — and only `none` was asserted, so
+      // dropping `hash-only` from `discardsOutput` left the whole repo
+      // green. It prints one audit line per task and no log bytes ever,
+      // so no behaviour row can see it retain them; this measurement is
+      // the only thing that can.
+      const hashFew = probeRssMib(loggerProbe('hash-only', FEW_CHUNKS))
+      const hashMany = probeRssMib(loggerProbe('hash-only', MANY_CHUNKS))
+      expect(hashMany - hashFew).toBeLessThan(EXTRA_MIB * 0.5)
     },
     TIMEOUT,
   )

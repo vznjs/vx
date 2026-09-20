@@ -505,9 +505,20 @@ describe('defaultLogger visibility matrix — overrides', () => {
     log.taskComplete(hit, mkOutcome(hit, 'cache-hit', { restored: true }))
     expect(out.text()).toBe('')
     const bad = mkNode('one#c')
+    log.taskStdout(bad, 'partial work\n')
     log.taskStderr(bad, 'oops\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
-    expect(out.text()).toContain('failed  no-cache one#c')
+    log.runEnd?.()
+    const text = out.text()
+    // The frame's CONTENT, not just the one-liner. This mode's whole
+    // contract is that a failed task's log reaches the user, and the
+    // one-liner survives the logger dropping every chunk on arrival:
+    // adding `errors-only` to `discardsOutput` left the repo green while
+    // the real CLI printed a frame with no STDOUT/STDERR section at all —
+    // `failed (exit 1)` and nothing about why.
+    expect(text).toContain('failed  no-cache one#c')
+    expect(text).toContain('partial work')
+    expect(text).toContain('oops')
   })
 
   it('hash-only: one audit line per task, key included, zero log output', () => {
