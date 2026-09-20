@@ -1409,6 +1409,38 @@ built behind a failure`). Two claims were not.
       count is not the way to the next one; the next reader should look
       for a claim whose halves live apart, which is what 424 and 426
       both turned out to be.
+428.  DONE (2026-09-20, and 427's prediction paid on the first try: the
+      halves here are `exec/sandbox-binds.ts` and the promise the DOCS
+      make about it). The sandbox is how a task proves what it touches
+      — `--verify` was removed 2026-09-04 because the sandbox replaced
+      it — so an undeclared in-project read is the stale-hit vector it
+      exists to catch. Measured, five configurations, one variable at a
+      time:
+      `sandbox: {}` reading its own `src/x.txt` → failed, 1 violation.
+      `read: ['src/**']` reading `src/x.txt` → success (control).
+      `read: ['src/**']` reading an undeclared `undeclared.txt` →
+      failed, 1 violation. The same task with `write: ['out.txt']`
+      added → SUCCESS, 0 violations, and `out.txt` held the undeclared
+      file's bytes. `write: ['dist/out.txt']` instead → failed again,
+      1 violation, while `dist/sibling.txt` read fine.
+      The mechanism is deliberate and documented IN CODE: on Linux a
+      grant is a mount, bwrap cannot rename onto an active file mount
+      (every atomic writer stages beside its target and renames), so
+      `bindableWrites` binds a file-shaped grant as its DIRECTORY. The
+      code names the cost on the write side — "the task may write its
+      siblings". Nobody wrote down the READ side, which is the one that
+      decides a cache key: that directory is readable in full, and
+      there is no denial for the detector to report, because the read
+      simply succeeds.
+      So the defect is the claim, not the code: `schema.md` said the
+      baseline grants "not even its own project directory" and that an
+      undeclared read fails the task, `cli.md` said any undeclared
+      touch fails, and the guide said only that a write grant is
+      readable. All three now say what the boundary actually is and
+      what moves it — keep declared outputs in a SUBDIRECTORY and the
+      rest of the project stays provable. Two rows pin it both ways,
+      Linux-only by construction (macOS seatbelt matches paths rather
+      than mounting, so a file grant stays exact there).
 
 ## In flight
 

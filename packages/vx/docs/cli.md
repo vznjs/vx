@@ -961,6 +961,11 @@ Policy: **fail on violation.** Any task that touches a path it didn't
 declare either fails naturally (Linux: `ENOENT` from bwrap's
 mount-namespace hide) or is flagged via the macOS violation store
 and forced to exit non-zero. No cache is written for a failed task.
+"Didn't declare" means the grants, which on Linux are wider than they
+read: a file-shaped write grant is bound as its whole directory, so
+every file beside it is readable without a violation — `schema.md`
+§ `exec.sandbox` has the shape and the remedy (outputs in a
+subdirectory).
 
 `vx run` lazily initialises the sandbox runtime only when at least
 one task in the graph declares `exec.sandbox`. If runtime deps are

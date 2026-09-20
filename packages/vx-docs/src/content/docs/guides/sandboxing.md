@@ -101,7 +101,13 @@ sandbox: {
 
 - **`read` / `write`** — paths or globs, project-relative, absolute, or
   `~`-expanded. A write grant is readable too (`tsc --incremental`
-  re-reads its own `.tsbuildinfo`). A write path that does not exist
+  re-reads its own `.tsbuildinfo`), and on Linux it reads wider than it
+  looks: a grant is a mount, bwrap cannot rename onto an active file
+  mount, so a file-shaped grant is bound as its whole DIRECTORY —
+  readable and writable. `write: ['out.txt']` in the project root makes
+  every root file readable, undeclared and unreported; `write:
+  ['dist/out.txt']` widens `dist/` only and leaves the root denied. Keep
+  declared outputs in a subdirectory. A write path that does not exist
   yet is created before the task starts, and a literal is a **file**
   (`'dist/vx'`); a directory the task will create ends in a slash
   (`'coverage/'`) or is a glob (`'dist/**'`). Spell a directory as a
@@ -153,7 +159,11 @@ process walks from `/` down to its own cwd, and no config can declare
 that away.
 
 What *is* reported is an undeclared touch of the project's own files,
-because that is the read that makes a cache key wrong.
+because that is the read that makes a cache key wrong — as far as the
+grants leave it undeclared. A read the policy allows is not a violation,
+and on Linux a file-shaped write grant allows its whole directory (see
+`read` / `write` above), so outputs in a subdirectory are what keep the
+rest of the project provable.
 
 To reach a path outside the project on purpose — `~/.npmrc`, `/etc/ssl`,
 a workspace-level fixture — declare it and it is granted.
