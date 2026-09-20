@@ -1198,6 +1198,58 @@ Segmentation fault`, no failing row. Shard-9 does not hold
       Left unpinned and NOT added to the task baseline — it is Bun's
       crash, not a vx behaviour, and a baseline entry would hide a
       real shard-9 failure later. Noted under In flight instead.
+484.  DONE (2026-09-20, `orchestrator/run.ts` — 1048 lines). A HELD
+      report with one classified survivor, and the best-held file swept
+      in this loop. Seven mutations, six caught, each by rows that NAME
+      the claim rather than noticing it sideways.
+      The `VX_TASK_TIMEOUT` rung carries four separate claims and each
+      has its own row: removing the clamp fails "a value past the timer
+      ceiling is CLAMPED, not passed through"; accepting 0 fails "0 and
+      negatives are IGNORED — 0 never means 'no timeout'"; accepting a
+      non-integer fails "non-integer and non-numeric junk is IGNORED";
+      and putting the env rung ahead of the flag fails "RunOptions.
+      timeout (`--timeout`) overrides the env default" AND a docs-drift
+      row asserting every page states all four rungs. That is the
+      four-source precedence chain 461 and 468's shape would predict
+      trouble in, isolated correctly at every rung.
+      The nested-`vx run` refusal fails two rows, including the
+      TERMINATING shape (`ci` shelling out to `vx run lint`) that is
+      easy to forget beside the unbounded-fork one.
+      The teardown ORDER is held too, which is the one that surprised:
+      "BEFORE teardownPlugins, and that order is load-bearing" —
+      inverting it (plugins down before the upload drain) fails "a
+      third-party layer declaring hasRemote gets the prefetch pass and
+      the upload drain". An ordering constraint whose violation is
+      SILENT (a plugin's client released under an in-flight upload,
+      "losing every remote write with nothing but a warning") is
+      exactly the kind that usually goes unasserted.
+      Measured, because the clamp's comment made a platform claim
+      nobody had checked — the rule that a platform unit is measured,
+      never asserted. `setTimeout` at `MAX_TIMEOUT_MS` (2**31-1) waits
+      properly; at MAX+1 Bun emits `TimeoutOverflowWarning: ... does
+not fit into a 32-bit signed integer. Timeout duration was set to
+1` and the timer fires at 3.8 ms. So "would mean 1 ms — killing
+      every task instantly" is correct and the clamp sits exactly on
+      that boundary.
+      THE SURVIVOR is the sandbox reset — `if (sandboxArmer?.armed)
+await resetSandbox()`, whose comment says "otherwise SRT keeps
+      proxy servers alive and the next vx run would init on top of
+      stale state". Skipping it leaves the repo green. It took two runs
+      to say that honestly: the first reported ONE new failing row, a
+      watch e2e row about a git checkout that has nothing to do with
+      sandbox teardown. That row is red in 1 of 66 full-suite logs from
+      this loop and the one time was that run, which reads as an
+      association — and the re-run refutes it, with no new names at
+      all. One run is not a verdict even when the base rate flatters it.
+      Classified, not pinned: the guarantee is CROSS-RUN, about state
+      surviving into the NEXT `vx run`, and a suite that runs one
+      process cannot see it; the sandbox suites are `.unsafe` and
+      excluded from the shards besides. The observable is a leaked
+      `socat` bridge rather than a failing assertion — this container
+      currently holds several, the oldest ~17 h. That is the same
+      untestable-here shape as 477(a), with a concrete observable a
+      future pin could use (count the bridges before and after a
+      sandboxed run) if it is ever worth a `.unsafe` row.
 
 ## In flight
 
