@@ -67,6 +67,8 @@ commands, and fill the TODOs.
 | target `dependsOn` (`^build`, etc.)  | `dependsOn` — `'build'` and `'^build'` are the same syntax; Nx's `project:target` becomes vx's `project#target` (a configuration suffix has no vx equivalent and is dropped with a TODO) |
 | `inputs` / `namedInputs` (resolved)  | `cache.inputs.files`                            |
 | `{workspaceRoot}/file` inputs        | `cache.inputs.workspaceFiles`                   |
+| `{ "env": "VAR" }` inputs            | `cache.inputs.env` **and** `exec.env.passThrough` (a vx task's env is isolated, so a hashed variable has to be let through too) |
+| `{ "runtime": "<cmd>" }` inputs      | `cache.inputs.runtime` — vx runs the command and hashes its output, same as Nx |
 | `outputs`                            | `cache.outputs.files`                           |
 | `nx affected`                        | `vx run <task> --affected`                      |
 | `nx run-many --target=build`         | `vx run build --all`                            |

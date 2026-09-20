@@ -144,10 +144,16 @@ export async function migrateNx(
   }
 
   const notes: string[] = []
-  const implicit = countImplicitDeps(g?.dependencies, metaByNode)
-  if (implicit > 0) {
+  // Named, not just counted: "1 implicit Nx dep" sends a reader looking
+  // through the whole graph for it, and the pair is what they need to
+  // write the `dependsOn` by hand (walked the Nx path, 2026-09-20).
+  const implicit = implicitDeps(g?.dependencies, metaByNode)
+  if (implicit.length > 0) {
+    const shown = implicit.slice(0, 5).join(', ')
+    const rest = implicit.length > 5 ? ` and ${implicit.length - 5} more` : ''
     notes.push(
-      `${implicit} implicit Nx dep${implicit === 1 ? '' : 's'} not representable; review dependsOn`,
+      `${implicit.length} implicit Nx dep${implicit.length === 1 ? '' : 's'} not representable ` +
+        `(${shown}${rest}); review dependsOn`,
     )
   }
 
@@ -196,6 +202,11 @@ function buildTask(
   const files: string[] = []
   const wsFiles: string[] = []
   const envNames: string[] = []
+  // Nx's `{ runtime: "<cmd>" }` hashes the command's output, which is
+  // exactly `cache.inputs.runtime` — schema.md calls it "the Nx `runtime`
+  // input equivalent". It was reaching the fall-through and being reported
+  // as "not representable in vx" (walked the Nx path, 2026-09-20).
+  const runtimeCmds: string[] = []
   const expandInput = (entry: unknown, seen: Set<string>): void => {
     if (typeof entry === 'string') {
       let s = entry
@@ -242,6 +253,10 @@ function buildTask(
       const o = entry as Record<string, unknown>
       if (typeof o.env === 'string') {
         envNames.push(o.env)
+        return
+      }
+      if (typeof o.runtime === 'string') {
+        runtimeCmds.push(o.runtime)
         return
       }
       if (typeof o.fileset === 'string') {
@@ -426,6 +441,7 @@ function buildTask(
     const inputs: Record<string, unknown> = { files }
     if (wsFiles.length > 0) inputs.workspaceFiles = wsFiles
     if (envNames.length > 0) inputs.env = envNames
+    if (runtimeCmds.length > 0) inputs.runtime = runtimeCmds
     const outputs: Record<string, unknown> = { files: outFiles }
     if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
     task.cache = { inputs, outputs }
@@ -529,12 +545,13 @@ function persistentTarget(targetName: string, executor: string | undefined): boo
   return PERSISTENT_TASK_NAMES.has(targetName)
 }
 
-function countImplicitDeps(
+/** `a → b` for every graph edge vx's package graph cannot see. */
+function implicitDeps(
   dependencies: unknown,
   metaByNode: ReadonlyMap<string, ProjectMeta>,
-): number {
-  if (typeof dependencies !== 'object' || dependencies === null) return 0
-  let count = 0
+): string[] {
+  if (typeof dependencies !== 'object' || dependencies === null) return []
+  const pairs: string[] = []
   for (const [source, edges] of Object.entries(dependencies as Record<string, NxEdge[]>)) {
     const sm = metaByNode.get(source)
     if (!sm || !Array.isArray(edges)) continue
@@ -549,8 +566,8 @@ function countImplicitDeps(
       const tm = typeof edge?.target === 'string' ? metaByNode.get(edge.target) : undefined
       if (!tm || tm === sm || seen.has(tm.name)) continue
       seen.add(tm.name)
-      if (manifest[tm.name] === undefined) count++
+      if (manifest[tm.name] === undefined) pairs.push(`${sm.name} → ${tm.name}`)
     }
   }
-  return count
+  return pairs
 }
