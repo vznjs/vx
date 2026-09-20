@@ -1470,9 +1470,13 @@ describe('resolveSandboxConfig', () => {
 
       const shallow = resolveSandboxConfig({ allow: { read: ['sub/*'] } }, root)
       expect(shallow.allowRead).not.toContain(realSub)
-      // CONTROL: it still granted what the pattern actually names, so the
-      // row above is the collapse and not an empty resolution.
-      expect(shallow.allowRead).toContain(path.join(realSub, 'a.txt'))
+      // CONTROL: it still granted something UNDER sub, so the row above is
+      // the collapse and not an empty resolution. Deliberately not the
+      // expanded child path: `expandGrants` glob-expands on Linux only
+      // (`platform !== 'linux'` returns early), so macOS keeps the literal
+      // `sub/*` while Linux yields `sub/a.txt`. What both must show is a
+      // grant BELOW sub and never sub itself, which is the claim anyway.
+      expect(shallow.allowRead.some((p) => p.startsWith(realSub + path.sep))).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
