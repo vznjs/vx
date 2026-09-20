@@ -70,6 +70,84 @@ afterEach(async () => {
 
 describe('stale cache hits', () => {
   it(
+    'a corrupted WORKSPACE-anchored output is not "up-to-date" either',
+    async () => {
+      // The same short-circuit's fingerprint check is a conjunction over TWO
+      // roots — the project dir and the workspace root. Only the project half
+      // was pinned: dropping the workspace half left the whole repo green
+      // while a root-anchored output that had been edited on disk stayed
+      // edited, under a run that reported success.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', 'p')
+      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
+      await write(path.join(pkg, 'src', 'in.txt'), 's')
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { tasks: { gen: {
+           exec: { command: 'mkdir -p ../../shared && printf g > ../../shared/g.txt' },
+           cache: {
+             inputs: { files: ['src/**'] },
+             outputs: { files: [], workspaceFiles: ['shared/**'] },
+           },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+
+      vx(root, 'run', 'gen', '--all')
+      expect(await readFile(path.join(root, 'shared', 'g.txt'), 'utf8')).toBe('g')
+
+      // Edit the root-anchored output in place: same path set, wrong bytes.
+      await write(path.join(root, 'shared', 'g.txt'), 'CORRUPT')
+      vx(root, 'run', 'gen', '--all')
+      expect(await readFile(path.join(root, 'shared', 'g.txt'), 'utf8')).toBe('g')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a STRAY file in a declared output dir is not "up-to-date" — the set must match',
+    async () => {
+      // The "tree is already current" short-circuit requires BOTH that the
+      // output-glob walk yields exactly the expected paths AND that every
+      // file's fingerprint matches. The two halves catch DIFFERENT
+      // divergences, and only one of them was pinned: a MISSING output is
+      // caught by the fingerprint check, so dropping the set comparison left
+      // the whole repo green — while a STRAY file survived a run that
+      // reported `up-to-date`, leaving a tree that does not match the
+      // artifact vx just claimed to have.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'demo' }))
+      await writeLocalWorkspace(root)
+      await write(path.join(root, 'src', 'in.txt'), 's')
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && printf a > dist/a.txt && printf b > dist/b.txt' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+
+      vx(root, 'run', 'build')
+      // A stray alongside the expected outputs: same fingerprints, wrong SET.
+      await write(path.join(root, 'dist', 'STRAY.txt'), 'zzz')
+
+      const out = vx(root, 'run', 'build')
+      expect(out).toContain('restored-local')
+      expect(out).not.toContain('up-to-date')
+      expect(await Bun.file(path.join(root, 'dist', 'STRAY.txt')).exists()).toBe(false)
+      expect(await readFile(path.join(root, 'dist', 'a.txt'), 'utf8')).toBe('a')
+      expect(await readFile(path.join(root, 'dist', 'b.txt'), 'utf8')).toBe('b')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a content change that preserves mtime is not served from the file-hash memo',
     async () => {
       // The (mtime, size) memo in `file_hashes` spans runs, so any producer

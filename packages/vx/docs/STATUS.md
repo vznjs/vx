@@ -1473,6 +1473,41 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       the diagnostic, so that is what is pinned now: the message names
       the producer, the underlying cause, and the remedy, instead of a
       bare `No such file` from a shell.
+471.  DONE (2026-09-20, `orchestrator/hit-restore.ts` — the restore
+      path itself, whose own header calls it stale-hit-critical). The
+      worst result of the arc: on the file that decides whether a hit
+      may skip writing bytes, SIX of eight mutations survived, and two
+      of them are real stale hits reproduced on the CLI.
+      The short-circuit's contract is a conjunction — the tree is
+      "already current" only if the output-glob walk yields EXACTLY
+      the expected paths AND every file's fingerprint matches. The
+      halves catch DIFFERENT divergences, and the suite held only one
+      of them.
+      (a) THE SET CHECK. Remove it and a MISSING output is still
+      caught (by the fingerprint check), so the repo stays green —
+      while a STRAY file survives. Measured: with a stray in `dist/`,
+      `vx run build` prints `up-to-date` and leaves it there, so vx
+      reports a hit over a tree that does not match the artifact it
+      claims to have. Real code prints `restored-local` and wipes it.
+      Pinned in `stale-hit.test.ts`, which is where the family lives.
+      (b) THE WORKSPACE HALF of the fingerprint check. It is a
+      conjunction over two roots, project dir and workspace root, and
+      only the project half was held. Measured: a root-anchored output
+      edited on disk to `CORRUPT` stays CORRUPT under a run reporting
+      success; real code restores it. Pinned too.
+      Each row is red for its own half and green for the other's.
+      ALSO MEASURED, and NOT a defect: dropping the length half of
+      `setsMatch` changes nothing, because a stray still fails the
+      `every` and a missing file is caught by the fingerprint check.
+      Redundant, recorded rather than pinned.
+      OPEN, carried forward, not closed: two survivors I did not
+      establish either way. `covers` in the directory short-circuit
+      (a dirRow set that does not cover every prefix would let the
+      walk be skipped — the same class as (a), reached by the dir
+      path), and the post-restore `markOutputsChanged` (without it a
+      downstream same-project task keeps a pre-restore git snapshot,
+      which is key material). Both are plausible and neither is
+      measured; they are the first thing to take after the trim.
 
 ## In flight
 
