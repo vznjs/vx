@@ -966,6 +966,46 @@ built behind a failure`). Two claims were not.
       every one was found by something outside the diff. A verdict
       procedure needs its own controls as much as a test does.
 
+440.  DONE (2026-09-20, the last baseline group, and the honest
+      answer this time IS the runtime — with a convention the repo
+      already owns for exactly that). `@vzn/vx-reapi` refuses to build
+      a client on Bun < 1.4.0: older Bun hangs on the chunked uploads
+      it makes, so `assertBunSupportsChunking` speaks instead of
+      hanging. Every row that constructs one therefore cannot run here,
+      and failing them reported a broken plugin where what this box has
+      is an unusable runtime. Verified by reading the throw, not the
+      label.
+      The repo's rule for a capability a host lacks is written down
+      twice already — the sandbox suites skip without bwrap and CI sets
+      `VX_REQUIRE_SANDBOX`; the live REAPI suites skip without an
+      endpoint and CI sets `VX_REQUIRE_REAPI`, "per the project rule
+      that a skip is a silent PASS". The Bun floor is the same shape,
+      so it now takes the same gate and the same flag: skip below the
+      floor, and with `VX_REQUIRE_REAPI=1` throw instead. Both
+      directions measured.
+      The group was bigger than the yardstick showed, three times
+      over, and that is the part worth keeping. The reapi task runs one
+      bun process per file and stops at the first failure
+      (`|| exit 1`), and `integrity.test.ts` sorts first — so gating it
+      revealed three rows in `wire.test.ts`, gating those revealed
+      three in `plugin.test.ts`, and gating those revealed eight in
+      `wedged.test.ts`. Seventeen rows, not three, from one cause. I
+      wrote "zero failing tests" in this entry before the gate showed
+      me the second layer, and the third arrived after that. The way
+      out was to stop peeling: run every file WITHOUT the fail-fast
+      loop, once, and read the whole set. A fail-fast loop truncates
+      the failing set as surely as a red baseline hides a mutation —
+      the count was never the population.
+      Local baseline now: THREE failing tests, from 23 this morning —
+      `armWatcher` non-recursive and the watch watched-set row (both
+      readiness or delivery timing out under twelve-way load, measured
+      in 431), and the `Bun.Archive` tar oracle, which is the runtime
+      itself. `@vzn/vx-reapi#test` is green here for the first time. Nine rows were fixed in vx's own code (431, 435, 436,
+      437, 438), fifteen are gated on a capability this host lacks
+      (431's two, this item's seventeen, and the RSS family's
+      downstream that 437 made recordable), and what is left is the harness and a
+      Bun version this repo does not claim to support.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family

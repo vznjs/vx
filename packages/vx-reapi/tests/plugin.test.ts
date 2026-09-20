@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'bun:test'
 import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
+import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 
 /** Run `fn` with the plugin's env vars cleared, whatever CI has set. */
 function withoutReapiEnv<T>(fn: () => T): T {
@@ -43,18 +44,21 @@ describe('reapi(): the decline path costs nothing', () => {
     })
   })
 
-  it('an endpoint configured ONLY by env still contributes a cache', async () => {
-    // The documented alternative to passing `endpoint` — worth pinning
-    // separately, since the decline test above would also pass if the env
-    // path were broken and everything simply declined.
-    await withoutReapiEnv(async () => {
-      Bun.env['VX_REAPI_ENDPOINT'] = '127.0.0.1:1'
-      const warns: string[] = []
-      const p = reapi()
-      expect(p.cache?.(ctx(warns))).toBeDefined()
-      await p.teardown?.()
-    })
-  })
+  it.skipIf(!CHUNKING_SUPPORTED)(
+    'an endpoint configured ONLY by env still contributes a cache',
+    async () => {
+      // The documented alternative to passing `endpoint` — worth pinning
+      // separately, since the decline test above would also pass if the env
+      // path were broken and everything simply declined.
+      await withoutReapiEnv(async () => {
+        Bun.env['VX_REAPI_ENDPOINT'] = '127.0.0.1:1'
+        const warns: string[] = []
+        const p = reapi()
+        expect(p.cache?.(ctx(warns))).toBeDefined()
+        await p.teardown?.()
+      })
+    },
+  )
 
   it('execute stays OFF unless asked, even with an endpoint', async () => {
     // Remote execution changes where a build runs; configuring a CACHE must
@@ -70,7 +74,7 @@ describe('reapi(): the decline path costs nothing', () => {
 })
 
 describe('reapi(): lifecycle and failure messages', () => {
-  it('teardown closes the cache client it created', async () => {
+  it.skipIf(!CHUNKING_SUPPORTED)('teardown closes the cache client it created', async () => {
     // `RemoteCacheLayer` has no close hook and `LayeredCache.close()` closes
     // only the local handle, so if the plugin does not release this, nothing
     // does. Spied on the prototype because the client is created internally.
@@ -94,26 +98,30 @@ describe('reapi(): lifecycle and failure messages', () => {
     })
   })
 
-  it('an unreachable endpoint names the endpoint and what to do', async () => {
-    // Core aborts the run on a throwing executor factory (deliberately — an
-    // executor is load-bearing), so this string is what the user acts on. The
-    // raw gRPC "14 UNAVAILABLE … Resolution note:" named neither the setting
-    // nor a remedy.
-    await withoutReapiEnv(async () => {
-      const p = reapi({ endpoint: '127.0.0.1:59999', execute: true })
-      expect(p.executor).toBeDefined() // precondition, not an assumption
-      let err: unknown
-      try {
-        await p.executor?.(ctx([]))
-      } catch (e) {
-        err = e
-      }
-      expect(err).toBeInstanceOf(Error)
-      const msg = (err as Error).message
-      expect(msg).toContain('127.0.0.1:59999')
-      expect(msg).toMatch(/check the endpoint/)
-      expect(msg).toMatch(/UNAVAILABLE|ECONNREFUSED/) // the cause survives
-      await p.teardown?.()
-    })
-  }, 30_000)
+  it.skipIf(!CHUNKING_SUPPORTED)(
+    'an unreachable endpoint names the endpoint and what to do',
+    async () => {
+      // Core aborts the run on a throwing executor factory (deliberately — an
+      // executor is load-bearing), so this string is what the user acts on. The
+      // raw gRPC "14 UNAVAILABLE … Resolution note:" named neither the setting
+      // nor a remedy.
+      await withoutReapiEnv(async () => {
+        const p = reapi({ endpoint: '127.0.0.1:59999', execute: true })
+        expect(p.executor).toBeDefined() // precondition, not an assumption
+        let err: unknown
+        try {
+          await p.executor?.(ctx([]))
+        } catch (e) {
+          err = e
+        }
+        expect(err).toBeInstanceOf(Error)
+        const msg = (err as Error).message
+        expect(msg).toContain('127.0.0.1:59999')
+        expect(msg).toMatch(/check the endpoint/)
+        expect(msg).toMatch(/UNAVAILABLE|ECONNREFUSED/) // the cause survives
+        await p.teardown?.()
+      })
+    },
+    30_000,
+  )
 })

@@ -14,6 +14,7 @@ import { Cache } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
 import { META_TIMEOUT_CAP_MS, ReapiClient } from '../src/wire.js'
+import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 
 // The union overload of Bun.listen resolves to the unix variant without the
 // explicit TCP type argument, and a unix listener has no `port`.
@@ -33,7 +34,7 @@ afterAll(() => {
   wedge.stop(true)
 })
 
-describe('a wedged remote (accepts TCP, never answers)', () => {
+describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', () => {
   it('rejects with DEADLINE_EXCEEDED instead of hanging the probe', async () => {
     const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 1000 })
     try {
@@ -98,7 +99,7 @@ describe('a wedged remote (accepts TCP, never answers)', () => {
   }, 20_000)
 })
 
-describe('adaptive chunk downgrade', () => {
+describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
   it('a deadline on a multi-chunk write retries once at SAFE_CHUNK_BYTES, warned', async () => {
     // The Bun flow-control defect is a RACE, not a boundary — 128 KB chunks
     // pass hundreds of times and then wedge once (observed on CI, same Bun).
@@ -158,62 +159,65 @@ describe('adaptive chunk downgrade', () => {
   }, 10_000)
 })
 
-describe('control-plane calls are bounded separately from bulk transfers', () => {
-  // One knob for both classes is a trap. A `node_modules` capture legitimately
-  // needs minutes, so a real deployment raises `callTimeoutMs` — and with a
-  // single deadline that also buys every metadata probe the same minutes
-  // before it can degrade to a miss, which is the opposite of what the
-  // deadline is for. Observed against a NativeLink that had degraded into
-  // never answering an AC HIT (misses still returned in 3ms): every task
-  // burned the full 180s upload deadline on a lookup.
-  it('a metadata probe gives up on the SHORT deadline, not the bulk one', async () => {
-    const cache = new ReapiRemoteCache({
-      endpoint: `127.0.0.1:${port}`,
-      callTimeoutMs: 60_000,
-      metaTimeoutMs: 700,
-    })
-    try {
-      const t0 = Date.now()
-      await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
-      const waited = Date.now() - t0
-      expect(waited).toBeGreaterThanOrEqual(600)
-      // The point of the split: nowhere near the 60s bulk deadline.
-      expect(waited).toBeLessThan(5_000)
-    } finally {
-      cache.close()
-    }
-  }, 20_000)
-
-  it('defaults derive from callTimeoutMs and cap at 15s, so raising it never lengthens a probe', () => {
-    // Pinned on the instance's deadline, not by waiting the cap out on the
-    // wire (that cost this suite 15 s a run); the two cases around this one
-    // prove the wire honours the deadline in force, explicit and derived.
-    const at = (opts: { callTimeoutMs: number; metaTimeoutMs?: number }): number => {
-      const client = new ReapiClient({ endpoint: `127.0.0.1:${port}`, ...opts })
+describe.if(CHUNKING_SUPPORTED)(
+  'control-plane calls are bounded separately from bulk transfers',
+  () => {
+    // One knob for both classes is a trap. A `node_modules` capture legitimately
+    // needs minutes, so a real deployment raises `callTimeoutMs` — and with a
+    // single deadline that also buys every metadata probe the same minutes
+    // before it can degrade to a miss, which is the opposite of what the
+    // deadline is for. Observed against a NativeLink that had degraded into
+    // never answering an AC HIT (misses still returned in 3ms): every task
+    // burned the full 180s upload deadline on a lookup.
+    it('a metadata probe gives up on the SHORT deadline, not the bulk one', async () => {
+      const cache = new ReapiRemoteCache({
+        endpoint: `127.0.0.1:${port}`,
+        callTimeoutMs: 60_000,
+        metaTimeoutMs: 700,
+      })
       try {
-        return client.metaTimeoutMs
+        const t0 = Date.now()
+        await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
+        const waited = Date.now() - t0
+        expect(waited).toBeGreaterThanOrEqual(600)
+        // The point of the split: nowhere near the 60s bulk deadline.
+        expect(waited).toBeLessThan(5_000)
       } finally {
-        client.close()
+        cache.close()
       }
-    }
-    // No metaTimeoutMs given, and a bulk deadline far above the cap.
-    expect(at({ callTimeoutMs: 600_000 })).toBe(META_TIMEOUT_CAP_MS)
-    expect(META_TIMEOUT_CAP_MS).toBe(15_000)
-    // Below the cap the bulk deadline governs; an explicit value is taken as given.
-    expect(at({ callTimeoutMs: 800 })).toBe(800)
-    expect(at({ callTimeoutMs: 600_000, metaTimeoutMs: 700 })).toBe(700)
-  })
+    }, 20_000)
 
-  // CONTROL: the cap must not clamp a deliberately SHORT bulk deadline, or
-  // `min()` would silently lengthen a probe that was already tighter.
-  it('a bulk deadline below the cap still governs the probe', async () => {
-    const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 800 })
-    try {
-      const t0 = Date.now()
-      await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
-      expect(Date.now() - t0).toBeLessThan(5_000)
-    } finally {
-      cache.close()
-    }
-  }, 20_000)
-})
+    it('defaults derive from callTimeoutMs and cap at 15s, so raising it never lengthens a probe', () => {
+      // Pinned on the instance's deadline, not by waiting the cap out on the
+      // wire (that cost this suite 15 s a run); the two cases around this one
+      // prove the wire honours the deadline in force, explicit and derived.
+      const at = (opts: { callTimeoutMs: number; metaTimeoutMs?: number }): number => {
+        const client = new ReapiClient({ endpoint: `127.0.0.1:${port}`, ...opts })
+        try {
+          return client.metaTimeoutMs
+        } finally {
+          client.close()
+        }
+      }
+      // No metaTimeoutMs given, and a bulk deadline far above the cap.
+      expect(at({ callTimeoutMs: 600_000 })).toBe(META_TIMEOUT_CAP_MS)
+      expect(META_TIMEOUT_CAP_MS).toBe(15_000)
+      // Below the cap the bulk deadline governs; an explicit value is taken as given.
+      expect(at({ callTimeoutMs: 800 })).toBe(800)
+      expect(at({ callTimeoutMs: 600_000, metaTimeoutMs: 700 })).toBe(700)
+    })
+
+    // CONTROL: the cap must not clamp a deliberately SHORT bulk deadline, or
+    // `min()` would silently lengthen a probe that was already tighter.
+    it('a bulk deadline below the cap still governs the probe', async () => {
+      const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 800 })
+      try {
+        const t0 = Date.now()
+        await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
+        expect(Date.now() - t0).toBeLessThan(5_000)
+      } finally {
+        cache.close()
+      }
+    }, 20_000)
+  },
+)
