@@ -34,6 +34,7 @@ export {
   resolveOutputs,
   resolveWorkspaceOutputs,
   asTrees,
+  type ProjectFilesCache,
   type WorkspaceFilesCache,
 } from './inputs.js'
 export {

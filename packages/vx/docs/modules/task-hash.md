@@ -29,6 +29,7 @@ export interface HashCache {
   runtime: Map<string, Promise<string>> // `inputs.runtime` output, by projectDir + '\0' + command
   workspaceRuntime: Map<string, Promise<string>> // `workspaceRuntime` output, by command
   workspaceFiles: WorkspaceFilesCache // `inputs.workspaceFiles` resolution, by declaration
+  projectFiles: ProjectFilesCache // `inputs.files` resolution, by projectDir + declaration
 }
 export function createHashCache(): HashCache
 

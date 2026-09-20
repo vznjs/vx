@@ -109,11 +109,32 @@ export interface ResolveInputsArgs {
    * was 930 ms of a 3.0 s warm no-op (159 scans, 2026-09-11).
    */
   workspaceFilesCache?: WorkspaceFilesCache
+  /** Per-run memo for `inputs.files`; see `ProjectFilesCache`. */
+  projectFilesCache?: ProjectFilesCache
 }
 
 export type WorkspaceFilesCache = Map<
   string,
   { snapshot: readonly string[]; result: Promise<string[]> }
+>
+
+/**
+ * Per-run memo of `cache.inputs.files` resolution, keyed by the project and
+ * the DECLARATION — tasks of one project that declare the same inputs and
+ * the same outputs resolve to the same list, and this repo's own config is
+ * the shape that pays for it: twelve shard tasks, each declaring the same
+ * whole-tree glob over the same three thousand files (measured 1.2 ms of
+ * resolution per task, 2026-09-20).
+ *
+ * Reuse is gated on the git snapshot being the SAME ARRAY the entry was
+ * built from, not on equal contents: a mid-run re-enumeration replaces it
+ * (`GitFilesCache.set`), so a task whose inputs a previous task rewrote
+ * misses the memo and walks again. Same discipline as WorkspaceFilesCache
+ * above.
+ */
+export type ProjectFilesCache = Map<
+  string,
+  { snapshot: readonly string[]; result: readonly string[] }
 >
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
@@ -124,6 +145,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     ownOutputs: args.ownOutputs,
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.projectFilesCache !== undefined ? { projectFilesCache: args.projectFilesCache } : {}),
   })
   let files = projectFiles
   const wsDecl = args.inputs?.workspaceFiles
@@ -641,6 +663,7 @@ interface ResolveFilesArgs {
   ownOutputs: string[]
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache
+  projectFilesCache?: ProjectFilesCache
 }
 
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
@@ -675,7 +698,17 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // same project per run is wasteful; we cache the result for the
   // duration of one orchestrator run.
   const positiveGlobs = asTrees(positive).map(globFor)
+  // Everything below the snapshot that decides the result: the project, what
+  // it declares, what it excludes as its own outputs, and the boundaries.
+  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${boundaryIgnores.join('\u0001')}`
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
+  if (gitFiles !== undefined) {
+    const memo = args.projectFilesCache?.get(memoKey)
+    // Identity, not equality: a re-enumeration hands back a new array even
+    // when the file set is unchanged, and that is exactly when this task's
+    // inputs must be walked again.
+    if (memo !== undefined && memo.snapshot === gitFiles) return [...memo.result]
+  }
   if (gitFiles === undefined) {
     // Mid-run re-enumeration — or a project the workspace-wide populate
     // left without a partition because the workspace's git did not see its
@@ -729,7 +762,11 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
   const oids = args.gitFilesCache?.oidsFor(args.projectDir)
-  return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+  // Stored only on the way out: a declaration whose literal named an
+  // invisible file threw above, and every task sharing it must throw too.
+  args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
+  return [...resolved]
 }
 
 /**

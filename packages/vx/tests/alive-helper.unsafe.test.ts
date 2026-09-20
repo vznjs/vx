@@ -20,6 +20,9 @@
 // through that mount, which is the same reason the sandbox's own suites and
 // the cross-project law live out here.
 
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 
@@ -44,20 +47,34 @@ describe('isAlive', () => {
       // `sleep 0 &` exits at once and the shell then `exec`s, so the parent
       // is now a `sleep` that will never wait: the entry cannot be reaped
       // while it lives. Leaving bash in place instead is not deterministic —
-      // it reaped the child inside the gate's sandbox and the read came back
-      // ENOENT, while the same code held the zombie for seconds on the host.
-      const shell = Bun.spawn(['bash', '-c', 'sleep 0 & echo $!; exec sleep 30'], {
-        stdout: 'pipe',
+      // it reaped the child inside the gate's sandbox, and the read came
+      // back ENOENT.
+      //
+      // The pid travels through a FILE, not a pipe: the first version read
+      // one chunk off `shell.stdout` and left the stream open, and that row
+      // failed twice under the gate's parallel load while passing alone
+      // every time. An unread pipe is a lifetime this test does not control;
+      // with `stdout: 'ignore'` there is none.
+      const dir = mkdtempSync(path.join(tmpdir(), 'vx-zombie-'))
+      const pidFile = path.join(dir, 'pid')
+      const shell = Bun.spawn(['bash', '-c', `sleep 0 & echo $! > "${pidFile}"; exec sleep 30`], {
+        stdout: 'ignore',
+        stderr: 'ignore',
       })
       try {
-        // One chunk, not `.text()`: the stream closes when the shell exits,
-        // and the shell is deliberately still alive holding the zombie.
-        const chunk = await shell.stdout.getReader().read()
-        const pid = Number(new TextDecoder().decode(chunk.value).trim())
-        expect(Number.isInteger(pid)).toBe(true)
-        // Give the child time to exit and the shell time to NOT reap it.
+        let pid = 0
+        for (let i = 0; i < 400 && pid === 0; i++) {
+          // The file appears only once the shell has run its first line.
+          const raw = existsSync(pidFile) ? readFileSync(pidFile, 'utf8').trim() : ''
+          if (raw !== '') pid = Number(raw)
+          else await Bun.sleep(5)
+        }
+        expect({ pidRead: Number.isInteger(pid) && pid > 0 }).toEqual({ pidRead: true })
+        // The premise, asserted rather than assumed: the parent must still be
+        // alive, because it is what keeps the entry unreaped.
+        expect({ parentAlive: isAlive(shell.pid) }).toEqual({ parentAlive: true })
         let stat = ''
-        for (let i = 0; i < 200; i++) {
+        for (let i = 0; i < 400; i++) {
           // A vanished entry means something reaped it after all, which the
           // assertion below must report as itself rather than as an ENOENT
           // stack from the reader.
@@ -65,7 +82,7 @@ describe('isAlive', () => {
             .text()
             .catch(() => '() reaped')
           if (stat.charAt(stat.lastIndexOf(')') + 2) === 'Z') break
-          await Bun.sleep(10)
+          await Bun.sleep(5)
         }
         expect({ state: stat.charAt(stat.lastIndexOf(')') + 2) }).toEqual({ state: 'Z' })
         // The blind spot the helper exists for, both halves in one place.
@@ -74,6 +91,7 @@ describe('isAlive', () => {
         expect(await waitForDead(pid, 100)).toBe(true)
       } finally {
         shell.kill('SIGKILL')
+        rmSync(dir, { recursive: true, force: true })
       }
     },
   )

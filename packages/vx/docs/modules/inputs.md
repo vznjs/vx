@@ -41,11 +41,17 @@ export interface ResolveInputsArgs {
   runtimeCache?: Map<string, Promise<string>> // per-run memo of `inputs.runtime`, keyed projectDir + '\0' + command
   workspaceRuntimeCache?: Map<string, Promise<string>> // per-run memo of `workspaceRuntime`, keyed by command
   workspaceFilesCache?: WorkspaceFilesCache // per-run memo of `inputs.workspaceFiles` per declaration
+  projectFilesCache?: ProjectFilesCache // per-run memo of `inputs.files` per project + declaration
 }
 
 export type WorkspaceFilesCache = Map<
   string,
   { snapshot: readonly string[]; result: Promise<string[]> }
+>
+
+export type ProjectFilesCache = Map<
+  string,
+  { snapshot: readonly string[]; result: readonly string[] }
 >
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs>
