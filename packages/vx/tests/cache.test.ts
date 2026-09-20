@@ -1774,6 +1774,85 @@ describe('Cache schema/version recovery', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
+  it('a SCHEMA_VERSION reset leaves NO row behind but the two that may stay', async () => {
+    // Item 504. The row below names two tables; this one quantifies over
+    // every table the schema creates, because the hazard is a table ADDED
+    // later and left out of the DROP list — stale rows under a new schema,
+    // read by code that assumes they match it.
+    //
+    // Measured, and the drop list is NOT the whole mechanism: two tables
+    // are absent from it and only one of them survives.
+    //   output_dirs      absent from the list, still CLEARED — with
+    //                    foreign_keys on, DROP TABLE fires the ON DELETE
+    //                    CASCADE from its entries(hash) reference.
+    //   config_closures  absent, and it SURVIVES. That is safe rather than
+    //                    lucky: a closure is a stat-index feeding config
+    //                    key derivation, so a stale one changes the KEY (a
+    //                    miss, then a rewrite), never the answer.
+    //   schema_meta      holds the sentinel the gate just wrote; dropping
+    //                    it would lose the version it is recording.
+    //
+    // The first probe of this said nothing survived, because it planted
+    // `created_at = 1` and the config TTL sweep removes anything that old —
+    // the payload has to be one the code would really see (item 488).
+    const { Database } = await import('bun:sqlite')
+    const c1 = new Cache(cacheDir)
+    c1.close()
+    const dbPath = path.join(cacheDir, 'cache.db')
+
+    const raw = new Database(dbPath)
+    const tables = (
+      raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{
+        name: string
+      }>
+    )
+      .map((r) => r.name)
+      .filter((n) => !n.startsWith('sqlite_'))
+      .sort()
+    const now = Date.now()
+    for (const t of tables) {
+      if (t === 'schema_meta') continue
+      const cols = raw.prepare(`PRAGMA table_info(${t})`).all() as Array<{
+        name: string
+        type: string
+      }>
+      const vals = cols.map((col) =>
+        col.type === 'INTEGER' || col.type === 'REAL'
+          ? /_at$|_ms$/.test(col.name)
+            ? String(now)
+            : '1'
+          : `'x'`,
+      )
+      raw
+        .prepare(
+          `INSERT OR REPLACE INTO ${t}(${cols.map((c) => c.name).join(',')}) VALUES (${vals.join(',')})`,
+        )
+        .run()
+    }
+    // Every table now holds a row, so the assertion below cannot pass by
+    // planting nothing.
+    const before = Object.fromEntries(
+      tables.map((t) => [
+        t,
+        (raw.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
+      ]),
+    )
+    expect(Object.values(before).every((n) => n === 1)).toBe(true)
+    raw.prepare("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
+    raw.close()
+
+    const c2 = new Cache(cacheDir)
+    expect(c2.schemaReset).toEqual({ from: 'v0-ancient', to: expect.stringMatching(/^v\d+$/) })
+    c2.close()
+
+    const after = new Database(dbPath)
+    const survivors = tables
+      .filter((t) => (after.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n > 0)
+      .sort()
+    after.close()
+    expect(survivors).toEqual(['config_closures', 'schema_meta'])
+  })
+
   it('SCHEMA_VERSION mismatch wipes entries + runs and recreates cleanly', async () => {
     // Round 1: write a real entry to a fresh cache.
     const c1 = new Cache(cacheDir)

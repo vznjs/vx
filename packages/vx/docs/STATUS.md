@@ -1963,6 +1963,104 @@ non-empty string` is caught by exactly ONE row, and it is the
       usually partial, and the part that does not overlap is the whole
       reason the first guard is there.
 
+502.  DONE (2026-09-20, `cli/watch.ts`'s event filters — the half 482
+      left, where a wrong answer is a watch that silently stops
+      re-running or one that never settles).
+      Both ignore SETS are pinned member by member:
+      `IGNORED_SEGMENTS` (node_modules 3 rows, .git 1, .vx 2) and
+      `IGNORED_SUFFIXES` (.tsbuildinfo 1, ~ 1). `watch-rules.test.ts`
+      has a table row per member, which is what 494 and 497 had to add
+      elsewhere — this file already had it.
+      `makeRootEventFilter`'s clauses: the fingerprint arm (3 rows),
+      the workspace-config arm (2), the glob arm (3) and the
+      negations-are-not-consulted filter (7) all fail when dropped.
+      THE ONE SURVIVOR is the depth test, `!rel.includes('/')`, and it
+      is REDUNDANT — measured this time before writing it down, over
+      eleven spellings including `nested/bun.lock`, `./bun.lock` and
+      `a/b/c/pnpm-workspace.yaml`: every answer identical with the test
+      removed. Both predicates it guards are exact membership in a set
+      of BARE names, so a `rel` carrying a slash cannot be in one.
+      Kept as a reading aid and now says so.
+      Worth the note it got in the test table: the two rows that LOOK
+      like they pin it (`nested/pnpm-lock.yaml → false`,
+      `nested/vx.workspace.ts → false`) pass either way. What they
+      really pin is that the predicates stay EXACT — a basename or
+      suffix match would fail them, and that is the change that would
+      make the depth test load-bearing. Same shape as 498's vacuous
+      half, found on purpose this time rather than by accident.
+      Method note: 501 said to check whether the later guard's reach is
+      narrower somewhere before calling the earlier one redundant.
+      Here the later guard's reach is strictly WIDER — set membership
+      rejects everything the depth test rejects and more — which is
+      the case where "redundant" is the right answer. The rule cuts
+      both ways, and the check is what tells them apart.
+
+503.  DONE (2026-09-20, `cli/watch.ts`'s timing helpers — the part of
+      the file 502 did not reach, where a wrong answer is a DROPPED
+      edit and the watch just sits there looking alive).
+      Four of five pinned: `modifiedBefore`'s unreadable-path arm (an
+      ENOENT is never "before"), `fsClockNow`'s stamp read (taking
+      `Date.now()` instead of the stamp's own mtime), and both of
+      `pendingAfterCycle`'s clauses (first label wins; an abort
+      returns nothing) each fail a row.
+      THE SURVIVOR is `modifiedBefore`'s comparison itself: `<` → `<=`
+      passes the whole suite. The row that covers this function
+      asserts an mtime BEFORE `t`, an mtime after it (`t - 1`), and an
+      unreadable path — never `t` EQUAL to the mtime, which is the
+      boundary the operator names.
+      It is not an exotic case, and that is the point: `fsClockNow`
+      exists because an mtime is the kernel's COARSE clock, and it
+      reads the arm instant off a stamp file's own mtime. A write
+      landing in the same tick therefore carries exactly that value.
+      So equality is a case this clock CHOICE creates, and `<=` calls
+      such an edit "made before the arm" and drops it — precisely the
+      silent missed edit the stamp machinery was built to prevent
+      (the 2026-09-11 watch e2e flake).
+      Pinned in place: one line asserting the exact-equality case,
+      beside the two strict ones already there. Differential red.
+      Method note: this is 491's shape — a boundary asserted on one
+      side only — and it keeps recurring because a fixture naturally
+      reaches for `t - 1` and `t + 1`. Both of those pass under either
+      operator. The value that separates them is the one nobody
+      reaches for, and for a comparison the rule is now simply: assert
+      AT the boundary, not around it.
+
+504.  DONE (2026-09-20, `cache/cache.ts`'s SCHEMA_VERSION reset — the
+      DROP list, swept as a LIST. The hazard is a table added later and
+      left out of it: stale rows under a new schema, read by code that
+      assumes they match).
+      First the list against the schema. Three tables the schema
+      CREATES are not named in it — `schema_meta`, `output_dirs`,
+      `config_closures` — and one name in it, `run_task_inputs`, is
+      created nowhere (a leftover, harmless under IF EXISTS, and worth
+      keeping so an old DB still loses it).
+      Measured what actually survives, planting a row in every table
+      and forcing a reset:
+      `schema_meta` survives and must (it holds the sentinel the gate
+      just wrote). `output_dirs` does NOT survive despite being
+      unnamed — with foreign_keys on, DROP TABLE fires the ON DELETE
+      CASCADE from its `entries(hash)` reference. `config_closures`
+      DOES survive, and that is safe rather than lucky: a closure is a
+      stat-index feeding config key derivation, so a stale one changes
+      the KEY (a miss, then a rewrite), never the answer.
+      So the DROP list is not the mechanism it looks like. Differential
+      per member: removing `runs`, `file_hashes`, `invocations` or
+      `config_evals` reddens; removing `entry_inputs` or
+      `output_files` does NOT, because they cascade off `entries` like
+      `output_dirs`. Four of the list's members are load-bearing and
+      three are already covered by the cascade.
+      Pinned with the law rather than the list: plant a row in EVERY
+      table the schema creates, force the reset, and assert the exact
+      surviving set is `['config_closures', 'schema_meta']`. A table
+      added later and forgotten reddens it unless it cascades — which
+      is the only case where forgetting it is harmless anyway.
+      Method note, and it is 488's trap sprung on me again: the first
+      probe reported that NOTHING survived, because it planted
+      `created_at = 1` and the config TTL sweep deletes anything that
+      old. The payload has to be one the code would really see. Re-run
+      with a recent timestamp, `config_closures` appeared — the whole
+      finding was hiding behind a placeholder value.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

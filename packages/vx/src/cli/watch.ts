@@ -619,6 +619,16 @@ export function makeRootEventFilter(
     .map((g) => new Bun.Glob(g))
   return (filename: string): boolean => {
     const rel = filename.split(path.sep).join('/')
+    // The depth test is a READING AID, not a guard: both predicates below
+    // are exact membership in a set of BARE names, so a `rel` carrying a
+    // slash can never be in one. Measured with it removed (item 502) over
+    // `nested/bun.lock`, `./bun.lock`, `a/b/c/pnpm-workspace.yaml` and
+    // eight more: every answer identical. The two table rows that look
+    // like they pin it — `nested/pnpm-lock.yaml → false` and
+    // `nested/vx.workspace.ts → false` — pass either way; what they
+    // actually pin is that the predicates stay exact rather than becoming
+    // a basename or suffix match, which is the change that WOULD make
+    // this line load-bearing.
     if (!rel.includes('/') && (isWorkspaceFingerprintFile(rel) || isWorkspaceConfigFile(rel))) {
       return true
     }

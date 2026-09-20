@@ -226,6 +226,9 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['.turbo/daemon.log', false],
     ['packages/other/src/index.ts', false],
     ['tsconfig.json', false],
+    // These two pin the predicates' EXACTNESS, not the filter's depth test:
+    // that test is redundant while the predicates are bare-name set membership
+    // (measured, item 502). A basename or suffix match would fail them.
     ['nested/pnpm-lock.yaml', false], // a fingerprint NAME below the root is not the fingerprint
     ['vx.workspace.ts', true], // the one root file that shapes a run without being an input
     ['vx.workspace.mjs', true],
@@ -674,6 +677,15 @@ describe('a first sighting is a change only if the path moved since the arm', ()
       expect(modifiedBefore(dir, later)).toBe(true)
       const earlier = (await stat(f)).mtimeMs - 1
       expect(modifiedBefore(f, earlier)).toBe(false)
+      // The BOUNDARY itself: `t` exactly equal to the mtime. `fsClockNow`
+      // reads the arm instant off a stamp file's mtime, so a write landing
+      // in the same coarse tick carries exactly that value — equality is a
+      // case this clock choice creates, not an exotic one. `<=` here calls
+      // such an edit "made before the arm" and drops it, which is the
+      // silent missed edit the stamp machinery exists to prevent, and it
+      // passed the whole suite (item 503).
+      const exact = (await stat(f)).mtimeMs
+      expect(modifiedBefore(f, exact)).toBe(false)
       expect(modifiedBefore(path.join(dir, 'missing'), later)).toBe(false)
     } finally {
       await rm(dir, { recursive: true, force: true })
