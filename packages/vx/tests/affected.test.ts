@@ -16,6 +16,7 @@ import {
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 import { listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
+import { loadCliProjects } from '../src/cli/workspace-config.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
@@ -1219,6 +1220,40 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
+  })
+
+  // The OUTER guard of the same pair, pinned on its own for the same
+  // reason. `loadCliProjects` is the staged load every verb goes
+  // through, and it refuses a frozen run with no lock before selection
+  // even begins — which is why the inner guard above could be deleted
+  // with the whole repo still green.
+  it('the staged load itself refuses a frozen run with no lock', async () => {
+    const metas = await listProjects(await loadWorkspace(root))
+    // Control: the same load without `frozen` succeeds, so the rejection
+    // is the flag and not the fixture.
+    expect((await loadCliProjects(root, metas, 'all', {})).size).toBeGreaterThan(0)
+    await expect(loadCliProjects(root, metas, 'all', { frozen: true })).rejects.toThrow(
+      /--frozen requires/,
+    )
+  })
+
+  // A `--frozen` run with no lock is refused HERE, before the tolerant
+  // sweep below can answer "nothing affected". The layering is what hid
+  // this: `workspace-config.ts` refuses first on the CLI path, so
+  // removing either guard alone leaves the other covering and the whole
+  // repo still passes. Removing BOTH and running the real CLI on a
+  // lockless workspace with an orphan-only change exits 0 saying
+  // "nothing affected" — a green CI that ran nothing and never said why
+  // (measured, item 461). This row pins THIS guard on its own, so the
+  // pair is covered rather than each hiding the other's absence.
+  it('refuses a frozen run with no lock instead of sweeping and answering "nothing"', async () => {
+    const metas = await listProjects(await loadWorkspace(root))
+    // Control first: without `frozen` the same call answers normally, so
+    // the rejection below is the flag's doing and not a broken fixture.
+    expect(await workspaceGlobOwners(root, metas, ['shared/x.ts'])).toEqual(['bare'])
+    await expect(
+      workspaceGlobOwners(root, metas, ['shared/x.ts'], { frozen: true }),
+    ).rejects.toThrow(/--frozen requires/)
   })
 
   it('a glob a plugin gave a config-less package selects it; a sibling without one is not selected', async () => {
