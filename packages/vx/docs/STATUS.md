@@ -1369,6 +1369,40 @@ await resetSandbox()`, whose comment says "otherwise SRT keeps
       message, with a control at a cap it fits proving the decode
       itself still works. Differential: removing the count reddens it
       and leaves the declared half's row green.
+488.  DONE (2026-09-20, `ingest()`'s v17 invariant — the guard 487 left
+      unmutated in the same function). Hunting the shape again, and
+      this time it came with a leak.
+      `if (scanned.stdout === null) throw` survives the whole suite.
+      The row that LOOKS like its coverage is
+      "ingest() rejects valid zstd that is not a vx artifact (no stdout
+      entry)" — and its payload is `not a tar archive at all`, which
+      fails in the TAR READER and never reaches the check. A row named
+      for one guard, exercising another, which is how the miss stayed
+      invisible: grep says covered.
+      Probed with the shape an attacker actually sends — a real
+      tar.zst, correct in every way the reader checks, minus the one
+      entry that makes it ours:
+      with the guard: CorruptArtifactError | missing stdout entry
+      artifact on disk: false
+      without it: Error | NOT NULL constraint failed:
+      entries.stdout
+      artifact on disk: TRUE
+      So the REFUSAL is held twice again — the SQL column carries it —
+      but this one is not only a classification. The guard runs BEFORE
+      the rename, and the catch that cleans up unlinks `tmpPath`; once
+      the rename has happened that name no longer points at the file
+      that exists. Delete the guard and every such ingest leaves an
+      ORPHAN artifact in the cache directory, refused but resident.
+      The neighbouring rows assert `existsSync(...)` is false precisely
+      because their payloads die earlier, so nothing covered it.
+      Pinned with the well-formed-minus-stdout payload, asserting the
+      class, the message AND the empty directory — that last one being
+      the half no other row can reach. The old row keeps its payload
+      (non-tar bytes are worth refusing) and is RENAMED to say what it
+      tests, since its name was the thing doing the hiding.
+      Fifth in the run 481, 483, 485, 486, 487 — and the first where
+      the second layer, while genuinely refusing, leaves the system
+      dirtier than the first would have.
 
 ## In flight
 

@@ -877,7 +877,12 @@ describe('Cache storage (v10)', () => {
     expect(await cache.get('h-corrupt')).toBeNull()
   })
 
-  it('ingest() rejects valid zstd that is not a vx artifact (no stdout entry)', async () => {
+  // Renamed by item 486's rule and item 488's measurement. This row's
+  // payload is `not a tar archive at all`, which fails in the TAR READER;
+  // it never reaches the `stdout === null` check its old name claimed for
+  // it — and that check had nothing, which is how the miss went unseen.
+  // The real stdout row is directly below.
+  it('ingest() rejects valid zstd whose bytes are not a tar at all', async () => {
     const notTar = await Bun.zstdCompress(new TextEncoder().encode('not a tar archive at all'))
     await expect(
       cache.ingest('h-not-tar', new Uint8Array(notTar), {
@@ -933,6 +938,40 @@ describe('Cache storage (v10)', () => {
       n += value.byteLength
     }
     expect(n).toBe(body.byteLength)
+  })
+
+  it('ingest() rejects a WELL-FORMED archive carrying no stdout entry, and leaves no file', async () => {
+    // The v17 invariant: every artifact carries a `stdout` entry, and its
+    // absence means the bytes decompressed and parsed but are not a vx
+    // artifact. `ingest()` is the UNTRUSTED boundary — these bytes came
+    // from a remote — so this is the shape an attacker actually sends: a
+    // real tar.zst, correct in every way the reader checks, minus the one
+    // entry that makes it ours.
+    //
+    // The refusal is held twice: with the guard deleted the SQL insert
+    // still fails (`NOT NULL constraint failed: entries.stdout`). What the
+    // guard carries ALONE is the class AND the timing, and the timing is
+    // the part that bites — it runs BEFORE the rename, so without it the
+    // temp is already renamed into place and the catch's `unlink(tmpPath)`
+    // no longer names the file that exists. Measured:
+    //
+    //   with the guard:  CorruptArtifactError | missing stdout entry
+    //                    artifact on disk: false
+    //   without it:      Error | NOT NULL constraint failed
+    //                    artifact on disk: TRUE   <- an orphan in the cache
+    //
+    // So the disk assertion below is not decoration; it is the half no
+    // other row covers.
+    const tar = await new Bun.Archive({ 'outputs/dist/app.js': 'BUILT' }).bytes()
+    const bytes = new Uint8Array(await Bun.zstdCompress(tar))
+    await expect(
+      cache.ingest('h-no-stdout', bytes, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+    ).rejects.toThrow(CorruptArtifactError)
+    await expect(
+      cache.ingest('h-no-stdout', bytes, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+    ).rejects.toThrow(/missing stdout entry/)
+    expect(existsSync(path.join(cacheDir, 'h-no-stdout.tar.zst'))).toBe(false)
+    expect(await cache.get('h-no-stdout')).toBeNull()
   })
 
   it('ingest() rejects a zstd frame declaring an oversize decompressed length (bomb)', async () => {
