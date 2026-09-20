@@ -1266,6 +1266,47 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       `body.length` type-checked on a value the boundary need not have
       made a string. That is now read and validated like its Turbo
       sibling. The instrument found it; I did not.
+447.  DONE (2026-09-20, the correctness sweep turned on
+      `orchestrator/run.ts` — 1,048 lines, the largest file the arc had
+      never swept).
+      Four load-bearing claims mutated, one at a time, each against the
+      whole repo.
+      CAUGHT (2): the drain-before-teardown ORDER — moving
+      `teardownPlugins` ahead of `cache.drainUploads()` fails the
+      `hasRemote` row, which checks the order and not merely that both
+      ran; and history's never-fail — rethrowing from the
+      `recordRunBundle` catch fails the row that pins a run record it
+      cannot write as a status line.
+      SURVIVED, and it is the find: deleting `closeCache()` from run()'s
+      `finally` breaks NOTHING. The comment there says the handle must
+      be released "on EVERY exit path, not just the happy one", because
+      `close()` is where the run's deferred `accessed_at` batch is
+      flushed — a hit only adds its hash to `touched` — so a throw
+      between opening the cache and the normal close leaks the SQLite
+      handle AND loses the run's touch record, "after which an LRU
+      `vx cache prune` can evict entries the run just hit".
+      The sharp part is why it went unpinned, and it is this arc's shape
+      again: a row DOES exist naming that exact hazard — "a run record
+      that cannot be written is a status line; the cache handle still
+      closes" — and it spies on `close` and asserts it ran. But
+      `recordRunBundle`'s throw is CAUGHT, so that run finishes and
+      closes on the NORMAL path. The claim is every exit path; the
+      coverage was one of them, and the row's own name reads as though
+      it were both.
+      Pinned now with the one lever that reaches the other path: a
+      plugin cache layer whose `drainUploads` throws — the single await
+      in the normal path that is not wrapped — so the run takes its
+      hits and dies before its own close. The row reads `accessed_at`
+      out of the cache DB and requires the bump; red without the
+      `finally`, green with it, and the sibling row is cross-referenced
+      from it so the pair reads as the pair it is.
+      SURVIVED and DELIBERATELY NOT PINNED (1): dropping the once-only
+      guard on `closeCache` also breaks nothing, but that claim is COST,
+      not correctness — a second close just re-runs the 30-day
+      retention DELETEs, and the `finally` already swallows a throw. A
+      test for it would have to count calls, which pins the
+      implementation rather than the guarantee. Recorded as measured
+      and left, with the reason, so it is not rediscovered as a find.
 
 ## In flight
 
@@ -1600,7 +1641,7 @@ Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
 No open issues.
-Next: the loop holds 413–446, so the trim is due at 452. For work, the
+Next: the loop holds 413–447, so the trim is due at 452. For work, the
 shape that has paid every time in this arc is a claim whose halves live
 apart. Still untried: `vx watch`'s cycle against the run's admission
 dedup — REFUTED in 446, and 434 had already taken the pair proper —

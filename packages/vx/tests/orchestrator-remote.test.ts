@@ -10,6 +10,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { describe, expect, it, spyOn } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import {
@@ -1085,6 +1086,119 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         delete g['__vxDrained']
         delete g['__vxTornDown']
         delete g['__vxTornDownFirst']
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a run that THROWS after its hits still flushes the accessed_at bumps',
+    async () => {
+      // `close()` is where the deferred `accessed_at` batch is written — a
+      // hit only adds its hash to `touched`. run() therefore closes the
+      // cache in a `finally`, "on EVERY exit path, not just the happy one",
+      // because a throw between opening the cache and the normal close
+      // leaks the handle AND loses the run's touch record, after which an
+      // LRU `vx cache prune` can evict entries the run just hit.
+      //
+      // Nothing pinned that: deleting the `finally`'s close survives the
+      // whole repo (item 447). The row above — "a run record that cannot be
+      // written is a status line; the cache handle still closes" — names
+      // this exact hazard, but `recordRunBundle`'s throw is CAUGHT, so that
+      // run finishes and closes on the NORMAL path; the `finally` is never
+      // the close under test. The claim is "every exit path"; the coverage
+      // was one of them.
+      //
+      // The lever here is a plugin layer whose `drainUploads` throws — the
+      // one await in the normal path that is not wrapped — so the run takes
+      // its hits and then dies before its own close.
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const g = globalThis as Record<string, unknown>
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        await writeFile(
+          path.join(fixture.root, 'vx.workspace.mjs'),
+          localWorkspaceSource(
+            [
+              `                ${pluginSource(
+                'test/drain-throws',
+                `{ cache(ctx) {
+                    const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
+                      policy: ctx.policy,
+                    })
+                    return {
+                      hasRemote: true,
+                      prefetch: (h, c) => inner.prefetch(h, c),
+                      drainUploads: () => {
+                        if (globalThis.__vxDrainThrows === true) {
+                          throw new Error('drain exploded')
+                        }
+                        return inner.drainUploads()
+                      },
+                      remoteHasMany: (h) => inner.remoteHasMany(h),
+                      markRemoteAbsent: (h) => inner.markRemoteAbsent(h),
+                      key: (a) => inner.key(a),
+                      get: (a, b) => inner.get(a, b),
+                      has: (a) => inner.has(a),
+                      loadOutputFilesBatch: (a) => inner.loadOutputFilesBatch(a),
+                      isOutputsCurrent: (a, b) => inner.isOutputsCurrent(a, b),
+                      restoreOutputs: (a, b, c) => inner.restoreOutputs(a, b, c),
+                      save: (a) => inner.save(a),
+                      ingest: (a, b, c) => inner.ingest(a, b, c),
+                      recordRun: (a) => inner.recordRun(a),
+                      recordRuns: (a) => inner.recordRuns(a),
+                      recordRunBundle: (a) => inner.recordRunBundle(a),
+                      stats: (a) => inner.stats(a),
+                      hashFile: (a) => inner.hashFile(a),
+                      outputsPath: (a) => inner.outputsPath(a),
+                      recordOutputDirs: (a, b, c) => inner.recordOutputDirs?.(a, b, c),
+                      prune: (a) => inner.prune(a),
+                      close: () => inner.close(),
+                    }
+                  } }`,
+              )}`,
+            ],
+            `
+            import { LayeredCache } from ${JSON.stringify(cacheModuleSpecifier)}
+            const alwaysMiss = {
+              async has() { return false },
+              async get() { return null },
+              async put() {},
+            }
+            `,
+          ),
+        )
+        g['__vxDrainThrows'] = false
+        const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        expect(first.ok).toBe(true)
+
+        const dbPath = path.join(fixture.root, '.vx', 'cache', 'cache.db')
+        const accessedAt = (): number => {
+          const db = new Database(dbPath, { readonly: true })
+          try {
+            const row = db.query('SELECT MAX(accessed_at) AS a FROM entries').get() as {
+              a: number
+            }
+            return row.a
+          } finally {
+            db.close()
+          }
+        }
+        const before = accessedAt()
+        // The bump has to be distinguishable from the save's own timestamp.
+        await Bun.sleep(25)
+
+        g['__vxDrainThrows'] = true
+        await expect(
+          run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),
+        ).rejects.toThrow('drain exploded')
+        expect(accessedAt()).toBeGreaterThan(before)
+      } finally {
+        delete g['__vxDrainThrows']
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
