@@ -64,7 +64,7 @@ commands, and fill the TODOs.
 | Nx                                   | vx                                              |
 | ------------------------------------ | ----------------------------------------------- |
 | a project's `targets`                | `tasks`                                          |
-| target `dependsOn` (`^build`, etc.)  | `dependsOn` — same `'build'` / `'^build'` syntax |
+| target `dependsOn` (`^build`, etc.)  | `dependsOn` — `'build'` and `'^build'` are the same syntax; Nx's `project:target` becomes vx's `project#target` (a configuration suffix has no vx equivalent and is dropped with a TODO) |
 | `inputs` / `namedInputs` (resolved)  | `cache.inputs.files`                            |
 | `{workspaceRoot}/file` inputs        | `cache.inputs.workspaceFiles`                   |
 | `outputs`                            | `cache.outputs.files`                           |

@@ -331,7 +331,34 @@ function buildTask(
   const deps: string[] = []
   for (const d of target.dependsOn ?? []) {
     if (typeof d === 'string') {
-      deps.push(d)
+      // Nx separates a specific project's target with a COLON
+      // (`ui:build`); vx's separator is `#`. Passed through, the entry
+      // read as a task named `ui:build` in the DEPENDENT's own project
+      // and the migrated workspace refused to run — "depends on
+      // web#ui:build but no such task is declared", from a config
+      // vx-migrate itself wrote (walked the Nx path, 2026-09-20). The
+      // object form below already mapped it; this one did not.
+      const colon = d.indexOf(':')
+      if (colon <= 0) {
+        deps.push(d)
+        continue
+      }
+      const [project, targetPart, configuration] = d.split(':')
+      const m = project === undefined ? undefined : metaByNode.get(project)
+      if (m === undefined || targetPart === undefined || targetPart === '') {
+        todos.push(
+          `dependsOn ${JSON.stringify(d)} names ${JSON.stringify(project ?? '')}, which is not a ` +
+            'workspace package in this graph — edge dropped',
+        )
+        continue
+      }
+      if (configuration !== undefined) {
+        todos.push(
+          `dependsOn ${JSON.stringify(d)}: vx has no target configurations — depending on ` +
+            `${m.name}#${targetPart} without ${JSON.stringify(configuration)}`,
+        )
+      }
+      deps.push(`${m.name}#${targetPart}`)
       continue
     }
     if (d && typeof d === 'object') {
