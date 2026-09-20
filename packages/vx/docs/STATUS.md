@@ -1393,6 +1393,47 @@ tokenizes a regex literal by the character before the`/`.
       `sandbox-request.test.ts`: a second sweep names nothing,
       because the first one took it.
 
+407.  DONE (2026-09-20). The profile after two wins, and the leads
+      closed rather than left open — with three hypotheses refuted,
+      all three mine.
+      The 1,000-project warm run is 212 ms and now FLAT: startup 7.9,
+      workspace config 21.2, discover 18.5, package graph 8.7, open
+      cache 8.5, load configs 25.1, git enumeration 10.3, build graph
+      5.2, classify + probe 56.1, run graph 36.0, record history
+      10.5, close 4.0. Nothing left is a hot spot — the biggest
+      single piece inside any stage is under 4 ms — so the next win
+      is STRUCTURAL, not a micro-optimization. The structure worth
+      naming: about half the run (105 ms) is preamble before a task
+      is considered, and the one overlap still available there is the
+      cache open (8.5 ms of SQLite + fingerprints) against discovery
+      and the package graph (27 ms); ~4 % of the run, which this
+      box's wall clock cannot resolve, so whoever takes it measures
+      the stage table, not the clock.
+      REFUTED, in order. (a) `probe` at 12–13 ms looked like 1,000
+      `existsSync` calls inside the batched `getMany`; isolated, a
+      thousand of them cost 1.7–2.6 ms, and the split is entries SQL
+      3.5 / exists 2.8 / file rows 2.2 / dir rows 2.0 / build 1.9 —
+      proportional work, already chunked at 900 per query, no target.
+      (b) `load configs` at 25 µs a project is not an un-batched read:
+      `getConfigEvals` already takes the whole key set in one query,
+      and what remains is the per-config fast-key hash and a
+      `JSON.parse` each. (c) `output stat` at 29 µs a task and
+      `output dirs` at 109 µs are not costs at all — they are the
+      accumulated table's overlap, the same trap item 254 recorded,
+      and `isOutputsCurrent` is one `statSync` per output file by a
+      2026-09-09 measurement that is still right.
+      Which is the change this item ships: the table now says so
+      itself. `printTimings` prints one line under the accumulated
+      rows — "wall per call, summed; concurrent calls overlap —
+      compare spans, not totals" — because the caveat lived in
+      benchmarks.md and in a STATUS item, and both of us who read the
+      table anyway (item 254, and me twice today) chased the number
+      before isolating it. `modules/timing.md` says the same in the
+      page a reader has open.
+      Also read and left: `listProjects` reads each `package.json`
+      once and `hashProjectPackageJson` takes the git OID, so there
+      is no duplicate read to remove on a clean tree.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
