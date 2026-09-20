@@ -720,6 +720,39 @@ export async function streamToString(
  */
 export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
 
+/**
+ * A child's `maxRSS` in BYTES, whatever unit the runtime reported it in.
+ *
+ * Bun >= 1.4 — vx's declared floor — normalizes the kernel's `ru_maxrss`
+ * (kilobytes on Linux, bytes on macOS) before handing it over, and this file
+ * used to state that as "BYTES on every platform". It is not true of every
+ * Bun: 1.3.11 passes the raw kilobytes through, so every peak read 1024×
+ * SMALL, fell under the parent floor and recorded nothing. The opposite
+ * mistake is in this file's own history — an unconditional ×1024 on Linux
+ * made a 64 MB suite read as 64 GB and, once reservations were learned from
+ * that history, ran every task alone (2026-09-12). Both directions come from
+ * asserting a platform unit instead of deciding it from the number in hand.
+ *
+ * The number decides it. No process peaks under a megabyte — a bare `true`
+ * costs a couple — so a reading below that is not bytes, it is the kernel's
+ * kilobytes, and multiplying is right by the same margin that makes the test
+ * safe. A real byte figure is never near the threshold, and neither is a real
+ * kilobyte one: the two live 1024× apart.
+ *
+ * Calibrating against this process's OWN `process.resourceUsage()` was the
+ * first attempt and it was wrong: that is the node-compatible API, which
+ * reports kilobytes even where `Subprocess.resourceUsage()` reports bytes, so
+ * the ratio read 1024 on a runtime already handing over bytes and doubled the
+ * old 64 GB defect. It passed here, where both APIs use kilobytes, and turned
+ * CI red on both platforms (2026-09-20). Compare like with like, or do not
+ * compare at all.
+ */
+export const MIN_PLAUSIBLE_PEAK_BYTES = 1024 * 1024
+
+export function peakRssBytes(maxRSS: number): number {
+  return maxRSS > 0 && maxRSS < MIN_PLAUSIBLE_PEAK_BYTES ? maxRSS * 1024 : maxRSS
+}
+
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
   /** The parent's own high-water mark (`ownRssHighWater`); a peak at or under it is inherited, not the child's, and is not reported. */
@@ -728,20 +761,13 @@ export function resourceUsageToCpuRss(
   if (!usage) return {}
   // cpuTime.total is microseconds as a bigint → ms.
   const cpuMs = Number(usage.cpuTime.total) / 1000
-  // `maxRSS` is BYTES on every platform: Bun normalizes the kernel's
-  // `ru_maxrss` (kilobytes on Linux, bytes on macOS) before handing it
-  // over, as its typing says. This used to multiply by 1024 on Linux on
-  // the belief that Bun passed the raw value through, and every Linux
-  // peak was 1024× too big — a 64 MB `bun test` recorded as 64 GB in
-  // telemetry, `--summarize` and the run history, and once reservations
-  // were learned from that history (2026-09-12) every task with a
-  // recorded peak was over any budget and ran alone. Measured, not
-  // assumed: `tests/runner.test.ts` allocates a known number of bytes
-  // and reads the peak back within a bounded factor of it.
+  // `maxRSS` in whatever unit this runtime reports, in bytes by the rule
+  // above. `tests/runner.test.ts` allocates a known number of bytes and
+  // reads the peak back within a bounded factor of it, which is the
+  // end-to-end check on both the unit and the floor.
   // A reading at or within the slack of the parent's own mark is the
   // parent's (see `ownRssHighWater`, `RSS_FLOOR_SLACK_BYTES`): the child's
   // peak is unknown, bounded by it.
-  return usage.maxRSS > floorBytes + RSS_FLOOR_SLACK_BYTES
-    ? { cpuMs, peakRssBytes: usage.maxRSS }
-    : { cpuMs }
+  const peak = peakRssBytes(usage.maxRSS)
+  return peak > floorBytes + RSS_FLOOR_SLACK_BYTES ? { cpuMs, peakRssBytes: peak } : { cpuMs }
 }

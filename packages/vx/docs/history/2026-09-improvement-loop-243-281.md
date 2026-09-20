@@ -13,8 +13,9 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-306-332.md`; items 333–352 in
 `2026-09-improvement-loop-333-352.md`; items 353–372 in
 `2026-09-improvement-loop-353-372.md`; items 373–392 in
-`2026-09-improvement-loop-373-392.md`; items 393 onward
-continue in STATUS under the same numbering.
+`2026-09-improvement-loop-373-392.md`; items 393–412 in
+`2026-09-improvement-loop-393-412.md`; items 413 onward continue in
+`docs/STATUS.md`.
 
 243.  DONE (2026-09-16, the minimal-image persona, a step further): a
       temp directory that is missing, a file, or not writable. The run

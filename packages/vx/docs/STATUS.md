@@ -62,7 +62,9 @@ items 353–372 to
 `docs/history/2026-09-improvement-loop-353-372.md` that night
 (handoffs 14ae–14af to the next-log file), and items 373–392 to
 `docs/history/2026-09-improvement-loop-373-392.md` on 2026-09-20
-(handoff 14aj to the next-log file), so this file stays the handoff
+(handoff 14aj to the next-log file), and items 393–412 to
+`docs/history/2026-09-improvement-loop-393-412.md` later that day
+(handoff 14am to the next-log file), so this file stays the handoff
 and not the log; numbering continues from there. Keep
 it that way: when the loop below passes forty items, move the oldest
 batch there in one commit, and move a Next entry's record the same way
@@ -76,865 +78,6 @@ recorded here as it lands. Layer map measured first (imports between
 `src/<module>` directories): util ← workspace ← cache, exec ← graph ←
 orchestrator ← cli, `config.ts` a leaf, no back edges — the boundaries
 test is telling the truth.
-
-393.  DONE (2026-09-19, `comparison.md` — the page handoff 14af
-      flagged as the most drift-prone prose in the repo, and the one I
-      had walked past). Two findings in its gap lists.
-      First, a seam that no longer exists: items 2 and 5 said
-      `--continue` and `--cache-dir` are "threaded over the wire".
-      There is no wire — the whole-run `backend` seam went in 2026-08,
-      and `run-report.ts` records its removal in its own docblock. The
-      class holds: three other pages say "over the wire" and all three
-      mean a real one (the remote-cache wire, MCP's JSON-RPC).
-      Second, and worse, the config-evaluation purity GATE was
-      described as opting a config out on "any `/` outside a comment".
-      It refuses a BACKSLASH: `stripLiterals` removes literals and
-      comments, and what survives must hold no identifier escape,
-      because `\u0070rocess` IS `process` and no deny-list can see it.
-      A forward slash is in every path literal and every division, so
-      as written the gate excluded almost every config and the
-      evaluation cache read as a feature that never applies.
-      `modules/config-cache.md` has it right — backslash, identifier
-      escape and all — and has been pinned since item 314. One copy
-      pinned, the other drifts, for the twelfth time in this arc; the
-      grep over the other nine pages that describe the gate found no
-      third copy of the error.
-      Pinned: the sentence's three conditions are read from
-      `config-cache.ts` — the `\\` check, `PURE_PACKAGE` and
-      `MAX_CLOSURE_FILES` — and a forward-slash escape claim fails it
-      outright. Three mutations, one per condition.
-      The flag map and § Where vx is ahead were read too and hold,
-      including the group-task claim (no row, no tally, no `runs` row
-      — `tally.ts` and `recordRunBundle` both skip them).
-
-394.  DONE (2026-09-19, the trim the record paragraph's own rule
-      called for). The loop stood at forty-one entries, 353–393, so
-      items 353–372 moved whole to
-      `docs/history/2026-09-improvement-loop-353-372.md` and the loop
-      keeps 373–393. A PREFIX, as item 373 established: the formatter
-      renumbers an ordered list sequentially, so a cut from the middle
-      would renumber every entry below it and silently break every
-      cross-reference in this file and in the test comments that cite
-      item numbers. Nine history heads and the record paragraph
-      repointed; handoffs 14ae–14af to the next-log file, 14ag written
-      in their place. Counted before and after: twenty out, twenty-one
-      left, twenty in the new file, and the new head does not list
-      ITSELF (item 373's second refusal, honoured rather than
-      re-learned).
-      The edit script asserted all of it before writing any of it, and
-      the probe behind it was wrong first: a literal single-line search
-      for each head's onward clause matched NOTHING, because the
-      pointers wrap. Had I trusted that, the conclusion would have been
-      "no head needs repointing" and the chain would have shipped
-      broken — the same naive-selector failure this arc met six times,
-      here on the trim's own tooling. The corrected pattern allows
-      `\s+` and found exactly one clause in each of the nine.
-
-395.  DONE (2026-09-19, the blog's benchmark copies — right
-      everywhere, and the pin took four tries to deserve trust). Read
-      the three posts that quote the most figures, chosen by claim
-      density rather than the bulk-commit mtime every post shares:
-      `honest-benchmarks.md` (36), `why-vx-is-fast.md` (12),
-      `no-daemon.md` (5). Every figure agrees — the 3,270-task table to
-      the digit against `results.json`, the `(+0:08)` / `(+1:35)` /
-      `(+31:06)` overheads to the second against the ideal schedule,
-      and both solidjs/solid tables verbatim against `benchmarks.md`,
-      ratios included. `no-daemon.md`'s `ls-files -s` + concurrent
-      `git status` is a fair two-spawn summary of the four (item 388),
-      and notably does NOT repeat the `--others` error the contract
-      page had.
-      So the item is the pin, and item 391 is why it matters now: that
-      pin anchored `benchmarks.md` to `results.json` and left a SECOND
-      full copy of the same rows unanchored in the blog — the exact
-      configuration every finding in this arc came from.
-      The pin took four corrections, each caught by running it. It was
-      figure-wise first, and `66 ms` → `67 ms` passed because 67ms is
-      the git-walk floor elsewhere on the page — item 383's row-wise
-      lesson, re-learned. Row-wise then failed on the post's
-      TRANSPOSED head-to-head (runner rows where benchmarks.md has
-      runner columns), which cannot sit on one row by construction, so
-      those three rows go to `results.json` directly. The figure
-      pattern then allowed a space before `ms` but not before `s`, so
-      it silently skipped every solid row — the floor assertion is what
-      surfaced it, four rows checked where twelve were due, which is
-      precisely what 14ag says a floor is for. And the granularity
-      rule was a TOLERANCE, so `510ms` → `511ms` passed within one
-      step; it now requires the page to show what rounding the
-      measurement gives. Item 391's own arm had that looseness too and
-      is tightened with it.
-      PROSE is deliberately left alone, and that is a finding about the
-      pin rather than the text: the posts round and convert on purpose
-      — `0.76 s` for 760ms, `73 s` for 1m 13s, `35 s` for 34.61s — so
-      an exact pin there would fail on correct writing. A table cell is
-      a quotation; a sentence is a paraphrase.
-
-396.  DONE (2026-09-19, the task-config hash: four copies, one
-      right). `task-hash.ts` computes
-      `xxh3hex(JSON.stringify(hashableConfig(cfg)))`, and
-      `hashableConfig` drops `exec.remote` — placement is not key
-      material, which is the whole point of the executor seam and what
-      `task-hash-derive.test.ts` proves.
-      `modules/config.md` had it, projection and rationale both.
-      `caching.md` — the stale-hit-critical contract page — and
-      `blog/resolved-config-hashing.md` both wrote
-      `xxh3(JSON.stringify(node.config))`, which read literally puts
-      `exec.remote` IN the key, the opposite of the design, and the
-      blog post's own thesis is that everything in the object is in
-      the key. `modules/execute-task.md` omitted the projection AND
-      named `sha256` — a function core replaced with xxh3 for ~5× on
-      the warm path (optimizations row 1) and which appears in no
-      `src/` file; the only mention is `util/hash.ts`'s comment saying
-      xxh3 BEATS it. Its next row claimed `sha256(<projectDir>/
-package.json)` too, where the value is the file's git blob OID —
-      its index OID when clean, computed when not, `''` when absent.
-      Two wrong algorithm names on the page describing the module
-      CLAUDE.md marks stale-hit-critical.
-      Pinned as a class over every hand-authored page that states the
-      formula: it must name `hashableConfig`, must not say `sha256`,
-      and the two facts it is held to are read from `task-hash.ts`
-      rather than restated. A floor of four copies, per 14ag, so a
-      fifth is a deliberate edit and an empty result cannot pass.
-      Also `blog/bitsets-and-the-scheduler.md`: the closure's memory
-      read `N² / 8 bits`, where N² BITS is the size and N²/8 is the
-      size in BYTES — the 1.3 MB beside it settles which was meant,
-      and `Uint32Array(n * ceil(n/32))` at 3,270 is 1,347,240 bytes.
-      The bits/bytes class the Rules say to measure, not assert, and
-      item 388's seconds/milliseconds twin.
-      The rest of the three posts holds, `from-nx.md` entirely, and
-      the scheduler post's heap (max-heap on priority DESC, ties in
-      graph-insertion order) and 8.5 s figure check out against
-      `scheduler.ts` and optimizations row 26.
-
-397.  DONE (2026-09-19, the copy my own item 385 never greped for).
-      `blog/keys-from-git.md` numbers the twelve key parts and says so
-      outright — "The parts, as Caching numbers them" — and had 11 =
-      input-file hashes, 12 = plugin material, while `caching.md` has
-      had 11 = plugin, 12 = inputs since item 385 corrected exactly
-      that inversion. The post's own prose contradicted its own
-      number in the same breath ("folded right after the upstream
-      keys"), which is the tell 385 read in caching.md and then did
-      not look for anywhere else. Item 381 recorded that failure —
-      the same table wrong on a third page my 379 pin had not greped
-      — and I repeated it four items later, on a page that names
-      caching.md as its source. Its "Part 11 is where the money is"
-      moved to 12 with the fix.
-      And the post WAS pinned — `site-samples.unsafe.test.ts` holds its
-      twelve-item count, every label it quotes, and even the sentence
-      "folded right after the upstream keys". The pin held the PROSE
-      and let the NUMBER beside it say the opposite: nothing tied the
-      plugin item's position to the fold order. That pin also anchored
-      its list regex on the literal `Part 11`, the cross-reference the
-      fix had to move, so correcting the page BROKE it — a pin that
-      fails when the page is fixed is anchored to the wrong thing, and
-      it now matches `Part \d+ is where the money is`.
-      Pinned as a class and DERIVED: `key()`'s own fold order decides
-      which of the two comes first, so a reordering moves the pages
-      with it rather than failing them. Discovery is a page that
-      numbers the sentinel and the content hashes; two copies today,
-      floored at two so a third is a deliberate edit.
-      The selector was wrong once, as usual: looking for
-      `cache.inputs.files` found caching.md's step 5, whose "Captures"
-      list names the glob among the declarations the CONFIG hash
-      folds, and called the order wrong. "Content hashes" is the
-      phrase that means the input-file fold.
-      The rest of the post is BETTER than the contract pages were: it
-      names `git ls-files -s -v` and `git status --porcelain -uall`
-      correctly and explains the three prunes against a trusted index
-      id (dirty, `skip-worktree`/`assume-unchanged`, a clean filter),
-      all of which `execution.md` had wrong until item 388.
-      `lockfile-aware-keys.md` holds too, including the exact `vx why`
-      string `plugin @vzn/vx-lockfile/pnpm`: `lockfileClaim` returns
-      `{ [part]: digest }` with `part` the manager name, and
-      `applyKeyHooks` names it `${plugin.name}/${part}`.
-
-398.  DONE (2026-09-20, the signal the docs kept dropping).
-      `blog/ctrl-c.md` opens on orphaned processes and claims "vx has
-      one teardown, and every way a run can end goes through it" — and
-      never says SIGHUP. Its exit codes were "130 after `SIGINT`, 143
-      after `SIGTERM`"; `cli.md` gives the ladder as 130 / 143 / 129.
-      The omission is pointed: `signals.ts` registers SIGHUP precisely
-      because a task runs in its own session, so a closing terminal
-      reaches vx and nothing else, and without the forward the tree
-      outlives the window — which is the post's own opening anecdote.
-      It also said `SIGNAL_SHUTDOWN_GRACE_MS` "is what the tests
-      override". The tests set `VX_KILL_GRACE_MS` to 200 ms
-      (`abort`, `cache-hygiene`, `persistent`, `signal-handling`,
-      `keep-alive`); the constant is the default that env var
-      overrides, so the sentence pointed a reader at a knob they
-      cannot turn.
-      The class was wider than the post. `execution.md` said
-      "SIGINT/SIGTERM handlers" and named the pair again in its
-      failure table; `modules/orchestrator.md` said "SIGINT + SIGTERM
-      handlers" and again under signal forwarding. Five sites across
-      three pages. `modules/signals.md` and `cli.md` had all three —
-      the module page right again, as in 393, 396 and 397.
-      The pin reads the registered set from `process.on('SIG…')` in
-      `signals.ts` and checks the ENUMERATION SITE, not the page. That
-      distinction was earned: the first draft asked whether the page
-      contained the word SIGHUP anywhere, and `execution.md` passed
-      with "SIGINT/SIGTERM handlers" intact because a sentence I had
-      just added mentioned it — the figure-wise mistake of item 395,
-      one item after writing it down. Two carve-outs, both stated: a
-      page that DISCLAIMS installing handlers is not claiming the set
-      (`runner.md` says "Doesn't install signal handlers"), and a
-      sentence naming a suite describes that file's cases, not the set
-      (`signal-handling.test.ts` covers two signals;
-      `task-tree-kill.test.ts` covers SIGHUP).
-      `pipeline-with-seams.md` was read too and holds: all thirteen
-      hooks, in order.
-
-399.  DONE (2026-09-20, a read with NO finding, recorded so it is
-      not repeated). Three blog posts and a sample of the module
-      pages' negative claims, all holding.
-      `from-turborepo.md`: every `turbo.json` row agrees with
-      `migrate/from-turborepo.md`, `extends` included (item 382's fix
-      is in BOTH copies), and `site-samples` already runs an
-      `it.each` over the two pages against the mapper's
-      `KNOWN_TASK_KEYS`. One apparent error was chased and refuted:
-      the post says an uninferable value becomes a `TODO(vx-migrate)`
-      COMMENT, and the first grep found only `migrate-nx.ts`'s
-      PLACEHOLDER, a failing command on the Nx path —
-      `migration.ts:320` renders `// TODO(vx-migrate): ${todo}`, so
-      the post is right.
-      `watch-mode.md`: the 150 ms debounce, the ignore set, and
-      exactly the seven flags `watch.ts` rejects across its three
-      rejection sites — already derived by `site-samples:391` from
-      the rejection messages themselves.
-      `lock-and-frozen.md`: `--frozen` does no staleness check of its
-      own, `vx lock --check` is the audit, `vx-lock.json` is excluded
-      from every key. All three match `cli.md` and `caching.md`.
-      Then the surface 14ag named next, `modules/`' "What it does NOT
-      do" sections — fourteen pages, negative claims nothing checks.
-      Six sampled against source and every one true: `metrics.ts`
-      opens and closes nothing and writes no rows
-      (`cache/run-history.ts` holds `recordRunBundle`);
-      `task-log-buffer.ts` ships nothing and does export `takeEntry`;
-      `filter.ts` has no `**` in NAME patterns (the `**` it has is
-      the path form the page distinguishes); `kill-tree.ts` does not
-      reap; `signals.ts` touches the logger only through `runEnd()`.
-      Recorded rather than dropped: 14ae's box says a page that reads
-      true is still read, since the series' worth is the coverage and
-      not the find count. Two consecutive reads at zero yield is the
-      signal that this arc has covered its surface.
-
-400.  DONE (2026-09-20). The same drift class, read in the TESTS
-      instead of the docs: a `describe`/`it` name is a claim, and
-      nothing held a body to it. A probe over every `it` in
-      `packages/vx/tests/*.ts` (2 874 blocks) flagged the ones with
-      no `expect(` in the body; both drafts of it were wrong in the
-      familiar way — the first brace-matcher treated an apostrophe in
-      a comment as a string and cut bodies short, the second treated
-      a backtick inside a REGEX the same way — so the sweep is a
-      candidate list to read, never a verdict. 49 candidates, and all
-      but one assert through a helper that throws (`assertBudget`,
-      `rejects`, `expectOk`, `validate`, a `waitFor`) or through a
-      value the name is about.
-      The one real case: `archive-security.test.ts`'s "ignores an
-      entry whose resolved path is destDir itself" called
-      `restore(tar, dest)` and asserted NOTHING. It pinned "does not
-      throw" while its name claims three things. It now pins all
-      three — the entry is not in the returned `provided` set, the
-      destination is still a directory, and nothing landed in it.
-      Its comment was wrong about WHY, too, which the differential
-      found: deleting the extractor's `rel.length === 0` guard left
-      the test green, because `tar-stream.ts` normalizes a REGULAR
-      entry's trailing slash away first, so `outputs/` arrives as
-      `outputs` and `destFor` returns null. Two layers, proven
-      belt-and-braces: mutate either alone and the test stays green;
-      mutate both and `commit` raises EISDIR renaming a file over
-      destDir. Layer 1 was unpinned, so `tar-stream.test.ts` gained
-      a row for it (header name and pax override alike — the pax
-      path lands BEFORE the normalization), and the pax-record
-      builder moved to module scope, shared with the test that had
-      it inline.
-      Two claims-about-a-list fixed the way the docs arc learned to:
-      `sandbox-runtime.unsafe.test.ts`'s "accepts every capability
-      the schema defines" restated nine `allow` fields in a heredoc,
-      so a tenth would have fallen out of its own name. It now reads
-      `SANDBOX_FIELDS`/`GRANT_FIELDS`/`DENY_FIELDS` out of
-      `config-schema.ts` (resolving the `as const` spreads), asserts
-      its value map's keys EQUAL each set, and renders the config
-      from that map. And `cache-baseline.test.ts`'s fifteen budgets
-      live in their names ("median < 30µs"); nothing tied a name to
-      the `budgetUs()` argument beneath it, so a retune could leave
-      the name lying. The new row derives both and compares, with a
-      floor of 15 and a count check so the regex cannot walk into the
-      next body. It runs even under `VX_PERF=0`: it reads text, not
-      clocks. All fifteen agree today.
-      Differentials: adding a capability to `GRANT_FIELDS` fails the
-      sandbox row; retuning one budget fails the baseline row;
-      removing the trailing-slash strip fails the tar-stream row.
-
-401.  DONE (2026-09-20, the direction 14ah names, first pass). Not
-      "does the body assert" but "does it assert what the name
-      says". Two finds, both in suites the docs arc leaned on.
-      `task-hash-derive.test.ts` — "STABILITY: stripping remote
-      leaves the REST of exec folded" varied ONE sibling
-      (`timeout`). `EXEC_FIELDS` has seven, so a projection
-      rewritten as a whitelist could have dropped `sandbox`,
-      `persistent` or `env` with `remote` and nothing would have
-      moved: two different tasks sharing a key, the stale hit that
-      file exists to stop. The new row reads `EXEC_FIELDS` and
-      `TASK_FIELDS` from `config-schema.ts` and the strip from
-      `hashableConfig`'s own destructuring, requires a value for
-      every field (so a new field fails here rather than falling out
-      of the name), and asserts each one moves the key except the
-      stripped one.
-      The first draft of it PASSED under a real defect, which is the
-      lesson of the item: `hashableConfig` fast-paths when no
-      `remote` is declared (`if (cfg.exec?.remote === undefined)
-return cfg`), so every variant it built skipped the projection
-      — a `delete execRest.sandbox` mutation went green. It now
-      varies each field twice, once beside a declared `remote` and
-      once without; all three widened-strip mutations (`sandbox`,
-      `persistent`, `env`) fail, and a whitelist rewrite fails on the
-      "nothing is stripped" floor.
-      `schema-unknown-keys.test.ts` — "the walk covers every level
-      the schema has" asserted the walk EQUALS a hand-written list of
-      the levels its own fixture builds. It pinned the fixture and
-      called it the schema: a level added to `config-schema.ts` and
-      not to `full()` leaves that list matching and the level
-      unwalked, which is precisely what the file was written to
-      prevent (`exec.env` shipped unchecked until 2026-09-10). The
-      claim is now read from the schema — every guarded level is an
-      `assertKnownFields` call and its `where` template says where it
-      sits — floored at eight suffixes, with the two bare-`where`
-      levels (the config root, a task) asserted separately.
-      Differential: a new `${where}.cache.outputs.deep` guard the
-      fixture does not build fails the row.
-      The survey behind it: 185 test names quantify (every / each /
-      all) across the non-doc-drift suites. Most quantify over data
-      the test itself builds, which is sound; the ones worth reading
-      quantify over a list the SOURCE owns. Two more were read and
-      left alone — `events.test.ts`'s seven event kinds and
-      `telemetry.test.ts`'s six statuses are both complete today and
-      both sit behind an exhaustive `switch`, so the compiler is
-      already the pin.
-
-402.  DONE (2026-09-20). Two more claims derived, and two floored
-      sweeps that found nothing, which is the finding.
-      `inputs-resolution.test.ts` — "excludes every ALWAYS_IGNORE
-      pattern", twice (top level and nested), over two SIX-entry
-      fixture lists that restate the six patterns `inputs.ts` owns. A
-      seventh pattern there leaves both rows passing with nothing
-      covering it, on the list whose job is keeping a dependency tree
-      out of every cache key. The new row reads `ALWAYS_IGNORE` from
-      source (module-private: cache is a leaf module) and matches each
-      pattern against the fixtures with `Bun.Glob`, the engine
-      `resolveFiles` itself uses, requiring a hit in BOTH lists.
-      Differential: a `**/.turbo/**` seventh fails it.
-      Its selector was wrong first, the usual way: the array's own
-      comments hold an apostrophe and a `]` (they quote
-      `inputs.files: ['**/*']`), so a slice to the first `]` returned
-      two comment fragments as patterns. The slice now ends at the
-      bracket on its own line and drops comment lines before reading a
-      quote.
-      `workflow-runner.unsafe.test.ts` — the other half of "a skip is
-      a silent pass". `VX_REQUIRE_SANDBOX` and `VX_REQUIRE_REAPI`
-      exist because a suite that skips itself reports green, and both
-      are set by hand in `ci.yml`, with nothing catching the next gate
-      of that shape never being enabled or renamed on one side only.
-      The new rows discover the gates by SHAPE — a bare
-      `const X = process.env['VX_…']` makes the value itself the
-      resource, so its absence skips; a read compared to a literal or
-      given a `??` default is a knob with a working default — and
-      require each to be set by some workflow. Three today
-      (`VX_SMALL_DISK`, `VX_REAPI_TEST_ENDPOINT`,
-      `VX_REAPI_EXEC_ENDPOINT`), all set. Differentials: renaming
-      `VX_SMALL_DISK` in `ci.yml` and adding an unenabled gate to a
-      test file each fail it.
-      The sweeps that found nothing, both floored: 2 852 `it` blocks
-      parsed, and every name claiming exactness ("exactly", "only",
-      "nothing else", "no others") whose body has only `toContain` /
-      `toMatch` — six candidates, all six sound (an anchored
-      `toMatch(/^[0-9a-f]{16}$/)` IS exact; a `toContain` paired with
-      the `not.toContain` that carries the "only"). And the remaining
-      quantifier candidates from 401: `tally`'s buckets are a
-      `Record<TaskStatus, …>`, so the compiler demands every status;
-      `watch-rules`' seven-manager list and `sandbox-hint`'s field
-      list are already derived-plus-control.
-      The probe itself needed a third rewrite to get there: a JS
-      cleaner that blanks comments and strings still mis-slices a
-      body holding a REGEX with a backtick in it
-      (`/`([^`]+)`/g`is everywhere in the doc pins), which is what
-inflated the exactness sweep to twenty candidates. It now
-tokenizes a regex literal by the character before the`/`.
-      Three rewrites for one sweep is the cost of asking a regex to
-      read a language.
-
-403.  DONE (2026-09-20). The arc's end point: a skip prints itself, a
-      test with no assertion at least runs — but a file NO task
-      launches prints nothing at all, and the gate is
-      `vx run ci --all`.
-      Three of the commands that launch suites here look only at the
-      TOP level of a `tests/` directory: the shard dealer
-      `readdirSync`s it, `test.bun.unsafe` globs
-      `./tests/*.unsafe.test.ts`, and `@vzn/vx-reapi#test` loops over
-      `for f in tests/*.test.ts`. So a suite one directory down —
-      `tests/reapi/wire.test.ts` — would be launched by nothing,
-      in a repo where every package's suite IS its `test` task. No
-      hole today; nothing was watching for one.
-      `tests/suite-coverage.unsafe.test.ts` closes it: it IMPORTS
-      each package's `vx.config.ts` (exact, not a regex over the
-      file), reads every `test`-family command, and turns each into
-      what it launches — the dealer's own `testFiles()` where the
-      command runs the script, the globs it names otherwise, and
-      everything when it is a bare `bun test` (Bun's recursive
-      discovery). Every `*.test.ts` at any depth under any package
-      must be taken by one. Differentials both ways: a nested file
-      under `packages/vx` and one under `vx-reapi` are each reported
-      by name; the control, the same file under a bare-`bun test`
-      package, stays green.
-      Then the helper the kill suites trust. `tests/helpers/alive.ts`
-      answers "is the child dead yet" for abort, signals, keep-alive
-      and task-tree, and its failure mode is silent: a helper that
-      says "dead" too eagerly turns every one of those waits green
-      with nothing having died. Its reason for existing — a ZOMBIE is
-      dead though signal 0 still lands on it, measured at two thirds
-      of the signal suite's wall time — had no test of its own.
-      `tests/alive-helper.test.ts` builds the zombie the way the
-      kernel does (a shell backgrounds a child that exits at once and
-      then does not wait), pins the `Z` state, and asserts both
-      halves in one place: `process.kill(pid, 0)` does not throw and
-      `isAlive` is false. Differential: a helper that skips the
-      procfs read fails it.
-      Two probe lessons, both paid for. `new Response(child.stdout)
-.text()` waits for the stream to CLOSE, which for a shell
-      deliberately kept alive is never — the first draft timed out at
-      5 s; one `read()` off the reader is what "the child printed its
-      pid" means. And the row passed on the host and FAILED in the
-      gate, which is how it learned where it belongs: a sandboxed
-      probe (a scratch workspace, one task, `exec.sandbox`) printed
-      `child pid 8` while `/proc/8/stat` said `8 (bun) S`, the task
-      itself at pid 2 under a pid-1 `bwrap` — the runtime's own PID
-      namespace, whose `/proc` cannot show another process's zombie.
-      So the file is `.unsafe`, for the same reason the sandbox's own
-      suites are.
-      That move made CLAUDE.md wrong, and reading it to fix the
-      membership found it was already wrong: it says the shards
-      exclude the unsafe files "with `--path-ignore-patterns`", a
-      flag that appears NOWHERE in the repo (the dealer's own
-      `testFiles()` drops the name, so the shard command never sees
-      the file). Both corrected in the same commit.
-      One intermittent observed and NOT chased, recorded with its
-      evidence rather than a cause: under the gate's load
-      `sandbox-runtime`'s "a persistent task whose literal write
-      grant meant a directory" failed once — the task's own `mkdir`
-      said "File exists" as designed, but the run carried no
-      "write grant `.cache` named nothing on disk" line. It passed
-      on the next gate and in three standalone runs of the whole
-      unsafe suite. Two candidates, neither proven:
-      `sweepPlaceholders` skipping the placeholder (it requires
-      size 0 AND an unchanged mtime), or the hint being suppressed
-      by design because the sandbox reported something else that
-      run. Whoever sees it again: the probe is a loop of that one
-      row under parallel load with the sweep's three conditions
-      logged.
-      Lead for the next item, from that find: CLAUDE.md is the
-      most-quoted page in the repo and the only one nothing pins,
-      and the stated reason is stale — `caching-doc-drift` says "a
-      core test may read only its own package, so that copy stays a
-      rule, not a pin", but an `.unsafe` test reads the repo root by
-      design (that is what `workflow-runner` and the new
-      `suite-coverage` do). The invariants CLAUDE.md quotes
-      (`CACHE_VERSION`, `SCHEMA_VERSION`, the hook list, the layout
-      paths, the two sandbox-less tasks) are all derivable.
-
-404.  DONE (2026-09-20). Back to the run path, which is where 14ai
-      said to go: thirty items had changed docs and tests only and
-      Next 6's re-measure was the oldest debt.
-      The find is an observability one, and I walked into it myself
-      while looking for a target: the `VX_TIMING` stage table charged
-      ~12 ms of a 1,000-project warm run to `open cache`, so that is
-      where a profiler looks — but the cache open is ~1 ms warm
-      in-process and the stage also covered `buildPackageGraph`,
-      which is the bulk of it. Measured on the bench workspace:
-      `new Cache` + `assertWritable` 0.74–3.77 ms,
-      `computeWorkspaceFingerprints` 0.20–1.40 ms,
-      `buildPackageGraph` 2.19–8.02 ms over 1,000 projects. The stage
-      now splits: `package graph` 7.5–7.7 ms, `open cache` 7.7–9.5 ms
-      in a cold process. A mark is not free to ADD to the docs
-      though — `module-shape-drift` pins the list to `prepare.ts` on
-      one side and `timing.md` plus `benchmarks.md` on the other, so
-      the pin failed until both pages carried it, which is the
-      machinery working.
-      Then the measurement Next 6 is owed, with the control that
-      makes it mean something. Interleaved min-of-7, one workspace
-      copy per arm pre-warmed by that arm, the before arm from an
-      immutable `git worktree` at origin/main: 232.1 ms before,
-      218.9 ms after. The A/A control — the SAME arm against both
-      copies — read 246.4 against 259.0, a 12.6 ms spread between
-      identical code against the A/B's 13.2 ms. So the mark costs
-      nothing measurable, and the honest reading is that this shared
-      4-core container resolves nothing below about 6 % even at
-      min-of-7. That number is the item's real product: every future
-      perf claim gated here needs an A/A control beside it, or it is
-      reporting the box.
-      Also read and left alone, so the next session does not redo it:
-      `deriveStableKeys` is 30 ms of the 51 ms `classify + probe`
-      stage (1,000 × ~25 µs of `computeTaskHash`, mostly the config
-      `JSON.stringify` and the xxh3 chain — CPU, so the serial topo
-      walk is not the cost), `probe` is one batched `getMany` at
-      10.5 ms, and the `run graph` stage's 37.8 ms is ~38 µs per
-      up-to-date task across four workers. The accumulated span table
-      says `output dirs` 124 µs per task, which is the
-      overlap-not-cost trap item 254 recorded: `outputDirsCurrent` is
-      a handful of `lstatSync` calls.
-      Correction to item 403's lead, in place: CLAUDE.md is NOT
-      unpinned. `doc-references.unsafe` holds its core file paths, its
-      § Live invariants constants, the suites its invariants cite and
-      its Bun API list; `plugin-hooks-doc-drift.unsafe` holds the
-      pipeline sentence against `PLUGIN_HOOKS`. What is unpinned
-      there is small — the two sandbox-less tasks are pinned against
-      the SITE's sandboxing guide, not against CLAUDE.md's copy of the
-      same sentence. I wrote that lead without checking; the check
-      took one grep.
-
-405.  DONE (2026-09-20, the first warm-path WIN since the arc began,
-      with the control 404 says every claim here needs).
-      Where the time actually goes, measured before touching
-      anything (temporary spans, since removed): of a 1,000-project
-      warm run's `classify + probe`, the short-circuit is 41 of
-      54 ms and everything else in that stage — the run lock 2.3 ms,
-      placement 1.3, plugin install 0.4, executors 0.2, the counts
-      loop 0.1 — is noise. Inside `computeTaskHash` (20.2 ms / 1,000
-      calls): `resolveKeyInput` 15.0, of which `resolveInputs` 10.3,
-      and `cache.key` 5.0. So the fold is a fifth of it and the
-      INPUT RESOLUTION is the half worth attacking.
-      REFUTED, and it was my own lead: the config `JSON.stringify` is
-      not the cost. Micro-benched at 413 ns, with `xxh3hex` of the
-      result 190 ns — 0.6 µs against the 20-33 µs a task spends, ~2 %.
-      Moving it would change every key and cost a `CACHE_VERSION`
-      bump for 2 %; not worth proposing again.
-      The win: `resolveFiles` walks the project's git snapshot per
-      TASK, and tasks of one project routinely declare the same
-      inputs and outputs — this repo's own config is the shape, with
-      twelve shard tasks each declaring the same whole-tree glob over
-      the same ~3,000 files. `ProjectFilesCache` memoizes the
-      resolved list by project + declaration (positives, negations,
-      own outputs, project boundaries), mirroring the
-      `WorkspaceFilesCache` pattern already in that file, and reuse
-      is gated on the git snapshot being the SAME ARRAY the entry
-      walked: a mid-run re-enumeration hands back a new one, so a
-      task whose inputs an earlier task rewrote misses and walks
-      again.
-      The numbers, on this repo's own 44-task `run ci --all --dry`:
-      `task hash` 50.6/52.9/53.3/53.3/54.9 ms before,
-      37.1/37.1/37.8/37.8/40.5 after — disjoint sets, −27 %. Wall
-      clock could NOT see it (A/B min 156.2 → 143.5 ms; the A/A
-      control spread 167.4 vs 148.4 is larger), which is 404's
-      finding holding: on this box the metric the change touches is
-      the honest instrument, not the clock. Negative control, the
-      1,000-project bench where every project has ONE task and no
-      declaration repeats: 22.6–23.6 ms before, 21.6–22.0 after
-      (plus one 28.9 first-run outlier) — no win and no regression,
-      as designed.
-      Differentials: reuse without the array-identity check, a key
-      without `ownOutputs`, and a key without the positive globs each
-      fail one of the three new rows in `inputs.test.ts`.
-      One self-inflicted lesson worth the line: a `*/` inside a doc
-      comment's example (`['**/*']`) closes the comment, and the
-      parse error surfaced as `bun test` hanging for fifteen minutes
-      rather than as a syntax error — kill the run and re-run WITHOUT
-      the `| tail` that was swallowing it.
-      Also here: item 403's zombie row went red under this gate, its
-      second failure in four gate runs while passing every time
-      alone. NOT reproduced, and recorded as such rather than
-      explained — five runs of the file under four CPU burners pass
-      on BOTH the old and new code, and two full runs of the unsafe
-      suite (216 tests, the gate's own shape) pass. What changed is
-      the fragility and the diagnosis: the pid now travels through a
-      FILE instead of an unread `stdout` pipe whose lifetime the test
-      does not control, and the premise is asserted — if the parent
-      shell is gone, the row now says `parentAlive: false` instead of
-      a state mismatch nobody can read.
-      And one REAL race, found by the same gate and fixed: the site
-      link row walks `packages/vx-docs/src/content/docs`, which is
-      `@vzn/vx-docs#build`'s OUTPUT, while that task runs beside it
-      under `vx run ci --all`. A page the import script was rewriting
-      vanished between the walk and the read, and an ENOENT stack
-      surfaced under an unrelated row. The walk now skips a file that
-      is gone — its source is pinned by the safe half regardless —
-      with the reason written beside it: a generated tree is not a
-      stable input for a concurrent reader.
-
-406.  DONE (2026-09-20). 405's own map said what to read next, and
-      after the memo landed the split had MOVED: on this repo's
-      44-task `run ci --all --dry`, `cache.key` is now the biggest
-      at 23.5 ms of `task hash`'s 44.9, against `resolveKeyInput`'s
-      21.4 (input resolution 16.3, OID map 2.9, upstream 0.7, the
-      config hash 0.5, package.json 0.3). The reason is the shape of
-      THIS repo rather than the bench's: `packages/vx` declares a
-      whole-tree glob, so the fold walks ~3,000 files per task, 534 µs
-      each, where a bench project's two files cost 5 µs.
-      Split further, `cache.key`'s ~24 ms is gather 8.4 (a
-      `Promise.all` over 3,000 entries the caller already holds), sort
-      7.4 (a copy-and-sort of an array `resolveFiles` already sorted)
-      and fold 6.4 (`relPosix` + `xxh3` per file). All three are
-      key-IDENTICAL to fix:
-      the order is checked instead of re-sorted (one comparison per
-      file; an unsorted caller still gets a sort), the digests are
-      gathered in a plain loop when the OID map covers them (the
-      first gap falls back to the awaited form for the whole list),
-      and `relPosix` is memoized per Cache while the workspace root
-      holds — 132,000 calls for 3,000 answers on this gate.
-      Proof the key did not move: every task hash of a `--dry` plan
-      compared between origin/main and this tree — 34 on this repo,
-      then 1,000 on the bench workspace, all identical. Two lessons
-      in that check. The first version extracted ZERO rows and
-      printed "IDENTICAL" over an empty diff, so the floor
-      (`-ge 30`, then `-ge 900`) is what made it a real pass — the
-      third time this arc that the selector, not the claim, was the
-      bug. And this repo is the WRONG tree for a second look: its
-      own sources are its tasks' inputs, so editing a test moves the
-      keys legitimately; the bench workspace, whose files nothing
-      touches, is where the comparison means something.
-      Measured, disjoint sets, five reps each: `task hash`
-      49.1–61.3 ms on origin/main, 41.5–42.9 with 405 alone,
-      26.3–34.7 with both — about −45 % against main. Control on the
-      1,000-project bench, where each task has two input files and
-      nothing repeats: 21.8–24.9 before, 20.8–28.0 after, overlapping
-      — no win, no regression, which is what a per-file cost should
-      look like when there are two files.
-      Two pins, each with a differential: a list whose only inversion
-      is at the END (an off-by-one in the order scan lets it through,
-      and the existing order row breaks at the first pair instead),
-      and a Cache asked for a second workspace root (an uncleared
-      memo folds one tree's names under another's). The second was
-      vacuous when first written — the file sat outside BOTH roots,
-      so `../shared.txt` was the answer either way and the broken
-      memo passed; it now lives inside root-a.
-      And the intermittent item 403 recorded came back on this gate,
-      which made it a second sighting and therefore work. It is a
-      REAL defect, not test noise: a persistent task that fails
-      readiness sweeps its placeholders TWICE — once from the child's
-      exit handler, once from the readiness catch — and
-      `sweepPlaceholders` returns only what IT removed, so whenever
-      the exit handler won the race the "write grant `.cache` named
-      nothing on disk" hint was never printed and the failure said
-      only "File exists", which is the message the hint exists to
-      explain. The catch now reports the UNION of both sweeps.
-      It does not reproduce in isolation (8/8 under four CPU burners,
-      5/5 alone), so the differential forces the race instead: a
-      150 ms sleep before the catch's sweep makes the exit handler
-      win every time — the old code fails that, the new code passes.
-      The ingredient is pinned where it is deterministic, in
-      `sandbox-request.test.ts`: a second sweep names nothing,
-      because the first one took it.
-
-407.  DONE (2026-09-20). The profile after two wins, and the leads
-      closed rather than left open — with three hypotheses refuted,
-      all three mine.
-      The 1,000-project warm run is 212 ms and now FLAT: startup 7.9,
-      workspace config 21.2, discover 18.5, package graph 8.7, open
-      cache 8.5, load configs 25.1, git enumeration 10.3, build graph
-      5.2, classify + probe 56.1, run graph 36.0, record history
-      10.5, close 4.0. Nothing left is a hot spot — the biggest
-      single piece inside any stage is under 4 ms — so the next win
-      is STRUCTURAL, not a micro-optimization. The structure worth
-      naming: about half the run (105 ms) is preamble before a task
-      is considered. CORRECTED by item 408 — the overlap this entry
-      proposed there is worth ~1.4 ms, not ~8: `new Cache`,
-      `assertWritable` and `noteSchemaReset` are SYNCHRONOUS, and a
-      single-threaded runtime cannot overlap them with anything. Only
-      `computeWorkspaceFingerprints` (0.2–1.4 ms) can move. Do not
-      take that lead.
-      REFUTED, in order. (a) `probe` at 12–13 ms looked like 1,000
-      `existsSync` calls inside the batched `getMany`; isolated, a
-      thousand of them cost 1.7–2.6 ms, and the split is entries SQL
-      3.5 / exists 2.8 / file rows 2.2 / dir rows 2.0 / build 1.9 —
-      proportional work, already chunked at 900 per query, no target.
-      (b) `load configs` at 25 µs a project is not an un-batched read:
-      `getConfigEvals` already takes the whole key set in one query,
-      and what remains is the per-config fast-key hash and a
-      `JSON.parse` each. (c) `output stat` at 29 µs a task and
-      `output dirs` at 109 µs are not costs at all — they are the
-      accumulated table's overlap, the same trap item 254 recorded,
-      and `isOutputsCurrent` is one `statSync` per output file by a
-      2026-09-09 measurement that is still right.
-      Which is the change this item ships: the table now says so
-      itself. `printTimings` prints one line under the accumulated
-      rows — "wall per call, summed; concurrent calls overlap —
-      compare spans, not totals" — because the caveat lived in
-      benchmarks.md and in a STATUS item, and both of us who read the
-      table anyway (item 254, and me twice today) chased the number
-      before isolating it. `modules/timing.md` says the same in the
-      page a reader has open.
-      Also read and left: `listProjects` reads each `package.json`
-      once and `hashProjectPackageJson` takes the git OID, so there
-      is no duplicate read to remove on a clean tree.
-
-408.  DONE (2026-09-20). The perf arc closed with a correction, and
-      then the first-run path walked end to end — the DX read Next 7
-      did on 2026-09-04, on a workspace a beginner would actually
-      have: three packages, `package.json` scripts, a dependency
-      edge, a persistent `dev`.
-      The correction first, because it stops a wrong lead: 407 named
-      an overlap of the cache open against discovery and put it at
-      ~4 % of the run. It is worth ~1.4 ms. `new Cache`,
-      `assertWritable` and `noteSchemaReset` are synchronous, and
-      nothing overlaps synchronous work in a single-threaded runtime;
-      only `computeWorkspaceFingerprints` is awaited. Fixed in 407's
-      entry in place.
-      The walk, fifteen probes. What already teaches, recorded so it
-      is not re-walked: a bare `vx run build --all` in an
-      unconfigured workspace names `vx init`; `init` writes a config
-      per package, reports "3 tasks migrated clean, 4 TODOs" and puts
-      the exact `cache` block to paste in the TODO; a typo'd task and
-      a typo'd filter each get "Did you mean"; a `dependsOn` naming
-      nothing says which task and which package; an `outputs` glob
-      that matches nothing says an empty artifact is saved and a hit
-      restores nothing; a `..` in `inputs` or `outputs` is refused
-      with the FILE, the field, the value, the reason and the
-      alternative (`workspaceFiles`); exit 127 gets a hint naming the
-      two `.bin` directories vx puts on PATH; `vx why` names the
-      upstream whose key moved, with both digests; `vx show` prints
-      each task's command, deps, inputs and outputs; `lock` +
-      `--frozen` round-trips; a gitignored `dist/` caches, restores
-      ("3 local"), and reads up-to-date on the next run.
-      The one gap, fixed: `vx cache stats` — what the other runners
-      call it — answered "unknown subcommand" and sent the reader to
-      a help screen listing only `prune`, which teaches what vx does
-      NOT have. `stats`, `status`, `size`, `entries`, `dir`, `path`,
-      `clean`, `clear`, `rm`, `delete` and `evict` now name the verb
-      that answers them (`vx info` for the statistics, `vx cache
-prune` for eviction), a typo of `prune` still gets the
-      nearest-neighbour hint every other surface gives, and the help
-      screen and `cli.md` say where the statistics live.
-
-409.  DONE (2026-09-20). The other adoption path walked the way 408
-      walked the first-run one: `vx-migrate` on a Turbo workspace,
-      then the same repo run UNCHANGED through the `turbo()` plugin.
-      What holds, so it is not re-walked. The CLI on a plain
-      `turbo.json` writes a config per package plus `vx-preset.ts`,
-      reports "5 tasks migrated clean, 1 TODO" and the TODO is the
-      persistent task's `readyWhen`. On a turbo.json using the hard
-      fields it maps `globalEnv` to BOTH `cache.inputs.env` and
-      `exec.env.passThrough` while `globalPassThroughEnv` goes only to
-      the latter; `$TURBO_DEFAULT$` to `**/*`; a negated INPUT
-      through as-is; a negated OUTPUT to a TODO (vx has no output
-      negation); `//#format` to a note that vx has no workspace-root
-      tasks; `interactive` to a TODO; and a cross-project
-      `dependsOn: ["ui#codegen"]` straight through — and the result
-      RUNS, `deploy` uncached, `codegen` before `build`.
-      Package-level `turbo.json` with `extends: ["//"]` merges over
-      the root task field by field: `.next/**` and the package's
-      `env` win, the root's `inputs` and `passThroughEnv` stay.
-      The plugin path: a workspace whose only vx file is a
-      `vx.workspace.ts` naming `turbo()` runs the Turbo repo with no
-      config written, warns once about the persistent task, caches,
-      and re-runs every task when `turbo.json`'s
-      `globalDependencies` file changes — the mapping that matters
-      most, since a missed global is a stale hit.
-      One doc fix, from a near-miss worth recording. The `extends`
-      row read "any other key replaces the root's definition rather
-      than inheriting it", which I first took as contradicting the
-      mapper's `{ ...root, ...overlay }` merge that the walk had just
-      shown. The tests settle it — `turbo.test.ts:329` pins
-      `extends: false` alone as the opt-out and with keys as "runs on
-      those keys alone", `migrate.test.ts:191` pins the merge — so
-      the row was about the `extends: false` FORM and over-generalized
-      in a way that reads as the opposite of the behaviour. Both
-      copies (the migrate guide and the blog table) now say the
-      package task merges field by field, and what `extends: false`
-      does, separately.
-      Also confirmed on the way: a missing plugin package is refused
-      with "cannot find '@vzn/vx-migrate' — no node_modules above the
-      config provides it; install the workspace's dependencies
-      first", which is the right sentence for the most likely
-      first-time failure.
-
-410.  DONE (2026-09-20, a real defect in the Nx migration, found by
-      walking it). The trim is NOT due: the loop holds 373–410, and
-      item 373's line is forty — checked rather than assumed, since
-      the check-in that scheduled this item guessed it was close.
-      The Nx path needs no `nx` install: the migrator reads
-      `.nx/workspace-data/project-graph.json`, so a hand-written
-      graph walks it. One covering `nx:run-commands` (both `command`
-      and `commands`), `nx:run-script`, a bare `command`, `nx:noop`,
-      a foreign executor, `namedInputs` (including `production` and
-      `sharedGlobals`), `{projectRoot}` and `{workspaceRoot}` output
-      tokens, `continuous: true` and a cross-project dependency.
-      The defect: Nx separates a specific project's target with a
-      COLON (`ui:build`); vx's separator is `#`. The OBJECT form
-      (`{ target: 'tool', projects: ['pkg-b'] }`) was mapped
-      correctly, the STRING form was pushed through verbatim, and the
-      migrated workspace then refused to run — "Task web#build
-      depends on web#ui:build but no such task is declared", out of a
-      config `vx-migrate` had just written and called migrated. It
-      now maps `project:target` to `project#target`, says so for a
-      `project:target:configuration` (vx has no configurations, so
-      the suffix is dropped and the kept edge named), and drops an
-      edge to a project the graph does not contain with a TODO that
-      names it. Three pins, each failing without the fix; the guide's
-      dependsOn row says the mapping.
-      What else the walk confirmed, so it is not re-walked: named
-      inputs expand (`production` → `['**/*', '!**/*.spec.ts']`,
-      `sharedGlobals` → `workspaceFiles`), a `{workspaceRoot}` output
-      becomes `outputs.workspaceFiles`, a missing `package.json`
-      script for `nx:run-script` becomes a TODO and a command that
-      fails loudly rather than a silent no-op, `nx:noop` with
-      `dependsOn` becomes a group task and without one is skipped
-      with a line, and `cache: true` with no declared inputs defaults
-      to `['**/*']` with a TODO to narrow it.
-
-411.  DONE (2026-09-20, the rest of the Nx input surface, same walk).
-      Item 410 read the dependency forms; this one reads the INPUT
-      forms, built into the same hand-written graph and checked by
-      RUNNING the migrated config, not by reading what it printed.
-      One more defect: `{ runtime: "<cmd>" }` fell through to the
-      report line `input {…} not representable in vx` while
-      `docs/schema.md` documents `cache.inputs.runtime` as
-      "the runtime-output analog of `inputs.env`. The Nx `runtime`
-      input equivalent" — the one field written FOR this mapping was
-      the one the mapper did not reach. It now emits
-      `runtime: ['node --version']`, and the migrated workspace runs
-      and caches on it (second run reads up-to-date).
-      The other shapes were already covered and are recorded so they
-      are not re-walked: `{ env }` maps to `cache.inputs.env` AND
-      `exec.env.passThrough` (a vx task's env is isolated, so hashing
-      a variable is not enough to pass it), `{ fileset }` expands,
-      `{ externalDependencies }` and `{ dependentTasksOutputFiles }`
-      each become a TODO that says why vx needs neither, and a
-      `{token}` vx has no answer for becomes a TODO rather than a
-      silent drop. The guide's table now has a row for `{ env }` and
-      `{ runtime }` beside the `files` ones.
-      Also fixed: the implicit-dep note counted without naming, so
-      "1 implicit Nx dep not representable" sent a reader through the
-      whole graph for the pair they have to write the `dependsOn`
-      from. It now names them — `(pkg-a → pkg-b)`, capped at five
-      with "and N more".
-      Not a defect, checked: `targetDefaults` are not applied by the
-      migrator because the project-graph snapshot is ALREADY
-      resolved — my first fixture put defaults in `nx.json` and
-      expected them merged, which no real `nx graph` output would
-      have. The unrealistic fixture was the bug, not the mapper.
-
-412.  DONE (2026-09-20, the trim item 373's convention puts at forty).
-      With this entry the loop stood at forty, 373–412, so items
-      373–392 moved whole to
-      `docs/history/2026-09-improvement-loop-373-392.md` and the loop
-      keeps 393–412. A PREFIX, as item 373 set it: the formatter
-      renumbers an ordered list sequentially, so a cut from the middle
-      renumbers every entry below it and silently breaks the
-      cross-references in this file and in the test comments that cite
-      item numbers. Nine earlier history heads and the record
-      paragraph repointed; handoff 14aj moved to the next-log and 14ak
-      takes its place.
-      The edit script asserted everything before it wrote anything and
-      refused once before it ran — the pointer clause it had to rewrite
-      exists in TWO forms ("items 373 onward continue in STATUS under
-      the same numbering." in the six oldest heads, "…in
-      `docs/STATUS.md`." in the three newest), and a regex for one
-      matched none of the other six. It also refused AFTER writing, on
-      its own last check rather than on the tree: "14aj is gone from
-      STATUS" is false by construction once the record paragraph says
-      where 14aj went, and the entry it was checking for had moved
-      correctly. An assertion that forbids a whole STRING forbids the
-      sentence that records the move; the check is for the entry at
-      line start (`^14aj\.`), and it is fixed in the script. Counted
-      before and after: twenty out, twenty left, twenty in the new
-      file.
 
 413.  DONE (2026-09-20, the last adoption surface: the two remote-cache
       plugins, walked as an ADOPTER rather than as a wire). The spec
@@ -1560,6 +703,269 @@ built behind a failure`). Two claims were not.
       1.4) the current probe lands, so the change would be unmeasured
       here. Do it if a supported runtime ever drops it.
 
+432.  DONE (2026-09-20, the trim item 373's convention puts at forty).
+      With this entry the loop stood at forty, 393–432, so items
+      393–412 moved whole to
+      `docs/history/2026-09-improvement-loop-393-412.md` and the loop
+      keeps 413–432. A PREFIX, for the reason item 373 recorded: the
+      formatter renumbers an ordered list sequentially, so a cut from
+      the middle renumbers every entry below it and silently breaks the
+      cross-references in this file and in the test comments that cite
+      item numbers. Counted: twenty out, twenty left (nineteen plus this
+      entry), twenty in the new file; ten history heads and this file's
+      own record paragraph repointed; handoff 14am moved to the
+      next-log and 14an takes its place.
+      A correction to item 412's record while acting on it. 412 reported
+      the pointer clause in TWO spellings; there are THREE. The six
+      oldest heads end "STATUS under the same numbering.", the newer ones
+      end "`docs/STATUS.md`." — and among those the line break falls
+      before "continue" in some files and after "in" in others, which is
+      a third shape a regex written for the first two misses. The script
+      asserted its way to that before writing anything (412's other
+      lesson, kept): it refused on `373-392.md`, the regex moved to
+      matching WORDS rather than layout, and the dry run then found the
+      clause in all ten. Match on what the sentence says, never on where
+      it wraps.
+
+433.  DONE (2026-09-20, the pair handoff 14an named: the sandbox's
+      grants against what `cache` declares — 428 came at it from the
+      READ side, this is the write side, and it is the same shape).
+      "The sandbox derives NOTHING from `cache`" is an owner call
+      (2026-09-05) written into `sandbox-request.ts` and into
+      `schema.md`: `cache.inputs` says what INVALIDATES a task,
+      `sandbox.allow` says what it may TOUCH, and deriving one from the
+      other coupled them in both directions — a declaration added for
+      caching silently widened the sandbox, and a path the task needed
+      had to be laundered through the cache key to get it.
+      Nothing pinned it. The broad mutation (fold `cache.outputs.files`
+      into every task's write grants) is caught, but only incidentally,
+      by a row about a literal grant's failure MESSAGE. The surgical
+      one — derive from `cache.outputs` only when the task declares no
+      write grant of its own — survives every package's tests. That is
+      the dangerous direction by construction: the task it widens is
+      the one that asked for no write access at all.
+      Two rows now, one config line apart with an identical cache
+      block: a task declaring `cache.outputs.files: ['dist/out.txt']`
+      and no write grant FAILS and leaves nothing on disk, and the same
+      task with `write: ['dist/']` succeeds and writes the bytes. The
+      pair fails under the surgical mutation and passes without it.
+      Method note, because 430's correction is what made this verdict
+      trustworthy: the sandbox family has ZERO rows in this container's
+      red baseline, so "nothing caught it" here is a real answer rather
+      than a blind spot — checked before the claim, not after.
+
+434.  DONE (2026-09-20, the other pair 14an named — `vx watch`'s cycle
+      against the run's ADMISSION — which turned into a find one level
+      down, in admission's own taint rule).
+      `taintTracker` treats four upstream outcomes as poison: `failed`,
+      `aborted`, `skipped`, and anything already tainted (the
+      transitive case, "or a grand-dependent would cache the same
+      partial tree one hop later"). The e2e file reaches exactly two of
+      them — a failed upstream and the hop through it. Dropping
+      `'aborted'` from the rule, or `'skipped'`, survives every test in
+      the repo.
+      430's check first, because this area IS red here: the two
+      `--continue=always` rows are in the container's baseline, so a
+      full-suite diff cannot witness them. Run alone they pass, and
+      alone they still pass under both mutations — the verdict is the
+      file's own, not the diff's.
+      Why an e2e cannot close it: the run shapes that produce an
+      `aborted` or `skipped` upstream UNDER `--continue=always` are the
+      ones a SIGINT or a filter creates, and arranging them races the
+      thing being tested. `taintTracker` is an exported pure function
+      taking the upstream outcomes directly, which is exactly the
+      fabrication an e2e cannot do — so the rule is pinned there: one
+      row per poison status, one for a clean upstream, one for the
+      transitive hop, one for the disabled gate every other mode uses.
+      Each fails under its own mutation; the transitive row fails under
+      its own and takes the e2e with it.
+      They live in a file of their own, and the reason is a small find
+      in itself: written into `continue-taint.test.ts` they passed
+      alone and failed all six in the sharded gate, because that file's
+      module-level `beforeEach` builds a git repo per case and its
+      commit fails there. Pure rows had inherited a fixture they have
+      no use for. I wrote "under twelve-way load" here first; item 435
+      measured it and it is not load at all — see there, and take this
+      sentence as the lead it was rather than the cause.
+
+435.  DONE (2026-09-20, chasing 434's lead — and the lead's own
+      wording was wrong, which is the point of chasing one). Two rows
+      of this container's red baseline are the `--continue=always`
+      pair, recorded since 2026-09-19 as load ("they pass 3/3 in
+      isolation and fail only beside eleven other shards"). They are
+      not load. Shard 7 ALONE, with nothing else running, fails both.
+      The cause is one line of the host's git configuration. This
+      container signs commits through an external helper
+      (`gpg.format=ssh`, `gpg.ssh.program` pointing at a signer that
+      dials an MCP server on loopback), and a task sandbox denies the
+      network — so `git commit` inside a sandboxed test task cannot
+      reach its signer and exits non-zero. Unsandboxed, the same commit
+      succeeds; that is why running the file directly passes and why
+      the failure looked like concurrency.
+      The repo already knew this. `tests/helpers/workspace.ts` runs git
+      with `commit.gpgsign=false` and `tag.gpgSign=false`, which is
+      exactly the guard, and that helper exists because "forty test
+      files carried a private copy of the same scaffold". This file
+      kept its own copy, without the flags. It uses the shared
+      `gitInitCommit` now, and both rows pass inside the sandbox.
+      The class is closed, not just the case: every other test that
+      commits either passes `gpgsign` itself or goes through the
+      helper — grepped, one file was unguarded, and it was this one.
+      Baseline now 15–16 rows, from 23 this morning: 431 took six, this
+      takes two more. Each one removed is a blind spot removed from
+      every future mutation verdict, which is 430's whole point.
+
+436.  DONE (2026-09-20, the next three baseline rows — and like 435
+      they are not what the label said). The In-flight paragraph counts
+      three `loadProjectConfig` rows as the runtime: "Bun 1.3.11 gets a
+      `BuildMessage` where 1.4 gives the error its classifier turns
+      into a `UserError`". Half right. The runtime does differ, but
+      what the difference exposes is vx's own guard.
+      Measured: on this Bun a `BuildMessage`'s prototype chain is
+      `BuildMessage → Object`. It is not an Error. `configLoadError`
+      opened with `if (!(err instanceof Error)) return null`, so a
+      missing brace in a user's own config skipped the classifier
+      entirely and reached them as a raw transpile object — the exact
+      defect `isFsRefusal` exists to prevent one layer down, where the
+      rule is already written: an FS refusal surfacing as an internal
+      error is a defect, de-claim or implement.
+      So the classifier matches on SHAPE now: an object carrying
+      `name` of `ResolveMessage` or `BuildMessage` and a string
+      `message`. That is NARROWER than the old guard for everything
+      else — a config's own throw still passes through untouched — and
+      it no longer depends on a runtime's choice about which class its
+      loader errors extend.
+      Two rows pin it where every runtime can see it. The three e2e
+      rows only move on a Bun whose `BuildMessage` is not an Error, so
+      on CI they prove nothing; a plain object with the right shape
+      proves it everywhere, which is where the fix would otherwise have
+      gone untested on the machine that gates merges. A third row
+      keeps the narrowing honest: a plain `Error`, a `TypeError`
+      shape, a string, `null`, and a name without a message all still
+      return null.
+      Baseline now 14 rows, from 23 this morning — and the number
+      moved less than the three fixed rows suggest, which is its own
+      lesson. Refreshing the yardstick from ONE run drops whatever
+      flapped low that time, and two rows (`armWatcher` non-recursive,
+      the zombie `isAlive`) then read as NEW on the next run. Read the
+      diff in BOTH directions every time — what appeared and what
+      vanished — or a flapper looks like a regression and a real
+      regression hides behind one that flapped out.
+
+437.  DONE (2026-09-20, the RSS family — six baseline rows, and the
+      third label in a row that pointed at the runtime and turned out
+      to point at vx). `runner.ts` said it plainly: "`maxRSS` is BYTES
+      on every platform: Bun normalizes the kernel's `ru_maxrss` …
+      as its typing says." That is a guarantee the code did not have.
+      Bun >= 1.4 does normalize, and 1.3.11 does not — item 418
+      measured the consequence (a 200 MB child reads 235604, which is
+      kilobytes, falls under the parent floor and records nothing).
+      The same file's history holds the OPPOSITE mistake: an
+      unconditional ×1024 on Linux, which made a 64 MB suite read as
+      64 GB and, once reservations were learned from that history, ran
+      every task alone. Both directions come from asserting a platform
+      unit instead of measuring it, which is a rule this repo already
+      wrote down after paying for it once.
+      The first fix compared this process's OWN
+      `process.resourceUsage().maxRSS` against `ownRssHighWater()` and
+      took the ratio. It passed the whole gate here and turned CI RED
+      on BOTH platforms, which is the correction this entry exists for:
+      `process.resourceUsage()` is the node-COMPATIBLE API and reports
+      kilobytes even where `Subprocess.resourceUsage()` reports bytes.
+      On a runtime already handing over bytes the ratio still read
+      1024, so it multiplied — reinstating the 64 GB defect this file's
+      history warns about. It agreed here only because both APIs use
+      kilobytes on this Bun. Compare like with like, or do not compare.
+      What shipped decides from the number in hand instead: no process
+      peaks under a megabyte — a bare `true` costs a couple — so a
+      reading below that is the kernel's kilobytes and multiplying is
+      right by the same margin that makes the test safe. A real byte
+      figure is never near the threshold, and neither is a real
+      kilobyte one: the two live 1024× apart. No spawn, no memo, no
+      second API to disagree with.
+      Six rows green here: the two converter rows, `vx last`, the
+      remote-usage e2e, and both schedule-history reservation rows —
+      that last pair being the ones whose absence made the RSS family
+      worth chasing at all. The plugin pair needed one more edit, and
+      it is a nice illustration of a guard outliving its premise: item
+      418 gave that file a probe that REFUSED to run the rows when the
+      runtime answered kilobytes, which was right while core trusted
+      the runtime's normalization and wrong the moment core started
+      measuring it. The probe is gone; core's converter rows are where
+      the unit is pinned, and the file says so.
+      Two of my own rows had to be corrected on the way. One asked for
+      a DEFAULT argument (`rssUnitScale(undefined, …)`), which was this
+      process's live mark, so it turned on how heavy the test process
+      happened to be: green alone, red in the shard. A row that moves
+      with the harness is pinning the harness. The other is the
+      calibration above — and the gate could not catch it, because the
+      gate runs on the one runtime where the two APIs agree. CI caught
+      it. A green gate here is not a green gate.
+
+438.  DONE (2026-09-20, `bin.ts`'s truncated pipe — the row whose
+      defect the Rules section already records as FIXED, which is what
+      made it worth reading twice). The fix on 2026-09-15 was
+      `process.stdout.end(() => process.exit(code))`: end's callback
+      fires once the pipe holds it all. Measured true on Bun 1.4.2.
+      On 1.3.11 the callback still fires early — 2 MiB written, 214 KB
+      delivered — so the fix was not wrong, it was pinned to one
+      runtime's idea of when a pipe is flushed.
+      The form that does not depend on that idea is to stop calling
+      `process.exit` at all: set `process.exitCode` and let the loop
+      drain. Measured here — the whole 2 MiB arrives, `--version`
+      returns in 72 ms, and the full `vx run ci --all` (44 tasks,
+      sandboxes, caches, telemetry) exits on its own with its own
+      verdict. The cost, stated because it is real: a verb that leaves
+      a handle open now hangs instead of exiting, which the suite's
+      several hundred spawns of this binary would show at once — and
+      did not.
+      The error path takes the same treatment for the same reason: a
+      large stderr is truncated by `process.exit` too, and a message
+      cut in half is the one a reader most needs whole.
+      Baseline now 6 rows, from 23 this morning. What is left is the
+      reapi CAS trio (the plugin refuses to LOAD on this Bun, with its
+      own version error — nothing vx can do from here), the
+      `Bun.Archive` tar oracle, `armWatcher` non-recursive, and the
+      watch watched-set row.
+
+439.  DONE (2026-09-20, the verdict method's THIRD correction, and
+      this one is embarrassing in the useful way; the RSS re-fix it
+      follows is recorded inside 437's entry, where the mistake was).
+      CI stayed red on that fix, and the failing check was not a test at all:
+      `@vzn/vx-schedule-history#lint.oxfmt`. My edit in 437 left two
+      over-indented lines in that package's test file, and the
+      formatter said so — in the LOCAL gate, twice, in the runs I
+      declared clean.
+      The hole is in what I diffed. `comm` against `base.names`
+      compares failing TEST names, and a lint failure produces no
+      `(fail)` row, so a formatting break is invisible to it. I read
+      the failing-TASK COUNT (five, six, five) and never the task
+      NAMES — and `CLAUDE.md` already says the gate is honest "against
+      the failing-TASK set and the failing-TEST set together". I was
+      using one of the two.
+      So the yardstick is two files now, `base.names` and
+      `base.tasks`, and the gate diff prints both. The task set on this
+      container is four: shards 2, 7 and 8 (the reapi CAS trio, the tar
+      oracle, `armWatcher`, the watch row) plus `@vzn/vx-reapi#test`.
+      Anything else appearing there is mine.
+      And then the same shape a second time in one turn, on the fix
+      for it: the STATUS entry you are reading broke the formatter,
+      and the command I checked it with was
+      `bunx oxfmt --check docs/ >/dev/null && echo ok`. The "ok" never
+      printed and I did not look for it. `CLAUDE.md` has that rule
+      twice over — read the scan's exit, never a chain's last line —
+      and I wrote a chain whose only evidence was a message that
+      silently did not appear. What the formatter actually objected to
+      is worth keeping too: it renumbered the entry from 440 to 439,
+      because the ordered list has no 439 — the RSS re-fix rode inside
+      437's entry rather than taking a number of its own.
+      Three corrections to this method in one day — 430 (a red
+      baseline cannot witness a mutation), 436 (refresh from one run
+      and a flapper reads as new), and this one (a signal the diff
+      never looked at, and then a check whose exit I masked) — and
+      every one was found by something outside the diff. A verdict
+      procedure needs its own controls as much as a test does.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
@@ -1581,11 +987,14 @@ box ships **Bun 1.3.11** while both `package.json` files declare
 it does not; the oracle is where the failure lands).
 Ten of the 23 are that, verified — `@vzn/vx-reapi` refuses to load
 with its own version error (3), `tar-stream` fails inside
-`Bun.Archive` (1), `project-loader` gets a `BuildMessage` where 1.4
-gives the error its classifier turns into a `UserError` (3), the
-runner reads no `peakRssBytes` at all (2), and `bin.ts` truncates a
+`Bun.Archive` (1), `project-loader` got a `BuildMessage` where 1.4
+gives an Error — item 436 measured that and fixed the guard behind it,
+so those three are no longer in the set (3), the
+runner read no `peakRssBytes` at all until item 437 measured the unit
+instead of trusting it (2), and `bin.ts` truncated a
 2 MiB pipe write to 219 KB, the very defect the Rules section records
-as fixed (1). Four more are downstream of that missing usage number
+as fixed — item 438 found the fix pinned to one runtime's flush timing
+and took `process.exit` out of the path entirely (1). Four more are downstream of that missing usage number
 (`vx last`, the remote-usage e2e, both schedule-history reservation
 cases). Seven WERE the watch loop and `armWatcher`, and item
 369 MEASURED what this sentence first guessed: they are the floor too.
@@ -1598,9 +1007,13 @@ Bun 1.3.11's `fs.watch` never reports a DOT-prefixed filename — a
 plain file is delivered, `.vx-watch-probe` is dropped, in both
 recursive modes — and that probe is exactly how `armWatcher` proves a
 watcher is live. So 21 of the 23 are the runtime, not 10. That leaves TWO — the
-`--continue=always` pair — which pass 3/3 in isolation and fail only
-beside eleven other shards, as `output-memory`'s RSS case does. Those
-two are the whole of what load explains. The controlled comparison closes it: CI pins
+`--continue=always` pair — which item 435 measured and which are NOT
+load either: this host signs commits through a helper that dials
+loopback, a task sandbox denies the network, and that file was the one
+test with a private git runner missing the `commit.gpgsign=false` guard
+the shared helper carries. Fixed there, so load explains none of the
+23; what it explains is the SIGILL shape below and the watch timing 431
+left in place. The controlled comparison closes it: CI pins
 `bun-version: 1.4.2` in `ci.yml` and every PR of this arc went green
 there — same tree, same tests, 23 red here and none there. Upgrading
 is not available in the container: `bun upgrade` is refused by this
@@ -1795,52 +1208,61 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287, 293, 299, 305, 312, 319, 326, 332, 383 and
-    394, 400, 403, 409, 412 and 419 (14–14al) are in
-    `docs/history/2026-09-status-next-log.md`; 14am below is the
+    394, 400, 403, 409, 412, 419 and 426 (14–14am) are in
+    `docs/history/2026-09-status-next-log.md`; 14an below is the
     current one.
 
-14am. **Handoff after item 426 (2026-09-20).** Seven items since 14al,
-in two halves. 420 re-measured the warm path on THIS machine and said
-what the numbers license (an A/A control beside every future claim
-here); 421 wrote Next 16's design note and 422 refuted the note's own
-first draft by measurement. Then 423–426 are one method applied four
-times: take a file the repo calls correctness-critical, read every
-claim it makes, and pin the ones nothing proves.
-The method's yield is uneven, and that is the point. `execute-task.ts`
-gave two (423: the `--force` half of the write-gated wipe, and
-`exec.remote: 'only'` promising three things with none pinned).
-`cache/inputs.ts` + `git-inputs.ts` gave ZERO at the unit level (424) —
-recorded as zero rather than dressed up — and the gap turned out to be
-one level up: every exclusion proven alone on the resolver, none of
-them together on a real run. The composite is now one row. 425 pinned
-the constraint 421's note ends with. 426 found the largest gap of the
-four: `deriveStableKeys` folds transitive output producers in two
-accumulators, and deleting EITHER line failed nothing in the entire
-repo's tests, while the stable-key suite's own header claimed those
-cases covered the fold.
-Three rules earned this arc. A test that hands a function its input
-pins the function, never the code that BUILDS that input — the fold
-and the gate are different surfaces, and only one had rows. A
-surviving mutation is the measurement: two of them ran against every
-package's suite before either gap was called a gap. And an exclusion
-with two causes proves nothing about either — 425's dependent was
-already unstable, 426's ordinary intermediate would have inherited
-instability, so each row needed an arrangement where exactly one
-mechanism can be doing the work (a cross-project intermediate for one
-accumulator, a GROUP task for the other).
+14an. **Handoff after item 432 (2026-09-20).** Six items since 14am,
+and they are one thread: the sweep method 427 closed, the thesis 428
+proved, and then two refutations and a correction that together say
+what the method is actually worth.
+427 swept `cache/cache.ts` and found nothing — eleven claim families,
+every one pinned, recorded as zero with the map of which test pins
+what. Its conclusion was that the finds cluster where a claim's halves
+live in different files or stages, never where one function does one
+thing. 428 tested that immediately and it paid: `bindableWrites` binds
+a file-shaped write grant as its DIRECTORY on Linux, so
+`write: ['out.txt']` in a project root makes every root file readable
+with no violation — the code documented the write half of that widening
+and nobody wrote down the read half, which is the half that decides a
+cache key. Three docs pages now say what the boundary is, with the
+remedy (outputs in a subdirectory).
+Then 429 and 430 refuted the next two candidates. The env axes are
+pinned from both sides; `--affected` against the key is pinned four
+channels deep, including a row named "the fingerprint moving and the
+selection widening are the SAME condition". Both refutations cost one
+mutation run each, and both taught more than a find would have.
+429: grep proves absence only where you grep — I searched two files,
+found nothing, and was one step from shipping a duplicate test as a
+discovery; the coverage lived in a third file and a parity suite.
+430: the verdict method itself was wrong. "The whole suite, diffed
+against the baseline, saw no new failure" is BLIND wherever the
+baseline is already red, and the baseline's largest family was `vx
+watch`. That is how a live branch — the watch loop's post-cycle
+re-trigger — read as unpinned when five of seven baseline failures were
+watch rows.
+431 spent the correction: the four red watch rows were root-caused (not
+a new diagnosis — item 369 had it, and I re-derived it before reading
+the paragraph that already said so), the rows now assert per DELIVERY
+MODE so the polling fallback has its first end-to-end coverage, the
+fixture drains stderr, and the two `armWatcher` rows are gated on the
+capability with `VX_REQUIRE_WATCH_EVENTS=1` required in CI. Six
+baseline failures gone: 23 red here became 17–18, ten failing tasks
+became nine. Every one of those was a blind spot in every future
+mutation verdict.
 Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
-No open issues. The container's baseline is 12–23 failing tests (the
-spread is the watch family under load) and ten failing tasks, eleven
-when shard 9 takes its SIGILL; the clean-tree control settles which
-set you have, and the RSS family's cause is written down (418).
-Next: the loop holds 393–426, thirty-four entries, so the trim is due
-at 432 — close. For work, the sweep has three surfaces behind it and
-the obvious fourth is `cache/cache.ts` (1,583 lines, the local store
-itself, where wrong bytes under an unchanged key are a `CACHE_VERSION`
-bump). Do it by the same standard, and if it yields nothing, say so
-with the evidence. Never end with "what next?".
+No open issues.
+Next: the loop holds 413–432, twenty entries, so the trim is due again
+at 452. For work, the honest position is that five of the seven
+correctness surfaces probed in this arc came back pinned, and the two
+finds (428, 431) both came from asking where a claim's halves live
+apart — not from reading a file end to end. The remaining pairs of that
+shape, untried: `vx watch`'s cycle against the run's admission dedup
+(430 opened it and only took the branch), and the sandbox's grants
+against what `cache.outputs` declares, which 428 touched from the read
+side only. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

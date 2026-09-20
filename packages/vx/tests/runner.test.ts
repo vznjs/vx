@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   execWrap,
   ownRssHighWater,
+  peakRssBytes,
   resourceUsageToCpuRss,
   runCommand,
   runPersistent,
@@ -435,6 +436,9 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
       // Above the floor's slack (a bare floor of 0 still has it), so it passes through.
       maxRSS: 480 * 1024 * 1024,
     } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
+    // 480 MB is far above the kilobyte threshold, so the unit rule is a
+    // no-op here and this row is about the pass-through and the cpu
+    // conversion (`peakRssBytes` has its own).
     const r = resourceUsageToCpuRss(usage)
     expect(r.peakRssBytes).toBe(480 * 1024 * 1024)
     expect(r.cpuMs).toBe(1500)
@@ -449,13 +453,36 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
         typeof resourceUsageToCpuRss
       >[0]
     const floor = 480 * MB
-    expect(resourceUsageToCpuRss(at(floor), floor)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(at(floor - 1), floor)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(at(floor + RSS_FLOOR_SLACK_BYTES), floor)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(at(floor + RSS_FLOOR_SLACK_BYTES + 1), floor)).toEqual({
+    // Every value here is hundreds of megabytes, so the unit rule is a no-op
+    // and the floor is this row's subject.
+    const conv = (maxRSS: number) => resourceUsageToCpuRss(at(maxRSS), floor)
+    expect(conv(floor)).toEqual({ cpuMs: 1500 })
+    expect(conv(floor - 1)).toEqual({ cpuMs: 1500 })
+    expect(conv(floor + RSS_FLOOR_SLACK_BYTES)).toEqual({ cpuMs: 1500 })
+    expect(conv(floor + RSS_FLOOR_SLACK_BYTES + 1)).toEqual({
       cpuMs: 1500,
       peakRssBytes: floor + RSS_FLOOR_SLACK_BYTES + 1,
     })
+  })
+
+  it('the unit is decided by the number, not by the platform', () => {
+    // Both directions of this file's history are here: the unconditional
+    // ×1024 that made a 64 MB suite read as 64 GB, and the "bytes on every
+    // platform" that made a 200 MB child read as 235 KB and vanish under the
+    // floor (item 418). No process peaks under a megabyte, so a reading below
+    // that is the kernel's kilobytes; a real byte figure is never near the
+    // threshold and neither is a real kilobyte one.
+    const MB = 1024 * 1024
+    expect(peakRssBytes(300 * MB)).toBe(300 * MB)
+    expect(peakRssBytes(235_324)).toBe(235_324 * 1024)
+    // A bare `true` costs a couple of megabytes, and reads correctly either way.
+    expect(peakRssBytes(2 * MB)).toBe(2 * MB)
+    expect(peakRssBytes(2_048)).toBe(2_048 * 1024)
+    // Exactly at the threshold is bytes: the rule is strict, so a value that
+    // IS a megabyte is never multiplied into a gigabyte.
+    expect(peakRssBytes(MB)).toBe(MB)
+    // Nothing to decide.
+    expect(peakRssBytes(0)).toBe(0)
   })
 
   it('reads a known allocation back as bytes, on THIS platform', async () => {

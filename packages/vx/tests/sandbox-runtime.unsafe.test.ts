@@ -983,6 +983,74 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 })
 
+describe.skipIf(!available)('a cache declaration grants the sandbox nothing', () => {
+  // "The sandbox derives NOTHING from `cache`" (owner, 2026-09-05) is stated
+  // in `sandbox-request.ts` and in schema.md — `cache.inputs` says what
+  // INVALIDATES a task, `sandbox.allow` says what it may TOUCH, and deriving
+  // one from the other coupled them in both directions: a declaration added
+  // for caching silently widened the sandbox.
+  //
+  // Nothing pinned it. Deriving write grants from `cache.outputs.files` ONLY
+  // when the task declares none of its own survives the whole repo's tests
+  // (2026-09-20) — and that is the dangerous direction, because it is the
+  // task that asked for no write access at all.
+  let fixture: Fixture
+
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  const project = async (write: string | undefined): Promise<string> =>
+    addProject(fixture.root, 'app', {
+      files: { 'src/x.txt': 'hi' },
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: {
+                command: 'mkdir -p dist && cat src/x.txt > dist/out.txt',
+                sandbox: { allow: { read: ['src/**', '.'] ${write === undefined ? '' : `, write: ['${write}']`} } },
+              },
+              cache: {
+                inputs: { files: ['src/**'] },
+                outputs: { files: ['dist/out.txt'] },
+              },
+            },
+          },
+        }
+      `,
+    })
+
+  it(
+    'a declared OUTPUT is not a write grant: the task fails',
+    async () => {
+      const dir = await project(undefined)
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expect(r.ok).toBe(false)
+      expect(r.outcomes[0]?.status).toBe('failed')
+      expect(existsSync(path.join(dir, 'dist', 'out.txt'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROL: the same task with the write grant it never had succeeds',
+    async () => {
+      // One line of config apart — and the cache block is identical — so the
+      // row above is about where the grant comes from, not about the sandbox
+      // refusing everything.
+      const dir = await project('dist/')
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe('hi')
+    },
+    TIMEOUT,
+  )
+})
+
 describe.skipIf(!available || process.platform !== 'linux')(
   'a write grant widens what a task can READ, and that is the cache-relevant half',
   () => {

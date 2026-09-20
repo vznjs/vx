@@ -11,6 +11,7 @@ import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { gitInitCommit } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -54,13 +55,10 @@ beforeEach(async () => {
 }
 `,
   )
-  const git = (...args: string[]): void => {
-    const p = Bun.spawnSync({ cmd: ['git', ...args], cwd: root, stdout: 'pipe', stderr: 'pipe' })
-    if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-  }
-  git('init', '-q')
-  git('add', '.')
-  git('-c', 'user.email=t@vx', '-c', 'user.name=t', 'commit', '-q', '-m', 'init')
+  // The SHARED runner, not a private copy: it passes `commit.gpgsign=false`,
+  // and a host whose git signs commits through an external helper cannot
+  // reach that helper from inside the task sandbox (item 435).
+  gitInitCommit(root, 'init')
 })
 afterEach(() => rm(root, { recursive: true, force: true }))
 

@@ -107,18 +107,27 @@ interface BuildPosition {
  * fallback.
  */
 export function configLoadError(err: unknown, configPath: string, kind: string): UserError | null {
-  if (!(err instanceof Error)) return null
-  if (err.name === 'ResolveMessage') {
-    const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(err.message)?.[1]
+  // Matched on SHAPE, not `instanceof Error`. Bun's `BuildMessage` is not an
+  // Error subclass on every build — on 1.3.11 its prototype chain is
+  // `BuildMessage → Object` — and an `instanceof` guard there hands the user
+  // a raw transpile object for a missing brace in their own config, which is
+  // the defect `isFsRefusal` exists to prevent one layer down. The two names
+  // below are Bun's own and nothing else answers to them, so this is
+  // narrower than it looks: every other throw still passes through (2026-09-20).
+  if (err === null || typeof err !== 'object') return null
+  const { name, message } = err as { name?: unknown; message?: unknown }
+  if (typeof message !== 'string') return null
+  if (name === 'ResolveMessage') {
+    const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
     const what =
-      spec === undefined ? err.message.replace(/\?vx-bust=\S+/g, '') : `cannot find '${spec}'`
+      spec === undefined ? message.replace(/\?vx-bust=\S+/g, '') : `cannot find '${spec}'`
     const hint =
       spec?.startsWith('@vzn/vx') === true
         ? `; install it in the workspace: bun add -d @vzn/vx`
         : ''
     return new UserError(`${kind} config ${configPath}: ${what}${hint}`)
   }
-  if (err.name === 'BuildMessage') {
+  if (name === 'BuildMessage') {
     const pos = (err as { position?: BuildPosition | null }).position ?? {}
     const file = typeof pos.file === 'string' && pos.file.length > 0 ? pos.file : configPath
     const at =
@@ -126,7 +135,7 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
         ? `:${pos.line}${typeof pos.column === 'number' ? `:${pos.column}` : ''}`
         : ''
     const where = file === configPath ? `${configPath}${at}` : `${configPath} (in ${file}${at})`
-    return new UserError(`${kind} config ${where}: ${err.message}`)
+    return new UserError(`${kind} config ${where}: ${message}`)
   }
   return null
 }
