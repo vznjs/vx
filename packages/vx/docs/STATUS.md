@@ -1032,6 +1032,49 @@ args.taintedUpstream !== true`) fails "--continue=always never
       not (or every ordinary run pays a remote re-execution), and an
       uncacheable task never does. Differential BOTH ways — never set
       and always set each redden a different assertion of the row.
+481.  DONE (2026-09-20, `cache/cache.ts` — 1637 lines, the largest file
+      in the repo). Five mutations, three caught: letting
+      `restoreOutputs` under-restore fails "throws when the artifact
+      cannot produce an output the index recorded", expecting the
+      workspace rows on a project-only restore fails "without
+      workspaceRoot, restore materializes only the project namespace",
+      and dropping `skipLocalWrite` fails "save packs the shared local
+      artifact ONCE, not once per layer".
+      FIND ONE, a diagnostic. Deleting the vanished-artifact check
+      (`if (!exists) throw`) leaves the repo green, and the reason is
+      that its guarantee is held TWICE: without it the decode reaches
+      the same missing file and throws `CorruptArtifactError` from the
+      extract catch. The row asserted `/corrupt artifact/i`, which both
+      paths satisfy — 470's shape, `ok === false` for an incidental
+      reason. What the check carries alone is the MESSAGE, and the two
+      point at opposite remedies: "artifact file vanished before
+      restore" (a prune raced this run — re-run) versus "artifact is
+      not a readable archive" (the cache holds bad bytes — a reason to
+      throw the cache dir away). Both messages read off a probe, not
+      reasoned. The row now asserts the vanished one and carries a
+      control proving a present-but-garbled artifact still reports the
+      other; the source comment is de-claimed to say what it actually
+      buys.
+      FIND TWO came out of the fourth mutation and is the bigger one.
+      Making `assertWritable` a no-op survives the whole suite — yet a
+      row exists asserting its exact message. It is
+      `it.skipIf(process.getuid?.() === 0)`, with a comment reading
+      "CI's runner is not root". That comment is a CLAIM about the
+      environment and NOTHING checked it. Six such rows across five
+      suites assert what a permission bit does; root bypasses every
+      permission bit, so on a root runner all of them vanish under a
+      green check. Measured in this container: cache 3 skips,
+      cache-dir-selection 4, inputs 1, watch-rules 2.
+      That is exactly the silent pass `CLAUDE.md` names, and the repo
+      already has the remedy twice — `VX_REQUIRE_SANDBOX` and
+      `VX_REQUIRE_REAPI`, each turning an unavailable capability into a
+      failure on the machine whose result gates a merge. Added
+      `VX_REQUIRE_NONROOT` on the same pattern
+      (`tests/helpers/nonroot-gate.ts`), set in CI, forwarded through
+      both `passThrough` lists — a gate CI sets but the task's isolated
+      env drops would be a no-op, which is the same defect one layer
+      down. Differential, in this ROOT container: unset, each file
+      skips as before; set, each file errors with the reason named.
 
 ## In flight
 

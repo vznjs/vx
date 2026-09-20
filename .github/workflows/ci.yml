@@ -88,6 +88,13 @@ jobs:
           # and the rows skip; a runner that starts doing the same must be a
           # failure, not a quiet skip.
           VX_REQUIRE_WATCH_EVENTS: '1'
+          # Same reason again: six rows across five suites assert what a
+          # PERMISSION BIT does, and root bypasses every permission bit, so
+          # each one carried a bare `skipIf(getuid() === 0)` and a comment
+          # claiming this runner is not root. Nothing checked that claim, and
+          # a root container deletes all six under a green check (item 481
+          # found it that way). This makes root the failure it should be here.
+          VX_REQUIRE_NONROOT: '1'
           VX_SMALL_DISK: /tmp/vx-small
         run: |
           # The summary is written by a PLUGIN now, and a plugin that declines

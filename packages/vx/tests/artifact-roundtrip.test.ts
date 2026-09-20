@@ -294,15 +294,37 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     })
   }
 
-  it('throws when the artifact vanished between the probe and the restore', async () => {
+  it('names a VANISHED artifact as such, not as an unreadable one', async () => {
     await saveEntry('gone')
     // A concurrent `vx cache prune` is the documented way this happens. The
-    // caller has ALREADY wiped the declared outputs by now, so returning
-    // quietly would report a green hit over an emptied tree.
+    // caller has ALREADY wiped the declared outputs by now, so the restore
+    // must fail rather than report a green hit over an emptied tree.
+    //
+    // That it fails is held TWICE: without the existence check the decode
+    // reaches the same missing file and throws `CorruptArtifactError` from
+    // the extract catch. So `/corrupt artifact/` — what this row asserted
+    // until item 481 — passes either way, and what the check actually buys
+    // is the MESSAGE. The two point the reader at opposite remedies: a
+    // prune raced this run (re-run), versus the cache holds bad bytes
+    // (a reason to throw the cache dir away). Assert the reason, not the
+    // failure.
     await rm(cache.outputsPath('gone'), { force: true })
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
 
-    await expect(cache.restoreOutputs('gone', projectDir)).rejects.toThrow(/corrupt artifact/i)
+    await expect(cache.restoreOutputs('gone', projectDir)).rejects.toThrow(
+      /artifact file vanished before restore/,
+    )
+
+    // CONTROL: the other path still reports the other thing, so the
+    // assertion above is specific to the vanished case and not a phrase
+    // every restore failure happens to carry.
+    await saveEntry('garbled')
+    await Bun.write(cache.outputsPath('garbled'), new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+
+    await expect(cache.restoreOutputs('garbled', projectDir)).rejects.toThrow(
+      /artifact is not a readable archive/,
+    )
   })
 
   it('throws when the artifact cannot produce an output the index recorded', async () => {

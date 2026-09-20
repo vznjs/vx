@@ -23,6 +23,7 @@ import {
   resolveOutputs,
 } from '../src/cache/inputs.js'
 import { UserError } from '../src/util/index.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 async function write(p: string, content = 'x'): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -57,8 +58,9 @@ describe('cleanOutputs — strict output-ownership contract', () => {
     expect(existsSync(path.join(projectDir, 'dist', 'b.js'))).toBe(false)
   })
 
-  // Root removes anything, so the case skips there; CI's runner is not root.
-  it.skipIf(process.getuid?.() === 0)(
+  // Root removes anything, so the case skips there — unless VX_REQUIRE_NONROOT says CI
+  // expected to run it (helpers/nonroot-gate.ts).
+  it.skipIf(skipAsRoot("an output it cannot remove is the environment's failure, named as such"))(
     "an output it cannot remove is the environment's failure, named as such",
     async () => {
       await write(path.join(projectDir, 'dist', 'a.js'))

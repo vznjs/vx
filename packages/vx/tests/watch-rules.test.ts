@@ -28,6 +28,7 @@ import {
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 describe('the ignore filter', () => {
   // Every project dir is watched RECURSIVELY, so without this a `bun install`
@@ -561,7 +562,7 @@ describe('armWatcher against a fake fs.watch', () => {
 // once — no wait on an impossible write — and the watcher is kept, so a later
 // permission fix still delivers. Executed 2026-09-03 (4 ms, no throw).
 describe('armWatcher on an unwritable directory', () => {
-  it.skipIf(process.getuid?.() === 0)(
+  it.skipIf(skipAsRoot('reports not-ready immediately and keeps the watcher'))(
     'reports not-ready immediately and keeps the watcher',
     async () => {
       const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-ro-'))
