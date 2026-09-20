@@ -1600,3 +1600,46 @@ the release cut and the site's address are the owner's, and the honest
 in-repo candidates are a second look at the run path once something
 changes it, or the two-tasks-one-output-path design Next 16 sketches if
 a third repo shows the addition shape. Never end with "what next?".
+
+14am. **Handoff after item 426 (2026-09-20).** Seven items since 14al,
+in two halves. 420 re-measured the warm path on THIS machine and said
+what the numbers license (an A/A control beside every future claim
+here); 421 wrote Next 16's design note and 422 refuted the note's own
+first draft by measurement. Then 423–426 are one method applied four
+times: take a file the repo calls correctness-critical, read every
+claim it makes, and pin the ones nothing proves.
+The method's yield is uneven, and that is the point. `execute-task.ts`
+gave two (423: the `--force` half of the write-gated wipe, and
+`exec.remote: 'only'` promising three things with none pinned).
+`cache/inputs.ts` + `git-inputs.ts` gave ZERO at the unit level (424) —
+recorded as zero rather than dressed up — and the gap turned out to be
+one level up: every exclusion proven alone on the resolver, none of
+them together on a real run. The composite is now one row. 425 pinned
+the constraint 421's note ends with. 426 found the largest gap of the
+four: `deriveStableKeys` folds transitive output producers in two
+accumulators, and deleting EITHER line failed nothing in the entire
+repo's tests, while the stable-key suite's own header claimed those
+cases covered the fold.
+Three rules earned this arc. A test that hands a function its input
+pins the function, never the code that BUILDS that input — the fold
+and the gate are different surfaces, and only one had rows. A
+surviving mutation is the measurement: two of them ran against every
+package's suite before either gap was called a gap. And an exclusion
+with two causes proves nothing about either — 425's dependent was
+already unstable, 426's ordinary intermediate would have inherited
+instability, so each row needed an arrangement where exactly one
+mechanism can be doing the work (a cross-project intermediate for one
+accumulator, a GROUP task for the other).
+Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
+noise floor and no arms to A/B until the run path changes. The owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The container's baseline is 12–23 failing tests (the
+spread is the watch family under load) and ten failing tasks, eleven
+when shard 9 takes its SIGILL; the clean-tree control settles which
+set you have, and the RSS family's cause is written down (418).
+Next: the loop holds 393–426, thirty-four entries, so the trim is due
+at 432 — close. For work, the sweep has three surfaces behind it and
+the obvious fourth is `cache/cache.ts` (1,583 lines, the local store
+itself, where wrong bytes under an unchanged key are a `CACHE_VERSION`
+bump). Do it by the same standard, and if it yields nothing, say so
+with the evidence. Never end with "what next?".
