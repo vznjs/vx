@@ -1118,6 +1118,12 @@ watch`.
 Evict old or oversized cache entries. Operates on
 `<cacheDir>/cache.db` plus the on-disk `<hash>.tar.zst` artifacts.
 
+`prune` is the only `vx cache` subcommand: the statistics other runners
+put under a `cache` verb — the directory, the entry count, the size —
+are part of [`vx info`](#vx-info), and `vx cache stats`, `clean` and
+their neighbours say so rather than printing a bare "unknown
+subcommand".
+
 ```
 vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
 vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
