@@ -988,6 +988,54 @@ package.json)` too, where the value is the file's git blob OID —
       not the find count. Two consecutive reads at zero yield is the
       signal that this arc has covered its surface.
 
+400.  DONE (2026-09-20). The same drift class, read in the TESTS
+      instead of the docs: a `describe`/`it` name is a claim, and
+      nothing held a body to it. A probe over every `it` in
+      `packages/vx/tests/*.ts` (2 874 blocks) flagged the ones with
+      no `expect(` in the body; both drafts of it were wrong in the
+      familiar way — the first brace-matcher treated an apostrophe in
+      a comment as a string and cut bodies short, the second treated
+      a backtick inside a REGEX the same way — so the sweep is a
+      candidate list to read, never a verdict. 49 candidates, and all
+      but one assert through a helper that throws (`assertBudget`,
+      `rejects`, `expectOk`, `validate`, a `waitFor`) or through a
+      value the name is about.
+      The one real case: `archive-security.test.ts`'s "ignores an
+      entry whose resolved path is destDir itself" called
+      `restore(tar, dest)` and asserted NOTHING. It pinned "does not
+      throw" while its name claims three things. It now pins all
+      three — the entry is not in the returned `provided` set, the
+      destination is still a directory, and nothing landed in it.
+      Its comment was wrong about WHY, too, which the differential
+      found: deleting the extractor's `rel.length === 0` guard left
+      the test green, because `tar-stream.ts` normalizes a REGULAR
+      entry's trailing slash away first, so `outputs/` arrives as
+      `outputs` and `destFor` returns null. Two layers, proven
+      belt-and-braces: mutate either alone and the test stays green;
+      mutate both and `commit` raises EISDIR renaming a file over
+      destDir. Layer 1 was unpinned, so `tar-stream.test.ts` gained
+      a row for it (header name and pax override alike — the pax
+      path lands BEFORE the normalization), and the pax-record
+      builder moved to module scope, shared with the test that had
+      it inline.
+      Two claims-about-a-list fixed the way the docs arc learned to:
+      `sandbox-runtime.unsafe.test.ts`'s "accepts every capability
+      the schema defines" restated nine `allow` fields in a heredoc,
+      so a tenth would have fallen out of its own name. It now reads
+      `SANDBOX_FIELDS`/`GRANT_FIELDS`/`DENY_FIELDS` out of
+      `config-schema.ts` (resolving the `as const` spreads), asserts
+      its value map's keys EQUAL each set, and renders the config
+      from that map. And `cache-baseline.test.ts`'s fifteen budgets
+      live in their names ("median < 30µs"); nothing tied a name to
+      the `budgetUs()` argument beneath it, so a retune could leave
+      the name lying. The new row derives both and compares, with a
+      floor of 15 and a count check so the regex cannot walk into the
+      next body. It runs even under `VX_PERF=0`: it reads text, not
+      clocks. All fifteen agree today.
+      Differentials: adding a capability to `GRANT_FIELDS` fails the
+      sandbox row; retuning one budget fails the baseline row;
+      removing the trailing-slash strip fails the tar-stream row.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
@@ -1193,56 +1241,56 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
-    270, 275, 281, 287, 293, 299, 305, 312, 319, 326, 332 and 383
-    (14–14af) are in `docs/history/2026-09-status-next-log.md`; 14ag
-    below is the current one.
+    270, 275, 281, 287, 293, 299, 305, 312, 319, 326, 332, 383 and
+    394 (14–14ag) are in `docs/history/2026-09-status-next-log.md`;
+    14ah below is the current one.
 
-14ag. **Handoff after item 394 (2026-09-19, night).** Eleven items
-since 14af, and the arc kept exactly one shape: a claim is pinned on ONE
-copy and a second copy drifts. 384 the `packages/…` citation pin; 385
-caching.md's key fold, two steps inverted against the seed chain; 386
-schema.md pinned for what the loader ACCEPTS, not only what it refuses;
-387 cli.md, a list item the formatter swallowed and a `planRun` whose
-return type the façade withheld; 388 execution.md and flows.md — a bulk
-git populate described with a flag it deliberately does not pass, a
-`cache.key` list missing `pluginParts`, and an up-to-date check dated to
-the second where the code compares milliseconds; 389 `Bun.Archive` named
-a hard dependency in CLAUDE.md, architecture.md and a test comment when
-no `src/` file calls it; 390 two parity rows citing suites that say
-nothing about their claim; 391 benchmarks.md, right everywhere and
-pinned nowhere; 392 the module surface law in the direction nothing
-held, 38 names; 393 comparison.md, a deleted seam and a backslash
-written as a forward slash. 394 is this trim.
-Three things this stretch taught, beyond the shape. First, the
-CONTRACT page is usually right and the SUMMARY drifts: caching.md,
-config-cache.md and modules/ held while CLAUDE.md, architecture.md,
-comparison.md and the summaries moved — so read the page that is
-quoted, not the page that quotes. Second, a one-directional pin is
-half a pin: 386 and 392 are the same defect (what is REFUSED was held,
-what is ACCEPTED was not; what a page DECLARES was held, what a module
-EXPORTS was not), and both were found by asking what the existing law
-does not say. Third, a pin's selector is the fragile part and it failed
-SIX more times here — `millisecond` contains `second` (388), a heading
-map keyed by basename collided `docs/cli.md` with `docs/modules/cli.md`
-(390), a backtick-only scan missed every fenced block and a
-comment-blind one counted comments as consumers (392) — every one
-caught by RUNNING the check, never by reading it. A floor assertion
-(392's 150 crossing names) is what turns "found nothing" into a
-failure instead of a pass.
-Open: Next 1, 2 and 16, gated by their own terms; Next 6 parked — 374
-through 393 changed docs, tests and comments only, so there is no
-run-path delta to A/B and an A/B has no arms; the owner residue — the
-`NPM_TOKEN` secret, the release cut, the site's address. No open
-issues. The container's baseline is 23 failing tests and ten failing
-tasks, with shard 9 intermittently making it eleven by dying on a
-SIGILL that names no test; the clean-tree control is what settles that,
-not the streak (388 called it deterministic on two sightings and 389's
-gate refuted that).
-Next: the blog's 31 posts under `packages/vx-docs/src/content/docs/blog/`
-by last-touch order, three per item — they are the least-pinned prose
-left and they quote figures the contract pages own. Then
-`docs/modules/`'s "What it does NOT do" sections, which are negative
-claims nothing checks. Never end with "what next?".
+14ah. **Handoff after item 400 (2026-09-20).** Six items since 14ag,
+and the docs arc ended where a covered surface should: 395 pinned
+benchmarks.md's figures against `results.json` (and found the
+figure-wise pin lets `66 ms` → `67 ms` through); 396 the module pages;
+397 blog/keys-from-git.md, numbering the key parts against the fold
+order `key()` uses; 398 SIGHUP, missing from five enumeration sites
+across three pages; 399 three posts and fourteen negative-claim
+sections, all holding — the first zero-yield read. 400 took the
+second zero-yield signal as the instruction it was and moved target:
+the same drift class in the TESTS.
+It transplants cleanly. A `describe`/`it` name is a claim like a
+sentence on a page, and nothing held a body to it — so a name can
+promise three things while its body pins one
+(`archive-security.test.ts`, the one real find in 2 874 blocks), or
+restate a list the schema owns and miss its tenth member
+(`sandbox-runtime`'s "every capability"), or state a budget the body
+no longer enforces (`cache-baseline`'s fifteen). The fixes are the
+docs arc's own: derive the list, floor the discovery, and run the
+differential.
+What this stretch taught: a probe over SOURCE needs a parser, not a
+regex — both drafts of the expect-less sweep cut bodies short (an
+apostrophe in a comment, then a backtick inside a regex), and each
+draft's output was a candidate list to READ, never a verdict; the one
+real find was confirmed by opening the file, and two near-misses
+(`TODO(vx-migrate)` in 399, the root-uid skips here) were refuted the
+same way before they could be reported. And a differential can teach
+you the mechanism: deleting the guard this test was written for left
+it green, which is how the two-layer defense (`tar-stream`'s
+normalization, then the extractor's empty-`rel` skip) and the
+test's wrong comment came to light.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 parked —
+374 through 400 changed docs, tests and comments only, so there is no
+run-path delta to A/B; the owner residue — the `NPM_TOKEN` secret,
+the release cut, the site's address. No open issues. The container's
+baseline is 23 failing tests and ten failing tasks, with shard 9
+intermittently making it eleven on a SIGILL that names no test; the
+clean-tree control settles that, not the streak.
+Next: keep reading the tests, since 400's sweep only asked whether a
+body asserts AT ALL. The sharper question is whether it asserts the
+RIGHT thing — a name that quantifies (`every`, `each`, `all`,
+`never`) over a list the body restates, a `toContain` where the name
+says exactly, an assertion on a value the name does not mention.
+Start with the suites the docs arc leaned on — `task-hash-derive`,
+`telemetry-lifecycle`, `layered-cache`, `execute-task` — and carry
+the floor-assertion habit: a sweep that finds nothing must be able to
+fail. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

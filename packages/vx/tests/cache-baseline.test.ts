@@ -116,6 +116,38 @@ function assertBudget(
 
 const describePerf = SKIP ? describe.skip : describe
 
+// A budget in a test NAME is a claim, and the name is what a reader (and a
+// failure line) trusts. Nothing tied it to the number the body enforces, so
+// a retuned budget could leave "median < 30µs" over a 300µs guard. This runs
+// even when VX_PERF=0 skips the measurements: it reads text, not clocks.
+describe('every budget a perf test names is the budget it enforces', () => {
+  it('the µs/ms in each `it` name equals its budgetUs() argument', async () => {
+    const src = await Bun.file(import.meta.path).text()
+    const named = [
+      ...src.matchAll(
+        /\n {2}it\('([^']*median < ([\d.]+)(µs|ms)[^']*)'[\s\S]*?const budget = budgetUs\([^,]+, ([\d_ *]+)\)/g,
+      ),
+    ]
+    // Every name that states a budget must be one of these matches, or the
+    // regex walked past its own body into the next test's.
+    const stated = [...src.matchAll(/\n {2}it\('[^']*median < /g)]
+    expect(named.length).toEqual(stated.length)
+    expect(named.length).toBeGreaterThan(14)
+    const drift = named
+      .map((m) => ({
+        name: m[1]!,
+        nameUs: Number(m[2]) * (m[3] === 'ms' ? 1000 : 1),
+        // `1_000` and `2 * 1000` are both spellings the file may use.
+        codeUs: m[4]!
+          .replaceAll('_', '')
+          .split('*')
+          .reduce((acc, part) => acc * Number(part.trim()), 1),
+      }))
+      .filter((r) => r.nameUs !== r.codeUs)
+    expect(drift).toEqual([])
+  })
+})
+
 describePerf('cache baseline: hash primitives', () => {
   it('xxh3hex(64B string) — median < 3µs', async () => {
     const r = await bench(5000, () => {

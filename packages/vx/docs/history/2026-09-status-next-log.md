@@ -1342,3 +1342,52 @@ The loop holds 353–383, thirty-one entries; the trim convention
 16, gated by their own terms; Next 6 parked until a run-path change;
 the owner residue — the `NPM_TOKEN` secret, the release cut, the
 site's address. Never end with "what next?".
+
+## Handoff 14ag (moved 2026-09-20 with item 400)
+
+14ag. **Handoff after item 394 (2026-09-19, night).** Eleven items
+since 14af, and the arc kept exactly one shape: a claim is pinned on ONE
+copy and a second copy drifts. 384 the `packages/…` citation pin; 385
+caching.md's key fold, two steps inverted against the seed chain; 386
+schema.md pinned for what the loader ACCEPTS, not only what it refuses;
+387 cli.md, a list item the formatter swallowed and a `planRun` whose
+return type the façade withheld; 388 execution.md and flows.md — a bulk
+git populate described with a flag it deliberately does not pass, a
+`cache.key` list missing `pluginParts`, and an up-to-date check dated to
+the second where the code compares milliseconds; 389 `Bun.Archive` named
+a hard dependency in CLAUDE.md, architecture.md and a test comment when
+no `src/` file calls it; 390 two parity rows citing suites that say
+nothing about their claim; 391 benchmarks.md, right everywhere and
+pinned nowhere; 392 the module surface law in the direction nothing
+held, 38 names; 393 comparison.md, a deleted seam and a backslash
+written as a forward slash. 394 is this trim.
+Three things this stretch taught, beyond the shape. First, the
+CONTRACT page is usually right and the SUMMARY drifts: caching.md,
+config-cache.md and modules/ held while CLAUDE.md, architecture.md,
+comparison.md and the summaries moved — so read the page that is
+quoted, not the page that quotes. Second, a one-directional pin is
+half a pin: 386 and 392 are the same defect (what is REFUSED was held,
+what is ACCEPTED was not; what a page DECLARES was held, what a module
+EXPORTS was not), and both were found by asking what the existing law
+does not say. Third, a pin's selector is the fragile part and it failed
+SIX more times here — `millisecond` contains `second` (388), a heading
+map keyed by basename collided `docs/cli.md` with `docs/modules/cli.md`
+(390), a backtick-only scan missed every fenced block and a
+comment-blind one counted comments as consumers (392) — every one
+caught by RUNNING the check, never by reading it. A floor assertion
+(392's 150 crossing names) is what turns "found nothing" into a
+failure instead of a pass.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 parked — 374
+through 393 changed docs, tests and comments only, so there is no
+run-path delta to A/B and an A/B has no arms; the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address. No open
+issues. The container's baseline is 23 failing tests and ten failing
+tasks, with shard 9 intermittently making it eleven by dying on a
+SIGILL that names no test; the clean-tree control is what settles that,
+not the streak (388 called it deterministic on two sightings and 389's
+gate refuted that).
+Next: the blog's 31 posts under `packages/vx-docs/src/content/docs/blog/`
+by last-touch order, three per item — they are the least-pinned prose
+left and they quote figures the contract pages own. Then
+`docs/modules/`'s "What it does NOT do" sections, which are negative
+claims nothing checks. Never end with "what next?".
