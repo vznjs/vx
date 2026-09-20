@@ -28,8 +28,8 @@ vx has one teardown, and every way a run can end goes through it.
    process exit.
 
 The exit code says what happened: 130 after `SIGINT`, 143 after
-`SIGTERM`, the child's own code when a foreground persistent task ended
-the run. A second Ctrl-C during the grace skips the rest of it and
+`SIGTERM`, 129 after `SIGHUP`, the child's own code when a foreground
+persistent task ended the run. A second Ctrl-C during the grace skips the rest of it and
 escalates immediately, for the case where you already know the child
 will not listen.
 
@@ -38,8 +38,11 @@ will not listen.
 The teardown is not a signal handler bolted to the side. It is the
 same function called from every exit path:
 
-- **A signal.** `SIGINT` and `SIGTERM` to the `vx` process, including a
-  CI cancellation.
+- **A signal.** `SIGINT`, `SIGTERM` or `SIGHUP` to the `vx` process,
+  including a CI cancellation. `SIGHUP` is the one that matters most
+  here and is easiest to forget: a task runs in its own session, so a
+  closing terminal no longer reaches it — only `vx` hears the hang-up,
+  and unless `vx` passes it on the tree outlives the window.
 - **An abort.** `run()` is also a library call, and it takes an
   `AbortSignal`. Abort it and the same teardown runs; tasks that never
   started are reported as `aborted`, not `skipped`, so a summary can
@@ -66,9 +69,10 @@ because a timed wait in a test is a claim about time and a generous
 window would hide a regression that merely got slower. "The task has
 started" is a marker file, never a `sleep`.
 
-That is also why the grace is a constant with a name rather than a
-literal: `SIGNAL_SHUTDOWN_GRACE_MS` is what the tests override, and a
-change to it is a visible diff.
+That is also why the grace is a named constant rather than a literal:
+`SIGNAL_SHUTDOWN_GRACE_MS` is the default, `VX_KILL_GRACE_MS` is the
+env var the tests set to 200 ms so they prove the escalation without
+waiting two seconds each, and a change to either is a visible diff.
 
 ## One more refusal
 

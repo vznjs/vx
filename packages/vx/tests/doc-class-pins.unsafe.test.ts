@@ -797,3 +797,62 @@ describe('every page numbering the key parts folds plugin before inputs', () => 
     expect(wrong).toEqual([])
   })
 })
+
+// `signals.ts` registers THREE handlers, and the third is the one the
+// docs kept dropping: SIGHUP, which matters precisely because a task runs
+// in its own session, so a closing terminal reaches vx and nothing else —
+// without the forward, the tree outlives the window. `modules/signals.md`
+// and `cli.md` had all three. `execution.md` said "SIGINT/SIGTERM
+// handlers", `modules/orchestrator.md` said "SIGINT + SIGTERM handlers",
+// and `blog/ctrl-c.md` — a post whose thesis is that EVERY way a run can
+// end goes through one teardown — never said the word (item 398).
+describe('every page enumerating the run signal handlers names all three', () => {
+  it('the set is the one signals.ts registers, and 130/143/129 travel together', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts'),
+      'utf8',
+    )
+    const registered = [...src.matchAll(/process\.on\('(SIG[A-Z]+)'/g)].map((m) => m[1]!)
+    expect(registered.sort()).toEqual(['SIGHUP', 'SIGINT', 'SIGTERM'])
+
+    const pages: string[] = []
+    const wrong: string[] = []
+    for (const page of handAuthoredDocs()) {
+      const text = readFileSync(page, 'utf8')
+      // A page ENUMERATES the set when it names the exit code SIGINT gets
+      // on the vx process. 143 alone is a timeout's SIGTERM, 137 a SIGKILL;
+      // 130 is only ever this.
+      if (!/\b130\b/.test(text)) continue
+      if (!/handler|teardown|Ctrl-C|every way a run/i.test(text)) continue
+      // A page that DISCLAIMS installing handlers is not claiming the set:
+      // `runner.md` says "Doesn't install signal handlers" and then maps
+      // signals to codes generally, which is `signalExitCode`'s business,
+      // not the run's. The first draft of this filter read that sentence as
+      // a claim and reported the page missing SIGHUP.
+      if (/Doesn't install signal handlers|does not install signal handlers/i.test(text)) continue
+      pages.push(path.basename(page))
+      // At the ENUMERATION SITE, not merely somewhere on the page: a first
+      // draft asked whether the page contained the word SIGHUP at all, and
+      // execution.md passed with "SIGINT/SIGTERM handlers" intact because a
+      // later sentence happened to mention it. The same figure-wise mistake
+      // item 395 made about a table cell.
+      const flat = text.replace(/\s+/g, ' ')
+      for (const m of flat.matchAll(/SIGINT[^.]{0,60}?SIGTERM/g)) {
+        const site = flat.slice(m.index, m.index + m[0].length + 30)
+        // A sentence naming a suite describes THAT FILE's cases, not the
+        // handler set: `signal-handling.test.ts` covers SIGINT and SIGTERM
+        // and `task-tree-kill.test.ts` covers SIGHUP, so signals.md's Tests
+        // paragraph is right to pair only two.
+        const sentence = flat.slice(Math.max(0, m.index! - 120), m.index! + 120)
+        if (sentence.includes('.test.ts')) continue
+        if (!site.includes('SIGHUP')) {
+          wrong.push(`${path.basename(page)}: ${site.slice(0, 55)}`)
+        }
+      }
+      if (!/\b129\b/.test(text)) wrong.push(`${path.basename(page)}: no 129 beside 130`)
+    }
+    // Four copies today; floored so an empty result cannot pass.
+    expect(pages.length).toBeGreaterThan(3)
+    expect(wrong).toEqual([])
+  })
+})

@@ -918,6 +918,42 @@ package.json)` too, where the value is the file's git blob OID —
       `{ [part]: digest }` with `part` the manager name, and
       `applyKeyHooks` names it `${plugin.name}/${part}`.
 
+398.  DONE (2026-09-20, the signal the docs kept dropping).
+      `blog/ctrl-c.md` opens on orphaned processes and claims "vx has
+      one teardown, and every way a run can end goes through it" — and
+      never says SIGHUP. Its exit codes were "130 after `SIGINT`, 143
+      after `SIGTERM`"; `cli.md` gives the ladder as 130 / 143 / 129.
+      The omission is pointed: `signals.ts` registers SIGHUP precisely
+      because a task runs in its own session, so a closing terminal
+      reaches vx and nothing else, and without the forward the tree
+      outlives the window — which is the post's own opening anecdote.
+      It also said `SIGNAL_SHUTDOWN_GRACE_MS` "is what the tests
+      override". The tests set `VX_KILL_GRACE_MS` to 200 ms
+      (`abort`, `cache-hygiene`, `persistent`, `signal-handling`,
+      `keep-alive`); the constant is the default that env var
+      overrides, so the sentence pointed a reader at a knob they
+      cannot turn.
+      The class was wider than the post. `execution.md` said
+      "SIGINT/SIGTERM handlers" and named the pair again in its
+      failure table; `modules/orchestrator.md` said "SIGINT + SIGTERM
+      handlers" and again under signal forwarding. Five sites across
+      three pages. `modules/signals.md` and `cli.md` had all three —
+      the module page right again, as in 393, 396 and 397.
+      The pin reads the registered set from `process.on('SIG…')` in
+      `signals.ts` and checks the ENUMERATION SITE, not the page. That
+      distinction was earned: the first draft asked whether the page
+      contained the word SIGHUP anywhere, and `execution.md` passed
+      with "SIGINT/SIGTERM handlers" intact because a sentence I had
+      just added mentioned it — the figure-wise mistake of item 395,
+      one item after writing it down. Two carve-outs, both stated: a
+      page that DISCLAIMS installing handlers is not claiming the set
+      (`runner.md` says "Doesn't install signal handlers"), and a
+      sentence naming a suite describes that file's cases, not the set
+      (`signal-handling.test.ts` covers two signals;
+      `task-tree-kill.test.ts` covers SIGHUP).
+      `pipeline-with-seams.md` was read too and holds: all thirteen
+      hooks, in order.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
