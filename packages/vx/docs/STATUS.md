@@ -1373,6 +1373,39 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       464 established what keeps holes away from it — the restore-tier
       bypass — and that is now pinned, so the asymmetry is covered by
       that row rather than by a second one here.
+468.  DONE (2026-09-20, `orchestrator/stable-keys.ts` — the gate that
+      decides which keys may be probed and RESTORED ahead of the
+      schedule, so a wrong "stable" is a stale-hit vector by
+      construction).
+      Eight mutations, six caught, several by rows named for the very
+      stale hit they describe: a same-project producer no longer
+      making the key preliminary fails six (one an e2e stale-hit row);
+      the workspace-output clause, whose comment records a real stale
+      hit, fails six; unstable tasks getting stable keys fails eight;
+      the conservative default when the dirs are unknown fails two.
+      THE FIND is a THIRD carrier, and the file's own header names the
+      other two: 426 pinned the producer-set fold after both
+      accumulators survived the whole suite, and the unit rows pin the
+      gate. Nothing drove the `unstable` FLAG that travels along an
+      edge. Removing it left the whole repo green, and removing the
+      GROUP's member check did too.
+      Why the fold hides it, which is 461's lesson a third time: where
+      the dependent shares a project with the producer, the producer
+      set reaches the same verdict, so the flag never has to. The
+      arrangement that isolates it INVERTS the fold's rows — producer
+      and unstable reader in the SAME project (so the reader is caught
+      by the gate), dependent in ANOTHER project reading only its own
+      dir, which the gate's own documented answer calls STABLE. The
+      flag is then the only carrier, and it has to carry: the
+      dependent folds a key that is PRELIMINARY until the producer has
+      run.
+      Two rows, deliberately separate so they cannot hide each other:
+      the edge case and the same thing across a GROUP. Dropping the
+      edge inheritance reddens both; dropping the group's member check
+      reddens only the second. Both carry the same two controls — the
+      unstable task is unstable by the GATE rather than by inheritance,
+      and the producer keeps its own short-circuit, so the fixture is
+      not just classing everything unstable.
 
 ## In flight
 
