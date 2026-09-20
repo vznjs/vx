@@ -1292,6 +1292,42 @@ await resetSandbox()`, whose comment says "otherwise SRT keeps
       Both pinned through the pax door, the NUL row asserting the
       CLASS and not only that it threw. Differential per clause: each
       removal reddens its own row and leaves the other green.
+486.  DONE (2026-09-20, finishing `assertSafeName` — the per-member
+      question 485 left open). 485 pinned the two clauses that had
+      nothing; this asks whether the other five are pinned SEPARATELY
+      or whether one row covers several, which is the question 479
+      turned on. Four line-targeted mutations, one per clause.
+      Three are pinned exactly once each and by name: absolute fails
+      "rejects an absolute name", backslash fails "rejects backslash
+      separators", drive prefix fails "rejects a Windows drive-letter
+      prefix". One row per clause, no overlap — the arrangement 479
+      wished for.
+      THE FIND is `..`, which has FOUR rows naming it and SURVIVES all
+      of them. Every one asserts the same loose
+      `/escape|traversal|unsafe/i`, and a traversal is refused TWICE:
+      by this name check, and by the containment check that runs after
+      the path is resolved against destDir. Read off a probe, same
+      payload both ways:
+      with the clause: archive entry name escapes via '..' (unsafe)
+      without it: archive entry escapes destDir (unsafe)
+      Same error class, nothing written either way — the safety really
+      is held twice, so this is not a hole. What the name clause
+      carries ALONE is precisely what its own comment claims for it:
+      refusal "before anything decides where to write it". The
+      containment check resolves first and answers second; deleting
+      the early half of a defense-in-depth pair left four green rows.
+      That is 481, 483 and 485's shape a FOURTH time — the failing
+      held twice, the classification unasserted — and the fourth is
+      the one that says the shape is the rule rather than the
+      exception. When two layers refuse the same input, a row that
+      asserts only THAT it refused pins neither.
+      Pinned by tightening one `..` row to `/name escapes via/i`
+      beside its existing loose assertion, so the row states both that
+      the traversal is refused and WHICH layer refused it. The control
+      is its three siblings: they keep the loose regex and still pass
+      with the name clause removed, which is what proves the
+      containment layer is independently alive rather than the pin
+      having simply moved the goalposts.
 
 ## In flight
 

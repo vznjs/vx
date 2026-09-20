@@ -173,6 +173,21 @@ describe('archive restore — path-traversal defense', () => {
     await expect(restore(tar, dest)).rejects.toThrow(/escape|traversal|unsafe/i)
     // Nothing should land outside dest.
     expect(existsSync(path.join(dest, '..', 'escape.txt'))).toBe(false)
+
+    // Item 486. A traversal is refused TWICE — by the name check here and
+    // by the containment check after the path is resolved against destDir
+    // — and `/escape|traversal|unsafe/i` matches both, so all four `..`
+    // rows pass with the name clause deleted. Measured:
+    //
+    //   with the clause:    archive entry name escapes via '..' (unsafe)
+    //   without it:         archive entry escapes destDir (unsafe)
+    //
+    // Same class, nothing written either way; the safety is genuinely held
+    // twice. What the name clause carries ALONE is what its own comment
+    // claims for it — refusal "before anything decides where to write it".
+    // Assert that layer by its own message, or the early half of a
+    // defense-in-depth pair can be deleted under four green rows.
+    await expect(restore(tar, dest)).rejects.toThrow(/name escapes via/i)
   })
 
   it('rejects entry with double `..` (outputs/../../escape.txt)', async () => {
