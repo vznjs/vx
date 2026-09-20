@@ -67,7 +67,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       // may own it (`VxPlugin.commands`). Core verbs were matched above, so
       // nothing here can shadow them.
       const resolved = await resolvePluginCommand(command)
-      if (resolved !== null && !('loadError' in resolved)) {
+      if (resolved !== null && !('loadError' in resolved) && !('declaredVerbs' in resolved)) {
         const code = await resolved.command.run(rest, resolved.ctx)
         // A plugin is a boundary: a JS-authored verb that resolves nothing
         // would reach `process.exit(undefined)` and read as SUCCESS. A verb
@@ -112,8 +112,18 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       // One line, as a verb's own unknown flag or subcommand gets; the full
       // help after a typo was a hundred lines past the hint that mattered.
+      // The verbs this workspace's plugins declare are verbs HERE, so they
+      // join the "did you mean" set, and when nothing is close the second
+      // line says where a verb can come from: `vx mpc` in a workspace
+      // declaring `mcp` read as a plain unknown command, and `vx mcp`
+      // before the plugin was declared said nothing about the file that
+      // would declare it (2026-09-20).
+      const declaredVerbs =
+        resolved !== null && 'declaredVerbs' in resolved ? resolved.declaredVerbs : []
+      const guess = didYouMeanVerb(command, declaredVerbs)
       process.stderr.write(
-        `vx: unknown command: ${command}${didYouMeanVerb(command)}${loadNote} (see \`vx help\`)\n`,
+        `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n` +
+          (guess === '' && loadNote === '' ? verbSourceNote(resolved, declaredVerbs) : ''),
       )
       return 1
     }
@@ -148,11 +158,24 @@ function wantsHelp(command: string, rest: readonly string[]): boolean {
   return own.includes('--help') || own.includes('-h')
 }
 
-/** ` Did you mean run?` for a verb within two edits of a core one — the same
- *  hint a task or flag typo gets. Plugin verbs are not listed: resolving
- *  them loads the workspace, and this path is reached only when that
- *  lookup found nothing. */
-function didYouMeanVerb(verb: string): string {
-  const best = nearest(verb, CORE_VERBS)
+/** ` Did you mean run?` for a verb within two edits of a core one, or of a
+ *  verb this workspace's plugins declare — the same hint a task or flag typo
+ *  gets. The plugin verbs come from the lookup that just failed, so they
+ *  cost no second load. */
+function didYouMeanVerb(verb: string, pluginVerbsHere: readonly string[] = []): string {
+  const best = nearest(verb, [...CORE_VERBS, ...pluginVerbsHere])
   return best === undefined ? '' : `. Did you mean ${best}?`
+}
+
+/**
+ * Where a verb that is neither core nor declared COULD come from. Only when
+ * nothing is close enough to guess: after a plain typo the guess is the
+ * answer, and a second line would bury it.
+ */
+function verbSourceNote(resolved: unknown, declaredVerbs: readonly string[]): string {
+  if (declaredVerbs.length > 0) {
+    return `  This workspace's plugins declare: ${[...declaredVerbs].sort().join(', ')}.\n`
+  }
+  const here = resolved === null ? 'there is no workspace here' : 'this workspace declares none'
+  return `  A plugin declared in vx.workspace.ts can add verbs; ${here}.\n`
 }

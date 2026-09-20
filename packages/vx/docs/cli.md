@@ -1715,6 +1715,14 @@ return value is the exit code, and a thrown `UserError` prints as
 cleanly as core's own. `vx help` lists every plugin verb under "Plugin
 commands", with the plugin's name.
 
+An unknown verb is answered with what this workspace knows: the "did you
+mean" set is core's verbs AND the ones its plugins declare (the lookup
+that just failed already loaded them, so it costs nothing), and when
+nothing is close enough to guess, a second line says where a verb can
+come from — the verbs declared here, or that `vx.workspace.ts` is what
+would declare one, or that there is no workspace here at all. Core still
+names no package: it lists what the workspace itself declares.
+
 ## Output format
 
 `vx run` emits framed blocks. Stdout/stderr from each task is

@@ -974,6 +974,44 @@ prune` for eviction), a typo of `prune` still gets the
       `server.stop()` waits for the sleep and the hook times out at five
       seconds — the sleep now races the request's abort signal.
 
+414.  DONE (2026-09-20, `vx mcp` walked as the agent it serves, and the
+      unknown-verb answer that sent me there). The MCP surface itself
+      holds: driven over stdio as a client — `initialize` (both an old
+      and the current protocol revision), `tools/list`, all six tools,
+      then the shapes an agent gets wrong — every answer was right and
+      every refusal named what to fix. A workspace nobody has run yet
+      (no `.vx` at all) answers zeros rather than failing; a raw
+      malformed line is `-32700`, `[]` is `-32600`, an unknown method
+      `-32601`, an unknown tool a TOOL result rather than a protocol
+      error; and the tools answer while a RUN holds the database, which
+      is the case an agent hits most (asking "what is my cache doing?"
+      during a build). Two probe-only corrections of my own: sending
+      `'{ not json'` through `JSON.stringify` makes a valid JSON STRING,
+      so the first parse-error row tested nothing; and `Bun.spawnSync`
+      again (item 413) blocked the loop serving the stub.
+      The defect is one step earlier, on the path to `vx mcp` at all. A
+      plugin verb exists only because a workspace declares it, and the
+      unknown-verb answer knew nothing about that: `vx mpc` in a
+      workspace declaring `mcp` read as a plain unknown command with no
+      "did you mean", and `vx mcp` before the plugin was declared said
+      nothing about the file that would declare it. The lookup that just
+      failed has the verbs in hand, so `resolvePluginCommand` now
+      returns them (`{ declaredVerbs }`) instead of a bare null: they
+      join the "did you mean" set, and when nothing is close enough to
+      guess a second line says where a verb can come from — the verbs
+      declared here, or that `vx.workspace.ts` is what would declare
+      one, or that there is no workspace here at all. Core still names
+      no package: it lists what the workspace itself declares.
+      Four pins, all failing without the fix. One of them cost a
+      correction: `helo` is ONE edit from both `help` and `hello`, so a
+      test that expected `hello` was pinning which list is scanned
+      first, not the behaviour — `hllo` is the honest input.
+      Also from the walk: `getRunHistory` clamps `limit` to 1..500 by
+      design (the schema publishes the bounds), but the answer did not
+      say which limit it used, so an agent that asked for 10 000 and
+      counted 500 rows could not tell a truncated list from an
+      exhausted one. The applied limit now rides the result.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

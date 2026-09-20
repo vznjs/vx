@@ -212,7 +212,8 @@ async function getCacheStats(
  * by clients, and a fractional LIMIT is a SQLite datatype mismatch rather
  * than a clamp — but it also collapses a NON-FINITE value to the MINIMUM, so
  * `limit: Infinity` (the natural way to ask for everything) would return ONE
- * row. Out-of-range clamps, because the schema publishes the 1..500 bounds;
+ * row. Out-of-range clamps, because the schema publishes the 1..500 bounds,
+ * and the clamp is REPORTED — the result carries the limit it applied;
  * the wrong SHAPE is an error, because nothing published says it would be
  * silently replaced by the default.
  */
@@ -307,7 +308,11 @@ async function getRunHistory(
       ...(sandboxViolations !== null ? { sandboxViolations } : {}),
       ...(notReady !== null ? { notReady } : {}),
     }))
-    return { runs, history }
+    // The APPLIED limit, because it is clamped rather than refused: an agent
+    // that asked for 10 000 and counted 500 rows cannot otherwise tell a
+    // truncated answer from an exhausted one, and would read the shorter
+    // list as the whole history (walked the agent's path, 2026-09-20).
+    return { limit, runs, history }
   } finally {
     cache.close()
   }
