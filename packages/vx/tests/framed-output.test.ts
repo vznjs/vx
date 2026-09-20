@@ -46,6 +46,49 @@ function outcome(
   }
 }
 
+describe('identity hues never read as an outcome', () => {
+  // The module states this as a deliberate constraint: identity hues sit
+  // "outside the status palette (green / red / yellow / cyan) so a task id
+  // can never read as an outcome", and the task hue is "excluded from the
+  // project palette so the two halves always read apart". Nothing held it —
+  // painting TASK green, or a project hue red, left the whole repo green,
+  // because every rendering row runs with colours off.
+  //
+  // So it is pinned as a LAW over the constants rather than as a behaviour:
+  // the guarantee IS the disjointness, and asserting a rendered escape
+  // sequence would pin the hue values themselves, which are free to change.
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'framed-output.ts'),
+    'utf8',
+  )
+  const hue = (name: string): string => {
+    const m = new RegExp(`^const ${name} = '(#[0-9a-fA-F]{6})'`, 'm').exec(src)
+    if (m === null) throw new Error(`no hue constant named ${name}`)
+    return m[1]!.toLowerCase()
+  }
+  const projectPalette = (): string[] => {
+    const block = /const PROJECT_PALETTE = \[([\s\S]*?)\] as const/.exec(src)
+    if (block === null) throw new Error('no PROJECT_PALETTE block')
+    return [...block[1]!.matchAll(/'(#[0-9a-fA-F]{6})'/g)].map((m) => m[1]!.toLowerCase())
+  }
+
+  it('the identity palette and the status palette share no hue', () => {
+    const status = ['ACCENT', 'SUCCESS', 'WARN', 'ERROR', 'LOCAL', 'REMOTE'].map(hue)
+    const identity = [...projectPalette(), hue('TASK')]
+    // Non-vacuity: a regex that silently stopped matching would otherwise
+    // pass by comparing two empty sets.
+    expect(status.length).toBe(6)
+    expect(identity.length).toBeGreaterThanOrEqual(7)
+    expect(identity.filter((h) => status.includes(h))).toEqual([])
+  })
+
+  it('the task hue is excluded from the project palette, so the halves read apart', () => {
+    const palette = projectPalette()
+    expect(palette.length).toBeGreaterThanOrEqual(6)
+    expect(palette).not.toContain(hue('TASK'))
+  })
+})
+
 describe('the compact one-liners', () => {
   // docs/modules/framed-output.md showed `◌ <id> ── restored-local • <hash8>`,
   // a shape and a glyph nothing prints (item 312, 2026-09-16): the row is
@@ -121,10 +164,21 @@ describe('formatTaskBlock', () => {
   it('local cache hit (restored) shows "restored-local" + stdout section, no command', () => {
     // durationMs here is the wallclock for clean+restore+log-replay,
     // measured by execute-task. Tiny but non-zero in the wild.
+    //
+    // `storedDurationMs` is what the ORIGINAL execution spent, and every
+    // real restore carries it (hit-restore.ts sets it from the entry), so
+    // the fixture carries it too: without it this frame could not tell the
+    // two apart, and rendering the stored figure in the footer left the
+    // whole repo green. It is not hypothetical — the footer's own comment
+    // records `--report` summing these as "time saved" on the strength of
+    // a comment that claimed the opposite of what the code did. A 1s task
+    // restored in 9ms must read 9ms; the alternative is a cache hit
+    // reporting the work it just avoided as work it did.
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'cache-hit', {
         durationMs: 12,
+        storedDurationMs: 4310,
         hash: 'abcdef0123456789',
         restored: true,
       }),

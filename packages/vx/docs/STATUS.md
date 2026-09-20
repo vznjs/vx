@@ -1302,6 +1302,40 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       Extended to cover both, which is what the comment always said.
       Each pin red only for its own mutation, green for the other's,
       and the RSS row stable over three reps.
+466.  DONE (2026-09-20, `orchestrator/framed-output.ts` — 530 lines,
+      11 exports, 20 rows; the last large unswept file in the
+      orchestrator).
+      Six mutations. Two caught: an uncacheable task reading as a
+      cache MISS rather than `no-cache` (three rows), and the sandbox
+      violation list losing its de-duplication (one row, named for
+      it).
+      THE FIND is the frame footer's duration, and the file's own
+      comment says why it matters: the duration is always what THIS
+      run spent, and a comment that once claimed the opposite led
+      `--report` to sum these as "time saved". Rendering
+      `storedDurationMs` instead survives the WHOLE suite. On the real
+      CLI a one-second task restored in 9 ms then prints
+      `(1.00s) restored-local` — a cache hit reporting the work it
+      avoided as work it did.
+      Reachability was checked before the survival was believed, and
+      the first reading was wrong: in the fast-filter files NO fixture
+      sets `storedDurationMs`, so the mutation is a no-op there and
+      proves nothing. The whole-suite run is what makes the survivor
+      real, and the e2e probe is what makes it a defect.
+      Pinned by making an existing fixture honest rather than adding a
+      row: the restored-hit frame already asserts its exact text, and
+      every real restore carries a stored duration (`hit-restore.ts`
+      sets it from the entry), so the fixture now carries one too. The
+      `toBe` that was already there does the work.
+      SECOND FIND, a law: the module states that identity hues sit
+      outside the status palette "so a task id can never read as an
+      outcome", and that the task hue is excluded from the project
+      palette. Painting the task hue green, or a project hue red,
+      leaves the whole repo green — every rendering row runs with
+      colours OFF. Pinned as a law over the constants, not a rendered
+      escape sequence, because the guarantee IS the disjointness while
+      the hue values are free to change; both rows carry non-vacuity
+      guards and each is red for its own collision.
 
 ## In flight
 
