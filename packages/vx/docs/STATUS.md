@@ -1768,6 +1768,42 @@ non-empty string` is caught by exactly ONE row, and it is the
       control sample is not a control" in a new costume: here the
       sample was distinct but the MEMO was not.
 
+497.  DONE (2026-09-20, `cache/inputs.ts`'s `ALWAYS_IGNORE` — a SET, so
+      swept member by member, which is 494's rule applied to a list
+      rather than to an alphabet. A wrong input set is stale-hit
+      class, and this list's job is keeping a dependency tree out of
+      every cache key). Six members, six separate mutations:
+      node_modules 8 rows, vx-lock.json 8, .vx 6, *.bun-build 6,
+      *.tsbuildinfo 5 — all with behavioural rows that name them,
+      because two table-driven rows quantify over the list and a third
+      asserts the FIXTURES cover every member (the restated-list guard
+      from items 400/401, doing its job).
+      `**/.git/**` is the one that isn't. It reddens THREE rows and
+      all three are meta: the fixtures-cover-the-list self-check and
+      two docs-drift rows quoting the list. No assertion anywhere
+      changes when it goes.
+      Classified DEFENSIVE, and proven rather than assumed — probed
+      three routes with the pattern in and out: a tracked `**/*` glob,
+      an UNTRACKED one, and a literal `inputs.files: ['.git/HEAD']`.
+      Identical every time. Git never reports a path under `.git`, so
+      the enumeration is the live guard; the literal route does not
+      even reach this list (it is refused by the git-reports-it check,
+      with its own message). The CONTROL that makes that meaningful:
+      an untracked ORDINARY file in the same fixture DOES enter the
+      set, so the enumeration is not simply ignoring what is
+      untracked.
+      Kept, and the reason is now written where it lives: the day an
+      enumeration stops going through git, this is what keeps a
+      repository's object store out of a cache key. No test added —
+      nothing can distinguish it today, and a row that cannot fail is
+      the thing this whole sequence exists to remove.
+      Method note: the table row DOES plant `.git/HEAD` and assert it
+      is excluded, so the member looks covered. It passes either way.
+      That is 493's and 494's shape once more, and the cheapest tell
+      yet: when a set is swept member by member, the member whose
+      only red rows are the LIST ASSERTING ITSELF is the one with no
+      behavioural witness.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

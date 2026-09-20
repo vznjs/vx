@@ -50,6 +50,17 @@ export {
 // cache is a leaf module and must not import from workspace.)
 const ALWAYS_IGNORE = [
   '**/node_modules/**',
+  // Defense in depth, and measured as exactly that (item 497): git never
+  // reports a path under `.git`, so dropping this line changes NOTHING on
+  // any route into the input set. Probed three ways with the pattern in
+  // and out — a tracked `**/*` glob, an UNTRACKED one, and a literal
+  // `inputs.files: ['.git/HEAD']` (refused by the git-reports-it check,
+  // not by this list) — all identical, while the control in the same
+  // fixture showed an untracked ORDINARY file does enter the set. So the
+  // enumeration is the live guard and this is the backstop; every other
+  // member of this list is load-bearing and has a row that fails without
+  // it. Kept: the day an enumeration stops going through git, this is
+  // what keeps a repository's object store out of a cache key.
   '**/.git/**',
   '**/.vx/**',
   '**/*.tsbuildinfo',
