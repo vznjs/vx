@@ -142,6 +142,37 @@ describe('plugin commands', () => {
     expect(err.join('')).not.toContain('Usage:')
   })
 
+  it('a typo of a PLUGIN verb gets the same "did you mean" a core verb gets', async () => {
+    // The verbs this workspace's plugins declare are verbs here, and the
+    // lookup that just failed already knows them: `vx helo` in a workspace
+    // declaring `hello` read as a plain unknown command (2026-09-20).
+    // `hllo`, not `helo`: the latter is one edit from the core verb `help`
+    // AND one from `hello`, and a tie goes to whichever list is scanned
+    // first — a test that turns on the order of two equal candidates
+    // pins nothing.
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    expect(await cli(['hllo'])).toBe(1)
+    expect(err.join('')).toContain('unknown command: hllo. Did you mean hello? (see `vx help`)')
+  })
+
+  it('a verb nothing declares says where a verb can come from, and what is declared here', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    expect(await cli(['zzzzzzzz'])).toBe(1)
+    expect(err.join('')).toContain("This workspace's plugins declare: hello.")
+    // The guess is the answer when there is one, so it stands alone.
+    err.length = 0
+    expect(await cli(['hllo'])).toBe(1)
+    expect(err.join('')).not.toContain('plugins declare')
+  })
+
+  it('with no plugin verbs at all the note names the file that would declare one', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([]))
+    expect(await cli(['mcp'])).toBe(1)
+    expect(err.join('')).toContain(
+      'A plugin declared in vx.workspace.ts can add verbs; this workspace declares none.',
+    )
+  })
+
   it('vx help lists plugin verbs with their description and plugin', async () => {
     await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['help'])).toBe(0)
@@ -157,6 +188,13 @@ describe('plugin commands', () => {
       process.chdir(bare)
       expect(await cli(['hello'])).toBe(1)
       expect(err.join('')).toContain('unknown command: hello')
+      // A word no core verb is near gets the note, and it says there is no
+      // workspace here rather than claiming one declares nothing.
+      err.length = 0
+      expect(await cli(['zzzzzzzz'])).toBe(1)
+      expect(err.join('')).toContain(
+        'A plugin declared in vx.workspace.ts can add verbs; there is no workspace here.',
+      )
     } finally {
       process.chdir(root)
       await rm(bare, { recursive: true, force: true })

@@ -18,6 +18,17 @@ export interface ResolvedPluginCommand {
 }
 
 /**
+ * No plugin here declares the verb, and these are the verbs they DO declare
+ * — the same load that failed to find the verb already knows them, so the
+ * "did you mean" and the "where verbs come from" line cost nothing extra.
+ * An empty list is a workspace whose plugins declare no verb at all; `null`
+ * from the lookup is no workspace.
+ */
+export interface NoPluginCommand {
+  declaredVerbs: readonly string[]
+}
+
+/**
  * Why a verb could not be looked up: the workspace file failed to load.
  * Surfaced next to "unknown command" rather than as the whole answer — a
  * typo'd verb must still read as a typo, and a real plugin verb must still
@@ -50,17 +61,21 @@ async function workspacePlugins(
 }
 
 /**
- * The plugin verb named `verb` for the workspace around `cwd`; null when
- * there is none; the load error when the workspace file could not say.
+ * The plugin verb named `verb` for the workspace around `cwd`; the verbs
+ * this workspace's plugins do declare when none of them is it; null when
+ * there is no workspace; the load error when the workspace file could not
+ * say.
  */
 export async function resolvePluginCommand(
   verb: string,
   cwd = process.cwd(),
-): Promise<ResolvedPluginCommand | UnresolvedPluginCommand | null> {
+): Promise<ResolvedPluginCommand | NoPluginCommand | UnresolvedPluginCommand | null> {
   const ws = await workspacePlugins(cwd)
   if (ws === null) return null
   if ('loadError' in ws) return ws
+  const declaredVerbs = new Set<string>()
   for (const plugin of ws.plugins) {
+    for (const declared of Object.keys(plugin.commands ?? {})) declaredVerbs.add(declared)
     const command = plugin.commands?.[verb]
     if (command === undefined) continue
     return {
@@ -73,7 +88,7 @@ export async function resolvePluginCommand(
       },
     }
   }
-  return null
+  return { declaredVerbs: [...declaredVerbs] }
 }
 
 /** `vx help` lines for every plugin verb in the workspace around `cwd`. */

@@ -525,6 +525,26 @@ describe('getCacheStats — argument validation at the model boundary', () => {
 // getRunHistory
 // ---------------------------------------------------------------------------
 
+describe('getRunHistory — the applied limit rides the answer', () => {
+  it('reports the limit it used, so a clamp cannot read as an exhausted list', async () => {
+    // The schema publishes 1..500 and the handler clamps rather than
+    // refuses, so an agent that asks for 10 000 and counts 500 rows has no
+    // way to tell a truncated answer from the whole history (2026-09-20).
+    const asked = (await call(MAIN.root, 'getRunHistory', { limit: 10_000 })) as {
+      limit: number
+    }
+    expect({ limit: asked.limit }).toEqual({ limit: 500 })
+    const small = (await call(MAIN.root, 'getRunHistory', { limit: 2 })) as {
+      limit: number
+      runs: unknown[]
+    }
+    expect({ limit: small.limit, rows: small.runs.length }).toEqual({ limit: 2, rows: 2 })
+    // A limit inside the bounds is reported as itself, not as the default.
+    const plain = (await call(MAIN.root, 'getRunHistory', {})) as { limit: number }
+    expect({ limit: plain.limit }).toEqual({ limit: 50 })
+  })
+})
+
 describe('getRunHistory — filters narrow the data', () => {
   it('a project filter narrows BOTH halves of the response', async () => {
     // `runs` and `history` are two separate queries sharing one WHERE clause.
