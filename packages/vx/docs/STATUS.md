@@ -1532,6 +1532,33 @@ non-empty string` is caught by exactly ONE row, and it is the
       three is a flake with a schedule. Sample what the bound must
       admit, member by member.
 
+492.  DONE (2026-09-20, the zombie row in
+      `tests/alive-helper.unsafe.test.ts` — #617's CI went red on it
+      with a STATUS-only diff, and the row had been red once in 99
+      local logs). Not a flake to re-run: the reported
+      `{state: 'r'}` is `charAt` of the row's OWN `'() reaped'`
+      sentinel, so the assertion was saying the zombie had been
+      reaped before it could be observed, which is a racing fixture.
+      The reaper is the row's own shell. `sleep 0 &` is already dead
+      when bash runs the next line, and bash reaps a dead child at its
+      next `waitpid` — so whether a zombie ever exists depends on
+      whether SIGCHLD lands before the `exec`. Measured, 25 reps per
+      shape: the current script plus a foreground command before the
+      `exec` (a `waitpid` the shell must make) is reaped 25/25, while
+      the same script with `sleep 0.5 &` is a zombie 25/25 — the
+      child's LIFETIME is the whole difference, and the script with
+      the longer-lived child survives the condition that breaks the
+      other deterministically. The fix is one character class:
+      `sleep 0.5 &`, so bash is replaced by a process that never waits
+      while the child is still running. 12/12 green after, and the row
+      still reddens when `isAlive` stops counting `Z` as dead, so it
+      kept the guarantee it exists for.
+      Method note: a red row on a docs-only diff is the most tempting
+      "not mine" there is, and the temptation is exactly why the
+      failing VALUE had to be read rather than the failing name. `'r'`
+      named the sentinel, the sentinel named the race, and the race
+      was in the test's own first line.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
