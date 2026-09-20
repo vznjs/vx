@@ -2190,6 +2190,67 @@ result)` after) keeps working without it. Its failure mode is
       where a defect would hurt, age says where one is still likely
       to be.
 
+509.  DONE (2026-09-20, `orchestrator/run-context.ts` — the FIRST item
+      selected by 508's age rule, and it paid on the first try after
+      three held reports).
+      The selector needed a substitute: this checkout's per-file git
+      history is unusable (every source file reports ONE commit), so
+      age came from the newest DATED COMMENT in each file, which this
+      repo writes everywhere. `run-context.ts` tops that list at
+      2026-07-14, six weeks older than anything else.
+      Two real gaps, both the shapes this sweep keeps finding.
+      THE CASE FOLD. `isTruthy` rejects undefined, `''`, `'0'` and
+      `'false'`, lower-casing before that last compare. The `''` and
+      `'0'` members each fail a row; the FOLD fails nothing. So
+      `CI=False` — what a PowerShell `$false` and several CI templates
+      write — is reported as running in CI, in the invocation header
+      every run carries. 494's alphabet again: the fixture spelled it
+      one way. Pinned with a row per spelling (`false`, `False`,
+      `FALSE`, `fAlSe`) plus a control that an unrecognised value is
+      still CI, so the rows cannot pass on a predicate that calls
+      everything falsy. Three rows redden.
+      THE SCP GATE. `normalizeRemoteUrl` strips `:NNNN` only when the
+      URL HAD a protocol, because the scp shorthand `host:path` has no
+      port and its first segment may be numeric. The strip fails a
+      row; the GATE fails nothing — so `git@host:2222/o/r`, where 2222
+      is a directory, silently lost it and collided with any other
+      repo at `host/o/r`, giving two repositories one workspace id.
+      Pinned on BOTH sides (503's rule): the protocol form strips,
+      the scp form keeps, and a control that the ordinary spellings
+      still agree.
+      Method note: the age rule's first outing produced two finds
+      where cost-ranking had just produced three held reports in a
+      row. That is one data point, not a law — but the mechanism is
+      plausible enough to keep: a file nobody has touched in six weeks
+      has had six fewer weeks of someone reading it while fixing
+      something adjacent.
+
+510.  DONE (2026-09-20, `cli/last.ts` — second by the age rule, newest
+      dated comment 2026-08-23. `vx last` exists to REPORT a run
+      accurately, so its formatting boundaries ARE its contract).
+      Five survivors, all together passing the whole suite in one
+      combined run: `<` → `<=` at BOTH duration cuts (1 s and 60 s),
+      the divide-by-zero guard on the cpu ratio, the violation count's
+      `> 0`, and its singular/plural.
+      Pinned: a row per duration boundary asserting AT the cut (999 →
+      `999ms`, 1000 → `1.00s`, 59 999 → `60.00s`, 60 000 → `1m 0s`), a
+      row that a zero-duration task reports no ratio rather than
+      `NaN× cpu` (a replay showing NaN is a report that lies about the
+      run), and a table over 0/1/2 violations with a control that the
+      rest of the row survives.
+      THE MISTAKE, and it is the sharper half: the violation row as
+      first written used `toContain('1 sandbox violation')` — and
+      `'1 sandbox violations'` CONTAINS that string, so the plural
+      mutation passed my own new row. Four of five differentials red,
+      one green, which is the only reason it was caught. Rewritten to
+      assert the row's SUFFIX exactly; now all five redden.
+      That is this repo's own rule ("assert the exact expected set,
+      not the absence of one string") and the `grep -q ok` matching
+      "broken" lesson, met from the assertion side. A containment
+      check on a string whose wrong version is a SUPERSTRING of the
+      right one cannot fail. When the difference between correct and
+      incorrect is a suffix, the assertion has to be an equality.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

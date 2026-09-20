@@ -300,3 +300,44 @@ describe('captureWorkspaceIdentity', () => {
     expect(identity.name).toBe(path.basename(dir))
   })
 })
+
+describe('detectCi — the falsy spellings, one per row', () => {
+  // `isTruthy` rejects undefined, '', '0' and 'false' — and lower-cases
+  // before that last comparison. The empty and '0' cases fail rows; the
+  // CASE FOLD did not (item 509). A machine exporting `CI=False` — which
+  // is what a PowerShell `$false` and several CI templates write — would
+  // be reported as running in CI, in the invocation header every run
+  // carries. Same shape as item 494: the fixture spelled it one way.
+  it.each([['false'], ['False'], ['FALSE'], ['fAlSe']])('CI=%s is not CI', (spelling) => {
+    expect(detectCi({ CI: spelling })).toEqual({ ci: false, provider: null })
+  })
+
+  it('CONTROL: an unrecognised value is still CI', () => {
+    // Without this the rows above would also pass on a predicate that
+    // called every value falsy.
+    expect(detectCi({ CI: 'yes' })).toEqual({ ci: true, provider: 'generic' })
+    expect(detectCi({ CI: 'true' })).toEqual({ ci: true, provider: 'generic' })
+  })
+})
+
+describe('normalizeRemoteUrl — a port is only a port when a protocol said so', () => {
+  // The `:NNNN` strip is gated on the URL having had a protocol, because
+  // the scp shorthand `host:path` has no port and its first segment may
+  // be numeric. The strip itself fails a row; the GATE did not (item
+  // 509), so `git@host:2222/o/r` — where 2222 is a directory — silently
+  // lost it and collided with any other repo at `host/o/r`.
+  it('strips a real port from a protocol URL', () => {
+    expect(normalizeRemoteUrl('ssh://git@host:2222/o/r')).toBe('host/o/r')
+  })
+
+  it('keeps a numeric first segment in scp shorthand', () => {
+    expect(normalizeRemoteUrl('git@host:2222/o/r')).toBe('host/2222/o/r')
+  })
+
+  it('CONTROL: the ordinary spellings still agree', () => {
+    // Both reduce to the same id — the property the whole function exists
+    // for, so neither row above can pass by breaking normalization.
+    expect(normalizeRemoteUrl('https://github.com/o/r.git')).toBe('github.com/o/r')
+    expect(normalizeRemoteUrl('git@github.com:o/r.git')).toBe('github.com/o/r')
+  })
+})

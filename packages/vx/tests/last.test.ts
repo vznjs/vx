@@ -306,6 +306,51 @@ describe('formatTaskRows', () => {
   const hit = (n: number, ms: number) =>
     row(`hit${n}`, { status: 'cache-hit', cacheHit: true, durationMs: ms })
 
+  // Item 510, by the age rule: this file's newest dated comment was
+  // 2026-08-23. `vx last` exists to REPORT a run accurately, so its
+  // formatting boundaries are its contract, and five of them were
+  // unasserted — `<` → `<=` at both duration cuts, the divide-by-zero
+  // guard, the violation count's `> 0`, and its plural. All five passed
+  // the whole suite together.
+  it.each([
+    [999, '999ms'],
+    [1000, '1.00s'], // AT the cut, not around it (item 503)
+    [59_999, '60.00s'],
+    [60_000, '1m 0s'],
+  ])('formats %dms as %s', (ms, want) => {
+    expect(formatTaskRows([row('t', { durationMs: ms })])[1]).toContain(want)
+  })
+
+  it('a zero-duration task reports no cpu ratio rather than NaN', () => {
+    // cpuMs / durationMs with both zero is NaN, and the guard that stops
+    // it fails nothing else in the suite. A replay showing `NaN× cpu` is
+    // a report that lies about what the run did.
+    const line = formatTaskRows([row('t', { durationMs: 0, cpuMs: 0 })])[1]!
+    expect(line).not.toContain('NaN')
+    expect(line).not.toContain('Infinity')
+    expect(line).not.toContain('cpu')
+  })
+
+  it.each([
+    [0, ''],
+    [1, '1 sandbox violation'],
+    [2, '2 sandbox violations'],
+  ])('reports %d sandbox violations as "%s"', (n, want) => {
+    const line = formatTaskRows([
+      row('t', { status: 'failed', exitCode: 1, sandboxViolations: n }),
+    ])[1]!
+    // The SUFFIX, exactly — not `toContain`. `'1 sandbox violations'`
+    // contains `'1 sandbox violation'`, so a containment assertion passes
+    // on the wrong plural and the mutation survived this row the first
+    // time it was written (item 510). Zero says nothing at all: a failed
+    // task that violated nothing must not read as though the sandbox were
+    // involved.
+    expect(line.slice(line.indexOf('h') + 1).trim()).toBe(want)
+    // CONTROL: the row is otherwise intact, so none of the above can pass
+    // on a formatter that dropped the line.
+    expect(line).toContain('failed (exit 1)')
+  })
+
   it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {
     const hits = Array.from({ length: 30 }, (_, i) => hit(i, 100 - i))
     const lines = formatTaskRows([
