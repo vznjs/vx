@@ -894,6 +894,68 @@ fallback (and stay cache-hits)`. 471's fast filter simply did
       11k-file repo) and none for the crossover itself. Re-measuring
       where 64 actually sits is a perf task rather than a pinning one,
       and the number should stay free to move.
+477.  DONE (2026-09-20, `exec/sandbox-runtime.ts` — 1034 lines, the
+      largest unswept file in the repo, and `exec.sandbox` is how a
+      task PROVES what it touched).
+      Three mutations, none caught by the sandbox suites, and the
+      useful work was deciding what each survival MEANS rather than
+      reporting three findings.
+      (a) `sbplToken` refuses a quote, paren or backslash in a value
+      interpolated into a seatbelt profile — "refuse rather than
+      escape", a security boundary of 463's shape. Its survival here
+      says NOTHING: it is reached only through `macProfileRules`
+      behind `platform === 'darwin'`, so a Linux box cannot execute
+      it. The platform analogue of 473's missing file, and recorded as
+      untested-here rather than unpinned.
+      (b) `readableUnder`'s separator-terminated prefix, the same
+      sibling-name class 474 found eight rows guarding. Here it feeds
+      a DIAGNOSTIC — its own comment says it is "added only when the
+      task ALREADY failed with nothing to show, so it can never redden
+      a pass". Loosening it silences an explanation, it does not widen
+      access. Recorded.
+      (c) THE FIND. `expandGrants` collapses `<d>/**` to `<d>`, and the
+      comment justifies it: the pattern "already covered every file
+      there; it adds the directory entry". That reasoning is exactly
+      what fails for `<d>/*`, which covers the immediate children and
+      nothing deeper — folding THAT to `<d>` hands the task the
+      directory itself and everything created in it later. Widening
+      the regex by one star leaves the whole repo green.
+      The `**` half is pinned e2e ("a whole-directory pattern grants
+      the directory, so a task can list its cwd"); the single-star
+      half had nothing. One boundary, one side asserted — 465, 469 and
+      471 again, and this time the unasserted side is a GRANT. Pinned
+      at `resolveSandboxConfig` with a control proving the shallow
+      pattern still grants what it names.
+478.  OPEN FINDING, not fixed (2026-09-20, following 477's carry-
+      forward into `macProfileRules`). The seatbelt profile's
+      injection boundary has a hole, and it is one line.
+      `sbplToken` and `sbplPath` exist because a value carrying a
+      quote, paren or backslash "could rewrite the policy or escape
+      the argument", and the stated posture is to REFUSE rather than
+      escape. Every interpolation in `macProfileRules` honours that —
+      `systemInfo`, `machLookup`, and the declared socket path —
+      except one:
+      the unix-socket loop interpolates BOTH the checked declared
+      path and `toRealPath(sock)`, and the resolved form goes in
+      unchecked. `toRealPath` is `realpathSync` with a parent-walk
+      fallback and sanitises nothing, so a symlink whose TARGET
+      carries SBPL metacharacters puts them straight into the
+      profile. The check is on the string the user wrote, the
+      interpolation is of the string the kernel resolves, and a
+      symlink is exactly what separates them.
+      NOT FIXED HERE, deliberately. The one-line fix — wrapping the
+      resolved path in `sbplPath` — refuses any path outside
+      `[A-Za-z0-9._\-/@+]`, which includes a SPACE. Quoted SBPL
+      handles a space fine, so that fix would refuse
+      `/Users/Jane Smith/...` and regress a legitimate macOS layout
+      to close a hole. The allowlist was written for values a user
+      declares, not for paths a filesystem hands back.
+      What a fix needs: refuse only what can leave the quoted string
+      (quote, backslash, and the paren that ends the form), not the
+      broader allowlist — and it must be exercised on macOS, which
+      this container cannot do. Flagged rather than guessed at,
+      because an untested change to a security path that also
+      regresses ordinary users is worse than a recorded finding.
 
 ## In flight
 
