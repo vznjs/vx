@@ -866,6 +866,34 @@ fallback (and stay cache-hits)`. 471's fast filter simply did
       160 and 88 are two very different numbers, which is exactly why
       the bound stays sharp instead of being widened to swallow the
       noise it was never meant to cover.
+476.  DONE (2026-09-20, `cache/git-inputs.ts` — 711 lines, the git
+      enumeration the whole input resolver trusts, and the last large
+      file in the cache module; 451 and 455 touched only parts of it).
+      A WELL-HELD report with one cost survivor. Filter built from
+      `grep -rl` over twelve exports, every path checked to exist.
+      Five mutations, four caught, and what catches them is the
+      stale-hit family itself. Letting a scoped enumeration accept an
+      empty or `.` rel fails SEVEN rows, among them "a CRLF-to-LF
+      change under a text filter is not served from cache", "a content
+      change that preserves mtime is not served from the file-hash
+      memo", "editing an assume-unchanged input moves the key" and
+      "materialising a skip-worktree input moves the key". The scope
+      decision is load-bearing for the whole OID-trust story, not just
+      for speed. Scoping a workspace-wide run fails two; dropping
+      `markOutputsChanged`'s forward to the workspace partition fails
+      the row named for it; breaking `autocrlfConverts` fails its own
+      row and "core.autocrlf alone is enough to distrust index OIDs".
+      THE SURVIVOR is the 64-directory cap on scoping, and its own
+      comment says what it is: "Above 64 dirs (or when a project IS
+      the root) the whole-tree scan wins on arg/exec overhead anyway."
+      A perf CROSSOVER, not a correctness rule — either side of it the
+      enumeration answers the same, only slower or faster — so no test
+      can catch it and none should. 469's genre.
+      Worth noting rather than acting on: that comment carries a
+      measured number for the scoping benefit (75 ms → 11 ms on an
+      11k-file repo) and none for the crossover itself. Re-measuring
+      where 64 actually sits is a perf task rather than a pinning one,
+      and the number should stay free to move.
 
 ## In flight
 
