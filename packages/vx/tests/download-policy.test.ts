@@ -296,7 +296,12 @@ interface Fake {
  * eligibility gate leaves `gen` deferrable.
  */
 async function fixture(
-  opts: { consumers?: number; failMaterialize?: boolean; failProducer?: boolean } = {},
+  opts: {
+    consumers?: number
+    failMaterialize?: boolean
+    failProducer?: boolean
+    chain?: boolean
+  } = {},
 ): Promise<{
   root: string
   cleanup: () => void
@@ -319,13 +324,37 @@ async function fixture(
        },
      } }`,
   )
+  // `chain`: an intermediate between the deferred producer and the local
+  // consumer, so the producer is TWO hops away and only the transitive walk
+  // can find it. It must be a GROUP: an ordinary task here runs locally, and
+  // its OWN direct-dep materialisation would fetch the producer whatever the
+  // walk does — measured, and it made the first version of this fixture prove
+  // nothing. A group never executes, so it can never materialise.
+  if (opts.chain === true) {
+    await mkdir(path.join(root, 'packages', 'pkg-c', 'src'), { recursive: true })
+    await Bun.write(
+      path.join(root, 'packages', 'pkg-c', 'package.json'),
+      JSON.stringify({ name: 'pkg-c', version: '0.0.0', dependencies: { 'pkg-a': 'workspace:*' } }),
+    )
+    await Bun.write(path.join(root, 'packages', 'pkg-c', 'src', 'm.txt'), 'm\n')
+    await Bun.write(
+      path.join(root, 'packages', 'pkg-c', 'vx.config.mjs'),
+      `export default { tasks: {
+         mid: { dependsOn: ['^gen'] },
+       } }`,
+    )
+  }
   const consumers = opts.consumers ?? 1
   for (let i = 0; i < consumers; i++) {
     const name = `pkg-b${i === 0 ? '' : i}`
     await mkdir(path.join(root, 'packages', name, 'src'), { recursive: true })
     await Bun.write(
       path.join(root, 'packages', name, 'package.json'),
-      JSON.stringify({ name, version: '0.0.0', dependencies: { 'pkg-a': 'workspace:*' } }),
+      JSON.stringify({
+        name,
+        version: '0.0.0',
+        dependencies: opts.chain === true ? { 'pkg-c': 'workspace:*' } : { 'pkg-a': 'workspace:*' },
+      }),
     )
     await Bun.write(path.join(root, 'packages', name, 'src', 'x.txt'), 'x\n')
     await Bun.write(
@@ -333,7 +362,7 @@ async function fixture(
       `export default { tasks: {
          use: {
            exec: { command: 'cat ../pkg-a/out/gen.txt > used.txt' },
-           dependsOn: ['^gen'],
+           dependsOn: ['${opts.chain === true ? '^mid' : '^gen'}'],
            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['used.txt'] } },
          },
        } }`,
@@ -641,6 +670,7 @@ describe('--download end to end', () => {
     const a = await fixture({ failMaterialize: true })
     try {
       const lines: string[] = []
+      const stderr: string[] = []
       const r = await run({
         cwd: a.root,
         tasks: ['use'],
@@ -649,12 +679,55 @@ describe('--download end to end', () => {
         log: {
           status: (l: string) => lines.push(l),
           error: () => undefined,
+          taskStderr: (_n: unknown, chunk: string) => stderr.push(chunk),
         } as unknown as NonNullable<Parameters<typeof run>[0]['log']>,
         handleSignals: false,
       })
       expect(r.ok).toBe(false)
       expect(lines.some((l) => l.includes('left outputs remote') && l.includes('pkg-a#gen'))).toBe(
         true,
+      )
+      // `r.ok === false` alone does not test this module: with the fetch
+      // failure SWALLOWED the run still fails, because the consumer's `cat`
+      // then hits a missing file. The whole repo stayed green that way. What
+      // separates the two is the diagnostic — a materialisation failure is
+      // the CONSUMER's failure, raised here, naming the producer and the
+      // remedy, instead of a bare `No such file` from a shell.
+      const diag = stderr.find((c) => c.includes('could not fetch deferred outputs'))
+      expect(diag).toBeDefined()
+      expect(diag).toContain('pkg-a#gen')
+      expect(diag).toContain('blob evicted from CAS')
+      expect(diag).toContain('--download=all')
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  it('materialises a producer TWO hops away — the walk is the whole closure', async () => {
+    // `materializeFor` takes the transitive dependency closure, because which
+    // upstream bytes a command reads is unknowable and `dependsOn` is what
+    // declares the reach. Every other row here puts the deferred producer one
+    // hop from the consumer, where a direct-deps-only walk finds it anyway —
+    // so cutting the recursion left the whole repo green.
+    //
+    // pkg-b#use -> pkg-c#mid -> pkg-a#gen. Only pkg-a#gen is deferred, and
+    // pkg-c#mid reads nothing, so the middle edge carries no bytes: if the
+    // walk stops at direct deps, nothing fetches gen and the consumer's `cat`
+    // fails on a file that was never brought home.
+    const a = await fixture({ chain: true })
+    try {
+      const r = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b'],
+        download: 'none',
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(true)
+      expect(fake().materialized).toEqual(['pkg-a#gen'])
+      expect(await readFile(path.join(a.root, 'packages', 'pkg-b', 'used.txt'), 'utf8')).toBe(
+        'GENERATED',
       )
     } finally {
       a.cleanup()
