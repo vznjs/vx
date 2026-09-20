@@ -11,7 +11,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
@@ -1445,6 +1445,60 @@ describe.skipIf(!available)('the sandbox temp directory', () => {
 })
 
 describe('resolveSandboxConfig', () => {
+  it.skipIf(process.platform !== 'linux')(
+    'says so when a WRITE grant mounts nothing, and names the directory to grant instead',
+    async () => {
+      // Item 496, measured before it existed: one task per grant spelling,
+      // each writing the files it declares. `g/**` and `g/a.txt` succeed —
+      // the first collapses to the directory, the second is a file-shaped
+      // grant widened to its directory. `g/*`, `g/*.txt`, `g/?.txt` and
+      // `g/[ab].txt` all FAILED with `bash: g/a.txt: Read-only file
+      // system`, because a bwrap bind covers what exists when the task
+      // STARTS and those matched nothing yet.
+      //
+      // That is the documented contract ("declare its directory instead"),
+      // not a defect — but the user learned it from their own tool, in a
+      // message naming neither vx nor the grant. So the grant reports
+      // itself, and the remedy it names is `staticPrefix`, the directory
+      // the user meant, NOT the scan's anchor one component above it.
+      //
+      // Linux only: `expandGrants` returns before the scan on every other
+      // platform, so there is nothing to report there.
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-empty-write-'))
+      try {
+        await mkdir(path.join(root, 'g'))
+        const said: string[] = []
+        const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+          said.push(String(chunk))
+          return true
+        })
+        try {
+          resolveSandboxConfig({ allow: { write: ['g/*.txt'] } }, root)
+          // CONTROL, in the same spy window: a grant that CAN be mounted
+          // says nothing, so the row above cannot pass on a warning that
+          // fires for every write grant.
+          resolveSandboxConfig({ allow: { write: ['g/**'] } }, root)
+          // CONTROL: a READ grant matching nothing is ordinary — an
+          // optional file, a cache not yet populated — and must stay quiet.
+          // A DIFFERENT pattern on purpose: the report is once per grant
+          // path, so reusing `g/*.txt` here would be silenced by the write
+          // call above and the control would pass whatever reads do. It
+          // did, first time — the mutation that reports reads as well
+          // survived it (item 496).
+          resolveSandboxConfig({ allow: { read: ['g/r*.txt'] } }, root)
+        } finally {
+          spy.mockRestore()
+        }
+        expect(said.length).toBe(1)
+        expect(said[0]).toContain('matches nothing yet')
+        // The remedy is the directory the pattern was IN, not its parent.
+        expect(said[0]).toContain(`${path.join(realpathSync(root), 'g')}/**`)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it('collapses a whole-subtree pattern to its directory, and a single-level one NEVER', async () => {
     // The collapse is documented as "not a widening": `<d>/**` already
     // covered every file under `<d>`, so folding it to `<d>` only adds the

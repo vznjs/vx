@@ -38,7 +38,7 @@ import {
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
-import { isTmpdirRefusal, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
+import { isTmpdirRefusal, staticPrefix, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
 import { localBindingOn, toRealPath, unique } from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
@@ -475,8 +475,8 @@ export function resolveSandboxConfig(
   }
   const a = cfg.allow ?? {}
   const r: ResolvedSandboxConfig = {
-    allowRead: expandGrants((a.read ?? []).map(resolve)),
-    allowWrite: expandGrants((a.write ?? []).map(resolve)),
+    allowRead: expandGrants((a.read ?? []).map(resolve), 'read'),
+    allowWrite: expandGrants((a.write ?? []).map(resolve), 'write'),
   }
   if (a.network !== undefined) r.network = a.network
   if (cfg.deny?.network !== undefined) r.denyNetwork = cfg.deny.network
@@ -979,8 +979,34 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  * The glob is expanded against the filesystem here, which means it covers
  * what exists when the task STARTS. A pattern matching a file the task
  * creates later grants nothing there — declare its directory instead.
+ *
+ * That last sentence is the whole contract, and until item 496 a task
+ * that broke it learned so from its OWN tool. Measured, one task per
+ * spelling, each writing files it declares:
+ *
+ *   write: ['g/**']         ok — collapsed to the directory
+ *   write: ['g/a.txt']      ok — a literal is widened to its directory
+ *   write: ['g/*']          FAILED: `bash: g/a.txt: Read-only file system`
+ *   write: ['g/*.txt']      FAILED, same
+ *   write: ['g/?.txt']      FAILED, same
+ *   write: ['g/[ab].txt']   FAILED, same
+ *
+ * The failure names neither vx nor the grant, so `writeGrantMatchedNothing`
+ * below says what happened and what to write instead. A READ grant that
+ * matches nothing is ordinary (an optional file, a cache not yet
+ * populated), so only writes are reported.
+ *
+ * The classifier here is deliberately NOT `isLiteralPattern` (item 495's
+ * shared one), which also counts `{}`. `write: ['g/{a,b}.txt']` is
+ * classified a LITERAL here, gets a placeholder file, and is widened to
+ * its directory like any other file-shaped grant — measured ok. Reading
+ * the shared predicate instead would move that spelling into the scan
+ * above and turn a working grant into `Read-only file system`. The two
+ * predicates answer different questions: whether a declaration must be
+ * MATCHED against other declarations (495), and whether a grant can be
+ * mounted (here).
  */
-function expandGrants(paths: readonly string[]): string[] {
+function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[] {
   // A pattern covering a directory WHOLE is that directory. `<d>/**/*` and
   // `<d>/**` match everything UNDER `<d>` and never `<d>` itself, so a task
   // granted `read: ['**/*']` still could not list its own cwd — the exact
@@ -1001,11 +1027,37 @@ function expandGrants(paths: readonly string[]): string[] {
     // walk the whole filesystem to find its matches.
     const base = path.dirname(p.slice(0, p.search(/[*?[\]]/)))
     const pattern = path.relative(base, p)
+    let hits = 0
     for (const hit of new Bun.Glob(pattern).scanSync({ cwd: base, onlyFiles: false, dot: true })) {
       out.push(path.join(base, hit))
+      hits++
     }
+    if (hits === 0 && kind === 'write') writeGrantMatchedNothing(p)
   }
   return out
+}
+
+/** Grants already reported — once per process, not per spawn. */
+const warnedEmptyWriteGrant = new Set<string>()
+
+/**
+ * A write grant that mounted nothing, said once, before the task dies on
+ * it. The remedy is the directory, which is what the grant would have been
+ * widened to anyway had it named a file — and it is named with
+ * `staticPrefix`, the shared wildcard-free head, NOT the scan's anchor
+ * above: that anchor is one component higher (`dirname` of the head, so
+ * the relative pattern keeps its wildcard component), and printing it
+ * would tell the user to grant the PARENT of the directory they meant.
+ */
+function writeGrantMatchedNothing(grant: string): void {
+  if (warnedEmptyWriteGrant.has(grant)) return
+  warnedEmptyWriteGrant.add(grant)
+  process.stderr.write(
+    `[vx] sandbox: the write grant ${grant} matches nothing yet, so it mounts nothing and ` +
+      `a file the task creates under it will fail with "Read-only file system". A bind mount ` +
+      `covers what exists when the task starts — grant the directory instead: ` +
+      `${staticPrefix(grant)}/**\n`,
+  )
 }
 
 /**
