@@ -3,7 +3,12 @@
 // OUTPUTS — a wrong "stable" verdict is a stale-hit vector, because execute-task
 // reuses a preProbed hash WITHOUT recomputing. `deriveStableKeys` feeds it the
 // TRANSITIVE-upstream output producers (a producer reached through a no-output
-// intermediate still poisons the key), which these cases exercise directly.
+// intermediate still poisons the key); these cases hand the gate that set
+// directly, so they pin the GATE, never the fold that builds it. The fold is
+// pinned over a real graph by `local-shortcircuit.test.ts` — "a producer
+// reached THROUGH a stable intermediate" and "the workspace-output flag
+// crosses a GROUP intermediate" (item 426; the header used to claim these
+// cases covered it, and both accumulators survived the whole suite).
 
 import { describe, expect, it } from 'bun:test'
 import { dependsOnSiblingOutputs, workspaceInputsReach } from '../src/orchestrator/stable-keys.js'

@@ -1552,3 +1552,51 @@ run 408, Turbo 409, Nx 410–411); what stays untried is `turboCache()` /
 graph dumped from one of the five real Nx repos rather than a
 hand-written one — REPOS.md says which, and the graph file is all it
 needs. Never end with "what next?".
+
+14al. **Handoff after item 419 (2026-09-20).** Seven items since 14ak,
+and they are one arc: every shipped plugin walked as the person who
+declares it, against a real counterpart rather than a stub seam. 413 the
+two remote caches, 414 `vx mcp`, 415 `@vzn/vx-otel`, 416
+`@vzn/vx-github`, 417 `@vzn/vx-lockfile`, 418
+`@vzn/vx-schedule-history`, 419 the rule the arc taught, written where a
+plugin author reads it. With 408–412 before them the adoption surface is
+now walked end to end: first run, Turbo, Nx, remote caches, and every
+first-party plugin.
+One defect shape accounted for four of the finds, and it is worth
+naming because it will recur: **a failure the code handled and did not
+report**. A refused remote-cache token warned five times instead of once
+(413); an OTLP collector that answered 401, 404 or 500 exported nothing
+and said nothing, because `await fetch(…)` resolves on a refusal and the
+status was never read (415); a lockfile refusal named its file twice and
+its remedy not at all, and never said which side of the `--affected`
+diff failed (417). The through-line: an integration whose whole promise
+is silence when it works needs a LOUD, single, specific line when it
+does not, and only a hostile counterpart finds that — a stub that
+throws proves the catch, never the silence.
+What the walks did NOT find is recorded too, so nobody re-walks it:
+`@vzn/vx-github` already read its status and hinted at
+`permissions: checks: write` (416, its find was a size cap instead); the
+MCP surface answered every malformed ask correctly and kept answering
+while a run held the database (414); and schedule-history handles empty,
+thin and stale history without a mis-order (418).
+Method, in one line each. Measure the unit before believing it: 418's
+three baseline failures are one cause — this container's Bun reports
+`ru_maxrss` in kilobytes where core reads bytes. Read fields, not
+`JSON.stringify`: non-enumerable getters print `{}` and cost me a wrong
+diagnosis (418). `Bun.spawnSync` in a parent blocks the loop serving the
+stub its child dials (413, 416). And a test that turns on which of two
+equal candidates is scanned first pins nothing (414).
+Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
+noise floor and no arms to A/B until the run path changes again. The
+owner residue — the `NPM_TOKEN` secret, the release cut, the site's
+address. No open issues. The container's baseline is 12–23 failing tests
+(the spread is the watch family under load) and ten failing tasks,
+eleven when shard 9 takes its SIGILL; the clean-tree control settles
+which set you have, and the RSS family now has a written cause.
+Next: the loop holds 393–419, twenty-seven entries, so the trim is due
+at 432. For work, the walks are finished — what is left is either gated
+(Next 1, 2, 16) or a judgement call about what a pre-alpha needs next:
+the release cut and the site's address are the owner's, and the honest
+in-repo candidates are a second look at the run path once something
+changes it, or the two-tasks-one-output-path design Next 16 sketches if
+a third repo shows the addition shape. Never end with "what next?".

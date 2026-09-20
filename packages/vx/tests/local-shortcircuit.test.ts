@@ -315,6 +315,119 @@ describe('local cache short-circuit', () => {
   )
 
   it(
+    'a producer reached THROUGH a stable intermediate still poisons the key',
+    async () => {
+      // The transitive fold in `deriveStableKeys`, which nothing drove over a
+      // real graph. The one-hop case is the `gen#codegen` row above, and there
+      // the dependent is caught by the direct gate; the fold only matters when
+      // the intermediate is itself STABLE, so instability cannot simply be
+      // inherited along the edge.
+      //
+      // The arrangement that isolates it: the producer and the reader are the
+      // SAME project (so a project-relative input can reach the output), and
+      // the intermediate is a DIFFERENT one (so it is stable — its own inputs
+      // are out of the producer's reach). a#codegen → b#mid → a#consume.
+      // Only the accumulated producer set carries `a` across `b#mid`.
+      await addProject(fixture.root, 'a', {
+        files: { 'src/seed.txt': 'seed' },
+        config: `
+          export default {
+            tasks: {
+              codegen: {
+                exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > generated.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] } },
+              },
+              consume: {
+                dependsOn: ['b#mid'],
+                exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'b', {
+        files: { 'src/m.txt': 'm' },
+        config: `
+          export default {
+            tasks: {
+              mid: {
+                dependsOn: ['a#codegen'],
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+
+      const cold = await run({ cwd: fixture.root, tasks: ['consume'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+
+      const c = await classify(fixture, ['consume'])
+      // `a#consume` reads `**/*`, which can match the `generated.txt` its
+      // same-project `a#codegen` writes two edges up: preliminary key, so it
+      // is never probed up front and never restore-tier.
+      expect(c.preProbedIds.has('a#consume')).toBe(false)
+      expect(c.restoreTier.has('a#consume')).toBe(false)
+      // CONTROLS. The intermediate is STABLE — which is the whole point: the
+      // reader cannot be inheriting instability from it. And the producer,
+      // with nothing upstream of itself, keeps its own short-circuit.
+      expect(c.restoreTier.has('b#mid')).toBe(true)
+      expect(c.restoreTier.has('a#codegen')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the workspace-output flag crosses a GROUP intermediate too',
+    async () => {
+      // The second half of the same fold. `wsOutputUpstream` is a separate
+      // accumulator, and isolating it takes a different intermediate: a
+      // root-anchored producer makes its DIRECT dependents unstable outright,
+      // so an ordinary task in the middle would inherit instability and prove
+      // nothing. A GROUP task does not — it has no cache and is never gated,
+      // only marked unstable when a member is — so a group over the producer
+      // stays stable and the flag is the only thing that can cross it.
+      //
+      // wa#gen (root-anchored output) → wa#all (group) → wa#consume.
+      await addProject(fixture.root, 'wa', {
+        files: { 'src/seed.txt': 'seed' },
+        config: `
+          export default {
+            tasks: {
+              gen: {
+                exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/g.txt'] } },
+              },
+              all: { dependsOn: ['gen'] },
+              consume: {
+                dependsOn: ['all'],
+                exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      const cold = await run({ cwd: fixture.root, tasks: ['consume'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+
+      const c = await classify(fixture, ['consume'])
+      // Preliminary key: a root-anchored output two edges up could land where
+      // `src/**` reads. Not probed up front — and the restore tier is off for
+      // the whole graph anyway, which is why this row asserts on `preProbed`,
+      // the half that execute-task reuses verbatim.
+      expect(c.preProbedIds.has('wa#consume')).toBe(false)
+      // CONTROL: the producer itself keeps its short-circuit, so the reader's
+      // exclusion is the flag crossing the group, not a graph-wide bail-out.
+      expect(c.preProbedIds.has('wa#gen')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a workspace-output writer anywhere keeps an UNRELATED project out of the tier',
     async () => {
       // The exclusion is GRAPH-WIDE, not edge-scoped: `solo` neither depends
