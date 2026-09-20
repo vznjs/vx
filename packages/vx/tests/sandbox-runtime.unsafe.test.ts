@@ -1290,6 +1290,75 @@ describe.skipIf(!available || process.platform !== 'linux')(
   },
 )
 
+describe.skipIf(!available || process.platform !== 'linux')(
+  'two sandboxed tasks at once each get their OWN violations',
+  () => {
+    // Linux detects violations by tracing the spawn with strace and parsing
+    // the trace, and the log path is keyed by the task's command tag "so
+    // parallel tasks don't share a stream". Nothing pinned that: pointing
+    // every task at one path survives the whole repo (item 448) — and
+    // `strace -o` TRUNCATES, so a second task starting mid-run destroys the
+    // first one's trace. Enforcement is unaffected (bwrap denies either
+    // way); what is lost is the explanation, which is the thing this file
+    // works hardest to guarantee — "a sandboxed task that fails must say
+    // what it was denied".
+    //
+    // Both tasks sleep briefly so their traces overlap. That is a harness
+    // device to make the concurrency real, not a claim about timing: the
+    // assertion is each task's own violation COUNT, which does not depend
+    // on how long either ran.
+    let fixture: Fixture
+
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const denier = (name: string) =>
+      addProject(fixture.root, name, {
+        files: { 'src/in.txt': 'hi', 'secret.txt': `${name} secret` },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'sleep 0.4; mkdir -p probe; cat secret.txt > probe/got.txt 2>/dev/null; echo done',
+                  sandbox: { allow: { read: ['src/**'], write: ['probe/'] } },
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+
+    it(
+      'neither task loses its trace to the other',
+      async () => {
+        await denier('alpha')
+        await denier('beta')
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          concurrency: 2,
+          log: collectingLogger(fixture),
+        })
+        // Each read of its own `secret.txt` is undeclared, so each task is
+        // denied once and fails. With one shared trace the loser reports
+        // nothing at all.
+        expect(r.outcomes).toHaveLength(2)
+        for (const o of r.outcomes) {
+          expect([o.node.id, o.status]).toEqual([o.node.id, 'failed'])
+          expect([o.node.id, o.sandboxViolations]).toEqual([o.node.id, 1])
+        }
+      },
+      TIMEOUT,
+    )
+  },
+)
+
 describe.skipIf(!available)('the sandbox temp directory', () => {
   // SRT overrides TMPDIR so temp writers land where its filesystem policy
   // allows, and does not create the directory ("/tmp/claude may not exist",

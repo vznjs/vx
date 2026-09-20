@@ -1307,6 +1307,40 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       test for it would have to count calls, which pins the
       implementation rather than the guarantee. Recorded as measured
       and left, with the reason, so it is not rediscovered as a find.
+448.  DONE (2026-09-20, the sweep continued onto
+      `exec/sandbox-runtime.ts` — 1,034 lines, the other file Next 8(d)
+      names as large and unswept — and it pays again).
+      Three claims mutated, one at a time, each against the whole repo.
+      CAUGHT (2), and both refutations are worth the run they cost. The
+      synthesized "this sandbox grants no read access to your own cwd"
+      violation is added only when the task ALREADY failed with nothing
+      to show, "so it can never redden a pass": dropping that guard
+      fails SIX rows, two of them written earlier today. And the
+      `updateConfig` hot reload after a probe-initialized SRT — the fix
+      for an availability probe that had brought SRT up with an EMPTY
+      config, so the run's own allowlist never reached it — is caught by
+      the port-bridge row, which is exactly the test the comment says
+      found the original defect in the first place.
+      SURVIVED, and it is the find: the strace log path is keyed by the
+      task's command tag so "parallel tasks don't share a stream", and
+      pointing every task at ONE path breaks nothing in the repo. It is
+      not a cost claim. `strace -o` TRUNCATES, so a second sandboxed
+      task starting mid-run destroys the first one's trace: the denial
+      still happens (bwrap enforces either way) but the EXPLANATION is
+      gone, which is the one thing this file works hardest to
+      guarantee — its own words, "a sandboxed task that fails must say
+      what it was denied".
+      Pinned with two denied tasks run at concurrency 2, each reading
+      its own undeclared file, asserting each outcome's own violation
+      COUNT. Red 3 times out of 3 under the mutation, green with the
+      fix. Linux-gated, because strace detection is the Linux path.
+      The tasks sleep briefly so the traces overlap; that is a harness
+      device to make the concurrency real, and the assertion is a count,
+      not a duration.
+      Two files swept now (447, 448), seven claims, two finds, five
+      refutations. The method is still paying, and what it keeps
+      finding is not wrong code — it is a true claim nothing was
+      holding.
 
 ## In flight
 
@@ -1641,7 +1675,7 @@ Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
 No open issues.
-Next: the loop holds 413–447, so the trim is due at 452. For work, the
+Next: the loop holds 413–448, so the trim is due at 452. For work, the
 shape that has paid every time in this arc is a claim whose halves live
 apart. Still untried: `vx watch`'s cycle against the run's admission
 dedup — REFUTED in 446, and 434 had already taken the pair proper —
