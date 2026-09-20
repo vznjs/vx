@@ -1453,7 +1453,8 @@ implemented `taskStdout`/`taskStderr` and dropped `log.status`, which
 is the channel that line uses. A probe that silences a channel cannot
 report what that channel said — the same shape as 439's `&& echo ok`,
 one level up: I read an absence that my own instrument created.
-What the probing DID establish, both proven and both item 443's:
+What the probing DID establish, item 443's and the only one of the two
+that is real:
 (a) `SandboxConfig` in `src/config.ts` — the type a user reads in
 their editor — says the baseline "may read its resolved
 `cache.inputs.files`, write the prefixes of its `cache.outputs.files`",
@@ -1466,17 +1467,22 @@ says it correctly. So the prose doc is right, the code is right, and
 the TYPE's own comment promises a grant the sandbox does not make — on
 a security boundary. CLAUDE.md names this exactly: a comment claiming a
 guarantee the code lacks is a defect, de-claim or implement.
-(b) A write grant spelled as a bare literal directory,
-`sandbox: { allow: { write: ['dist'] } }`, becomes a placeholder FILE
-at `dist` (`prepareOutputsForBind` treats a no-wildcard, no-slash grant
-as a file), so the task dies on `mkdir: cannot create directory 'dist':
-File exists` — run failed, one violation, from the grant the user
-correctly declared. `write: ['dist/']` works. That is 442's
-literal-is-a-file-or-a-tree ambiguity again, now in the sandbox, and it
-needs a decision rather than a reflex: the placeholder exists because
-bwrap cannot bind a path that does not exist, and vx cannot know
-whether an absent grant names a file or a directory. Never end with
-"what next?".
+(b) NOT A FINDING, and the third correction in this thread — recorded
+so that nobody "fixes" it. A write grant spelled as a bare literal
+directory, `sandbox: { allow: { write: ['dist'] } }`, becomes a
+placeholder FILE at `dist`, and the task dies on `mkdir: cannot create
+directory 'dist': File exists`. I measured that and was about to write
+it up as 442's ambiguity reaching the sandbox. It is a DECIDED
+behaviour, and both halves of the decision were already written down
+before I got there: `prepareOutputsForBind`'s own comment describes
+this exact scenario, dated 2026-09-16, down to the tool the user meets
+it from — "a literal that names nothing yet is a FILE — `dist/vx` for
+`bun build --outfile dist/vx`" — and concludes "so a directory is
+spelled `dist/`"; and `schema.md` says the same to users under "A write
+grant's shape". bwrap cannot bind a path that does not exist and vx
+cannot know which an absent grant means, so the spelling is the answer.
+This is 429's lesson with the grep actually done: I looked before
+claiming, and the claim did not survive. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
