@@ -1478,3 +1478,41 @@ split as item 8's, `cli/watch.ts` is 1,121, and the warm path's stage
 table (discover / load configs / classify / run graph) is where a
 5,000-project run spends its 687 ms. Read the table first, pick the
 stage, and bring a number. Never end with "what next?".
+
+14aj. **Handoff after item 409 (2026-09-20).** Six items since 14ai,
+and the arc changed subject twice. 404–407 are the run path: a mark
+that had been charging the package graph to the cache open, the
+container's own noise floor (12.6 ms between identical code at
+min-of-7, so nothing under ~6 % is resolvable here), then two real
+wins — inputs resolved once per project+declaration rather than per
+task, and the input-file fold no longer re-sorting, re-promising or
+re-relativizing what it was handed — for `task hash` 49–61 ms down to
+26–35 on this repo's own dry run, keys proven identical across 1,000
+bench tasks. 407 closed the leads: the warm path is flat, nothing in
+any stage above 4 ms, and the three fat-looking numbers were refuted
+(a batched probe, an already-batched config read, and the accumulated
+table's overlap — which the table now warns about itself). 408 and
+409 are the two adoption paths walked end to end: first-run and
+migrate. Thirty-odd probes, two gaps, both fixed (`vx cache stats`
+naming the verb that answers it; the `extends` row saying what the
+mapper does).
+What the stretch taught, beyond the wins. Measure the metric the
+change touches, not the clock: every wall-clock A/B here sat inside
+its own A/A control, while `task hash` separated cleanly. Put a floor
+on every extraction — the key-identity check printed "IDENTICAL" over
+an empty diff before it had one. And when a doc and the code seem to
+disagree, read the TESTS before believing either: the `extends` row
+was ambiguous, not wrong, and the near-miss cost one grep.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 now has its
+figures and its noise floor recorded, so the next run-path change has
+a yardstick. The owner residue — the `NPM_TOKEN` secret, the release
+cut, the site's address. No open issues. The container's baseline is
+23 failing tests and ten failing tasks, eleven when shard 9 takes its
+SIGILL, and the clean-tree control is what settles that.
+Next: the loop holds 373–409, thirty-seven entries, and item 373's
+convention trims a prefix to history at forty — do it deliberately
+within the next two or three items rather than letting the file grow.
+For work: the walks are done, so the untried surfaces are the Nx
+migrate path (needs an Nx graph, so a fixture rather than a live
+install) and `turboCache()` / `nxCache()` (need a server to talk to).
+Never end with "what next?".
