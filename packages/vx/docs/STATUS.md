@@ -1184,6 +1184,100 @@ prune` for eviction), a typo of `prune` still gets the
       invocation. A bench-level claim on this container needs a bigger
       effect than an in-process one does, and both need a control arm.
 
+421.  DONE (2026-09-20, Next 16's design note — the half of it that is
+      NOT gated). Next 16's own terms are "do it if a third repo shows
+      the addition shape, with the design note first", so the note is
+      unblocked work and the implementation is not.
+      `docs/design/overlapping-outputs-2026-09.md` writes it down, and
+      the reason it was worth writing rather than deferring is that
+      reading the sketch against the code found a conflict the sketch
+      does not mention. Its point 4, "the restore order follows the
+      edge", contradicts the restore tier: a confirmed stable-key local
+      hit becomes ready IMMEDIATELY because "a stable hit's restore
+      needs none of its deps' output", and an overlap-narrowed artifact
+      is exactly one that does. So the design needs a second stability
+      axis — today's gate (`dependsOnSiblingOutputs`) asks where a task
+      READS, and the overlap case is about where it WRITES.
+      Checked rather than assumed, and the FIRST answer was wrong, which
+      is item 422's whole content: the note's first draft said the
+      cross-project case was unguarded. Same project (strapi, refine) is
+      covered by the stability gate, as it said. Cross project is
+      covered too, somewhere else — `local-shortcircuit.ts` disables the
+      restore tier GRAPH-WIDE as soon as any task declares
+      `cache.outputs.workspaceFiles`, for this exact reason ("the
+      boundary-ignoring escape hatch could let a task write where a
+      restore touches"). Measured rather than read: a fixture where B
+      HITS while A MISSES (`cache.inputs.tasks: []` detaches B's key,
+      the only arrangement that gets there — otherwise the cascade moves
+      B's key with A's) put `b.txt` on disk at 1142 ms against `a.txt`
+      at 1131 ms, so B restored AFTER A, and ten reps with a 2000-file
+      producer left a correct tree every time. The note now says the
+      constraint is "do not remove the exclusion that exists" and names
+      who owns the case if the blanket rule is ever narrowed.
+      The note also records what admitting refine's REWRITE shape would
+      cost (a hash per overlapped file, bounded by the overlap rather
+      than the tree — measurable, not obviously unaffordable, and
+      unmeasured), and the four-case stale-hit test any implementation
+      owes: A hit + B miss, A miss + B hit, both hit, both miss, each
+      leaving a tree byte-identical to a cold run of both.
+
+422.  DONE (2026-09-20, the design note's claim tested before it shipped
+      — and refuted). Item 421 asserted that a cross-project
+      `workspaceFiles` writer could be stable, restore-tier, and
+      restored before its producer ran. That is what the stability gate
+      alone implies, and it is not what vx does: `local-shortcircuit.ts`
+      turns the restore tier off for the WHOLE graph when any task
+      declares a workspace output, which is a blanket version of the
+      same guard. The claim had already been written into a design note
+      in an open PR, so the correction went to the note in place rather
+      than into a new one.
+      The probe is the value here, because the arrangement is not
+      obvious. B cannot hit while A misses under normal keying — the
+      cascade folds A's input key into B's — so the dangerous
+      interleaving needs `cache.inputs.tasks: []`, the documented escape
+      hatch for "keep this upstream from invalidating me". With that,
+      B's key stands still while A's moves, and B is a hit whose restore
+      could in principle land in a directory A is about to clean. Then
+      the window has to be opened: A sits behind a one-second upstream,
+      so a restore-tier B would write at t≈0 and A's clean would land a
+      second later. Polling the directory through the run measured
+      `b.txt` at 1142 ms and `a.txt` at 1131 ms — B restored after A,
+      not before. Ten further reps with a 2000-file producer, and three
+      earlier fixtures, all left a correct tree.
+      The lesson is the one CLAUDE.md states and I re-learned anyway: a
+      gate read in one file is not the system's answer. The guard that
+      matters was in the consumer, not the classifier, and only the
+      measurement found it.
+
+423.  DONE (2026-09-20, the correctness sweep of `execute-task.ts` — the
+      file STATUS calls stale-hit-critical, which nothing in the 408–422
+      arc touched). Read against CLAUDE.md's live invariants, most of
+      what the file claims is already pinned: the clean gated on WRITES
+      rather than reads, `--no-cache` leaving the tree alone between
+      retry attempts, an aborted task never cached, a timeout retried
+      where an abort is not, a `preProbed` hit restored without a second
+      probe, and the taint rule (`--continue=always never caches a task
+built behind a failure`). Two claims were not.
+      First, the asymmetry the file calls "the point": the wipe is gated
+      on the WRITE axis, so `--force` (reads off, writes ON) must still
+      wipe while `local:r` must not. Only the `local:r` half was pinned,
+      and its comment pointed at `orchestrator.test.ts` for the other —
+      where the wipe row runs the DEFAULT policy, both axes on, proving
+      nothing about the asymmetry. The `--force` half is now a row, and
+      the comment says what the neighbour actually pins.
+      Second, `exec.remote: 'only'` on a `remote: true` executor: the
+      comment promises no probe or restore, no output clean and no local
+      artifact save — "restoring node_modules onto a dev machine is
+      exactly what the field exists to prevent" — and nothing pinned any
+      of the three. One row now drives `executeTask` with a fake
+      far-side executor and asserts all three at once: zero `cache.get`
+      calls, a leftover under the declared output still byte-identical,
+      and no rows under the task's key.
+      Both differential, and the mutations are worth recording: gating
+      the clean on `willRead` fails BOTH halves of the asymmetry (which
+      is what makes the pair a pair), and ignoring `remoteOnly` fails
+      the third row alone.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
@@ -1510,8 +1604,13 @@ a third repo shows the addition shape. Never end with "what next?".
     rewrite-in-place stays refused and only additions are admitted.
     strapi's `build:types` (tsc into the `dist` rollup filled) is the
     addition case; refine's is the rewrite. Not started; do it if a
-    third repo shows the addition shape, with the design note first
-    (`docs/design/`), and leave the rewrite refused.
+    third repo shows the addition shape, and leave the rewrite refused.
+    THE DESIGN NOTE IS WRITTEN (item 421,
+    `docs/design/overlapping-outputs-2026-09.md`): read it first, because
+    it found a conflict this sketch does not mention — point 4's "restore
+    order follows the edge" contradicts the restore tier, and an
+    implementation must add a second stability axis (where a task WRITES,
+    not only where it reads) before a narrowed artifact is safe.
 
 17. DONE 2026-09-12 as item 158 — the producing execution's usage rides
     the artifact's sidecar; a hit's entry is the history's record.

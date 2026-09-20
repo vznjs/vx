@@ -35,6 +35,8 @@ const TIMEOUT = 30_000
 
 const NO_CACHE = { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
 const READ_ONLY = { localRead: true, localWrite: false, remoteRead: false, remoteWrite: false }
+/** `--force`: reads off, writes ON — the half of the asymmetry below. */
+const FORCE = { localRead: false, localWrite: true, remoteRead: false, remoteWrite: false }
 
 interface Fixture {
   root: string
@@ -138,8 +140,11 @@ describe('execute-task — the pre-exec output wipe is gated on WRITES, not read
       // tree would destroy files for a run that stores nothing to put back:
       // the `--no-cache` "leave the user's tree alone" contract, applied to
       // every policy whose write axes are off. A `--force` run (reads off,
-      // writes ON) still wipes — that asymmetry is the point, and
-      // orchestrator.test.ts pins its half.
+      // writes ON) still wipes — that asymmetry is the point, and the row
+      // below pins its half. (It used to point at `orchestrator.test.ts`,
+      // which pins the wipe under the DEFAULT policy — the write axis on
+      // AND the read axis on, so it proves nothing about the asymmetry;
+      // 2026-09-20.)
       const dir = await addProject(
         fixture.root,
         'ro',
@@ -163,6 +168,41 @@ describe('execute-task — the pre-exec output wipe is gated on WRITES, not read
       // The stray is untouched AND the task's own output landed beside it.
       expect(lsSorted(path.join(dir, 'dist'))).toEqual(['made.txt', 'stray.txt'])
       expect(await readFile(path.join(dir, 'dist', 'stray.txt'), 'utf8')).toBe('STRAY')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the other half: --force (reads OFF, writes on) wipes and repopulates',
+    async () => {
+      // The asymmetry the row above names. `willWrite` gates the clean, so
+      // a policy with reads off and writes on must still wipe — the run
+      // stores what it produces, so a leftover would be packed into the
+      // artifact and replayed forever. Nothing pinned this half: the
+      // wipe test next door runs the DEFAULT policy, where both axes are
+      // on (2026-09-20).
+      const dir = await addProject(
+        fixture.root,
+        'forced',
+        `export default { tasks: { t: {
+          exec: { command: 'mkdir -p dist && echo made > dist/made.txt' },
+          cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+        } } }`,
+      )
+      await mkdir(path.join(dir, 'dist'), { recursive: true })
+      await writeFile(path.join(dir, 'dist', 'stray.txt'), 'STRAY')
+
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['t'],
+        projects: ['forced'],
+        cache: FORCE,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.status).toBe('success')
+      // Wiped AND repopulated: the task's own output, and nothing else.
+      expect(lsSorted(path.join(dir, 'dist'))).toEqual(['made.txt'])
     },
     TIMEOUT,
   )
@@ -573,6 +613,46 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     exec: { command: 'echo executed > out.txt' },
     cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
   }
+
+  it('a remote-ONLY task leaves this machine alone: no clean, no restore, no local save', async () => {
+    // `exec.remote: 'only'` on an executor that reports `remote: true` means
+    // the work AND its result live on the far side — "restoring node_modules
+    // onto a dev machine is exactly what the field exists to prevent". The
+    // comment lists three consequences (no probe/restore, no output clean, no
+    // local artifact save) and nothing pinned any of them (2026-09-20).
+    const b = await bench()
+    try {
+      // A leftover under the declared output, and a cache that would notice a
+      // save: both survive untouched if the three claims hold.
+      await writeFile(path.join(b.dir, 'out.txt'), 'STRAY')
+      const calls: string[] = []
+      const far: TaskExecutor = {
+        name: 'far-side',
+        remote: true,
+        async execute(req: ExecuteRequest) {
+          calls.push(req.taskId)
+          return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+        },
+      }
+      const getSpy = spyOn(b.cache, 'get')
+      const o = await executeTask({
+        ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+        executor: far,
+        remoteOnly: true,
+      })
+      expect({ status: o.status, ran: calls }).toEqual({ status: 'success', ran: ['proj#build'] })
+      // No probe, and no restore that a probe would have fed.
+      expect(getSpy).toHaveBeenCalledTimes(0)
+      // No clean: the leftover is still exactly as it was, and the command
+      // that would have overwritten it ran on the far side, not here.
+      expect(await readFile(path.join(b.dir, 'out.txt'), 'utf8')).toBe('STRAY')
+      // No local artifact: nothing was saved under this task's key.
+      expect(b.cache.loadOutputFilesBatch([o.hash ?? '']).size).toBe(0)
+      getSpy.mockRestore()
+    } finally {
+      await closeBench(b)
+    }
+  })
 
   it('a preProbed HIT is restored with no second probe', async () => {
     // The classify phase already paid for the `cache.get`. Probing again would
