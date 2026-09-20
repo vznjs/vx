@@ -1643,3 +1643,55 @@ the obvious fourth is `cache/cache.ts` (1,583 lines, the local store
 itself, where wrong bytes under an unchanged key are a `CACHE_VERSION`
 bump). Do it by the same standard, and if it yields nothing, say so
 with the evidence. Never end with "what next?".
+
+14an. **Handoff after item 432 (2026-09-20).** Six items since 14am,
+and they are one thread: the sweep method 427 closed, the thesis 428
+proved, and then two refutations and a correction that together say
+what the method is actually worth.
+427 swept `cache/cache.ts` and found nothing — eleven claim families,
+every one pinned, recorded as zero with the map of which test pins
+what. Its conclusion was that the finds cluster where a claim's halves
+live in different files or stages, never where one function does one
+thing. 428 tested that immediately and it paid: `bindableWrites` binds
+a file-shaped write grant as its DIRECTORY on Linux, so
+`write: ['out.txt']` in a project root makes every root file readable
+with no violation — the code documented the write half of that widening
+and nobody wrote down the read half, which is the half that decides a
+cache key. Three docs pages now say what the boundary is, with the
+remedy (outputs in a subdirectory).
+Then 429 and 430 refuted the next two candidates. The env axes are
+pinned from both sides; `--affected` against the key is pinned four
+channels deep, including a row named "the fingerprint moving and the
+selection widening are the SAME condition". Both refutations cost one
+mutation run each, and both taught more than a find would have.
+429: grep proves absence only where you grep — I searched two files,
+found nothing, and was one step from shipping a duplicate test as a
+discovery; the coverage lived in a third file and a parity suite.
+430: the verdict method itself was wrong. "The whole suite, diffed
+against the baseline, saw no new failure" is BLIND wherever the
+baseline is already red, and the baseline's largest family was `vx
+watch`. That is how a live branch — the watch loop's post-cycle
+re-trigger — read as unpinned when five of seven baseline failures were
+watch rows.
+431 spent the correction: the four red watch rows were root-caused (not
+a new diagnosis — item 369 had it, and I re-derived it before reading
+the paragraph that already said so), the rows now assert per DELIVERY
+MODE so the polling fallback has its first end-to-end coverage, the
+fixture drains stderr, and the two `armWatcher` rows are gated on the
+capability with `VX_REQUIRE_WATCH_EVENTS=1` required in CI. Six
+baseline failures gone: 23 red here became 17–18, ten failing tasks
+became nine. Every one of those was a blind spot in every future
+mutation verdict.
+Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
+noise floor and no arms to A/B until the run path changes. The owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues.
+Next: the loop holds 413–432, twenty entries, so the trim is due again
+at 452. For work, the honest position is that five of the seven
+correctness surfaces probed in this arc came back pinned, and the two
+finds (428, 431) both came from asking where a claim's halves live
+apart — not from reading a file end to end. The remaining pairs of that
+shape, untried: `vx watch`'s cycle against the run's admission dedup
+(430 opened it and only took the branch), and the sandbox's grants
+against what `cache.outputs` declares, which 428 touched from the read
+side only. Never end with "what next?".

@@ -14,7 +14,8 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-306-332.md`, items 333–352 in
 `2026-09-improvement-loop-333-352.md`; items 373–392 in
 `2026-09-improvement-loop-373-392.md`; items 393–412 in
-`2026-09-improvement-loop-393-412.md`; items 413 onward continue in
+`2026-09-improvement-loop-393-412.md`; items 413–432 in
+`2026-09-improvement-loop-413-432.md`; items 433 onward continue in
 `docs/STATUS.md`.
 
 353.  DONE (2026-09-19, flows.md and patterns.md — the two pages #451
