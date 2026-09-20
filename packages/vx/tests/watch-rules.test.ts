@@ -26,6 +26,7 @@ import {
   watchCmd,
 } from '../src/cli/watch.js'
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
+import { watchProbeDelivered } from './helpers/watch-events.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 describe('the ignore filter', () => {
@@ -368,26 +369,34 @@ describe('what a finished cycle hands back to the timer', () => {
 // FSEvents stream is live, and an edit in that gap is lost (5/30 under load,
 // measured 2026-09-03). This pins the helper's contract: readiness is proved
 // by the probe, the probe never reaches the caller, and it is gone afterwards.
+const probeDelivered = await watchProbeDelivered('armWatcher (recursive)')
+
 describe('armWatcher', () => {
   for (const recursive of [true, false]) {
-    it(`proves delivery with a probe it then removes (recursive: ${recursive})`, async () => {
-      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-'))
-      const seen: string[] = []
-      const armed = armWatcher(dir, recursive, (f) => seen.push(f))
-      try {
-        expect(await armed.ready).toBe(true)
-        expect(existsSync(path.join(dir, WATCH_PROBE))).toBe(false)
-        // A real edit after readiness is delivered; the probe never was.
-        await writeFile(path.join(dir, 'edit.txt'), 'x')
-        const start = Date.now()
-        while (!seen.includes('edit.txt') && Date.now() - start < 3000) await Bun.sleep(5)
-        expect(seen).toContain('edit.txt')
-        expect(seen).not.toContain(WATCH_PROBE)
-      } finally {
-        armed.watcher.close()
-        await rm(dir, { recursive: true, force: true })
-      }
-    })
+    // The recursive form is the one an OS can refuse to deliver, and where
+    // it does the loop swaps in `pollWatcher` — so this row is gated on the
+    // capability while the non-recursive one runs everywhere.
+    it.skipIf(recursive && !probeDelivered)(
+      `proves delivery with a probe it then removes (recursive: ${recursive})`,
+      async () => {
+        const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-'))
+        const seen: string[] = []
+        const armed = armWatcher(dir, recursive, (f) => seen.push(f))
+        try {
+          expect(await armed.ready).toBe(true)
+          expect(existsSync(path.join(dir, WATCH_PROBE))).toBe(false)
+          // A real edit after readiness is delivered; the probe never was.
+          await writeFile(path.join(dir, 'edit.txt'), 'x')
+          const start = Date.now()
+          while (!seen.includes('edit.txt') && Date.now() - start < 3000) await Bun.sleep(5)
+          expect(seen).toContain('edit.txt')
+          expect(seen).not.toContain(WATCH_PROBE)
+        } finally {
+          armed.watcher.close()
+          await rm(dir, { recursive: true, force: true })
+        }
+      },
+    )
   }
 })
 

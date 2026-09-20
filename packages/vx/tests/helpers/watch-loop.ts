@@ -18,6 +18,8 @@ export const SETTLE_MS = 1_000
 export interface Watch {
   proc: ReturnType<typeof Bun.spawn>
   out: () => string
+  /** The watch's stderr. Its notices go here, not to stdout — and a pipe nobody drains can block the child. */
+  err: () => string
   cycles: () => number
 }
 
@@ -50,6 +52,28 @@ export async function initialOnly(w: Watch, log: string): Promise<void> {
   }
 }
 
+/**
+ * How this watch is delivering events, read off vx's OWN announcement
+ * rather than guessed from the platform.
+ *
+ * `armWatcher` falls back to polling when no OS event arrives within its
+ * probe window, and a container without a working inotify (this repo's
+ * cloud gate, 2026-09-20) takes that path for every case. It matters to
+ * the counts: under events a task's undeclared write arrives as its own
+ * event one window after the run, costing a redundant cycle; under a
+ * 250 ms poll the edit and the write land in the same sample, so the
+ * follower never happens and the same scenario settles one execution
+ * earlier. Both settle — which is what these suites exist to prove — so
+ * the rows assert the count for the mode they actually ran in.
+ *
+ * Read it AFTER the watching marker: the fallback announces itself
+ * first, so by then the line is there or it never will be. The notice is
+ * on STDERR, which is why the fixture drains that too.
+ */
+export function deliveryMode(w: Watch): 'events' | 'polling' {
+  return w.err().includes('no OS watch events within') ? 'polling' : 'events'
+}
+
 export function startWatch(root: string, select: readonly string[] = ['--all']): Watch {
   const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', ...select], {
     cwd: root,
@@ -58,12 +82,17 @@ export function startWatch(root: string, select: readonly string[] = ['--all']):
     env: { ...process.env, VX_KILL_GRACE_MS: '200' },
   })
   let out = ''
+  let err = ''
   void (async () => {
     for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+  })()
+  void (async () => {
+    for await (const chunk of proc.stderr) err += new TextDecoder().decode(chunk)
   })()
   return {
     proc,
     out: () => out,
+    err: () => err,
     cycles: () => out.split('re-running...').length - 1,
   }
 }

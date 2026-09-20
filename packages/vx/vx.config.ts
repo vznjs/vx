@@ -14,7 +14,7 @@ const shardTask = (i: number) => ({
   dependsOn: ['install'],
   exec: {
     command: `bun test $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
-    env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+    env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS'] },
     sandbox: {
       allow: {
         // The root README states counts the suite pins (the hook count,
@@ -103,7 +103,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun test ./tests/*.unsafe.test.ts',
-        env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_SMALL_DISK'] },
+        env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_SMALL_DISK'] },
       },
       cache: {
         inputs: {

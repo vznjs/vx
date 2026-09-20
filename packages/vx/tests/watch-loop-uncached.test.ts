@@ -9,6 +9,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   SETTLE_MS,
+  deliveryMode,
   executions,
   initialOnly,
   startWatch,
@@ -39,15 +40,20 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
     await initialOnly(w, f.log)
     expect(w.cycles()).toBe(0)
 
+    // Under a 250 ms poll the edit and the task's own write land in the
+    // same sample, so the follower never happens: one cycle, not two. The
+    // claim both modes share — it SETTLES — is the exact count below.
+    const events = deliveryMode(w) === 'events'
+    const runs = events ? 3 : 2
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
     await until(
-      async () => (await executions(f.log)) === 3,
+      async () => (await executions(f.log)) === runs,
       'the edit cycle and its one redundant follower',
     )
     await Bun.sleep(SETTLE_MS)
-    expect(await executions(f.log)).toBe(3)
-    expect(w.cycles()).toBe(2)
-    expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
+    expect(await executions(f.log)).toBe(runs)
+    expect(w.cycles()).toBe(runs - 1)
+    if (events) expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
   }, 40_000)
 
   it.each([
@@ -76,18 +82,23 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
       await Bun.sleep(SETTLE_MS)
       await initialOnly(w, f.log)
 
+      const events = deliveryMode(w) === 'events'
+      const runs = events ? 3 : 2
       await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
       await until(
-        async () => (await executions(f.log)) === 3,
+        async () => (await executions(f.log)) === runs,
         'the edit cycle and its one redundant follower',
       )
       await Bun.sleep(SETTLE_MS * 2)
-      expect(await executions(f.log)).toBe(3)
-      expect(w.cycles()).toBe(2)
+      expect(await executions(f.log)).toBe(runs)
+      expect(w.cycles()).toBe(runs - 1)
       // The follower is labelled by what arrived — the task's own dist —
-      // not by the edit that started the cycle it landed in.
-      expect(w.out().split('re-running...')[2]).not.toContain('src/a.txt')
-      expect(w.out()).toContain('vx watch: app dist')
+      // not by the edit that started the cycle it landed in. Under polling
+      // there is no follower to label; the settled count above is the claim.
+      if (events) {
+        expect(w.out().split('re-running...')[2]).not.toContain('src/a.txt')
+        expect(w.out()).toContain('vx watch: app dist')
+      }
     },
     40_000,
   )

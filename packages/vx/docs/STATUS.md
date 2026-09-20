@@ -1508,6 +1508,57 @@ built behind a failure`). Two claims were not.
       winning over a pending path (a SIGINT does not start one more
       cycle). What that pins is the decision, not the delivery window,
       and it says so.
+431.  DONE (2026-09-20, acting on 430's lesson: a permanently RED row is
+      a permanent blind spot). NOT a new diagnosis — item 369 already
+      MEASURED the cause, and the In-flight section states it: Bun
+      1.3.11's `fs.watch` never reports a DOT-prefixed filename (a plain
+      file is delivered, `.vx-watch-probe` is dropped, both recursive
+      modes), and that probe is exactly how `armWatcher` proves a watcher
+      is live, so every `vx watch` here falls back to `pollWatcher` at
+      250 ms and says so on STDERR. I re-derived it from scratch before
+      reading that paragraph; the cost was an hour and the lesson is
+      429's again, one level up — read what the file already says about
+      the thing you are about to measure.
+      What was missing is ACTING on it, and that is this item. Four rows
+      asserted "exactly one extra execution per edit": true under
+      events, where the task's own undeclared write arrives as its own
+      event one window after the run. Under a 250 ms poll the edit and
+      the write land in the same sample, so the follower never happens
+      and the scenario settles at TWO executions, not three — measured
+      three times, and for the plain, `rm -rf` and `rm -rf` + gap shapes
+      alike. The rows now read the mode off vx's own announcement
+      (`deliveryMode`) and assert the count for the mode they ran in,
+      which also gives the polling path its first end-to-end coverage;
+      it had only `pollWatcher`'s unit rows before.
+      The fixture could not see that announcement at all: `startWatch`
+      captured stdout and left stderr an undrained pipe. It drains both
+      now — also one fewer way for a chatty watch to block.
+      The two `armWatcher` rows are the ones whose SUBJECT is the native
+      watcher, so they are gated on the capability the way the sandbox
+      suites are gated on bwrap — by RUNNING `armWatcher` in a temp
+      directory, because a gate that wrote the probe once was more
+      pessimistic than the thing it gates and skipped a row that passes.
+      It arms BOTH forms and wants both: a recursive-only gate said
+      "available" in one of twelve shard processes and the NON-recursive
+      row then failed there, so 369's "never" is really "almost never" —
+      Bun 1.3.11 lands the hidden-file event occasionally, and the two
+      modes do not fail together.
+      Where the gate STOPS is measured, not assumed. It runs at import on
+      an idle process; the rows run under twelve-way shard load. Six
+      consecutive probes landed and the non-recursive row still failed on
+      `armed.ready` in that same process — readiness timing out under
+      load, not the capability missing. Tuning the probe further is
+      chasing the load, so it stays at one probe per form, that row stays
+      in this container's baseline beside the other load-shaped watch
+      row, and CI requires both. CI sets `VX_REQUIRE_WATCH_EVENTS=1` on
+      both jobs, so a runner that stops delivering is a failure there
+      and not a silent skip.
+      Not done, recorded rather than guessed: the probe's dot is an
+      accidental coupling — readiness detection depends on hidden-file
+      delivery, which is not the capability it means to test. A non-dot
+      probe would decouple it, but on every SUPPORTED Bun (the floor is
+      1.4) the current probe lands, so the change would be unmeasured
+      here. Do it if a supported runtime ever drops it.
 
 ## In flight
 
@@ -1536,8 +1587,13 @@ runner reads no `peakRssBytes` at all (2), and `bin.ts` truncates a
 2 MiB pipe write to 219 KB, the very defect the Rules section records
 as fixed (1). Four more are downstream of that missing usage number
 (`vx last`, the remote-usage e2e, both schedule-history reservation
-cases). Seven are the watch loop and `armWatcher`, and item
+cases). Seven WERE the watch loop and `armWatcher`, and item
 369 MEASURED what this sentence first guessed: they are the floor too.
+Item 431 acted on that measurement, so they are no longer in the set:
+the four e2e rows assert per delivery mode (the poll coalesces the
+follower, so two executions there and three under events), the two
+`armWatcher` rows are gated on the probe landing at all, and the
+seventh was load and passes alone.
 Bun 1.3.11's `fs.watch` never reports a DOT-prefixed filename — a
 plain file is delivered, `.vx-watch-probe` is dropped, in both
 recursive modes — and that probe is exactly how `armWatcher` proves a

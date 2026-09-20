@@ -81,6 +81,13 @@ jobs:
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'
+          # Same reason as the sandbox flag: the two `armWatcher` rows prove
+          # the NATIVE watcher delivers, and where it does not `vx watch`
+          # silently falls back to polling. Bun 1.3.11 on the cloud container
+          # drops hidden-file fs.watch events, so the probe never lands there
+          # and the rows skip; a runner that starts doing the same must be a
+          # failure, not a quiet skip.
+          VX_REQUIRE_WATCH_EVENTS: '1'
           VX_SMALL_DISK: /tmp/vx-small
         run: |
           # The summary is written by a PLUGIN now, and a plugin that declines
@@ -219,6 +226,10 @@ jobs:
       # No VX_REQUIRE_SANDBOX here (see the job comment), so the sandbox
       # suites skip; the canary below is what watches enforcement.
       - name: vx run test (core, darwin)
+        env:
+          # FSEvents delivers the watch probe here; the rows must not vanish
+          # quietly if that changes (see the linux job for the reasoning).
+          VX_REQUIRE_WATCH_EVENTS: '1'
         run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
