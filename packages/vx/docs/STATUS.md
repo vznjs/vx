@@ -1277,6 +1277,38 @@ built behind a failure`). Two claims were not.
       the clean on `willRead` fails BOTH halves of the asymmetry (which
       is what makes the pair a pair), and ignoring `remoteOnly` fails
       the third row alone.
+424.  DONE (2026-09-20, the same standard applied to the OTHER
+      stale-hit-critical surface: `src/cache/inputs.ts` (glob resolution,
+      boundaries) and `src/cache/git-inputs.ts` (the git enumeration the
+      key trusts), where a wrong answer is a wrong KEY rather than a
+      crash). The unit-level sweep found nothing: prefix-stripping and
+      "a modified tracked file is pruned from the trusted OID set" are
+      pinned in `git-subdir-workspace.test.ts`; OID equality against
+      git's own `hash-object`, sha256 repos, a symlink hashed as a blob,
+      the mtime+size memo, dirty/untracked exclusion, a staged rename
+      and merge-conflict stages in `git-oid.test.ts`; boundary
+      non-crossing both ways, `ALWAYS_IGNORE` and `vx-lock.json` in
+      `inputs.test.ts`; negation semantics and the `!!` inversion
+      refusal in `inputs-resolution.test.ts`; the `..` segment refusal
+      in `project-loader.test.ts`. Recorded as zero-yield rather than
+      dressed up as work.
+      What WAS missing is the composite. Each exclusion is pinned
+      alone, on the resolver; none of them together on a real run with
+      real discovery and a real git repo. `orchestrator-run.test.ts`
+      now carries one: a project declaring the widest glob there is,
+      `**/*`, with a declared workspace member nested INSIDE it,
+      `node_modules` beside it and a sibling next door — change all
+      four at once and the run must still HIT, then change the
+      project's own file and it must miss. Differential twice over:
+      returning `[]` from `boundaryIgnorePatterns` fails it, and so
+      does dropping `**/node_modules/**` from `ALWAYS_IGNORE`.
+      The fixture taught the rule it tests. The first version gave the
+      nested member a `package.json` and no config, and the run MISSED
+      — correctly: boundary geometry is built from CONFIG-BEARING
+      projects (`prepare.ts`), so a bare manifest under a project is
+      deliberately part of that project, not a fence. The test says so
+      in a comment, because the shape is one a reader would otherwise
+      read as a bug.
 
 ## In flight
 
