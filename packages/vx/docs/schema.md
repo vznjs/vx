@@ -905,6 +905,21 @@ Spell a directory as a bare literal and the task's own `mkdir` meets
 vx removes the empty file it made (it takes back any placeholder the
 task never wrote, so an unwritten one is never archived as an output).
 
+**A write grant is readable, and on Linux it reads WIDER than it looks.**
+A write path is readable too (`tsc --incremental` re-reads its own
+`.tsbuildinfo`). On Linux a grant is a mount and bwrap cannot rename onto
+an active file mount — every atomic writer stages beside its target and
+renames — so a FILE-shaped grant is bound as its DIRECTORY. That
+directory is then readable AND writable in full: with
+`write: ['out.txt']` in the project root, every file in the project root
+can be read, undeclared, with no violation (there is no denial for the
+detector to report — the read simply succeeds). Put declared outputs in
+a subdirectory and the rest stays denied: under `write: ['dist/out.txt']`
+the task reads `dist/` freely and an undeclared read at the project root
+still fails. macOS matches paths rather than mounting, so a file grant
+stays exact there. Pinned both ways in
+`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20).
+
 **`network` domain lists are per-RUN, not per-task.** SRT runs one
 filtering proxy per `vx run` and checks every request against the
 allowlist that proxy was started with, so vx arms it with the union of
@@ -916,6 +931,8 @@ skips the proxy entirely.
 **Baseline** (`sandbox: {}`): the task reads nothing, writes nothing and
 reaches no network — not even its own project directory, which is why
 `allow: { read: ['.'] }` is the first line of almost every real block.
+What it grants from there is the union of the read grants and, on Linux,
+the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant

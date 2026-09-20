@@ -983,6 +983,87 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 })
 
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a write grant widens what a task can READ, and that is the cache-relevant half',
+  () => {
+    // `bindableWrites` widens a FILE-shaped write grant to its DIRECTORY on
+    // Linux, because bwrap cannot rename onto an active file mount. The code
+    // says so, and says what it costs on the WRITE side ("the task may write
+    // its siblings"). The READ side was neither written down nor pinned: a
+    // read-write bind is readable, so the whole directory becomes readable
+    // too — and an undeclared read is exactly the thing the sandbox exists to
+    // catch, because the key folds this project's inputs (2026-09-20).
+    //
+    // Linux-only by construction: macOS seatbelt matches paths rather than
+    // mounting, so a file grant stays exact there.
+    let fixture: Fixture
+
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const project = async (write: string): Promise<string> =>
+      addProject(fixture.root, 'app', {
+        files: {
+          'src/x.txt': 'declared',
+          'undeclared.txt': 'AT THE ROOT',
+          'dist/sibling.txt': 'IN DIST',
+        },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'cat undeclared.txt > probe/root.txt 2>/dev/null; cat dist/sibling.txt > probe/dist.txt 2>/dev/null; echo done',
+                  sandbox: { allow: { read: ['src/**'], write: ['${write}', 'probe/'] } },
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+
+    it(
+      'a write grant at the project ROOT makes the whole root readable — no violation',
+      async () => {
+        const dir = await project('out.txt')
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        // The read SUCCEEDED and nothing reported it. This is the documented
+        // boundary being wider than the docs said, not a denial being missed:
+        // no syscall failed, so there is nothing for the strace pass to see.
+        expect(r.outcomes[0]?.status).toBe('success')
+        expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
+        expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('AT THE ROOT')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'the SAME task with its output in a subdirectory still fails on that read',
+      async () => {
+        // The control that makes the row above a statement about WHERE the
+        // grant sits, not about sandboxing being off: one word of the config
+        // changes, and the undeclared root read is denied and reported.
+        const dir = await project('dist/out.txt')
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(r.outcomes[0]?.sandboxViolations).toBe(1)
+        // The redirection still creates the file; what the denial costs is
+        // its CONTENT, which is the difference that matters.
+        expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('')
+        // …while the widening itself is real and scoped: `dist/` IS readable,
+        // which is how `tsc --incremental` re-reads its own .tsbuildinfo.
+        expect(await readFile(path.join(dir, 'probe', 'dist.txt'), 'utf8')).toBe('IN DIST')
+      },
+      TIMEOUT,
+    )
+  },
+)
+
 describe.skipIf(!available)('the sandbox temp directory', () => {
   // SRT overrides TMPDIR so temp writers land where its filesystem policy
   // allows, and does not create the directory ("/tmp/claude may not exist",

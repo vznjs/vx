@@ -1360,6 +1360,87 @@ built behind a failure`). Two claims were not.
       when a member is), so the second row is `wa#gen` → `wa#all`
       (group) → `wa#consume`. Each row fails under its own mutation and
       only its own.
+427.  DONE (2026-09-20, and it is a ZERO-YIELD report — `cache/cache.ts`,
+      1,637 lines, the local store itself, where wrong bytes under an
+      unchanged key are the one situation a `CACHE_VERSION` bump exists
+      for). Eleven claim families read and checked against the suites,
+      every one already pinned, so the useful artifact is the map:
+      the restore refusals (a vanished artifact, an archive missing a
+      recorded output, the EISDIR/ENOTDIR stray, the `.vx-tmp-` race)
+      in `artifact-roundtrip.test.ts` and `cache.test.ts`; the ingest
+      boundary — corrupt zstd, valid zstd that is not a vx artifact, a
+      declared bomb, a sizeless frame, a mid-stream cut, each asserting
+      no artifact, no row and no temp — in `cache.test.ts`; the
+      ms-precision output fingerprint on BOTH the save and the ingest
+      path in `cache-baseline.test.ts` and `cache.test.ts`; `getMany`'s
+      "same answers as N calls to `get`" in `cache-get-many.test.ts`,
+      down to the read gate, the deferred `accessed_at` touch and (in
+      `output-dirs-snapshot.test.ts`) the dir rows; orphan reaping with
+      its grace window and four controls, and `orphanStats` agreeing
+      with what prune reaps, in `cache.test.ts`; the key fold's order
+      check including the inversion at the LAST pair and the
+      workspace-root memo; the temp cleanup on both the in-memory and
+      the streamed save path, each with its control; retention pruning
+      `invocations` on the same window as `runs`; and the
+      exit-code laundering defence, pinned twice — at runtime in
+      `execute-task.test.ts` and at the TYPE level by a
+      `@ts-expect-error` whose unused-directive error is the assertion,
+      which only the lint gate can see.
+      The most promising hole was the directory short-circuit, whose
+      halves DO live apart — `hit-restore.ts` skips the output walk when
+      every directory recorded at the last save still has its mtime,
+      which is sound only if a snapshot covers the tree recursively and
+      is all-or-nothing. It is both, deliberately (`output-index.ts`
+      walks every subdirectory, abandons over `OUTPUT_DIRS_CAP`, and
+      drops a snapshot holding any directory inside the racy window),
+      and `output-dirs.test.ts` plus `output-dirs-snapshot.test.ts` pin
+      the cap, the racy window and the absent-prefix row.
+      One interaction is not pinned directly: a `vx cache prune`
+      running while a save is mid-flight. It is not a gap worth a racy
+      test — the mechanism that protects it is the orphan grace window,
+      and that IS pinned deterministically (a fresh row-less artifact
+      and a fresh temp are controls in the reaping row). A timed
+      version would only prove that this box is slow enough.
+      CLOSING THE METHOD. Four surfaces deep (423 `execute-task.ts`,
+      424 `cache/inputs.ts` + `git-inputs.ts`, 426 the stability gate,
+      427 here) the yield is 2, 0-then-a-composite, 2, 0 — and the
+      finds cluster where a claim spans two files or two stages, never
+      where one function does one thing. Sweeping a fifth file by line
+      count is not the way to the next one; the next reader should look
+      for a claim whose halves live apart, which is what 424 and 426
+      both turned out to be.
+428.  DONE (2026-09-20, and 427's prediction paid on the first try: the
+      halves here are `exec/sandbox-binds.ts` and the promise the DOCS
+      make about it). The sandbox is how a task proves what it touches
+      — `--verify` was removed 2026-09-04 because the sandbox replaced
+      it — so an undeclared in-project read is the stale-hit vector it
+      exists to catch. Measured, five configurations, one variable at a
+      time:
+      `sandbox: {}` reading its own `src/x.txt` → failed, 1 violation.
+      `read: ['src/**']` reading `src/x.txt` → success (control).
+      `read: ['src/**']` reading an undeclared `undeclared.txt` →
+      failed, 1 violation. The same task with `write: ['out.txt']`
+      added → SUCCESS, 0 violations, and `out.txt` held the undeclared
+      file's bytes. `write: ['dist/out.txt']` instead → failed again,
+      1 violation, while `dist/sibling.txt` read fine.
+      The mechanism is deliberate and documented IN CODE: on Linux a
+      grant is a mount, bwrap cannot rename onto an active file mount
+      (every atomic writer stages beside its target and renames), so
+      `bindableWrites` binds a file-shaped grant as its DIRECTORY. The
+      code names the cost on the write side — "the task may write its
+      siblings". Nobody wrote down the READ side, which is the one that
+      decides a cache key: that directory is readable in full, and
+      there is no denial for the detector to report, because the read
+      simply succeeds.
+      So the defect is the claim, not the code: `schema.md` said the
+      baseline grants "not even its own project directory" and that an
+      undeclared read fails the task, `cli.md` said any undeclared
+      touch fails, and the guide said only that a write grant is
+      readable. All three now say what the boundary actually is and
+      what moves it — keep declared outputs in a SUBDIRECTORY and the
+      rest of the project stays provable. Two rows pin it both ways,
+      Linux-only by construction (macOS seatbelt matches paths rather
+      than mounting, so a file grant stays exact there).
 
 ## In flight
 
