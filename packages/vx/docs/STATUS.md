@@ -2135,6 +2135,31 @@ non-empty string` is caught by exactly ONE row, and it is the
       ran at all" — the same ambiguity 499's unparseable payload
       created, reached by a different road.
 
+507.  DONE (2026-09-20, `orchestrator/placement.ts`'s
+      `pinnedLocalSet` — which tasks may NEVER leave this machine. A
+      wrong answer runs a sandboxed task remotely, where the sandbox
+      is the only thing proving what it touches).
+      A HELD report. Four of five members have their own rows:
+      `exec.persistent` (1), `exec.sandbox` (2), `exec.remote: false`
+      (1) and the TRANSITIVE clause — a task whose dep is pinned is
+      pinned — which fails 3.
+      The fifth, the pre-recursion `memo.set(id, false)`, survives and
+      is DEFENSIVE by its own comment: it guards a cycle the graph
+      builder already rejects, and the memo proper (`memo.set(id,
+result)` after) keeps working without it. Its failure mode is
+      also LOUD — unbounded recursion, not a wrong placement — so it
+      is the rare survivor that needs neither a row nor a de-claim.
+      Recorded because a sweep that reports only holes is one whose
+      negative results nobody can read, and because this is the second
+      file in a row (with `admission.ts`) whose predicates were
+      already pinned member by member. The practice this sweep has
+      been retrofitting is present in the newer files; what it keeps
+      finding is older code written before the habit.
+      Also confirmed the new batch rule works: every run in this
+      sweep ended with a PRISTINE control (`5 pass 0 fail`) beside the
+      mutants, so `no-memo`'s `5 pass 0 fail` means the rows ran and
+      passed rather than that nothing ran.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
