@@ -278,11 +278,17 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The host side of a port bridge lives exactly as long as the server:
   // released on the child's exit, whether the run tore it down or it died.
   // A placeholder the server never wrote goes back the same way.
+  // What the exit sweep took back, for the readiness failure below to
+  // report: the two sweeps RACE, and whichever runs first is the one
+  // holding the list. Losing that race cost the diagnostic — the failure
+  // then said only "File exists", which is the message the hint exists to
+  // explain (seen twice under the gate's parallel load, 2026-09-20).
+  const sweptOnExit: string[] = []
   if (bridgeTag !== undefined || placeholders.length > 0) {
     const tag = bridgeTag
     const onExit = async (): Promise<void> => {
       if (tag !== undefined) releaseBridges(tag)
-      await sweepPlaceholders(placeholders)
+      sweptOnExit.push(...(await sweepPlaceholders(placeholders)))
     }
     void spawn.child?.exited?.then(onExit, onExit)
   }
@@ -295,9 +301,11 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // (an embedder, the MCP server) never saw a bare stderr write at all.
     log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
     // The server is dead or being torn down; the sweep on its exit races
-    // this return, so take the untouched placeholders back here and say
-    // what they were (idempotent — an already-removed one is skipped).
-    for (const p of await sweepPlaceholders(placeholders)) {
+    // this return, so the union of both sweeps is what was untouched — an
+    // already-removed placeholder is SKIPPED by the second sweep, not
+    // returned by it, so reading this one alone reported nothing whenever
+    // the exit handler got there first.
+    for (const p of new Set([...sweptOnExit, ...(await sweepPlaceholders(placeholders))])) {
       log.taskStderr(node, `${untouchedPlaceholderLine(node.projectDir, p)}\n`)
     }
     // The reason rides the outcome (every label reads it), and a child that

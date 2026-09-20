@@ -231,6 +231,51 @@ describe('Cache.key', () => {
     expect(a).toBe(b)
   })
 
+  // `key()` no longer copies and sorts unconditionally — it checks the order
+  // first, because the only caller that matters hands it a sorted list and
+  // the copy cost 7.4 ms of a 44-task run (2026-09-20). The row above breaks
+  // the order at the FIRST pair; this one breaks it at the last, where an
+  // off-by-one in that scan would let an unsorted list through unsorted.
+  it('sorts a list whose only inversion is at the end', async () => {
+    const files = [
+      await writeInput('a.txt', '1'),
+      await writeInput('b.txt', '2'),
+      await writeInput('c.txt', '3'),
+      await writeInput('d.txt', '4'),
+    ].sort()
+    const sorted = await cache.key({ ...baseInput(), inputFiles: files })
+    const lastTwoSwapped = [...files.slice(0, -2), files.at(-1)!, files.at(-2)!]
+    expect(await cache.key({ ...baseInput(), inputFiles: lastTwoSwapped })).toBe(sorted)
+  })
+
+  // The folded name is the file's path RELATIVE to the workspace root, and
+  // that relativization is memoized per Cache for the run. A memo that
+  // outlived a change of root would fold one workspace's names under
+  // another's — the same key for two different trees.
+  it('follows the workspace root when it changes under one Cache', async () => {
+    // The file sits INSIDE root-a, so the two roots disagree about its name
+    // (`in-a.txt` against `root-a/in-a.txt`). A file outside both would be
+    // `../in-a.txt` either way and the row would pass with the memo broken —
+    // which is how the first draft of it passed (2026-09-20).
+    const rootA = path.join(dir, 'root-a')
+    const rootB = path.join(dir, 'root-b')
+    await mkdir(rootA, { recursive: true })
+    await mkdir(rootB, { recursive: true })
+    const f = path.join(rootA, 'in-a.txt')
+    await writeFile(f, 'bytes')
+    const under = async (c: Cache, workspaceRoot: string): Promise<string> =>
+      await c.key({ ...baseInput(), inputFiles: [f], workspaceRoot })
+    const first = await under(cache, rootA)
+    const reused = await under(cache, rootB)
+    expect(reused).not.toBe(first)
+    const fresh = new Cache(path.join(dir, 'cache-fresh'))
+    try {
+      expect(reused).toBe(await under(fresh, rootB))
+    } finally {
+      fresh.close()
+    }
+  })
+
   it('changes when an env-input value changes', async () => {
     const a = await cache.key({ ...baseInput(), envValues: [['MODE', 'a']] })
     const b = await cache.key({ ...baseInput(), envValues: [['MODE', 'b']] })

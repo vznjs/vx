@@ -670,6 +670,25 @@ export class Cache implements CacheLayer {
   hashFiles(paths: readonly string[]): Promise<Map<string, string>> {
     return this.files.hashFiles(paths)
   }
+  /**
+   * `relPosix` against the run's workspace root, memoized: the same three
+   * thousand files are re-relativized for every task of the project, which
+   * is 132,000 calls for 3,000 answers on this repo's own gate. Cleared
+   * when a caller arrives with a different root, so the memo can never
+   * answer for a workspace it did not measure.
+   */
+  private relMemo = new Map<string, string>()
+  private relMemoRoot: string | undefined
+  private relFor(root: string, file: string): string {
+    if (root !== this.relMemoRoot) {
+      this.relMemoRoot = root
+      this.relMemo.clear()
+    }
+    let rel = this.relMemo.get(file)
+    if (rel === undefined) this.relMemo.set(file, (rel = relPosix(root, file)))
+    return rel
+  }
+
   async key(input: CacheKeyInput): Promise<string> {
     // Seed-chained xxHash3: each step folds one field into the
     // running digest via `xxh3(part, prevDigest)`. Equivalent to the
@@ -745,7 +764,19 @@ export class Cache implements CacheLayer {
       }
     }
 
-    const sortedInputs = [...input.inputFiles].sort()
+    // `resolveFiles` already returns its paths sorted, and a copy-and-sort
+    // of three thousand strings per task is not free: 7.4 ms of a 44-task
+    // run here (2026-09-20). A linear order check costs one comparison per
+    // file instead of n log n, and a caller that hands over an unsorted set
+    // — a plugin's own input list — still gets one. `>` on strings compares
+    // UTF-16 code units, which is what a comparator-less `sort` does.
+    let sortedInputs: readonly string[] = input.inputFiles
+    for (let i = 1; i < sortedInputs.length; i++) {
+      if (sortedInputs[i - 1]! > sortedInputs[i]!) {
+        sortedInputs = [...input.inputFiles].sort()
+        break
+      }
+    }
     h = xxh3(`inputs:${sortedInputs.length}`, h)
     // Per-file hash source, in preference order: the caller-supplied
     // index-OID map (clean tracked files — zero I/O), then hashFile's
@@ -757,12 +788,26 @@ export class Cache implements CacheLayer {
     // of bytes and folding it would let two distinct worktree contents
     // share a key. The fold order is locked to `sortedInputs` so
     // results are stable across runs.
-    const fileHashes = await Promise.all(
-      sortedInputs.map((f) => input.fileHashes?.get(f) ?? this.hashFile(f)),
-    )
+    // The common warm shape is that the caller's OID map covers every file,
+    // and then there is nothing to await: building three thousand promises
+    // per task to resolve values already in hand cost 8.4 ms of that same
+    // run. One pass fills the array, and the first gap falls back to the
+    // awaited form for the whole list.
+    let fileHashes: readonly string[] | undefined
+    const provided = input.fileHashes
+    if (provided !== undefined) {
+      const out: string[] = []
+      for (const file of sortedInputs) {
+        const oid = provided.get(file)
+        if (oid === undefined) break
+        out.push(oid)
+      }
+      if (out.length === sortedInputs.length) fileHashes = out
+    }
+    fileHashes ??= await Promise.all(sortedInputs.map((f) => provided?.get(f) ?? this.hashFile(f)))
     for (let i = 0; i < sortedInputs.length; i++) {
       const file = sortedInputs[i]!
-      const rel = relPosix(input.workspaceRoot, file)
+      const rel = this.relFor(input.workspaceRoot, file)
       const oid = fileHashes[i]!
       h = xxh3(`${rel}\0${oid}`, h)
       // The OID is already awaited — file capture is zero extra I/O.
