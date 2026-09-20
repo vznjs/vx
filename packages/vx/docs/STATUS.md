@@ -1425,6 +1425,45 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       resolved, with the existing second-sweep row as its control; red
       when the memo is removed.
 
+451.  DONE (2026-09-20, the pair `cache/inputs.ts` + `cache/git-inputs.ts`
+      — glob resolution and the git enumeration it trusts, two halves by
+      construction — and it found a STALE HIT, the worst failure class
+      this tool has). Three claims mutated one at a time.
+      (a) SURVIVED, and here the code was right while the test was
+      missing. `parseLsFilesOutput` flags a path whose `ls-files -v`
+      letter is `S` OR lowercase, because both mean git has stopped
+      looking at the worktree file. Dropping only the LOWERCASE half
+      passes the whole repo: `S` is skip-worktree, which a stale-hit row
+      already drives, and lowercase is `--assume-unchanged`, which
+      nothing drove. Probed git directly rather than trusting the
+      comment — assume-unchanged prints `h`, skip-worktree prints `S`,
+      and after an edit BOTH are silent in `git status --porcelain`, so
+      the OID stays trusted while the bytes have changed. Pinned as the
+      sibling of the skip-worktree row.
+      (b) CAUGHT: disabling the `core.autocrlf` step of the clean-filter
+      gate fails a row named, exactly, "core.autocrlf alone is enough to
+      distrust index OIDs". A refutation that cost one run.
+      (c) SURVIVED, and it is a real defect, reproduced on the real CLI.
+      The gate that decides whether to ask `git check-attr` looked for a
+      `.gitattributes` among the files the enumeration LISTED — and a
+      scoped run lists the project dirs alone (`gitPathspecs`, a pure
+      perf optimisation). A workspace-root `.gitattributes`, which is
+      where a monorepo puts it, is therefore never seen, the gate reads
+      "no attributes anywhere", and every filtered OID stays trusted.
+      Measured on one fixture, one edit, CRLF→LF under `* text=auto`:
+      `--all` (pathspec `.`) is a MISS and correct, while `--filter app`
+      reports up-to-date and replays the old byte count. Two halves in
+      different functions, one of them a perf decision silently deciding
+      a correctness one — the arc's own thesis, and the first time it
+      has landed on cache correctness.
+      Fixed by walking directories instead of the file list:
+      `attributesAbove` stats `.gitattributes` from each pathspec up to
+      the repo root, bounded by depth and project count rather than file
+      count, which is what the gate's cost rule actually cares about.
+      Pinned with both arms in one row, the unscoped one as the control
+      that was correct all along; red under the mutation, and each of
+      the two new rows catches only its own.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
