@@ -5,7 +5,7 @@
 Placement — which executor each task lands on, and the `--dry` view of
 it — lives in `placement.md` since 2026-09-10; `run()` calls
 `placeTasks` once and `planRun` calls `planExecutorOf`. Signal
-forwarding (SIGINT/SIGTERM to every child, exit 128+signo) is
+forwarding (SIGINT/SIGTERM/SIGHUP to every child, exit 128+signo) is
 `signals.md`; `run()` installs it before the graph and removes it in
 its finally.
 
@@ -70,7 +70,7 @@ export interface RunSummary {
    builds no records. The pipeline stages (`config`, `project`,
    `graph`, `key`, `schedule`) ran earlier, inside `prepareRun`.
 5. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
-   `liveChildren` set + `persistentRegistry` map. SIGINT/SIGTERM
+   `liveChildren` set + `persistentRegistry` map. SIGINT/SIGTERM/SIGHUP
    handlers installed here, removed in a `finally`.
 6. **Sandbox init** (lazy — only when some node declares `exec.sandbox`).
 7. **`markSurfacedDeps(nodes)`** — transparent-group display marking;
@@ -143,11 +143,12 @@ the very end (the dev server IS the point of the run).
 
 ## Signal shutdown
 
-`run()` installs SIGINT + SIGTERM handlers for its own duration
-(unless `RunOptions.handleSignals === false`) and removes them in a
-`finally`, so repeated `run()` calls never stack listeners. On
+`run()` installs SIGINT + SIGTERM + SIGHUP handlers for its own
+duration (unless `RunOptions.handleSignals === false`) and removes them
+in a `finally`, so repeated `run()` calls never stack listeners. On
 signal: SIGTERM everything in `liveChildren` + `persistentRegistry`,
-close the cache, `process.exit(signalExitCode(signal))` (130 / 143).
+close the cache, `process.exit(signalExitCode(signal))`
+(130 / 143 / 129).
 Children killed this way classify as `aborted` — not counted, not
 recorded. Watch mode passes `handleSignals: false`; the loop owns
 signal disposition for its whole lifetime.
