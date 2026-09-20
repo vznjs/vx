@@ -106,9 +106,13 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   does not clear the cap.
 - `tests/*.unsafe.test.ts` is the suite a sandbox cannot host — the
   sandbox's own tests (seatbelt cannot nest), the cross-project law
-  (a project may read only its own directory) and the disk-full suite
-  (a sandboxed task sees a mount it did not make as read-only). The shards exclude them
-  with `--path-ignore-patterns`; `test.bun.unsafe` runs them. It and
+  (a project may read only its own directory), the disk-full suite
+  (a sandboxed task sees a mount it did not make as read-only), the
+  repo-wide laws that read other packages and `.github/`, and the
+  liveness helper (the runtime's PID namespace hides a zombie). The
+  shards exclude them in the dealer itself — `testFiles()` in
+  `scripts/test-shard.ts` drops the name, so the shard command never
+  sees the file; `test.bun.unsafe` runs them. It and
   `@vzn/vx-reapi#test` (which dials service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace) are
   the ONLY two tasks in the whole repo with no `exec.sandbox`.
