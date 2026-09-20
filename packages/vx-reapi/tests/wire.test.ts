@@ -10,6 +10,7 @@ import {
   SAFE_CHUNK_BYTES,
 } from '../src/wire.js'
 import { actionDigestFor, digestOf } from '../src/cache.js'
+import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 
 describe('CHUNK_BYTES', () => {
   // This is the constant a well-meaning "optimisation" raises. The failure it
@@ -48,8 +49,10 @@ describe('assertBunSupportsChunking', () => {
     expect(() => assertBunSupportsChunking('2.0.0')).not.toThrow()
   })
 
-  it('accepts the Bun actually running this suite', () => {
-    // Guards the parser against a real-world version string shape.
+  it.skipIf(!CHUNKING_SUPPORTED)('accepts the Bun actually running this suite', () => {
+    // Guards the parser against a real-world version string shape. Gated on
+    // the floor itself: below it this row asserts that an unusable runtime is
+    // usable, and `VX_REQUIRE_REAPI=1` turns the skip back into a failure.
     expect(() => assertBunSupportsChunking()).not.toThrow()
   })
 })
@@ -107,17 +110,20 @@ describe('SAFE_CHUNK_BYTES', () => {
 })
 
 describe('chunkBytes option', () => {
-  it('rejects a non-positive or fractional size rather than wedging later', () => {
-    // A bad chunk size does not error at the wire — it produces a malformed
-    // or infinite write loop. Validate at construction where it is nameable.
-    for (const bad of [0, -1, 1.5, Number.NaN]) {
-      expect(() => new ReapiClient({ endpoint: '127.0.0.1:1', chunkBytes: bad })).toThrow(
-        /chunkBytes must be a positive integer/,
-      )
-    }
-  })
+  it.skipIf(!CHUNKING_SUPPORTED)(
+    'rejects a non-positive or fractional size rather than wedging later',
+    () => {
+      // A bad chunk size does not error at the wire — it produces a malformed
+      // or infinite write loop. Validate at construction where it is nameable.
+      for (const bad of [0, -1, 1.5, Number.NaN]) {
+        expect(() => new ReapiClient({ endpoint: '127.0.0.1:1', chunkBytes: bad })).toThrow(
+          /chunkBytes must be a positive integer/,
+        )
+      }
+    },
+  )
 
-  it('accepts SAFE_CHUNK_BYTES and the default', () => {
+  it.skipIf(!CHUNKING_SUPPORTED)('accepts SAFE_CHUNK_BYTES and the default', () => {
     // False-positive control: the validator must not reject the two values
     // the docs tell people to use.
     for (const ok of [SAFE_CHUNK_BYTES, CHUNK_BYTES]) {

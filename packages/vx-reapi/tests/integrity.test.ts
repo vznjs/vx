@@ -11,6 +11,7 @@ import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import { ReapiClient } from '../src/wire.js'
+import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 import { sha256 } from '../src/merkle.js'
 
 const PROTO_ROOT = path.resolve(import.meta.dir, '..', 'protos')
@@ -88,7 +89,7 @@ afterAll(() => {
   server.forceShutdown()
 })
 
-describe('CAS download integrity', () => {
+describe.if(CHUNKING_SUPPORTED)('CAS download integrity', () => {
   it('readBlob refuses bytes that do not hash to the requested digest', async () => {
     const client = new ReapiClient({ endpoint })
     try {
