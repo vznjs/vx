@@ -13,12 +13,9 @@ import {
   quoteTsLiteral as quote,
 } from '@vzn/vx'
 import { mapTurboWorkspace, type TurboGlobal } from './turbo/turbo-map.js'
+import { relPosix } from './paths.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
-function relPosix(from: string, to: string): string {
-  return path.relative(from, to).split(path.sep).join('/')
-}
-
 /** The preset takes the configs' extension: plain arrays either way. */
 function presetFile(format: MigrationFormat): string {
   return `vx-preset.${format}`

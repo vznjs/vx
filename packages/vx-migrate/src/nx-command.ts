@@ -10,6 +10,7 @@
 // found nothing, and `cwd: '{projectRoot}'` earned a spurious todo.
 
 import path from 'node:path'
+import { relPosix } from './paths.js'
 
 export interface NxCommandContext {
   /** Project dir relative to the workspace root, `.` for the root. */
@@ -18,11 +19,6 @@ export interface NxCommandContext {
   projectName: string
   /** `options.cwd` as declared, if any. */
   cwd?: unknown
-}
-
-function relPosix(from: string, to: string): string {
-  const rel = path.posix.relative(from, to)
-  return rel === '' ? '.' : rel
 }
 
 /** `{workspaceRoot}` etc. as Nx expands them, relative to the workspace root. */

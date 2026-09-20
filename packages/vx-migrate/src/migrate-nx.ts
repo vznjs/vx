@@ -19,12 +19,9 @@ import {
 import { nxRunCommand } from './nx-command.js'
 import { scriptCommand } from './script-command.js'
 import { resolveSharedOutputs } from './shared-outputs.js'
+import { packageScripts, relPosix } from './paths.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
-function relPosix(from: string, to: string): string {
-  return path.relative(from, to).split(path.sep).join('/')
-}
-
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 const GRAPH_REL = '.nx/workspace-data/project-graph.json'
 
@@ -194,8 +191,7 @@ function buildTask(
   const todos: string[] = []
   const options = target.options ?? {}
   const projectRel = normRel(relPosix(root, meta.dir))
-  const scripts =
-    (meta.packageJson as unknown as { scripts?: Record<string, string> }).scripts ?? {}
+  const scripts = packageScripts(meta)
 
   const command = mapCommand(targetName, target, options, projectRel, projectName, scripts, todos)
 
@@ -456,7 +452,7 @@ function mapCommand(
   options: Record<string, unknown>,
   projectRel: string,
   projectName: string,
-  scripts: Record<string, string>,
+  scripts: Record<string, unknown>,
   todos: string[],
 ): string | null {
   const executor = target.executor
@@ -486,7 +482,11 @@ function mapCommand(
   }
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName
-    const body = scripts[script]
+    // package.json is a boundary: a script value is whatever the file holds.
+    // This read used to be typed `Record<string, string>`, so `body.length`
+    // type-checked on a value that need not be a string at all (item 446).
+    const raw = scripts[script]
+    const body = typeof raw === 'string' ? raw : undefined
     // An empty script is a target Nx lists and `pnpm run` runs as nothing
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
