@@ -1442,6 +1442,38 @@ await resetSandbox()`, whose comment says "otherwise SRT keeps
       promised, here it would buy a cleanup for a window nothing
       reachable enters. A seam needs a reason proportional to what it
       exposes.
+490.  DONE (2026-09-20, `workspace/config-schema.ts`'s timeout pairs —
+      the double-refusal hunt moved OUT of the cache area, and this is
+      where it stops paying). A HELD report, the second running, and
+      the pattern's absence here is the useful part.
+      `timeout` is validated by a literal pair in the same function: a
+      positive-integer check, then `assertTimeoutInRange` — two
+      refusals of the same field, both `UserError`, at BOTH the
+      workspace and the `exec` level. That is 486's shape on paper.
+      It is pinned on paper too. Four mutations, four caught, each by
+      rows naming the half they cover rather than the fact of a
+      throw. The shared RANGE half fails FIVE: two behavioural rows
+      ("past the bound is refused, naming the max and the repair" and
+      its at-the-bound control), the workspace-level twin, a
+      docs-drift row asserting `docs/schema.md`'s table carries the
+      exact symptom, and — the one worth naming — "a 317-year timeout
+      fails the load instead of killing the task in 4ms", which is
+      484's measured platform trap pinned END TO END rather than
+      restated. The positive-integer halves fail their own rows at
+      each level, and no row covers both halves.
+      So the answer to "is the second refusal asserted separately" is
+      yes, four times, which is what 486 wished for and 481/483/485/
+      487/488 each lacked. Recorded because a hunt that only reports
+      hits is a hunt whose negative result nobody can read.
+      One thin spot, classified not fixed: `exec.command must be a
+non-empty string` is caught by exactly ONE row, and it is the
+      docs-drift table match. The claim that an empty command is
+      refused therefore rests on a test about a MARKDOWN TABLE rather
+      than about behaviour. It is covered — the mutation dies — so
+      this is not a hole; but it is the only refusal in the file whose
+      sole witness never runs a task, and if the table is ever
+      reworded the claim loses its last row. Noted here so the next
+      sweep of this file starts there.
 
 ## In flight
 
