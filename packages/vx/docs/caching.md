@@ -433,7 +433,9 @@ status line, once, on the miss that saved: `cache.inputs matched no
 files (lib/**)` — the key would not change when the source does — and
 `cache.outputs matched no files (build/**)` — an empty artifact was
 saved and a later hit restores nothing. Both are almost always a glob
-against the wrong directory. `outputs.files: []` is a deliberate cached
+against the wrong directory; the output line names one other cause when
+it applies, a sandboxed task with no `exec.sandbox.allow.write`, whose
+writes never reached disk. `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
 If the task exits non-zero, **nothing is cached.** This is deliberate:

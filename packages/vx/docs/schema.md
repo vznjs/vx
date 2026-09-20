@@ -944,6 +944,18 @@ vx makes for you is dependencies: `node_modules` and, through it, the
 real path of every workspace package linked there. A project never names
 a sibling to import what its `package.json` already depends on.
 
+**How a missing write grant FAILS depends on the layout.** In a
+multi-package workspace the task's write is refused outright and the
+task fails. In a single-package workspace — where the project directory
+IS the workspace root, and so is the boundary anchor below — the write
+instead lands in the sandbox's own scratch and the task exits 0, having
+produced nothing. Measured 2026-09-20 (item 444); it follows from how
+the anchor is enforced, and removing the anchor there would make the
+project readable, which the baseline above says it is not. So the
+`cache.outputs matched no files` warning names this cause when it
+applies, and the remedy is the same either way: declare
+`allow: { write: [...] }`.
+
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only

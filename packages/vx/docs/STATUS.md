@@ -1131,6 +1131,54 @@ system`, run failed, nothing on disk), and with
       question, not a cause; anyone taking it should start by building
       the root-as-project layout faithfully and confirming the
       difference exists before explaining it.
+444.  DONE (2026-09-20, the question 443 left open — answered, and the
+      obvious fix MEASURED AND REJECTED, which is the useful part).
+      The phenomenon is real and the variable is the layout. Faithful
+      A/B, one helper, one config, one command, only the layout
+      differing: with the project dir nested, a sandboxed task with no
+      write grant is refused outright and the run FAILS; with the
+      project dir equal to the WORKSPACE ROOT, the same task exits 0
+      having written into scratch that evaporates. The second is the
+      worse failure: an empty artifact is saved under a valid key, and
+      a later run hits it and restores nothing — miss-save's own "the
+      build that ran nowhere looks like a build that ran".
+      Mechanism, read in SRT's source rather than inferred: a directory
+      read-deny is implemented as `--tmpfs` over that directory
+      ("mount a tmpfs over a read-denied directory, then restore the
+      allowed write paths and allowRead paths the tmpfs just wiped").
+      vx passes `baseDenyRead: [workspaceRoot]` with `cwd: projectDir`;
+      when those are the same path the tmpfs lands ON the cwd, so the
+      task writes into it.
+      The fix I sketched — drop the anchor when `projectDir ===
+workspaceRoot` — is REFUTED, twice over, and neither refutation
+      came from thinking about it. First, tracing the consumers:
+      `parseStraceViolations` uses `denyRead` as its coarse pre-filter
+      ("only report paths under the workspace-root deny anchor"), so an
+      empty anchor list filters out EVERY Linux violation — a silent
+      reporting hole in place of a silent enforcement one. Second, and
+      decisively, measuring it: with the anchor dropped the root arm's
+      write IS properly refused, and the task can now READ its own
+      project, which the documented baseline says it cannot. The anchor
+      is what enforces "reads nothing, not even its own project
+      directory". With SRT's primitive the two are inseparable.
+      So no enforcement change. What IS vx's, and shipped: the one
+      signal that fires in the silent case now names the cause. When a
+      task declares `exec.sandbox` with no `allow.write` and its
+      outputs match nothing, the warning adds "the task is sandboxed
+      and declares no exec.sandbox.allow.write, so its writes never
+      reached disk". Config-only, so the rows assert the message's rule
+      rather than a platform's denial: one row red without the change,
+      two controls green both ways (a task that DID declare a grant,
+      and a task that is not sandboxed at all — the second runs
+      everywhere, since the first needs a real sandbox).
+      `schema.md` now states the layout-dependent failure and why the
+      anchor stays.
+      Worth keeping about the method: the naive fix would have passed a
+      gate. It makes the arm under test behave correctly, and the
+      damage — no violations reported, project readable — is in two
+      places nobody was looking at. Trace every consumer of a value
+      before removing it, then measure what removing it does to the
+      claims OTHER tests make.
 
 ## In flight
 
@@ -1465,7 +1513,7 @@ Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
 No open issues.
-Next: the loop holds 413–443, so the trim is due at 452. For work, the
+Next: the loop holds 413–444, so the trim is due at 452. For work, the
 shape that has paid every time in this arc is a claim whose halves live
 apart. Still untried: `vx watch`'s cycle against the run's admission
 dedup (430 opened it and only took the branch), and the sandbox's

@@ -1051,6 +1051,80 @@ describe.skipIf(!available)('a cache declaration grants the sandbox nothing', ()
   )
 })
 
+describe.skipIf(!available)('a sandboxed task that produced nothing says why', () => {
+  // A sandboxed task with no write grant writes into the sandbox's own
+  // scratch, and whether the shell even notices depends on the LAYOUT:
+  // measured (item 444), a nested project's write is refused outright,
+  // while in a single-package workspace — project dir === workspace root,
+  // which is where vx's deny anchor and the cwd become the same path —
+  // the write SUCCEEDS into that scratch and the task exits 0. There the
+  // miss-save warning is the only thing that says the build produced
+  // nothing, so it names the likely cause.
+  //
+  // Config-only on purpose: the rows below run `true` and declare an
+  // output glob that matches nothing, so they assert the MESSAGE's rule
+  // rather than any platform's denial behaviour.
+  let fixture: Fixture
+
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  const project = async (write: string | undefined): Promise<void> => {
+    await addProject(fixture.root, 'app', {
+      files: { 'src/x.txt': 'hi' },
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: {
+                command: 'true',
+                sandbox: ${write === undefined ? '{}' : `{ allow: { write: ['${write}'] } }`},
+              },
+              cache: {
+                inputs: { files: ['src/**'] },
+                outputs: { files: ['nope/**'] },
+              },
+            },
+          },
+        }
+      `,
+    })
+  }
+
+  const warning = (): string | undefined =>
+    fixture.log.find((l) => l.includes('cache.outputs matched no files'))
+
+  it(
+    'names the missing write grant, because nothing else would',
+    async () => {
+      await project(undefined)
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      expect(warning()).toContain('declares no exec.sandbox.allow.write')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROL: a task that DID declare a write grant is not blamed for the sandbox',
+    async () => {
+      // Same missing output glob, so the warning still fires — only the
+      // cause clause differs. Without this the row above would pass for a
+      // message that always blames the sandbox.
+      await project('dist/')
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      expect(warning()).toContain('matched no files')
+      expect(warning()).not.toContain('exec.sandbox.allow.write')
+    },
+    TIMEOUT,
+  )
+})
+
 describe.skipIf(!available || process.platform !== 'linux')(
   'the BARE baseline, which is what the type describes',
   () => {

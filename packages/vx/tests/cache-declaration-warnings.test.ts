@@ -82,6 +82,17 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('lost')).toEqual([])
   })
 
+  it('the output warning blames the sandbox only when there IS one', async () => {
+    // `app#lost` is not sandboxed, so the cause clause added for sandboxed
+    // tasks with no write grant (item 444) must not appear here. The
+    // clause's own rows live in `sandbox-runtime.unsafe.test.ts`, which
+    // needs a real sandbox; this is the half that runs everywhere.
+    const lines = await runTask('lost')
+    const out = lines.find((l) => l.includes('cache.outputs'))
+    expect(out).toBeDefined()
+    expect(out).not.toContain('exec.sandbox.allow.write')
+  })
+
   it('matching globs and a deliberate empty output list say nothing (control)', async () => {
     expect(await runTask('found')).toEqual([])
     expect(await runTask('noop')).toEqual([])
