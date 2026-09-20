@@ -505,7 +505,12 @@ describe('the keys-from-git post counts the parts the key folds', () => {
   it('"twelve parts" is CACHE_VERSION plus every labelled fold, and the list has twelve items', () => {
     expect(labels.length + 1).toBe(12)
     expect(page).toContain('seed-chained across twelve parts')
-    const list = /\n1\. The key-derivation sentinel([\s\S]*?)\n\nPart 11/.exec(page)
+    // Anchored on the paragraph, not on the number it cites: the old
+    // anchor was the literal `Part 11`, which is the cross-reference item
+    // 397 had to move when it fixed the 11/12 inversion — a pin that
+    // breaks when the page is CORRECTED is anchored to the wrong thing.
+    const list =
+      /\n1\. The key-derivation sentinel([\s\S]*?)\n\nPart \d+ is where the money is/.exec(page)
     expect(list).not.toBeNull()
     const items = [...list![1]!.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]))
     expect([1, ...items]).toEqual([...Array(12)].map((_, i) => i + 1))

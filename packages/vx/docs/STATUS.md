@@ -876,6 +876,48 @@ package.json)` too, where the value is the file's git blob OID —
       graph-insertion order) and 8.5 s figure check out against
       `scheduler.ts` and optimizations row 26.
 
+397.  DONE (2026-09-19, the copy my own item 385 never greped for).
+      `blog/keys-from-git.md` numbers the twelve key parts and says so
+      outright — "The parts, as Caching numbers them" — and had 11 =
+      input-file hashes, 12 = plugin material, while `caching.md` has
+      had 11 = plugin, 12 = inputs since item 385 corrected exactly
+      that inversion. The post's own prose contradicted its own
+      number in the same breath ("folded right after the upstream
+      keys"), which is the tell 385 read in caching.md and then did
+      not look for anywhere else. Item 381 recorded that failure —
+      the same table wrong on a third page my 379 pin had not greped
+      — and I repeated it four items later, on a page that names
+      caching.md as its source. Its "Part 11 is where the money is"
+      moved to 12 with the fix.
+      And the post WAS pinned — `site-samples.unsafe.test.ts` holds its
+      twelve-item count, every label it quotes, and even the sentence
+      "folded right after the upstream keys". The pin held the PROSE
+      and let the NUMBER beside it say the opposite: nothing tied the
+      plugin item's position to the fold order. That pin also anchored
+      its list regex on the literal `Part 11`, the cross-reference the
+      fix had to move, so correcting the page BROKE it — a pin that
+      fails when the page is fixed is anchored to the wrong thing, and
+      it now matches `Part \d+ is where the money is`.
+      Pinned as a class and DERIVED: `key()`'s own fold order decides
+      which of the two comes first, so a reordering moves the pages
+      with it rather than failing them. Discovery is a page that
+      numbers the sentinel and the content hashes; two copies today,
+      floored at two so a third is a deliberate edit.
+      The selector was wrong once, as usual: looking for
+      `cache.inputs.files` found caching.md's step 5, whose "Captures"
+      list names the glob among the declarations the CONFIG hash
+      folds, and called the order wrong. "Content hashes" is the
+      phrase that means the input-file fold.
+      The rest of the post is BETTER than the contract pages were: it
+      names `git ls-files -s -v` and `git status --porcelain -uall`
+      correctly and explains the three prunes against a trusted index
+      id (dirty, `skip-worktree`/`assume-unchanged`, a clean filter),
+      all of which `execution.md` had wrong until item 388.
+      `lockfile-aware-keys.md` holds too, including the exact `vx why`
+      string `plugin @vzn/vx-lockfile/pnpm`: `lockfileClaim` returns
+      `{ [part]: digest }` with `part` the manager name, and
+      `applyKeyHooks` names it `${plugin.name}/${part}`.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
