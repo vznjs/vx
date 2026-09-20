@@ -1391,3 +1391,52 @@ by last-touch order, three per item — they are the least-pinned prose
 left and they quote figures the contract pages own. Then
 `docs/modules/`'s "What it does NOT do" sections, which are negative
 claims nothing checks. Never end with "what next?".
+
+## Handoff 14ah (moved 2026-09-20 with item 403)
+
+14ah. **Handoff after item 400 (2026-09-20).** Six items since 14ag,
+and the docs arc ended where a covered surface should: 395 pinned
+benchmarks.md's figures against `results.json` (and found the
+figure-wise pin lets `66 ms` → `67 ms` through); 396 the module pages;
+397 blog/keys-from-git.md, numbering the key parts against the fold
+order `key()` uses; 398 SIGHUP, missing from five enumeration sites
+across three pages; 399 three posts and fourteen negative-claim
+sections, all holding — the first zero-yield read. 400 took the
+second zero-yield signal as the instruction it was and moved target:
+the same drift class in the TESTS.
+It transplants cleanly. A `describe`/`it` name is a claim like a
+sentence on a page, and nothing held a body to it — so a name can
+promise three things while its body pins one
+(`archive-security.test.ts`, the one real find in 2 874 blocks), or
+restate a list the schema owns and miss its tenth member
+(`sandbox-runtime`'s "every capability"), or state a budget the body
+no longer enforces (`cache-baseline`'s fifteen). The fixes are the
+docs arc's own: derive the list, floor the discovery, and run the
+differential.
+What this stretch taught: a probe over SOURCE needs a parser, not a
+regex — both drafts of the expect-less sweep cut bodies short (an
+apostrophe in a comment, then a backtick inside a regex), and each
+draft's output was a candidate list to READ, never a verdict; the one
+real find was confirmed by opening the file, and two near-misses
+(`TODO(vx-migrate)` in 399, the root-uid skips here) were refuted the
+same way before they could be reported. And a differential can teach
+you the mechanism: deleting the guard this test was written for left
+it green, which is how the two-layer defense (`tar-stream`'s
+normalization, then the extractor's empty-`rel` skip) and the
+test's wrong comment came to light.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 parked —
+374 through 400 changed docs, tests and comments only, so there is no
+run-path delta to A/B; the owner residue — the `NPM_TOKEN` secret,
+the release cut, the site's address. No open issues. The container's
+baseline is 23 failing tests and ten failing tasks, with shard 9
+intermittently making it eleven on a SIGILL that names no test; the
+clean-tree control settles that, not the streak.
+Next: keep reading the tests, since 400's sweep only asked whether a
+body asserts AT ALL. The sharper question is whether it asserts the
+RIGHT thing — a name that quantifies (`every`, `each`, `all`,
+`never`) over a list the body restates, a `toContain` where the name
+says exactly, an assertion on a value the name does not mention.
+Start with the suites the docs arc leaned on — `task-hash-derive`,
+`telemetry-lifecycle`, `layered-cache`, `execute-task` — and carry
+the floor-assertion habit: a sweep that finds nothing must be able to
+fail. Never end with "what next?".

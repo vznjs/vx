@@ -1133,6 +1133,84 @@ tokenizes a regex literal by the character before the`/`.
       Three rewrites for one sweep is the cost of asking a regex to
       read a language.
 
+403.  DONE (2026-09-20). The arc's end point: a skip prints itself, a
+      test with no assertion at least runs — but a file NO task
+      launches prints nothing at all, and the gate is
+      `vx run ci --all`.
+      Three of the commands that launch suites here look only at the
+      TOP level of a `tests/` directory: the shard dealer
+      `readdirSync`s it, `test.bun.unsafe` globs
+      `./tests/*.unsafe.test.ts`, and `@vzn/vx-reapi#test` loops over
+      `for f in tests/*.test.ts`. So a suite one directory down —
+      `tests/reapi/wire.test.ts` — would be launched by nothing,
+      in a repo where every package's suite IS its `test` task. No
+      hole today; nothing was watching for one.
+      `tests/suite-coverage.unsafe.test.ts` closes it: it IMPORTS
+      each package's `vx.config.ts` (exact, not a regex over the
+      file), reads every `test`-family command, and turns each into
+      what it launches — the dealer's own `testFiles()` where the
+      command runs the script, the globs it names otherwise, and
+      everything when it is a bare `bun test` (Bun's recursive
+      discovery). Every `*.test.ts` at any depth under any package
+      must be taken by one. Differentials both ways: a nested file
+      under `packages/vx` and one under `vx-reapi` are each reported
+      by name; the control, the same file under a bare-`bun test`
+      package, stays green.
+      Then the helper the kill suites trust. `tests/helpers/alive.ts`
+      answers "is the child dead yet" for abort, signals, keep-alive
+      and task-tree, and its failure mode is silent: a helper that
+      says "dead" too eagerly turns every one of those waits green
+      with nothing having died. Its reason for existing — a ZOMBIE is
+      dead though signal 0 still lands on it, measured at two thirds
+      of the signal suite's wall time — had no test of its own.
+      `tests/alive-helper.test.ts` builds the zombie the way the
+      kernel does (a shell backgrounds a child that exits at once and
+      then does not wait), pins the `Z` state, and asserts both
+      halves in one place: `process.kill(pid, 0)` does not throw and
+      `isAlive` is false. Differential: a helper that skips the
+      procfs read fails it.
+      Two probe lessons, both paid for. `new Response(child.stdout)
+.text()` waits for the stream to CLOSE, which for a shell
+      deliberately kept alive is never — the first draft timed out at
+      5 s; one `read()` off the reader is what "the child printed its
+      pid" means. And the row passed on the host and FAILED in the
+      gate, which is how it learned where it belongs: a sandboxed
+      probe (a scratch workspace, one task, `exec.sandbox`) printed
+      `child pid 8` while `/proc/8/stat` said `8 (bun) S`, the task
+      itself at pid 2 under a pid-1 `bwrap` — the runtime's own PID
+      namespace, whose `/proc` cannot show another process's zombie.
+      So the file is `.unsafe`, for the same reason the sandbox's own
+      suites are.
+      That move made CLAUDE.md wrong, and reading it to fix the
+      membership found it was already wrong: it says the shards
+      exclude the unsafe files "with `--path-ignore-patterns`", a
+      flag that appears NOWHERE in the repo (the dealer's own
+      `testFiles()` drops the name, so the shard command never sees
+      the file). Both corrected in the same commit.
+      One intermittent observed and NOT chased, recorded with its
+      evidence rather than a cause: under the gate's load
+      `sandbox-runtime`'s "a persistent task whose literal write
+      grant meant a directory" failed once — the task's own `mkdir`
+      said "File exists" as designed, but the run carried no
+      "write grant `.cache` named nothing on disk" line. It passed
+      on the next gate and in three standalone runs of the whole
+      unsafe suite. Two candidates, neither proven:
+      `sweepPlaceholders` skipping the placeholder (it requires
+      size 0 AND an unchanged mtime), or the hint being suppressed
+      by design because the sandbox reported something else that
+      run. Whoever sees it again: the probe is a loop of that one
+      row under parallel load with the sweep's three conditions
+      logged.
+      Lead for the next item, from that find: CLAUDE.md is the
+      most-quoted page in the repo and the only one nothing pins,
+      and the stated reason is stale — `caching-doc-drift` says "a
+      core test may read only its own package, so that copy stays a
+      rule, not a pin", but an `.unsafe` test reads the repo root by
+      design (that is what `workflow-runner` and the new
+      `suite-coverage` do). The invariants CLAUDE.md quotes
+      (`CACHE_VERSION`, `SCHEMA_VERSION`, the hook list, the layout
+      paths, the two sandbox-less tasks) are all derivable.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
@@ -1339,55 +1417,45 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287, 293, 299, 305, 312, 319, 326, 332, 383 and
-    394 (14–14ag) are in `docs/history/2026-09-status-next-log.md`;
-    14ah below is the current one.
+    394 and 400 (14–14ah) are in
+    `docs/history/2026-09-status-next-log.md`; 14ai below is the
+    current one.
 
-14ah. **Handoff after item 400 (2026-09-20).** Six items since 14ag,
-and the docs arc ended where a covered surface should: 395 pinned
-benchmarks.md's figures against `results.json` (and found the
-figure-wise pin lets `66 ms` → `67 ms` through); 396 the module pages;
-397 blog/keys-from-git.md, numbering the key parts against the fold
-order `key()` uses; 398 SIGHUP, missing from five enumeration sites
-across three pages; 399 three posts and fourteen negative-claim
-sections, all holding — the first zero-yield read. 400 took the
-second zero-yield signal as the instruction it was and moved target:
-the same drift class in the TESTS.
-It transplants cleanly. A `describe`/`it` name is a claim like a
-sentence on a page, and nothing held a body to it — so a name can
-promise three things while its body pins one
-(`archive-security.test.ts`, the one real find in 2 874 blocks), or
-restate a list the schema owns and miss its tenth member
-(`sandbox-runtime`'s "every capability"), or state a budget the body
-no longer enforces (`cache-baseline`'s fifteen). The fixes are the
-docs arc's own: derive the list, floor the discovery, and run the
-differential.
-What this stretch taught: a probe over SOURCE needs a parser, not a
-regex — both drafts of the expect-less sweep cut bodies short (an
-apostrophe in a comment, then a backtick inside a regex), and each
-draft's output was a candidate list to READ, never a verdict; the one
-real find was confirmed by opening the file, and two near-misses
-(`TODO(vx-migrate)` in 399, the root-uid skips here) were refuted the
-same way before they could be reported. And a differential can teach
-you the mechanism: deleting the guard this test was written for left
-it green, which is how the two-layer defense (`tar-stream`'s
-normalization, then the extractor's empty-`rel` skip) and the
-test's wrong comment came to light.
-Open: Next 1, 2 and 16, gated by their own terms; Next 6 parked —
-374 through 400 changed docs, tests and comments only, so there is no
-run-path delta to A/B; the owner residue — the `NPM_TOKEN` secret,
-the release cut, the site's address. No open issues. The container's
-baseline is 23 failing tests and ten failing tasks, with shard 9
-intermittently making it eleven on a SIGILL that names no test; the
-clean-tree control settles that, not the streak.
-Next: keep reading the tests, since 400's sweep only asked whether a
-body asserts AT ALL. The sharper question is whether it asserts the
-RIGHT thing — a name that quantifies (`every`, `each`, `all`,
-`never`) over a list the body restates, a `toContain` where the name
-says exactly, an assertion on a value the name does not mention.
-Start with the suites the docs arc leaned on — `task-hash-derive`,
-`telemetry-lifecycle`, `layered-cache`, `execute-task` — and carry
-the floor-assertion habit: a sweep that finds nothing must be able to
-fail. Never end with "what next?".
+14ai. **Handoff after item 403 (2026-09-20).** Four items since 14ah,
+all the same idea pushed one layer further each time: a claim is
+checked where it is CHEAPEST to state, not where it is TRUE. 400 found
+a test whose name made three claims and whose body made none; 401 two
+that quantified over a source list by restating it; 402 a fixture list
+standing in for `ALWAYS_IGNORE` and the env gates nothing required CI
+to set; 403 the layer under all of them — a file no task launches, and
+a helper whose own guarantee nothing tested.
+What the four taught, beyond the shape. A probe over SOURCE needs a
+parser: three rewrites of one sweep (an apostrophe in a comment, a
+backtick inside a regex, then the regex literal itself) and every
+draft's output was a candidate list to READ, never a verdict. A
+derived law must drive every path its subject has: 401's first draft
+passed under a real defect because `hashableConfig` fast-paths when no
+`remote` is declared, so every variant it built skipped the projection
+it was testing. And a floor is what makes "found nothing" a result —
+two sweeps in 402 returned empty against floors of 2 852 blocks and
+six candidates, which is why they are worth recording at all.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 PARKED since
+item 374 and now the oldest debt — items 374 through 403 changed docs,
+tests and comments only, so there has been no run-path delta to A/B,
+and the first change that touches the warm path owes one. The owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The container's baseline is 20-23 failing tests and
+ten failing tasks, with shard 9 intermittently making it eleven on a
+SIGILL that names no test; the clean-tree control settles that, not
+the streak.
+Next: the test-name arc is done — four items, seven derived laws, and
+the last two sweeps found nothing. Go back to the product. Next 6's
+re-measure is owed on the first run-path change, so make one worth
+measuring: `cache/cache.ts` is 1,583 lines and Next 8(d) names its
+split as item 8's, `cli/watch.ts` is 1,121, and the warm path's stage
+table (discover / load configs / classify / run graph) is where a
+5,000-project run spends its 687 ms. Read the table first, pick the
+stage, and bring a number. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
