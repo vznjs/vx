@@ -815,6 +815,43 @@ built behind a failure`). Two claims were not.
       takes two more. Each one removed is a blind spot removed from
       every future mutation verdict, which is 430's whole point.
 
+436.  DONE (2026-09-20, the next three baseline rows — and like 435
+      they are not what the label said). The In-flight paragraph counts
+      three `loadProjectConfig` rows as the runtime: "Bun 1.3.11 gets a
+      `BuildMessage` where 1.4 gives the error its classifier turns
+      into a `UserError`". Half right. The runtime does differ, but
+      what the difference exposes is vx's own guard.
+      Measured: on this Bun a `BuildMessage`'s prototype chain is
+      `BuildMessage → Object`. It is not an Error. `configLoadError`
+      opened with `if (!(err instanceof Error)) return null`, so a
+      missing brace in a user's own config skipped the classifier
+      entirely and reached them as a raw transpile object — the exact
+      defect `isFsRefusal` exists to prevent one layer down, where the
+      rule is already written: an FS refusal surfacing as an internal
+      error is a defect, de-claim or implement.
+      So the classifier matches on SHAPE now: an object carrying
+      `name` of `ResolveMessage` or `BuildMessage` and a string
+      `message`. That is NARROWER than the old guard for everything
+      else — a config's own throw still passes through untouched — and
+      it no longer depends on a runtime's choice about which class its
+      loader errors extend.
+      Two rows pin it where every runtime can see it. The three e2e
+      rows only move on a Bun whose `BuildMessage` is not an Error, so
+      on CI they prove nothing; a plain object with the right shape
+      proves it everywhere, which is where the fix would otherwise have
+      gone untested on the machine that gates merges. A third row
+      keeps the narrowing honest: a plain `Error`, a `TypeError`
+      shape, a string, `null`, and a name without a message all still
+      return null.
+      Baseline now 14 rows, from 23 this morning — and the number
+      moved less than the three fixed rows suggest, which is its own
+      lesson. Refreshing the yardstick from ONE run drops whatever
+      flapped low that time, and two rows (`armWatcher` non-recursive,
+      the zombie `isAlive`) then read as NEW on the next run. Read the
+      diff in BOTH directions every time — what appeared and what
+      vanished — or a flapper looks like a regression and a real
+      regression hides behind one that flapped out.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
@@ -836,8 +873,9 @@ box ships **Bun 1.3.11** while both `package.json` files declare
 it does not; the oracle is where the failure lands).
 Ten of the 23 are that, verified — `@vzn/vx-reapi` refuses to load
 with its own version error (3), `tar-stream` fails inside
-`Bun.Archive` (1), `project-loader` gets a `BuildMessage` where 1.4
-gives the error its classifier turns into a `UserError` (3), the
+`Bun.Archive` (1), `project-loader` got a `BuildMessage` where 1.4
+gives an Error — item 436 measured that and fixed the guard behind it,
+so those three are no longer in the set (3), the
 runner reads no `peakRssBytes` at all (2), and `bin.ts` truncates a
 2 MiB pipe write to 219 KB, the very defect the Rules section records
 as fixed (1). Four more are downstream of that missing usage number

@@ -2,7 +2,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { loadProjectConfig, loadWorkspaceConfig } from '../src/workspace/project-loader.js'
+import {
+  configLoadError,
+  loadProjectConfig,
+  loadWorkspaceConfig,
+} from '../src/workspace/project-loader.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 describe('loadProjectConfig', () => {
@@ -902,5 +906,44 @@ describe('loadWorkspaceConfig', () => {
   it('throws when the file does not export a default object', async () => {
     await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export const x = 1')
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/did not export a default object/)
+  })
+})
+
+// The classifier matches Bun's two loader errors by SHAPE, and these rows
+// are the only place that fact is observable on a runtime where those
+// errors happen to be Error subclasses. On Bun 1.3.11 a `BuildMessage` is
+// not one (`BuildMessage → Object`), so an `instanceof Error` guard handed
+// the user a raw transpile object for a missing brace in their own config;
+// on 1.4 the same path is an Error and the guard never fired. A test that
+// only went through `import()` therefore could not see the difference on
+// the machine that gates merges (item 436).
+describe('configLoadError classifies by shape, not by instanceof', () => {
+  it('a BuildMessage that is NOT an Error still names the file, line and column', () => {
+    const err = { name: 'BuildMessage', message: 'Expected "}" but found end of file' }
+    Object.assign(err, { position: { file: '/w/p/preset.ts', line: 7, column: 3 } })
+    expect(Object.getPrototypeOf(err)).toBe(Object.prototype)
+    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
+    expect(user?.name).toBe('UserError')
+    expect(user?.message).toBe(
+      'project config /w/p/vx.config.ts (in /w/p/preset.ts:7:3): Expected "}" but found end of file',
+    )
+  })
+
+  it('a ResolveMessage that is NOT an Error still carries the install hint', () => {
+    const err = { name: 'ResolveMessage', message: "Cannot find package '@vzn/vx' from '/w/p'" }
+    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
+    expect(user?.message).toBe(
+      "project config /w/p/vx.config.ts: cannot find '@vzn/vx'; install it in the workspace: bun add -d @vzn/vx",
+    )
+  })
+
+  it("everything else passes through: the config's own throw is not ours to reword", () => {
+    // Narrower than the old guard, not wider — only Bun's two names match.
+    expect(configLoadError(new Error('boom'), '/w/p/vx.config.ts', 'project')).toBeNull()
+    expect(configLoadError({ name: 'TypeError', message: 'x' }, '/w/p/c.ts', 'project')).toBeNull()
+    expect(configLoadError('a string', '/w/p/c.ts', 'project')).toBeNull()
+    expect(configLoadError(null, '/w/p/c.ts', 'project')).toBeNull()
+    // A name without a message is not one of Bun's either.
+    expect(configLoadError({ name: 'BuildMessage' }, '/w/p/c.ts', 'project')).toBeNull()
   })
 })
