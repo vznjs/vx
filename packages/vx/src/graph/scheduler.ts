@@ -330,8 +330,18 @@ class ReadyHeap {
   }
   /**
    * `seq` defaults to a fresh monotonic counter. A parked-then-repushed
-   * task passes its ORIGINAL seq back in so FIFO-among-equals survives
-   * the round trip (a fresh seq would demote it behind later arrivals).
+   * task passes its ORIGINAL seq back in, which makes FIFO-among-equals a
+   * property of the heap rather than of the tick loop's shape.
+   *
+   * It is NOT the difference between correct and incorrect order today,
+   * and the comment here used to claim it was ("a fresh seq would demote
+   * it behind later arrivals"). It would not: `parked` is a subsequence
+   * of the tick's pop order, so it is already in ranking order, and every
+   * push that follows takes a later seq — so fresh seqs handed out in
+   * parked order reproduce the same ranking. Measured over 800 randomized
+   * scenarios (random DAGs, costs, budgets, concurrency, failures, all
+   * three continue modes): zero order differences, item 493. Kept because
+   * it holds without that argument.
    */
   push(id: string, seq: number = this.next++): void {
     this.ids.push(id)
@@ -712,8 +722,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         )
       }
 
-      // Repush parked ids with their ORIGINAL seqs — FIFO-among-equals
-      // is exactly preserved for the next tick's admission pass.
+      // Repush parked ids with their ORIGINAL seqs, so the next tick's
+      // admission pass does not depend on `parked` having been built in
+      // ranking order (it is, but see `push`).
       for (const [id, seq] of parked) execReady.push(id, seq)
 
       if (outcomes.size === nodes.size && active === 0 && activeRestore === 0) {
