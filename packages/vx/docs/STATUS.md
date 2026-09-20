@@ -2225,6 +2225,32 @@ result)` after) keeps working without it. Its failure mode is
       has had six fewer weeks of someone reading it while fixing
       something adjacent.
 
+510.  DONE (2026-09-20, `cli/last.ts` — second by the age rule, newest
+      dated comment 2026-08-23. `vx last` exists to REPORT a run
+      accurately, so its formatting boundaries ARE its contract).
+      Five survivors, all together passing the whole suite in one
+      combined run: `<` → `<=` at BOTH duration cuts (1 s and 60 s),
+      the divide-by-zero guard on the cpu ratio, the violation count's
+      `> 0`, and its singular/plural.
+      Pinned: a row per duration boundary asserting AT the cut (999 →
+      `999ms`, 1000 → `1.00s`, 59 999 → `60.00s`, 60 000 → `1m 0s`), a
+      row that a zero-duration task reports no ratio rather than
+      `NaN× cpu` (a replay showing NaN is a report that lies about the
+      run), and a table over 0/1/2 violations with a control that the
+      rest of the row survives.
+      THE MISTAKE, and it is the sharper half: the violation row as
+      first written used `toContain('1 sandbox violation')` — and
+      `'1 sandbox violations'` CONTAINS that string, so the plural
+      mutation passed my own new row. Four of five differentials red,
+      one green, which is the only reason it was caught. Rewritten to
+      assert the row's SUFFIX exactly; now all five redden.
+      That is this repo's own rule ("assert the exact expected set,
+      not the absence of one string") and the `grep -q ok` matching
+      "broken" lesson, met from the assertion side. A containment
+      check on a string whose wrong version is a SUPERSTRING of the
+      right one cannot fail. When the difference between correct and
+      incorrect is a suffix, the assertion has to be an equality.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
