@@ -1158,6 +1158,32 @@ prune` for eviction), a typo of `prune` still gets the
       not what it can do.
       Handoff 14al lands with it; 14ak moves to the next-log.
 
+420.  DONE (2026-09-20, the warm path re-measured on this container, and
+      what the numbers actually license). Nothing since 407 has touched
+      the run path — 408–419 changed plugin code, tests and docs — so an
+      A/B has no arms, and the honest version of Next 6's duty here is
+      an ABSOLUTE refresh with the machine named. `run.ts 1000 5` and
+      `5000 3`, medians with the full spread:
+      1,000 — warm 271 ms (243–315), restore 1 031 (1 023–1 051), cold
+      3 147 (2 905–3 388). 5,000 — warm 807 (760–809), restore 3 931
+      (3 462–4 172), cold 14 181 (13 798–14 986).
+      Against the 2026-09-16 table (a DEV BOX: 231 / 718 / 2 436 and
+      687 / 2 854 / 12 152) this container is 1.17× on warm at both
+      sizes, 1.38–1.44× on restore and 1.17–1.29× on cold. That
+      comparison says nothing about vx — two machines — and is recorded
+      only so nobody reads the container's numbers as a regression.
+      What IS a claim about vx is the SHAPE, and it reproduces on
+      hardware that shares nothing with the box that first measured it:
+      5× the projects costs 2.98× the warm run here against 2.97× there,
+      3.81× restore against 3.97×, 4.51× cold against 4.99×. The
+      sub-linear warm scaling recorded on 09-16 is a property of the
+      code, not of that machine.
+      And a floor the next A/B needs: the bench harness's own warm arm
+      spreads 243–315 ms about a 271 ms median on IDENTICAL code — ±13 %,
+      twice item 404's in-process ±6 %, because each rep is a whole CLI
+      invocation. A bench-level claim on this container needs a bigger
+      effect than an in-process one does, and both need a control arm.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
@@ -1336,8 +1362,13 @@ state of each:
    a shared 4-core container whose own baseline fails 23 tests for
    environmental reasons — an absolute figure from it is not comparable
    to the table above, and an A/B has no arms. Re-measure on the first
-   run-path change. UNPARKED 2026-09-20 (item 404), with the container's
-   own noise floor measured first: interleaved min-of-7, one workspace
+   run-path change. REFRESHED 2026-09-20 (item 420): this container, at
+   1,000 projects, reads warm 271 ms / restore 1 031 / cold 3 147, and at
+   5,000 warm 807 / restore 3 931 / cold 14 181 — the dev box's figures
+   below are a DIFFERENT MACHINE and only the 1k→5k scaling (×2.98 warm
+   here against ×2.97 there) compares. The harness's warm arm spreads
+   ±13 % on identical code. UNPARKED 2026-09-20 (item 404), with the
+   container's own noise floor measured first: interleaved min-of-7, one workspace
    copy per arm pre-warmed by that arm, 1,000 projects warm all-hit —
    the A/B read 232.1 ms before against 218.9 ms after, and the A/A
    CONTROL (the same arm against both copies) read 246.4 against
