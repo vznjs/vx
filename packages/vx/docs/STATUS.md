@@ -1249,6 +1249,35 @@ prune` for eviction), a typo of `prune` still gets the
       matters was in the consumer, not the classifier, and only the
       measurement found it.
 
+423.  DONE (2026-09-20, the correctness sweep of `execute-task.ts` — the
+      file STATUS calls stale-hit-critical, which nothing in the 408–422
+      arc touched). Read against CLAUDE.md's live invariants, most of
+      what the file claims is already pinned: the clean gated on WRITES
+      rather than reads, `--no-cache` leaving the tree alone between
+      retry attempts, an aborted task never cached, a timeout retried
+      where an abort is not, a `preProbed` hit restored without a second
+      probe, and the taint rule (`--continue=always never caches a task
+built behind a failure`). Two claims were not.
+      First, the asymmetry the file calls "the point": the wipe is gated
+      on the WRITE axis, so `--force` (reads off, writes ON) must still
+      wipe while `local:r` must not. Only the `local:r` half was pinned,
+      and its comment pointed at `orchestrator.test.ts` for the other —
+      where the wipe row runs the DEFAULT policy, both axes on, proving
+      nothing about the asymmetry. The `--force` half is now a row, and
+      the comment says what the neighbour actually pins.
+      Second, `exec.remote: 'only'` on a `remote: true` executor: the
+      comment promises no probe or restore, no output clean and no local
+      artifact save — "restoring node_modules onto a dev machine is
+      exactly what the field exists to prevent" — and nothing pinned any
+      of the three. One row now drives `executeTask` with a fake
+      far-side executor and asserts all three at once: zero `cache.get`
+      calls, a leftover under the declared output still byte-identical,
+      and no rows under the task's key.
+      Both differential, and the mutations are worth recording: gating
+      the clean on `willRead` fails BOTH halves of the asymmetry (which
+      is what makes the pair a pair), and ignoring `remoteOnly` fails
+      the third row alone.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
