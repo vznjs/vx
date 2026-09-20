@@ -31,6 +31,7 @@ import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
 import {
   type Placeholder,
+  placeholderSweeper,
   sandboxRequestFor,
   sweepPlaceholders,
   untouchedPlaceholderLine,
@@ -278,17 +279,22 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The host side of a port bridge lives exactly as long as the server:
   // released on the child's exit, whether the run tore it down or it died.
   // A placeholder the server never wrote goes back the same way.
-  // What the exit sweep took back, for the readiness failure below to
-  // report: the two sweeps RACE, and whichever runs first is the one
-  // holding the list. Losing that race cost the diagnostic — the failure
-  // then said only "File exists", which is the message the hint exists to
-  // explain (seen twice under the gate's parallel load, 2026-09-20).
-  const sweptOnExit: string[] = []
+  // ONE sweep, shared by the exit handler and the readiness failure below
+  // — whichever asks second must get the SAME list. A second sweep cannot
+  // produce it: the first one's `rm` already happened, so the file is gone
+  // and `sweepPlaceholders` skips it. Collecting both lists and unioning
+  // them does not close that, because the union only covers an exit
+  // handler that FINISHED; one still between its `rm` and its return has
+  // published nothing yet, and the readiness path then reports no
+  // placeholder at all. The failure then says only "File exists", which is
+  // the message the hint exists to explain (seen under the gate's parallel
+  // load, and reproduced deterministically by delaying each side, item 450).
+  const sweptUntouched = placeholderSweeper(placeholders)
   if (bridgeTag !== undefined || placeholders.length > 0) {
     const tag = bridgeTag
     const onExit = async (): Promise<void> => {
       if (tag !== undefined) releaseBridges(tag)
-      sweptOnExit.push(...(await sweepPlaceholders(placeholders)))
+      await sweptUntouched()
     }
     void spawn.child?.exited?.then(onExit, onExit)
   }
@@ -300,12 +306,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // reader looks for why a task failed, and a run with a custom logger
     // (an embedder, the MCP server) never saw a bare stderr write at all.
     log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
-    // The server is dead or being torn down; the sweep on its exit races
-    // this return, so the union of both sweeps is what was untouched — an
-    // already-removed placeholder is SKIPPED by the second sweep, not
-    // returned by it, so reading this one alone reported nothing whenever
-    // the exit handler got there first.
-    for (const p of new Set([...sweptOnExit, ...(await sweepPlaceholders(placeholders))])) {
+    // The server is dead or being torn down, so the sweep on its exit may
+    // already be running: ask the shared one rather than starting a second.
+    for (const p of await sweptUntouched()) {
       log.taskStderr(node, `${untouchedPlaceholderLine(node.projectDir, p)}\n`)
     }
     // The reason rides the outcome (every label reads it), and a child that
