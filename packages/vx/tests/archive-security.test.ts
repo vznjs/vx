@@ -31,7 +31,12 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { extractArtifactStream, packArtifact, scanArtifact } from '../src/cache/archive.js'
+import {
+  ArchiveSecurityError,
+  extractArtifactStream,
+  packArtifact,
+  scanArtifact,
+} from '../src/cache/archive.js'
 import { tarPack } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
 
@@ -565,6 +570,55 @@ describe('archive restore — mixed valid + malicious entries', () => {
     await expect(restore(tar, dest)).rejects.toThrow(/escape|traversal|unsafe/i)
     expect(existsSync(path.join(dest, '..', 'evil.txt'))).toBe(false)
     expect(existsSync(path.join(dest, 'benign.txt'))).toBe(false)
+  })
+
+  // Item 485. `assertSafeName` has seven clauses; the ustar name field is
+  // NUL-terminated and cannot be empty, so two of them looked unreachable
+  // and neither had a row. A pax `path` record is LENGTH-prefixed, not
+  // NUL-terminated, and it OVERRIDES the header name — so both are
+  // reachable through it, and the rows below go in through that door.
+  it('a pax path record that is EMPTY is refused, not silently accepted', async () => {
+    // The serious half. With the empty-name clause removed the restore
+    // RESOLVES — no throw, no file, a green cache hit over an entry that
+    // was dropped on the floor. Refusal is the only answer that a later
+    // run can detect.
+    const payload = 'path=\n'
+    const rec = `${String(payload.length + 3).length + payload.length + 1} ${payload}`
+    const pax = new TextEncoder().encode(rec)
+    const tar = concatTar([
+      makeHeader({ name: 'PaxHeaders/x', size: pax.length, typeFlag: 'x' }),
+      makeDataBlock(pax),
+      makeHeader({ name: 'outputs/benign.txt', size: 4, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('bad\n')),
+      EOF_BLOCKS,
+    ])
+    await expect(restore(tar, dest)).rejects.toThrow(/empty name/i)
+  })
+
+  it('a pax path record carrying a NUL is refused AS a security error', async () => {
+    // The classification half. Removing the null-byte clause does not let
+    // anything through — the runtime's own path validation refuses a NUL
+    // ("The argument 'path' must be a string, Uint8Array, or URL without
+    // null bytes"). What the clause carries ALONE is that the refusal is an
+    // ArchiveSecurityError rather than a raw TypeError, which is what
+    // `restoreOutputs` re-throws unchanged instead of reporting as an
+    // internal error over a corrupt artifact. So assert the CLASS, not
+    // just that it threw — 481 and 483's shape, here on a security path.
+    //
+    // The payload carries a NUL and nothing else unsafe: with `..` in it
+    // the traversal clause fires first and proves nothing about this one.
+    const payload = 'path=outputs/safe.txt\0evil\n'
+    const rec = `${String(payload.length + 3).length + payload.length + 1} ${payload}`
+    const pax = new TextEncoder().encode(rec)
+    const tar = concatTar([
+      makeHeader({ name: 'PaxHeaders/x', size: pax.length, typeFlag: 'x' }),
+      makeDataBlock(pax),
+      makeHeader({ name: 'outputs/benign.txt', size: 4, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('bad\n')),
+      EOF_BLOCKS,
+    ])
+    await expect(restore(tar, dest)).rejects.toThrow(ArchiveSecurityError)
+    await expect(restore(tar, dest)).rejects.toThrow(/null byte/i)
   })
 
   it('a containment failure anywhere writes NOTHING, even for benign siblings', async () => {
