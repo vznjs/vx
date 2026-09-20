@@ -2251,6 +2251,66 @@ result)` after) keeps working without it. Its failure mode is
       right one cannot fail. When the difference between correct and
       incorrect is a suffix, the assertion has to be an equality.
 
+511.  DONE (2026-09-20, `cache/tar-stream.ts` — third by the age rule,
+      newest dated comment 2026-09-03. `orchestrator/options.ts` ranked
+      between it and `cli/last.ts` and was SKIPPED as types-only: the
+      age ranking needs that refinement, a file with no executable
+      logic has no boundary to move).
+      Eight boundary mutations over the reader's and writer's cuts.
+      Three were already caught (the 100-byte tail, the 155-byte
+      prefix, the all-octal check). Five survived the whole suite;
+      four are now pinned and the fifth is measured-equivalent.
+      Baseline note: outside a sandbox this container's
+      `Bun.Archive#files()` answers `[]`, so the multibyte pax row is a
+      standing one-fail baseline here and "caught" means two or more.
+      THE PAX CUT. `needsPax` keys on the 100-byte name field, and the
+      four names in the ustar-limits row all carry a `/` — so they
+      exercise the PREFIX split, and the name field's own cut had no
+      witness at all. Narrowing it to `> 101` does not corrupt: a
+      101-byte slashless name throws `name too long for ustar` at pack
+      time. Pinned with the block count as the witness (100 bytes is
+      header + body, 101 is a pax header and its record ahead of them),
+      read back through vx and libarchive.
+      THE ZERO-LENGTH PAX RECORD. `len <= 0` → `len < 0`: the cursor
+      advance IS the length just read, so a `0 path=…` record never
+      moves it and the reader spins. The existing row covered a length
+      that overshoots the body and one that undershoots it — never one
+      that is zero, which is the only value that turns a wrong answer
+      into NO answer. Pristine throws `malformed pax` in under 2 ms.
+      Recorded honestly: this row's differential is a HANG, not a red
+      row — a tight loop never yields to bun's per-test timer, so the
+      mutant is caught as a job timeout rather than a `(fail)` line.
+      THE NUL-FILLED FIELD. `octal` answers 0 for an empty field BEFORE
+      the all-digits check. Drop that and a header whose mtime is
+      NUL-filled rather than zero-padded — what producers older than
+      ustar write — is refused outright with `bad octal field: ""`.
+      Pinned on `mtimeMs`.
+      THE CHECKSUM'S OWN BYTES. `checksumOk` substitutes a space for
+      all EIGHT bytes of the field, 148..155. Narrowing it to 155 is
+      equivalent for every producer that ends the field `<NUL><space>`
+      (vx's own writer sets `h[155] = 32` itself, so its archives can
+      never tell) — and rejects the `<space><NUL>` ordering POSIX
+      allows just as much. Found by measuring the OTHER ordering, not
+      by reading the mutation: the mutant looked equivalent right up to
+      the input that discriminates it. Pinned on both orderings.
+      THE EQUIVALENT ONE. `tail >= 1` → `tail >= 0` in `splitForUstar`
+      moves where a name ENDING in `/` splits: the whole path into the
+      prefix and an EMPTY name field. Both encodings read back to the
+      same entry name (the reader strips trailing slashes) and
+      libarchive lists neither, and `tarPack`'s only callers pack
+      output FILES. No reachable input discriminates it, so it is
+      classified, not pinned: a row would assert byte placement for an
+      input vx cannot produce.
+      Method note, and it sharpens 498's rule. Three of the four pins
+      came from measuring what the mutant does to an input the suite
+      NEVER HAD — a slashless long name, a NUL-filled field, the other
+      checksum ordering — not from what the mutation's text looks like
+      it does. Classify a survivor by what breaks when it goes, yes;
+      but read that forward too. A survivor names a MISSING FIXTURE,
+      and the missing fixture is usually another spelling of an input
+      the suite already has (494's alphabet, 509's case fold, this
+      file's four long names that all happened to carry a slash).
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
