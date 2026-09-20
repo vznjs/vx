@@ -14,6 +14,13 @@ at the end of the run, and at the end of a `--dry` run — a dry run is
 how the prepare stages get profiled on a real repo with no install to
 run against.
 
+A span's total is WALL summed per call, and the calls run under the
+scheduler's concurrency, so a span that overlaps other work reads far
+larger than the work it names — `output dirs` at 124 µs a task is a
+handful of `lstat`s. The table says so in its own footer now (items 254
+and 407 both chased that number before measuring it in isolation);
+compare spans to each other, and isolate a suspect one before acting.
+
 ## Marks and spans (current)
 
 Marks, in the order a run ends them (`tests/module-shape-drift.test.ts`
