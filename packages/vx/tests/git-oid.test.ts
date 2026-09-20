@@ -285,6 +285,69 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     expect(oids!.has(path.join(root, 'new.txt'))).toBe(false)
   })
 
+  // Item 501. An index OID is only the file's content hash when git stores
+  // the worktree bytes VERBATIM; under a clean filter (`text`/`eol`/`ident`)
+  // the blob is the normalized form while the task reads the worktree file,
+  // so a trusted OID folds the SAME key for the CRLF and LF states. The gate
+  // that prevents that first asks whether any attributes source exists AT
+  // ALL, and there are three of them — each its own conjunct, each dropped
+  // separately here.
+  //
+  // Measured, one placement per source (`a.txt` trusted, false is correct):
+  //
+  //   detector dropped        placement that breaks it        trusted
+  //   in-tree .gitattributes  pkg/sub/.gitattributes          false → TRUE
+  //   core.attributesFile     a user-global attributes file   false → TRUE
+  //   $GIT_DIR/info/attributes  the repo-local one            false → TRUE
+  //
+  // The in-tree one needed the DEEPER placement to show itself: a
+  // `.gitattributes` at the project dir is also found by `attributesAbove`,
+  // which walks repo-root→project, so the first probe said "redundant" and
+  // was wrong. Below the project dir nothing else looks.
+  const ATTR_SOURCES: Array<[string, (root: string, pkgDir: string) => Promise<void>]> = [
+    [
+      'a .gitattributes BELOW the project dir, which no ancestor walk reaches',
+      async (_root, pkgDir) => {
+        await mkdir(path.join(pkgDir, 'sub'), { recursive: true })
+        await writeFile(path.join(pkgDir, 'sub', '.gitattributes'), '*.txt text\n')
+      },
+    ],
+    [
+      'core.attributesFile, which lives outside the repository entirely',
+      async (root, _pkgDir) => {
+        const f = path.join(root, 'global-attrs')
+        await writeFile(f, '*.txt text\n')
+        git(root, 'config', 'core.attributesFile', f)
+      },
+    ],
+    [
+      '$GIT_DIR/info/attributes, which is tracked by nothing',
+      async (root, _pkgDir) => {
+        await mkdir(path.join(root, '.git', 'info'), { recursive: true })
+        await writeFile(path.join(root, '.git', 'info', 'attributes'), '*.txt text\n')
+      },
+    ],
+  ]
+  for (const [what, plant] of ATTR_SOURCES) {
+    it(`distrusts a filtered OID declared by ${what}`, async () => {
+      await mkdir(path.join(pkgDir, 'sub'), { recursive: true })
+      await writeFile(path.join(pkgDir, 'sub', 'a.txt'), 'line\r\n')
+      // The control's file: no `.txt`, so no rule names it.
+      await writeFile(path.join(pkgDir, 'plain.md'), 'plain\n')
+      await plant(root, pkgDir)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'init')
+
+      const memo = new GitFilesCache()
+      await populateGitFilesCache(root, [pkgDir], memo)
+      const oids = memo.oidsFor(pkgDir)
+      expect(oids!.has(path.join(pkgDir, 'sub', 'a.txt'))).toBe(false)
+      // CONTROL, in the same repo: a path the filter does NOT name keeps its
+      // OID, so the row cannot pass on a gate that distrusts everything.
+      expect(oids!.get(path.join(pkgDir, 'plain.md'))).toBe(indexOid(root, 'pkg/plain.md'))
+    })
+  }
+
   it('merge-conflict paths (stage > 0) carry no OID but stay in the file list', async () => {
     await writeFile(path.join(pkgDir, 'f.ts'), 'base\n')
     git(root, 'add', '-A')

@@ -1922,6 +1922,47 @@ non-empty string` is caught by exactly ONE row, and it is the
       trusted), but the converse does not follow, and I acted as if it
       did for one step.
 
+501.  DONE (2026-09-20, `git-inputs.ts`'s `dropFilteredOids` — the
+      clean-filter gate, and the worst failure class in the repo:
+      an index OID is the FILTERED blob, so trusting one where a
+      `text`/`eol`/`ident` filter applies folds the SAME key for the
+      CRLF and the LF state).
+      The gate first asks whether any attributes source exists at all,
+      and there are three. `attributesAbove` (the walk added for the
+      measured `--filter` stale hit) is pinned by its own row. The
+      other three conjuncts — the in-tree `.gitattributes` scan,
+      `core.attributesFile`, and `$GIT_DIR/info/attributes` — ALL
+      survive the whole suite. Three stale-hit holes in one function.
+      Each proven reachable, one placement per source (`a.txt`
+      trusted, false is correct):
+      in-tree scan dropped → a `pkg/sub/.gitattributes` goes
+      false → TRUE; `core.attributesFile` dropped → a user-global
+      attributes file goes false → TRUE; `info/attributes` dropped →
+      the repo-local one goes false → TRUE.
+      And the first classification was WRONG AGAIN, which is now the
+      third time in this sequence. The in-tree scan looked REDUNDANT:
+      with `.gitattributes` at the project dir, dropping the scan
+      changed nothing, because `attributesAbove` walks repo-root →
+      project and finds it there. The deeper placement is what
+      separates them — BELOW the project dir nothing else looks — and
+      only probing that state turned "redundant" into a hole.
+      Pinned as three rows, one per source, each with the placement
+      that isolates it and a CONTROL in the same repo (a `plain.md`
+      the filter does not name keeps its OID, so no row can pass on a
+      gate that distrusts everything). Three differentials, each
+      reddening its own row alone.
+      Also swept and pinned already: `parseCheckAttrOutput`'s value
+      pair (`unspecified` 2 rows, `unset` 1).
+      Method note: 496, 498 and 501 are now three straight items where
+      the FIRST probe supported "redundant" and a second placement
+      refuted it. The pattern is specific enough to name: when a guard
+      looks redundant because a LATER guard also covers the case,
+      check whether the later guard's reach is NARROWER somewhere —
+      a walk that stops at a directory, a check that needs a file to
+      exist, a detection that needs a modified source. The overlap is
+      usually partial, and the part that does not overlap is the whole
+      reason the first guard is there.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
