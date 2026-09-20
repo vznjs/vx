@@ -147,6 +147,46 @@ describe('listProjects', () => {
     expect(projects.map((p) => p.name)).toEqual(['b'])
   })
 
+  // The row above is the SILENT half, and it is silent on purpose: a
+  // nameless manifest that declares no tasks is nothing to say anything
+  // about. A nameless manifest WITH a vx config is the other half — it
+  // was meant to run, vx identifies projects by name, so it simply
+  // vanishes, and this line is the only trace it ever existed.
+  // Silencing it broke nothing in the repo (item 458).
+  it('a nameless package that HAS a vx config is skipped loudly, naming the directory', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await mkdir(path.join(dir, 'packages/ghost'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/ghost/package.json'), '{}')
+    await writeFile(
+      path.join(dir, 'packages/ghost/vx.config.mjs'),
+      'export default { tasks: {} }\n',
+    )
+    await mkdir(path.join(dir, 'packages/quiet'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/quiet/package.json'), '{}')
+
+    const written: string[] = []
+    const real = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((chunk: unknown): boolean => {
+      written.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+    let projects: Awaited<ReturnType<typeof listProjects>>
+    try {
+      projects = await listProjects(await loadWorkspace(dir))
+    } finally {
+      process.stderr.write = real
+    }
+
+    expect(projects.map((p) => p.name)).toEqual([])
+    const notices = written.filter((w) => w.includes('has a vx config'))
+    expect(notices).toHaveLength(1)
+    // It must name WHICH directory, or the user cannot find it.
+    expect(notices[0]).toContain('packages/ghost')
+    // CONTROL: the config-less one stays silent, which is the distinction
+    // the warning exists to draw.
+    expect(notices[0]).not.toContain('quiet')
+  })
+
   // pnpm, npm, yarn and Bun all take `!packages/fixtures` in the list. Handed
   // to Bun.Glob raw, the `!` negated the WHOLE pattern — every manifest in
   // the tree matched, so the excluded package ran under --all and any
