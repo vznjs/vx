@@ -1012,6 +1012,33 @@ prune` for eviction), a typo of `prune` still gets the
       counted 500 rows could not tell a truncated list from an
       exhausted one. The applied limit now rides the result.
 
+415.  DONE (2026-09-20, `@vzn/vx-otel` walked as its adopter, against a
+      real collector). The suite next door injects `post`, so
+      `defaultPost` — the code every adopter actually runs — had never
+      been exercised: it awaited `fetch` and looked at NOTHING it
+      returned. A collector that refuses the export ANSWERS rather than
+      throwing, so a 401 from a wrong token, a 404 from a wrong path and
+      a 500 from a wedged pipeline each exported nothing, warned
+      nothing, and left the run green — the failure an adopter is least
+      able to notice, because the plugin's whole promise is that it says
+      nothing when it works. It now reads the status, warns with the
+      collector's own message on one bounded line, and reports OTLP's
+      other silent loss: a 200 whose `partialSuccess` says records were
+      dropped. Seven rows, four failing without the fix; the three
+      controls (a plain 200, a non-JSON 200, a `partialSuccess` with
+      nothing rejected — the spec's own example of full success) pass
+      both ways.
+      What the walk confirmed, end to end through a real `vx run`, so it
+      is not re-walked: a healthy collector receives all three signals
+      (`/v1/traces`, `/v1/metrics`, `/v1/logs`) with a `vx.run` root
+      span over `vx.task` children, and the run costs ~150 ms; a
+      collector that never answers costs the run 3.1 s and ends with
+      "telemetry flush timed out after 3000ms; buffered records lost" —
+      core's teardown bound, not the sink's own 15 s, which is the
+      invariant working; nothing listening at all warns per signal and
+      finishes at the same ~150 ms; and with no endpoint configured the
+      plugin declines in silence. The run exited 0 in every case.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

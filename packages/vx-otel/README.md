@@ -66,3 +66,12 @@ whenever `OTEL_EXPORTER_OTLP_ENDPOINT` was set. OTel is now a **plugin**: the
 env var alone no longer auto-exports — you must declare `otel()` in
 `vx.workspace.ts`. Telemetry is observe-only and can never change, slow, or
 fail a run (every export is buffered, time-bounded, and swallows errors).
+
+Swallowed, but not silent: an export that does not land warns once per
+signal URL, naming what happened — a collector that cannot be reached, one
+that refuses the request (`HTTP 401`, `404`, `500`, with the collector's own
+message), or one that accepts it and reports part of the data dropped
+(OTLP's `partialSuccess`). The run stays green either way; a collector that
+takes too long is cut off by core's end-of-run deadline
+(`VX_TEARDOWN_TIMEOUT_MS`, 3 s by default) with a line saying the buffered
+records were lost.

@@ -54,11 +54,54 @@ const defaultPost =
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
+      const res = await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
+      // A collector that REFUSES the export still ANSWERS: only one that
+      // cannot be reached throws. Until this read the status, a 401 from a
+      // wrong token, a 404 from a wrong path and a 500 from a wedged
+      // collector each exported nothing and said nothing, for every run
+      // (walked the adopter's path, 2026-09-20). The body is the
+      // collector's own explanation, so a line of it rides the message.
+      const text = await res.text().catch(() => '')
+      if (!res.ok) throw new Error(`HTTP ${res.status}${detail(text)}`)
+      // OTLP's other silent loss: a 200 whose body says part of the export
+      // was dropped (over quota, past a limit). Success at the transport,
+      // missing data in the collector.
+      const rejected = partialSuccess(text)
+      if (rejected !== undefined) throw new Error(rejected)
     } finally {
       clearTimeout(timer)
     }
   }
+
+/** One line of a collector's error body, bounded — it is remote text. */
+function detail(body: string): string {
+  const line = body.replace(/\s+/g, ' ').trim()
+  return line === '' ? '' : `: ${line.slice(0, 200)}`
+}
+
+/**
+ * The OTLP `partialSuccess` shape, when it says something was dropped: the
+ * rejected counts are int64-as-string, and a response with the field present
+ * but everything zero is a plain success (the spec's own example).
+ */
+function partialSuccess(body: string): string | undefined {
+  if (!body.includes('partialSuccess')) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return undefined
+  }
+  const ps = (parsed as { partialSuccess?: Record<string, unknown> })?.partialSuccess
+  if (ps === undefined || ps === null) return undefined
+  const counts = (['rejectedSpans', 'rejectedDataPoints', 'rejectedLogRecords'] as const)
+    .map((k) => [k, Number(ps[k] ?? 0)] as const)
+    .filter(([, n]) => Number.isFinite(n) && n > 0)
+  const message = typeof ps['errorMessage'] === 'string' ? ps['errorMessage'].trim() : ''
+  if (counts.length === 0 && message === '') return undefined
+  const what = counts.map(([k, n]) => `${n} ${k.replace('rejected', '').toLowerCase()}`).join(', ')
+  return `the collector dropped part of the export: ${what === '' ? 'some of it' : what}${detail(message)}`
+}
 
 function genId(bytes: number): string {
   return randomBytes(bytes).toString('hex')
