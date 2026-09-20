@@ -18,6 +18,7 @@ import {
   cleanOutputs,
   GitFilesCache,
   populateGitFilesCache,
+  type ProjectFilesCache,
   resolveInputs,
   resolveOutputs,
 } from '../src/cache/inputs.js'
@@ -733,6 +734,71 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     void first
     const relsSecond = second.files.map((p) => path.relative(projectDir, p))
     expect(relsSecond).toEqual([]) // 'from-memo.ts' doesn't exist on disk → filtered out
+  })
+
+  // The second memo, one layer up: the git SNAPSHOT is per project, this is
+  // the resolved file LIST per project AND declaration — the twelve shard
+  // tasks of this repo declare the same whole-tree glob and walked the same
+  // three thousand files twelve times (1.2 ms each, 2026-09-20).
+  //
+  // Each row proves reuse the way the row above does: by planting a value
+  // nothing on disk could produce and asking whether it comes back.
+  const resolve = async (
+    inputs: { files: string[] },
+    gitFilesCache: GitFilesCache,
+    projectFilesCache: ProjectFilesCache,
+    ownOutputs: string[] = [],
+  ): Promise<string[]> => {
+    const r = await resolveInputs({
+      projectDir,
+      workspaceRoot,
+      envSource: {},
+      inputs,
+      ownOutputs,
+      nestedProjectDirs: [],
+      gitFilesCache,
+      projectFilesCache,
+    })
+    return r.files.map((f) => path.relative(projectDir, f))
+  }
+
+  it('a second task with the same declaration reuses the resolved list', async () => {
+    const git = new GitFilesCache()
+    const files: ProjectFilesCache = new Map()
+    expect(await resolve({ files: ['**/*'] }, git, files)).toEqual(['src.ts'])
+    expect(files.size).toBe(1)
+    const [key, entry] = [...files][0]!
+    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    expect(await resolve({ files: ['**/*'] }, git, files)).toEqual([
+      path.relative(projectDir, '/planted.ts'),
+    ])
+  })
+
+  it('a different declaration in the same project does not', async () => {
+    const git = new GitFilesCache()
+    const files: ProjectFilesCache = new Map()
+    await resolve({ files: ['**/*'] }, git, files)
+    const [key, entry] = [...files][0]!
+    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    // Same project, same snapshot, a narrower glob: a different question.
+    expect(await resolve({ files: ['src.ts'] }, git, files)).toEqual(['src.ts'])
+    // And the same glob with the file declared as this task's own output —
+    // the exclude set is part of the answer too.
+    expect(await resolve({ files: ['**/*'] }, git, files, ['src.ts'])).toEqual([])
+  })
+
+  it('a re-enumeration drops it: the entry is keyed to the snapshot it walked', async () => {
+    const git = new GitFilesCache()
+    const files: ProjectFilesCache = new Map()
+    await resolve({ files: ['**/*'] }, git, files)
+    const [key, entry] = [...files][0]!
+    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    // What a mid-run write does: the project's snapshot is replaced (a new
+    // array, even for the same contents), so the planted list must NOT come
+    // back — this is the half that keeps a task from keying on a file set
+    // an earlier task has since changed.
+    git.set(projectDir, ['src.ts'])
+    expect(await resolve({ files: ['**/*'] }, git, files)).toEqual(['src.ts'])
   })
 })
 

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { TaskConfig, CacheConfig } from '../config.js'
-import type { WorkspaceFilesCache } from '../cache/index.js'
+import type { ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
   type CacheKeyInput,
   type CacheLayer,
@@ -20,6 +20,9 @@ import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
  *     project re-reads the same `package.json`; without this, a
  *     monorepo with N projects × M tasks per project does N×M reads
  *     of the same bytes.
+ *   - `projectFiles`: keyed by the project and its input DECLARATION.
+ *     Tasks of one project that declare the same inputs and outputs
+ *     resolve the same file list; see `ProjectFilesCache`.
  *   - `taskConfig`: keyed by the resolved-config object reference.
  *     Each task's config is created once at prepareRun time; the
  *     JSON.stringify + xxh3 of it is deterministic. WeakMap so
@@ -34,6 +37,7 @@ export interface HashCache {
   runtime: Map<string, Promise<string>>
   workspaceRuntime: Map<string, Promise<string>>
   workspaceFiles: WorkspaceFilesCache
+  projectFiles: ProjectFilesCache
 }
 
 export function createHashCache(): HashCache {
@@ -43,6 +47,7 @@ export function createHashCache(): HashCache {
     runtime: new Map(),
     workspaceRuntime: new Map(),
     workspaceFiles: new Map(),
+    projectFiles: new Map(),
   }
 }
 
@@ -178,6 +183,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
           runtimeCache: args.hashCache.runtime,
           workspaceRuntimeCache: args.hashCache.workspaceRuntime,
           workspaceFilesCache: args.hashCache.workspaceFiles,
+          projectFilesCache: args.hashCache.projectFiles,
         }
       : {}),
   })

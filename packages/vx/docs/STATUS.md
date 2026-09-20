@@ -1261,6 +1261,74 @@ tokenizes a regex literal by the character before the`/`.
       same sentence. I wrote that lead without checking; the check
       took one grep.
 
+405.  DONE (2026-09-20, the first warm-path WIN since the arc began,
+      with the control 404 says every claim here needs).
+      Where the time actually goes, measured before touching
+      anything (temporary spans, since removed): of a 1,000-project
+      warm run's `classify + probe`, the short-circuit is 41 of
+      54 ms and everything else in that stage — the run lock 2.3 ms,
+      placement 1.3, plugin install 0.4, executors 0.2, the counts
+      loop 0.1 — is noise. Inside `computeTaskHash` (20.2 ms / 1,000
+      calls): `resolveKeyInput` 15.0, of which `resolveInputs` 10.3,
+      and `cache.key` 5.0. So the fold is a fifth of it and the
+      INPUT RESOLUTION is the half worth attacking.
+      REFUTED, and it was my own lead: the config `JSON.stringify` is
+      not the cost. Micro-benched at 413 ns, with `xxh3hex` of the
+      result 190 ns — 0.6 µs against the 20-33 µs a task spends, ~2 %.
+      Moving it would change every key and cost a `CACHE_VERSION`
+      bump for 2 %; not worth proposing again.
+      The win: `resolveFiles` walks the project's git snapshot per
+      TASK, and tasks of one project routinely declare the same
+      inputs and outputs — this repo's own config is the shape, with
+      twelve shard tasks each declaring the same whole-tree glob over
+      the same ~3,000 files. `ProjectFilesCache` memoizes the
+      resolved list by project + declaration (positives, negations,
+      own outputs, project boundaries), mirroring the
+      `WorkspaceFilesCache` pattern already in that file, and reuse
+      is gated on the git snapshot being the SAME ARRAY the entry
+      walked: a mid-run re-enumeration hands back a new one, so a
+      task whose inputs an earlier task rewrote misses and walks
+      again.
+      The numbers, on this repo's own 44-task `run ci --all --dry`:
+      `task hash` 50.6/52.9/53.3/53.3/54.9 ms before,
+      37.1/37.1/37.8/37.8/40.5 after — disjoint sets, −27 %. Wall
+      clock could NOT see it (A/B min 156.2 → 143.5 ms; the A/A
+      control spread 167.4 vs 148.4 is larger), which is 404's
+      finding holding: on this box the metric the change touches is
+      the honest instrument, not the clock. Negative control, the
+      1,000-project bench where every project has ONE task and no
+      declaration repeats: 22.6–23.6 ms before, 21.6–22.0 after
+      (plus one 28.9 first-run outlier) — no win and no regression,
+      as designed.
+      Differentials: reuse without the array-identity check, a key
+      without `ownOutputs`, and a key without the positive globs each
+      fail one of the three new rows in `inputs.test.ts`.
+      One self-inflicted lesson worth the line: a `*/` inside a doc
+      comment's example (`['**/*']`) closes the comment, and the
+      parse error surfaced as `bun test` hanging for fifteen minutes
+      rather than as a syntax error — kill the run and re-run WITHOUT
+      the `| tail` that was swallowing it.
+      Also here: item 403's zombie row went red under this gate, its
+      second failure in four gate runs while passing every time
+      alone. NOT reproduced, and recorded as such rather than
+      explained — five runs of the file under four CPU burners pass
+      on BOTH the old and new code, and two full runs of the unsafe
+      suite (216 tests, the gate's own shape) pass. What changed is
+      the fragility and the diagnosis: the pid now travels through a
+      FILE instead of an unread `stdout` pipe whose lifetime the test
+      does not control, and the premise is asserted — if the parent
+      shell is gone, the row now says `parentAlive: false` instead of
+      a state mismatch nobody can read.
+      And one REAL race, found by the same gate and fixed: the site
+      link row walks `packages/vx-docs/src/content/docs`, which is
+      `@vzn/vx-docs#build`'s OUTPUT, while that task runs beside it
+      under `vx run ci --all`. A page the import script was rewriting
+      vanished between the walk and the read, and an ENOENT stack
+      surfaced under an unrelated row. The walk now skips a file that
+      is gone — its source is pinned by the safe half regardless —
+      with the reason written beside it: a generated tree is not a
+      stable input for a concurrent reader.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
