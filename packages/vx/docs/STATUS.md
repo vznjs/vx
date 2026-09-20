@@ -1438,6 +1438,41 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       conservatism itself, and a later change that let those producers
       defer would be an improvement this repo should not have to argue
       with a test about.
+470.  DONE (2026-09-20, `orchestrator/deferred-outputs.ts` — the
+      registry of tasks whose outputs were left in the remote store,
+      and the lazy fetch that brings them home).
+      A CORRECTION FIRST, because the reasoning was wrong before the
+      measurement was right. The module has no test file of its own
+      and its name appears only in the module-shape drift check, and
+      the only `--download=none` e2e rows I could find sat in
+      `@vzn/vx-reapi` behind `describe.if(armed)` — unset locally, so
+      skipped, and a skip is a silent pass. That reads like a total
+      coverage hole and it is NOT one: gutting five invariants at once
+      turned three CORE rows red. They drive the class through a real
+      `run()` rather than naming it, which is why grep missed them.
+      The gutting run is what corrected me, one run instead of eight.
+      Six mutations then, four caught: `pending()` hiding what is
+      inflight (the bug its own comment records), the at-most-once
+      memo, dropping the entry before the fetch succeeded, and the
+      convergence save.
+      TWO SURVIVORS, both documented, both correctness.
+      (a) The TRANSITIVE walk. Every existing row puts the deferred
+      producer ONE hop from the consumer, where a direct-deps-only
+      walk finds it anyway. Isolating it took two tries: an ordinary
+      task in the middle proves nothing, because it runs locally and
+      its OWN direct-dep materialisation fetches the producer whatever
+      the walk does — measured, `mat` identical both ways. A GROUP
+      intermediate is the isolation: it never executes, so it can
+      never materialise, and with the recursion cut nothing is fetched
+      at all and the consumer fails.
+      (b) The fetch failure is the CONSUMER's failure. The row that
+      looks like it covers this asserts `r.ok === false`, and that
+      holds either way — with the error swallowed the run still fails,
+      because the consumer's `cat` then hits a missing file. A second,
+      incidental failure was masking the first. What separates them is
+      the diagnostic, so that is what is pinned now: the message names
+      the producer, the underlying cause, and the remedy, instead of a
+      bare `No such file` from a shell.
 
 ## In flight
 
