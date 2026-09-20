@@ -2103,6 +2103,38 @@ non-empty string` is caught by exactly ONE row, and it is the
       the only thing with a single truth value, so the guarantee is
       what the row says.
 
+506.  DONE (2026-09-20, `orchestrator/admission.ts` — dedup and
+      continue-taint, both silent when wrong: a missed taint SAVES
+      what a task built on partial upstream output, under a key a
+      healthy run derives).
+      A HELD report, and the taint half is the best-pinned predicate
+      swept yet. All five members have their own row —
+      `failed` (2), `aborted`, `skipped`, the transitive
+      `tainted.has(...)`, and the RECORDING step that makes it
+      transitive. `taint-tracker.test.ts` already does what 494, 497
+      and 499 had to add elsewhere.
+      Dedup: the restore-tier bypass, the deferred barrier lift (it
+      lifts when the ENTRY lands, not when the task returns) and the
+      joiner's wait each redden. `!cacheable` survives, and it is an
+      early-out rather than a guard: measured, a non-cacheable task
+      never finds a sibling barrier, because the hash folds the taskId
+      and a taskId executes once per run. Removing it reddens nothing
+      AND a throw on "a non-cacheable task joined a barrier" never
+      fires across the whole suite. Recorded in place.
+      Method note, and it cost a round: the first dedup pre-check ran
+      `bun test tests/dedup.test.ts tests/upstream.test.ts` and all
+      four mutations "survived". There is no `dedup.test.ts` — bun
+      silently ignores a nonexistent path, so only the 17 unrelated
+      rows ran. The real file is `inflight.test.ts`, where three of
+      the four redden immediately.
+      This repo already knows that rule and I walked into it anyway,
+      so the fix is procedural rather than another note: every
+      mutation batch now ends with a PRISTINE control run in the same
+      command. `4 pass 0 fail` next to the mutants' `3 pass 1 fail`
+      is what distinguishes "the tests ran and passed" from "no tests
+      ran at all" — the same ambiguity 499's unparseable payload
+      created, reached by a different road.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

@@ -87,6 +87,13 @@ export function admitTasks(
     // wrong. Route it straight to executeTask, which reuses the up-front
     // probe.
     const restorable = shortCircuit.restoreTier.has(node.id)
+    // `!cacheable` is an early-out for bookkeeping, not a guard: measured
+    // (item 506), a non-cacheable task never finds a sibling barrier,
+    // because the hash folds the taskId and a taskId executes once per
+    // run. Removing it reddens nothing and a throw on "a non-cacheable
+    // task joined a barrier" never fires across the whole suite. It saves
+    // the set/delete, and the wait a joiner would spend before running the
+    // task anyway — there is no artifact for it to hit.
     if (inflight === undefined || !cacheable || restorable) {
       return executeTask(buildExecuteArgs(node, upstream))
     }
