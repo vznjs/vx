@@ -12,8 +12,9 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-243-281.md`, items 282–305 in
 `2026-09-improvement-loop-282-305.md`; items 333–352 in
 `2026-09-improvement-loop-333-352.md`; items 353–372 in
-`2026-09-improvement-loop-353-372.md`; items 373 onward continue in
-`docs/STATUS.md`. The handoffs written alongside these items (14z–14ad)
+`2026-09-improvement-loop-353-372.md`; items 373–392 in
+`2026-09-improvement-loop-373-392.md`; items 393 onward
+continue in `docs/STATUS.md`. The handoffs written alongside these items (14z–14ad)
 are in `2026-09-status-next-log.md`.
 
 306.  DONE (2026-09-16, the trim 14aa named): items 282–305 moved
