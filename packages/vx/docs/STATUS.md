@@ -1442,6 +1442,122 @@ await resetSandbox()`, whose comment says "otherwise SRT keeps
       promised, here it would buy a cleanup for a window nothing
       reachable enters. A seam needs a reason proportional to what it
       exposes.
+490.  DONE (2026-09-20, `workspace/config-schema.ts`'s timeout pairs —
+      the double-refusal hunt moved OUT of the cache area, and this is
+      where it stops paying). A HELD report, the second running, and
+      the pattern's absence here is the useful part.
+      `timeout` is validated by a literal pair in the same function: a
+      positive-integer check, then `assertTimeoutInRange` — two
+      refusals of the same field, both `UserError`, at BOTH the
+      workspace and the `exec` level. That is 486's shape on paper.
+      It is pinned on paper too. Four mutations, four caught, each by
+      rows naming the half they cover rather than the fact of a
+      throw. The shared RANGE half fails FIVE: two behavioural rows
+      ("past the bound is refused, naming the max and the repair" and
+      its at-the-bound control), the workspace-level twin, a
+      docs-drift row asserting `docs/schema.md`'s table carries the
+      exact symptom, and — the one worth naming — "a 317-year timeout
+      fails the load instead of killing the task in 4ms", which is
+      484's measured platform trap pinned END TO END rather than
+      restated. The positive-integer halves fail their own rows at
+      each level, and no row covers both halves.
+      So the answer to "is the second refusal asserted separately" is
+      yes, four times, which is what 486 wished for and 481/483/485/
+      487/488 each lacked. Recorded because a hunt that only reports
+      hits is a hunt whose negative result nobody can read.
+      One thin spot, classified not fixed: `exec.command must be a
+non-empty string` is caught by exactly ONE row, and it is the
+      docs-drift table match. The claim that an empty command is
+      refused therefore rests on a test about a MARKDOWN TABLE rather
+      than about behaviour. It is covered — the mutation dies — so
+      this is not a hole; but it is the only refusal in the file whose
+      sole witness never runs a task, and if the table is ever
+      reworded the claim loses its last row. Noted here so the next
+      sweep of this file starts there.
+491.  DONE (2026-09-20, `cache.ts`'s `prune`, picked by COST rather
+      than by the double-refusal pattern — 489 and 490 had both come
+      back held, which is the signal to stop pattern-matching).
+      Prune's worst case is deleting something the user wanted kept,
+      so the four claims swept were: `--dry-run` returns before the
+      delete, the eviction order is LRU, the loop stops at the cap,
+      and a prune with no criteria refuses. All four caught — dry-run
+      by "prune({ dryRun }) reports the victims and orphans and
+      deletes nothing", the empty options by their own row, and the
+      other two by ONE row between them: "prune() with maxBytes evicts
+      LRU until under the cap".
+      That one row is the find. It asserts `evicted >= 1`, that h3
+      (newest) survives and that h1 (oldest) is gone — and says
+      NOTHING about h2, the middle of three. So it cannot tell
+      "evicted exactly enough" from "evicted one too many". Removing
+      the break wholesale is caught only because h3 dies too; an
+      OFF-BY-ONE is not. Measured on the row's own fixture:
+      correct: evicted=1, survivors=[h2, h3]
+      off-by-one: evicted=2, survivors=[h3]
+      `remaining < maxBytes` instead of `<=` survives the entire
+      suite. Both outcomes leave h1 gone and h3 alive, which is all
+      the row ever asked.
+      Classified deliberately: this is NOT a stale hit — a pruned
+      entry is a miss, and the run re-executes correctly. It is a
+      silent efficiency regression, throwing away cache the user
+      asked to keep on every prune, and hit rate is the thing the
+      cache exists for. Worth pinning for that reason and no
+      stronger one.
+      Tightened in place: the count is exact (`toBe(1)`) and the
+      MIDDLE entry is named as a survivor. Differential three ways —
+      the off-by-one reddens it (receives 2), the wholesale break
+      removal reddens it (receives 3), and reversing the LRU order
+      still reddens it, so the row now separates the three failures
+      it previously conflated into one.
+      Method note: the row's endpoints looked like a complete
+      statement (oldest gone, newest kept) and the gap was the
+      unnamed middle. 479 and 486 found the same shape in a guard's
+      members and a clause's siblings; this is it in a FIXTURE's
+      rows, which is where it is hardest to see, because three
+      entries read as exhaustive until you count the assertions.
+      And the tightened row then FAILED the gate while passing alone,
+      which was the fixture, not the code: the cap was
+      `statSync(outputsPath('h3')).size * 2`, one artifact's size
+      doubled, but the three artifacts are not the same size. Each
+      carries its own duration and timestamps, so they compress to
+      different lengths, and to different lengths run to run
+      (198/193/193, then 199/193/190, over six reps). Whenever
+      h2 > h3 the cap sits BELOW h2 + h3 and evicting h2 is correct —
+      the very reading the row exists to exclude. The cap is now
+      `size(h2) + size(h3)`, the exact budget the two survivors need,
+      so "exactly enough" is the only way under it. Both differentials
+      are red again on that fixture.
+      The lesson generalizes past this row: a bound measured from ONE
+      sample of a quantity that varies per entry is not the sum it
+      stands in for, and a fixture that samples one member to bound
+      three is a flake with a schedule. Sample what the bound must
+      admit, member by member.
+
+492.  DONE (2026-09-20, the zombie row in
+      `tests/alive-helper.unsafe.test.ts` — #617's CI went red on it
+      with a STATUS-only diff, and the row had been red once in 99
+      local logs). Not a flake to re-run: the reported
+      `{state: 'r'}` is `charAt` of the row's OWN `'() reaped'`
+      sentinel, so the assertion was saying the zombie had been
+      reaped before it could be observed, which is a racing fixture.
+      The reaper is the row's own shell. `sleep 0 &` is already dead
+      when bash runs the next line, and bash reaps a dead child at its
+      next `waitpid` — so whether a zombie ever exists depends on
+      whether SIGCHLD lands before the `exec`. Measured, 25 reps per
+      shape: the current script plus a foreground command before the
+      `exec` (a `waitpid` the shell must make) is reaped 25/25, while
+      the same script with `sleep 0.5 &` is a zombie 25/25 — the
+      child's LIFETIME is the whole difference, and the script with
+      the longer-lived child survives the condition that breaks the
+      other deterministically. The fix is one character class:
+      `sleep 0.5 &`, so bash is replaced by a process that never waits
+      while the child is still running. 12/12 green after, and the row
+      still reddens when `isAlive` stops counting `Z` as dead, so it
+      kept the guarantee it exists for.
+      Method note: a red row on a docs-only diff is the most tempting
+      "not mine" there is, and the temptation is exactly why the
+      failing VALUE had to be read rather than the failing name. `'r'`
+      named the sentinel, the sentinel named the race, and the race
+      was in the test's own first line.
 
 ## In flight
 

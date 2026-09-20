@@ -44,11 +44,22 @@ describe('isAlive', () => {
   it.skipIf(process.platform !== 'linux')(
     'is false for a ZOMBIE, which signal 0 still lands on',
     async () => {
-      // `sleep 0 &` exits at once and the shell then `exec`s, so the parent
-      // is now a `sleep` that will never wait: the entry cannot be reaped
-      // while it lives. Leaving bash in place instead is not deterministic —
-      // it reaped the child inside the gate's sandbox, and the read came
-      // back ENOENT.
+      // The backgrounded child OUTLIVES the shell that started it: bash
+      // `exec`s while it is still running, so the parent is now a `sleep`
+      // that will never wait, and the entry that appears a moment later
+      // cannot be reaped while that parent lives. Leaving bash in place
+      // instead is not deterministic — it reaped the child inside the
+      // gate's sandbox, and the read came back ENOENT.
+      //
+      // The child's LIFETIME is the fix, not a detail. `sleep 0 &` was
+      // already dead when bash ran its next line, and bash reaps a dead
+      // child at its next `waitpid` — so the row raced its own shell and
+      // went red once in 99 local runs and once on CI (#617), reporting
+      // `state: 'r'`, which is `charAt` of its own `'() reaped'` sentinel.
+      // Measured four shapes, 25 reps each: `sleep 0 &` with a foreground
+      // command before the `exec` is reaped 25/25, and the same script
+      // with `sleep 0.5 &` is a zombie 25/25 — the window closes because
+      // there is nothing dead to reap while bash still lives.
       //
       // The pid travels through a FILE, not a pipe: the first version read
       // one chunk off `shell.stdout` and left the stream open, and that row
@@ -57,7 +68,7 @@ describe('isAlive', () => {
       // with `stdout: 'ignore'` there is none.
       const dir = mkdtempSync(path.join(tmpdir(), 'vx-zombie-'))
       const pidFile = path.join(dir, 'pid')
-      const shell = Bun.spawn(['bash', '-c', `sleep 0 & echo $! > "${pidFile}"; exec sleep 30`], {
+      const shell = Bun.spawn(['bash', '-c', `sleep 0.5 & echo $! > "${pidFile}"; exec sleep 30`], {
         stdout: 'ignore',
         stderr: 'ignore',
       })
