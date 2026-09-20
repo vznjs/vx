@@ -233,6 +233,59 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
+    'a TRACKING-ONLY env input: the key moves on a value the command cannot read',
+    async () => {
+      // The direction the suite was missing. `orchestrator.test.ts` §
+      // "cache.inputs.env affects the cache key; exec.env.passThrough alone
+      // does not" pins the common pairing, with both names ALSO passed
+      // through; Turbo parity pins the same asymmetry against turbo.json.
+      // Neither covers the shape schema.md calls "legal but rare": a name in
+      // `cache.inputs.env` and NOT in `exec.env.passThrough`, where the child
+      // environment is isolated so "the key varies on a value the command
+      // never sees" — a miss that re-runs and reproduces identical bytes.
+      const dir = await addProject(fixture.root, 'envtrack', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'printf "%s" "[$VX_T_TRACKED]" > out.txt' },
+                cache: {
+                  inputs: { files: ['src/**'], env: ['VX_T_TRACKED'] },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const build = async (): Promise<string> => {
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        expect(r.ok).toBe(true)
+        return r.outcomes[0]!.status
+      }
+
+      try {
+        process.env['VX_T_TRACKED'] = 'one'
+        expect(await build()).toBe('success')
+        // Isolated: declaring it as a cache input forwards NOTHING.
+        expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('[]')
+        expect(await build()).toBe('cache-hit')
+
+        process.env['VX_T_TRACKED'] = 'two'
+        // The key folded the value, so it misses…
+        expect(await build()).toBe('success')
+        // …and the re-run writes exactly what it wrote before, which is the
+        // cost of declaring one axis and not the other.
+        expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('[]')
+      } finally {
+        delete process.env['VX_T_TRACKED']
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'workspace fingerprint: pnpm-lock.yaml change busts every task cache',
     async () => {
       // Seed a lockfile.
