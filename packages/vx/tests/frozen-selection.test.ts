@@ -4,6 +4,7 @@
 // environment could select in one environment what the run then keyed by
 // the lock's other one.
 
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -67,7 +68,13 @@ describe('--frozen selection reads the lock', () => {
     git('commit', '-q', '-m', 'bump shared')
   })
   afterEach(async () => {
-    await Bun.$`rm -rf ${root}`.quiet()
+    // `fs.rm` with retries, not `Bun.$\`rm -rf\`` — the only shell teardown
+    // the suite had, and it threw `ENOTEMPTY` on `.git` on a macOS CI runner,
+    // failing a row whose every assertion had passed. Something wrote into
+    // `.git` while the shell `rm` was walking it (not established what);
+    // `maxRetries` is node's answer to exactly that class (EBUSY, ENOTEMPTY,
+    // EPERM), and `force` means a cleanup hiccup can never be the verdict.
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
   })
 
   it(

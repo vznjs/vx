@@ -1264,6 +1264,44 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       never produces: the barrier promise is built here and only ever
       resolved. What it actually guards is the embedder-supplied Map,
       which is a real boundary.
+465.  DONE (2026-09-20, `orchestrator/logger.ts` — 700 lines, never
+      swept, and it decides what a user is TOLD a run did).
+      Nine mutations. Seven caught, and the well-held ones are held
+      hard: `full` joining the discard set fails twenty rows,
+      `focused` eleven, `broad` three; the per-run GHA fence token
+      three (one named for the property itself); the live-framing gate
+      six; and registering a persistent task's tail at ready instead
+      of at its first chunk — the defect the comment documents — one.
+      THE FIND is a SET asserted at one position. The comment at the
+      discard gate states a deliberate partition: `none` and
+      `hash-only` drop chunks on arrival because their contract
+      promises never to print them, while `full`, `broad`, `focused`
+      and `errors-only` print, and "silently truncating someone's
+      build log is a worse failure than the memory it costs". Adding
+      `errors-only` to the discard set leaves the WHOLE REPO green.
+      Taken to the real CLI before being called anything, as 461
+      taught: `vx run boom --output-logs errors-only` normally prints
+      the STDOUT and STDERR sections, and under the mutation the
+      failure frame comes out EMPTY — `failed (exit 3)` and nothing
+      about why, from the one mode whose entire purpose is showing a
+      failed task's log.
+      The cause is an under-asserting row, and it is this repo's own
+      rule failing in the other direction: the row named
+      "errors-only: success and hits silent, failures framed" writes
+      to stderr and then asserts only that the ONE-LINER is present,
+      which the mutation leaves untouched. "Assert the exact expected
+      set, not the absence of one string" — a substring that survives
+      the change is no better than a `not.toContain`. Fixed in place
+      to assert the frame's content, in the style of the `broad`
+      failure row beside it.
+      The second survivor is the same boundary's other half:
+      `hash-only` LEAVING the discard set. No behaviour row can see
+      it, because the mode prints one audit line per task and no log
+      bytes either way — it is a pure memory claim, and the RSS
+      measurement that pins `none` asserted only that one position.
+      Extended to cover both, which is what the comment always said.
+      Each pin red only for its own mutation, green for the other's,
+      and the RSS row stable over three reps.
 
 ## In flight
 
