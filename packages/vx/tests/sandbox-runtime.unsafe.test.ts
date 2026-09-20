@@ -1924,6 +1924,39 @@ describe.skipIf(process.platform !== 'linux')(
       expect(got).not.toContain(deepOut)
     })
 
+    it('names the symlinked entries a punch would flatten, once per grant', async () => {
+      // The one diagnostic for a failure with no other symptom. bwrap
+      // resolves a bind SOURCE, so punching a directory mounts each
+      // symlinked child as the directory it points AT — inside the
+      // sandbox the link is gone, and a package resolved through it
+      // loses the siblings its own dependencies need. That cost four
+      // days of red CI (astro / `yargs-parser`, 2026-09-09) and SRT's
+      // config carries no `--symlink`, so the warning IS the fix: it
+      // says which grant to move. Silencing it breaks nothing else in
+      // the repo, which is why this row exists.
+      await symlink(path.join(dir, 'src'), path.join(dir, 'linked'))
+      const written: string[] = []
+      const real = process.stderr.write.bind(process.stderr)
+      process.stderr.write = ((chunk: unknown): boolean => {
+        written.push(String(chunk))
+        return true
+      }) as typeof process.stderr.write
+      try {
+        punchWritePaths(dir, [path.join(dir, 'dist')])
+        // Once per grant: a second punch of the same read path is silent,
+        // so a thousand-task run says it once.
+        punchWritePaths(dir, [path.join(dir, 'dist')])
+      } finally {
+        process.stderr.write = real
+      }
+      const notices = written.filter((w) => w.includes('symlinked'))
+      expect(notices).toHaveLength(1)
+      // It has to name BOTH halves to be actionable: what got flattened
+      // and which grant to move.
+      expect(notices[0]).toContain('linked')
+      expect(notices[0]).toContain('dist')
+    })
+
     it('hands over a path it cannot read rather than dropping the grant', () => {
       const missing = path.join(dir, 'does-not-exist')
       expect(punchWritePaths(missing, [path.join(missing, 'out')])).toEqual([missing])
