@@ -1474,6 +1474,63 @@ non-empty string` is caught by exactly ONE row, and it is the
       sole witness never runs a task, and if the table is ever
       reworded the claim loses its last row. Noted here so the next
       sweep of this file starts there.
+491.  DONE (2026-09-20, `cache.ts`'s `prune`, picked by COST rather
+      than by the double-refusal pattern — 489 and 490 had both come
+      back held, which is the signal to stop pattern-matching).
+      Prune's worst case is deleting something the user wanted kept,
+      so the four claims swept were: `--dry-run` returns before the
+      delete, the eviction order is LRU, the loop stops at the cap,
+      and a prune with no criteria refuses. All four caught — dry-run
+      by "prune({ dryRun }) reports the victims and orphans and
+      deletes nothing", the empty options by their own row, and the
+      other two by ONE row between them: "prune() with maxBytes evicts
+      LRU until under the cap".
+      That one row is the find. It asserts `evicted >= 1`, that h3
+      (newest) survives and that h1 (oldest) is gone — and says
+      NOTHING about h2, the middle of three. So it cannot tell
+      "evicted exactly enough" from "evicted one too many". Removing
+      the break wholesale is caught only because h3 dies too; an
+      OFF-BY-ONE is not. Measured on the row's own fixture:
+      correct: evicted=1, survivors=[h2, h3]
+      off-by-one: evicted=2, survivors=[h3]
+      `remaining < maxBytes` instead of `<=` survives the entire
+      suite. Both outcomes leave h1 gone and h3 alive, which is all
+      the row ever asked.
+      Classified deliberately: this is NOT a stale hit — a pruned
+      entry is a miss, and the run re-executes correctly. It is a
+      silent efficiency regression, throwing away cache the user
+      asked to keep on every prune, and hit rate is the thing the
+      cache exists for. Worth pinning for that reason and no
+      stronger one.
+      Tightened in place: the count is exact (`toBe(1)`) and the
+      MIDDLE entry is named as a survivor. Differential three ways —
+      the off-by-one reddens it (receives 2), the wholesale break
+      removal reddens it (receives 3), and reversing the LRU order
+      still reddens it, so the row now separates the three failures
+      it previously conflated into one.
+      Method note: the row's endpoints looked like a complete
+      statement (oldest gone, newest kept) and the gap was the
+      unnamed middle. 479 and 486 found the same shape in a guard's
+      members and a clause's siblings; this is it in a FIXTURE's
+      rows, which is where it is hardest to see, because three
+      entries read as exhaustive until you count the assertions.
+      And the tightened row then FAILED the gate while passing alone,
+      which was the fixture, not the code: the cap was
+      `statSync(outputsPath('h3')).size * 2`, one artifact's size
+      doubled, but the three artifacts are not the same size. Each
+      carries its own duration and timestamps, so they compress to
+      different lengths, and to different lengths run to run
+      (198/193/193, then 199/193/190, over six reps). Whenever
+      h2 > h3 the cap sits BELOW h2 + h3 and evicting h2 is correct —
+      the very reading the row exists to exclude. The cap is now
+      `size(h2) + size(h3)`, the exact budget the two survivors need,
+      so "exactly enough" is the only way under it. Both differentials
+      are red again on that fixture.
+      The lesson generalizes past this row: a bound measured from ONE
+      sample of a quantity that varies per entry is not the sum it
+      stands in for, and a fixture that samples one member to bound
+      three is a flake with a schedule. Sample what the bound must
+      admit, member by member.
 
 ## In flight
 

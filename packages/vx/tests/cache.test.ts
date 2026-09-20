@@ -1146,14 +1146,37 @@ describe('Cache storage (v10)', () => {
       await new Promise((r) => setTimeout(r, 5))
     }
 
-    // Cap = two artifacts' worth, measured rather than guessed: a
-    // hardcoded byte count silently becomes "evict everything" the next
-    // time the artifact layout gains a record.
-    const oneArtifact = (await import('node:fs')).statSync(cache.outputsPath('h3')).size
-    const result = await cache.prune({ maxBytes: oneArtifact * 2 })
-    expect(result.evicted).toBeGreaterThanOrEqual(1)
+    // Cap = exactly what the two survivors occupy. Measured, and measured
+    // per entry: a hardcoded byte count silently becomes "evict everything"
+    // the next time the artifact layout gains a record, and `size(h3) * 2`
+    // is a DIFFERENT number — each artifact carries its own duration and
+    // timestamps, so the three compress to sizes that differ by a few bytes
+    // and differ again run to run (198/193/193, then 199/193/190, over six
+    // reps of this fixture). A cap below h2 + h3 makes evicting h2 correct,
+    // which is the reading this row exists to exclude; under the full file
+    // that drew `evicted: 2` from unmutated code (item 491).
+    const { statSync } = await import('node:fs')
+    const survivors =
+      statSync(cache.outputsPath('h2')).size + statSync(cache.outputsPath('h3')).size
+    const result = await cache.prune({ maxBytes: survivors })
+    // Item 491. `>= 1` and the two endpoints cannot tell "evicted exactly
+    // enough" from "evicted one too many": h2 was unasserted, so an
+    // off-by-one in the budget break (`remaining < maxBytes` instead of
+    // `<=`) survived the whole suite. Measured, same fixture:
+    //
+    //   correct:     evicted=1, survivors=[h2, h3]
+    //   off-by-one:  evicted=2, survivors=[h3]
+    //
+    // Both leave h1 gone and h3 alive, which is all this row used to ask.
+    // A prune that over-evicts is not a stale hit — a pruned entry is a
+    // miss — but it silently throws away cache the user asked to keep,
+    // every run, and hit rate is what the cache is for. So the count is
+    // exact and the MIDDLE entry is named.
+    expect(result.evicted).toBe(1)
     // h3 (most recently accessed) survives.
     expect(await cache.get('h3')).not.toBeNull()
+    // h2 fits under the cap once h1 is gone, so it must NOT be evicted.
+    expect(await cache.get('h2')).not.toBeNull()
     // h1 (oldest accessed) is gone.
     expect(await cache.get('h1')).toBeNull()
   })
