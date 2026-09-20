@@ -1309,6 +1309,28 @@ built behind a failure`). Two claims were not.
       deliberately part of that project, not a fence. The test says so
       in a comment, because the shape is one a reader would otherwise
       read as a bug.
+425.  DONE (2026-09-20, the pin item 421's design note asks for by name).
+      That note ends with a constraint rather than a feature: the
+      cross-project overlapping-outputs case is safe today only because
+      `local-shortcircuit.ts` disables the restore tier GRAPH-WIDE the
+      moment any task declares `cache.outputs.workspaceFiles`, and
+      "whoever narrows that rule owns this case". A constraint nothing
+      tests is a comment, so the tier's suite now carries it.
+      The gap was specific. The existing row pins the DEPENDENT of a
+      workspace-output producer — and that dependent is excluded for a
+      second reason anyway (it is unstable). Narrow the rule to "the
+      declarer and its dependents" and that row still passes. The new
+      row uses a project with NO edge to the writer at all: `solo` and
+      `wsw` share nothing but the graph, and `solo#build` must stay out
+      of the tier while `wsw` declares a root-anchored output.
+      The control is the same workspace with the writer's declaration
+      changed to a project-relative output and nothing else — `solo`'s
+      key is untouched and its artifact is the one the cold run just
+      stored — and `solo#build` is restore-tier again. Without it the
+      assertion would pass for a `solo` that simply never hit.
+      Differential against the narrowing it exists to catch: scoping the
+      exclusion to the declaring node fails the new row and leaves the
+      neighbour green, which is the whole argument for adding it.
 
 ## In flight
 

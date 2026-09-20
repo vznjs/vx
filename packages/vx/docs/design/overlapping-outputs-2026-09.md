@@ -95,10 +95,13 @@ So the constraint for an implementation is not "add an exclusion" but
 **"do not remove the one that exists"**. The blanket rule is expensive —
 one `workspaceFiles` output anywhere costs the whole graph its restore
 tier — and narrowing it is the obvious future optimisation. Whoever
-narrows it owns this case: a pin belongs in
-`tests/local-shortcircuit*.test.ts` proving that a cross-project
-`workspaceFiles` writer is still kept out of the tier, and it should
-fail against a narrowed rule that forgets it.
+narrows it owns this case, and the pin now exists to say so:
+`tests/local-shortcircuit.test.ts` § "a workspace-output writer anywhere
+keeps an UNRELATED project out of the tier" holds a project with no edge
+to the writer at all, with the same workspace and a project-relative
+output as its control. It fails against the obvious narrowing (exclude
+the declaring node) while the older dependent-of-a-producer row stays
+green — which is why it is a row of its own (item 425).
 
 ## Why the rewrite stays refused
 
