@@ -1804,6 +1804,56 @@ non-empty string` is caught by exactly ONE row, and it is the
       only red rows are the LIST ASSERTING ITSELF is the one with no
       behavioural witness.
 
+498.  DONE (2026-09-20, `cache/git-inputs.ts`'s `parseStatusOutput` —
+      497 proved git's enumeration is the LIVE guard that made
+      `**/.git/**` redundant, and the enumeration itself had never
+      been swept). Started with the two set-valued predicates there,
+      member by member. `autocrlfConverts` is pinned exactly: dropping
+      `'input'` fails "is true only for the values that actually
+      convert".
+      The rename/copy branch is not. `x === 'R'` and `x === 'C'` both
+      survive on their own, and so does removing the branch outright —
+      nothing in the suite changes.
+      Classification took three probes and the first reading was
+      WRONG. Measured: for a rename the source has left the index, so
+      it never had a trusted OID to delete; for a copy (which git only
+      reports under `status.renames=copies`, and only when the source
+      is ALSO modified — measured both) the source is separately
+      reported `M` and is already dirty. So `dirty.add(source)` is
+      indistinguishable in both reachable states, and on that reading
+      the whole branch looked like 497's `.git` again.
+      It is not. The branch's real job is CONSUMING the source token,
+      and that is load-bearing: unconsumed, the loop reads the source
+      path as a status line of its own and adds `slice(3)` of it to
+      the dirty set. `'orig.txt'.slice(3)` is `'g.txt'` — a real,
+      clean, entirely unrelated file, which then loses its trusted OID
+      and is rehashed from the worktree, its key part flipping
+      representation for the duration of somebody else's rename.
+      Measured end to end: `trusted` is `[g.txt, other.txt]` with the
+      branch and `[other.txt]` without.
+      Pinned with a bystander: a root-level rename plus a tracked
+      `g.txt`, asserting the bystander keeps its index OID, with a
+      CONTROL that the rename's own target does NOT (so the row cannot
+      pass on an enumeration that trusts everything). Both
+      differentials red — removing the branch, and keeping the branch
+      but not the `i++`.
+      Note the existing row "staged rename drops trust on both sides"
+      cannot see any of this: it has no bystander, and its `old.ts`
+      half holds either way, since a renamed-away path has left the
+      index and never had an OID to lose. Half of a two-assertion row
+      was already vacuous.
+      Method note: this is the first survivor in the sequence where
+      "redundant" was the WRONG answer, and the thing that caught it
+      was refusing to write the conclusion before probing the third
+      state. The `dirty.add` half really is redundant; the branch
+      containing it is not. A guard can be load-bearing for a reason
+      that is not the one its code appears to be about — so a survivor
+      is classified by what BREAKS when it goes, never by what it
+      looks like it does.
+      Also swept clean in the same pass: `resolveInputs`' boundary
+      rules (3 rows on the outputs side, 7 on the inputs side,
+      principle 6 well held) and the own-outputs exclusion (10+ rows).
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

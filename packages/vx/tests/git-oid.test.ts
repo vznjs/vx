@@ -205,6 +205,39 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     expect(oids!.has(path.join(pkgDir, 'src', 'old.ts'))).toBe(false)
   })
 
+  it('a rename CONSUMES its source token, so a bystander keeps its OID', async () => {
+    // The header above pins the format — `X∈{R,C}` carries the old path as
+    // a SEPARATE NUL token — and the parser's job there is to CONSUME that
+    // token, not to record it. Nothing asserted the consumption. Measured
+    // (item 498): with the branch removed, the source token is read as a
+    // status line of its own, and `'orig.txt'.slice(3)` is `'g.txt'` — so a
+    // real, clean, entirely unrelated file loses its trusted OID and is
+    // rehashed from the worktree, its key part flipping representation for
+    // the duration of somebody else's rename.
+    //
+    // The row above it ("staged rename drops trust on both sides") cannot
+    // see this: it has no bystander, and its own `old.ts` assertion holds
+    // either way, because a renamed-away path has left the index and never
+    // had an OID to lose.
+    //
+    // Project dir IS the workspace root here, so the paths the status walk
+    // emits are the ones asserted — a rename under `pkg/` would slice to
+    // `/src/…`, which names nothing and hides the defect.
+    await writeFile(path.join(root, 'orig.txt'), 'rename me\n')
+    await writeFile(path.join(root, 'g.txt'), 'innocent bystander\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    git(root, 'mv', 'orig.txt', 'new.txt')
+
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [root], memo)
+    const oids = memo.oidsFor(root)
+    expect(oids!.get(path.join(root, 'g.txt'))).toBe(indexOid(root, 'g.txt'))
+    // CONTROL: the rename's own target IS dirty, so this row cannot pass on
+    // an enumeration that trusts everything.
+    expect(oids!.has(path.join(root, 'new.txt'))).toBe(false)
+  })
+
   it('merge-conflict paths (stage > 0) carry no OID but stay in the file list', async () => {
     await writeFile(path.join(pkgDir, 'f.ts'), 'base\n')
     git(root, 'add', '-A')
