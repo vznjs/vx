@@ -114,6 +114,66 @@ describe('two tasks cannot claim the same output', () => {
   })
 })
 
+describe('a literal entry is the file OR its whole tree', () => {
+  // `asTrees` — the rule the input/output resolver and `cleanOutputs` both
+  // read — compiles a literal to itself PLUS its subtree, because `dist`
+  // and `dist/` mean everything under `dist` in Turbo, in `.gitignore` and
+  // here. `"outputs": ["dist"]` is the most common turbo.json shape there
+  // is. The refusal used to compare it as a plain literal, so `dist`
+  // against `dist/app.js` was "no overlap" — and the task declaring `dist`
+  // deleted the other's file on every run, green (item 442, measured
+  // through a real run before this row existed).
+  const swallowed: [string, string][] = [
+    ['dist', 'dist/app.js'],
+    ['dist/', 'dist/app.js'],
+    ['dist', 'dist/**'],
+    ['dist', 'dist/sub/deep.txt'],
+    ['./dist/', 'dist/sub/deep.txt'],
+  ]
+  for (const [wide, narrow] of swallowed) {
+    it(`refuses ${wide} against ${narrow}`, () => {
+      expect(() => graph({ app: { wide: task([wide]), narrow: task([narrow]) } })).toThrow(
+        /both declare the output/,
+      )
+      // Either order — the deletion does not care which task is visited
+      // first, so neither may the refusal.
+      expect(() => graph({ app: { narrow: task([narrow]), wide: task([wide]) } })).toThrow(
+        /both declare the output/,
+      )
+    })
+  }
+
+  it('CONTROL: a literal directory does not swallow a SIBLING directory', () => {
+    // The tree rule reaches down, never sideways. `dist` and `build` are
+    // two trees; `dist` and `distant` are two names, and the second is not
+    // under the first however similar the prefix looks.
+    expect(() => graph({ app: { a: task(['dist']), b: task(['build']) } })).not.toThrow()
+    expect(() => graph({ app: { a: task(['dist']), b: task(['distant/app.js']) } })).not.toThrow()
+    expect(() => graph({ app: { a: task(['dist/a']), b: task(['dist/b']) } })).not.toThrow()
+  })
+
+  it('the tree rule stops where the glob-vs-glob case starts, and that is a LIMIT', () => {
+    // `asTrees` turns the literal `dist` into the glob `dist/**`, so
+    // `dist` against `dist/sub/**` is glob vs glob — the case this file
+    // deliberately leaves undecided rather than risk refusing a working
+    // config. It really does overlap, and vx really will delete it; the
+    // narrow side has to be a LITERAL (or the identical glob) to be
+    // provable without a general intersection algorithm. Pinned so the
+    // hole is a decision and not an accident — this is the second row
+    // that widens when that algorithm arrives.
+    expect(() => graph({ app: { a: task(['dist']), b: task(['dist/sub/**']) } })).not.toThrow()
+  })
+
+  it('CONTROL: a literal FILE has no subtree to swallow with', () => {
+    // `asTrees` gives every literal a `/**` twin, a file included, and
+    // nothing lives under a file — so the twin must match nothing rather
+    // than make two unrelated files collide.
+    expect(() =>
+      graph({ app: { a: task(['dist/app.js']), b: task(['dist/app.js.map']) } }),
+    ).not.toThrow()
+  })
+})
+
 describe('the same path, spelled differently, is the same path', () => {
   // The refusal compares SPELLINGS — two literals for equality, a literal
   // against a glob through `Bun.Glob`, two globs for equality. Every one of
@@ -313,6 +373,47 @@ describe('the data loss itself, end to end', () => {
       await cleanOutputs({ projectDir: dir, outputs: ['dist/**'], nestedProjectDirs: [] })
 
       expect(await Bun.file(path.join(dir, 'dist', 'from-build.js')).exists()).toBe(false)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a LITERAL directory output deletes the tree, which is why it collides', async () => {
+    // The premise the row above assumes for `dist/**` and the refusal now
+    // reads for `dist`: a literal entry is the file OR its whole tree
+    // (`asTrees`), so declaring `dist` wipes everything under it. Without
+    // this, refusing `dist` against `dist/app.js` would be a false
+    // positive — and this file's header calls that worse than the defect.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-collide-lit-'))
+    try {
+      const { cleanOutputs } = await import('../src/cache/index.js')
+      await mkdir(path.join(dir, 'dist', 'sub'), { recursive: true })
+      await writeFile(path.join(dir, 'dist', 'app.js'), 'built by app#emit')
+      await writeFile(path.join(dir, 'dist', 'sub', 'deep.txt'), 'also app#emit')
+
+      await cleanOutputs({ projectDir: dir, outputs: ['dist'], nestedProjectDirs: [] })
+
+      expect(await Bun.file(path.join(dir, 'dist', 'app.js')).exists()).toBe(false)
+      expect(await Bun.file(path.join(dir, 'dist', 'sub', 'deep.txt')).exists()).toBe(false)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('CONTROL: a literal FILE output deletes only that file', async () => {
+    // The other half of the same rule, so the row above cannot pass by
+    // deleting indiscriminately.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-collide-file-'))
+    try {
+      const { cleanOutputs } = await import('../src/cache/index.js')
+      await mkdir(path.join(dir, 'dist'), { recursive: true })
+      await writeFile(path.join(dir, 'dist', 'app.js'), 'mine')
+      await writeFile(path.join(dir, 'dist', 'other.js'), 'not mine')
+
+      await cleanOutputs({ projectDir: dir, outputs: ['dist/app.js'], nestedProjectDirs: [] })
+
+      expect(await Bun.file(path.join(dir, 'dist', 'app.js')).exists()).toBe(false)
+      expect(await Bun.file(path.join(dir, 'dist', 'other.js')).exists()).toBe(true)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

@@ -139,8 +139,11 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 
 `tests/output-collision.test.ts` covers the overlapping-output refusal:
 what is refused, the spellings that name one path (`./dist/**` against
-`dist/**`), and the false-positive controls — the refusal aborts the run,
-so a widening breaks a build that works today.
+`dist/**`), the literal that is a whole tree (`dist` against
+`dist/app.js`) with the clean that proves it, the limit where the tree
+rule meets the undecided glob-vs-glob case, and the false-positive
+controls — the refusal aborts the run, so a widening breaks a build that
+works today.
 
 ## Replacing this module
 

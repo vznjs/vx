@@ -19,9 +19,8 @@ import path from 'node:path'
 import { lstatSync } from 'node:fs'
 import { realpath, rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
-import { isExecutableMissing, UserError } from '../util/index.js'
+import { asTrees, isExecutableMissing, normalizeGlob, UserError } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
-import { normalizeGlob } from '../util/index.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
 // re-exported here so a reader that reaches the resolver for it (the
@@ -584,30 +583,12 @@ function stripTrailingSlash(p: string): string {
   return p.replace(/\/+$/, '')
 }
 
-/**
- * A literal entry names a file OR a directory tree: `src/` and `src` both
- * mean everything under `src`, as they do in Turbo and every `.gitignore`.
- * A glob matcher sees only the literal path, so `['src/']` folded ZERO
- * files — a key that never moves with its source, and the most common
- * turbo.json shape (`"outputs": ["dist"]`) captured nothing. Every
- * literal therefore compiles to itself plus its subtree; a literal that
- * names a file still matches exactly that file, since `x/**` matches
- * nothing under a file.
- */
-export function asTrees(patterns: readonly string[]): string[] {
-  const out: string[] = []
-  for (const raw of patterns) {
-    const p = normalizeGlob(raw)
-    if (!isLiteralPath(p)) {
-      out.push(p)
-      continue
-    }
-    const lit = stripTrailingSlash(p)
-    if (lit.length === 0) continue
-    out.push(lit, `${lit}/**`)
-  }
-  return out
-}
+// The literal-is-a-tree rule moved to `util/paths.ts` (item 442): it
+// decides what a clean deletes as well as what a key folds, and the
+// graph's overlapping-output refusal — which may not import `cache` —
+// has to read the same one. Re-exported here so the cache contract is
+// unchanged.
+export { asTrees } from '../util/index.js'
 
 /** A literal is answered by the path itself or by anything under it. */
 function settleLiterals(unmatched: Set<string>, rel: string): void {

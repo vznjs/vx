@@ -95,3 +95,45 @@ export function normalizeGlob(glob: string): string {
   if (/[*?[\]{}]/.test(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
   return neg ? `!${g}` : g
 }
+
+function isLiteralPath(glob: string): boolean {
+  return !/[*?[\]{}]/.test(glob)
+}
+
+function stripTrailingSlash(p: string): string {
+  return p.replace(/\/+$/, '')
+}
+
+/**
+ * A literal entry names a file OR a directory tree: `src/` and `src` both
+ * mean everything under `src`, as they do in Turbo and every `.gitignore`.
+ * A glob matcher sees only the literal path, so `['src/']` folded ZERO
+ * files — a key that never moves with its source, and the most common
+ * turbo.json shape (`"outputs": ["dist"]`) captured nothing. Every
+ * literal therefore compiles to itself plus its subtree; a literal that
+ * names a file still matches exactly that file, since `x/**` matches
+ * nothing under a file.
+ *
+ * It lives in `util` rather than beside the resolver because it is not
+ * only the resolver's rule. It decides what a clean DELETES, so the
+ * graph's overlapping-output refusal has to read the same one: while it
+ * did not, `dist` and `dist/app.js` compared as two unequal literals and
+ * the run that wiped `dist/app.js` reported success (item 442). `graph`
+ * may not import `cache`, and a second copy is how the two would
+ * disagree — which is exactly what item 441 measured about
+ * `staticPrefix`.
+ */
+export function asTrees(patterns: readonly string[]): string[] {
+  const out: string[] = []
+  for (const raw of patterns) {
+    const p = normalizeGlob(raw)
+    if (!isLiteralPath(p)) {
+      out.push(p)
+      continue
+    }
+    const lit = stripTrailingSlash(p)
+    if (lit.length === 0) continue
+    out.push(lit, `${lit}/**`)
+  }
+  return out
+}
