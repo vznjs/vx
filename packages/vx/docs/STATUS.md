@@ -1099,7 +1099,54 @@ prune` for eviction), a typo of `prune` still gets the
       diff walk tested that error four times instead of the thing it
       was about. The scenario needs two commits.
 
+418.  DONE (2026-09-20, `@vzn/vx-schedule-history` — the last unwalked
+      plugin — and the three baseline failures it turned out to share a
+      cause with). Its `test` task is red in the container baseline, so
+      that came first, and the answer is environmental but only because
+      it was measured: `resourceUsage().maxRSS` for a child that
+      allocates 200 MB reads **235 604** here, which is the kernel's
+      `ru_maxrss` in KILOBYTES. Core reads it as bytes, as Bun documents
+      from the declared floor (>= 1.4), so the value lands 1024× small,
+      falls under the parent-RSS floor, and vx records NO peak; the
+      plugin then has nothing to learn, and the two rows that assert a
+      peak and a learned reservation fail on a null. Core's own canary —
+      "resourceUsageToCpuRss — peak RSS is bytes > reads a known
+      allocation back as bytes, on THIS platform" — is red in the same
+      baseline, which is the canary doing its job. Three baseline
+      failures, one cause.
+      A probe correction on the way, and it is the one CLAUDE.md already
+      warns about in another form: my first reading was
+      `JSON.stringify(proc.resourceUsage())` → `{}`, from which I
+      concluded the runtime reports nothing at all. The fields are
+      non-enumerable getters; reading them directly gave the real
+      number. Stringify is not a way to ask whether a value exists.
+      The rows now assert the premise instead of tripping over it: one
+      measurement at module load (allocate 200 MB, read the peak back,
+      compare against the allocation) and a named failure that says the
+      runtime does not report bytes, which the canary measures. Same two
+      test names, same baseline diff, 7 ms instead of 1.2 s, and on a
+      supported runtime nothing changes — a skip would have been a
+      silent pass.
+      The walk itself found no defect, recorded so it is not re-walked:
+      with an EMPTY history `vx history` says "no task has an execution
+      in the window — run something first" and the first run schedules
+      by core's order; with a THIN history (one run) the JSON carries
+      `maxPeakRssBytes: null` and `reservation: null` rather than a zero
+      or a NaN, so a null peak yields no reservation; and with a STALE
+      history — every recorded task renamed away — the run is unaffected
+      and `vx history` lists only the tasks a run would see now, because
+      the rows are built from the resolved projects and joined to
+      history, not the other way round.
+
 ## In flight
+
+**The gate's baseline in a cloud container (2026-09-19; the RSS family
+diagnosed 2026-09-20, item 418).** Three of the failures are one chain:
+this container's Bun reports `resourceUsage().maxRSS` in the kernel's
+KILOBYTES, core reads the bytes Bun >= 1.4 documents, so every peak reads
+1024× small, falls under the parent-RSS floor and is never recorded —
+core's `resourceUsageToCpuRss` canary rows and both
+`@vzn/vx-schedule-history` memory rows follow from that one fact.
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
 that gates somewhere other than a dev box will see `vx run ci --all`
