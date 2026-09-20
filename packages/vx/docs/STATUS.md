@@ -1388,6 +1388,43 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       Four files swept now (427, 447, 448, 449): ten claims, five
       finds, five refutations.
 
+450.  DONE (2026-09-20, the gate's own flapper turned out to be a real
+      race, and my first two theories about it were both wrong).
+      The `sandbox-runtime.unsafe` row "a persistent task whose literal
+      write grant meant a directory" had gone red three times in a day,
+      each time passing alone and on a re-run, and each time it cost an
+      investigation. It is the instrument the whole sweep method reads,
+      so it was worth root-causing rather than re-running.
+      REFUTED first: not the row's `timeout: 5000` against a loaded box.
+      The failing run took 117 ms, not five seconds. Reproduced under a
+      real parallel gate (1 red in 8) and read the actual output: the
+      task RAN, its own `mkdir` refused with the words `File exists`,
+      and the hint that exists to explain exactly that message was
+      absent.
+      REFUTED second: the union in `execute-task` that a comment dated
+      the same morning says closes this. It does not. A failed
+      persistent task has two askers for the placeholder sweep — the
+      child's exit handler and the readiness failure that prints the
+      hint — and the union covers an exit handler that FINISHED. One
+      still between its `rm` and its return has published nothing yet,
+      and the readiness path's own second sweep finds the file already
+      gone, so BOTH lists are empty and the hint is lost. The test row
+      that pins the second-sweep property even ended "execute-task now
+      reports the union of both sweeps", which is a comment claiming a
+      guarantee the code lacked.
+      Proven, not argued: delaying each side in turn (a sweep that lags
+      between its `rm` and its return, and a readiness path that starts
+      late) makes it red 3 of 3. Note which interleaving actually loses
+      it — two raw sweeps started TOGETHER both stat before either
+      removes, so they agree; a control asserting they disagree failed,
+      and rightly. It is the asker that arrives after the first `rm`.
+      Fixed by sharing ONE sweep: `placeholderSweeper` memoizes the
+      promise, so the answer no longer depends on who asked first.
+      Green 5 of 5 under the exact interleaving that was red. Pinned by
+      a row that asks the shared sweeper concurrently AND after it has
+      resolved, with the existing second-sweep row as its control; red
+      when the memo is removed.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family

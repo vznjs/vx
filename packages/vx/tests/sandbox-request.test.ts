@@ -12,6 +12,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/index.js'
 import {
+  placeholderSweeper,
   sandboxRequestFor,
   sweepPlaceholders,
   untouchedPlaceholderLine,
@@ -122,17 +123,39 @@ describe('sweepPlaceholders takes back what the task never wrote', () => {
     expect(await kind(path.join(dir, 'dist/vx'))).toBe('none')
   })
 
-  // The property the persistent path's two sweeps race over: the SECOND
+  // The property the persistent path's two askers race over: the SECOND
   // sweep returns nothing, because the first one already removed the file.
   // Reading only the second one lost the "named nothing on disk" hint
   // whenever the child's exit handler swept first, and the failure then
   // said only "File exists" — the message the hint exists to explain
-  // (seen twice under the gate's parallel load, 2026-09-20). execute-task
-  // now reports the union of both sweeps.
+  // (seen under the gate's parallel load, 2026-09-20).
   it('a second sweep names nothing: the first one took it', async () => {
     const r = await requestFor(['dist/vx'])
     expect(await sweepPlaceholders(r.placeholders)).toEqual([path.join(dir, 'dist/vx')])
     expect(await sweepPlaceholders(r.placeholders)).toEqual([])
+  })
+
+  // So execute-task shares ONE sweep rather than running a second and
+  // unioning the lists. The union looks equivalent and is not: it covers
+  // an exit handler that FINISHED, while one still between its `rm` and
+  // its return has published nothing, and the readiness path's own sweep
+  // then finds the file already gone. Both lists are empty and the hint
+  // is lost — reproduced deterministically by delaying each side in turn
+  // (item 450), which is the flake the row above was written after.
+  // The row ABOVE is this one's control: asked raw, the late caller gets
+  // an empty list. Note which interleaving actually loses the hint — two
+  // RAW sweeps started together both stat before either removes, so they
+  // agree; it is the caller that arrives after the first `rm` that is
+  // served nothing, and under load that is the readiness path. Both
+  // shapes are asked here, concurrent and after.
+  it('every asker of a shared sweep gets the same list, concurrently or after', async () => {
+    const r = await requestFor(['dist/vx'])
+    const sweep = placeholderSweeper(r.placeholders)
+    const [first, second] = await Promise.all([sweep(), sweep()])
+    expect(first).toEqual([path.join(dir, 'dist/vx')])
+    expect(second).toEqual([path.join(dir, 'dist/vx')])
+    expect(await sweep()).toEqual([path.join(dir, 'dist/vx')])
+    expect(await kind(path.join(dir, 'dist/vx'))).toBe('none')
   })
 
   it('a placeholder the task wrote is its output and stays', async () => {

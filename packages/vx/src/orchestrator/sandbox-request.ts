@@ -286,6 +286,23 @@ export async function sweepPlaceholders(placeholders: readonly Placeholder[]): P
 }
 
 /**
+ * One sweep, however many askers, each getting the SAME list.
+ *
+ * A failed persistent task has two askers — the child's exit handler and
+ * the readiness failure that reports the hint — and a second
+ * `sweepPlaceholders` cannot serve the later one: the first one's `rm`
+ * already happened, so it finds nothing and names nothing. Collecting
+ * both lists and unioning them does not close it either, because a sweep
+ * still between its `rm` and its return has published nothing yet, and
+ * the union is then empty on both sides. Sharing the one promise is what
+ * makes the answer independent of who asked first.
+ */
+export function placeholderSweeper(placeholders: readonly Placeholder[]): () => Promise<string[]> {
+  let once: Promise<string[]> | undefined
+  return () => (once ??= sweepPlaceholders(placeholders))
+}
+
+/**
  * The line a failed task gets for a placeholder it never wrote. Not a
  * diagnosis — the task may have died before its first write — but the
  * one clue to the trap: a grant that meant a directory is bound as a
