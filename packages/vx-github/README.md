@@ -63,6 +63,13 @@ permissions:
 
 Without the token the check is silently skipped (the job summary still
 writes); pass `checks: true` to warn instead, or `checks: false` to opt
-out entirely. A failed POST warns and never fails the run. On
-`pull_request` events `GITHUB_SHA` is the merge commit; GitHub still
-surfaces the check on the PR.
+out entirely. A failed POST warns and never fails the run — a `403` says
+to check `permissions: checks: write` — and a slow API costs the run
+nothing past core's end-of-run flush deadline. On `pull_request` events
+`GITHUB_SHA` is the merge commit; GitHub still surfaces the check on the
+PR.
+
+Both artifacts are bounded by GitHub's own limits, because exceeding
+either loses the whole thing rather than its tail: the check-run output
+at 65 535 characters, the job summary at 1 MiB (about 19 000 task rows).
+Past either, what is written ends with a line saying it was truncated.

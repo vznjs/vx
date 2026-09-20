@@ -10,6 +10,7 @@ import { run } from '@vzn/vx'
 import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { github, GithubSummarySink } from '../src/plugin.js'
+import { MAX_JOB_SUMMARY_BYTES } from '../src/summary.js'
 import { renderJobSummary } from '../src/summary.js'
 
 const GITHUB_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -155,6 +156,47 @@ describe('github() activation', () => {
     expect(writes.length).toBe(1)
     expect(writes[0]![0]).toBe('/tmp/sumfile.md')
     expect(writes[0]![1]).toContain('a#build')
+  })
+
+  it('what it appends is bounded by GitHub’s 1 MiB job-summary cap', async () => {
+    // The Checks payload has been clamped since it was written; the FILE was
+    // not, and GitHub rejects a step summary past 1 MiB outright — so an
+    // unbounded page costs the whole summary, not its tail. At the measured
+    // ~55 bytes a row that is ~19 000 tasks, which this repo's own bench
+    // generates (5 000 projects × four tasks), so it is reachable
+    // (2026-09-20).
+    const writes: string[] = []
+    const sink = github({
+      summaryFile: '/tmp/sumfile.md',
+      checks: false,
+      append: async (_f, md) => void writes.push(md),
+    }).telemetry!(ctx) as GithubSummarySink
+    const many = Array.from({ length: 25_000 }, (_, i) =>
+      task({ taskId: `project-with-a-long-name-${i}#build` }),
+    )
+    sink.onRunSummary!(summary(many))
+    await sink.flush!()
+    expect(writes.length).toBe(1)
+    const written = writes[0]!
+    expect({ overCap: written.length > MAX_JOB_SUMMARY_BYTES }).toEqual({ overCap: false })
+    expect(written).toContain('truncated by @vzn/vx-github')
+    // The head survives: the verdict and the stats line are what a reader
+    // needs, and they are rendered before the table.
+    expect(written.startsWith('## ')).toBe(true)
+    expect(written).toContain('**25000** tasks')
+  })
+
+  it('CONTROL: an ordinary summary is appended whole, with no truncation tell', async () => {
+    const writes: string[] = []
+    const sink = github({
+      summaryFile: '/tmp/sumfile.md',
+      checks: false,
+      append: async (_f, md) => void writes.push(md),
+    }).telemetry!(ctx) as GithubSummarySink
+    sink.onRunSummary!(summary([task({}), task({ taskId: 'b#build' })]))
+    await sink.flush!()
+    expect(writes[0]).not.toContain('truncated by @vzn/vx-github')
+    expect(writes[0]).toContain('b#build')
   })
 
   it('a run with no summary emitted flushes to nothing', async () => {

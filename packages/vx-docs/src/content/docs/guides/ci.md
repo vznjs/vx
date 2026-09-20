@@ -117,8 +117,15 @@ permissions:
 ```
 
 Without the token the check is skipped and the summary still writes;
-`github({ checks: true })` warns instead, `checks: false` opts out. The
-plugin's README has the options and the rest.
+`github({ checks: true })` warns instead, `checks: false` opts out. A
+refused POST warns with the status (a `403` names the missing
+`permissions: checks: write`) and never fails the run, and an API that
+stalls is cut off by core's end-of-run deadline. Both artifacts are
+bounded by GitHub's own limits — the check output at 65 535 characters,
+the job summary at 1 MiB, roughly 19 000 task rows — because past either
+GitHub drops the whole thing rather than the tail; what is written then
+ends with a line saying so. The plugin's README has the options and the
+rest.
 
 ## Without `--affected`
 

@@ -1039,6 +1039,35 @@ prune` for eviction), a typo of `prune` still gets the
       finishes at the same ~150 ms; and with no endpoint configured the
       plugin declines in silence. The run exited 0 in every case.
 
+416.  DONE (2026-09-20, `@vzn/vx-github` walked as a workflow runs it:
+      the GITHUB_* environment Actions provides, a real job-summary file,
+      a stub Checks API). Item 415's defect is NOT here, which was the
+      first thing checked: `postCheckRun` reads `res.ok`, warns with the
+      status and the API's own message, and a 403 even names the missing
+      `permissions: checks: write`. Recorded so the shape is not
+      re-checked a third time.
+      What the walk confirmed end to end, every case exiting 0: a healthy
+      environment appends the summary and POSTs one check-run in ~175 ms;
+      a 403 and a 500 each warn once and cost nothing; an API that never
+      answers costs 3.1 s and ends on core's flush deadline — the POST
+      carries no deadline of its own, and the pending fetch does NOT hold
+      the process, which was the open question (the otel sink's own
+      comment warns that an un-unref'd timer does); with no token the
+      check declines in silence and the summary still writes; and every
+      run APPENDED, leaving an earlier step's content in the file intact.
+      The find is a size asymmetry. The check-run output has been clamped
+      to GitHub's 65 535 since it was written; the job-summary FILE was
+      not, and GitHub rejects a step summary past 1 MiB outright — so an
+      oversized page costs the adopter the whole summary rather than its
+      tail. Measured rather than assumed: ~55 bytes a row (290 bytes at 2
+      tasks, 539 094 at 10 000, 1 364 094 at 25 000), so the cap lands at
+      about 19 000 tasks — which this repo's own bench generates at 5 000
+      projects × four tasks. `clampJobSummary` now bounds it with the
+      same kind of tell, cutting from the END so the verdict, the stats
+      line and the Failures section survive. Two pins: the clamp (fails
+      without it) and a CONTROL that an ordinary summary is appended
+      whole with no truncation line.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
