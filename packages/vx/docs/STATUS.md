@@ -992,6 +992,46 @@ fallback (and stay cache-hits)`. 471's fast filter simply did
       command's 127 is attributed to its FIRST word whatever line
       failed — a wrong diagnostic riding the same regex, now held by
       the row above.
+480.  DONE (2026-09-20, `orchestrator/execute-task.ts` — 846 lines, the
+      file `CLAUDE.md` calls stale-hit-critical and the one every task
+      passes through; never swept before). Six mutations, five caught,
+      and the five are worth naming because each is a comment that
+      claims a guarantee and each turns out to have a row that measures
+      it. Dropping the taint guard (`willSave = willWrite &&
+args.taintedUpstream !== true`) fails "--continue=always never
+      caches a task built behind a failure". Letting a sandbox
+      violation ride a zero exit fails two rows. Dropping the
+      timeout's trap-exit-0 rewrite fails "a timed-out task that TRAPS
+      SIGTERM and exits 0 is failed + NOT cached (no partial-output
+      replay)" — the row names the replay its guard prevents.
+      Silencing the matched-nothing warning and the untouched-
+      placeholder clue each fail their own diagnostic row (470's
+      lesson, held here already).
+      THE FIND is `refresh`. `--force` means "re-execute everything
+      (skip reads) but still refresh the cache", and vx's own cache
+      honours it through the policy gates — but an EXECUTOR keeps its
+      own record of what it has run, which no policy of vx's reaches
+      inside. `ExecuteRequest.refresh` is the entire channel, set by
+      one line in `buildRequest` when no read axis is on. Delete that
+      line and the whole repo stays green.
+      What makes it a hole rather than a gap: the CONSUMER half IS
+      pinned — `@vzn/vx-reapi`'s "refresh (--force) bypasses the
+      execution record and re-executes", with a control. But that row
+      builds its own request, so it says nothing about whether core
+      ever SETS the flag, and reapi is also the one suite that needs
+      live service containers the gate cannot host. Two halves of one
+      boundary, the load-bearing half unasserted, and the survival
+      hides behind a row that reads as covering it — 471's
+      wrong-survivor shape and 477's untested-platform shape meeting
+      in one place.
+      Consequence: `vx run --force` against a workspace with a remote
+      executor is served that executor's cached answer, and the user's
+      explicit re-execute is silently ignored on exactly the tasks
+      that went remote. Pinned at the PRODUCER, in core, with a
+      capturing executor: reads off sets it, the default policy does
+      not (or every ordinary run pays a remote re-execution), and an
+      uncacheable task never does. Differential BOTH ways — never set
+      and always set each redden a different assertion of the row.
 
 ## In flight
 
