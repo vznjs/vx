@@ -1403,6 +1403,45 @@ await resetSandbox()`, whose comment says "otherwise SRT keeps
       Fifth in the run 481, 483, 485, 486, 487 — and the first where
       the second layer, while genuinely refusing, leaves the system
       dirtier than the first would have.
+489.  DONE (2026-09-20, `cache/layered-cache.ts`'s degrade paths and
+      the two temp cleanups). A HELD report with one classified
+      survivor, and it answers the question 488 raised rather than
+      just repeating its method.
+      The three degrade-to-miss paths are pinned by rows that name
+      them: making a corrupt remote artifact throw instead of degrade
+      fails "get() degrades a corrupt remote artifact to a miss
+      instead of throwing"; accepting a malformed plugin result fails
+      "get() that resolves the wrong shape is named as the plugin bug
+      and degraded to a miss"; dropping the local-already-has
+      short-circuit fails TWO rows, including the provenance one
+      ("keeps source local when the pull skipped the remote") that
+      exists so a warm-local hit is not mislabelled remote.
+      488's new question was whether a second layer that refuses also
+      CLEANS UP, since there it did not. Measured here rather than
+      assumed: three corrupt-remote shapes — garbage bytes, a
+      well-formed archive with no stdout entry, a truncated frame —
+      each degrade to a miss and each leave the cache directory
+      holding nothing but its own `.gitignore`. The degradation is
+      tidy, which is the answer 488 could not give for its own guard.
+      THE SURVIVOR is one of the two temp cleanups. `ingest`'s is
+      pinned exactly, by "ingesting a large artifact cut mid-stream
+      refuses it and leaves no temp file". The PACK path's — whose
+      comment promises "the partial temp must not outlive the
+      failure" — has nothing, and the reason is that its window is
+      genuinely hard to reach: an output that vanishes or changes
+      shape BETWEEN the plan's stat and its read. Probed three ways
+      (delete late outputs mid-pack, delete after a separate plan
+      pass, delete before the save at all) and it never fired; the
+      last one is why, and it is worth recording: a missing output is
+      refused at the PLAN stage with a UserError ("output dist/f2.bin
+      is a dangling symlink") before a temp exists to leak.
+      So the cleanup guards a real TOCTOU window that the plan-stage
+      validation pre-empts for every case a test can construct.
+      Recorded, not pinned, and deliberately WITHOUT the seam 487
+      added: there the seam bought a live bomb defense its own module
+      promised, here it would buy a cleanup for a window nothing
+      reachable enters. A seam needs a reason proportional to what it
+      exposes.
 
 ## In flight
 
