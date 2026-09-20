@@ -2190,6 +2190,41 @@ result)` after) keeps working without it. Its failure mode is
       where a defect would hurt, age says where one is still likely
       to be.
 
+509.  DONE (2026-09-20, `orchestrator/run-context.ts` — the FIRST item
+      selected by 508's age rule, and it paid on the first try after
+      three held reports).
+      The selector needed a substitute: this checkout's per-file git
+      history is unusable (every source file reports ONE commit), so
+      age came from the newest DATED COMMENT in each file, which this
+      repo writes everywhere. `run-context.ts` tops that list at
+      2026-07-14, six weeks older than anything else.
+      Two real gaps, both the shapes this sweep keeps finding.
+      THE CASE FOLD. `isTruthy` rejects undefined, `''`, `'0'` and
+      `'false'`, lower-casing before that last compare. The `''` and
+      `'0'` members each fail a row; the FOLD fails nothing. So
+      `CI=False` — what a PowerShell `$false` and several CI templates
+      write — is reported as running in CI, in the invocation header
+      every run carries. 494's alphabet again: the fixture spelled it
+      one way. Pinned with a row per spelling (`false`, `False`,
+      `FALSE`, `fAlSe`) plus a control that an unrecognised value is
+      still CI, so the rows cannot pass on a predicate that calls
+      everything falsy. Three rows redden.
+      THE SCP GATE. `normalizeRemoteUrl` strips `:NNNN` only when the
+      URL HAD a protocol, because the scp shorthand `host:path` has no
+      port and its first segment may be numeric. The strip fails a
+      row; the GATE fails nothing — so `git@host:2222/o/r`, where 2222
+      is a directory, silently lost it and collided with any other
+      repo at `host/o/r`, giving two repositories one workspace id.
+      Pinned on BOTH sides (503's rule): the protocol form strips,
+      the scp form keeps, and a control that the ordinary spellings
+      still agree.
+      Method note: the age rule's first outing produced two finds
+      where cost-ranking had just produced three held reports in a
+      row. That is one data point, not a law — but the mechanism is
+      plausible enough to keep: a file nobody has touched in six weeks
+      has had six fewer weeks of someone reading it while fixing
+      something adjacent.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
