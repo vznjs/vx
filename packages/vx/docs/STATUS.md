@@ -954,6 +954,40 @@ package.json)` too, where the value is the file's git blob OID —
       `pipeline-with-seams.md` was read too and holds: all thirteen
       hooks, in order.
 
+399.  DONE (2026-09-20, a read with NO finding, recorded so it is
+      not repeated). Three blog posts and a sample of the module
+      pages' negative claims, all holding.
+      `from-turborepo.md`: every `turbo.json` row agrees with
+      `migrate/from-turborepo.md`, `extends` included (item 382's fix
+      is in BOTH copies), and `site-samples` already runs an
+      `it.each` over the two pages against the mapper's
+      `KNOWN_TASK_KEYS`. One apparent error was chased and refuted:
+      the post says an uninferable value becomes a `TODO(vx-migrate)`
+      COMMENT, and the first grep found only `migrate-nx.ts`'s
+      PLACEHOLDER, a failing command on the Nx path —
+      `migration.ts:320` renders `// TODO(vx-migrate): ${todo}`, so
+      the post is right.
+      `watch-mode.md`: the 150 ms debounce, the ignore set, and
+      exactly the seven flags `watch.ts` rejects across its three
+      rejection sites — already derived by `site-samples:391` from
+      the rejection messages themselves.
+      `lock-and-frozen.md`: `--frozen` does no staleness check of its
+      own, `vx lock --check` is the audit, `vx-lock.json` is excluded
+      from every key. All three match `cli.md` and `caching.md`.
+      Then the surface 14ag named next, `modules/`' "What it does NOT
+      do" sections — fourteen pages, negative claims nothing checks.
+      Six sampled against source and every one true: `metrics.ts`
+      opens and closes nothing and writes no rows
+      (`cache/run-history.ts` holds `recordRunBundle`);
+      `task-log-buffer.ts` ships nothing and does export `takeEntry`;
+      `filter.ts` has no `**` in NAME patterns (the `**` it has is
+      the path form the page distinguishes); `kill-tree.ts` does not
+      reap; `signals.ts` touches the logger only through `runEnd()`.
+      Recorded rather than dropped: 14ae's box says a page that reads
+      true is still read, since the series' worth is the coverage and
+      not the find count. Two consecutive reads at zero yield is the
+      signal that this arc has covered its surface.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
