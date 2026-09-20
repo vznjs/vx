@@ -1162,6 +1162,35 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       fixture, but the reasoning pattern is the one this item just
       caught being wrong.
 
+462.  DONE (2026-09-20, acting on 461's method lesson rather than on
+      claim density: if a one-at-a-time sweep is blind to layered
+      guards, go find the other layers).
+      THE SAME GUARANTEE HAS THREE SITES, not two. 461 pinned the
+      staged load and selection; `prepare.ts` refuses the same thing a
+      third time, and removing THAT one alone also leaves the whole
+      repo green. So all three were unpinned while an e2e row named "a
+      frozen run with no lock is refused by selection" passed happily —
+      it drives the real CLI, so ANY surviving layer satisfies it. That
+      row is exactly the false confidence the lesson describes.
+      The third layer is not redundant. `prepare` is what an EMBEDDER
+      reaches: `run({ frozen: true })` through the façade never touches
+      the two CLI layers, so without it the run proceeds with a null
+      lock and evaluates configs LIVE — under a flag whose entire
+      meaning is "read them from the lock". Pinned through the
+      programmatic entry with a control (the same call without `frozen`
+      succeeds), red with that guard removed and green with it.
+      THE SEARCH, recorded because the negative result is the useful
+      part: this is the repo's ONLY layered guarantee of that shape.
+      `FROZEN_WITHOUT_LOCK` is the one shared error constant with more
+      than one throw site (three); the only duplicated refusal TEXT is
+      four different field validations inside `config-schema.ts`, which
+      are separate rules rather than redundant layers of one; and the
+      boundary law's two enforcements (glob resolution and the sandbox)
+      are different guarantees at different levels, not layers — a
+      mutation of one is not covered by the other. So the blind spot
+      461 found has now been swept to its edge rather than left as a
+      standing worry.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family

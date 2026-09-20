@@ -101,4 +101,29 @@ describe('--frozen selection reads the lock', () => {
     },
     TIMEOUT,
   )
+
+  // The row above drives the real CLI, so it is satisfied by ANY of the
+  // three layers that refuse this (selection, the staged load, and
+  // prepare) — which is precisely how all three came to be unpinned
+  // while a row named for the behaviour passed (item 461, then 462).
+  // This one takes the PROGRAMMATIC entry, where the two CLI layers do
+  // not exist: an embedder calling `run({ frozen: true })` reaches
+  // prepare and nothing else. Without prepare's guard the run proceeds
+  // with `lock === null`, evaluating configs LIVE under a flag whose
+  // whole meaning is "read them from the lock".
+  it(
+    'the programmatic run refuses too — prepare is the only layer an embedder meets',
+    async () => {
+      await Bun.$`rm ${path.join(root, 'vx-lock.json')}`.quiet()
+      const { run } = await import('../src/orchestrator/index.js')
+      // Control: the same call without `frozen` gets past this point, so
+      // the rejection below is the flag and not a broken fixture.
+      const ok = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect(ok.ok).toBe(true)
+      await expect(
+        run({ cwd: root, tasks: ['build'], frozen: true, handleSignals: false }),
+      ).rejects.toThrow(/--frozen requires vx-lock.json/)
+    },
+    TIMEOUT,
+  )
 })
