@@ -1722,6 +1722,52 @@ non-empty string` is caught by exactly ONE row, and it is the
       drifted, and the test could only ever be as complete as the
       narrower one.
 
+496.  DONE (2026-09-20, `exec/sandbox-runtime.ts` — 495 named the three
+      sandbox copies of the literal-vs-glob predicate as the next
+      target, and the measurement said DON'T unify them). Probed
+      before touching anything: a real sandboxed workspace, one task
+      per grant spelling, each writing the files it declares.
+      `g/**` ok (collapses to the directory), `g/a.txt` ok (a
+      file-shaped grant, widened to its directory), and `g/*`,
+      `g/*.txt`, `g/?.txt`, `g/[ab].txt` ALL FAILED with
+      `bash: g/a.txt: Read-only file system`.
+      That is the documented contract, not a defect: `expandGrants`
+      says a bind "covers what exists when the task STARTS… declare
+      its directory instead". What it is not is DISCOVERABLE — the
+      failure names neither vx nor the grant, and it is the user's own
+      tool reporting it, the same shape as the `bun build --compile`
+      network-error confusion in item 247.
+      So the report, not a behaviour change: a write grant that
+      expands to nothing says so once, before the task runs, and names
+      the directory to grant instead. The remedy is `staticPrefix` —
+      the directory the pattern was IN — and deliberately not the
+      scan's anchor, which is one component higher (`dirname` of the
+      literal head, so the relative pattern keeps its wildcard) and
+      would tell the user to grant the parent of what they meant.
+      Reads are NOT reported: a read grant matching nothing is
+      ordinary (an optional file, a cache not yet populated).
+      AND THE 495 FOLLOW-THROUGH IS REFUSED, on the measurement.
+      `write: ['g/{a,b}.txt']` SUCCEEDS today — the classifier here
+      counts only `*?[]`, so a brace grant is treated as a file,
+      placed, and widened to its directory. Giving this site the
+      shared `isLiteralPattern` would move that spelling into the scan
+      and turn a working grant into `Read-only file system`. The two
+      predicates answer different questions: whether a declaration
+      must be MATCHED against other declarations (495), and whether a
+      grant can be MOUNTED (here). Both sites now say so, so the next
+      sweep does not "finish" 495 by regressing this.
+      Three differentials, all red: deleting the report, reporting
+      READS as well, and naming the parent directory as the remedy.
+      Method note, and it cost a round: the read CONTROL was INERT the
+      first time. The report is once per grant PATH, and the control
+      reused `g/*.txt` — the same path the write row had just
+      reported — so the warn-once set silenced it and the
+      "reports reads too" mutation passed. A control that shares
+      state with the row it controls is not a control; it now uses a
+      different pattern, and the mutation reddens. That is 483's "one
+      control sample is not a control" in a new costume: here the
+      sample was distinct but the MEMO was not.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

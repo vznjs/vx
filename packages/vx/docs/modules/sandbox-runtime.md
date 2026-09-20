@@ -255,6 +255,37 @@ file's siblings — and it is the narrowest thing the mechanism can
 express; the alternative is a declared output the task cannot produce.
 macOS matches paths rather than mounting, so the grant stays exact there.
 
+## A write grant that mounts nothing
+
+A bind covers what exists when the task STARTS, so a Linux write grant
+whose pattern matches nothing yet binds nothing at all. Measured, one
+task per spelling, each writing the files it declares:
+
+| `allow.write` | outcome                                            |
+| ------------- | -------------------------------------------------- |
+| `g/**`        | ok — collapses to the directory                    |
+| `g/a.txt`     | ok — a file-shaped grant, widened to its directory |
+| `g/*`         | `bash: g/a.txt: Read-only file system`             |
+| `g/*.txt`     | same                                               |
+| `g/?.txt`     | same                                               |
+| `g/[ab].txt`  | same                                               |
+
+That is the documented contract rather than a defect, but the failure
+names neither vx nor the grant, so `expandGrants` reports the grant
+itself — once per grant, before the task runs — and names the directory
+to grant instead (`staticPrefix`, the directory the pattern was in, not
+the scan's anchor one component above it). Read grants are not reported:
+a read matching nothing is ordinary.
+
+`write: ['g/{a,b}.txt']` is ok, because the classifier here counts only
+`*?[]` and a brace-spelled grant is therefore treated as a file — placed,
+then widened to its directory. It deliberately does NOT read
+`isLiteralPattern`, the shared predicate item 495 unified, which also
+counts `{}`: doing so would move that spelling into the scan and turn a
+working grant into `Read-only file system`. The two predicates answer
+different questions — whether a declaration must be MATCHED against
+other declarations, and whether a grant can be MOUNTED.
+
 ## macOS cannot nest
 
 `sandbox_apply` is refused inside a sandboxed process, at any permission

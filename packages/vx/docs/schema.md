@@ -899,6 +899,13 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd.
 
+A Linux WRITE grant that matches nothing when the task starts therefore
+mounts nothing, and the task's first write under it fails with
+`Read-only file system` — a message naming neither vx nor the grant. vx
+reports that grant itself before the task runs, once, and names the
+directory to grant instead. A read grant matching nothing is ordinary
+(an optional file, a cache not yet populated) and is not reported.
+
 **A write grant's shape.** A write path that does not exist yet is
 created before the task starts (a mount needs something to bind), and a
 literal names a FILE: `write: ['dist/vx']` is an empty `dist/vx` the
