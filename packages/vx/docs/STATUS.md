@@ -1148,8 +1148,69 @@ args.taintedUpstream !== true`) fails "--continue=always never
       rows are stronger for it: they now assert that the two watchers
       agree, which is the guarantee, instead of encoding the way they
       differed.
+483.  DONE (2026-09-20, `orchestrator/run.ts` and the unresolved-task
+      rule it enforces). The rule — "a CI job that renames a task must
+      go red, not silently stop running it" — has ONE producer
+      (`unresolvedRequests`, graph/task-graph.ts) and THREE enforcement
+      sites: the run path (run.ts:206), the plan builder (run.ts:932),
+      and the CLI's `--dry`/`--graph` path (cli/run.ts:565). Mutating
+      them separately is the whole method here, and the first attempt
+      refused to run: the same guard text appears TWICE in run.ts, and
+      a uniqueness assertion caught it before it mutated the wrong
+      copy. Redone line-targeted.
+      The four verdicts differ, which is the point. The producer fails
+      EIGHT rows. The run path fails five. The plan builder fails one.
+      The CLI's dry-run path fails NOTHING — the survival a
+      whole-file mutation would have hidden behind the other three,
+      and exactly the "suspect a second copy of the rule first" case.
+      Why it survives: the guard directly below it
+      (`plan.tasks.length === 0`) catches the same case and returns the
+      same 1, because the plan builder hands back `{ tasks: [] }` for
+      an unresolved ask. So the FAILING is held twice — 481's find-one
+      one layer up — and what this site carries alone is WHICH names
+      the message blames. Read off the real CLI, not reasoned:
+      pristine: no projects declare task(s): typo-here.
+      disabled: no projects declare task(s): build, lint, typo-here.
+      Two perfectly good tasks named as the problem. On a long task
+      list with one typo that is the difference between a pointed
+      message and a useless one, and the run path pins this precision
+      five times over while the dry-run path had nothing: the same
+      user-facing rule held on one path and unheld on the other.
+      Pinned in cli.test.ts with the control that carries it — each
+      resolving name asserted ABSENT individually, because a
+      `toContain` on the good line passes under the fallback's wording
+      too. Differential: with the guard disabled the row receives the
+      three-name message.
+      Method note, recorded because it nearly went the other way. The
+      gate came back with the NAMES yardstick identical and one new
+      failing TASK — `shard-9`, exit 132, a Bun `panic(main thread):
+Segmentation fault`, no failing row. Shard-9 does not hold
+      `cli.test.ts`, the only test file this item touches, and the
+      shard file lists are byte-identical with and without the diff;
+      but the shard then crashed 2/2 on the changed tree and passed
+      once pristine, which looked like proof of the opposite. It is
+      not: no file in the shard crashes alone, and an INTERLEAVED A/B
+      settles it — pristine 1/10 crashes, changed 3/11. Both sides
+      crash, so it is a flaky runtime segfault in a 17-file
+      single-process shard, and the 2/2 was the coincidence. One
+      control sample is not a control; the repo already learned this
+      as "two measured quantities sit on jitter" (item, 2026-09-16).
+      Left unpinned and NOT added to the task baseline — it is Bun's
+      crash, not a vx behaviour, and a baseline entry would hide a
+      real shard-9 failure later. Noted under In flight instead.
 
 ## In flight
+
+**`shard-9` segfaults about 1 run in 8, on any tree (measured
+2026-09-20, item 483).** `bun test` over the shard's 17 files in ONE
+process dies with `panic(main thread): Segmentation fault` and exit 132
+(128 + SIGILL) — Bun's own message says it is a bug in Bun. No file in
+the shard reproduces it alone. Interleaved A/B, same file list both
+ways: pristine 1/10, a docs-and-one-unrelated-test diff 3/11. It is
+deliberately NOT in the task baseline: a baseline entry would swallow a
+real shard-9 failure. When a gate run shows shard-9 failed with the
+NAMES yardstick unchanged and no `(fail)` row, re-run the shard before
+reading anything into it.
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
 diagnosed 2026-09-20, item 418).** Three of the failures are one chain:
