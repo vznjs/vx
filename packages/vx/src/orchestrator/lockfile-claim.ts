@@ -127,8 +127,19 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         // installed tree is in question, and core's answer (all) is right.
         if (change.before === null || change.after === null) return undefined
         if (scope === 'workspace') return undefined
-        const before = digest(decode(change.before))
-        const after = digest(decode(change.after))
+        // WHICH side failed is the whole difference between "your
+        // lockfile is broken" and "the base commit's is" — a migration
+        // commit hits the second, and the bare parser message named
+        // neither (2026-09-20).
+        const sideOf = (bytes: Uint8Array, side: string): ReadonlyMap<string, string> => {
+          try {
+            return digest(decode(bytes))
+          } catch (err) {
+            throw new Error(`${err instanceof Error ? err.message : String(err)} (${side})`)
+          }
+        }
+        const before = sideOf(change.before, `as of the base ref`)
+        const after = sideOf(change.after, `in the working tree`)
         const names: string[] = []
         for (const p of ctx.projects) {
           const importer = importerOf(ctx.workspaceRoot, p.dir)

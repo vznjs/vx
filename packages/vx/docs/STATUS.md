@@ -1068,6 +1068,37 @@ prune` for eviction), a typo of `prune` still gets the
       without it) and a CONTROL that an ordinary summary is appended
       whole with no truncation line.
 
+417.  DONE (2026-09-20, `@vzn/vx-lockfile` walked as an adopter — the
+      package closest to the worst failure class, since a mis-read
+      lockfile gives a task the wrong dependency closure and a stale hit
+      replays wrong bytes under a green run).
+      The precision holds, end to end on a real workspace: changing ONE
+      package's resolution in `bun.lock` moved `api#build`'s key
+      (e25a09ee → e23c5db3) and left `web#build`'s untouched
+      (d835c782 both times), and `--affected` across that commit
+      selected api alone. Two controls: identical lockfiles select
+      nothing, and a change that moves the root's digest selects the
+      project the lockfile has no importer for.
+      What it does with a lockfile it cannot read is also right — the
+      run REFUSES, exit 1, rather than keying on nothing. Only the
+      message was wrong, twice: the parsers name their own file and the
+      plugin prefixed it again ("bun.lock: bun.lock: Failed to parse
+      JSONC"), and nothing said what to do. It now prefixes only what
+      does not already name the file and ends with the install that
+      regenerates it.
+      The `--affected` half had a sharper gap: the diff digests BOTH
+      sides, so a base ref whose lockfile the current plugin cannot read
+      — exactly what a lockfile-migration commit leaves behind — failed
+      with the same bare message as a broken file in hand. Two very
+      different problems with two different fixes. `lockfileClaim` now
+      names the side: "(as of the base ref)" or "(in the working
+      tree)". Two pins, both failing without their fix, each with a
+      control that parses on both sides.
+      Probe correction worth keeping: `--affected` on a repository with
+      ONE commit answers "no base here", so the first version of the
+      diff walk tested that error four times instead of the thing it
+      was about. The scenario needs two commits.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

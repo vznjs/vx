@@ -80,6 +80,13 @@ projects whose digest moved. A lockfile that appeared or was deleted
 still selects everything — every project's `node_modules` is in
 question.
 
+A lockfile the parser cannot read **refuses the run** rather than
+keying on nothing: a key missing the material that decides it is a
+stale hit waiting to happen. The refusal names the file, the reason and
+the install that regenerates it — and, under `--affected`, which side
+could not be read, since a lockfile-migration commit leaves the base
+ref's copy in a format the current plugin does not accept.
+
 ## Cost
 
 The lockfile is parsed **once per content**. The per-project digests

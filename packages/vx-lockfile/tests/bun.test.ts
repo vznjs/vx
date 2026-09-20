@@ -141,6 +141,33 @@ describe('bun()', () => {
       /bun\(\) scope must be 'project' or 'workspace'/,
     )
   })
+
+  it('a lockfile it cannot read names the file ONCE and says what fixes it', () => {
+    // The parsers name their own file, and the plugin prefixed it again:
+    // "bun.lock: bun.lock: Failed to parse JSONC" reached the user twice
+    // over, with no remedy (2026-09-20). Refusing is right — the
+    // alternative to reading the lockfile is a WRONG key — so the message
+    // is the whole of what the adopter gets.
+    expect(bun().fingerprint?.files).toEqual(['bun.lock'])
+    let message = ''
+    try {
+      ;(
+        bun() as unknown as { fingerprint: { affected: (c: unknown, x: unknown) => unknown } }
+      ).fingerprint.affected(
+        {
+          file: 'bun.lock',
+          before: new TextEncoder().encode('{ not a lockfile'),
+          after: new TextEncoder().encode('{ not a lockfile'),
+        },
+        { workspaceRoot: '/w', cacheDir: '/c', warn() {}, projects: [] },
+      )
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err)
+    }
+    expect(message).toContain('bun.lock: ')
+    expect(message.match(/bun\.lock:/g)?.length).toBe(1)
+    expect(message).toContain('regenerate it with `bun install`')
+  })
 })
 
 describe('vx run with bun() declared', () => {

@@ -33,6 +33,8 @@ Every package the project can reach, by resolved identity (name, version, integr
 
 A project the lockfile has no entry for folds the root's digest — the only `node_modules` it can resolve from. A phantom dependency (imported, never declared) is not in any closure; declare it.
 
+A lockfile the parser cannot read **refuses the run**, naming the file, the reason and the install that regenerates it. That is deliberate: the alternative to reading the lockfile is keying on nothing, and a key that is missing material is a stale hit waiting to happen. Under `--affected` the refusal also says which side could not be read — the working tree's copy, or the one at the base ref (a lockfile-migration commit hits the second).
+
 ## Cost
 
 The claim, the per-project key, the memo and the `--affected` diff are core's `lockfileClaim`; this package is the parsers. A lockfile is parsed **once per content**: the digests are memoised under the cache dir (`lockfile-claims/<file>.json`) by the file's xxh3, so a warm run pays one read, one hash and one small JSON read — never a parse — and the read happens once per run, not per task. The digest is one hash per strongly connected component of the dependency graph (lockfiles carry cycles), children first, so a 1000-importer / 3000-package lockfile digests in ~20 ms when it does change.
