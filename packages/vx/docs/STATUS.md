@@ -2061,6 +2061,135 @@ non-empty string` is caught by exactly ONE row, and it is the
       with a recent timestamp, `config_closures` appeared — the whole
       finding was hiding behind a placeholder value.
 
+505.  DONE (2026-09-20, the KEY FOLD in `cache.ts` and the config
+      projection in `task-hash.ts` — a wrong key is this project's
+      worst failure class, and the fold is a LIST, so it was swept as
+      one).
+      The value parts are pinned: dropping the taskId, the workspace
+      fingerprint, the project package.json hash or the config hash
+      fails 1, 1, 3 and 7 rows. `exec.remote`'s stripping fails 2.
+      THE SURVIVORS are the list COUNT prefixes — `env-values:N`,
+      `upstream:N`, `forward-args:N` — and the classification took two
+      experiments rather than one.
+      Individually they are redundant for DISCRIMINATION. Remove any
+      single one and re-key 4,000 randomized inputs: the same 1,210
+      distinct keys, zero collisions. The neighbouring labels still
+      frame the sections and the fold is seed-chained, so order
+      already carries the information.
+      Jointly they are not redundant at all. Remove TWO ADJACENT
+      prefixes and the same 4,000 inputs collide 31 times, with
+      witnesses of exactly the predicted shape: one pair moved from
+      `envValues` to `runtimeValues`, or an extra pair shifted across
+      the boundary. Two different input sets, one key — the stale hit
+      the key exists to prevent.
+      So the pin is the GUARANTEE, not a member: three rows asserting
+      that moving a pair across a section boundary moves the key, each
+      with a control that the same input twice gives the same key. A
+      SINGLE removed prefix leaves them green, which is right — that
+      removal really is harmless; the double removal reddens two of
+      the three, each at its own boundary.
+      Also classified: `hashableConfig`'s early return. Measured, the
+      spread path produces byte-identical JSON for every config that
+      HAS an `exec`, so the fast path is a shortcut, not the reason
+      the field needed no CACHE_VERSION bump. Its one behavioural case
+      is a config with no `exec` — and a reachability probe (throw on
+      a no-exec config, whole suite) never fired, because group tasks
+      take `computeGroupHash` instead. De-claimed accordingly.
+      Method note: this is rule 4 — several guards, one guarantee — in
+      its purest form yet, and the lesson is about what to ASSERT. A
+      row per member would have been wrong twice over: it would pass
+      on the removal that matters (the other member still frames the
+      section) and fail on the removal that does not. The guarantee is
+      the only thing with a single truth value, so the guarantee is
+      what the row says.
+
+506.  DONE (2026-09-20, `orchestrator/admission.ts` — dedup and
+      continue-taint, both silent when wrong: a missed taint SAVES
+      what a task built on partial upstream output, under a key a
+      healthy run derives).
+      A HELD report, and the taint half is the best-pinned predicate
+      swept yet. All five members have their own row —
+      `failed` (2), `aborted`, `skipped`, the transitive
+      `tainted.has(...)`, and the RECORDING step that makes it
+      transitive. `taint-tracker.test.ts` already does what 494, 497
+      and 499 had to add elsewhere.
+      Dedup: the restore-tier bypass, the deferred barrier lift (it
+      lifts when the ENTRY lands, not when the task returns) and the
+      joiner's wait each redden. `!cacheable` survives, and it is an
+      early-out rather than a guard: measured, a non-cacheable task
+      never finds a sibling barrier, because the hash folds the taskId
+      and a taskId executes once per run. Removing it reddens nothing
+      AND a throw on "a non-cacheable task joined a barrier" never
+      fires across the whole suite. Recorded in place.
+      Method note, and it cost a round: the first dedup pre-check ran
+      `bun test tests/dedup.test.ts tests/upstream.test.ts` and all
+      four mutations "survived". There is no `dedup.test.ts` — bun
+      silently ignores a nonexistent path, so only the 17 unrelated
+      rows ran. The real file is `inflight.test.ts`, where three of
+      the four redden immediately.
+      This repo already knows that rule and I walked into it anyway,
+      so the fix is procedural rather than another note: every
+      mutation batch now ends with a PRISTINE control run in the same
+      command. `4 pass 0 fail` next to the mutants' `3 pass 1 fail`
+      is what distinguishes "the tests ran and passed" from "no tests
+      ran at all" — the same ambiguity 499's unparseable payload
+      created, reached by a different road.
+
+507.  DONE (2026-09-20, `orchestrator/placement.ts`'s
+      `pinnedLocalSet` — which tasks may NEVER leave this machine. A
+      wrong answer runs a sandboxed task remotely, where the sandbox
+      is the only thing proving what it touches).
+      A HELD report. Four of five members have their own rows:
+      `exec.persistent` (1), `exec.sandbox` (2), `exec.remote: false`
+      (1) and the TRANSITIVE clause — a task whose dep is pinned is
+      pinned — which fails 3.
+      The fifth, the pre-recursion `memo.set(id, false)`, survives and
+      is DEFENSIVE by its own comment: it guards a cycle the graph
+      builder already rejects, and the memo proper (`memo.set(id,
+result)` after) keeps working without it. Its failure mode is
+      also LOUD — unbounded recursion, not a wrong placement — so it
+      is the rare survivor that needs neither a row nor a de-claim.
+      Recorded because a sweep that reports only holes is one whose
+      negative results nobody can read, and because this is the second
+      file in a row (with `admission.ts`) whose predicates were
+      already pinned member by member. The practice this sweep has
+      been retrofitting is present in the newer files; what it keeps
+      finding is older code written before the habit.
+      Also confirmed the new batch rule works: every run in this
+      sweep ended with a PRISTINE control (`5 pass 0 fail`) beside the
+      mutants, so `no-memo`'s `5 pass 0 fail` means the rows ran and
+      passed rather than that nothing ran.
+
+508.  DONE (2026-09-20, `orchestrator/miss-save.ts`'s empty-artifact
+      warning — the one symptom a sandboxed task with no write grant
+      shows, per item 444: its writes land in the sandbox's scratch,
+      the shell sees success, and the run is green over a build that
+      produced nothing).
+      HELD, and completely: both halves of the condition (outputs
+      DECLARED, and nothing RESOLVED) fail rows in
+      `cache-declaration-warnings.test.ts`, and both halves of the
+      sandbox HINT — "is it sandboxed" and "does it grant a write" —
+      fail a row named exactly for the job: "a sandboxed task that
+      produced nothing says why > names the missing write grant,
+      because nothing else would".
+      Worth recording HOW that was found, because the per-file
+      pre-check said the hint clauses survived. They live in the
+      `.unsafe` suite, which the pre-check did not run. That is item
+      500's rule doing its job on the first try after being written
+      down: the pre-check can only ever say "not here", and the
+      whole-suite verdict is what says "nowhere".
+      THE SATURATION SIGNAL, which is the real result of 506-508:
+      three held reports in a row, on `admission.ts`, `placement.ts`
+      and `miss-save.ts`. Each was already pinned member by member —
+      the practice this sweep spent fifteen items retrofitting is
+      standard in code touched recently. What 493-505 kept finding
+      was OLDER code: a priority closure from the first scheduler, a
+      classifier duplicated four ways, an alphabet nobody re-read, a
+      boundary asserted on one side. So the next sweep should select
+      by AGE and by last-touched date, not by cost alone — cost says
+      where a defect would hurt, age says where one is still likely
+      to be.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

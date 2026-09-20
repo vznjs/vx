@@ -282,9 +282,14 @@ function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
  * laptop from a worker pool over nothing. (`exec.resources` rode the same
  * rule until 2026-09-12, when reservations left the config for the
  * schedule plugin that learns them; a config never declares them now.) A
- * config that declares no `remote` takes the fast path and stringifies
- * byte-identically to before the field existed (why this needs no
- * CACHE_VERSION bump). `timeout`/`retries` stay folded — their keys are
+ * config that declares no `remote` takes the fast path. That is a
+ * SHORTCUT, not the reason the field needed no CACHE_VERSION bump:
+ * measured (item 505), the spread path stringifies byte-identically for
+ * every config that HAS an `exec`, since a spread keeps an existing key
+ * in place. Its one behavioural case is a config with NO `exec`, where
+ * the spread would add `exec: {}` — and nothing reaches here that way,
+ * proven by throwing on a no-exec config and running the whole suite:
+ * a group takes `computeGroupHash` instead. `timeout`/`retries` stay folded — their keys are
  * distinct by design (see the decision log); stripping them retroactively
  * would bump CACHE_VERSION.
  */
