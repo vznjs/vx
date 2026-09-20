@@ -890,6 +890,32 @@ built behind a failure`). Two claims were not.
       passed alone and failed in the sharded gate. A row that moves
       with the harness is pinning the harness.
 
+438.  DONE (2026-09-20, `bin.ts`'s truncated pipe — the row whose
+      defect the Rules section already records as FIXED, which is what
+      made it worth reading twice). The fix on 2026-09-15 was
+      `process.stdout.end(() => process.exit(code))`: end's callback
+      fires once the pipe holds it all. Measured true on Bun 1.4.2.
+      On 1.3.11 the callback still fires early — 2 MiB written, 214 KB
+      delivered — so the fix was not wrong, it was pinned to one
+      runtime's idea of when a pipe is flushed.
+      The form that does not depend on that idea is to stop calling
+      `process.exit` at all: set `process.exitCode` and let the loop
+      drain. Measured here — the whole 2 MiB arrives, `--version`
+      returns in 72 ms, and the full `vx run ci --all` (44 tasks,
+      sandboxes, caches, telemetry) exits on its own with its own
+      verdict. The cost, stated because it is real: a verb that leaves
+      a handle open now hangs instead of exiting, which the suite's
+      several hundred spawns of this binary would show at once — and
+      did not.
+      The error path takes the same treatment for the same reason: a
+      large stderr is truncated by `process.exit` too, and a message
+      cut in half is the one a reader most needs whole.
+      Baseline now 6 rows, from 23 this morning. What is left is the
+      reapi CAS trio (the plugin refuses to LOAD on this Bun, with its
+      own version error — nothing vx can do from here), the
+      `Bun.Archive` tar oracle, `armWatcher` non-recursive, and the
+      watch watched-set row.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
@@ -915,9 +941,10 @@ with its own version error (3), `tar-stream` fails inside
 gives an Error — item 436 measured that and fixed the guard behind it,
 so those three are no longer in the set (3), the
 runner read no `peakRssBytes` at all until item 437 measured the unit
-instead of trusting it (2), and `bin.ts` truncates a
+instead of trusting it (2), and `bin.ts` truncated a
 2 MiB pipe write to 219 KB, the very defect the Rules section records
-as fixed (1). Four more are downstream of that missing usage number
+as fixed — item 438 found the fix pinned to one runtime's flush timing
+and took `process.exit` out of the path entirely (1). Four more are downstream of that missing usage number
 (`vx last`, the remote-usage e2e, both schedule-history reservation
 cases). Seven WERE the watch loop and `armWatcher`, and item
 369 MEASURED what this sentence first guessed: they are the floor too.
