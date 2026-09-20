@@ -49,31 +49,43 @@ export function zstdContentSize(b: Uint8Array): bigint | null {
 /**
  * Decompress a zstd artifact that DECLARES its content size, with a hard
  * output ceiling: refused before a byte is allocated when the declaration
- * is over the cap, and again on the actual length. A frame with no
+ * is over the cap. The re-check on the actual length below is a backstop
+ * against a decoder that stops validating the declaration, NOT a second
+ * live layer — see its comment. A frame with no
  * declaration (a streamed producer's — vx's own, above 4 MiB) never comes
  * here: `decodedTar` decodes it as a stream under the running count, so
  * a sizeless bomb has nowhere to expand.
  */
-async function zstdDecompressBounded(compressed: Uint8Array, hash: string): Promise<Uint8Array> {
-  assertDeclaredSize(compressed, hash)
+async function zstdDecompressBounded(
+  compressed: Uint8Array,
+  hash: string,
+  cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+): Promise<Uint8Array> {
+  assertDeclaredSize(compressed, hash, cap)
   const out = await Bun.zstdDecompress(compressed)
-  if (out.length > MAX_DECOMPRESSED_ARTIFACT_BYTES) {
-    throw new CorruptArtifactError(
-      hash,
-      `decompressed to ${out.length} bytes (> ${MAX_DECOMPRESSED_ARTIFACT_BYTES} cap)`,
-    )
+  // UNREACHABLE as written, and kept deliberately. `assertDeclaredSize`
+  // above refuses any frame DECLARING more than the cap, and Bun refuses a
+  // frame whose declaration disagrees with its body ("Decompression
+  // failed" on a forged Frame_Content_Size, measured item 487) — so a frame
+  // that gets here declared <= cap and produced exactly that. The only way
+  // this fires again is a decoder that stops validating the declaration.
+  // That is what it is for; it is not a second live layer, and no test can
+  // reach it.
+  if (out.length > cap) {
+    throw new CorruptArtifactError(hash, `decompressed to ${out.length} bytes (> ${cap} cap)`)
   }
   return out
 }
 
 /** The pre-decompress half of the ceiling: the frame header's own claim, when it makes one. */
-function assertDeclaredSize(compressed: Uint8Array, hash: string): bigint | null {
+function assertDeclaredSize(
+  compressed: Uint8Array,
+  hash: string,
+  cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+): bigint | null {
   const declared = zstdContentSize(compressed)
-  if (declared !== null && declared > BigInt(MAX_DECOMPRESSED_ARTIFACT_BYTES)) {
-    throw new CorruptArtifactError(
-      hash,
-      `declares ${declared} decompressed bytes (> ${MAX_DECOMPRESSED_ARTIFACT_BYTES} cap)`,
-    )
+  if (declared !== null && declared > BigInt(cap)) {
+    throw new CorruptArtifactError(hash, `declares ${declared} decompressed bytes (> ${cap} cap)`)
   }
   return declared
 }
@@ -115,18 +127,29 @@ const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
 export async function decodedTar(
   source: Uint8Array | Bun.BunFile,
   hash: string,
+  /**
+   * The decompression ceiling, a parameter only so the STREAMING half can
+   * be exercised. Reaching it for real needs an artifact that expands past
+   * 2 GiB, which no test can produce — so before item 487 the sizeless-bomb
+   * defense this module's comments promise had nothing asserting it, while
+   * the declared-size half was pinned by a forged header costing 20 bytes.
+   * Callers never pass it; the default IS the ceiling.
+   */
+  cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
 ): Promise<ReadableStream<Uint8Array>> {
   if (source instanceof Uint8Array) {
-    if (assertDeclaredSize(source, hash) === null) return zstdDecodeStream(new Blob([source]), hash)
-    return oneChunk(await zstdDecompressBounded(source, hash))
+    if (assertDeclaredSize(source, hash, cap) === null) {
+      return zstdDecodeStream(new Blob([source]), hash, cap)
+    }
+    return oneChunk(await zstdDecompressBounded(source, hash, cap))
   }
   if (source.size <= STREAM_DECODE_FROM) {
     const bytes = await source.bytes()
-    if (assertDeclaredSize(bytes, hash) === null) return zstdDecodeStream(source, hash)
-    return oneChunk(await zstdDecompressBounded(bytes, hash))
+    if (assertDeclaredSize(bytes, hash, cap) === null) return zstdDecodeStream(source, hash, cap)
+    return oneChunk(await zstdDecompressBounded(bytes, hash, cap))
   }
-  assertDeclaredSize(await source.slice(0, 32).bytes(), hash)
-  return zstdDecodeStream(source, hash)
+  assertDeclaredSize(await source.slice(0, 32).bytes(), hash, cap)
+  return zstdDecodeStream(source, hash, cap)
 }
 
 /**
@@ -135,7 +158,11 @@ export async function decodedTar(
  * past the cap here either — the count runs as bytes are produced, before
  * any of them reach the reader's next entry.
  */
-function zstdDecodeStream(source: Blob, hash: string): ReadableStream<Uint8Array> {
+function zstdDecodeStream(
+  source: Blob,
+  hash: string,
+  cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+): ReadableStream<Uint8Array> {
   let total = 0
   return source
     .stream()
@@ -144,13 +171,8 @@ function zstdDecodeStream(source: Blob, hash: string): ReadableStream<Uint8Array
       new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
           total += chunk.byteLength
-          if (total > MAX_DECOMPRESSED_ARTIFACT_BYTES) {
-            controller.error(
-              new CorruptArtifactError(
-                hash,
-                `decompresses past ${MAX_DECOMPRESSED_ARTIFACT_BYTES} bytes (cap)`,
-              ),
-            )
+          if (total > cap) {
+            controller.error(new CorruptArtifactError(hash, `decompresses past ${cap} bytes (cap)`))
             return
           }
           controller.enqueue(chunk)

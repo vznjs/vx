@@ -1328,6 +1328,47 @@ await resetSandbox()`, whose comment says "otherwise SRT keeps
       with the name clause removed, which is what proves the
       containment layer is independently alive rather than the pin
       having simply moved the goalposts.
+487.  DONE (2026-09-20, `cache/zstd.ts` — the decompression ceiling,
+      chosen BY the shape rather than by file size). 486 made the
+      pattern a rule: when two layers refuse the same input and the
+      rows assert only THAT it refused, neither is pinned. The four
+      `ingest()` rows all assert `rejects.toThrow(CorruptArtifactError)`
+      and the ceiling has three throw sites, so it was the obvious
+      next place to look. It was there.
+      Three mutations, one per site. The DECLARED half (the frame
+      header's own claim, refused before a byte is allocated) fails
+      "ingest() reads a 4-byte Frame_Content_Size (fcsFlag 2) and
+      rejects an oversize declaration". The other two survive.
+      The POST-DECOMPRESS re-check is UNREACHABLE, and proving that
+      took a probe rather than an argument: forge a frame whose
+      declared size is small and whose body is large, and Bun refuses
+      it itself ("Decompression failed"). Since the declared half
+      already refuses anything claiming more than the cap, a frame
+      reaching the re-check declared <= cap and produced exactly that,
+      so `out.length > cap` cannot hold. Its own docstring called it
+      the ceiling applied "again on the actual length", which claims a
+      second live layer the code does not have — de-claimed in place
+      to say what it IS: a backstop against a decoder that stops
+      validating the declaration. Kept, because that is worth keeping;
+      just not counted as coverage.
+      THE FIND is the STREAMING half — the running count over a
+      sizeless frame, which is exactly the shape a streamed producer
+      emits (vx's own, above 4 MiB) and exactly the one the module
+      promises has "nowhere to expand". It works: at a lowered cap the
+      probe gets "decompresses past 4096 bytes (cap)". It had nothing
+      asserting it, and the reason is worth recording because it is
+      not carelessness — the cap is 2 GiB, and the declared half is
+      pinnable with a 20-byte forged header while the streaming half
+      needs an artifact that actually expands past two gigabytes. The
+      cheap half got a test and the expensive half got a comment.
+      So `decodedTar` now takes the cap as a parameter, defaulting to
+      the constant, for that row and nothing else: an internal module
+      (not in the façade, imported by path nowhere in src), one
+      optional argument, no behaviour change. The row drives a real
+      sizeless frame past a 4 KiB cap and asserts the STREAMING
+      message, with a control at a cap it fits proving the decode
+      itself still works. Differential: removing the count reddens it
+      and leaves the declared half's row green.
 
 ## In flight
 
