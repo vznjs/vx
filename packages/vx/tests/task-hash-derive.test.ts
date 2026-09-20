@@ -21,6 +21,7 @@
 // bump to reverse. Those are marked; they exist so a future refactor has to
 // argue with a failing test rather than silently changing what a key means.
 
+import { readFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -182,6 +183,85 @@ describe('computeTaskHash — what the config contributes', () => {
       node: node({}, { exec: { command: 'build', remote: false, timeout: 9_000 } }),
     })
     expect(b).not.toBe(a)
+  })
+
+  // The law behind the two rows above, over the whole field list instead of
+  // the one sibling someone thought to name. `timeout` was that sibling, so a
+  // projection rewritten as a whitelist could have dropped `sandbox`,
+  // `persistent` or `env` with `remote` and nothing would have moved — two
+  // genuinely different tasks sharing a key, which is the stale hit this file
+  // exists to stop. Both lists are READ: the fields from `config-schema.ts`,
+  // the strip from `hashableConfig`'s own destructuring, so a second stripped
+  // field arrives here as a failure rather than as silence.
+  it('every exec and task field but the stripped one moves the key', async () => {
+    const src = path.resolve(import.meta.dir, '..', 'src')
+    const schema = readFileSync(path.join(src, 'workspace', 'config-schema.ts'), 'utf8')
+    const taskHash = readFileSync(path.join(src, 'orchestrator', 'task-hash.ts'), 'utf8')
+    const fieldsOf = (name: string): string[] =>
+      [
+        ...(
+          new RegExp(`const ${name} = new Set\\(\\[([^\\]]*)\\]`).exec(schema)?.[1] ?? ''
+        ).matchAll(/'([^']+)'/g),
+      ]
+        .map((m) => m[1]!)
+        .sort()
+    const stripped = [...taskHash.matchAll(/const \{ (\w+): _\w+, \.\.\.\w+ \} = cfg\.exec/g)].map(
+      (m) => m[1]!,
+    )
+    // A projection that stops destructuring (a whitelist rebuild, say) reads
+    // as "nothing is stripped" here, and the `remote` row then fails — the
+    // safe direction for a selector that misses.
+    expect(stripped.length).toBeGreaterThan(0)
+
+    const execValues: Record<string, unknown> = {
+      command: 'other',
+      env: { passThrough: ['FOO'] },
+      timeout: 5_000,
+      retries: 2,
+      persistent: { readyWhen: 'ready' },
+      remote: true,
+      sandbox: {},
+    }
+    const taskValues: Record<string, unknown> = {
+      description: 'what it does',
+      exec: { command: 'other' },
+      dependsOn: ['^build'],
+      cache: { inputs: { files: ['nope/**'] }, outputs: { files: [] } },
+    }
+    // A field added to either set without a value here fails on this line,
+    // which is what makes the two loops below a claim about the whole list.
+    expect(Object.keys(execValues).sort()).toEqual(fieldsOf('EXEC_FIELDS'))
+    expect(Object.keys(taskValues).sort()).toEqual(fieldsOf('TASK_FIELDS'))
+
+    // Both arms of `hashableConfig` are driven, because the projection only
+    // RUNS when `remote` is declared — the fast path returns the config
+    // untouched. A first draft compared plain configs only, and a mutation
+    // that deleted `sandbox` inside the projection passed: every variant it
+    // built took the fast path. So each field is varied twice, once beside a
+    // declared `remote` and once without.
+    const moved: Record<string, boolean> = {}
+    const want: Record<string, boolean> = {}
+    for (const remote of [undefined, false] as const) {
+      const arm = remote === undefined ? 'plain' : 'remote-declared'
+      const baseExec = { command: 'build', ...(remote === undefined ? {} : { remote }) }
+      const armBase = await key({ node: node({}, { exec: baseExec } as Partial<TaskConfig>) })
+      for (const [field, value] of Object.entries(execValues)) {
+        if (field in baseExec && stripped.includes(field)) continue
+        const cfg = { exec: { ...baseExec, [field]: value } } as unknown as Partial<TaskConfig>
+        moved[`${arm}:exec.${field}`] = (await key({ node: node({}, cfg) })) !== armBase
+        want[`${arm}:exec.${field}`] = !stripped.includes(field)
+      }
+      for (const [field, value] of Object.entries(taskValues)) {
+        if (field === 'exec') continue
+        const cfg = { exec: baseExec, [field]: value } as unknown as Partial<TaskConfig>
+        moved[`${arm}:${field}`] = (await key({ node: node({}, cfg) })) !== armBase
+        want[`${arm}:${field}`] = true
+      }
+      const other = { exec: { ...baseExec, command: 'other' } } as unknown as Partial<TaskConfig>
+      moved[`${arm}:exec.command`] = (await key({ node: node({}, other) })) !== armBase
+      want[`${arm}:exec.command`] = true
+    }
+    expect(moved).toEqual(want)
   })
 
   it('SENSITIVITY: exec.timeout DOES move the key — distinct by design', async () => {
