@@ -936,6 +936,44 @@ prune` for eviction), a typo of `prune` still gets the
       before and after: twenty out, twenty left, twenty in the new
       file.
 
+413.  DONE (2026-09-20, the last adoption surface: the two remote-cache
+      plugins, walked as an ADOPTER rather than as a wire). The spec
+      suites already pin both protocols, so this read the guide's
+      promise instead — "any failure — a 500, a timeout, an auth error,
+      a corrupt artifact — degrades to a local cache miss and the run
+      continues" — by pointing `turboCache()` and `nxCache()` at a
+      server hostile in each of those four ways and RUNNING a
+      workspace against it. All four hold for both wires, and each is
+      now a row in `tests/remote-cache-degrade.test.ts` (with a
+      healthy-server CONTROL that proves the artifact really does
+      round-trip through it, so a green suite cannot mean the remote
+      was never consulted).
+      The defect the walk found is in the claim next to the code: both
+      plugins said a refused token "throws ONCE … so a bad token costs
+      one line, not one per task", and `README.md` repeated it. A run's
+      requests are CONCURRENT — the probe pass asks for every task at
+      once — so several refusals are in flight before the first sets
+      the layer off, and six projects under a bad token printed FIVE
+      identical warnings. `request()` now returns `undefined` for a
+      refusal that is already reported and each caller degrades to its
+      own miss value in silence; one line, proven at the class (exactly
+      one rejection out of five concurrent calls, each other call
+      returning its miss value) and through the CLI (six projects, one
+      warning, exit 0). Both pins fail without the fix, 5 against 1.
+      Two method notes. `Bun.spawnSync` in the parent BLOCKS the event
+      loop that serves the stub the child is dialing: the first version
+      of the run-level probe read "The operation timed out" and I spent
+      a detour on proxy variables before testing the premise — the
+      server had recorded no hit at all. And a timeout does NOT disable
+      the layer (only 401/403 does), so a wedged server still costs one
+      deadline per request; that is the design (a cache that answers
+      slowly once may answer fast next time), and the deadline is
+      configurable, but it is worth knowing before someone reports it
+      as a hang. A third, smaller: a stub whose hostile mode sleeps must
+      let go when the client aborts, or the `afterAll` that awaits
+      `server.stop()` waits for the sleep and the hook times out at five
+      seconds — the sleep now races the request's abort signal.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

@@ -134,7 +134,8 @@ export function resolveTurboCacheConfig(
  * `get`/`put` carry `x-artifact-duration` (and the tag when signing). An
  * auth failure (401/403) throws ONCE — LayeredCache reports it — and then
  * turns the layer off for the rest of the process, so a bad token costs one
- * line, not one per task.
+ * line, not one per task — the requests already in flight when it lands
+ * degrade in silence rather than repeating it.
  */
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
@@ -161,11 +162,17 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     }
   }
 
+  /**
+   * `undefined` = the token was refused and the refusal is ALREADY
+   * reported, so the caller degrades to its miss value in silence. Only the
+   * first refusal throws, and a run's calls are concurrent: six projects
+   * under a bad token printed five identical lines before this (2026-09-20).
+   */
   private async request(
     method: string,
     pathname: string,
     init: { body?: Uint8Array; headers?: Record<string, string>; timeoutMs?: number } = {},
-  ): Promise<Response> {
+  ): Promise<Response | undefined> {
     const res = await this.fetchImpl(this.url(pathname), {
       method,
       headers: this.headers(init.headers),
@@ -173,7 +180,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       signal: AbortSignal.timeout(init.timeoutMs ?? this.config.timeoutMs),
     })
     if (res.status === 401 || res.status === 403) {
+      const first = !this.disabled
       this.disabled = true
+      if (!first) return undefined
       throw new Error(
         `${method} ${this.config.apiUrl}/v8/artifacts → ${res.status}: the token was refused; remote cache off for this run`,
       )
@@ -184,6 +193,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   async has(hash: string): Promise<boolean> {
     if (this.disabled) return false
     const res = await this.request('HEAD', `/${hash}`)
+    if (res === undefined) return false
     if (res.status === 200) return true
     if (res.status === 404) return false
     throw new Error(`HEAD ${hash} → ${res.status}`)
@@ -195,6 +205,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       body: Buffer.from(JSON.stringify({ hashes })),
       headers: { 'Content-Type': 'application/json' },
     })
+    if (res === undefined) return new Set()
     if (res.status !== 200) return null
     const info = (await res.json()) as Record<string, unknown>
     return new Set(hashes.filter((h) => info[h] !== null && info[h] !== undefined))
@@ -203,6 +214,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   async get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null> {
     if (this.disabled) return null
     const res = await this.request('GET', `/${hash}`)
+    if (res === undefined) return null
     if (res.status === 404) return null
     if (res.status !== 200) throw new Error(`GET ${hash} → ${res.status}`)
     const body = await res.arrayBuffer()
@@ -237,6 +249,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       headers,
       timeoutMs: this.config.uploadTimeoutMs,
     })
+    if (res === undefined) return
     if (res.status !== 200 && res.status !== 202) throw new Error(`PUT ${hash} → ${res.status}`)
   }
 }

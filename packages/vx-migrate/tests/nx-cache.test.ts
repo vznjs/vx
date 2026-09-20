@@ -112,6 +112,40 @@ describe('NxRemoteCache against the spec server', () => {
     expect(await c.has('bb22')).toBe(false)
   })
 
+  it('a bad token throws ONCE even when the calls are concurrent', async () => {
+    // Same claim as the Turbo wire's, and the same race behind it: a run's
+    // probe pass asks for every task at once, so several refusals are in
+    // flight before the first sets the layer off. Six projects under a bad
+    // token printed FIVE identical warnings before this (2026-09-20).
+    // Which call loses the race is the scheduler's business, so the pin is
+    // the count and each other call's own miss value, never an index.
+    const c = cache('also-wrong')
+    const names = ['get-a', 'get-b', 'has', 'put']
+    const miss: Record<string, unknown> = {
+      'get-a': null,
+      'get-b': null,
+      has: false,
+      put: undefined,
+    }
+    const settled = await Promise.allSettled([
+      c.get('aa11'),
+      c.get('bb22'),
+      c.has('cc33'),
+      c.put('dd44', new Uint8Array(1), { durationMs: 1 }),
+    ])
+    const rejected = settled.flatMap((r, i) =>
+      r.status === 'rejected' ? [{ name: names[i]!, message: String(r.reason.message) }] : [],
+    )
+    expect({ count: rejected.length }).toEqual({ count: 1 })
+    expect(rejected[0]!.message).toMatch(/401.*invalid token/)
+    for (const [i, r] of settled.entries()) {
+      if (r.status !== 'fulfilled') continue
+      const got: { name: string; value: unknown } = { name: names[i]!, value: r.value }
+      const want: { name: string; value: unknown } = { name: names[i]!, value: miss[names[i]!] }
+      expect(got).toEqual(want)
+    }
+  })
+
   it('a bad token throws once and turns the layer off; a read-only token fails the write the same way', async () => {
     const bad = cache('nope')
     await expect(bad.get('aa11')).rejects.toThrow(/401.*invalid token/)
