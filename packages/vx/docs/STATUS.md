@@ -1128,6 +1128,40 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       rediscovered as a find nor deleted as dead code — if the lanes
       ever merge, this line starts deciding something.
 
+461.  DONE (2026-09-20, `cli/select.ts` — never swept, and it decides
+      the SET a run operates on). The find is real, but the METHOD
+      LESSON is the headline and it applies to everything this arc has
+      done.
+      LAYERED GUARDS ARE INVISIBLE TO A ONE-AT-A-TIME SWEEP. A
+      `--frozen` run with no lock is refused in TWO places: the staged
+      load every verb goes through (`loadCliProjects`), and again in
+      `workspaceGlobOwners` before its tolerant sweep could answer
+      "nothing affected". Remove either ALONE and the whole repo stays
+      green — because the other one covers. So the sweep I have been
+      running all arc reports "pinned" when in fact NOTHING pins it.
+      Established by removing BOTH and running the real CLI: a lockless
+      workspace, `--frozen --affected` with an orphan-only change, and
+      vx exits 0 saying "nothing affected". That is the worst answer a
+      CI tool can give — green, ran nothing, said nothing — and it is
+      what the two guards exist to prevent.
+      Each guard then re-checked on its own to confirm it is a genuine
+      backstop, not decoration: with the outer one removed the inner
+      refuses (exit 1); with the inner removed the outer refuses.
+      Neither was pinned by any test.
+      Pinned as one row EACH, deliberately, so they cannot hide each
+      other's absence again: the inner one through `workspaceGlobOwners`
+      directly, the outer through `loadCliProjects`. Both carry a
+      control (the same call without `frozen` answers normally, so the
+      rejection is the flag and not a broken fixture), and each is red
+      for its OWN guard and green for the other's.
+      Carry this forward: when a guarantee is enforced in more than one
+      place, a single mutation proves nothing. Mutate the whole set, or
+      pin each layer separately. Four earlier "survived but not a
+      defect" results (447, 456(c), 459, 460(d)) were each argued from
+      a single mutation — three of them were established further with a
+      fixture, but the reasoning pattern is the one this item just
+      caught being wrong.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
