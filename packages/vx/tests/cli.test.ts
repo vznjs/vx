@@ -126,6 +126,65 @@ describe('cli run()', () => {
     }
   })
 
+  // Item 483. The unresolved-task refusal is enforced at THREE sites over
+  // one producer (`unresolvedRequests`): the run path, the plan builder, and
+  // here, the `--dry`/`--graph` path. Mutating each separately is the only
+  // way to learn which is held — the producer fails 8 rows, the run path 5,
+  // the plan builder 1, and this one NOTHING.
+  //
+  // It survives because the guard below it (`plan.tasks.length === 0`)
+  // catches the same case and returns the same 1. What this site carries
+  // ALONE is WHICH names the message blames, and the fallback blames all of
+  // them. Read off the real CLI:
+  //
+  //   pristine:  vx run: no projects declare task(s): typo-here.
+  //   disabled:  vx run: no projects declare task(s): build, lint, typo-here.
+  //
+  // Two perfectly good tasks named as the problem. The run path pins this
+  // precision five times over ("a bogus BARE task fails the run even when
+  // another task resolves"); the dry-run path had nothing, which is the same
+  // user-facing rule pinned on one path and unpinned on the other.
+  it('a --dry typo beside good tasks names ONLY the typo', async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-dry-typo-'))
+    const origCwd = process.cwd()
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'fixture', workspaces: ['p'] }),
+      )
+      await writeLocalWorkspace(root)
+      await mkdir(path.join(root, 'p'), { recursive: true })
+      await writeFile(path.join(root, 'p', 'package.json'), JSON.stringify({ name: 'p' }))
+      await writeFile(
+        path.join(root, 'p', 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'true' } }, lint: { exec: { command: 'true' } } } }\n`,
+      )
+      for (const args of [
+        ['init', '-q'],
+        ['config', 'user.email', 'c@vx'],
+        ['config', 'user.name', 'c'],
+        ['add', '-A'],
+        ['-c', 'commit.gpgsign=false', 'commit', '-qm', 'init'],
+      ]) {
+        Bun.spawnSync({ cmd: ['git', ...args], cwd: root })
+      }
+      process.chdir(root)
+      expect(await run(['run', 'build', 'lint', 'typo-here', '--all', '--dry'])).toBe(1)
+      expect(stderr).toContain('no projects declare task(s): typo-here.')
+      // The control, and the whole point: the names that DO resolve are not
+      // in the message. Asserted per name, because `toContain` on the good
+      // line would pass on the fallback's wording too.
+      expect(stderr).not.toContain('build')
+      expect(stderr).not.toContain('lint')
+    } finally {
+      process.chdir(origCwd)
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects unknown command', async () => {
     expect(await run(['nope'])).toBe(1)
     expect(stderr).toContain('unknown command')
