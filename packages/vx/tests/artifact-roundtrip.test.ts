@@ -343,6 +343,58 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     )
   })
 
+  it('names a STRAY on disk as such, not as a corrupt artifact', async () => {
+    // "The clean removes everything the output globs cover, so this is a
+    // path the output globs do not" — and the remedy is the user's, not
+    // the cache's. Nothing anywhere asserted this sentence: item 427's
+    // read-through listed the EISDIR/ENOTDIR stray among the claims it
+    // found pinned, but a grep for the message finds nothing, so the
+    // whole arm could go and every one of these would be reported as an
+    // unreadable archive — pointing the reader at deleting their cache
+    // instead of at the file in their way.
+    await saveEntry('stray')
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+    // A DIRECTORY standing where the entry holds a file.
+    await mkdir(path.join(projectDir, 'dist', 'app.js'), { recursive: true })
+    await expect(cache.restoreOutputs('stray', projectDir)).rejects.toThrow(
+      /was blocked by what is on disk \(EISDIR/,
+    )
+
+    // And a FILE standing where the entry needs a DIRECTORY — the same
+    // arm reached by a different code (measured: `mkdir 'dist'` over a
+    // file reports EEXIST, not ENOTDIR), so narrowing the arm to EISDIR
+    // alone still fails here. The stray above is cleared first:
+    // `saveEntry` writes dist/app.js, which is itself an EISDIR against
+    // the directory left behind.
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+    await saveEntry('stray2')
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+    await write(path.join(projectDir, 'dist'), 'I AM A FILE')
+    await expect(cache.restoreOutputs('stray2', projectDir)).rejects.toThrow(
+      /was blocked by what is on disk \(EEXIST/,
+    )
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+  })
+
+  it('carries the underlying error as the CAUSE of an unreadable archive', async () => {
+    // run.ts prints the cause beside the message precisely because "a
+    // CorruptArtifactError over an ENOENT is a race, not a bad archive" —
+    // the stack is not printed there, so the cause is the only fact the
+    // reader gets about WHY the decode failed. Dropping it leaves the
+    // sentence and removes everything actionable behind it.
+    await saveEntry('nocause')
+    await Bun.write(cache.outputsPath('nocause'), new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+    let caught: unknown
+    try {
+      await cache.restoreOutputs('nocause', projectDir)
+    } catch (err) {
+      caught = err
+    }
+    expect((caught as Error).message).toMatch(/artifact is not a readable archive/)
+    expect((caught as Error).cause).toBeInstanceOf(Error)
+  })
+
   it('restores normally when the artifact is intact (control)', async () => {
     await saveEntry('ok')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })

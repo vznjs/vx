@@ -4815,6 +4815,60 @@ test` is transpile-only — it cannot see a type error at all, so
       whose declaration is empty (`inputs: { files: [] }`), with a
       declared-but-matching-nothing control beside it.
 
+562.  DONE (2026-09-21, `cache/cache.ts`, region: `restoreOutputs` —
+      the replay path's refusals. Item 427 called this file a
+      ZERO-YIELD read-through. 19 mutations: fifteen caught, four
+      survivors, three closed by two rows, one classified (plus two
+      arms INCONCLUSIVE on this machine). No source change).
+      AND HERE THE READ-THROUGH MOSTLY HELD — which is the useful
+      contrast with 561, and the reason is visible in the FIXTURES,
+      not in the method that produced either verdict. The
+      vanished-artifact row carries a control proving its phrase is
+      specific to that case and not one every restore failure happens
+      to carry; the hollow-artifact row was rebuilt in-process after
+      the old `tar --format=gnu` version silently wrote an EMPTY
+      archive on darwin and passed for the wrong reason. Rows that
+      discriminate make "pinned" true.
+      WHERE IT DID NOT: `blocked by what is on disk` HAS NO ASSERTION
+      ANYWHERE, though 427 lists the EISDIR/ENOTDIR stray among the
+      claims it found covered. The whole arm could go and every stray
+      would be reported as an unreadable archive — pointing the reader
+      at deleting their cache instead of at the file in their way.
+      Measured while writing the row: a FILE standing where the entry
+      needs a directory reports EEXIST from `mkdir`, not ENOTDIR, so
+      the two sub-cases also separate a narrowed arm from the whole
+      one.
+      AND THE `cause` ON THE TERMINAL CorruptArtifactError was free.
+      run.ts prints it precisely because "a CorruptArtifactError over
+      an ENOENT is a race, not a bad archive", and the stack is not
+      printed there — so the cause is the only fact the reader gets
+      about why the decode failed.
+      THE ERROR-CLASSIFICATION TAIL IS DUPLICATED in `restoreOutputs`
+      and `ingest`, and my first table matched BOTH at once, which
+      would have let a held copy mask a free one (rule 6). Mutated
+      apart, both copies are held — including the
+      `ArchiveSecurityError` rethrow, without which a path traversal
+      is laundered into "bad archive".
+      ONE OF MY OWN MUTATIONS WAS A NO-OP AGAIN (rule 39, second time
+      in three items): while disambiguating that duplicated tail,
+      `rt-corrupt-only` ended up inserting `void 0` and nothing else,
+      so its survival said nothing. Rewritten to actually drop the
+      security arm, it is CAUGHT — the rethrow is held, and the
+      "survivor" was an artefact of my own table.
+      ONE CLASSIFIED. The `.vx-tmp-` narrowing on the ENOENT arm: the
+      existing row asserts the full message INCLUDING the marker, so
+      both spellings agree for it, and no reachable path produces an
+      ENOENT outside a staging file — the artifact's own absence is
+      caught one block up, and every file the extract touches it
+      created itself. And the two permission arms of this region (the
+      `isFsRefusal` branch, `assertWritable`) are INCONCLUSIVE ON THIS
+      MACHINE, not survivors: their rows are `skipIf(root)` and this
+      container is root, so `disk-full.unsafe` runs ZERO rows here. It
+      is deliberately absent from the driver — a file printing
+      `0 pass` with no failing row is what the classifier reads as a
+      compile error, which would have made every verdict
+      INCONCLUSIVE. CI runs non-root with `VX_REQUIRE_NONROOT=1`.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
