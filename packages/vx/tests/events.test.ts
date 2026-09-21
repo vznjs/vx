@@ -3,6 +3,7 @@ import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import {
   busLogger,
+  failedLabel,
   createEventBus,
   projectNode,
   projectOutcome,
@@ -89,6 +90,23 @@ describe('createEventBus', () => {
     bus.emit({ kind: 'run:end' })
     expect(count).toBe(1)
   })
+
+  it('the disposer removes ONE subscriber, not the rest', () => {
+    // The row above disposes the only subscriber, so `splice(i, 1)` and
+    // "drop everything" look the same. A surface detaching mid-run (a TUI
+    // closing, a devtool disconnecting) must not take the terminal
+    // renderer with it.
+    const bus = createEventBus()
+    const kept: string[] = []
+    const going: string[] = []
+    bus.subscribe((e) => kept.push(e.kind))
+    const dispose = bus.subscribe((e) => going.push(e.kind))
+    bus.subscribe((e) => kept.push(`late:${e.kind}`))
+    dispose()
+    bus.emit({ kind: 'run:end' })
+    expect(going).toEqual([])
+    expect(kept).toEqual(['run:end', 'late:run:end'])
+  })
 })
 
 describe('busLogger + terminalSubscriber', () => {
@@ -155,6 +173,31 @@ describe('busLogger + terminalSubscriber', () => {
     log.runEnd?.()
     log.status('ok')
     expect(statusCalls).toEqual(['ok'])
+  })
+
+  it('a renderer that implements only the REQUIRED hooks is driven without throwing', () => {
+    // `runStart` / `taskStart` / `runEnd` are optional on `Logger` — an
+    // embedder may hand core a three-method sink. Calling them unguarded
+    // turns a legal logger into a TypeError inside the bus, where the
+    // isolation swallows it and the surface silently goes quiet.
+    const seen: string[] = []
+    const minimal: Logger = {
+      status: (line) => seen.push(`status:${line}`),
+      taskStdout: (_n, c) => seen.push(`out:${c}`),
+      taskStderr: (_n, c) => seen.push(`err:${c}`),
+      taskComplete: (n) => seen.push(`done:${n.id}`),
+    }
+    const node = mkNode({ id: 'a#build', command: 'x' })
+    const subscriber = terminalSubscriber(minimal)
+    const events: RunEvent[] = [
+      { kind: 'run:start', info: { total: 1 } },
+      { kind: 'task:start', node },
+      { kind: 'task:stdout', node, chunk: 'o' },
+      { kind: 'task:complete', node, outcome: mkOutcome(node) },
+      { kind: 'run:end' },
+    ]
+    for (const e of events) expect(() => subscriber(e)).not.toThrow()
+    expect(seen).toEqual(['out:o', 'done:a#build'])
   })
 })
 
@@ -286,6 +329,24 @@ describe('projectOutcome', () => {
   })
 })
 
+describe('the label vocabulary at its edges', () => {
+  it('ZERO sandbox violations are not mentioned at all', () => {
+    // The count reads as the REASON a sandboxed task failed, so ", 0
+    // sandbox violations" on a task that failed for some other reason
+    // points the reader at the wrong thing entirely.
+    expect(failedLabel(1, undefined, 0)).toBe('failed (exit 1)')
+    expect(failedLabel(1, undefined, 1)).toBe('failed (exit 1, 1 sandbox violation)')
+  })
+
+  it('a node that never says `surfaced` is NOT surfaced', () => {
+    // `surfaced` marks a task a filter pulled into view. Undefined means
+    // the run never marked it, and a projection that read undefined as
+    // true would surface every task in a consumer's view.
+    expect(projectNode(mkNode({ id: 'a#build', command: 'x' })).surfaced).toBe(false)
+    expect(projectNode(mkNode({ id: 'a#build', command: 'x', surfaced: true })).surfaced).toBe(true)
+  })
+})
+
 describe('toWireEvent', () => {
   it('maps every event kind to a JSON-safe wire form', () => {
     const node = mkNode({ id: 'a#build', command: 'x' })
@@ -336,5 +397,23 @@ describe('wireForwarder — completions without a start', () => {
     const forward = wireForwarder((e) => sent.push(e))
     forward({ kind: 'task:complete', node: group, outcome: mkOutcome(group) })
     expect(sent).toEqual([])
+  })
+
+  it('SYNTHESIZES the start a skipped task never emitted', () => {
+    // This describe is named for this case and both rows above are its
+    // negatives. A skipped task never reaches the scheduler's onStart, so
+    // its completion arrives alone — and a consumer that resolves a
+    // completion's node from the start it recorded would drop the task
+    // while the forwarded footer still counted it.
+    const node = mkNode({ id: 'a#build', command: 'x', requested: true })
+    const sent: WireEvent[] = []
+    const forward = wireForwarder((e) => sent.push(e))
+    forward({ kind: 'task:complete', node, outcome: mkOutcome(node, { status: 'skipped' }) })
+    expect(sent.map((e) => e.kind)).toEqual(['task:start', 'task:complete'])
+    // Full fidelity, not a stand-in: the synthesized start carries the real
+    // command and flags, because the live node is in hand here.
+    const start = sent[0] as Extract<WireEvent, { kind: 'task:start' }>
+    expect(start.task).toEqual(projectNode(node))
+    expect(start.task.command).toBe('x')
   })
 })
