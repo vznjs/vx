@@ -5038,6 +5038,83 @@ OID is clean per `git status`and therefore on disk, so`isInputOnDisk` would answ
 comment names loses its OID before it gets here
 (`git-oid.test.ts`, "deleted → untrusted"). Its only observable
         is a syscall count, with no public seam to read it from.
+566.  DONE (2026-09-21, `cache/inputs.ts`, region: `resolveOutputs`,
+      `containedIn`, `isInside`, `removeAll`, `pruneEmptiedDirs`,
+      `scanUnion` and the two workspace twins — everything that decides
+      what a clean DELETES. 32 mutations run three times (1.3.11, then
+      1.4.2, then 1.4.2 against the fixed tree): twenty-two caught, ten
+      open, five closed by five rows, TWO SOURCE FIXES).
+      THE HEADLINE IS NOT IN THIS FILE AT ALL: THE GATE WAS RUNNING A
+      BUN BELOW THE REPO'S OWN FLOOR. This container ships 1.3.11;
+      `engines.bun` says `>=1.4` and `ci.yml` pins 1.4.2.
+      `Bun.Glob.scanSync` does not descend symlinked directories on
+      1.3.11 and DOES on 1.4.0 — so every symlink-escape tripwire here
+      is INERT locally, printing no `skip`: the rows pass, they just
+      cannot fail. The first sweep scored five containment guards as
+      survivors; re-run on 1.4.2, three were CAUGHT. The guard that
+      decides what gets DELETED was the one the local gate could not
+      see. And the correction above retires the yardstick: the GitHub
+      release asset downloads fine through the proxy, and the gate at
+      1.4.2 is 44/44 green on three reps, so the three "flappers" were
+      1.3.11 failures all along.
+      FIX ONE — AN EMPTIED PARENT WAS LEFT STANDING.
+      `pruneEmptiedDirs` sorts deepest-first and walks up, and its
+      comment claimed "a parent is attempted after every child had its
+      turn" — but a `tried` set stopped the second child's walk at a
+      parent the FIRST child had already failed to remove. Measured:
+      with `dist/a/b/x.js` and `dist/a/c/y.js` both cleaned, `dist/a/`
+      was left EMPTY. That is the exact thing the prune exists to
+      prevent — an empty directory where the cached entry holds a FILE
+      of the same name blocks the restore's rename. The set is gone;
+      the walk terminates by construction and a failed rmdir is one
+      syscall. A comment claiming a guarantee the code lacks is a
+      defect, and this one had been making it since the function was
+      written.
+      FIX TWO — `scanUnion` HAD AN UNREACHABLE HALF. Its `mode`
+      parameter defaulted to `'files'` and BOTH call sites pass
+      `'outputs'`, so the whole `files` branch, its `dot: true`
+      included, could be deleted with the suite green for the plainest
+      reason there is: nothing called it. Removed, along with the
+      parameter.
+      THE WORST ROW THE SWEEP ASKED FOR IS A SIBLING THAT SHARES A
+      PREFIX. `isInside` appends the separator before comparing, and
+      that is the whole guard: `<root>/pkg-extra/x` starts with
+      `<root>/pkg`. Drop it and BOTH containment passes are fooled at
+      once — they call the same function — so `cleanOutputs` deletes a
+      sibling project's files. The existing `..` and absolute-glob rows
+      never saw it because of their fixture's NAMES: the victim there
+      is `<root>/victim`, which fails a bare `startsWith` anyway. The
+      two readings only separate when the sibling shares the prefix —
+      the 559 mixed-case sort and the 564 insertion order, a third
+      time.
+      AND A ROW FOR THE MACOS SHAPE, SIMULATED RATHER THAN GUESSED:
+      `containedIn` compares REAL paths, so its root must be real too,
+      and with a canonical root `realpath(root)` is invisible. A
+      project reached through a symlink reproduces darwin's
+      `/var/folders` on Linux in three lines — without the realpath
+      every output resolves OUTSIDE the project, the clean deletes
+      nothing, and a restore lands on stale files. Plus a dotfile
+      output (the outputs scan's `dot: true`, unasked-for until now)
+      and a bare directory in `outputs.workspaceFiles` (the twin of a
+      row the project side already had).
+      TEN OPEN, none a hole anyone can reach from a sequential fixture.
+      Three of `removeAll`'s four are CAUGHT under a non-root user and
+      only skip here — this container runs as root, and a `probe` user
+      plus `/opt/probe-bin/bun142` now resolves that axis instead of
+      reporting it INCONCLUSIVE. The fourth, `force: true`, tolerates
+      an ENOENT no sequential fixture can produce: the match set is a
+      Set, so overlapping globs dedup, and the race it guards is with
+      the producing task. `ci-no-lexical` is masked by the realpath
+      pass (the 563 shape). `ci-unresolvable-kept` needs a directory
+      that will not resolve, which as root it always does. And
+      `pe-shallowest-first` is now a COST choice rather than a
+      correctness one — the fix's retries make the order irrelevant,
+      which is worth knowing before someone "optimises" it back.
+      ONE ENTRY IN THE TABLE WAS MY OWN BROKEN MUTATION:
+      `pe-tried-memo-back` re-adds only the `const tried = new Set()`
+      declaration, not its two uses, so it is an unused variable and a
+      no-op. Reported as such, not as a survivor; the hand-run
+      differential that DOES restore both halves reddens the new row.
 
 ## In flight
 
@@ -5109,11 +5186,20 @@ the shared helper carries. Fixed there, so load explains none of the
 23; what it explains is the SIGILL shape below and the watch timing 431
 left in place. The controlled comparison closes it: CI pins
 `bun-version: 1.4.2` in `ci.yml` and every PR of this arc went green
-there — same tree, same tests, 23 red here and none there. Upgrading
-is not available in the container: `bun upgrade` is refused by this
-build and bun.sh answers 403 through the proxy. So the yardstick stands, with its meaning stated: a gate here
-is honest against the failing-TASK set and the failing-TEST set
-together, and anything outside both is the diff's.
+there — same tree, same tests, 23 red here and none there. CORRECTED 2026-09-21 (item 566): UPGRADING IS
+AVAILABLE, and the yardstick is retired. `bun upgrade` is indeed
+refused by this build and bun.sh does answer 403, but the GitHub
+release asset does not —
+`github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip`
+downloads through the proxy in one curl, and the gate run with that
+binary first on PATH is **44 of 44 tasks green, three reps, zero
+failing tests**. So the three "flappers" were never flakes: they are
+1.3.11 failures of a runtime BELOW this repo's own declared floor
+(`engines.bun: >=1.4`), which is why CI at 1.4.2 never saw one. Run
+the gate under the pinned build; `$SP/bun142bin` is a directory
+holding just that symlink, for `PATH=$SP/bun142bin:$PATH`. The
+failing-task and failing-test yardsticks are no longer needed — a
+failure under 1.4.2 is the diff's, full stop.
 One more shape to expect, first seen 2026-09-19 under item 380: a
 shard can die with **exit 132 (128 + SIGILL)** and report no failing
 test at all — the Bun process crashed, so the failing-task count goes
