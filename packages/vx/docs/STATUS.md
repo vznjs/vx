@@ -4267,6 +4267,46 @@ between tests`, `0 pass` and no `(fail)` row, and the classifier —
       write-then-rename that keeps a reader from seeing a half-written
       memo, which `readMemo`'s own catch turns into a miss.
 
+551.  DONE (2026-09-21, `orchestrator/status-line.ts` — the interactive
+      status display and the writer that serialises every stdout write
+      around it. Never swept. 30 mutations: twenty-two caught, eight
+      survivors, four closed by four rows, four classified. No source
+      change).
+      THE THIRD WELL-HELD FILE RUNNING. The wrapped-row erase — the
+      part that went wrong on a real pty at ~10 junk rows a second —
+      has its own describe and pins the physical-row arithmetic, the
+      visible-width measurement, the cursor-up sequence and its
+      byte-identical single-row form. Both throttles, the coalesced
+      trailing draw, the mid-line hold and the permanence of
+      `clearStatus` all have rows too.
+      WHAT SURVIVED WAS THE ARITHMETIC'S EDGES. A width of ZERO is the
+      same unknown-width case as an absent one, and dividing by it
+      yields Infinity rows and an erase of `ESC[InfinityA`, which is
+      not an escape at all. And an EMPTY line measures 0 columns, so a
+      bare `ceil(0 / cols)` counts it as no row — which would come up
+      one row short of every region vx actually draws, since each one
+      opens with the blank separator between the live region and the
+      list scrolling above it.
+      A ROW THAT PINS HEIGHT DOES NOT PIN COLUMN. "Idle rows hold their
+      place so the slot zone height never changes" counts lines; the
+      indent that puts `idle` under `running` is the other half of the
+      same promise (layout shift IS the bug this display exists to
+      fix), and the new row compares the two columns directly.
+      AND A SLOT STAMPED AFTER the region's clock rendered a NEGATIVE
+      age: the two clocks are read at different moments, and the
+      `Math.max(0, …)` that covers it had no witness.
+      A DUPLICATE I NEARLY ADDED, recorded because the method is the
+      point: the trailing-draw-after-`clearStatus` row I wrote already
+      exists, and its comment carries the same mutation result I had
+      just re-derived ("removing the cancel alone kills nothing —
+      verified by mutation"). Grep the describe, not just the file.
+      Four classified: the `cancelTrailing` in `clearStatus` (covered
+      by the callback's own `dead` guard — the joint mutation of both
+      is what the existing row catches), the timer's `unref` (a stray
+      timer holding the process open, which an in-process suite cannot
+      observe), and `paintPinnedId`'s no-`#` arm (every caller passes a
+      task id, which always has one).
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

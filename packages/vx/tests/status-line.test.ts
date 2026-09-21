@@ -508,6 +508,51 @@ describe('formatStatusRegion', () => {
     expect(lines[1]).toContain('\x1b[')
   })
 
+  it('an idle row aligns its word under the running rows’ status column', () => {
+    // The height row above proves an idle slot holds its PLACE; this proves
+    // it holds its COLUMN. The whole point of the display is that nothing
+    // shifts as tasks come and go, so `idle` has to sit exactly where
+    // `running` sits on a busy row.
+    const busy = formatStatusRegion({
+      pinnedPersistent: [],
+      slots: [{ id: 'a#build', startedMs: 0 }],
+      overflow: 0,
+      nowMs: 1000,
+      summaryLines: [],
+    })
+    const idle = formatStatusRegion({
+      pinnedPersistent: [],
+      slots: [null],
+      overflow: 0,
+      nowMs: 1000,
+      summaryLines: [],
+    })
+    expect(busy[1]!.indexOf('running')).toBe(idle[1]!.indexOf('idle'))
+  })
+
+  it('a slot whose start is in the FUTURE renders zero, never a negative age', () => {
+    // The slot clock and the region clock are read at different moments,
+    // and a slot stamped a millisecond after the region's `nowMs` would
+    // otherwise render a negative duration in the elapsed column.
+    const lines = formatStatusRegion({
+      pinnedPersistent: [],
+      slots: [{ id: 'a#build', startedMs: 5_000 }],
+      overflow: 0,
+      nowMs: 1_000,
+      summaryLines: [],
+    })
+    expect(lines[1]).not.toContain('-')
+    // CONTROL: an ordinary elapsed still renders.
+    const ok = formatStatusRegion({
+      pinnedPersistent: [],
+      slots: [{ id: 'a#build', startedMs: 0 }],
+      overflow: 0,
+      nowMs: 2_500,
+      summaryLines: [],
+    })
+    expect(ok[1]).toContain('2.50s')
+  })
+
   it('formatFailureLine: red ◼︎ glyph + exec time + failed + miss + id (no exit code)', () => {
     expect(formatFailureLine('a#build', 100)).toBe(' ◼︎   100ms failed  miss     a#build')
     const colored = formatFailureLine('a#build', 100, { enabled: true })
@@ -722,5 +767,30 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.text()).toContain('replayed build output\n')
     // Full frame even for an up-to-date hit (owner rule).
     expect(s.text()).toContain('└─ one#build ── (100ms) up-to-date')
+  })
+
+  it('a width of ZERO falls back to the logical count, like an absent one', () => {
+    // A TTY whose winsize reports 0 is the same "unknown width" case as one
+    // that reports nothing: dividing by it yields Infinity rows and an
+    // erase of `ESC[InfinityA`, which is not an escape at all. The
+    // documented fallback — a known residual, never a garbage sequence —
+    // has to cover both spellings.
+    const s = ttyW(0)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['l1', 'l2', 'l3'], { force: true })
+    w.setRegion(['n1'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jn1')
+  })
+
+  it('an EMPTY line still occupies a row', () => {
+    // Every region this file renders starts with a blank line — the
+    // separator between the live region and the list scrolling above it.
+    // Its width is 0, and a plain `ceil(0 / cols)` is 0 rows, so the erase
+    // would come up one row short of every region vx actually draws.
+    const s = ttyW(80)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['', 'l1', 'l2'], { force: true })
+    w.setRegion(['n1'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jn1')
   })
 })
