@@ -24,7 +24,7 @@
 // be.
 
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
@@ -1323,6 +1323,141 @@ describe('the per-run files memo is keyed on everything that decides the answer'
 
     expect(await filesOf(['**/*.ts'])).toEqual(['a.ts', 'inner/b.ts'])
     expect(await filesOf(['**/*.ts'], [path.join(projectDir, 'inner')])).toEqual(['a.ts'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// What a clean leaves behind, and how far "inside the project" reaches
+// ─────────────────────────────────────────────────────────────────────────
+describe('the clean empties a tree without reaching past it', () => {
+  let root: string
+  let projectDir: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-clean-'))
+    projectDir = path.join(root, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const tree = async (d: string, pre = ''): Promise<string[]> => {
+    const out: string[] = []
+    for (const e of await readdir(d, { withFileTypes: true })) {
+      const name = pre + e.name + (e.isDirectory() ? '/' : '')
+      out.push(name)
+      if (e.isDirectory()) out.push(...(await tree(path.join(d, e.name), pre + e.name + '/')))
+    }
+    return out.sort()
+  }
+
+  it('a parent emptied by the LAST of its children is removed too', async () => {
+    // FIXED here. `pruneEmptiedDirs` sorts deepest-first and walks up,
+    // and its comment claimed "a parent is attempted after every child
+    // had its turn" — but a `tried` set stopped the second child's walk
+    // at a parent the FIRST child had already failed to remove. Measured
+    // on the fixture below: `dist/a/` was left standing EMPTY, because
+    // `dist/a/b`'s turn marked it tried while `dist/a/c` still existed,
+    // and `dist/a/c`'s turn then refused to retry it.
+    //
+    // An empty directory is not an output anyone declared, and the reason
+    // the prune exists at all is that one standing where the cached entry
+    // holds a FILE of the same name blocks the restore's rename. So the
+    // set is gone and the loop simply walks up; a failed rmdir is one
+    // syscall and the walk terminates by construction.
+    const w = async (rel: string) => {
+      await mkdir(path.dirname(path.join(projectDir, rel)), { recursive: true })
+      await writeFile(path.join(projectDir, rel), 'x')
+    }
+    await w('dist/a/b/x.js')
+    await w('dist/a/c/y.js')
+    await w('dist/keep/z.js')
+    // Not matched by the glob: the directory holding it must SURVIVE, which
+    // is what separates "prune what the clean emptied" from `rm -rf dist`.
+    await w('dist/keep/stray.txt')
+
+    const removed = await cleanOutputs({
+      projectDir,
+      outputs: ['dist/**/*.js'],
+      nestedProjectDirs: [],
+    })
+    expect(removed.sort()).toEqual(['dist/a/b/x.js', 'dist/a/c/y.js', 'dist/keep/z.js'])
+    expect(await tree(projectDir)).toEqual(['dist/', 'dist/keep/', 'dist/keep/stray.txt'])
+  })
+
+  it('a sibling whose name EXTENDS the project’s is outside it', async () => {
+    // `isInside` appends the separator before comparing, and that is the
+    // whole guard: `<root>/pkg-extra/x` starts with `<root>/pkg`. Drop it
+    // and BOTH containment passes are fooled at once — the lexical one and
+    // the realpath one call the same function — so `cleanOutputs` deletes
+    // a sibling project's files.
+    //
+    // The existing `..` and absolute-glob rows do not see it, and the
+    // reason is their fixture's NAMES: the victim there is `<root>/victim`,
+    // which fails a bare `startsWith` anyway. The two readings only
+    // separate when the sibling shares the project's prefix — the same
+    // shape as the mixed-case sort in 559 and the insertion order in 564.
+    const sibling = path.join(root, 'pkg-extra')
+    await write(path.join(sibling, 'precious.txt'), 'precious')
+
+    expect(
+      await resolveOutputs({ projectDir, outputs: ['../pkg-extra/**'], nestedProjectDirs: [] }),
+    ).toEqual([])
+    await cleanOutputs({ projectDir, outputs: ['../pkg-extra/**'], nestedProjectDirs: [] })
+    expect(await readFile(path.join(sibling, 'precious.txt'), 'utf8')).toBe('precious')
+  })
+
+  it('a project reached through a symlink still cleans its own outputs', async () => {
+    // `containedIn` compares REAL paths, so the root it compares against
+    // has to be real too. With a canonical root the `realpath(root)` and
+    // the root are the same string and the call is invisible — which is
+    // exactly the macOS shape this repo has been bitten by before, where
+    // `mkdtemp` hands back `/var/folders/…` for a real `/private/var/…`.
+    // Simulated on Linux in three lines rather than guessed at: without
+    // the realpath, every output resolves OUTSIDE the project, the clean
+    // deletes nothing, and a restore lands on top of stale files.
+    const real = path.join(root, 'real')
+    await write(path.join(real, 'dist', 'app.js'), 'built')
+    const linked = path.join(root, 'linked')
+    await symlink(real, linked)
+
+    const removed = await cleanOutputs({
+      projectDir: linked,
+      outputs: ['dist/**'],
+      nestedProjectDirs: [],
+    })
+    expect(removed).toEqual(['dist/app.js'])
+    expect(existsSync(path.join(real, 'dist', 'app.js'))).toBe(false)
+  })
+
+  it('a DOTFILE is an output like any other', async () => {
+    // The outputs scan passes `dot: true`, and nothing asked for it. A
+    // task that writes `.vitepress/cache` or a `dist/.manifest` would keep
+    // its stale copy across a restore — the clean would skip it and the
+    // restore would land beside it.
+    await write(path.join(projectDir, 'dist', '.manifest'), 'm')
+    await write(path.join(projectDir, 'dist', 'app.js'), 'a')
+
+    const removed = await cleanOutputs({
+      projectDir,
+      outputs: ['dist/**'],
+      nestedProjectDirs: [],
+    })
+    expect(removed.sort()).toEqual(['dist/.manifest', 'dist/app.js'])
+  })
+
+  it('a bare directory in workspace outputs means its whole tree', async () => {
+    // `asTrees` is what turns `generated` into `generated` + `generated/**`.
+    // The project twin has a row for it; this one did not, and the two are
+    // separate call sites — the shape that has bitten this file before.
+    await write(path.join(root, 'generated', 'schema.ts'), 'gen')
+
+    expect(await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['generated'] })).toEqual([
+      'generated/schema.ts',
+    ])
+    expect(existsSync(path.join(root, 'generated', 'schema.ts'))).toBe(false)
   })
 })
 

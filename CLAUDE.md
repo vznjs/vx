@@ -440,6 +440,27 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   the suite green; one of them reaps `cache.db` itself (564). Put each
   control PAST the coarse gate, so the only thing left holding it is
   the guard it is named for.
+- CHECK THE RUNTIME AGAINST THE DECLARED FLOOR BEFORE TRUSTING A
+  SWEEP. This container ships Bun 1.3.11; the repo declares `>=1.4`
+  and CI pins 1.4.2. `Bun.Glob.scanSync` does not descend symlinked
+  directories on 1.3.11 and DOES on 1.4.0 — so every symlink-escape
+  tripwire in `inputs-resolution.test.ts` is INERT here. It prints no
+  `skip`: the rows pass, they simply cannot fail. Item 566 scored five
+  containment guards as survivors on 1.3.11; re-run on 1.4.2, three
+  were CAUGHT. Worse than a wrong verdict, the local gate is quietly
+  weaker than CI on exactly the guard that decides what gets DELETED.
+  `bun --version` against `engines.bun` and the workflow's
+  `bun-version` is the first thing a sweep does; when they differ,
+  fetch the pinned build
+  (`github.com/oven-sh/bun/releases/download/bun-v<x>/bun-linux-x64.zip`)
+  and run the sweep under it.
+- A DIFFERENTIAL HARNESS MUST FAIL LOUD ON A RUN THAT PRODUCED
+  NOTHING. `su probe -c` could not execute a binary under the session
+  scratchpad (0700 ancestors), so three mutations printed one
+  permission error and no summary — and a `grep -E "fail| pass"`
+  matched nothing, which read exactly like a clean pass (566). Every
+  runner wraps its filter with an else branch that prints the tail and
+  says NO SUMMARY; silence is never a verdict.
 - `Bun.file(<a directory>).exists()` IS FALSE. Measured on Bun 1.3.11.
   So a guard written as `if (!(await Bun.file(p).exists())) continue`
   silently skips every path that names a directory — which masked the

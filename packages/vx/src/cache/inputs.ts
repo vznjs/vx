@@ -410,9 +410,7 @@ export async function resolveOutputs(args: {
     ...OUTPUT_NEVER,
     ...boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs),
   ].map(globFor)
-  const scanned = [
-    ...(await scanUnion(asTrees(args.outputs), excludeGlobs, args.projectDir, 'outputs')),
-  ]
+  const scanned = [...(await scanUnion(asTrees(args.outputs), excludeGlobs, args.projectDir))]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
   // DELETES whatever this returns, and `Bun.Glob.scan` happily walks `..` out
   // of its cwd — so the loader's `..`/absolute rejection alone was a single
@@ -536,14 +534,12 @@ async function removeAll(files: readonly string[], root: string): Promise<void> 
  */
 async function pruneEmptiedDirs(root: string, removed: readonly string[]): Promise<void> {
   const rootResolved = path.resolve(root)
-  const tried = new Set<string>()
   // Deepest first, so a parent is attempted after every child had its turn.
   const dirs = [...new Set(removed.map((f) => path.dirname(f)))].sort(
     (a, b) => b.split(path.sep).length - a.split(path.sep).length,
   )
   for (let dir of dirs) {
-    while (dir !== rootResolved && dir.startsWith(rootResolved + path.sep) && !tried.has(dir)) {
-      tried.add(dir)
+    while (dir !== rootResolved && dir.startsWith(rootResolved + path.sep)) {
       const gone = await rmdir(dir).then(
         () => true,
         (err: NodeJS.ErrnoException) => err.code === 'ENOENT',
@@ -566,7 +562,7 @@ export async function resolveWorkspaceOutputs(args: {
   outputs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const scanned = [...(await scanUnion(asTrees(args.outputs), [], args.workspaceRoot, 'outputs'))]
+  const scanned = [...(await scanUnion(asTrees(args.outputs), [], args.workspaceRoot))]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
@@ -764,50 +760,41 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
 }
 
 /**
- * Union of files matching any positive pattern in `cwd`, minus files
- * matching any exclude glob (tested by Bun.Glob.match on the relative
+ * Union of the OUTPUT files matching any positive pattern in `cwd`, minus
+ * files matching any exclude glob (tested by Bun.Glob.match on the relative
  * path). Bun.Glob takes a single pattern per instance, so we iterate.
  *
- * `outputs` mode also yields SYMLINKS (never followed, never descended):
- * a task that emits `dist/out -> ../src/x` has produced an output, so the
- * save must capture it (as its target's bytes, `planArtifact`) and the
- * clean must remove it — a link the clean leaves standing blocks the
- * directory a later entry restores there. Bun's `onlyFiles` walk drops
- * every symlink, so this mode lists everything and sorts by `lstat`.
+ * Yields SYMLINKS (never followed, never descended): a task that emits
+ * `dist/out -> ../src/x` has produced an output, so the save must capture it
+ * (as its target's bytes, `planArtifact`) and the clean must remove it — a
+ * link the clean leaves standing blocks the directory a later entry restores
+ * there. Bun's `onlyFiles` walk drops every symlink, so this lists everything
+ * and sorts by `lstat`.
+ *
+ * Sync scan. The async walk was chosen on 2026-09-02, when a warm HIT globbed
+ * its outputs and the thread pool overlapped a thousand of them; the directory
+ * short-circuit took the glob off the hit path, and what is left runs on the
+ * MISS path twice per task (clean, then resolve), where the walk is CPU-bound
+ * and each async chunk costs a main-thread round trip. Measured 2026-09-09 on
+ * a 1,000-task cold run (see STATUS).
+ *
+ * A second `mode: 'files'` branch lived here until item 566, defaulted to and
+ * reached by NOTHING — both call sites pass `'outputs'`. Its `dot: true` could
+ * be deleted with the whole suite green for the plainest reason there is.
  */
 async function scanUnion(
   positive: readonly string[],
   excludeGlobs: readonly Bun.Glob[],
   cwd: string,
-  mode: 'files' | 'outputs' = 'files',
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   for (const pattern of positive) {
     const glob = globFor(pattern)
-    if (mode === 'outputs') {
-      for (const rel of glob.scanSync({
-        cwd,
-        onlyFiles: false,
-        followSymlinks: false,
-        dot: true,
-      })) {
-        if (excludeGlobs.some((g) => g.match(rel))) continue
-        const abs = path.resolve(cwd, rel)
-        const st = lstatSync(abs, { throwIfNoEntry: false })
-        if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
-      }
-      continue
-    }
-    // Sync scan. The async walk was chosen on 2026-09-02, when a warm HIT
-    // globbed its outputs and the thread pool overlapped a thousand of
-    // them; the directory short-circuit took the glob off the hit path, and
-    // what is left runs on the MISS path twice per task (clean, then
-    // resolve), where the walk is CPU-bound and each async chunk costs a
-    // main-thread round trip. Measured 2026-09-09 on a 1,000-task cold run
-    // (see STATUS).
-    for (const rel of glob.scanSync({ cwd, onlyFiles: true, dot: true })) {
+    for (const rel of glob.scanSync({ cwd, onlyFiles: false, followSymlinks: false, dot: true })) {
       if (excludeGlobs.some((g) => g.match(rel))) continue
-      matches.add(path.resolve(cwd, rel))
+      const abs = path.resolve(cwd, rel)
+      const st = lstatSync(abs, { throwIfNoEntry: false })
+      if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
     }
   }
   return matches
