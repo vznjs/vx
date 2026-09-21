@@ -99,6 +99,7 @@ and graph traversal.
 
 `tests/package-graph.test.ts`:
 
+- a package that names ITSELF is not its own dependency
 - builds an empty graph from no projects
 - records direct workspace deps only when the dep is in the workspace
 - directDeps returns only immediate workspace deps, sorted

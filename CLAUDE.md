@@ -440,6 +440,16 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   the suite green; one of them reaps `cache.db` itself (564). Put each
   control PAST the coarse gate, so the only thing left holding it is
   the guard it is named for.
+- AND WHEN SEVERAL ODDITIES SHARE A CONTAINER, SUSPECT THE CONTAINER.
+  Three recorded "flappers", `shard-9`'s 1-in-8 SIGILL, and three
+  containment guards that scored as survivors were ONE fact: Bun
+  1.3.11, below this repo's `engines.bun: >=1.4`, where CI pins 1.4.2
+  (items 566, 572). Each had its own plausible local story — load, a
+  runtime bug, a thin fixture — and each story was wrong. Measured by
+  interleaved A/B on the shard's own files: 1.3.11 failed 3 of 24,
+  1.4.2 failed 0 of 24. Before attributing a flake to load or to the
+  runtime in general, check the runtime's VERSION against what the
+  project declares and what CI runs.
 - CHECK THE RUNTIME AGAINST THE DECLARED FLOOR BEFORE TRUSTING A
   SWEEP. This container ships Bun 1.3.11; the repo declares `>=1.4`
   and CI pins 1.4.2. `Bun.Glob.scanSync` does not descend symlinked

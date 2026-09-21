@@ -42,8 +42,17 @@ export function buildPackageGraph(
   // reads no peers, runs it; an unconditional order edge made `^build`
   // a task cycle, 2026-09-11), so a peer edge that would close a cycle
   // through the order graph is reach only: the consumer above provides
-  // that peer. Peers are tried in (package, peer) name order, so which
-  // edge of a two-peer cycle stays is stable across runs.
+  // that peer.
+  //
+  // Which edge of a MUTUAL two-peer cycle stays is stable across runs,
+  // and the PACKAGE sort below is what makes it so: the first package
+  // in name order keeps its edge, whatever order the projects arrive
+  // in. The per-package peer sort provides none of that — measured
+  // (item 571), both manifest orders give identical graphs in every
+  // arrangement tried, because `reaches(peer, p)` walks edges INTO `p`
+  // and adding an edge OUT of `p` cannot change it. It stays as cheap
+  // insurance against a future rule that does depend on it; it is not
+  // what the stability rests on.
   const directDeps = new Map<string, string[]>()
   const reachDeps = new Map<string, string[]>()
   const order = new Map<string, Set<string>>()
