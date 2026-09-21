@@ -4674,6 +4674,84 @@ test` is transpile-only — it cannot see a type error at all, so
       one-side-pruned case, and "changed but no component differs" —
       had no witness.
 
+560.  DONE (2026-09-21, `graph/scheduler.ts` — the two-tier scheduler
+      itself: the bitset priority closure, the ready heap, the tick
+      loop's admission and skip propagation. NEVER mutation-swept: 464
+      took `admission.ts`, the seam beside it, and 434 took
+      `taintTracker`. 50 mutations: thirty-one caught, nineteen
+      survivors, ten closed by nine rows, nine classified. One
+      comment corrected).
+      WHAT IS ALREADY WELL HELD, and it is most of the file: the
+      bitset transitive closure at every mutation (the fold, the
+      reverse-topo direction, the popcount, the edge direction), the
+      heap's (priority DESC, seq ASC) contract with both sift arms,
+      skip propagation, fail-fast, and both observer-isolation arms.
+      The holes were all at DEFAULTS and SECOND COPIES.
+      A FIXTURE THAT DISARMS THE BYPASS IT IS NAMED FOR. "restore-tier
+      task reports cache-hit even when a dep FAILED" loops five times,
+      but a restore is enqueued at startup and dep-INDEPENDENT, so it
+      is dispatched in the first tick — before anything can fail. The
+      dep check in `willSkip` is never reached, so the bypass has no
+      witness at all. Holding the restore lane (`concurrency 1` ⇒ one
+      restore at a time) lets the failure land first, and the second
+      restore is then dispatched with a failed dep already recorded.
+      A RESTORE COULD BE DISPATCHED TWICE: restore-tier tasks are
+      enqueued at startup on their own lane, so the `pending`
+      decrement in `finishOne` must not ALSO push them onto the exec
+      queue — and nothing held that.
+      `blockedBy` HAD NO WITNESS FOR AN ABORTED DEP, and none for its
+      PRECEDENCE: a failed upstream names itself, a skipped one hands
+      down its own root, and every fixture gives a task exactly one
+      bad dep, where either order answers the same. And the abort
+      SIGNAL arm of `willSkip` was never driven at all — the status it
+      produces is the difference between "your run was cancelled" and
+      "something upstream of this failed".
+      `mergePriorities` WAS HELD ONLY WHERE THE BASELINE IS ZERO.
+      Every fixture scores nodes with baseline 0 and distinct weights,
+      so both the baseline COPY (what unscored nodes rank by) and the
+      `+ b` tie-break (parity within the override set) could go with
+      the suite green.
+      AND TWO ADMISSION EDGES: pool capacity was never tested with a
+      SECOND pooled task, so `hasRoom` could return a flat `true` and
+      oversell the pool; and `Math.max(1, …)` is a FLOOR, not a
+      rounding — a task refused and admitted inside one millisecond
+      would otherwise drop `admissionHeldMs` and report that the
+      policy never held it. Pinned with `Date.now` frozen, so the
+      elapsed time is exactly 0 and only the floor can produce it.
+      ONE OF MY OWN MUTATIONS WAS A NO-OP. `dr-then-catch` inserted a
+      pass-through `.catch` ahead of `.then(f, g)`, which leaves both
+      arms intact — it measured nothing. Rewritten as the shape the
+      comment forbids (`.then(f).catch(g)`), it SURVIVES, and chasing
+      that down corrected the comment instead: `onFinish`, which it
+      cited as the throw to guard against, is isolated inside
+      `finishOne` and never reaches the fulfillment arm — which is
+      exactly why "a throwing onFinish does not unlist twice into a
+      wedged policy" passes under both shapes. The only unisolated
+      thing left there is the caller's `settledOf`, and under the
+      CORRECT shape a throw in it strands the outcome and hangs the
+      run rather than double-releasing. The two-arm form is still
+      right; no reachable throw makes the difference observable, so
+      there is no row to write.
+      AND ONE VERDICT WAS THE DRIVER'S FAULT, NOT THE CODE'S.
+      `tl-restore-drained-first` read INCONCLUSIVE because a hung
+      mutation costs bun's default 5s per row — 49 rows in one file —
+      which blew a per-file timeout sized from the pristine 1.3s and
+      truncated the run before its summary line. Re-run alone it is 46
+      of 49 rows red: a catch, not a hole.
+      EIGHT CLASSIFIED. Four are defensive against inputs their one
+      caller cannot produce: `computeReverseDepCount` has exactly one
+      production call site (`runGraph`), which would itself hang on a
+      dep missing from the map, and whose `priority` map covers every
+      node — so the missing-dep `continue`, the cycle-stranded default,
+      the heap's `?? 0` and `peekSeq`'s `-1` are all unreachable from
+      there. The parked-task seq repush is the one item 493 already
+      measured over 800 randomized scenarios with zero order
+      differences, kept because it holds without that argument. The
+      two resolve-condition arms are implied: `leave()` runs before
+      `finishOne`, so `active` is already 0 when the last outcome
+      lands. And the `heldSince` first-write guard is a claim about
+      elapsed time that only a clock seam could pin deterministically.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

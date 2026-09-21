@@ -375,6 +375,31 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   559; a bound bigint parameter loses it on the WRITE side too, so
   probe with a SQL literal). Check which the driver actually hands
   back before believing a type that was never enforced.
+- RUN A MUTATION SWEEP IN A WORKTREE, NOT THE CHECKOUT. A sweep holds
+  deliberately BROKEN source for its whole duration, so doing it in the
+  working copy makes "uncommitted changes" indistinguishable from real
+  unsaved work — and committing to clear that is pushing a corrupted
+  file. `git worktree add --detach $SP/wt <sha>`, symlink the installed
+  `node_modules` (root and each `packages/*/`) so `bun test` runs there
+  unchanged, and point the driver at it; rows are authored in the main
+  checkout and copied in before each run (item 560).
+- SIZE A SWEEP'S TIMEOUT BY THE FAILURE MODE, NOT THE PRISTINE RUNTIME.
+  The scheduler's dominant failure mode is a HANG (`runGraph` never
+  resolves), and bun's DEFAULT per-test timeout is 5s — so ONE hung
+  mutation costs 49 rows x 5s = 245s in one file, blowing a per-file
+  `timeout` picked from the pristine 1.3s. The file is then truncated
+  before its summary line and the classifier reads a GENUINE CATCH as
+  INCONCLUSIVE (item 560, `tl-restore-drained-first`: 46 of 49 rows
+  actually red). Cap bun's own per-test timeout (`bun test --timeout
+  1500`) after checking every file still passes clean at that cap on
+  pristine.
+- A MUTATION CAN BE A NO-OP, AND THEN IT PROVES NOTHING. `dr-then-catch`
+  inserted a pass-through `.catch((e) => Promise.reject(e))` ahead of
+  `.then(f, g)` — which leaves both arms intact, so the "survivor" was
+  measuring nothing at all (560). When a mutation of a well-commented
+  invariant survives, first check the mutation actually changes
+  behaviour; write the shape the comment FORBIDS (here `.then(f)
+  .catch(g)`), not something adjacent to it.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a
