@@ -524,6 +524,31 @@ describe('staticPrefix normalizes the spelling before it takes the prefix', () =
   })
 })
 
+describe('staticPrefix and an ABSOLUTE grant — the root is a prefix', () => {
+  it('keeps `/` as the prefix instead of collapsing it to the empty string', () => {
+    // Every other row here feeds staticPrefix a project-relative glob,
+    // because `cache.inputs`/`cache.outputs` are validated to be relative —
+    // absolute entries, `..` segments and negations are all refused at the
+    // schema. Sandbox grants are NOT: `exec.sandbox.allow.read` is checked
+    // only for being an array of strings, on purpose ("macOS matches them
+    // natively, Linux expands them against the filesystem at resolve time"),
+    // so an absolute grant is a supported shape and reaches here unfiltered.
+    //
+    // Both root forms trim to the empty string under a plain trailing-slash
+    // strip, and `sandbox-request.ts` feeds this straight to `expandHome`
+    // as a read path — where an empty string is not the root, it is
+    // whatever the cwd makes of it.
+    expect(staticPrefix('/')).toBe('/')
+    expect(staticPrefix('/**')).toBe('/')
+    // The controls: an absolute grant BELOW the root keeps its whole
+    // directory, so the two rules above are about the root and not about
+    // absolute paths in general.
+    expect(staticPrefix('/usr/**')).toBe('/usr')
+    expect(staticPrefix('/usr/lib/**')).toBe('/usr/lib')
+    expect(staticPrefix('/usr/lib/libc.so')).toBe('/usr/lib/libc.so')
+  })
+})
+
 describe('isLiteralPattern — the wildcard ALPHABET, one member at a time', () => {
   // This predicate decides whether a declaration is MATCHED or compared as
   // a string, and one of its three former copies had a smaller character
