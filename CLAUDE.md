@@ -176,6 +176,17 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   levels. Require a per-file summary line (`N pass`) and treat its
   absence as INCONCLUSIVE, never as a pass; one `bun test` per file
   also keeps one panic from voiding the whole run (2026-09-21).
+- And a SKIPPED row is a silent pass in a sweep, even where the repo
+  already guards it. Six rows across five suites are `skipIf(root)`
+  (`tests/helpers/nonroot-gate.ts`); CI runs non-root with
+  `VX_REQUIRE_NONROOT=1` so they bind there, but a sweep in a root
+  container sees `4 skip` in a summary it never reads, and the
+  mutation those rows exist to catch reads as SURVIVED — item 481
+  found the same hole from the other side. A verdict script must sum
+  ` N skip` and say so; a region whose rows skip here is
+  INCONCLUSIVE on this machine, never a survivor, and the write-up
+  names the row and the gate rather than claiming a hole
+  (2026-09-21).
 - Assert the exact expected set, not the absence of one string.
 - A comment claiming a guarantee the code lacks is a defect: de-claim or
   implement.
