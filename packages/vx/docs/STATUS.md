@@ -2966,6 +2966,65 @@ delivery with a probe it then removes (recursive: true)` — the
       case the `else if` decides: a root holding both a turbo.json and
       an nx.json gets the turbo note and only that one.
 
+523.  DONE (2026-09-21, `orchestrator/execute-task.ts` — the half 519
+      left. 519 took the save-eligibility guards; this is the ATTEMPT
+      LOOP: the pre-exec wipe, the violation and timeout
+      classification, and abort versus failure. 18 mutations, nine
+      per-file survivors, SIX of them still standing at whole-suite
+      scope: five are now pinned across three rows and one is measured.
+      TWO COPIES OF ONE RULE, EACH MASKING THE OTHER — a fourth time,
+      and the cleanest instance yet. The attempt loop reuses one
+      `violations` array, kept honest by a reset at the top of
+      `runAttempt` AND a whole-array assignment after the executor
+      returns. Either alone suffices, so mutating either alone changes
+      nothing and BOTH survive the whole suite individually. Mutating
+      the pair together also survives — which is the actual finding:
+      the guarantee had no witness at all. Drop both and a first
+      attempt's denial re-fails a clean retry, carrying lines from an
+      attempt that is over onto an outcome that tripped nothing.
+      A ROW THAT ASSERTS THE GUARANTEE AND CANNOT FAIL. `signal-death`
+      has a row named for vx's own timeout keeping its line and getting
+      no signal verdict, with the exact negative assertions. It cannot
+      fail: its child is really SIGTERMed, so the runner reports the
+      signal and `signalVerdict` declines any SIGINT or SIGTERM handed
+      to it — a SECOND copy of the same rule, inside shell-verdict.
+      Measured: a 143 with the signal present answers undefined, a 143
+      with no signal answers a verdict. The trap-exit-0 timeout is the
+      shape that reaches the second copy: the child exits 0, the runner
+      sees no signal, execute-task rewrites the code to 143 itself, and
+      shell-verdict then calls that "128 + 15, something outside vx
+      asked the process to stop" — printed directly beneath the line
+      saying vx's own deadline killed it. The suite already had the
+      trap fixture; it asserted the classification and never the
+      contradiction.
+      THE ROOT-ANCHORED TWIN OF THE WIPE. `cleanWorkspaceOutputs` had
+      no witness: disable it outright and nothing in the suite moved,
+      while its per-project twin is held by a named stale-hit row. Now
+      mirrored — the same producer/consumer shape over
+      `cache.outputs.workspaceFiles`. A fixture note worth keeping: the
+      `files` array is REQUIRED on both inputs and outputs even when
+      only the workspace arrays carry globs, so the mirror needs an
+      explicit empty one or the config is refused.
+      THE SANDBOX CONTRACT IS THE TASK'S OWN DECLARATION. Fail-on-
+      violation is scoped to a task that declared `exec.sandbox`.
+      Dropping that scope is silent in-tree because the local executor
+      reports no violations unless it sandboxed — only a plugin can
+      reach it, so only a fake executor can pin it.
+      MEASURED, NOT PINNED. `markWorkspaceOutputsChanged`: dropping it
+      leaves the answer CORRECT on the very shape that discriminates
+      its per-project twin (run it and the consumer still empties), and
+      no shape was found where it changes the answer. Said as measured
+      rather than written up as a gap or given a row that cannot fail
+      (514). The new wipe row does reach that region — it catches the
+      wipe itself — so this is a non-discriminating line, not an
+      unreached one.
+      AND THE PRE-CHECK WAS WRONG AGAIN. Of nine per-file survivors,
+      three were already caught at whole-suite scope: the per-project
+      output mark by a stale-hit row, and two violation mutations by
+      sandbox rows in `test.bun.unsafe`. Fourth item running where the
+      whole-suite step deleted a claim the per-file pass would have
+      made.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

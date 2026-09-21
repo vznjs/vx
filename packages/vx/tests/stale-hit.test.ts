@@ -264,6 +264,63 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'the ROOT-ANCHORED twin of that wipe is recorded too',
+    async () => {
+      // `cache.outputs.workspaceFiles` is wiped by `cleanWorkspaceOutputs`
+      // and recorded by `markWorkspaceOutputsChanged` — the exact twin of the
+      // per-project pair above, and the one that can delete files in ANOTHER
+      // project's directory. Only the per-project copy had a witness: remove
+      // the workspace mark, or the workspace wipe outright, and nothing in
+      // the suite moved. Same defect, same mechanism (a tracked-clean path
+      // keeps its index OID, so resolveFiles skips the existence probe and a
+      // deleted file stays in the consumer's input set).
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             codegen: {
+               exec: { command: 'sh emit.sh' },
+               cache: {
+                 inputs: { files: ['emit.sh'] },
+                 outputs: { files: [], workspaceFiles: ['gen/**'] },
+               },
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               cache: {
+                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
+                 outputs: { files: ['out/**'] },
+               },
+             },
+           },
+         }`,
+      )
+      await write(
+        path.join(root, 'emit.sh'),
+        'mkdir -p gen\nprintf a > gen/a.js\nprintf content-of-b > gen/b.ts\n',
+      )
+      await write(path.join(root, 'gen/a.js'), 'a')
+      await write(path.join(root, 'gen/b.ts'), 'content-of-b')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
+
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
+
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'materialising a skip-worktree input moves the key',
     async () => {
       // `skip-worktree` sits at stage 0 and `git status` reports nothing for
