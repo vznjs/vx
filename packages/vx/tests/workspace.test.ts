@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
-import { findWorkspaceRoot, listProjects, loadWorkspace } from '../src/workspace/workspace.js'
+import {
+  findWorkspaceRoot,
+  listProjects,
+  loadWorkspace,
+  memberBaseDirs,
+} from '../src/workspace/workspace.js'
 
 describe('findWorkspaceRoot', () => {
   let dir: string
@@ -112,6 +117,44 @@ describe('findWorkspaceRoot', () => {
       )
       await writeFile(path.join(pkg, 'package.json'), '{"name":"x"}')
       expect(await findWorkspaceRoot(pkg)).toBe(inner)
+    })
+
+    it('an UNPARSEABLE root manifest is still the root', async () => {
+      // A broken `package.json` is a root SIGNAL even though it can claim
+      // no members: walking past it would find some ancestor — or nothing
+      // — and report that instead of the parse error the user has to fix.
+      // `loadWorkspace` is where the message comes from, and it only gets
+      // to speak if this dir is the one chosen.
+      await writeFile(path.join(dir, 'package.json'), '{ this is not json')
+      const sub = path.join(dir, 'packages', 'a')
+      await mkdir(sub, { recursive: true })
+      expect(await findWorkspaceRoot(sub)).toBe(dir)
+      await expect(loadWorkspace(dir)).rejects.toThrow(/package\.json/)
+    })
+
+    it('a member EXCLUDED by a negated glob does not claim its root', async () => {
+      // The negations subtract from the ROOT WALK too, not only from the
+      // project list. `packages/fx` matches `packages/*` and is then
+      // excluded, so it is not a member — and a command run inside it
+      // belongs to the nearest signal it does have (its own manifest),
+      // not to a root that disowned it.
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*', '!packages/fx'] }),
+      )
+      const fx = path.join(dir, 'packages', 'fx')
+      await mkdir(path.join(fx, 'inner'), { recursive: true })
+      // A plain manifest: a root SIGNAL (single-project mode) that claims
+      // nothing below it, so only the outer root's globs can decide.
+      await writeFile(path.join(fx, 'package.json'), JSON.stringify({ name: 'fx' }))
+      expect(await findWorkspaceRoot(path.join(fx, 'inner'))).toBe(fx)
+      // CONTROL: the same layout WITHOUT the negation resolves to the root,
+      // because `packages/*` claims it.
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+      )
+      expect(await findWorkspaceRoot(path.join(fx, 'inner'))).toBe(dir)
     })
 
     it('leaves a package no glob claims in single-project mode', async () => {
@@ -239,6 +282,73 @@ describe('listProjects', () => {
       const projects = await listProjects(ws)
       expect(projects.map((p) => p.name).sort()).toEqual(['a'])
     }
+  })
+
+  it('a negation covers everything UNDER it, not just the exact path', async () => {
+    // `!packages/fixtures` means the tree, the way every package manager
+    // reads it — a fixture nested one level deeper is still excluded.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/**', '!packages/fx'] }),
+    )
+    for (const rel of ['packages/app', 'packages/fx', 'packages/fx/deep']) {
+      await mkdir(path.join(dir, rel), { recursive: true })
+      await writeFile(
+        path.join(dir, rel, 'package.json'),
+        JSON.stringify({ name: rel.replaceAll('/', '-') }),
+      )
+    }
+    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    expect(names).toEqual(['packages-app'])
+  })
+
+  it('a bare `!` excludes nothing — least of all the root project', async () => {
+    // An empty negation has no tree to subtract, and the root's own
+    // relative path is the empty string: matching it against `''` would
+    // delete the single-project workspace's only project.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'root-pkg', private: true, workspaces: ['.', '!'] }),
+    )
+    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    expect(names).toEqual(['root-pkg'])
+  })
+
+  it('a matched directory with NO package.json is not a project', async () => {
+    // The glob matches directories; the manifest read is what decides
+    // membership, and its ENOENT is the "not a member" answer.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+    )
+    await mkdir(path.join(dir, 'packages', 'real'), { recursive: true })
+    await writeFile(
+      path.join(dir, 'packages', 'real', 'package.json'),
+      JSON.stringify({ name: 'real' }),
+    )
+    await mkdir(path.join(dir, 'packages', 'empty'), { recursive: true })
+    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    expect(names).toEqual(['real'])
+  })
+
+  it('sorts by CODE UNIT, not by locale — the order is the same on every machine', async () => {
+    // ICU collation cost 28 ms of a 300 ms warm run at 1000 projects, and
+    // the two orders genuinely differ: `localeCompare` puts `apple` before
+    // `Zed`, code units put `Zed` first. Every consumer reads this order,
+    // so it has to be the machine-independent one.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+    )
+    for (const name of ['apple', 'Zed', 'beta']) {
+      await mkdir(path.join(dir, 'packages', name.toLowerCase()), { recursive: true })
+      await writeFile(
+        path.join(dir, 'packages', name.toLowerCase(), 'package.json'),
+        JSON.stringify({ name }),
+      )
+    }
+    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    expect(names).toEqual(['Zed', 'apple', 'beta'])
   })
 
   it('warns when a skipped package declares vx tasks (otherwise it vanishes silently)', async () => {
@@ -384,5 +494,38 @@ describe('malformed workspace manifests', () => {
       JSON.stringify({ name: 'r', workspaces: { packages: ['apps/*'] } }),
     )
     expect((await loadWorkspace(dir)).packageGlobs).toEqual(['apps/*'])
+  })
+})
+
+describe('memberBaseDirs', () => {
+  // The directories `vx watch` arms so a package APPEARING or disappearing
+  // is heard as one directory entry, with no walk. Only the `<dir>/*`
+  // shape has such a directory; anything else (`apps/**`, a brace, a
+  // negation) names a tree, and arming its prefix would watch a directory
+  // that is not a member base — or, for `apps/**/*`, a directory literally
+  // named `**`, which exists nowhere.
+  const ws = (globs: string[]) => ({ root: '/ws', packageGlobs: globs })
+
+  it('takes the `<dir>/*` shape and nothing else', () => {
+    expect(memberBaseDirs(ws(['packages/*']))).toEqual([path.resolve('/ws', 'packages')])
+    expect(memberBaseDirs(ws(['packages/*', 'apps/*']))).toEqual([
+      path.resolve('/ws', 'packages'),
+      path.resolve('/ws', 'apps'),
+    ])
+  })
+
+  it('contributes nothing for a glob that names a TREE', () => {
+    expect(memberBaseDirs(ws(['apps/**']))).toEqual([])
+    expect(memberBaseDirs(ws(['apps/**/*']))).toEqual([])
+    expect(memberBaseDirs(ws(['packages/{a,b}/*']))).toEqual([])
+    expect(memberBaseDirs(ws(['.']))).toEqual([])
+  })
+
+  it('a negated glob arms nothing', () => {
+    expect(memberBaseDirs(ws(['!packages/*']))).toEqual([])
+    // …and does not disturb the positive one beside it.
+    expect(memberBaseDirs(ws(['packages/*', '!packages/fx']))).toEqual([
+      path.resolve('/ws', 'packages'),
+    ])
   })
 })
