@@ -661,9 +661,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
         // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
         // rejection arm handles ONLY `execute()` rejecting; a throw from
-        // the fulfillment arm (finishOne / onFinish / tick) must NOT also
-        // run the rejection arm, or `active` releases twice — and a
-        // double release wedges the count gate.
+        // the fulfillment arm must NOT also run the rejection arm, or
+        // `active` releases twice — and a double release wedges the count
+        // gate. NOT `onFinish`, which this comment used to cite: it is
+        // isolated inside `finishOne`, so it never reaches here (which is
+        // why the row named for it cannot tell the two shapes apart —
+        // item 560). What is left unisolated is the caller's
+        // `settledOf`, and under THIS shape a throw there strands the
+        // task's outcome and hangs the run rather than double-releasing.
+        // The two-arm form is still the correct choice; there is simply
+        // no reachable throw that makes the difference observable.
         execute(node, upstream).then(
           (raw) => {
             const outcome = withHold(raw)

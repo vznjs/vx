@@ -144,6 +144,63 @@ describe('runGraph', () => {
     expect(out.get('b#build')?.status).toBe('skipped')
   })
 
+  it('an ABORTED dep names itself as the blocker', async () => {
+    // The row above pins the status but never reads `blockedBy`, so the
+    // blocker search could look for `failed` alone — and an aborted
+    // upstream would leave the dependent with no root at all, which is
+    // the one field the footer's aborted section renders.
+    const out = await runGraph({
+      nodes: nodes(node('a#build'), node('b#build', ['a#build'])),
+      concurrency: 4,
+      execute: async (n) => (n.id === 'a#build' ? aborted(n) : success(n)),
+    })
+    expect(out.get('b#build')?.blockedBy).toBe('a#build')
+  })
+
+  it('a FAILED dep outranks a skipped one when a task has both', async () => {
+    // "a failed or aborted upstream names itself; a skipped one hands
+    // down its own root" — in that order. Every existing fixture gives a
+    // task one bad dep, where either order answers the same. Here the
+    // skipped dep's OWN root is a different task, so the precedence is
+    // visible: t#tail must name the failure it sits directly on, not the
+    // one inherited through a sibling chain.
+    const out = await runGraph({
+      nodes: nodes(
+        node('a#fail'),
+        node('b#skip', ['a#fail']),
+        node('c#fail'),
+        node('t#tail', ['c#fail', 'b#skip']),
+      ),
+      concurrency: 4,
+      execute: async (n) => (n.id.endsWith('#fail') ? failed(n) : success(n)),
+    })
+    expect(out.get('b#skip')?.blockedBy).toBe('a#fail')
+    expect(out.get('t#tail')?.status).toBe('skipped')
+    expect(out.get('t#tail')?.blockedBy).toBe('c#fail')
+  })
+
+  it('an aborted RUN reports its undispatched tasks aborted, not skipped', async () => {
+    // `signal` is a separate arm of `willSkip` from fail-fast, and the
+    // status it produces is the difference between "your run was
+    // cancelled" and "something upstream of this failed". Nothing drove
+    // the signal path at all.
+    const controller = new AbortController()
+    const started: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+      concurrency: 1,
+      signal: controller.signal,
+      execute: async (n) => {
+        started.push(n.id)
+        controller.abort()
+        return success(n)
+      },
+    })
+    expect(started).toEqual(['a#run'])
+    expect(out.get('b#run')?.status).toBe('aborted')
+    expect(out.get('c#run')?.status).toBe('aborted')
+  })
+
   it('an aborted task does not skip independent siblings', async () => {
     const out = await runGraph({
       nodes: nodes(node('a#run'), node('b#run')),
@@ -623,6 +680,59 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     }
   })
 
+  it('bypasses the dep check even when the failure lands FIRST', async () => {
+    // The row above is dep-INDEPENDENT by construction: a restore is
+    // enqueued at startup and dispatched in the first tick, before
+    // anything can fail — so `willSkip` never reaches the dep check and
+    // the bypass it is named for has no witness. Holding the restore lane
+    // (concurrency 1 ⇒ one restore at a time) lets the dep fail first, so
+    // the second restore is dispatched with a failed dep already recorded.
+    let releaseFirst: (() => void) | undefined
+    const firstHeld = new Promise<void>((r) => {
+      releaseFirst = r
+    })
+    const failedSeen = Promise.withResolvers<void>()
+    const out = await runGraph({
+      nodes: nodes(node('r#first'), node('up#prep'), node('r#second', ['up#prep'])),
+      concurrency: 1,
+      restoreTier: new Set(['r#first', 'r#second']),
+      execute: async (n) => {
+        if (n.id === 'r#first') {
+          await firstHeld
+          return hit(n)
+        }
+        if (n.id === 'up#prep') {
+          queueMicrotask(() => failedSeen.resolve())
+          return failed(n)
+        }
+        return hit(n)
+      },
+      onFinish: (o) => {
+        if (o.node.id === 'up#prep') void failedSeen.promise.then(() => releaseFirst?.())
+      },
+    })
+    expect(out.get('up#prep')?.status).toBe('failed')
+    expect(out.get('r#second')?.status).toBe('cache-hit')
+  })
+
+  it('a restore-tier task is dispatched ONCE, even when a dep completes', async () => {
+    // Restore-tier tasks are enqueued at startup on their own lane; the
+    // `pending` decrement in finishOne must not ALSO push them onto the
+    // exec queue, or a restore with a dep runs twice.
+    const calls: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('up#prep'), node('down#build', ['up#prep'])),
+      concurrency: 4,
+      restoreTier: new Set(['down#build']),
+      execute: async (n) => {
+        calls.push(n.id)
+        return n.id === 'up#prep' ? success(n) : hit(n)
+      },
+    })
+    expect(calls.filter((c) => c === 'down#build')).toEqual(['down#build'])
+    expect(out.size).toBe(2)
+  })
+
   it('an EXEC-tier dependent of a failed dep is still skipped', async () => {
     // Sanity: the failedDep→skipped path is intact for non-restore deps.
     const out = await runGraph({
@@ -699,6 +809,73 @@ describe('runGraph — priorities override', () => {
       },
     })
     expect(started[0]).toBe('p#scored')
+  })
+
+  it('an UNSCORED node still orders by its baseline', async () => {
+    // "Falls back to the reverse-deps-count heuristic for nodes the
+    // caller didn't score, so partial coverage works" — the row above
+    // says so in its title, but its unscored nodes all have baseline 0,
+    // so dropping the baseline copy entirely left it green. Here the hub
+    // blocks five others and the leaf blocks nothing, and the leaf is
+    // FIRST in insertion order so a lost baseline shows as the leaf
+    // winning the tie.
+    const m = new Map<string, TaskNode>(
+      [
+        node('p#leaf'),
+        node('p#hub'),
+        node('p#h1', ['p#hub']),
+        node('p#h2', ['p#h1']),
+        node('p#h3', ['p#h2']),
+        node('p#h4', ['p#h3']),
+        node('p#h5', ['p#h4']),
+        node('p#scored'),
+      ].map((n) => [n.id, n]),
+    )
+    const started: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      priorities: new Map([['p#scored', 1]]),
+      execute: async (n) => {
+        started.push(n.id)
+        return success(n)
+      },
+    })
+    // The scored node first, then the HUB — which `p#leaf` precedes in
+    // insertion order and loses to only on its baseline (5 vs 0). Without
+    // the baseline copy every unscored node ranks 0 and the leaf takes
+    // second on insertion order alone.
+    expect(started.slice(0, 2)).toEqual(['p#scored', 'p#hub'])
+    expect(started.indexOf('p#leaf')).toBeGreaterThan(started.indexOf('p#hub'))
+  })
+
+  it('EQUAL overrides break on the baseline', async () => {
+    // The `+ b` in `w * SCALE + b` exists "for parity within the override
+    // set". Every fixture scores nodes with distinct weights, where the
+    // scale alone decides and the tie-break is dead weight — so it could
+    // go, and two tasks a plugin scored the same would fall back to
+    // insertion order instead of to what they block.
+    const m = new Map<string, TaskNode>(
+      [node('p#flat'), node('p#deep'), node('p#d1', ['p#deep']), node('p#d2', ['p#d1'])].map(
+        (n) => [n.id, n],
+      ),
+    )
+    const started: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      // Same weight for both; only the baseline (2 vs 0) separates them,
+      // and `p#flat` is first in insertion order.
+      priorities: new Map([
+        ['p#flat', 7],
+        ['p#deep', 7],
+      ]),
+      execute: async (n) => {
+        started.push(n.id)
+        return success(n)
+      },
+    })
+    expect(started[0]).toBe('p#deep')
   })
 })
 
@@ -1089,6 +1266,60 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     expect(out.size).toBe(2)
     expect(ran.has('big#run')).toBe(true)
     expect(out.get('big#run')!.status).toBe('success')
+  })
+
+  it("a pooled task is admitted against ITS pool's capacity", async () => {
+    // The existing pool row uses a single pooled task, so the capacity
+    // check never has a second one to refuse — `hasRoom` could return a
+    // flat `true` for every pooled task and the pool would be oversold,
+    // which is the one thing a pool is for.
+    const pool = { name: 'remote', capacity: 1 }
+    let inFlight = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('p#one'), node('p#two'), node('p#three')),
+      concurrency: 8,
+      poolOf: () => pool,
+      execute: async (n) => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, 10))
+        inFlight--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
+  it('a held task always reports the wait, even a sub-millisecond one', async () => {
+    // `Math.max(1, …)` is a FLOOR, not a rounding: a task the policy
+    // refused and then admitted within the same millisecond would
+    // otherwise compute 0 and drop `admissionHeldMs` entirely, so the
+    // outcome would say the policy never held it. Date.now is pinned so
+    // the elapsed time is exactly 0 and the floor is the only thing that
+    // can produce the field.
+    const clock = spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    try {
+      let refusals = 0
+      const out = await runGraph({
+        nodes: nodes(node('a#run'), node('b#run')),
+        concurrency: 4,
+        // Refuse b once, then admit it — the whole hold inside one
+        // frozen millisecond.
+        admit: (id) => {
+          if (id !== 'b#run') return true
+          refusals++
+          return refusals > 1
+        },
+        execute: async (n) => success(n),
+      })
+      expect(refusals).toBeGreaterThan(1)
+      expect(out.get('b#run')?.admissionHeldMs).toBe(1)
+      // CONTROL: the task that was never refused carries no wait at all.
+      expect(out.get('a#run')?.admissionHeldMs).toBeUndefined()
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   it('a pooled task is never asked and never listed: it runs on the pool, not here', async () => {
