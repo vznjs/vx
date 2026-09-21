@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseShowArgs } from '../src/cli/index.js'
 import { describeMemory, describeWorkers } from '../src/cli/info.js'
+import { collectInfo } from '../src/orchestrator/index.js'
 import { stableSandboxReason } from '../src/orchestrator/doctor.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
@@ -671,6 +672,15 @@ describe('parseShowArgs', () => {
 })
 
 describe('vx info — the sandbox row is stable across invocations', () => {
+  it('EVERY socket path in a reason is masked, not just the first', () => {
+    // The runtime names one socket per attempt, so a reason that mentions a
+    // retry carries two — and a half-masked reason still differs between
+    // invocations, which is the whole thing this function prevents.
+    expect(
+      stableSandboxReason('listen srt-mux-111-1.sock failed; retried srt-mux-111-2.sock'),
+    ).toBe('listen srt-mux-<pid>.sock failed; retried srt-mux-<pid>.sock')
+  })
+
   // CI's sandboxed shard: the runtime cannot listen on its mux socket, and
   // the raw error quotes a path named after the process id — two `vx info`
   // runs differed by one number and the `vx stats` alias pin failed
@@ -765,4 +775,106 @@ describe('vx show <project> loads that project only (e2e)', () => {
     },
     TIMEOUT,
   )
+})
+
+// The rows above feed `describeWorkers` / `describeMemory` literal facts,
+// so they pin the RENDERER. These pin the facts themselves — the numbers
+// `vx info` and `vx mcp`'s getWorkspaceInfo both read out of `collectInfo`.
+describe('collectInfo — the facts behind the rows', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-doctor-'))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+    const a = path.join(root, 'packages', 'a')
+    await mkdir(a, { recursive: true })
+    await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
+    await writeFile(
+      path.join(a, 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'echo b' } } } }\n",
+    )
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('the worker count comes from the workspace when it declares one', async () => {
+    // The ladder is workspace > cgroup > cores, and only its RENDERING was
+    // pinned: a fact that reported the machine's cores under a declared
+    // `concurrency` would render "N — vx.workspace.ts" with the wrong N.
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { concurrency: 3 }\n')
+    const declared = await collectInfo(root, { warn() {} })
+    expect(declared.workers.count).toBe(3)
+    expect(declared.workers.source).toBe('workspace')
+    // `cores` is the machine's either way, and never zero — it is the
+    // denominator of the rendered row.
+    expect(declared.workers.cores).toBeGreaterThanOrEqual(1)
+
+    // CONTROL: with nothing declared the count is the machine's, and the
+    // source names which machine limit decided it.
+    await rm(path.join(root, 'vx.workspace.mjs'))
+    const bare = await collectInfo(root, { warn() {} })
+    expect(bare.workers.source).not.toBe('workspace')
+    expect(bare.workers.count).toBeLessThanOrEqual(bare.workers.cores)
+    expect(bare.workers.source).toBe(bare.workers.count < bare.workers.cores ? 'cgroup' : 'cores')
+  })
+
+  it('usable memory is the machine capped by the cgroup, never the machine alone', async () => {
+    // Inside a container `os.totalmem()` is the HOST's; a run that budgeted
+    // against it would be the OOM killer's. The three fields have to agree:
+    // usable is the smaller of the machine and whatever limit binds.
+    const facts = await collectInfo(root, { warn() {} })
+    const { usableBytes, totalBytes, cgroupLimitBytes } = facts.memory
+    expect(totalBytes).toBeGreaterThan(0)
+    expect(usableBytes).toBeLessThanOrEqual(totalBytes)
+    expect(usableBytes).toBe(Math.min(totalBytes, cgroupLimitBytes ?? totalBytes))
+  })
+
+  it('the git version is the version, not git’s sentence', async () => {
+    const facts = await collectInfo(root, { warn() {} })
+    // Skipping when git is absent would be a silent pass, and every
+    // environment this suite runs in has git (the fixtures commit).
+    expect(facts.git).not.toBeNull()
+    expect(facts.git).toMatch(/^\d+\.\d+/)
+    expect(facts.git).not.toContain('git version')
+  })
+
+  it('config errors come out sorted by path, so two runs compare', async () => {
+    // The facts are pasted into bug reports and diffed between
+    // invocations; Promise.all settles in whatever order the reads finish,
+    // which is not an order at all.
+    for (const name of ['zeta', 'alpha']) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+      await writeFile(path.join(dir, 'vx.config.mjs'), `throw new Error('broken ${name}')\n`)
+    }
+    const facts = await collectInfo(root, { warn() {} })
+    const paths = facts.configErrors.map((e) => e.path)
+    expect(paths).toEqual([...paths].sort())
+    expect(paths).toContain('packages/alpha/vx.config.mjs')
+    expect(paths).toContain('packages/zeta/vx.config.mjs')
+    for (const name of ['zeta', 'alpha']) {
+      await rm(path.join(root, 'packages', name), { recursive: true, force: true })
+    }
+  })
+
+  it('a plugin that fills only `teardown` fills no SEAM', async () => {
+    // Seams are the pipeline stages a reader asks "why did this task run
+    // there" about. `teardown` is lifecycle, not a seam, and listing it
+    // would answer that question with something no task ever consults.
+    await writeFile(
+      path.join(root, 'vx.workspace.mjs'),
+      `${PLUGIN_IMPORT}
+       export default { plugins: [
+         ${pluginSource('org/late', `{ teardown() {} }`)},
+         ${pluginSource('org/keyed', `{ key() { return undefined } }`)},
+       ] }\n`,
+    )
+    const facts = await collectInfo(root, { warn() {} })
+    const seams = Object.fromEntries(facts.plugins.map((p) => [p.name, p.seams]))
+    expect(seams['org/late']).toEqual([])
+    expect(seams['org/keyed']).toEqual(['key'])
+    await rm(path.join(root, 'vx.workspace.mjs'))
+  })
 })

@@ -4307,6 +4307,45 @@ between tests`, `0 pass` and no `(fail)` row, and the classifier —
       observe), and `paintPinnedId`'s no-`#` arm (every caller passes a
       task id, which always has one).
 
+552.  DONE (2026-09-21, `orchestrator/doctor.ts` — the facts `vx info`
+      prints and `vx mcp`'s `getWorkspaceInfo` returns. Never swept. 32
+      mutations: ten caught, twenty-one survivors, one INCONCLUSIVE,
+      seven closed by six rows, fourteen classified. No source change).
+      THE RENDERER WAS PINNED AND THE FACTS WERE NOT. `describeWorkers`
+      and `describeMemory` have rows, and every one of them feeds a
+      LITERAL facts object — so the strings are held to the byte while
+      the numbers behind them were free. Five of the six new rows call
+      `collectInfo` itself: the worker ladder (a declared `concurrency`
+      wins and is labelled `workspace`, and a fact that reported the
+      machine's cores under it would render "N — vx.workspace.ts" with
+      the wrong N), the memory law (usable is the machine capped by
+      whatever cgroup binds — inside a container `os.totalmem()` is the
+      HOST's, and budgeting against it is the OOM killer's), the git
+      version (the number, not git's sentence), the seam list
+      (`teardown` is lifecycle, not a seam a task consults) and the
+      config-error ordering (`Promise.all` settles in whatever order the
+      reads finish, and these facts are pasted into bug reports and
+      diffed between invocations).
+      A REASON IS MASKED EVERYWHERE OR NOT AT ALL: the socket-path
+      replace is global because a retry names two sockets, and a
+      half-masked reason still differs between invocations, which is the
+      whole point of the function. The existing row passes one socket.
+      CAUGHT BY HANGING, recorded as 543 asks: dropping `resetSandbox()`
+      from the doctor's probe does not redden a row — it leaves the
+      Linux runtime's proxy sockets open and the test FILE never exits.
+      The docstring says exactly that ("the probe initializes the Linux
+      runtime, whose proxy sockets would keep a standalone process
+      alive"), so the behaviour is witnessed, but only as a timeout with
+      no failing name.
+      FOURTEEN CLASSIFIED, and two are worth naming. `cores` has a
+      `Math.max(1, …)` floor no real machine exercises. And the
+      `cgroup`-versus-`cores` SOURCE label cannot be separated on this
+      machine at all: the container binds a memory limit but no CPU
+      quota, so `machineParallelism()` equals the core count and both
+      arms agree. The new row states the law (`cgroup` exactly when the
+      count is below the cores) and catches the `<`-to-`<=` mutation
+      here; the arm itself waits for a host where a quota binds.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
