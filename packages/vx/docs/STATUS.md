@@ -2311,6 +2311,81 @@ result)` after) keeps working without it. Its failure mode is
       the suite already has (494's alphabet, 509's case fold, this
       file's four long names that all happened to carry a slash).
 
+512.  DONE (2026-09-21, `workspace/migrate-scripts.ts` — fourth by the
+      age rule, newest dated comment 2026-09-04. This is the mapper
+      `vx init` IS, so a wrong answer here is a silently wrong
+      ADOPTION, not a wrong report: the user reads the generated
+      config once and trusts it thereafter).
+      The widest sweep yet: 50 mutations over its whole decision
+      surface — `AFTER_BUILD` member by member, every `LIFECYCLE`
+      alternative, `delegatedScript`'s package-manager forms and each
+      excluded shell metacharacter, the group branch's four conjuncts,
+      `scriptsOf`'s three guards, the names filter, the hook order.
+      21 caught. 29 survived `init.test.ts` AND the whole suite —
+      every one confirmed at full scope, with a pristine control
+      identical to the baseline. Six rows now catch all 29.
+      TWO CRASHES, and they are the sharpest of the set. `package.json`
+      is a boundary, and both guards there had no witness: with the
+      null check gone, `"scripts": null` is `TypeError: null is not an
+object` out of `vx init` (`typeof null === 'object'`, so the
+      object test alone lets it through); with the string check gone,
+      `"scripts": { "a": 123 }` is `TypeError: command.trim is not a
+function`. A stack reaching the user where a declined package
+      belongs is the same defect class as `isFsRefusal`.
+      THE ALPHABET, twice. `AFTER_BUILD` has four members and only
+      `test` had a witness — though the delegate fixture already
+      declares a `typecheck` and a `check` beside a `build`. A
+      `typecheck` that does not wait for `build` is exactly what breaks
+      on project references. And of the eleven npm LIFECYCLE names only
+      `install` and `pack` were witnessed: drop `publish`, `version`,
+      `prepare` or `prepublishOnly` and each becomes a vx task nobody
+      asked for — `prepare: husky install` scheduled as build work.
+      Pinned as the guarantee rather than per member (505): the exact
+      set of names that wait for `build`, and the exact set of tasks a
+      package declaring every lifecycle script generates.
+      THREE WAYS THE GROUP BRANCH GOES WRONG, all unwitnessed. Drop
+      `has(delegate)` and `npm run nosuch` becomes a group over a task
+      nothing defines; drop `delegate !== name` and `loop: npm run
+loop` becomes a SELF-CYCLE; drop `hooks.length === 0` and a
+      delegating script's folded `pre` hook is dropped on the floor,
+      because a group has no command to hold it. One row, three cases,
+      and a CONTROL on its own fixture (496) that a delegation with
+      none of those problems is still a group.
+      AND AN EDGE TO A BUILD THAT IS NOT THERE. Both the command path
+      and the group path gate their `build` edge on `hasBuild`, and
+      neither gate had a witness: without them a package with a `test`
+      and no `build` generates `dependsOn: ['build']`. The group path
+      also de-duplicates when the delegate IS `build` — also
+      unwitnessed, `['build', 'build']`. Pinned by asserting the exact
+      EDGE SET, which is one assertion for all three.
+      THE ELEVEN WITH NO CONFIG-LEVEL WITNESS, recorded as such.
+      Removing any one metacharacter from `delegatedScript`'s excluded
+      class changes what the exported function RETURNS, but not one
+      generated config — `has(delegate)` rejects the mangled name
+      before it can become a group. So they are pinned at the function,
+      where the contract is ("flags, arguments or a chain make it a
+      real command again"), and the write-up says so rather than
+      claiming a config that never differs.
+      Method note: the per-file pre-check over `init.test.ts` and the
+      whole-suite verdict agreed on all 29 this time — the first sweep
+      where 500's gap did not open. That is not a licence to skip the
+      verdict; it is one file with one obvious test, and the cheap
+      check was right because the mapper has exactly one caller.
+      Yardstick note: four of the 29 verdicts showed a watch-loop row
+      DROPPING OUT of the baseline and one showed `vx watch loop (e2e)
+      > a first sighting is a change only when its mtime falls after
+      > the arm`appearing, which is not on the flapper list. Five runs
+of`watch-loop.test.ts`alone were clean — isolation is the wrong
+environment, since these rows flap under the loaded sandboxed
+run. The exact repeat of that one verdict did NOT reproduce it
+(its only new row was the new`delegatedScript`one, catching the
+mutation as designed), so it is a fourth flapper, not a catch.
+NOT added to`base.names`: a yardstick entry swallows a real
+failure, and the same rule that keeps `shard-9` out keeps this
+      > out. A yardstick that moves in BOTH directions is the thing to
+      > watch — the list names three and the watch family clearly has
+      > more.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
@@ -2322,7 +2397,11 @@ ways: pristine 1/10, a docs-and-one-unrelated-test diff 3/11. It is
 deliberately NOT in the task baseline: a baseline entry would swallow a
 real shard-9 failure. When a gate run shows shard-9 failed with the
 NAMES yardstick unchanged and no `(fail)` row, re-run the shard before
-reading anything into it.
+reading anything into it. The panic text VARIES: item 512's gate hit
+`panic: Floating point error at address …` rather than the segfault,
+same shard, same exit 132, same absence of a failing row, and it passed
+on re-run with vx recording the task flaky. Match the signature (exit
+132 + a Bun panic + no failing row), not the panic's wording.
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
 diagnosed 2026-09-20, item 418).** Three of the failures are one chain:
