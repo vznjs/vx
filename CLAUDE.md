@@ -188,6 +188,18 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   names the row and the gate rather than claiming a hole
   (2026-09-21).
 - Assert the exact expected set, not the absence of one string.
+- A test that reads the constant it guards is a tautology, and a
+  GENERATED table makes it a silent one. The cache-layer gate's
+  fixture built its expected message by mapping over
+  `CACHE_LAYER_METHODS`, so it agreed with any list; my replacement
+  generated one row per member FROM the same constant and shrank with
+  it — caught only because the differential run scored 44 pass and no
+  failure (item 536). Generate from the SOURCE OF TRUTH instead (the
+  `CacheLayer` interface, `config-schema.ts`'s own call sites in 533)
+  and assert the constant against it in both directions, duplicates
+  included. And remember `toThrow(string)` matches a SUBSTRING:
+  `missing key(), key()` satisfies a probe for `missing key()`, so a
+  message a row is pinning is compared with `toBe` (2026-09-21).
 - A comment claiming a guarantee the code lacks is a defect: de-claim or
   implement.
 - When a fix covers a class, grep the class in the same commit.
