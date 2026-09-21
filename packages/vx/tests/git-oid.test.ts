@@ -192,6 +192,53 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     expect(oids!.has(path.join(pkgDir, 'src', 'gone.ts'))).toBe(false) // deleted → untrusted
   })
 
+  it('a git status that FAILS withdraws OID trust entirely, rather than keeping it', async () => {
+    // The fail-safe behind the whole OID fast path, and it had no
+    // witness. `startGitEnumeration` runs `ls-files` and `status`
+    // concurrently: `ls-files` supplies the index OIDs, `status` says
+    // which paths are DIRTY, and a dirty path's OID is dropped because
+    // the index no longer describes the worktree. When the status spawn
+    // fails there is no dirty set at all — so trusting the OIDs anyway
+    // would fold a modified file's OLD COMMITTED content into the key.
+    // A stale hit, on any repo where `git status` cannot run.
+    //
+    // The audit that found it (item 570) came from the same hole
+    // appearing three times in two days; the code gets this right, and
+    // `const trusted = dirty === null ? new Map() : oids` could be
+    // deleted with the whole suite green.
+    //
+    // `status.showUntrackedFiles=bogus` is the fixture: measured, it
+    // exits 128 from `git status` while `git ls-files` still exits 0 —
+    // which is the one shape that reaches this branch, and an ordinary
+    // typo in someone's global gitconfig.
+    await writeFile(path.join(pkgDir, 'src', 'a.ts'), 'v1\n')
+    // A CLEAN sibling, so the healthy control has an OID to find: with
+    // only the modified file, `dirty` drops its OID and the control
+    // reads zero either way — which is the control failing to control.
+    await writeFile(path.join(pkgDir, 'src', 'clean.ts'), 'clean\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    await writeFile(path.join(pkgDir, 'src', 'a.ts'), 'v2\n')
+
+    // CONTROL: with git healthy this very fixture DOES carry an OID for
+    // the OTHER file, so the assertion below is about the status
+    // failure and not about OIDs never appearing.
+    const healthy = new GitFilesCache()
+    await populateGitFilesCache(root, [pkgDir], healthy)
+    expect(healthy.oidsFor(pkgDir)?.size).toBeGreaterThan(0)
+
+    git(root, 'config', 'status.showUntrackedFiles', 'bogus')
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [pkgDir], memo)
+
+    // The file list still comes from ls-files, which is unaffected.
+    expect([...(memo.get(pkgDir) ?? [])]).toContain('src/a.ts')
+    // But nothing is trusted: every path goes back through hashFile,
+    // which reads the worktree bytes that were correct all along.
+    expect(memo.oidsFor(pkgDir)?.size ?? 0).toBe(0)
+    expect(memo.worktreeDirty).toBeNull()
+  })
+
   it('staged rename drops trust on both sides', async () => {
     await writeFile(path.join(pkgDir, 'src', 'old.ts'), 'rename me\n')
     git(root, 'add', '-A')

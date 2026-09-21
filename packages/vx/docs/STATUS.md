@@ -5305,6 +5305,50 @@ diff HEAD` exits 128 with `bad tree object`.
       ref" needs an error that is neither of the two absence
       messages nor a working `git show`; its sibling arm IS caught, so
       the classification is about reach, not about the guard.
+570.  DONE (2026-09-21, an AUDIT rather than a sweep: every `git` spawn
+      in `packages/*/src`, checked for an exit test and for a row that
+      enters by that call site's own door. Nine call sites; one hole,
+      closed by one row).
+      WHY AN AUDIT AND NOT A SWEEP: "ignores git's exit code" was a
+      hole THREE times in two items — `runGitLsFiles` (568),
+      `gitPaths` (569), and `populateGitFilesCache` only had a row
+      because someone once wrote one. Three instances of one shape is
+      a pattern, and the cheap move is to grep the class rather than
+      sweep another file (the rule this repo already states as "when a
+      fix covers a class, grep the class in the same commit" —
+      belatedly applied).
+      EIGHT OF NINE ARE RIGHT, and several are right in a way worth
+      recording so nobody "fixes" them: `run-context`'s three spawns
+      (HEAD, `origin/HEAD`, `remote.origin.url`) and `doctor`'s config
+      read are PROBES whose failure means "unknown", and they say so;
+      `detectObjectFormat` tests `exitCode === 0` and defaults to sha1,
+      which is a deterministic blob domain either way; `gitIgnored` in
+      watch spells out 0 / 1 / anything-else and fails OPEN, which
+      costs a spare watch cycle and never a wrong answer.
+      THE ONE HOLE IS THE FAIL-SAFE BEHIND THE ENTIRE OID FAST PATH.
+      `startGitEnumeration` runs `ls-files` and `status` concurrently:
+      the first supplies index OIDs, the second says which paths are
+      DIRTY, and a dirty path's OID is dropped because the index no
+      longer describes the worktree. `ls`'s exit is checked and throws.
+      `status`'s failure degrades to `dirty === null` — and the code
+      then correctly empties the trusted map, because with no dirty set
+      NO OID can be believed. That line could be deleted with the whole
+      suite green: every modified file would fold its OLD COMMITTED
+      content into the key. A stale hit on any repo where `git status`
+      cannot run.
+      THE FIXTURE IS A GITCONFIG TYPO. Reaching the branch needs
+      `status` to fail while `ls-files` succeeds, which rules out the
+      obvious levers — measured, `.git/index.lock` and a bogus
+      `core.fsmonitor` leave BOTH at exit 0, and a pathspec outside the
+      repo fails both. `status.showUntrackedFiles=bogus` exits 128 from
+      `status` and 0 from `ls-files`: the one shape that reaches it,
+      and an ordinary typo in someone's global config.
+      AND MY OWN CONTROL CAUGHT MY OWN FIXTURE. The row first had a
+      single file, modified — so the healthy arm had no trusted OID
+      either and the control read zero both ways. A clean sibling fixes
+      it. A control that cannot distinguish the arms is not a control,
+      which is the same lesson as 564's missing `existsSync` positive,
+      arriving from the other direction.
 
 ## In flight
 
