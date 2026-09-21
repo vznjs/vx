@@ -2780,6 +2780,61 @@ delivery with a probe it then removes (recursive: true)` — the
       Tenth instance of that family across six sweeps; still three
       listed, still not added.
 
+519.  DONE (2026-09-21, `orchestrator/execute-task.ts` — eleventh by the
+      age rule, 846 lines, and the file CLAUDE.md marks stale-hit
+      critical. Its own header says it: "Eight separate stale-hit
+      defects in the decision log route through this file").
+      Too large to sweep whole, so the scope was the SAVE-ELIGIBILITY
+      guards — the decisions whose failure is a stale hit rather than a
+      visible error. 13 mutations over `willWrite`'s four conjuncts,
+      the `willSave` taint gate, the capture coupling, and both save
+      sites' exit-code gates.
+      TWO SAVE SITES, ONE PAIR OF GATES, AND ONLY ONE SITE WITNESSED.
+      `effectiveExitCode === 0 && willSave` guards an if/else-if pair
+      differing only on `deferralRequested`. The EAGER branch's gates
+      are held by rows that already existed. The DEFERRED branch's
+      identical gates were held by NOTHING — and that is the branch
+      that hands a closure to a later consumer to pull bytes with.
+      Registering there on a failure caches a failed task's outputs;
+      registering on a tainted run caches bytes built on a partial tree
+      under the key a HEALTHY run derives, which is the stale hit the
+      `taintedUpstream` docblock spells out. 517's lesson again, in the
+      file where it costs most: when a rule has two copies, sweep both,
+      and expect the newer one to be the bare one.
+      The missing fixture was a shape no test built: a non-zero exit
+      WITH deferred outputs. That is what a real remote executor
+      produces — it ran the command, got a failure, and still holds
+      output blobs in CAS. `download-policy.test.ts` has a
+      `failProducer` flag, but it returns the failure WITHOUT deferred
+      outputs, so the combination never existed.
+      AND A REMOTE-WRITE-ONLY RUN SAVING NOTHING. `willWrite` reads
+      `(policy.localWrite || policy.remoteWrite)`; read only the local
+      axis and a remote-write-only policy cleans nothing and saves
+      nothing. The run is green and the cache stays empty — the
+      quietest way for a remote cache to be useless. Pinned.
+      FOUR ROUNDS OF FIXTURE ERROR, all the same class, and the fourth
+      is the one worth keeping. (1) The suite list for the pre-check
+      omitted `download-policy.test.ts`, the only file that drives the
+      deferred path at all. (2) The fake executor returned deferred
+      outputs but wrote no file, so the run failed on a missing
+      declared output instead of on the gate. (3) The `deferred` stub
+      had only `register`; execute-task also calls `materializeFor`, so
+      the run died with a TypeError. (4) THE CONTROL DID NOT REGISTER —
+      deferral is requested by `args.download === 'deferred'`, not by
+      the result's shape, so without it the two refusals were asserting
+      on a path that never fires. A row that cannot fail (514), reached
+      by a new road: not a weak assertion, but a fixture that never
+      entered the branch. The control is what exposed it.
+      CLASSIFIED, NOT PINNED. `cfgCacheable`'s conjunct: an uncached
+      task has no declared outputs, so the clean is a no-op and the
+      save writes nothing either way — no observable difference
+      measured. And the two `capture` mutations: the comment is
+      explicit that retaining a stream costs "its full byte size in
+      heap" and that `cache.save` is stdout's only consumer while
+      stderr has none, so making capture MORE retentive is a memory
+      regression with no observable behaviour. The repo's own rule says
+      a perf claim needs a number, not a row.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
