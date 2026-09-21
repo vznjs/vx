@@ -429,6 +429,51 @@ describe('GitFilesCache workspace-wide partition', () => {
     expect(cache.oidsFor(root)?.has(path.join(root, 'shared', 'config.json'))).toBe(true)
   })
 
+  it('a change matching ONE of several input globs invalidates the snapshot', async () => {
+    // `pending.some(p => inputGlobs.some(g => g.match(p)))`. The inner
+    // `some` had no witness because every fixture here passes ONE glob,
+    // and with one glob `some` and `every` are the same function. A task
+    // declaring two — `['shared/**', 'schema/**']`, the ordinary shape —
+    // would keep a snapshot that a change to either contradicts, and fold
+    // the pre-change file set into its key.
+    const cache = new GitFilesCache()
+    await populateGitFilesCache(root, [aDir, bDir], cache, true)
+    cache.markWorkspaceOutputsChanged(root, ['shared/config.json'])
+
+    const two = [new Bun.Glob('packages/**'), new Bun.Glob('shared/**')]
+    expect(cache.snapshotFor(root, two)).toBeUndefined()
+    // The control that makes the assertion mean something: a pair of globs
+    // NEITHER of which matches still reuses the snapshot.
+    const neither = [new Bun.Glob('packages/**'), new Bun.Glob('docs/**')]
+    expect(cache.snapshotFor(root, neither)).toBeDefined()
+  })
+
+  it('a partition whose name merely EXTENDS another is not invalidated by it', async () => {
+    // `markWorkspaceOutputsChanged` fans a root-relative path to every
+    // partition that can see it, and `abs.startsWith(key + path.sep)` is
+    // the whole test. Without the separator, a workspace output written
+    // under `packages/a-extra/` would be recorded against the partition
+    // for `packages/a` — which re-spawns git for a directory nothing
+    // touched, on every task, for the rest of the run.
+    //
+    // Same guard class as `isInside` in 566, in the other file. Third
+    // place the shared-prefix reading has to be excluded by NAME.
+    const extra = path.join(root, 'packages', 'a-extra')
+    await write(path.join(extra, 'src', 'gen.ts'), 'g')
+    await write(path.join(extra, 'package.json'), '{"name":"a-extra"}')
+    const cache = new GitFilesCache()
+    await populateGitFilesCache(root, [aDir, extra], cache, true)
+
+    cache.markWorkspaceOutputsChanged(root, ['packages/a-extra/src/gen.ts'])
+    expect(cache.snapshotFor(extra, [new Bun.Glob('src/**')])).toBeUndefined()
+    // `**/*.ts`, not `src/**`: without the separator the path is recorded
+    // against `packages/a` as `../a-extra/src/gen.ts`, and MEASURED,
+    // `src/**` does not match that while `**/*.ts` does — so the narrower
+    // glob would let the mutation through. The common glob is the one that
+    // sees it, which is also the one real configs write.
+    expect(cache.snapshotFor(aDir, [new Bun.Glob('**/*.ts')])).toBeDefined()
+  })
+
   it('markOutputsChanged forwards project-relative paths to the workspace partition', async () => {
     const cache = new GitFilesCache()
     await populateGitFilesCache(root, [aDir, bDir], cache, true)
