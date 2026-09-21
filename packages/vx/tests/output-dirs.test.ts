@@ -175,10 +175,22 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     // recordOutputDirs, so `write, then record` only lands inside the window
     // while the test beats it there: a loaded macOS runner took longer than
     // the 50 ms and the fixture was snapshotted after all (CI, 2026-09-19).
-    // Stamping the mtimes says what the write was standing in for. The far
-    // edge of the window, not the near one, so the assertion survives a
-    // scheduling delay between this line and that clock read.
-    const fresh = new Date(Date.now() + OUTPUT_DIRS_RACY_MS)
+    // Stamping the mtimes says what the write was standing in for.
+    //
+    // A stamp at the window's far edge is still a race — it buys 2× the
+    // window (100 ms) between this line and that clock read, and a macOS
+    // runner under three shards spent longer than that again (CI,
+    // 2026-09-21, this row alone took 240 ms). So stamp far past the edge,
+    // the mirror of `age()`'s 10× on the old side: at 20× no achievable
+    // scheduling delay ages the fixture out of the window.
+    //
+    // What that trades, said plainly: this row pins the ARM (a directory
+    // whose mtime is not safely in the PAST is dropped, and all of them
+    // with it), not the window's WIDTH. The width is measured against a
+    // clock `recordOutputDirs` reads itself, so no fixture can pin it
+    // without holding that clock still — and the version that tried was
+    // this flake.
+    const fresh = new Date(Date.now() + 20 * OUTPUT_DIRS_RACY_MS)
     for (const rel of ['dist', 'dist/fresh']) utimesSync(path.join(proj, rel), fresh, fresh)
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows()).toEqual([]) // all or nothing: dist/sub is dropped with them
