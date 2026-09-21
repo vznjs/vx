@@ -156,6 +156,125 @@ describe('inputs.workspaceFiles resolution', () => {
     expect(files).toEqual([path.join(root, 'shared', 'extra.json')])
   })
 
+  it('a mid-run workspace-output change re-enumerates for the RESOLVER too', async () => {
+    // `snapshotFor` takes the caller's input globs and drops the snapshot
+    // only when a pending changed path matches one of them. That
+    // behaviour is well pinned — by rows that call `snapshotFor`
+    // DIRECTLY. Which is the one door `resolveWorkspaceFiles` does not
+    // use: pass it an empty glob list and nothing ever matches, so a
+    // partition invalidated mid-run is handed back anyway and a task's
+    // workspace inputs are the file set from BEFORE its upstream wrote
+    // them. A stale hit, and the whole invalidation path had no witness
+    // from the caller's side (the 544 shape).
+    const cache = new GitFilesCache()
+    await populateGitFilesCache(root, [aDir, bDir], cache, true)
+    // An upstream task rewrote a workspace output this task reads.
+    await write(path.join(root, 'shared', 'late.json'), '{"late":true}')
+    cache.markWorkspaceOutputsChanged(root, ['shared/late.json'])
+
+    const r = await resolveInputs({
+      projectDir: aDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: [], workspaceFiles: ['shared/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: cache,
+    })
+    expect(r.files).toContain(path.join(root, 'shared', 'late.json'))
+  })
+
+  it('the re-enumeration is STORED, so the partition is usable again', async () => {
+    // The twin of the project half's `set()`, which that half's own sweep
+    // catches. `set()` caches the fresh list AND clears the partition's
+    // pending-changed bookkeeping; without it every later task in the run
+    // re-spawns `git ls-files` at the workspace root, forever, because
+    // the invalidation is never retired.
+    //
+    // NOT asserted through the OIDs: `markWorkspaceOutputsChanged` drops
+    // the changed path's OID by itself, so a row watching that would pass
+    // either way (rule 15). What only `set()` decides is whether the
+    // partition answers at all afterwards.
+    const g = (): Bun.Glob => new Bun.Glob('shared/**')
+    const cache = new GitFilesCache()
+    await populateGitFilesCache(root, [aDir, bDir], cache, true)
+    cache.markWorkspaceOutputsChanged(root, ['shared/config.json'])
+    expect(cache.snapshotFor(root, [g()])).toBeUndefined()
+
+    await resolveInputs({
+      projectDir: aDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: [], workspaceFiles: ['shared/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: cache,
+    })
+    expect(cache.snapshotFor(root, [g()])).toBeDefined()
+  })
+
+  it('two tasks with different workspaceFiles do not share a memo answer', async () => {
+    // The memo key is `[positive, negative, ownWorkspaceOutputs]`, and
+    // only the negation arm had a witness. Both siblings are reachable
+    // the same everyday way — two tasks of one project declaring
+    // different root-level inputs — and the memo answers from cache only
+    // when the snapshot ARRAY is identical, which is exactly what one
+    // shared `GitFilesCache` gives the second call.
+    await write(path.join(root, 'other', 'thing.json'), '{}')
+    const cache = new GitFilesCache()
+    const memo = new Map()
+    const resolve = async (
+      workspaceFiles: string[],
+      ownWorkspaceOutputs: string[] = [],
+    ): Promise<string[]> =>
+      (
+        await resolveInputs({
+          projectDir: aDir,
+          workspaceRoot: root,
+          envSource: {},
+          inputs: { files: [], workspaceFiles },
+          ownOutputs: [],
+          ownWorkspaceOutputs,
+          nestedProjectDirs: [],
+          gitFilesCache: cache,
+          workspaceFilesCache: memo,
+        })
+      ).files
+
+    expect(await resolve(['shared/**'])).toEqual([path.join(root, 'shared', 'config.json')])
+    expect(await resolve(['other/**'])).toEqual([path.join(root, 'other', 'thing.json')])
+    // Same globs, different declared outputs: the exclusion must still apply.
+    expect(await resolve(['shared/**'], ['shared/config.json'])).toEqual([])
+  })
+
+  it('a bare directory means its whole tree, on every one of the three lists', async () => {
+    // `asTrees` is applied to the positives, the negations and the task's
+    // own workspace outputs, and none of the three had a witness in this
+    // twin — every fixture here spells `shared/**`. A user writing
+    // `workspaceFiles: ['shared']` is writing the documented form.
+    await write(path.join(root, 'shared', 'extra.json'), '{}')
+    const resolve = async (
+      workspaceFiles: string[],
+      ownWorkspaceOutputs: string[] = [],
+    ): Promise<string[]> =>
+      (
+        await resolveInputs({
+          projectDir: aDir,
+          workspaceRoot: root,
+          envSource: {},
+          inputs: { files: [], workspaceFiles },
+          ownOutputs: [],
+          ownWorkspaceOutputs,
+          nestedProjectDirs: [],
+        })
+      ).files.sort()
+
+    const both = [path.join(root, 'shared', 'config.json'), path.join(root, 'shared', 'extra.json')]
+    expect(await resolve(['shared'])).toEqual(both)
+    expect(await resolve(['shared/**', '!shared'])).toEqual([])
+    expect(await resolve(['shared'], ['shared'])).toEqual([])
+  })
+
   it('excludes the task own outputs.workspaceFiles globs', async () => {
     const r = await resolveInputs({
       projectDir: aDir,

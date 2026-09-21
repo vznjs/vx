@@ -5115,6 +5115,57 @@ comment names loses its OID before it gets here
       declaration, not its two uses, so it is an unused variable and a
       no-op. Reported as such, not as a survivor; the hand-run
       differential that DOES restore both halves reddens the new row.
+567.  DONE (2026-09-21, `cache/inputs.ts`, region: `resolveWorkspaceFiles`
+      and `resolveWorkspaceFilesOver` — the SECOND copy of the
+      filter-over-git-set design, swept on its own because a fix to the
+      project half would pass that half's tests while leaving this one
+      live. 29 mutations under Bun 1.4.2: fifteen caught, fourteen
+      survivors, seven closed by four rows, seven classified. No source
+      change).
+      RULE 6 PAID AGAIN, AND THE SHARPEST MISS IS A FIXTURE STANDING IN
+      FOR THE CALLER. `snapshotFor(dir, globs)` drops a partition when a
+      pending changed path matches one of the caller's globs, and that
+      behaviour is WELL pinned — by rows in `workspace-files.test.ts`
+      that call `snapshotFor` DIRECTLY. Which is the one door
+      `resolveWorkspaceFiles` does not use: hand it `[]` instead of the
+      positive globs and nothing ever matches, so a partition
+      invalidated mid-run is handed back anyway and a task reads its
+      workspace inputs as they were BEFORE its upstream wrote them.
+      A stale hit whose whole mechanism was tested from the wrong side
+      (the 544 shape). The new row drives it through `resolveInputs`.
+      THE SAME ROW'S SIBLING: `set()` after the fallback enumeration.
+      Without it the pending-changed bookkeeping is never retired, so
+      every later task in the run re-spawns `git ls-files` at the root
+      forever. Pinned on what only `set()` decides — the partition
+      answering again afterwards — NOT on the OIDs, because
+      `markWorkspaceOutputsChanged` drops the changed path's OID by
+      itself and a row watching that would pass either way (rule 15; I
+      wrote it that way first and it could not fail).
+      THE MEMO KEY HAD ONE ARM OF THREE HELD. `[positive, negative,
+ownWorkspaceOutputs]`, and only the negation had a witness —
+      though all three are reachable the everyday way, two tasks of one
+      project declaring different root-level inputs. And `asTrees` is
+      applied to all THREE lists here, none of them witnessed, because
+      every fixture in the twin spells `shared/**` where a user may
+      write `shared`.
+      A THIRD SIGHTING OF "SOMETHING ELSE ANSWERS FIRST": the twin's
+      `.sort()` cannot be caught, because `git ls-files` ALREADY emits
+      sorted paths and the candidates keep that order through
+      `path.resolve`. Measured, not assumed. I had written a row for it;
+      it could not fail, so it was REMOVED rather than shipped — the
+      same call as 563's mode-mask row. Worth recording that the project
+      half's sort IS caught, so the two halves differ here.
+      SEVEN CLASSIFIED. The empty-positive early return is a
+      short-circuit the file already documents as one. The OID arm of
+      the existence filter is the same COST gate as the project half's
+      (565), and `oidsFor` under a wrong root degrades to the same
+      answer for any file that exists. The three literal-set steps
+      (`normalizeGlob`, `isLiteralPattern`, `stripTrailingSlash`) need a
+      declaration shape this twin's fixtures do not carry; they are the
+      project half's own guards, already held there, reached here
+      through the shared `settleLiterals` and `assertNoInvisibleLiteral
+Inputs` — both of which ARE caught in this twin (the field-name
+      argument included).
 
 ## In flight
 
