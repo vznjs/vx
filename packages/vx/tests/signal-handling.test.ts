@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
+import { terminateChildren } from '../src/orchestrator/signals.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
@@ -217,6 +218,46 @@ describe('signal handling during vx run (e2e)', () => {
   )
 
   it(
+    'the SECOND signal does not change the exit code',
+    async () => {
+      // The row above sends SIGINT twice, so "exit with the FIRST signal's
+      // code" and "exit with the second's" give the same 130 and it cannot
+      // tell them apart. Two DIFFERENT signals can: the run ended when the
+      // first one arrived, and the second only says "now".
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              stubborn: {
+                exec: { command: "trap '' TERM; echo $$ > pid.txt; exec sleep 30" },
+              },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'stubborn', '--all'], {
+        cwd: fixture.root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      })
+      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      expect(isAlive(pid)).toBe(true)
+
+      proc.kill('SIGINT')
+      await Bun.sleep(100)
+      proc.kill('SIGTERM')
+      const code = await proc.exited
+      // 130, not 143: SIGINT ended this run.
+      expect(code).toBe(130)
+      expect(await waitForDead(pid, 3_000)).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'SIGINT exits 130',
     async () => {
       const dir = await addProject(
@@ -244,6 +285,49 @@ describe('signal handling during vx run (e2e)', () => {
       const code = await proc.exited
       expect(code).toBe(130)
       expect(await waitForDead(pid, 3_000)).toBe(true)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('terminateChildren — the second sweep re-reads what is live', () => {
+  it(
+    'a child that appears DURING the grace is killed by the second sweep',
+    async () => {
+      // The SIGKILL pass calls `live()` again rather than reusing the list
+      // it SIGTERMed, because the run loop may still be dispatching while
+      // the grace runs — a child spawned after the first sweep would
+      // otherwise be signalled by nobody and outlive the run under init.
+      // Nothing held that: every fixture has a child set that is fixed for
+      // the whole teardown, so reusing the first list gives the same answer.
+      const spawnStubborn = (): ReturnType<typeof Bun.spawn> =>
+        Bun.spawn(['sh', '-c', "trap '' TERM; sleep 30"], {
+          // `detached`, exactly as the runner spawns a task: killTree
+          // signals the process GROUP, so a child that is not its own group
+          // leader is never reached and the sweep proves nothing.
+          detached: true,
+          stdout: 'ignore',
+          stderr: 'ignore',
+        })
+      const first = spawnStubborn()
+      const late = spawnStubborn()
+      let sweep = 0
+      // Sweep 1 sees only `first`; by the SIGKILL sweep, `late` has joined.
+      const live = (): ReturnType<typeof Bun.spawn>[] => (++sweep === 1 ? [first] : [first, late])
+      try {
+        await terminateChildren(live, 100)
+        expect(sweep).toBeGreaterThan(1)
+        expect(isAlive(first.pid)).toBe(false)
+        expect(isAlive(late.pid)).toBe(false)
+      } finally {
+        for (const c of [first, late]) {
+          try {
+            c.kill('SIGKILL')
+          } catch {
+            // already gone
+          }
+        }
+      }
     },
     TIMEOUT,
   )

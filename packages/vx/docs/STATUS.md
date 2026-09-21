@@ -3025,6 +3025,50 @@ delivery with a probe it then removes (recursive: true)` — the
       whole-suite step deleted a claim the per-file pass would have
       made.
 
+524.  DONE (2026-09-21, `orchestrator/signals.ts` — 122 lines, dated
+      2026-09-10 and NEVER swept: grep finds zero mentions of it
+      anywhere in this file's 523 items. The failure direction is an
+      orphaned process tree, which is silent by construction — vx exits
+      with the right code and the user never sees what it left running
+      under init.
+      19 mutations. Ten survived the file's own suites and nine
+      survived the whole suite; two are pinned and seven measured.
+      THE SECOND SWEEP RE-READS. `terminateChildren` SIGTERMs what
+      `live()` returns, waits the grace, then SIGKILLs what `live()`
+      returns NOW — and the comment says exactly why: the run loop may
+      still be dispatching during the grace, so a child spawned after
+      the first sweep must not survive the second. Nothing held it,
+      for a reason worth naming: every fixture in the suite has a child
+      set that is FIXED for the whole teardown, so reusing the first
+      list gives the same answer in every one of them. Driving
+      `terminateChildren` directly with a `live()` that GROWS between
+      sweeps is the only shape that tells them apart.
+      AND THAT ROW DID NOT REACH THE CODE ON THE FIRST TRY. It hung to
+      its 20-second timeout, because `killTree` signals the process
+      GROUP (a negative pid) and that only reaches a child spawned
+      `detached` — which is how the runner spawns every task. A plain
+      `Bun.spawn` child sits in the TEST's group, the negative pid
+      names no group of its own, nothing is killed and the awaits never
+      settle. The probe has to be spawned the way the thing under test
+      spawns, or it proves nothing; here it at least failed loudly
+      rather than passing for the wrong reason.
+      TWO SIGNALS, ONE CODE. The existing second-signal row sends
+      SIGINT twice, so "exit with the FIRST signal's code" and "exit
+      with the second's" both give 130 and it cannot tell them apart —
+      the same blind spot 518 found in a deny-list and 523 found in a
+      timeout. SIGINT then SIGTERM discriminates: 130, because the
+      SIGINT is what ended the run.
+      MEASURED, NOT PINNED. The persistent registry's term in
+      `everyChild` is REDUNDANT on the signal path: run.ts's own
+      comment says persistent children stay in `liveChildren` until
+      they exit, and the row that asserts a ready persistent child dies
+      passes with the registry term removed. It is load-bearing at
+      end-of-run shutdown, not here. The rest are timing claims or
+      exit-path hygiene with no observable answer in a non-TTY harness:
+      the final reap, SIGTERM versus SIGINT on the first sweep, the
+      cleared grace timer, the env-read default, the cache close and
+      the runEnd call.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
