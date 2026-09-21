@@ -3069,6 +3069,41 @@ delivery with a probe it then removes (recursive: true)` — the
       cleared grace timer, the env-read default, the cache close and
       the runEnd call.
 
+525.  DONE (2026-09-21, the two files of the 2026-09-10 band that 524's
+      grep showed had NEVER been swept, taken in one item because both
+      are small: `orchestrator/save-lane.ts` (47 lines) and
+      `cli/core-alias.ts` (25, of which 7 are code).
+      SAVE-LANE IS A ZERO-YIELD REPORT, AND THAT IS THE RESULT. 12
+      mutations, ELEVEN caught by the file's own suite — the cap off by
+      one, the cap removed, the running set not added to or not deleted
+      from, the settle dropped, the queue drain dropped, the queue read
+      LIFO, the catch dropped, the catch rethrowing, and both ways of
+      weakening the drain. The twelfth is measured equivalent:
+      reordering the settle ahead of the delete cannot be observed,
+      because the settled promise's continuation is a MICROTASK and the
+      delete is the next synchronous statement — probed, not argued.
+      A file that is actually held is worth saying plainly, in its own
+      item, rather than leaving the next sweep to rediscover it.
+      THE LAZINESS THAT WAS ONLY A COMMENT. `core-alias.ts` serves
+      `@vzn/vx` from the host's own façade, and its docblock gives the
+      lazy loader a reason: a verb that never loads a plugin never
+      loads the façade — core's whole source transpiled again, 20–25 ms
+      per plugin package in the binary. Both existing rows IMPORT
+      through the alias, so neither can tell a lazy loader from an
+      eager one: resolving the loader at registration, or once inside
+      `setup`, serves the same exports and passes them both. Two ways
+      to break it, neither held.
+      A DURATION MADE INTO A LINE. The repo's rule is that a perf claim
+      needs a number and not a row, and this one looks like a perf
+      claim — but the guarantee is not "fast", it is "not loaded at
+      all", which is a boolean. The loader prints a marker, so the row
+      asserts an absent line rather than an elapsed time: registered
+      and never imported prints REGISTERED then DONE, with the control
+      being the same entry that DOES import and prints LOADED between
+      them.
+      CLASSIFIED. The Bun plugin's own `name` field survives every
+      suite and has no consumer in this repo — cosmetic, said as such.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
