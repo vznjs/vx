@@ -3,6 +3,7 @@
 // config sits beside the scripts unread. The Turbo and Nx migrations
 // themselves are tested in packages/vx-migrate.
 
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -127,6 +128,40 @@ describe('parseInitArgs', () => {
   })
   it('positionals error', () => {
     expect(parseInitArgs(['turbo']).error).toContain('turbo')
+  })
+
+  // One argv shape per refusal, each named for the branch it takes. The two
+  // rows above use `toContain` on the argument itself, which every branch
+  // satisfies — `--dryrun` reads as `--dry` under a prefix match, and a
+  // SHORT flag falls to the positional message under a `--` test, both
+  // without changing what the error mentions. What separates them is WHICH
+  // refusal, so that is what is asserted.
+  it.each([
+    [[], undefined, { dry: false, force: false, mjs: false }],
+    [['--dry'], undefined, { dry: true, force: false, mjs: false }],
+    // A near-miss of a known flag is an unknown flag, not a prefix of one.
+    [['--dryrun'], 'unknown flag: --dryrun', undefined],
+    [['--dry-run'], 'unknown flag: --dry-run', undefined],
+    [['--forced'], 'unknown flag: --forced', undefined],
+    [['--mjsx'], 'unknown flag: --mjsx', undefined],
+    // A single dash is still a flag: it gets the flag message and the
+    // pointer, not the positional one.
+    [['-d'], 'unknown flag: -d', undefined],
+    [['-'], 'unknown flag: -', undefined],
+    // Only a bare word is a positional, and it gets no help pointer.
+    [['turbo.json'], 'unexpected argument: turbo.json', undefined],
+  ])('%p', (argv, error, parsed) => {
+    const out = parseInitArgs(argv as string[])
+    if (error === undefined) {
+      expect(out.error).toBeUndefined()
+      expect(out).toEqual(parsed as never)
+    } else {
+      expect(out.error).toBeDefined()
+      expect(out.error!.startsWith(error as string)).toBe(true)
+      expect(out.error!.includes('vx init --help')).toBe(
+        (error as string).startsWith('unknown flag'),
+      )
+    }
   })
 })
 
@@ -366,6 +401,70 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it('a refused flag exits 1, on stderr, writing nothing', async () => {
+    // `cli run() > a bad argument to init points at its help` reads the
+    // MESSAGE. The exit code and the stream are the rest of the contract and
+    // were held by neither: a refusal that exits 0 is a script that carries
+    // on, and one on stdout is a refusal piped into whatever reads the
+    // scaffold.
+    const root = await makeScriptsWorkspace()
+    try {
+      const r = await vx(root, ['init', '--bogus'])
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('vx init: unknown flag: --bogus')
+      expect(r.out).toBe('')
+      expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('run from a package directory, it scaffolds at the WORKSPACE ROOT', async () => {
+    // `init` resolves the root before it plans; run it from inside a package
+    // and the workspace file still belongs at the top. Take the cwd for the
+    // root instead and the scaffold lands in whatever directory the user
+    // happened to be in — a second workspace nested in the first, with the
+    // real one untouched and nothing said.
+    const root = await makeScriptsWorkspace()
+    try {
+      const r = await vx(path.join(root, 'packages', 'app'), ['init'])
+      expect(r.code).toBe(0)
+      expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(true)
+      expect(existsSync(path.join(root, 'packages', 'app', 'vx.workspace.ts'))).toBe(false)
+      // The control: it did run, and it did write the package's own config.
+      expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('the Nx note answers to EITHER marker, and turbo wins over both', async () => {
+    // Two ways to recognise an Nx workspace — `nx.json`, and the exported
+    // graph under `.nx/workspace-data/` — joined by an `||` that one fixture
+    // cannot tell apart: whichever marker it writes, the other member can be
+    // deleted and the note still appears. So each gets its own fixture, and
+    // the `else if` gets the case where both a turbo.json and an nx.json sit
+    // in the same root and only ONE note is right.
+    for (const [marker, alsoTurbo] of [
+      ['nx.json', false],
+      [path.join('.nx', 'workspace-data', 'project-graph.json'), false],
+      ['nx.json', true],
+    ] as [string, boolean][]) {
+      const root = await makeScriptsWorkspace()
+      try {
+        await Bun.write(path.join(root, marker), '{}\n')
+        if (alsoTurbo) await Bun.write(path.join(root, 'turbo.json'), '{}\n')
+        const r = await vx(root, ['init', '--dry'])
+        expect(r.code).toBe(0)
+        const text = `${r.out}${r.err}`
+        expect(text.includes('an Nx workspace found and not read')).toBe(!alsoTurbo)
+        expect(text.includes('turbo.json found and not read')).toBe(alsoTurbo)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  }, 60_000)
 
   it('a run in a workspace with no vx config at all names `vx init`', async () => {
     const root = await makeRoot('vx-init-first-run-')
