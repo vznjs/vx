@@ -2649,6 +2649,85 @@ when its mtime falls after the arm` appeared again and did not
       write outside its sandbox: check `git status` for UNTRACKED files
       after one, not only for modified ones.
 
+517.  DONE (2026-09-21, `cache/file-hashes.ts` — ninth by the age rule,
+      newest dated comment 2026-09-09, and chosen over its band-mates
+      because a wrong answer here is a STALE HIT: the per-file memo
+      decides what a file contributes to every cache key).
+      A REAL DEFECT, FIXED. `hashFile` lstat's, and folds a symlink as
+      git folds it — the blob of its LINK TEXT, which is its
+      mode-120000 index OID. `hashFiles`, the batch form, stat'ed:
+      it FOLLOWED the link and hashed the TARGET'S BYTES. So the same
+      path had two identities depending on which entry point a caller
+      used, and the batch folded bytes `git diff` and `--affected`
+      cannot see — precisely what `hashFile`'s own rationale says must
+      never happen. A link to a directory and a dangling link were
+      worse still: absent from the batch entirely, present and hashed
+      from the per-file form.
+      It is reachable, not theoretical. `project-loader` keys a config
+      closure from the BATCH on its fast path and from `hashFile` on
+      its slow path, so the two paths identified the same closure
+      differently. And the batch's own docblock said "Same stat fields,
+      same racy-clean rule, SAME DIGEST" — a comment promising what the
+      code did not do, which this repo calls a defect. Implemented
+      rather than de-claimed: the batch now lstat's and folds a symlink
+      the same way, with no memo row (the row would key on the link's
+      own stat, not its target's). No `CACHE_VERSION` bump: a
+      key-derivation fix whose old key was already wrong is
+      self-healing.
+      THE PRE-FIX STATE PASSED THE WHOLE SUITE. Verdicted: `NEW=[]`.
+      Nothing anywhere caught it.
+      THE SECOND COPY IS WHERE A RULE DRIFTS, and that is this item's
+      lesson. The four memo fields are compared in TWO places —
+      `hashFile` and `hashFiles` — and the racy-clean rule twice more.
+      I swept both copies and wrote up "ctime has no witness". The
+      verdict corrected me: `one-ctime` is caught by an existing row
+      named almost for it (`stale cache hits > a content change that
+preserves mtime is not served from the file-hash memo`). The
+      PER-FILE copy is well guarded. Only `many-ctime` survives. Same
+      root cause as the symlink bug: `hashFiles` arrived later as a
+      batch optimisation and inherited neither the behaviour nor the
+      test of the rule it duplicated. When a rule has two copies, sweep
+      both — and expect the newer one to be the bare one.
+      THE STALE HIT ITSELF, now pinned through BOTH forms. Rewrite a
+      file with the SAME byte length and restore its mtime — what
+      `tar -x`, `unzip`, `cp -p`, `rsync --times` and any
+      SOURCE_DATE_EPOCH generator do. Size, mtime and inode all match;
+      only ctime differs. The row asserts those three still match
+      before asserting the digest changed, so it cannot pass on some
+      other field doing the work.
+      TWO MORE, both unwitnessed in both copies. A READ-ONLY store
+      (`write: false`, "a miss is hashed but not remembered") was
+      writing memo rows. And without `Math.floor` a fractional
+      millisecond lands in an INTEGER column — SQLite's loose typing
+      takes it silently, and two builds that floor differently stop
+      agreeing.
+      CLASSIFIED, NOT PINNED: `mtime`, `size` and `ino`, in both
+      copies. Every write bumps ctime, so none of the three can
+      independently produce a stale hit on this filesystem — measured
+      by construction, not assumed. `ino` would matter where ctime
+      granularity is coarse (git keys on ctime+ino+dev for that
+      reason), which this box cannot build. Also `chunk` (500 → 1),
+      which is throughput only.
+      And a control mistake of my own: the read-only row failed first
+      run because I pointed the read-only `Cache` at the SAME cache dir
+      as the suite's, so it counted rows the write-enabled store had
+      just written. 496's rule — a control must not share state with
+      what it controls — broken by me, caught by the row.
+      A NEW FLAPPER, recorded not adopted. This item's gate failed one
+      row outside the known set: `vx why (e2e) — answers from the
+database alone > a project config that throws changes nothing it
+prints`, in shard-3. It is the test's own CONTROL — it sabotages
+      a config to throw `PROJECT CONFIG EVALUATED` and checks that
+      `vx run`, which does evaluate configs, trips on it. Evidence it
+      is not this diff: six isolated runs of `why.test.ts` were clean
+      on BOTH the fixed and the pre-fix source, and shard-3 passed on
+      re-run with vx recording the task flaky on identical inputs. The
+      signature is worth keeping for next time — the error surfaced
+      WITH its stack and WITHOUT its message (`vx: Error` then the
+      frames), so the message, not the reporting, is what went missing.
+      Mechanism unknown; not added to `base.names`, because a yardstick
+      entry swallows a real failure.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
