@@ -4001,6 +4001,40 @@ answer === 'string'` arm — the one its docblock names, "a plugin
       the predicate and to `runGraph` — though the direction is the right
       one: refusing an unknown id would hang, admitting defers to the
       count limit.
+545.  DONE (2026-09-21, `exec/executor.ts` — the per-task execution
+      contract: what a plugin executor may resolve, and where a task is
+      placed. Never swept. 17 mutations: seven caught, ten survivors,
+      all ten closed by five rows. No source change).
+      THE GUARD WRITTEN FOR A CRASH HAD NO ROW FOR THE FIELD THAT
+      CRASHED. `assertExecuteResult` exists because a plugin that
+      resolved `{}` met `res.violations` in core and surfaced as
+      "internal error in <task>: TypeError" — vx's crash for the
+      plugin's bug, named in its own docblock (2026-09-16). Its nine
+      arms had ONE witness: an end-to-end row in
+      `execute-task.test.ts` with `exitCode` missing. So `violations`
+      itself — the field of the original crash — could be dropped from
+      the guard with the suite green, and so could `durationMs`,
+      `stdout`, `stderr`, the non-object arm, the `null` arm and all
+      three `outputs` arms.
+      Five rows now, one per arm and each named for it: the
+      `violations` row asserts the WHOLE sentence (prefix and "a plugin
+      bug, not a task failure" suffix included) and the rest the clause
+      that varies, all with `toBe`. The deferred arms matter beyond
+      diagnostics: core calls `materialize()` lazily and at most once,
+      so a `deferred` handle without one loses a task's outputs under a
+      green run.
+      A CATCH BY COLLATERAL IS NOT A WITNESS. Making `outputs` REQUIRED
+      reddened 44 rows across the cache suites — every ordinary result
+      omits it — which says only that the suite runs, not that anything
+      pins the rule. The control row now states it: `outputs` absent is
+      what every executor resolved before deferral existed.
+      `selectExecutor` IS FINISHED, the second such file after 542.
+      All five placement mutations were caught by rows named for them:
+      first-in-order wins, a `pinnedLocal` task is never offered to a
+      `remote` executor (and the skip is keyed on `remote === true`, so
+      an executor that declares nothing still takes it), `accepts()`
+      decides and sees the placement, and an all-declining list throws
+      rather than silently placing on the first.
 
 ## In flight
 

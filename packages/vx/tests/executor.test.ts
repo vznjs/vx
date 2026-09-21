@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import {
+  assertExecuteResult,
   selectExecutor,
   type ExecuteRequest,
   type TaskExecutor,
@@ -151,5 +152,85 @@ describe('selectExecutor', () => {
     expect(() => selectExecutor([declining], placement())).toThrow(
       /no executor accepted pkg-a#hello/,
     )
+  })
+})
+
+// The seam's boundary check, and the bug it was written for: a plugin that
+// resolved `{}` met `res.violations` in core and surfaced as "internal error
+// in <task>: TypeError" — vx's crash for the plugin's bug (2026-09-16). One
+// row pins it end to end in `execute-task.test.ts`, through a real plugin
+// executor, with `exitCode` missing. That leaves every OTHER field of a
+// nine-armed guard unspelled — `violations` among them, the very field that
+// crashed core. Each row below names its arm and asserts the exact sentence.
+describe('assertExecuteResult — what a plugin executor may resolve', () => {
+  const ok = { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+  const refusal = (res: unknown): string => {
+    try {
+      assertExecuteResult('org/x', 'p#t', res)
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+    return 'ACCEPTED'
+  }
+  /** The refusal's `what` clause, inside the sentence the user reads. */
+  const says = (what: string): string =>
+    `executor 'org/x' returned an invalid result for p#t: ${what} — a plugin bug, not a task failure`
+
+  it('the field that crashed core: a result with no `violations` is refused by name', () => {
+    // The whole sentence, once, so the prefix and the "not a task failure"
+    // suffix are pinned too; the rows below assert the clause that varies.
+    expect(refusal({ ...ok, violations: undefined })).toBe(
+      "executor 'org/x' returned an invalid result for p#t: violations is undefined (expected an array) — a plugin bug, not a task failure",
+    )
+    // And a non-array `violations` is refused, not merely a missing one: an
+    // object passes `!== undefined` and still has no `.length` to walk.
+    expect(refusal({ ...ok, violations: {} })).toBe(
+      says('violations is object (expected an array)'),
+    )
+  })
+
+  it('a result that is not an object at all is refused before any field is read', () => {
+    // `null` is the arm that would otherwise throw a TypeError on the first
+    // property read — the internal error this function exists to replace.
+    expect(refusal(null)).toBe(says('null (expected an object)'))
+    expect(refusal('ok')).toBe(says('string (expected an object)'))
+  })
+
+  it('every scalar field is checked, not just the first of each pair', () => {
+    expect(refusal({ ...ok, exitCode: undefined })).toBe(
+      says('exitCode is undefined (expected a number)'),
+    )
+    expect(refusal({ ...ok, durationMs: '5' })).toBe(
+      says('durationMs is string (expected a number)'),
+    )
+    expect(refusal({ ...ok, stdout: undefined })).toBe(
+      says('stdout is undefined (expected a string)'),
+    )
+    expect(refusal({ ...ok, stderr: 7 })).toBe(says('stderr is number (expected a string)'))
+  })
+
+  it('a deferred outputs handle without a materialize() is refused', () => {
+    // Core calls `materialize()` lazily and at most once; a `deferred` that
+    // cannot be materialised loses the task's outputs with the run green.
+    expect(refusal({ ...ok, outputs: { kind: 'deferred' } })).toBe(
+      says('outputs.kind is deferred without a materialize()'),
+    )
+    expect(refusal({ ...ok, outputs: { kind: 'remote' } })).toBe(
+      says('outputs.kind is remote (expected disk or deferred)'),
+    )
+    expect(refusal({ ...ok, outputs: 'disk' })).toBe(says('outputs is not an object'))
+    expect(refusal({ ...ok, outputs: null })).toBe(says('outputs is not an object'))
+  })
+
+  it('CONTROL: the shapes a correct executor resolves all pass', () => {
+    // `outputs` ABSENT is the ordinary case — every executor before deferral
+    // existed resolved exactly this — so the guard must not require it.
+    expect(refusal(ok)).toBe('ACCEPTED')
+    expect(refusal({ ...ok, outputs: { kind: 'disk' } })).toBe('ACCEPTED')
+    expect(
+      refusal({ ...ok, outputs: { kind: 'deferred', materialize: () => Promise.resolve() } }),
+    ).toBe('ACCEPTED')
+    // Extra fields an executor may add (`where`) are not the guard's business.
+    expect(refusal({ ...ok, where: 'worker-3' })).toBe('ACCEPTED')
   })
 })
