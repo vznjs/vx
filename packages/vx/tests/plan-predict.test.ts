@@ -158,6 +158,8 @@ async function planUnit(args: {
   cache: CacheLayer
   cachePolicy?: CachePolicy
   history?: HistoryProvider
+  downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
+  downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }): Promise<RunPlan> {
   return plan({
     nodes: args.nodes,
@@ -168,6 +170,10 @@ async function planUnit(args: {
     gitFilesCache: seededGitCache(),
     ...(args.cachePolicy !== undefined ? { cachePolicy: args.cachePolicy } : {}),
     ...(args.history !== undefined ? { history: args.history } : {}),
+    ...(args.downloadOf !== undefined ? { downloadOf: args.downloadOf } : {}),
+    ...(args.downloadDowngrades !== undefined
+      ? { downloadDowngrades: args.downloadDowngrades }
+      : {}),
   })
 }
 
@@ -358,6 +364,116 @@ describe('plan() — time prediction', () => {
     expect(p.predicted).toEqual({ wallMs: 330, workMs: 380, unknownCount: 0 })
     // Each task also carries its own p50 for the per-line `~eta`.
     expect(p.tasks.find((t) => t.node.id === 'a#right')!.p50Ms).toBe(200)
+  })
+
+  it('the chain takes the MAX over a task’s deps, not the last one it reads', async () => {
+    // The diamond above cannot witness this: `a#join` reads `a#left` (150)
+    // then `a#right` (300), so "last wins" and "max" agree by accident of
+    // dep order. Deps arrive SORTED, so the case that separates them is the
+    // one where the expensive parent sorts FIRST — `heavy` before `light`.
+    // Reading the last dep would predict 20 + 30 = 50 for a chain that is
+    // really 900 + 30.
+    const nodes = makeNodes([
+      { id: 'a#heavy' },
+      { id: 'a#light' },
+      { id: 'a#join', deps: ['a#heavy', 'a#light'] },
+    ])
+    const hist = stubHistory({ 'a#heavy': 900, 'a#light': 20, 'a#join': 30 })
+    const p = await planUnit({
+      nodes,
+      cache: stubCache(() => null).layer,
+      history: hist.provider,
+    })
+    expect(p.predicted).toEqual({ wallMs: 930, workMs: 950, unknownCount: 0 })
+
+    // CONTROL: the same graph with the deps the other way round predicts the
+    // same wall — the walk is independent of the order deps are listed in.
+    const flipped = makeNodes([
+      { id: 'a#heavy' },
+      { id: 'a#light' },
+      { id: 'a#join', deps: ['a#light', 'a#heavy'] },
+    ])
+    const p2 = await planUnit({
+      nodes: flipped,
+      cache: stubCache(() => null).layer,
+      history: stubHistory({ 'a#heavy': 900, 'a#light': 20, 'a#join': 30 }).provider,
+    })
+    expect(p2.predicted!.wallMs).toBe(930)
+  })
+
+  it('a group’s hash folds its members rather than standing empty', async () => {
+    // A group carries no inputs of its own, so its key IS the roll-up of the
+    // members'. The plan must derive it the same way the run does: a
+    // dependent folds its upstream hashes into its own key, so a group that
+    // planned as `''` would key every task under it differently from the run
+    // the plan claims to describe.
+    const nodes = (): Map<string, TaskNode> =>
+      makeNodes([{ id: 'a#one' }, { id: 'a#ci', group: true, deps: ['a#one'] }])
+    const keyed = async (prefix: string): Promise<string> => {
+      const layer = {
+        hasRemote: false,
+        async key(input: { taskId: string }): Promise<string> {
+          return `${prefix}:${input.taskId}`
+        },
+        async has(): Promise<'local' | 'remote' | null> {
+          return null
+        },
+        async hashFile(): Promise<string> {
+          return 'pkgjson'
+        },
+      } as unknown as CacheLayer
+      const p = await planUnit({ nodes: nodes(), cache: layer })
+      return p.tasks.find((t) => t.node.id === 'a#ci')!.hash
+    }
+    const first = await keyed('h')
+    expect(first).not.toBe('')
+    // The member's key moves → the group's does too.
+    expect(await keyed('other')).not.toBe(first)
+    // CONTROL: the same member key gives the same group hash.
+    expect(await keyed('h')).toBe(first)
+  })
+
+  it('only a DEFERRED task is marked; eager and never carry no download field', async () => {
+    // `downloadOf` answers for every task — 'eager' and 'never' are ordinary
+    // answers under `--download=toplevel`, not absences. Marking anything the
+    // policy named would tell a user their outputs stay remote for tasks that
+    // are about to be written to disk, on the table and in `--json` alike.
+    const nodes = makeNodes([{ id: 'a#dep' }, { id: 'a#top' }, { id: 'a#never' }])
+    const mode: Record<string, 'eager' | 'deferred' | 'never'> = {
+      'a#dep': 'deferred',
+      'a#top': 'eager',
+      'a#never': 'never',
+    }
+    const p = await planUnit({
+      nodes,
+      cache: stubCache(() => null).layer,
+      downloadOf: (id) => mode[id],
+    })
+    const downloadById = Object.fromEntries(p.tasks.map((t) => [t.node.id, t.download]))
+    expect(downloadById).toEqual({
+      'a#dep': 'deferred',
+      'a#top': undefined,
+      'a#never': undefined,
+    })
+  })
+
+  it('an EMPTY downgrade list is not carried onto the plan', async () => {
+    // The field exists to say the gate refused something; an empty array is
+    // not a refusal, and `--json` prints the key whenever it is present.
+    const nodes = makeNodes([{ id: 'a#one' }])
+    const none = await planUnit({
+      nodes,
+      cache: stubCache(() => null).layer,
+      downloadDowngrades: [],
+    })
+    expect(none.downloadDowngrades).toBeUndefined()
+    // CONTROL: a real refusal is carried.
+    const some = await planUnit({
+      nodes: makeNodes([{ id: 'a#one' }]),
+      cache: stubCache(() => null).layer,
+      downloadDowngrades: [{ taskId: 'a#one', reason: 'consumed locally' }],
+    })
+    expect(some.downloadDowngrades).toEqual([{ taskId: 'a#one', reason: 'consumed locally' }])
   })
 
   it('computes the same prediction when nodes arrive in reverse topological order', async () => {
