@@ -4036,6 +4036,47 @@ answer === 'string'` arm — the one its docblock names, "a plugin
       decides and sees the placement, and an all-declining list throws
       rather than silently placing on the first.
 
+546.  DONE (2026-09-21, `orchestrator/plan.ts` — what `--dry` and
+      `--graph` predict. Never swept. 20 mutations: fourteen caught,
+      six survivors, four closed by four rows, two classified. No
+      source change).
+      THE CRITICAL PATH TOOK THE LAST DEP, NOT THE LONGEST, and the
+      diamond that guards it could not tell. `predictPlan` folds the
+      MAX of its deps' distances over a Kahn order, and the fixture's
+      join reads `a#left` (150) then `a#right` (300) — so "last wins"
+      and "max" agree by accident of dep ORDER. Deps arrive sorted, so
+      the case that separates them is the one where the expensive
+      parent sorts FIRST: `heavy` before `light` predicts 930, and
+      last-wins predicts 50. The new row keys both orders and gets the
+      same wall.
+      A GROUP'S PLANNED HASH had no witness either. It is
+      `computeGroupHash(upstream)` — the same roll-up `execute-task.ts`
+      uses — and a group that planned as an empty string would key
+      every task under it differently from the run the plan claims to
+      describe. The row moves a member's key and watches the group's
+      follow, with a control that the same member key gives the same
+      group hash.
+      `download` MARKED EVERY TASK THE POLICY NAMED. The field is
+      attached when `downloadOf(id)` says deferred, and `modeOf`
+      answers eager and never for most tasks under
+      `--download=toplevel` — ordinary answers, not absences. Matching
+      "not undefined" would tell a user their outputs stay remote for
+      tasks about to be written to disk, on the table and in `--json`
+      alike. One row, three tasks, one per mode.
+      AN EMPTY DOWNGRADE LIST IS NOT A REFUSAL, and `--json` prints the
+      key whenever it is present, so an empty array would answer "did
+      the gate refuse anything" with a shape that says yes.
+      TWO CLASSIFIED. Attaching an undefined `executor` unconditionally
+      is measured equivalent on BOTH surfaces: the table checks the
+      field for undefined and the JSON builder spreads it
+      conditionally, so an undefined-valued key never reaches either.
+      And dropping the `byId.has(d)` filter in the Kahn pass changed
+      nothing because no fixture — and no path we could construct —
+      drops a task from the plan while keeping a dependent: the one
+      production path that drops a key (an underivable
+      `cache.inputs.runtime`) keeps BOTH the task and its dependent in
+      the plan, with an empty hash each.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
