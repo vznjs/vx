@@ -3230,6 +3230,43 @@ delivery with a probe it then removes (recursive: true)` — the
       to `selectExecutor`, the `--dry` policy gate, and the two pool
       accessors.
 
+529.  DONE (2026-09-21, `cli/run.ts` — 674 lines and ONE mention in
+      this file's whole history, so the least-swept large file left.
+      Too big to take whole, so the scope is the region where a wrong
+      answer is silent and expensive: what `--cache`, `--no-cache` and
+      `--force` resolve the four cache axes to. 12 mutations, seven
+      caught by the flag suites, five survivors — and the whole-suite
+      step then took one of those back.
+      THE WARNING THAT WAS ALREADY HELD. Dropping `remoteRequested`
+      entirely looked like the find: it arms the one line that says
+      `--cache` named the remote cache while no plugin supplies one, so
+      losing it leaves the remote axes quietly off. A TURBO-PARITY row
+      holds it, named for Turbo's own "Remote caching disabled". Ninth
+      item running where the verdict deleted a claim the per-file pass
+      would have made.
+      WHAT IT DID NOT HOLD IS THE OTHER DIRECTION. That row spells its
+      spec with an `r`, so it only ever proves the positive: widen the
+      test from a remote AXIS to the remote LAYER and `--cache=remote:`
+      — the spelling that turns remote caching OFF — arms the warning
+      too, telling the user who explicitly disabled it that they asked
+      for it. The character class is the whole distinction.
+      AND THE TWO EDGES EITHER SIDE OF THE EMPTY SPEC. The refusal of
+      an empty `--cache` is held for the bare form and for `,,`.
+      Whitespace is not: an unquoted shell variable can expand to a
+      SPACE rather than to nothing, which is the same intent, and only
+      the trim says so — without it the spec is accepted, applies
+      nothing, and leaves all four axes on, which the comment already
+      names as the opposite of the intent. The other side is the
+      `some`: it asks whether ANY segment carries something, and
+      turning that into EVERY rejects `local:r,` — a trailing comma is
+      sloppy, not empty, and the refusal would turn a working spec into
+      an error.
+      MEASURED EQUIVALENT. Swapping the two precedence blocks changes
+      nothing: `--no-cache` sets all four axes false and `--force`
+      clears only the two reads, so either order ends in the same
+      place. The row named for the precedence is about ARGV order, not
+      statement order, and it is right not to care.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

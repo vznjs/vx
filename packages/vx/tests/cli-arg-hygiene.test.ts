@@ -36,6 +36,45 @@ describe('--cache spec validation', () => {
     expect(parseRunArgs(['build', '--cache=,,']).error).toMatch(/needs a spec/)
   })
 
+  it('a WHITESPACE spec is empty too, and a trailing comma is not', () => {
+    // The row above covers `--cache=`, the space FORM and `,,`. Two edges
+    // sit either side of those and were held by neither.
+    //
+    // An unquoted shell variable does not always expand to nothing — it can
+    // expand to a space, which is the same intent and must get the same
+    // refusal. The trim is the only thing that says so.
+    expect(parseRunArgs(['build', '--cache= ']).error).toMatch(/needs a spec/)
+    expect(parseRunArgs(['build', '--cache', ' ']).error).toMatch(/needs a spec/)
+    expect(parseRunArgs(['build', '--cache=local:r, ']).error).toBeUndefined()
+
+    // And the refusal asks whether ANY segment carries something, not
+    // whether EVERY one does: a trailing comma is sloppy, not empty, and
+    // rejecting it would turn a working spec into an error.
+    const trailing = parseRunArgs(['build', '--cache=local:r,'])
+    expect(trailing.error).toBeUndefined()
+    expect(trailing.cache).toEqual({
+      localRead: true,
+      localWrite: false,
+      remoteRead: true,
+      remoteWrite: true,
+    })
+  })
+
+  it('naming the remote layer is not the same as ASKING for a remote axis', () => {
+    // `remoteRequested` exists for one warning: "--cache named the remote
+    // cache, but no cache plugin supplies one". `remote:` is the spelling
+    // that turns the remote layer OFF, so it must NOT arm that warning —
+    // otherwise the user who explicitly disabled remote caching is told
+    // they asked for it. The Turbo-parity row that covers the warning uses
+    // an `r` spec, so it only ever proved the positive direction.
+    expect(parseRunArgs(['build', '--cache=remote:']).remoteRequested ?? false).toBe(false)
+    expect(parseRunArgs(['build', '--cache=local:r,remote:']).remoteRequested ?? false).toBe(false)
+    expect(parseRunArgs(['build', '--cache=local:rw']).remoteRequested ?? false).toBe(false)
+    // The controls: an axis actually asked for, either way round.
+    expect(parseRunArgs(['build', '--cache=remote:r']).remoteRequested).toBe(true)
+    expect(parseRunArgs(['build', '--cache=remote:rw']).remoteRequested).toBe(true)
+  })
+
   it('still accepts a layer with EMPTY flags — that means "layer off"', () => {
     const r = parseRunArgs(['build', '--cache=local:'])
     expect(r.error).toBeUndefined()
