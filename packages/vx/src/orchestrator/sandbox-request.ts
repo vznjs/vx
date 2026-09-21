@@ -57,7 +57,26 @@ export interface SandboxArmer {
  * port list (its bridge is a unix socket the task's side creates), lifts
  * it for the run. macOS keeps per-task precision through vx's own rules.
  */
-export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
+/**
+ * What SRT's run-wide `initialize()` is armed with, folded from every
+ * sandboxed task in the graph — or `null` when the run has none.
+ *
+ * Split out of `prepareSandbox` (pure motion) because it is the only
+ * part of the arming that can be READ without starting a sandbox: the
+ * call itself is observable solely through a live runtime, so the values
+ * it carries had no witness of any kind and three separate widenings of
+ * them survived a whole-suite mutation sweep (item 537).
+ */
+export interface SandboxRunUnion {
+  /** Domains the run's filtering proxy will accept, in declaration order. */
+  domains: string[]
+  /** Whether SRT's all-or-nothing `socket(AF_UNIX)` filter is lifted for the run. */
+  unixSockets: boolean
+  /** Whether EVERY sandboxed task accepts the weaker nested profile. */
+  weakerNested: boolean
+}
+
+export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | null {
   const sandboxed = [...nodes].filter((n) => n.config.exec?.sandbox !== undefined)
   if (sandboxed.length === 0) return null
   const weakerNested = sandboxed.every((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
@@ -66,12 +85,22 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
   for (const n of sandboxed) {
     const allow = n.config.exec?.sandbox?.allow
     const net = allow?.network
+    // `network: true` is deliberately absent from the union: it SKIPS the
+    // proxy rather than going through it, so folding it in as `*` would
+    // widen the allowlist every OTHER task in the run is filtered against.
     if (Array.isArray(net)) for (const d of net) domains.add(d)
     const sockets = allow?.unixSockets
     if (sockets === true || (Array.isArray(sockets) && sockets.length > 0)) unixSockets = true
     const lb = allow?.localBinding
     if (Array.isArray(lb) && lb.length > 0 && process.platform === 'linux') unixSockets = true
   }
+  return { domains: [...domains], unixSockets, weakerNested }
+}
+
+export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
+  const union = sandboxRunUnion(nodes)
+  if (union === null) return null
+  const { domains, unixSockets, weakerNested } = union
   let pending: Promise<void> | undefined
   let armed = false
   return {
@@ -84,7 +113,7 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
           const avail = await probeSandbox({ weakerNested })
           if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
           await initSandbox({
-            allowedDomains: [...domains],
+            allowedDomains: domains,
             ...(unixSockets ? { allowAllUnixSockets: true } : {}),
           })
         } catch (err) {

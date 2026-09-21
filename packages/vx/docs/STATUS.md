@@ -3637,6 +3637,46 @@ the root>`: the prefix is a STORAGE discriminator and the path
       24 runs here.
       No source change.
 
+538.  DONE (2026-09-21, the RUN-WIDE SANDBOX UNION — 537's unfinished
+      business. That item found a surface with no witness of any kind:
+      `prepareSandbox` folds every sandboxed task into the one allowlist
+      SRT's `initialize()` is armed with, and three separate widenings of
+      it survived a whole-suite sweep. This closes it. SOURCE CHANGE,
+      pure motion).
+      THE SEAM: `sandboxRunUnion(nodes)` returns
+      `{ domains, unixSockets, weakerNested } | null` and `prepareSandbox`
+      destructures it. Same shape as 528's `locallyPlaced` extraction —
+      the fold was unobservable only because it lived inside a closure
+      whose one exit is a live runtime call. Behaviour is identical; the
+      duplicate "is any task sandboxed" filter goes away with it, since
+      `null` now carries that answer.
+      SEVEN MUTATIONS, ALL CAUGHT by six rows, including the two 537 had
+      to leave open — `weakerNested` was INCONCLUSIVE there (macOS-only
+      nested seatbelt, the single skip on all 24 runs) and is now pinned
+      on every platform as the reduction it is, and the empty-run gate
+      was measured-equivalent but unpinned.
+      THE ROW I DID NOT EXPECT TO WRITE. `network: true` contributes NO
+      domain, and the naive fold adds `*`. I read that as a defect and
+      went looking: `sandbox-binds` really does map per-task
+      `network: true` to `allowedDomains: ['*']`, and the run-wide fold
+      really does skip it. The docs settle it — "`network: true` skips
+      the proxy entirely" — so the omission is deliberate and folding it
+      in would hand every OTHER task in the run an allowlist matching
+      everything. The suspicion was refuted, and the refutation is the
+      row: nothing anywhere spelled `network: true`, so the dangerous
+      "fix" was one plausible reading away.
+      THE SECURITY DIRECTION, from 537: `unixSockets: []` means NONE.
+      SRT's `socket(AF_UNIX)` filter is all-or-nothing and read once at
+      `initialize()`, so reading an empty array as "a list was given,
+      allow all" lifts it for every task in the run. Pinned alongside
+      `true`, a non-empty list, a `localBinding` port list on Linux, and
+      the one-task-asking-is-enough case.
+      ALSO PINNED: domains are the UNION across tasks and deduped, not
+      the first task's — a fold that kept one task's list leaves every
+      other task filtered against someone else's allowlist.
+      Docs: the module page carries the new surface, and the interface
+      joins `module-shape-drift`'s list so its fields stay honest.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

@@ -14,9 +14,11 @@ import type { TaskNode } from '../src/graph/index.js'
 import {
   placeholderSweeper,
   sandboxRequestFor,
+  sandboxRunUnion,
   sweepPlaceholders,
   untouchedPlaceholderLine,
 } from '../src/orchestrator/sandbox-request.js'
+import type { ExecConfig } from '../src/config.js'
 
 let root: string
 let dir: string
@@ -57,6 +59,102 @@ const kind = async (p: string): Promise<'file' | 'dir' | 'none'> => {
   const st = await stat(p).catch(() => undefined)
   return st === undefined ? 'none' : st.isDirectory() ? 'dir' : 'file'
 }
+
+describe('the run-wide union SRT is armed with', () => {
+  // `prepareSandbox` folds every sandboxed task into ONE allowlist,
+  // because SRT runs one filtering proxy per run and checks every request
+  // against the list `initialize()` was given — never the per-call one.
+  // That call is only observable through a live runtime, so these values
+  // had no witness of any kind: dropping the domain fold, narrowing the
+  // socket lift, and widening it so an EMPTY list lifts the filter for the
+  // whole run all survived a whole-suite sweep (item 537).
+  const sandboxed = (sandbox: NonNullable<ExecConfig['sandbox']>, id = 'proj#a'): TaskNode => ({
+    ...node(),
+    id,
+    config: { exec: { command: 'true', sandbox } },
+  })
+
+  it('no sandboxed task means no union at all — the run arms nothing', () => {
+    expect(sandboxRunUnion([node()])).toBeNull()
+    expect(sandboxRunUnion([])).toBeNull()
+  })
+
+  it('domains are the UNION across tasks, deduped', () => {
+    // One task's list is not the run's: a fold that kept only the first
+    // (or the last) leaves every other task filtered against someone
+    // else's allowlist.
+    const u = sandboxRunUnion([
+      sandboxed({ allow: { network: ['a.test', 'shared.test'] } }, 'proj#a'),
+      sandboxed({ allow: { network: ['b.test', 'shared.test'] } }, 'proj#b'),
+      sandboxed({}, 'proj#c'),
+    ])
+    expect(u?.domains.slice().sort()).toEqual(['a.test', 'b.test', 'shared.test'])
+  })
+
+  it('`network: true` contributes NO domain: it skips the proxy, it does not widen it', () => {
+    // The naive fold adds `*` here, and that is the dangerous direction:
+    // `true` means this task bypasses the proxy entirely (docs/schema.md),
+    // so folding it in as a wildcard would hand every OTHER task in the
+    // run an allowlist matching everything. The per-task config does map
+    // it to `['*']` (sandbox-binds), which is exactly why the run-wide
+    // fold must not.
+    const u = sandboxRunUnion([
+      sandboxed({ allow: { network: true } }, 'proj#open'),
+      sandboxed({ allow: { network: ['only.test'] } }, 'proj#narrow'),
+    ])
+    expect(u?.domains).toEqual(['only.test'])
+  })
+
+  it('the unix-socket lift is per RUN, and an EMPTY list does not lift it', () => {
+    // SRT's `socket(AF_UNIX)` seccomp filter is all-or-nothing and read at
+    // initialize(), so any task needing sockets lifts it for everyone.
+    // `unixSockets: []` says NONE, and reading an empty array as "a list
+    // was given, so allow all" is the one direction that silently widens
+    // the whole run.
+    const lift = (u: ReturnType<typeof sandboxRunUnion>): boolean | undefined => u?.unixSockets
+    expect(lift(sandboxRunUnion([sandboxed({ allow: { unixSockets: true } })]))).toBe(true)
+    expect(lift(sandboxRunUnion([sandboxed({ allow: { unixSockets: ['/tmp/x.sock'] } })]))).toBe(
+      true,
+    )
+    expect(lift(sandboxRunUnion([sandboxed({ allow: { unixSockets: [] } })]))).toBe(false)
+    expect(lift(sandboxRunUnion([sandboxed({})]))).toBe(false)
+    // …and one task asking is enough for the run.
+    expect(
+      lift(
+        sandboxRunUnion([
+          sandboxed({}, 'proj#a'),
+          sandboxed({ allow: { unixSockets: true } }, 'proj#b'),
+        ]),
+      ),
+    ).toBe(true)
+  })
+
+  it.skipIf(process.platform !== 'linux')(
+    'a localBinding port list lifts the socket filter on Linux — its bridge IS a unix socket',
+    () => {
+      // The task's side of the port bridge creates one, so a run with a
+      // localBinding task must lift the filter even though it declared no
+      // `unixSockets`. An empty port list asks for no bridge.
+      const u = sandboxRunUnion([sandboxed({ allow: { localBinding: [3000] } })])
+      expect(u?.unixSockets).toBe(true)
+      expect(sandboxRunUnion([sandboxed({ allow: { localBinding: [] } })])?.unixSockets).toBe(false)
+    },
+  )
+
+  it('the weaker nested profile needs EVERY task to accept it, not one', () => {
+    // A run-wide setting taken from `some` would let one task's opt-in
+    // weaken the profile every other sandboxed task runs under. The
+    // BEHAVIOUR is macOS-only (nested seatbelt), which is why it is
+    // pinned here as the reduction it is, on every platform.
+    const yes = { weakerWhenNested: true } as NonNullable<ExecConfig['sandbox']>
+    expect(
+      sandboxRunUnion([sandboxed(yes, 'proj#a'), sandboxed(yes, 'proj#b')])?.weakerNested,
+    ).toBe(true)
+    expect(sandboxRunUnion([sandboxed(yes, 'proj#a'), sandboxed({}, 'proj#b')])?.weakerNested).toBe(
+      false,
+    )
+  })
+})
 
 describe('a write grant is pre-created for the bind', () => {
   it('a literal names a file: an empty placeholder, reported', async () => {

@@ -212,6 +212,17 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (a zombie counts); "the task has started" is a marker file, never a
   sleep.
 - Use the session scratchpad, never bare `/tmp`.
+- The gate here runs LINUX ONLY; macOS is a CI job you cannot run. So a
+  row that compares PATHS is a platform claim, and the platform that
+  breaks it is the one you never see: macOS's `/var/folders` temp dir is
+  a symlink to `/private/var`, so a fixture root from `mkdtemp` is
+  NON-CANONICAL there and any code that realpaths one side of a
+  comparison and not the other behaves differently (item 537's
+  link-dedup control, green on both Linux jobs, red on darwin). Simulate
+  the shape rather than guessing at it — a root reached through a
+  symlink (`/tmp/link -> /tmp/real`) reproduces it on Linux in three
+  lines — and give a path fixture a canonical root unless the
+  non-canonical one IS the subject (2026-09-21).
 - Format-check by directory scan (`cd packages/vx && bunx oxfmt --check .`,
   what CI runs), never by naming the file: `oxfmt --check <file>` passed a
   STATUS.md that the scan rejected (a code span wrapped across an indented
