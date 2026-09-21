@@ -410,6 +410,22 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   own `--force` fixture builds a COLD project, so whether a probe
   happens is invisible to it. When STATUS records a file as read and
   found clean, that is not evidence it is held.
+- NEVER TOUCH THE SWEEP'S FILES WHILE IT RUNS. The driver rewrites the
+  same source path every iteration, so an out-of-band apply or restore
+  silently reassigns a verdict to the wrong mutation — and a stray
+  `--restore` manufactures a SURVIVED out of a mutation that was never
+  tested, which is precisely the silent pass the method exists to
+  prevent (item 563; the two affected verdicts re-ran identically, so
+  nothing was misreported, but only a re-run could establish that).
+  Queue edits to the mutation table for after the run, and re-verify
+  any verdict taken while the tree was touched.
+- TWO GUARDS CAN MASK EACH OTHER, so each alone survives and only the
+  PAIR is held. `writeArtifactAndIndex` writes to a temp and unlinks it
+  on failure: mutate either and the rejection rows still see no file at
+  the final path, because the unlink cleans up what the bad write left.
+  Remove both and seven rows go red (item 563, the 536/544 shape). When
+  a guard survives, ask what ELSE would have to fail for the observable
+  to change, and mutate that too before calling it unheld.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a
