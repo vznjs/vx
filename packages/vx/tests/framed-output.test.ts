@@ -8,6 +8,7 @@ import {
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
+  formatTaskSkippedLine,
 } from '../src/orchestrator/framed-output.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -122,6 +123,75 @@ describe('the compact one-liners', () => {
     })
     expect(row).toMatch(/^ ⏺\uFE0E +327ms success +miss +@vzn\/vx#lint$/)
     expect(doc).toContain('// ` ⏺ <time> success miss <id>` — broad-mode executed task')
+  })
+
+  it('the whole grid: glyph is the cache axis, the two words are the task axis', () => {
+    // One guarantee instead of nine rows. Every member here moves exactly
+    // one line — the failed word, the skipped word, a failed task's cache
+    // cell, the remote fresh/restored pair, the remote glyph — and a row
+    // per member would leave the rest of the grid unheld. A row that says
+    // `success` for a task that FAILED is the worst of them: the run
+    // reports the opposite of what happened.
+    const uncached = node('@vzn/vx#fmt', 'oxfmt .')
+    const row = (n: TaskNode, status: TaskOutcome['status'], extra: Partial<TaskOutcome> = {}) =>
+      formatTaskExecutedLine(n, {
+        ...outcome('@vzn/vx#x', status, { durationMs: 1234, ...extra }),
+        node: n,
+      })
+    expect([
+      row(cached, 'success'),
+      row(uncached, 'success'),
+      row(cached, 'failed'),
+      row(uncached, 'failed'),
+      row(cached, 'skipped'),
+      row(cached, 'cache-hit', { restored: true }),
+      row(cached, 'cache-hit', { restored: false }),
+      row(cached, 'cache-hit-remote', { restored: true }),
+      row(cached, 'cache-hit-remote', { restored: false }),
+    ]).toEqual([
+      ' ⏺\uFE0E   1.23s success miss     @vzn/vx#lint',
+      ' ⏺\uFE0E   1.23s success no-cache @vzn/vx#fmt',
+      ' ◼\uFE0E   1.23s failed  miss     @vzn/vx#lint',
+      ' ◼\uFE0E   1.23s failed  no-cache @vzn/vx#fmt',
+      ' ⊘   1.23s skipped          @vzn/vx#lint',
+      ' ⇢   1.23s success local    @vzn/vx#lint',
+      ' ►   1.23s success fresh    @vzn/vx#lint',
+      ' ⇣   1.23s success remote   @vzn/vx#lint',
+      ' ►   1.23s success fresh    @vzn/vx#lint',
+    ])
+  })
+
+  it('a duration wider than the time column still renders, and does not throw', () => {
+    // The left pad is `' '.repeat(TIME_COL - raw.length)`, clamped at 0.
+    // Without the clamp a task running past ~2.8 hours makes that count
+    // negative and `repeat` throws a RangeError — a successful run whose
+    // REPORT takes the process down.
+    const uncached = node('@vzn/vx#fmt', 'oxfmt .')
+    expect(
+      formatTaskExecutedLine(uncached, {
+        ...outcome('@vzn/vx#fmt', 'success', { durationMs: 99_999_999 }),
+        node: uncached,
+      }),
+    ).toBe(' ⏺\uFE0E 100000.00s success no-cache @vzn/vx#fmt')
+  })
+
+  it('with colour on the cache word is dim, and a blank cell emits nothing', () => {
+    const on = { enabled: true }
+    const painted = formatTaskExecutedLine(
+      cached,
+      { ...outcome('@vzn/vx#lint', 'success', { durationMs: 1234 }), node: cached },
+      on,
+    )
+    // The dim code, not a hue: which colour `miss` takes is free to change,
+    // that it is DIM is the claim (it is the quiet half of the row).
+    expect(painted).toContain('\x1b[2mmiss\x1b[0m')
+    // A skipped row has no cache word at all. An empty cell must emit no
+    // escape, so the only empty dim pair in the line is the blank TIME
+    // cell — two would mean the cache cell painted nothing, visibly
+    // identical and wrong.
+    const skipped = formatTaskSkippedLine(node('@vzn/vx#fmt', 'oxfmt .'), on)
+    const emptyDim = '\x1b[2m\x1b[0m' // counted by split: a regex literal here trips no-control-regex
+    expect(skipped.split(emptyDim).length - 1).toBe(1)
   })
 })
 
@@ -369,6 +439,31 @@ describe('persistent task framing', () => {
     expect(formatFrameClose(n, outcome('@vzn/vx#lint', 'success'))).toBe(
       '└─ @vzn/vx#lint ── (0ms) success',
     )
+  })
+
+  it('a persistent task that FAILED closes as failed, not running', () => {
+    // `running` is the right close only for the success outcome a ready
+    // persistent task lands on — its child is still alive. A failed one is
+    // over, and closing it as `running` reports a dev server that is up
+    // when it is down.
+    const n = persistentNode('@vzn/vx-docs#dev', 'astro dev')
+    expect(formatFrameClose(n, outcome('@vzn/vx-docs#dev', 'failed', { durationMs: 1810 }))).toBe(
+      '└─ ▸ @vzn/vx-docs#dev ── (1.81s) failed (exit 1)',
+    )
+  })
+
+  it('an empty violation list renders no section at all', () => {
+    // `sandboxViolationLines: []` is what a clean sandboxed task carries.
+    // Guarding only on the field's presence prints a `SANDBOX VIOLATIONS
+    // (0)` heading over nothing, on every task that ran sandboxed.
+    const n = node('@vzn/vx#fmt', 'oxfmt .')
+    expect(
+      formatFrameClose(n, {
+        ...outcome('@vzn/vx#fmt', 'failed', { durationMs: 1234 }),
+        node: n,
+        sandboxViolationLines: [],
+      }),
+    ).toBe('└─ @vzn/vx#fmt ── (1.23s) failed (exit 1)')
   })
 
   it('collapses repeated records to unique lines, verbatim', () => {
