@@ -5166,6 +5166,66 @@ ownWorkspaceOutputs]`, and only the negation had a witness —
       through the shared `settleLiterals` and `assertNoInvisibleLiteral
 Inputs` — both of which ARE caught in this twin (the field-name
       argument included).
+568.  DONE (2026-09-21, `cache/git-inputs.ts` — the git enumeration
+      everything above it trusts: `runGitLsFiles` and its stage parser,
+      the OID-trust rules, `GitFilesCache`'s partitions and their
+      invalidation, and the small parsers. 34 mutations under Bun
+      1.4.2: twenty-two caught, twelve survivors, three closed by three
+      rows, nine classified. No source change. THE LAST NEVER-SWEPT
+      FILE IN THE CACHE MODULE).
+      A FOURTH SIGHTING OF THE WRONG DOOR, AND THE COSTLIEST ONE.
+      `vx requires git` has a row — through `populateGitFilesCache`.
+      `runGitLsFiles` is the OTHER spawn, taken whenever no partition
+      exists (a mid-run re-enumeration, or a project the workspace-wide
+      populate left without one), and its exit check had no witness at
+      all. Ignore the exit code there and the parse gets empty stdout,
+      so the task folds ZERO inputs and caches on an empty set — and
+      every later run is a hit, forever, on any tree. The refusal is
+      what makes that impossible; nothing had ever entered by that
+      door.
+      THE SHARED-PREFIX READING, A THIRD TIME AND IN A SECOND FILE.
+      `markWorkspaceOutputsChanged` fans a root-relative path to every
+      partition that can see it, and `abs.startsWith(key + path.sep)`
+      is the whole test — the same guard 566 fixed in `isInside`.
+      Without the separator a workspace output under
+      `packages/a-extra/` is recorded against `packages/a`, which
+      re-spawns git for a directory nothing touched on every later
+      task. My first row missed it: MEASURED, the mangled
+      `../a-extra/src/gen.ts` is not matched by `src/**` but IS matched
+      by `**/*.ts` — so the narrow glob let the mutation through and the
+      common one, the glob real configs write, is what sees it.
+      AND `some` READ AS `every` BECAUSE EVERY FIXTURE PASSED ONE GLOB.
+      `snapshotFor`'s inner `inputGlobs.some(...)` is indistinguishable
+      from `every` on a single-element list, and every row in the suite
+      handed it exactly one. A task declaring two — `['shared/**',
+'schema/**']`, the ordinary shape — would keep a snapshot a change
+      to either contradicts. Closed with a two-glob row carrying a
+      neither-matches control.
+      WELL HELD, and this file is the best-held of the arc's four: the
+      OID-trust modes one by one, stage 0, the skip-worktree and
+      assume-unchanged flag letters (25 and 49 rows red), the
+      `--others` bare-path branch, the record slice, `recordChanged`'s
+      append and its OID drop, all three of `set`/`delete`/
+      `invalidateWorkspacePartition`, the forwarding to the workspace
+      partition and its path rewrite, `core.autocrlf: input`, and the
+      rename/copy source token in `git status`.
+      NINE CLASSIFIED, and three of them are EQUIVALENT BY
+      CONSTRUCTION rather than untested — worth recording so the next
+      sweep does not chase them. Dropping the `key === workspaceRoot`
+      fast path changes nothing: the general branch computes
+      `path.relative(root, abs)`, which for a root-relative path IS the
+      path. Forwarding to `wsRoot` when it equals `projectDir` appends
+      the same strings twice, and `some()` over duplicates is the same
+      answer. An empty `under` list records an empty array, which no
+      `some()` can match. The rest need shapes this container cannot
+      make or the file already documents: a gitlink OID is kept out by
+      a second mechanism downstream (`git-oid.test.ts` says so in
+      words), `--show-prefix` never emits a `.` segment, and `git
+config --list` lowercases its keys.
+      THE CACHE MODULE IS NOW SWEPT END TO END — `cache.ts` (four
+      regions, 559-564), `inputs.ts` (three, 565-567) and this. The
+      yield should be assumed to fall from here: the next valuable
+      thing is Next 6, the warm-run A/B, not another sweep.
 
 ## In flight
 

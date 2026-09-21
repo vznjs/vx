@@ -936,6 +936,37 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       await rm(nonGit, { recursive: true, force: true })
     }
   })
+
+  it('the FALLBACK enumeration refuses a non-git dir too, not just the populate', async () => {
+    // `populateGitFilesCache` has a row for this. `runGitLsFiles` — the
+    // path taken when no partition exists (a mid-run re-enumeration, or a
+    // project the workspace-wide populate left without one) — did not,
+    // and the two are separate spawns with separate exit handling.
+    //
+    // It is the more dangerous half: ignore git's exit code there and the
+    // parse gets empty stdout, so the task folds ZERO inputs and caches
+    // on an empty set. Every later run is a hit. The refusal is what
+    // makes that impossible, and nothing entered by this door (the 544
+    // shape, fourth sighting this arc).
+    const nonGit = await mkdtemp(path.join(os.tmpdir(), 'vx-nogit-fallback-'))
+    try {
+      const proj = path.join(nonGit, 'pkg')
+      await mkdir(proj, { recursive: true })
+      await writeFile(path.join(proj, 'a.ts'), 'a')
+      await expect(
+        resolveInputs({
+          projectDir: proj,
+          workspaceRoot: nonGit,
+          envSource: {},
+          inputs: { files: ['**/*.ts'] },
+          ownOutputs: [],
+          nestedProjectDirs: [],
+        }),
+      ).rejects.toThrow(/vx requires git/)
+    } finally {
+      await rm(nonGit, { recursive: true, force: true })
+    }
+  })
 })
 
 // ─── Glob walk: pathological filesystem layouts ──────────────────────
