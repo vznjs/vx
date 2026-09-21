@@ -78,8 +78,13 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
   > & {
     cacheHit: number | null
     cached: number | null
-    wallclockStartNs: bigint | null
-    wallclockEndNs: bigint | null
+    // NOT bigint: `bun:sqlite` hands these back as JS numbers (the handle
+    // does not set `safeIntegers`), so the annotation claimed a precision
+    // the read never had. Harmless in practice — these are ns RELATIVE to
+    // run t=0, and 2^53 ns is 104 days of run time — but a `bigint` here
+    // was simply false. `.toString()` reads the same on either.
+    wallclockStartNs: number | null
+    wallclockEndNs: number | null
     timedOut: number | null
   }
   const rows = db
