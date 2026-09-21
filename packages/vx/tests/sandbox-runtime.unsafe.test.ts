@@ -1129,7 +1129,16 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
     await rm(fixture.root, { recursive: true, force: true })
   })
 
-  const project = async (write: string | undefined): Promise<void> => {
+  // `undefined` declares no `allow` at all; an ARRAY declares one, and an
+  // empty array is the edge that matters — a write list that grants
+  // nothing is not a grant, and the clause must still fire.
+  const project = async (write: string | readonly string[] | undefined): Promise<void> => {
+    const allow =
+      write === undefined
+        ? '{}'
+        : `{ allow: { write: [${(typeof write === 'string' ? [write] : write)
+            .map((w) => `'${w}'`)
+            .join(', ')}] } }`
     await addProject(fixture.root, 'app', {
       files: { 'src/x.txt': 'hi' },
       config: `
@@ -1138,7 +1147,7 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
             build: {
               exec: {
                 command: 'true',
-                sandbox: ${write === undefined ? '{}' : `{ allow: { write: ['${write}'] } }`},
+                sandbox: ${allow},
               },
               cache: {
                 inputs: { files: ['src/**'] },
@@ -1158,6 +1167,23 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
     'names the missing write grant, because nothing else would',
     async () => {
       await project(undefined)
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      expect(warning()).toContain('declares no exec.sandbox.allow.write')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an EMPTY write list is not a grant',
+    async () => {
+      // The clause asks whether the task granted any write, and the two rows
+      // around this one only ever compare "no `allow` at all" against "one
+      // path". An explicit `write: []` sits between them: read the question
+      // as "is there an `allow.write` key" instead of "does it grant
+      // anything" and the clause goes quiet for a task whose writes reach
+      // disk exactly as rarely as the one it was written for.
+      await project([])
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
       expectOk(r, fixture)
       expect(warning()).toContain('declares no exec.sandbox.allow.write')

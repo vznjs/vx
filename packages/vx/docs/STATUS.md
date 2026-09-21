@@ -3104,6 +3104,51 @@ delivery with a probe it then removes (recursive: true)` — the
       CLASSIFIED. The Bun plugin's own `name` field survives every
       suite and has no consumer in this repo — cosmetic, said as such.
 
+526.  DONE (2026-09-21, `orchestrator/miss-save.ts` — stale-hit-
+      critical by its own header, and swept only in part: 508 took its
+      empty-artifact WARNING and nothing else. 18 mutations, thirteen
+      survived the file's own suites and TEN the whole suite; three
+      pinned, seven measured.
+      THE WARNING 508 PINNED ON ONE ARRAY OF TWO. The predicate counts
+      both output arrays on BOTH sides — declared and resolved — and
+      every fixture in the suite declares only `files`. Two edges fall
+      straight out: a task whose whole output declaration is
+      root-anchored never warned at all, and a task whose `files`
+      matched nothing while its root-anchored glob DID match would have
+      warned about an artifact that is not empty. 523's twin shape, in
+      the file 508 had already visited.
+      AND THE EDGE BETWEEN THE TWO EXISTING SANDBOX ROWS. The cause
+      clause asks whether the task granted any write, and its two rows
+      compare "no allow block at all" against "one path". An explicit
+      empty write list sits between them: read the question as "is
+      there a key" instead of "does it grant anything" and the clause
+      goes quiet for exactly the task it was written for. The fixture
+      helper took a string or undefined, so the empty array was
+      UNCONSTRUCTIBLE — widening it to take an array is the whole
+      change.
+      A FINDING I TALKED MYSELF OUT OF, BY MEASURING. Recording the git
+      marks as ABSOLUTE rather than project-relative looked like the
+      sharpest result here: dropping the marks is caught by four rows,
+      while recording them under a useless key is caught by none, which
+      reads as "the rows prove the mark happens, not that it lands".
+      It is not a stale hit. `recordChanged` does two things, and the
+      one that prevents the stale hit deletes the trusted index OID
+      under `path.resolve(partitionDir, rel)` — idempotent on an
+      absolute input, so the OID is still dropped under the right key
+      (probed). Only the changed-path LIST gets entries a
+      project-relative glob cannot match, which moves the re-spawn
+      decision and not the answer. That is a perf difference, and the
+      rule here is that a perf claim needs a number rather than a row.
+      MEASURED, NOT PINNED. The input-component spread order is
+      provably equivalent — `TaskInputComponent` has no `entryHash`
+      field, so the two orders cannot disagree. The rest are the
+      always-pass-the-workspace-arrays form, the queued-versus-now
+      directory snapshot (whose cost the docblock already quantifies at
+      296 ms), and the workspace-partition mark family. That family has
+      now resisted discrimination in two items running — 523 measured
+      its clean-path twin the same way — so what is true is that I have
+      not built a shape that tells it apart, NOT that the line is dead.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
