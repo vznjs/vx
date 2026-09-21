@@ -5,7 +5,7 @@
 // by default: every e2e fixture declares the local executor + cache plugins
 // AFTER its own, and the NO DEFAULTS pin below is what a bare workspace sees.
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -69,6 +69,107 @@ function makeSilentLogger(status?: (line: string) => void) {
     status: (line: string) => status?.(line),
   }
 }
+
+/**
+ * The methods `CacheLayer` REQUIRES, read from its own source rather than
+ * from `CACHE_LAYER_METHODS`. A table generated from the constant is a
+ * tautology: it shrinks with the list it is meant to hold, which is the
+ * defect this block exists to close — so the members come from the
+ * interface, and the constant is then checked AGAINST them.
+ */
+function requiredCacheLayerMethods(): string[] {
+  const src = readFileSync(path.join(import.meta.dir, '..', 'src', 'cache', 'layer.ts'), 'utf8')
+  const body = src.slice(src.indexOf('export interface CacheLayer {'))
+  const members: string[] = []
+  for (const line of body.slice(0, body.indexOf('\n}')).split('\n')) {
+    const m = /^ {2}([a-zA-Z_][\w]*)(\??)\(/.exec(line)
+    if (m !== null && m[2] === '') members.push(m[1]!)
+  }
+  return members
+}
+
+describe('the cache-layer gate names EVERY method, not a count of them', () => {
+  // The gate refuses a `cache()` layer missing any method `CacheLayer`
+  // requires. Its one fixture is `{ nope: true }` — missing all fifteen —
+  // and that row builds its expected message by mapping over
+  // `CACHE_LAYER_METHODS` itself, so it agrees with whatever the list says
+  // and cannot notice a change to it. The only thing that did notice was a
+  // DOC-DRIFT row asserting the guide's stated method COUNT equals
+  // `CACHE_LAYER_METHODS.length`.
+  //
+  // A count is not the contract. Keep it and the requirement can be
+  // anything: duplicate an entry in place of `prune` and a layer with no
+  // `prune()` is accepted, then dies inside prune — exactly the defect the
+  // comment above the list records as the reason it was widened from five
+  // names ("a layer with those five passed and died at its first hit
+  // inside restoreOutputs"). The list grew because of that bug, and
+  // nothing was added that would see it happen again.
+  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
+  const POLICY = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
+  const required = requiredCacheLayerMethods()
+
+  it('the constant is exactly what the interface requires — no member dropped, none invented', () => {
+    // The row that makes the table below trustworthy. Every generated row
+    // reads `required`, so a member could still be lost by dropping it
+    // from the INTERFACE; this compares the two sides and fails when they
+    // disagree in either direction, including a duplicate that keeps the
+    // count.
+    expect(required.length).toBeGreaterThan(0)
+    expect([...CACHE_LAYER_METHODS].sort()).toEqual([...required].sort())
+    expect(new Set(CACHE_LAYER_METHODS).size).toBe(CACHE_LAYER_METHODS.length)
+  })
+
+  for (const withheld of requiredCacheLayerMethods()) {
+    it(`refuses a layer whose only missing method is ${withheld}()`, async () => {
+      const layer = Object.fromEntries(
+        required.filter((m) => m !== withheld).map((m) => [m, () => undefined]),
+      )
+      const dir = mkdtempSync(path.join(tmpdir(), 'vx-cache-gate-'))
+      const local = new Cache(dir, { read: true, write: true })
+      try {
+        // The whole message, not a prefix: `toThrow` matches a substring,
+        // so "missing key(), key()" would satisfy a "missing key()" probe.
+        const err = await resolveCache(
+          [testPlugin('org/partial', { cache: () => layer as never })],
+          { ...baseCtx, localCache: local, policy: POLICY },
+        ).then(
+          () => undefined,
+          (e: unknown) => e as Error,
+        )
+        expect(err?.message).toBe(
+          `plugin 'org/partial' returned from cache something that is not a cache layer: ` +
+            `missing ${withheld}()`,
+        )
+      } finally {
+        local.close()
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+  }
+
+  it('null from cache() is refused by name, not by an internal TypeError', async () => {
+    // `resolveCache` skips only `undefined`, so `null` reaches the gate and
+    // the non-object branch is what turns it into a named refusal. Without
+    // that branch the filter indexes `null` and throws a TypeError naming
+    // neither the plugin nor the hook — the precise failure the gate exists
+    // to replace, arriving from the one input that looks most like "no
+    // layer" without being it.
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-cache-gate-nil-'))
+    const local = new Cache(dir, { read: true, write: true })
+    try {
+      await expect(
+        resolveCache([testPlugin('org/nil', { cache: () => null as never })], {
+          ...baseCtx,
+          localCache: local,
+          policy: POLICY,
+        }),
+      ).rejects.toThrow("plugin 'org/nil' returned from cache something that is not a cache layer")
+    } finally {
+      local.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 // --- plugin-host unit-level consultation -------------------------------
 

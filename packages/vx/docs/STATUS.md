@@ -3514,6 +3514,55 @@ the root>`: the prefix is a STORAGE discriminator and the path
       if it did, `['.']` is a superset partitioned by project dir.
       No source change.
 
+536.  DONE (2026-09-21, `orchestrator/plugin-host.ts`'s CAPABILITY GATE —
+      what a plugin must hand back for core to run it. Never swept; zero
+      mentions in STATUS's whole history. 25 mutations, seven caught by
+      the region's suites, and the whole-suite step then took the fifteen
+      list members back. Two rows, sixteen assertions).
+      THE GUARD THAT LISTS MEMBERS, for the fifth time (518, 526, 531, 532) and in its sharpest form yet. `CACHE_LAYER_METHODS` is
+      fifteen names, and the comment above it records WHY: it was
+      widened from five after a real defect, because "a layer with
+      those five passed and died at its first hit inside
+      restoreOutputs".
+      Nothing holds its CONTENTS. The one fixture exercising the
+      refusal is `{ nope: true }`, missing everything, and it builds
+      its expected message by mapping over `CACHE_LAYER_METHODS`
+      itself — so it agrees with whatever the list says. The only
+      witness to a change is a DOC-DRIFT row asserting the plugins
+      guide's stated method COUNT equals the list's length.
+      A COUNT IS NOT THE CONTRACT. Dropping any member is caught, and
+      always by that same row (verdicted whole-suite at both ends of
+      the list: key, get, has, prefetch, close — one new failure each,
+      the doc row, and the mechanism is the length). Keep the count and
+      the requirement can be anything: duplicate an entry in place of
+      `prune` and a layer with no `prune()` is accepted, then dies
+      inside prune — the 2026 defect returning by the one door left
+      open. Three such swaps, all SURVIVED the whole suite.
+      A SECOND HOLE, independent: the non-object branch. `resolveCache`
+      skips only `undefined`, so `null` reaches the gate; without that
+      branch the filter indexes `null` and throws a TypeError naming
+      neither plugin nor hook — the exact failure the gate replaced.
+      Also survived the whole suite.
+      THE FIX IS 533'S SHAPE: a table generated from the SOURCE OF
+      TRUTH. The members are parsed out of the `CacheLayer` interface
+      in `cache/layer.ts` (required = declared without `?`), one
+      fixture per member withholds exactly that one, and a meta-row
+      asserts the constant equals that set in both directions and holds
+      no duplicate.
+      AND I WROTE THE TAUTOLOGY MYSELF FIRST. My table generated its
+      rows from `CACHE_LAYER_METHODS`, so it shrank with the list: the
+      differential run reported 44 pass and NO failure. Caught only
+      because a row that cannot fail was the thing I was there to find.
+      The rule is in CLAUDE.md — generate from the source of truth, and
+      compare a pinned message with `toBe`, since `toThrow` matches a
+      substring and `missing key(), key()` satisfies `missing key()`.
+      MEASURED, and the reason the list is worth this: the local floor
+      and the chain are already held hard — dropping core's cache tail
+      fails 40 rows, always chaining a single layer fails 42, dropping
+      the local executor tail fails 17. The gate is the one part of
+      this file that was trusted rather than tested.
+      No source change.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
