@@ -2881,6 +2881,52 @@ delivery with a probe it then removes (recursive: true)` — the
       this platform cannot discriminate them — said plainly rather than
       counted as equivalents.
 
+521.  DONE (2026-09-21, `orchestrator/history.ts` — thirteenth by the age
+      rule, newest dated comment 2026-09-09. The bounded window the
+      `schedule` plugin orders by and `--dry` predicts from. Every
+      wrong answer here is SILENT: a p50 off by an order of magnitude
+      re-orders the critical path and nothing says so).
+      18 mutations. Nine survived the file's own suite; four are real
+      and now pinned in three rows, five are measured equivalents.
+      THE EXCLUSION THE DOC PROMISES AND NOTHING HELD. `p50DurationMs`
+      is documented "Cache-hit rows excluded so this reflects work
+      actually done", and the percentile fixture DOES carry a hit —
+      it just cannot tell the answers apart. Three executed successes
+      at 100/200/300 plus a 5 ms hit: including the hit adds a value
+      BELOW the answer and shifts the index up by exactly one, so p50
+      stays 200 and p99 stays 300. A fixture can reach the mutated line
+      and still agree with it by arithmetic. One execution against
+      three near-free hits does not agree: p50 goes from 100 to 1.
+      LEXICOGRAPHIC ACROSS DIGIT COUNTS. `durations.sort()` without the
+      comparator is the classic, and every fixture in the file spans a
+      single digit count, where the lexicographic order IS the numeric
+      one. Over 1..100 it is not: p50 reads 54 instead of 51. The same
+      100-sample fixture is the fewest that puts the 95th and the 99th
+      percentile on different values (96 vs 100), so it pins the
+      percentile the field is named for as well.
+      A READER CORRECT ONLY BECAUSE OF WHAT THE WRITER OMITS.
+      `attempts > 1` is the retry signal, and `execute-task` writes the
+      column ONLY when it exceeds 1 — so every row in every fixture
+      leaves it NULL, `NULL >= 1` is NULL, and `> 1` was never told
+      apart from `>= 1`. Normalise the writer to always record the
+      count (the schema comment invites it) and `>= 1` marks every
+      green task in the history flaky-recoverable, because
+      `failureModeOf` takes `retried > 0` as proof of nondeterminism on
+      its own. The row puts the meaning on the reader's side: a row
+      with `attempts: 1` is stable, with a sibling at `attempts: 2`
+      as the control that the column reaches the query at all.
+      MEASURED EQUIVALENT, NOT ASSERTED. The `Math.min` percentile
+      clamp cannot fire — `floor(q * n) <= n - 1` for every q < 1,
+      checked over n up to 200 000. `duration_ms > 0` does not guard a
+      division by zero: SQLite returns NULL for `x / 0` and `MAX`
+      drops it (probed). The `cache_hit = 1` join gate is cost only —
+      `entries.hash` is the PRIMARY KEY so the join cannot fan a row
+      out, and the CASE never reads `e` on a non-hit row. The
+      mixed-outcome pre-filter is the same shape: `failureModeOf` takes
+      the count as a thunk, so a wider map changes no verdict. And
+      `total > 0 ? … : 0` is unreachable — `total` is `COUNT(*)` under
+      a `GROUP BY`, so a group that exists has a row in it.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

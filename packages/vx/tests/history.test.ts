@@ -289,6 +289,129 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  it('a cache HIT counts in the rates and not in the durations', async () => {
+    const cache = makeCache()
+    try {
+      // The doc on p50/p99 says hit rows are excluded "so this reflects work
+      // actually done". The percentile fixture above holds a hit too, but its
+      // numbers agree either way: dropping the exclusion there shifts the
+      // index by exactly as much as it adds a value below the answer. This
+      // shape does not agree — ONE execution against THREE near-free hits, so
+      // including them moves p50 off the executed duration entirely.
+      cache.recordRuns([
+        mkRun({
+          hash: 'x1',
+          project: 'pkg',
+          task: 'build',
+          status: 'success',
+          durationMs: 100,
+          startedAt: 1000,
+        }),
+        ...[1, 2, 3].map((i) =>
+          mkRun({
+            hash: `x1`,
+            project: 'pkg',
+            task: 'build',
+            status: 'success',
+            cacheHit: true,
+            durationMs: 1,
+            startedAt: 1000 + i * 100,
+          }),
+        ),
+      ])
+      const db = (cache as unknown as { db: Database }).db
+      const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')!
+      expect(entry.p50DurationMs).toBe(100)
+      expect(entry.p99DurationMs).toBe(100)
+      // The same hits DO count in the rates — the exclusion is of durations,
+      // not of the rows.
+      expect(entry.runs).toBe(4)
+      expect(entry.hitRate).toBeCloseTo(3 / 4, 5)
+      expect(entry.successRate).toBe(1)
+    } finally {
+      cache.close()
+      rmSync(cacheDir, { recursive: true, force: true })
+    }
+  })
+
+  it('orders durations as NUMBERS and reads p99 at the 99th percentile', async () => {
+    const cache = makeCache()
+    try {
+      // 100 executed successes, 1..100 ms, recorded out of order. Every
+      // shorter fixture in this file spans one digit count, where a
+      // lexicographic sort is the numeric one; across three digit counts it
+      // is not (["1","10","100","11",…]), and 100 samples are the fewest that
+      // put the 95th and the 99th percentile on different values.
+      const ms = Array.from({ length: 100 }, (_, i) => i + 1)
+      cache.recordRuns(
+        // A deterministic shuffle: odds ascending, then evens descending.
+        [...ms.filter((n) => n % 2 === 1), ...ms.filter((n) => n % 2 === 0).reverse()].map((n, i) =>
+          mkRun({
+            hash: `d${n}`,
+            project: 'pkg',
+            task: 'build',
+            status: 'success',
+            durationMs: n,
+            startedAt: 1000 + i,
+          }),
+        ),
+      )
+      const db = (cache as unknown as { db: Database }).db
+      const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')!
+      // sorted[floor(0.5 * 100)] and sorted[floor(0.99 * 100)] of 1..100.
+      expect(entry.p50DurationMs).toBe(51)
+      expect(entry.p99DurationMs).toBe(100)
+    } finally {
+      cache.close()
+      rmSync(cacheDir, { recursive: true, force: true })
+    }
+  })
+
+  it('counts a retry as a SECOND attempt — one attempt is not a retry', async () => {
+    const cache = makeCache()
+    try {
+      // The recorder writes `attempts` only when it exceeds 1 (execute-task),
+      // so every fixture in this file leaves the column NULL and the reader's
+      // `attempts > 1` is never told apart from `attempts >= 1`. Normalise the
+      // writer to always record the count — the schema's obvious tidy-up — and
+      // `>= 1` would call EVERY green task in the history flaky. The reader
+      // holds the meaning on its own side: 1 attempt is one run.
+      cache.recordRuns([
+        {
+          ...mkRun({
+            hash: 'o1',
+            project: 'pkg',
+            task: 'once',
+            status: 'success',
+            durationMs: 10,
+            startedAt: 1000,
+          }),
+          attempts: 1,
+        },
+        {
+          ...mkRun({
+            hash: 't1',
+            project: 'pkg',
+            task: 'twice',
+            status: 'success',
+            durationMs: 10,
+            startedAt: 1100,
+          }),
+          attempts: 2,
+        },
+      ])
+      const db = (cache as unknown as { db: Database }).db
+      const table = await new LocalHistoryProvider(db).loadFor(['pkg#once', 'pkg#twice'])
+      expect(table.get('pkg#once')!.failureMode).toBe('stable')
+      // The control: the column IS reaching the query, so the row above is a
+      // verdict about the comparison and not about an unwritten value.
+      expect(table.get('pkg#twice')!.failureMode).not.toBe('stable')
+    } finally {
+      cache.close()
+      rmSync(cacheDir, { recursive: true, force: true })
+    }
+  })
+
   it('windows on the last `recent` INVOCATIONS, not the whole table', async () => {
     const cache = makeCache()
     try {
