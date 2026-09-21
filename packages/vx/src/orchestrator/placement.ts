@@ -57,6 +57,25 @@ export interface Placements {
   remoteOnly: Set<string>
 }
 
+/**
+ * The tasks that write IN PLACE — everything not placed on a remote
+ * executor. `resolveDownloadModes` reads it as "the outputs are already
+ * here", so a task wrongly left out is one vx thinks it must fetch from a
+ * CAS that never held it.
+ *
+ * `remote` is a THREE-state field: `true` (remote), `false` (an explicit
+ * local plugin) and undefined — which is core's own local floor, since
+ * `localExecutor()` declares no `remote` at all. So the question is "not
+ * remote", never "declared local"; asking the latter drops every task on
+ * the floor executor, i.e. every task in a workspace with no executor
+ * plugin. It lives here, shared, because `run()` and `--dry` each built
+ * this set inline from the same predicate and a second copy is how the
+ * plan and the run would disagree about what comes home (441, 442, 445).
+ */
+export function locallyPlaced(placements: Placements, ids: Iterable<string>): Set<string> {
+  return new Set([...ids].filter((id) => placements.executors.get(id)?.remote !== true))
+}
+
 export function placeTasks(
   nodes: Map<string, TaskNode>,
   executors: readonly TaskExecutor[],
@@ -130,11 +149,7 @@ export async function planExecutorOf(
       : resolveDownloadModes({
           nodes: prepared.nodes,
           policy,
-          localPlaced: new Set(
-            [...prepared.nodes.keys()].filter(
-              (id) => placements.executors.get(id)?.remote !== true,
-            ),
-          ),
+          localPlaced: locallyPlaced(placements, prepared.nodes.keys()),
           remoteOnly: placements.remoteOnly,
         })
   return {

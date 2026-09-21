@@ -50,6 +50,7 @@ import {
   planExecutorOf,
   poolOfPlacement,
   UNPLACED_EXECUTOR,
+  locallyPlaced,
 } from './placement.js'
 import {
   captureDefaultBranch,
@@ -320,9 +321,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // `--download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.
   const downloadPolicy = options.download ?? 'all'
-  const localPlaced = new Set(
-    [...nodes.keys()].filter((id) => placements.executors.get(id)?.remote !== true),
-  )
+  const localPlaced = locallyPlaced(placements, nodes.keys())
   const download = resolveDownloadModes({
     nodes,
     policy: downloadPolicy,

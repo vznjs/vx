@@ -3184,6 +3184,52 @@ delivery with a probe it then removes (recursive: true)` — the
       validation path entirely. A boundary argument is only as good as
       the list of doors, so count the doors before trusting it.
 
+528.  DONE (2026-09-21, `orchestrator/placement.ts` beyond
+      `pinnedLocalSet` — 507 swept that one predicate and stopped, and
+      the other 140 lines decide where every task runs and which
+      outputs come home. 15 mutations.
+      THE PRE-CHECK NAMED THE WRONG FILE, AND THE VERDICT SAID SO ON
+      ITS FIRST BATCH. The per-file suite got `executor.test.ts` — the
+      name that sounds right — and missed
+      `plugin-capabilities.test.ts`, which actually holds the placement
+      end-to-end rows. Fourteen of fifteen mutations "survived"; with
+      the right file it is seven caught. The whole-suite step flagged
+      it immediately, returning two rows for a mutation recorded as a
+      survivor a minute earlier. 519's lesson in a new place: the suite
+      list is itself a fixture, and a wrong one MANUFACTURES gaps.
+      ONE RULE, TWO COPIES, AND NEITHER WATCHED. `localPlaced` — these
+      tasks wrote in place, so their outputs are already here — was
+      built inline in `run()` and again in the `--dry` planner, from
+      the same predicate. Mutating either alone survives, and mutating
+      BOTH together survives too. `remote` is three-state (true, false,
+      undefined) and core's own floor declares none, so asking "is it
+      declared local" instead of "is it not remote" drops every task on
+      the floor executor — every task in a workspace with no executor
+      plugin — and vx then believes it must fetch their outputs from a
+      CAS that never held them. The download tests hand the finished
+      set in as a literal, so nothing ever watched how it was BUILT.
+      Fixed the way this repo fixes second copies (441, 442, 445): one
+      exported `locallyPlaced`, both call sites on it, and two rows —
+      the floor executor, and a task with no placement at all.
+      AND THE STAND-IN THAT REFUSES. `UNPLACED_EXECUTOR` exists to
+      throw rather than pick an executor, so a refactor routing a group
+      or persistent task through the exec path fails loudly "instead of
+      shipping a localhost server to a worker" — asserted nowhere, so a
+      stand-in that quietly returned success would have read as a green
+      run. Writing the row also surfaced that it throws SYNCHRONOUSLY
+      though `execute` is typed as returning a promise, so
+      `execute(req).catch(...)` in execute-task never sees it. Right
+      shape for a refusal nobody should handle; recorded because the
+      first draft of the row asserted a rejection and failed.
+      MEASURED: A DEAD PARAMETER. `placeTasks` takes `pinAllLocal`, and
+      NO caller anywhere passes it true — both call sites in the repo
+      pass false or omit it, across every package's source and tests.
+      The disjunct cannot fire, so no row can hold it. Named for the
+      owner as a de-claim candidate rather than counted as a gap.
+      Classified: the persistent and group skips, the `cacheable` hint
+      to `selectExecutor`, the `--dry` policy gate, and the two pool
+      accessors.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
