@@ -168,6 +168,14 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   pass both ways. A surviving mutation means the test is wrong at least as
   often as the claim — and suspect a second copy of the rule first.
 - A skip is a silent pass. Gate on an env var CI sets.
+- A CRASHED run is a silent pass too, and a mutation sweep is where it
+  bites: a `bun test` that panics (SIGILL, exit 132) prints no `(fail)`
+  line, so a driver counting failures reads the crash as "the mutation
+  survived". Six of six survivors in one sweep were crashes, and the
+  write-up would have claimed a well-held guard was unheld at five
+  levels. Require a per-file summary line (`N pass`) and treat its
+  absence as INCONCLUSIVE, never as a pass; one `bun test` per file
+  also keeps one panic from voiding the whole run (2026-09-21).
 - Assert the exact expected set, not the absence of one string.
 - A comment claiming a guarantee the code lacks is a defect: de-claim or
   implement.

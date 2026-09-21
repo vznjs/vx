@@ -3358,6 +3358,38 @@ delivery with a probe it then removes (recursive: true)` — the
       the argument assumed. A boundary argument needs the boundary
       itself under test, not merely present.
 
+533.  DONE (2026-09-21, `config-schema.ts`'s TYPO GUARD — the
+      `assertKnownFields` call at every object level of a config, and
+      the field sets behind them. 15 mutations, one per call site plus
+      the array branch and the self-hint guard. ALL FIFTEEN CAUGHT: a
+      complete zero-yield report, and the item's finding is a bug in my
+      own driver rather than anything in the file.
+      A CRASHED RUN IS A SILENT PASS. The first sweep reported six
+      survivors, which would have read as "the typo guard is unheld at
+      five of thirteen levels". Every one of those six was a `bun test`
+      that PANICKED — the same SIGILL that makes shard-9 flap — and a
+      panicking run prints no failing row, so a driver counting
+      `(fail)` lines scores the crash as a survivor. Eight of fifteen
+      runs crashed; the combined five-file invocation is what invites
+      it. Fixed by running one file per invocation and requiring a
+      summary line from each, with a missing one reported INCONCLUSIVE
+      rather than passed. Re-swept: fifteen of fifteen caught. The
+      lesson is CLAUDE.md's own "a skip is a silent pass" wearing a
+      different hat, and it now sits beside it.
+      WHAT THE FILE ACTUALLY HAS, AND IT IS THE BEST-BUILT GUARD IN
+      THE REPO. `schema-unknown-keys.test.ts` GENERATES one row per
+      object level by walking a full config, and then pins the walk
+      itself: a meta-row reads `config-schema.ts`, extracts every
+      `assertKnownFields` template suffix, and fails if any level the
+      schema guards is missing from the walk. So a level added to the
+      schema and not to the fixture cannot pass unnoticed — the exact
+      hole that "one fixture per member" keeps finding elsewhere,
+      already closed here, and closed against the SOURCE rather than
+      against a list someone maintains.
+      The self-hint guard has its own row too, named for it: `nearest`
+      never offers the name it was given, because an exact match is not
+      a hint.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
