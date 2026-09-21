@@ -4526,6 +4526,58 @@ between tests`, `0 pass` and no `(fail)` row, and the classifier —
       reached once and warns once. Those two pre-checks are pinned by
       rows, which is what makes the third redundant.
 
+557.  DONE (2026-09-21, `orchestrator/plugin.ts` — the one `VxPlugin`
+      contract: `definePlugin`'s name derivation, `installPlugins`'s
+      refusals, and the bus-hook dispatch every observe-only plugin
+      runs through. Never swept. 37 mutations: twenty caught,
+      seventeen survivors, thirteen closed by eight rows, four
+      classified. No source change).
+      FIVE OF THE SEVEN SENTENCES THIS FILE PRINTS HAD NO ASSERTION
+      ANYWHERE IN THE REPO — a grep for each message found rows only
+      for `no package.json above` and `must be the plugin module's
+import.meta`.
+      A ROW THAT PASSED FOR THE WRONG REASON. "rejects a plugin
+      missing name or setup" ends in `.rejects.toThrow(/setup/)`, and
+      deleting the authoring check does not fail it: the call then goes
+      ahead, the TypeError comes back wrapped as "failed to load:
+      plugin.setup is not a function", and that satisfies `/setup/`
+      just as well. The two paths differ only in the sentence, so the
+      row now pins it exactly.
+      "DISABLED FOR THE REMAINDER OF THE RUN" WAS PROVEN BY A FIXTURE
+      THAT EMITS ONE EVENT. It cannot tell a plugin that was disabled
+      from one that throws afresh every time, so both the `disabled`
+      set and the guard that reads it could go: a broken hook would run
+      on every event of the run and reprint its warning each time. A
+      third event and an exact warn count close it.
+      THE DISPOSER HAD NO CALLER AT ALL. Every row discarded
+      `installPlugins`'s return value, so it could return a no-op or
+      unsubscribe only the FIRST of a plugin's hooks. Under `vx watch`
+      a plugin instance outlives a run, so a surviving subscription
+      means the next run's events reach the last run's closures and
+      keep them alive for as long as the watcher runs. The row
+      registers two hooks, disposes, and re-emits both.
+      AND FOUR HOOK PAYLOADS WERE UNHELD: `onTaskStdout` and
+      `onTaskStderr` differ only by the event kind they test, so they
+      were cross-wireable (a plugin tagging output by stream labels
+      every line backwards); the chunk and the status line each had no
+      witness, because the existing handlers take no arguments. Also
+      unheld: an empty `"name": ""` in a package.json (a string, so a
+      presence check accepts it), the default `console.error` warn, and
+      whether each `setup` is AWAITED in order — unawaited, an async
+      plugin subscribes after the next plugin's setup and its rejection
+      is swallowed.
+      FOUR CLASSIFIED, EACH MEASURED. The `packageNameByDir` memo is
+      pure speed either way: dropped or keyed on the directory the
+      manifest was found in, a repeat and a deeper absent path both
+      still answer `@vzn/vx`. The spread order in `definePlugin` is
+      unreachable because `'name' in hooks` is true for an own, an
+      inherited AND a getter property, so nothing carrying a name
+      reaches it. And `origin.dir` vs `origin.url` cannot be told apart
+      through the one documented caller: for a real module
+      `import.meta.dir` equals `path.dirname(fileURLToPath(import.meta.url))`,
+      and walking from the FILE path rather than its directory reaches
+      the same package one iteration later.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

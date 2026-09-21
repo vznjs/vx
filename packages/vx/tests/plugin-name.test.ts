@@ -45,6 +45,12 @@ describe('definePlugin — the name is the package name', () => {
       expect(() => definePlugin({ dir: bare }, {})).toThrow(/no package.json above/)
       writeFileSync(path.join(unnamed, 'package.json'), JSON.stringify({ private: true }))
       expect(() => definePlugin({ dir: unnamed }, {})).toThrow(/has no name/)
+      // An EMPTY name is the same refusal, and not the same check: a
+      // `"name": ""` is a string, so a test for the field's presence alone
+      // accepts it — and it would head every warning, every `vx info` line
+      // and the key material a `key` hook contributes as nothing at all.
+      writeFileSync(path.join(unnamed, 'package.json'), JSON.stringify({ name: '' }))
+      expect(() => definePlugin({ dir: unnamed }, {})).toThrow(/has no name/)
     } finally {
       rmSync(bare, { recursive: true, force: true })
       rmSync(unnamed, { recursive: true, force: true })
