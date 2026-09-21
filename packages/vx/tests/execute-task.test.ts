@@ -614,6 +614,94 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
   }
 
+  it('a remote-WRITE-only policy still saves — willWrite reads both write axes', async () => {
+    // `willWrite` is `(policy.localWrite || policy.remoteWrite)`: either
+    // axis means this task will write an entry somewhere, so it cleans and
+    // it saves. Reading only the LOCAL axis makes a remote-write-only run
+    // silently save nothing at all — the run is green and the cache stays
+    // empty, which is the quietest way for a remote cache to be useless.
+    const REMOTE_WRITE_ONLY = {
+      localRead: false,
+      localWrite: false,
+      remoteRead: false,
+      remoteWrite: true,
+    }
+    const o = await executeTask({
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+      cachePolicy: REMOTE_WRITE_ONLY,
+    } as never)
+    expect(o.status).toBe('success')
+    expect(b.cache.loadOutputFilesBatch([o.hash ?? '']).size).toBe(1)
+  })
+
+  it('the DEFERRED save site refuses a failure and a tainted run, exactly as the eager one does', async () => {
+    // Two save sites share one pair of gates — `effectiveExitCode === 0 &&
+    // willSave` — differing only on whether the outputs landed here. The
+    // EAGER branch's gates are held by rows above; the DEFERRED branch's
+    // were held by nothing, and it is the branch that hands a closure to a
+    // later consumer to pull bytes with. Registering there on a failure
+    // caches a failed task's outputs; registering on a tainted run caches
+    // bytes built on a partial tree under the key a HEALTHY run derives,
+    // which the args docblock calls "the next clean run's stale hit".
+    //
+    // A real remote executor produces the missing shape: it ran the
+    // command, got a non-zero exit, and still holds output blobs in CAS.
+    const registered: string[] = []
+    const deferred = {
+      register: (id: string) => {
+        registered.push(id)
+      },
+      // execute-task also asks the registry to materialise a task's
+      // upstream deferrals; a stub without it fails the run for that
+      // reason instead of the gate under test.
+      materializeFor: async () => undefined,
+    }
+    const far = (exitCode: number): TaskExecutor => ({
+      name: 'far',
+      async execute(req: ExecuteRequest) {
+        // The declared output has to exist or the outcome fails for that
+        // reason instead of the one under test — the deferred branch only
+        // REGISTERS the closure, it never calls it.
+        if (exitCode === 0) await writeFile(path.join(req.cwd, 'out.txt'), 'far\n')
+        return {
+          exitCode,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [],
+          outputs: { kind: 'deferred' as const, materialize: async () => undefined },
+        }
+      },
+    })
+    // 1. A FAILURE down the deferred path registers nothing.
+    const failed = await executeTask({
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+      executor: far(7),
+      download: 'deferred' as const,
+      deferred: deferred as never,
+    } as never)
+    expect([failed.status, registered]).toEqual(['failed', []])
+    // 2. A TAINTED success down the same path registers nothing either.
+    const cap = { root: '', out: [] as string[], err: [] as string[] }
+    const tainted = await executeTask({
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger(cap)),
+      executor: far(0),
+      download: 'deferred' as const,
+      taintedUpstream: true,
+      deferred: deferred as never,
+    } as never)
+    expect([tainted.status, registered]).toEqual(['success', []])
+    // 3. CONTROL, on its own run: a clean success DOES register, so the two
+    // refusals above are the gates' doing and not a path that never fires.
+    const ok = await executeTask({
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+      executor: far(0),
+      download: 'deferred' as const,
+      deferred: deferred as never,
+    } as never)
+    expect([ok.status, registered]).toEqual(['success', ['proj#build']])
+  })
+
   it('a remote-ONLY task leaves this machine alone: no clean, no restore, no local save', async () => {
     // `exec.remote: 'only'` on an executor that reports `remote: true` means
     // the work AND its result live on the far side — "restoring node_modules
