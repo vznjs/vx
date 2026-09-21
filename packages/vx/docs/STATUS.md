@@ -4346,6 +4346,50 @@ between tests`, `0 pass` and no `(fail)` row, and the classifier —
       count is below the cores) and catches the `<`-to-`<=` mutation
       here; the arm itself waits for a host where a quota binds.
 
+553.  DONE (2026-09-21, `orchestrator/events.ts` — the run event bus,
+      its wire projection and the label vocabulary every surface
+      renders. Never swept. 30 mutations: twenty-six caught (sixteen by
+      the first file list, TEN MORE by a wider one), four survivors, all
+      four closed by five rows. No source change).
+      THE SWEEP'S FILE LIST IS THE FIXTURE THAT DECIDES EVERY VERDICT,
+      and this item nearly published eleven survivors that were not.
+      The first run took the five files naming the region's functions
+      and reported the whole label vocabulary unheld — `up-to-date`
+      versus `restored-local`, the signal word on a 137, the timeout
+      reason, the violation count, the skip's blocker. Every one of
+      those strings IS asserted, in the files that render them:
+      framed-output, run-report, signal-death,
+      persistent-ready-timeout. Re-running the same mutations over
+      those caught ten of the eleven. Grep the region's OUTPUT, not
+      only its identifiers.
+      A DESCRIBE NAMED FOR A CASE, WITH BOTH ROWS ON ITS NEGATIVES.
+      "wireForwarder — completions without a start" holds two rows: one
+      that a real start is not duplicated, one that group tasks are
+      dropped. Neither witnesses the synthesis the name is about — a
+      skipped task never reaches the scheduler's `onStart`, so its
+      completion arrives alone, and a consumer that resolves a
+      completion's node from the start it recorded drops the task while
+      the forwarded footer still counts it. The new row asserts the
+      synthesized start is the FULL projection, not a stand-in.
+      A DISPOSER THAT REMOVES EVERYTHING passed the existing row,
+      because that row subscribes exactly once — `splice(i, 1)` and
+      "drop them all" are the same thing to it. A surface detaching
+      mid-run (a TUI closing, a devtool disconnecting) must not take the
+      terminal renderer with it.
+      THE OPTIONAL HOOKS ARE PART OF THE EMBEDDER CONTRACT. `runStart`,
+      `taskStart` and `runEnd` are optional on `Logger`, and calling
+      them unguarded turns a legal three-method sink into a TypeError
+      INSIDE the bus — where the isolation swallows it and the surface
+      just goes quiet.
+      AND TWO EDGES: a failure with ZERO sandbox violations must not say
+      ", 0 sandbox violations" (the count reads as the reason it
+      failed), and a node that never says `surfaced` is not surfaced.
+      A ROW I WROTE AND WITHDREW: I asserted that a real `task:start`
+      arriving after a synthesized one is not forwarded twice. It is —
+      `started` suppresses the SYNTHESIS, not a real start — and no run
+      produces that order anyway. The row was my invention, not the
+      code's promise, and reading what it returned is what said so.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

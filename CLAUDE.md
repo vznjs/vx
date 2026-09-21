@@ -299,6 +299,14 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - A probe's negative case is checked before its result is read: a
   flag set to "broken" still matched a `grep -q ok` ("broken" holds
   "ok"), and the cycle that was to fail passed (2026-09-16).
+- THE SWEEP'S FILE LIST IS THE FIXTURE THAT DECIDES EVERY VERDICT. Item
+  553 ran the five files that name the region's functions and reported
+  eleven survivors across the label vocabulary; re-running the same
+  mutations over the files that assert the STRINGS those functions
+  produce (framed-output, run-report, signal-death,
+  persistent-ready-timeout) caught ten of them. Grep the region's OUTPUT
+  — the sentences, not only the identifiers — and run every file that
+  asserts one, before calling anything unheld.
 - A mutation that does not COMPILE reads as a survivor, not as a
   catch: Bun prints `# Unhandled error between tests`, `0 pass` and NO
   `(fail)` row, so a driver counting failures scores it SURVIVED and
