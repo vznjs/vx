@@ -3390,6 +3390,67 @@ delivery with a probe it then removes (recursive: true)` — the
       never offers the name it was given, because an exact match is not
       a hint.
 
+534.  DONE (2026-09-21, `orchestrator/task-hash.ts`'s KEY ASSEMBLY — what
+      is BUILT into the `CacheKeyInput`, as distinct from 505's fold of
+      it. 19 mutations, fourteen caught, five survivors, four real, four
+      rows. Picked because every cache key vx produces is assembled
+      here and 505 took only the fold and the config projection).
+      THE PATTERN AGAIN, TWICE, AND BOTH TIMES THE SAME SHAPE: a rule
+      whose PROJECT-level copy is pinned end-to-end and whose
+      WORKSPACE-level copy arrived later with none of it.
+      A task's own `cache.outputs.workspaceFiles` are excluded from its
+      own workspace inputs — otherwise it folds its own generated file
+      and its key moves after every run, so it never hits again. The
+      exclusion is held, by a row that calls `resolveInputs` with
+      `ownWorkspaceOutputs` itself. What nothing held is the WIRE:
+      `task-hash` passing `cache.outputs.workspaceFiles` down to it.
+      Hand it `[]` there and the exclusion is perfect and unreachable.
+      The project-level twin of the same law fails 22 rows.
+      The new row goes through `computeTaskHash`, with a control on a
+      DIFFERENT workspace file that must still move the key — or the
+      assertion would pass equally on a task that reads no workspace
+      files at all.
+      THE SECOND COPY IS ALSO WHERE A PIN STOPS SHORT. `task-hash`
+      merges the workspace-wide OID partition into the project's for a
+      task declaring `inputs.workspaceFiles`. A row pins which map WINS
+      on a path present in both — and by construction it still passes
+      when the merge is deleted outright, because its path is in the
+      project map too. What the merge exists for is a path only the
+      workspace map has. Measured before claiming: deleting it costs no
+      correctness (identical key, `c915bbb282ae0b1c` both ways — the
+      fallback recomputes the same blob OID from the worktree) and one
+      `hashFile` per shared file, on the warm path the partition was
+      added to make free. The row supplies a workspace-only OID and
+      asserts it is the value that FOLDS.
+      THE EXECUTOR INPUT SET, which `describeTaskInputs` builds and only
+      a remote executor reads, so a wrong answer is invisible here. A
+      workspace output's index row reads `workspace-outputs/<path from
+the root>`: the prefix is a STORAGE discriminator and the path
+      behind it is already workspace-relative, while a project output's
+      row is project-relative and must be rebased. Treat the two alike
+      and a worker is handed `proj/workspace-outputs/shared/…`, a file
+      that exists nowhere, so it stages nothing and the task runs
+      without the upstream output it declared a dependency on. The row
+      carries BOTH namespaces from one producer, so it cannot pass by
+      treating every path as workspace-relative.
+      And the list's ORDER, which the docblock says is independent of
+      declaration order "and any action digest derived from it" —
+      unheld, so every reordering of a `dependsOn` array was a fresh
+      remote action. Asserting sortedness alone passes half the time on
+      two members; the row asserts that BOTH declaration orders produce
+      the SAME list, which cannot.
+      MEASURED EQUIVALENT, and this one is a no-op by construction:
+      `describeTaskInputs` sorts `input.inputFiles`, and every producer
+      of that list already sorted it (`inputs.ts` lines 179, 423, 574).
+      Defensive normalisation at a seam, with nothing left for a row to
+      catch — so none was written.
+      THE SUITE LIST IS A FIXTURE, for the fourth item running. Three
+      of the nine pre-check survivors — the project-boundary wiring, the
+      group graft and its expansion — were caught outright by the whole
+      suite, in `execute-task.test.ts` and `orchestrator-run.test.ts`,
+      neither of which names a single symbol from the region.
+      No source change.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

@@ -22,6 +22,7 @@ import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cach
 import { scanArtifact } from '../src/cache/archive.js'
 import { streamOf } from './helpers/stream.js'
 import { validateProjectConfig } from '../src/workspace/project-loader.js'
+import { computeTaskHash } from '../src/orchestrator/task-hash.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -168,6 +169,61 @@ describe('inputs.workspaceFiles resolution', () => {
     expect(r.files).toEqual([])
   })
 
+  it('a task own outputs.workspaceFiles leave its KEY alone — the wire, not just resolveInputs', async () => {
+    // The row above pins the EXCLUSION, by calling `resolveInputs` with
+    // `ownWorkspaceOutputs` itself. What nothing held is the WIRE:
+    // `task-hash.ts` passing `cache.outputs.workspaceFiles` down to it.
+    // Hand it `[]` there and the exclusion is perfect and never reached —
+    // the task folds its own generated file, so its key moves after every
+    // run and it never hits again.
+    //
+    // The project-level twin of this law ("does not self-invalidate when
+    // only its declared outputs change") is held end-to-end by 22 rows.
+    // The workspace-level array arrived later and inherited none of them,
+    // which is this repo's standing finding about a rule with two copies.
+    const generated = path.join(root, 'shared', 'generated.json')
+    await write(generated, '{"v":1}')
+    const cache = new Cache(path.join(root, '.vx', 'cache'))
+    try {
+      const key = (): Promise<string> =>
+        computeTaskHash({
+          node: {
+            id: 'a#build',
+            projectName: 'a',
+            projectDir: aDir,
+            taskName: 'build',
+            config: {
+              exec: { command: 'gen' },
+              cache: {
+                inputs: { files: [], workspaceFiles: ['shared/**'] },
+                outputs: { files: [], workspaceFiles: ['shared/generated.json'] },
+              },
+            },
+            deps: [],
+            requested: false,
+          },
+          upstream: [],
+          workspaceRoot: root,
+          workspaceFingerprint: 'fp',
+          cache,
+          nestedProjectDirs: [],
+        })
+
+      const before = await key()
+      await write(generated, '{"v":2}')
+      expect(await key()).toBe(before)
+
+      // CONTROL, on a DIFFERENT file: a workspace input that is not a
+      // declared output still moves the key. Without it the assertion
+      // above would pass just as well on a task that reads no workspace
+      // files at all.
+      await write(path.join(root, 'shared', 'config.json'), '{"changed":true}')
+      expect(await key()).not.toBe(before)
+    } finally {
+      cache.close()
+    }
+  })
+
   it('absent field and workspaceFiles: [] resolve identically and derive the same key', async () => {
     const absent = await resolveA({ files: ['src/**'] })
     const empty = await resolveA({ files: ['src/**'], workspaceFiles: [] })
@@ -260,6 +316,68 @@ describe('GitFilesCache workspace-wide partition', () => {
     cache.markOutputsChanged(aDir, ['src/main.ts'])
     expect(cache.snapshotFor(root, [new Bun.Glob('packages/a/src/**')])).toBeUndefined()
     expect(cache.snapshotFor(root, [new Bun.Glob('shared/**')])).toBeDefined()
+  })
+
+  it('the workspace partition OIDs reach the key — the merge itself, not its precedence', async () => {
+    // `task-hash` merges the workspace-wide OID partition into the
+    // project's for a task declaring `inputs.workspaceFiles`, because a
+    // workspace glob reaches files the project's own partition never
+    // enumerated. `task-hash-derive.test.ts` pins which map WINS on a path
+    // present in both — and that row, by construction, still passes when
+    // the merge is deleted outright: its path is in the project map too.
+    // What the merge exists for is a path only the workspace map has.
+    //
+    // Deleting it costs no correctness (the fallback recomputes the same
+    // blob OID from the worktree, measured: identical key) but every
+    // shared file then pays a stat + SQLite lookup, or a full read on a
+    // cold memo, on the warm path this partition was added to make free.
+    // So the pin is that the supplied OID is the value that FOLDS.
+    const shared = path.join(root, 'shared', 'config.json')
+    const gfc = new GitFilesCache()
+    await populateGitFilesCache(root, [aDir, bDir], gfc, true)
+    expect(gfc.oidsFor(root)?.has(shared)).toBe(true)
+    expect(gfc.oidsFor(aDir)?.has(shared)).toBe(false)
+
+    const cache = new Cache(path.join(root, '.vx', 'cache'))
+    try {
+      const keyWithWorkspaceOid = (oid: string): Promise<string> =>
+        computeTaskHash({
+          node: {
+            id: 'a#build',
+            projectName: 'a',
+            projectDir: aDir,
+            taskName: 'build',
+            config: {
+              exec: { command: 'build' },
+              cache: {
+                inputs: { files: [], workspaceFiles: ['shared/**'] },
+                outputs: { files: [] },
+              },
+            },
+            deps: [],
+            requested: false,
+          },
+          upstream: [],
+          workspaceRoot: root,
+          workspaceFingerprint: 'fp',
+          cache,
+          nestedProjectDirs: [],
+          gitFilesCache: {
+            oidsFor: (dir: string) => (dir === root ? new Map([[shared, oid]]) : gfc.oidsFor(dir)),
+            snapshotFor: (dir: string, globs: readonly Bun.Glob[]) => gfc.snapshotFor(dir, globs),
+            set: (dir: string, files: readonly string[]) => gfc.set(dir, files),
+            markOutputsChanged: () => {},
+          } as never,
+        })
+
+      // Unmerged, the workspace map is never consulted and both calls fall
+      // back to hashing the same unchanged bytes — one key, not two.
+      expect(await keyWithWorkspaceOid('aaaaaaaaaaaaaaaa')).not.toBe(
+        await keyWithWorkspaceOid('bbbbbbbbbbbbbbbb'),
+      )
+    } finally {
+      cache.close()
+    }
   })
 
   it('invalidateWorkspacePartition drops the root partition only when workspace-wide', async () => {
