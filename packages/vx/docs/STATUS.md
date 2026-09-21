@@ -3563,6 +3563,80 @@ the root>`: the prefix is a STORAGE discriminator and the path
       this file that was trusted rather than tested.
       No source change.
 
+537.  DONE (2026-09-21, `orchestrator/sandbox-request.ts` — the sandbox
+      request assembly: the run-wide union, the enforcement anchors, the
+      dependency grants, and the placeholder files vx creates so a bind
+      has something to mount. Three passing STATUS mentions, never its
+      own item. 24 mutations, eleven caught, THIRTEEN survivors, all
+      confirmed whole-suite — the largest survivor set of the series.
+      Six closed by five rows).
+      THE SWEEP DELETES WHAT THE TASK WROTE. `sweepPlaceholders` takes
+      back only a placeholder that is still a file, still EMPTY, and
+      whose mtime is untouched — three conditions ANDed. The row
+      covering it writes `bytes`, which moves the size AND the mtime, so
+      either guard alone still saves the file and neither has a witness.
+      Both uncovered shapes are ordinary producers. A task that writes an
+      EMPTY file (`touch dist/.keep`, a marker, an empty
+      `.tsbuildinfo`) moves only the mtime. A task that writes content
+      and RESTORES the mtime — `cp -p`, `tar -x`, `unzip`,
+      `rsync --times`, any SOURCE_DATE_EPOCH generator — moves only the
+      size. That is the same producer class CLAUDE.md already names for
+      the file-hash memo's ctime rule, so this repo has been bitten by
+      these tools once already. Either way vx removes the task's real
+      output and reports it as litter it took back.
+      The mtime row needs care: `mtimeMs` carries sub-millisecond
+      precision a `Date` cannot round-trip, so the file is normalised to
+      a whole millisecond and the record taken FROM that. My first
+      version restored to the raw value, missed by a fraction, and the
+      sweep skipped the file for the wrong reason — the precondition is
+      asserted so that can only fail loudly.
+      THE SIBLING PREFIX, a third time (520 on sandbox write grants, 527
+      on static prefixes). A workspace dependency is a symlink in
+      `node_modules` and its target is granted, unless it is already
+      inside a granted directory. That test is a path comparison, and
+      `node_modules-extra` is not inside `node_modules`: without the
+      separator the prefix test says it is, and the sibling a task
+      imports is silently not granted. The scoped shape had no fixture
+      either — a package manager writes `node_modules/@acme/pkg` one
+      level deeper, and the scan takes that step explicitly.
+      THE DEDUP NEEDS A CANONICAL ROOT, found by CI on darwin only and
+      then reproduced on Linux under a symlinked root: `linkedDeps`
+      realpaths a link's TARGET and compares it against the granted
+      directories AS GIVEN, so where the project path is not canonical —
+      macOS's `/var/folders` is a symlink to `/private/var` — nothing is
+      ever recognised as already inside a granted directory and every
+      link is granted redundantly. Harmless for enforcement, since the
+      parent is granted anyway, but it makes the dedup unobservable, so
+      the fixture takes a canonical root and the control tests the dedup
+      rather than the platform.
+      THE WILDCARD CLASS IS ITSELF A LIST. `/[*?[\]]/` decides whether a
+      grant is a glob or a literal path to bind as an empty file, and
+      every fixture spells `*` — including every `**`, which is why a
+      fixture must carry `?` or `[` and NO star to reach the gap at all.
+      My first attempt used `out?/**`, which still holds a star and
+      proved nothing. `out?` alone is bound as a literal file named
+      `out?`: the 2026-09-16 trap by a spelling no row covered.
+      A SURFACE WITH NO WITNESS OF ANY KIND, and this is the item's
+      second finding. `prepareSandbox` computes a RUN-WIDE union —
+      the domain allowlist, and whether the all-or-nothing unix-socket
+      filter is lifted — and hands it to SRT's `initialize()`. Nothing
+      asserts what that call receives. Dropping the domain union
+      entirely, narrowing the socket lift to `unixSockets: true` alone,
+      and widening it so an EMPTY list lifts the filter for the whole
+      run all survive untouched. The last is the security-relevant
+      direction: a user writing `unixSockets: []` to mean "none" would
+      get "all". A row needs the live `initialize()` call observed, which
+      no suite does today.
+      MEASURED EQUIVALENT: returning an armer for a run with no
+      sandboxed task. The armer is lazy and `arm()` is only called by a
+      sandboxed task, so `armed` — the one reader, gating `resetSandbox`
+      at `run.ts:853` — stays false either way.
+      INCONCLUSIVE ON THIS MACHINE, reported as 535 requires rather than
+      as a survivor: `weakerWhenNested` is nested seatbelt, macOS only,
+      and its describe is the single skip the classifier flagged on all
+      24 runs here.
+      No source change.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

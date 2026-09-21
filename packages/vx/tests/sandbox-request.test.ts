@@ -6,7 +6,7 @@
 // file survived every later clean (2026-09-16), so the sweep takes back
 // what the task never wrote, and the failure names the `dir/` spelling.
 
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -22,7 +22,15 @@ let root: string
 let dir: string
 
 beforeEach(async () => {
-  root = await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-request-'))
+  // CANONICAL, deliberately: macOS's temp dir is `/var/folders/...`, a
+  // symlink to `/private/var/...`. `linkedDeps` realpaths a link's TARGET
+  // and compares it against the granted directories as given, so under a
+  // non-canonical root the "already inside a granted directory" dedup
+  // never fires and every link is granted redundantly. That is harmless
+  // (the parent is granted anyway) but it makes the dedup untestable, and
+  // the row below is about the dedup rather than about macOS path
+  // canonicalisation. Found by CI: the control failed on darwin only.
+  root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-request-')))
   dir = path.join(root, 'proj')
   await mkdir(dir, { recursive: true })
 })
@@ -69,6 +77,24 @@ describe('a write grant is pre-created for the bind', () => {
     expect(r.placeholders).toEqual([])
   })
 
+  it('`?` and `[...]` mark a glob too: no literal file is bound for one', async () => {
+    // The wildcard test is a character class listing four metacharacters
+    // and every fixture spells `*` — including every `**`, which is why a
+    // glob must carry `?` or `[` and NO star to reach the gap at all.
+    // Narrow the class to `*` and `out?` stops looking like a glob, so it
+    // is bound as an empty FILE literally named `out?`: the 2026-09-16
+    // trap ("File exists" from the task's own mkdir, the file surviving
+    // every later clean) arriving by a spelling no row covers.
+    // (Their static prefix is `.`, deliberately — `out?` names no single
+    // directory, so there is nothing to pre-create. What must not happen
+    // is the literal.) One fixture per metacharacter.
+    for (const g of ['out?', 'gen[ab]']) {
+      const r = await requestFor([g])
+      expect(r.placeholders).toEqual([])
+      expect(await kind(path.join(dir, g))).toBe('none')
+    }
+  })
+
   it('what is already there is what the task meant: a directory stays one', async () => {
     await mkdir(path.join(dir, 'dist'))
     const r = await requestFor(['dist'])
@@ -112,6 +138,56 @@ describe('the request derives nothing from cache', () => {
     const { sandbox } = await requestFor(['dist/'])
     expect(sandbox.baseAllowWrite).toEqual([])
     expect(sandbox.config.allowWrite.some((p) => p.endsWith('dist'))).toBe(true)
+  })
+})
+
+describe('a workspace link is granted by its real path, not by a string prefix', () => {
+  // `node_modules` is granted, and a workspace dependency inside it is a
+  // SYMLINK to a sibling project — so its target is granted too, or a task
+  // cannot import what its own package.json depends on. Targets already
+  // INSIDE a granted directory are dropped as redundant, and that test is
+  // a path comparison: a sibling whose name merely STARTS WITH a granted
+  // directory's is not inside it. `node_modules-extra` is not in
+  // `node_modules`, and a prefix test without the separator says it is —
+  // the sibling-prefix mistake this repo has now met three times (520 on
+  // sandbox write grants, 527 on static prefixes, here on dep grants).
+  it('a link whose target merely shares a granted prefix is still granted', async () => {
+    const sibling = path.join(root, 'node_modules-extra', 'pkg')
+    await mkdir(sibling, { recursive: true })
+    await mkdir(path.join(dir, 'node_modules'), { recursive: true })
+    await symlink(sibling, path.join(dir, 'node_modules', 'dep'))
+
+    const { sandbox } = await sandboxRequestFor(node(), {}, root)
+    const granted = await Promise.all(sandbox.baseAllowRead.map((p) => realpath(p).catch(() => p)))
+    expect(granted).toContain(await realpath(sibling))
+  })
+
+  it('a SCOPED link is found too: the scan descends one level into `@scope/`', async () => {
+    // A package manager writes a scoped dependency as
+    // `node_modules/@acme/pkg`, one level deeper than an unscoped one, so
+    // the scan takes that step explicitly. Without it a scoped workspace
+    // dependency is simply not granted and the task cannot import it —
+    // invisible to every row above, which all spell an unscoped name.
+    const sibling = path.join(root, 'packages', 'acme-pkg')
+    await mkdir(sibling, { recursive: true })
+    await mkdir(path.join(dir, 'node_modules', '@acme'), { recursive: true })
+    await symlink(sibling, path.join(dir, 'node_modules', '@acme', 'pkg'))
+
+    const { sandbox } = await sandboxRequestFor(node(), {}, root)
+    const granted = await Promise.all(sandbox.baseAllowRead.map((p) => realpath(p).catch(() => p)))
+    expect(granted).toContain(await realpath(sibling))
+  })
+
+  it('CONTROL: a link that really is inside a granted directory is dropped as redundant', async () => {
+    // The other direction, so the row above cannot be satisfied by
+    // granting every link target outright.
+    const inside = path.join(dir, 'node_modules', 'real-pkg')
+    await mkdir(inside, { recursive: true })
+    await symlink(inside, path.join(dir, 'node_modules', 'alias'))
+
+    const { sandbox } = await sandboxRequestFor(node(), {}, root)
+    const granted = await Promise.all(sandbox.baseAllowRead.map((p) => realpath(p).catch(() => p)))
+    expect(granted).not.toContain(await realpath(inside))
   })
 })
 
@@ -163,6 +239,57 @@ describe('sweepPlaceholders takes back what the task never wrote', () => {
     await writeFile(path.join(dir, 'dist/vx'), 'bytes')
     expect(await sweepPlaceholders(r.placeholders)).toEqual([])
     expect(await kind(path.join(dir, 'dist/vx'))).toBe('file')
+  })
+
+  // The sweep ANDs three conditions — still a file, still empty, mtime
+  // untouched — and the row above trips every changeable one at once:
+  // writing `bytes` moves the size AND the mtime, so either guard alone
+  // still saves the file. The two shapes below move exactly one each, and
+  // each is a real producer rather than a contrivance. Getting them wrong
+  // is vx DELETING A FILE THE TASK WROTE and reporting it as litter it
+  // took back.
+  it('an EMPTY file the task wrote is its output and stays', async () => {
+    // `touch dist/.keep`, a marker, an empty `.tsbuildinfo`, `: > dist/vx`.
+    // Size stays 0, so only the mtime guard tells this from a placeholder
+    // nobody touched.
+    const r = await requestFor(['dist/vx'])
+    const p = path.join(dir, 'dist/vx')
+    const before = r.placeholders[0]!.mtimeMs
+    // A distinct mtime is the whole signal, so make it distinct rather
+    // than assuming the clock moved between two syscalls.
+    const later = new Date(before + 2000)
+    await utimes(p, later, later)
+    expect((await stat(p)).size).toBe(0)
+    expect((await stat(p)).mtimeMs).not.toBe(before)
+
+    expect(await sweepPlaceholders(r.placeholders)).toEqual([])
+    expect(await kind(p)).toBe('file')
+  })
+
+  it('a file the task wrote WITHOUT moving its mtime stays', async () => {
+    // `cp -p`, `tar -x`, `unzip`, `rsync --times`, any SOURCE_DATE_EPOCH
+    // generator — the same producer class that forced ctime into the
+    // file-hash memo, because they write content and restore the mtime.
+    // Size is then the only signal.
+    const r = await requestFor(['dist/vx'])
+    const p = path.join(dir, 'dist/vx')
+    // `mtimeMs` carries sub-millisecond precision that a Date cannot
+    // round-trip, so the file is first normalised to a whole millisecond
+    // and the record taken FROM that — otherwise the restore below misses
+    // by a fraction and the sweep skips the file for the wrong reason.
+    const fixed = new Date(Math.floor(r.placeholders[0]!.mtimeMs))
+    await utimes(p, fixed, fixed)
+    const record = [{ path: p, mtimeMs: (await stat(p)).mtimeMs }]
+
+    await writeFile(p, 'bytes')
+    await utimes(p, fixed, fixed)
+    // The precondition IS the setup: the row is only about the size guard
+    // if the mtime really did come back unchanged.
+    expect((await stat(p)).mtimeMs).toBe(record[0]!.mtimeMs)
+    expect((await stat(p)).size).toBeGreaterThan(0)
+
+    expect(await sweepPlaceholders(record)).toEqual([])
+    expect(await kind(p)).toBe('file')
   })
 
   it('a placeholder the task replaced with a directory stays', async () => {
