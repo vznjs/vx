@@ -3324,6 +3324,40 @@ delivery with a probe it then removes (recursive: true)` — the
       form, which is what keeps an unquoted empty shell variable from
       creating a directory named `--force` and swallowing the flag.
 
+532.  DONE (2026-09-21, `workspace/config-schema.ts`'s GLOB REFUSALS —
+      850 lines, and 490 took only its timeout pairs. Picked because
+      527 leaned on exactly these rules: four of its six survivors were
+      classified unreachable BECAUSE the schema refuses absolute,
+      escaping, negated and directory-naming globs. If those refusals
+      are themselves unheld, that classification rests on nothing. 8
+      mutations, three caught, FIVE survivors, four of them real.
+      THE ESCAPE HATCH WAS HELD FOR ONE SHAPE OUT OF THREE. The `..`
+      refusal exists, in its own words, because a glob leaving the
+      project dir "would let cleanOutputs delete files outside it" —
+      the run deletes declared outputs before every attempt. Every
+      fixture spells that escape as a LEADING `../`, so narrowing the
+      whole-segment scan to a prefix test changes nothing the suite can
+      see, while `dist/../../etc/**` walks straight out of the
+      workspace. Inner, inner-twice and leading are three different
+      argv, and only the first had one.
+      AND THE MARKER COMES OFF FIRST. Inputs may be negated, so both
+      predicates strip a leading `!` before they look. Nothing held
+      either: `!..` splits to a single segment that equals no segment
+      at all, and `!.` reads as a name rather than as the directory
+      itself. Two more members, two more argv.
+      THE CONTROL THAT KEEPS THE REFUSAL HONEST. A segment must EQUAL
+      `..`, not begin with it — widen the test and an ordinary
+      `..foo/**` directory is refused. That direction is loud rather
+      than silent, and it is the reason the row asserts an ACCEPT.
+      MEASURED UNREACHABLE. `namesDirItself` also answers true for a
+      bare `/`, and no call site can reach it: all three loops refuse
+      an absolute glob BEFORE they ask, so every `/` is already gone.
+      Checked at each of the three, not argued from one.
+      WHAT THIS SAYS ABOUT 527. Its classification stands — the shapes
+      really are refused — but the refusals were held more thinly than
+      the argument assumed. A boundary argument needs the boundary
+      itself under test, not merely present.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
