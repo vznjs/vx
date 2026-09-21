@@ -400,6 +400,16 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   invariant survives, first check the mutation actually changes
   behaviour; write the shape the comment FORBIDS (here `.then(f)
   .catch(g)`), not something adjacent to it.
+- A READ-THROUGH AND A MUTATION SWEEP ARE NOT SUBSTITUTES, and item
+  561 is the clearest case: 423 read `execute-task.ts` end to end
+  against the live invariants and found two gaps, then the sweep found
+  ten more in the same region — including the one sitting directly
+  BESIDE what 423 pinned. It pinned the WRITE half of the
+  policy asymmetry (the clean) and even noted the neighbouring row
+  proved nothing about it; the READ half was never examined, and its
+  own `--force` fixture builds a COLD project, so whether a probe
+  happens is invisible to it. When STATUS records a file as read and
+  found clean, that is not evidence it is held.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a

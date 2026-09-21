@@ -22,7 +22,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { Cache, type CacheEntry } from '../src/cache/index.js'
+import { Cache, GitFilesCache, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { UserError } from '../src/util/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
@@ -206,6 +206,394 @@ describe('execute-task — the pre-exec output wipe is gated on WRITES, not read
     },
     TIMEOUT,
   )
+})
+
+describe('execute-task — the READ half of the same asymmetry', () => {
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    '--force re-executes against a WARM cache instead of restoring it',
+    async () => {
+      // `willRead` keys on the READ axes, exactly as `willWrite` keys on
+      // the write ones — and the row next door pins only the write half.
+      // The `--force` fixture there builds a fresh project with NO prior
+      // entry, so whether a probe happens is invisible to it: swap
+      // `willRead` onto the write axes and `--force` probes, hits, and
+      // restores, serving cached bytes at the one moment the user asked
+      // for a rebuild. The task counts its own executions on disk.
+      const dir = await addProject(
+        fixture.root,
+        'warm',
+        `export default { tasks: { t: {
+          exec: { command: 'mkdir -p dist && echo x >> runs.txt && echo made > dist/made.txt' },
+          cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+        } } }`,
+      )
+      const once = { cwd: fixture.root, tasks: ['t'], projects: ['warm'] }
+      // Populate the cache with the default (all-axes) policy.
+      const first = await run({ ...once, log: capturingLogger(fixture) })
+      expect(first.outcomes[0]!.status).toBe('success')
+
+      // CONTROL: a read-enabled policy DOES hit this warm entry, so the
+      // row below is measuring the policy and not a cold cache.
+      const hit = await run({ ...once, cache: READ_ONLY, log: capturingLogger(fixture) })
+      expect(hit.outcomes[0]!.status).toBe('cache-hit')
+
+      const forced = await run({ ...once, cache: FORCE, log: capturingLogger(fixture) })
+      expect(forced.outcomes[0]!.status).toBe('success')
+      // Two executions: the populate and the forced one. The cache hit in
+      // between ran nothing.
+      const lines = (await readFile(path.join(dir, 'runs.txt'), 'utf8')).trim().split('\n')
+      expect(lines).toHaveLength(2)
+    },
+    TIMEOUT,
+  )
+})
+
+describe("execute-task — exec.remote:'only' with no remote executor", () => {
+  it('succeeds without running, and still carries the hash dependents fold', async () => {
+    // The local no-op half. `placement.test.ts` is the only other file
+    // that names `remoteOnlyNoop`, and it uses it as an EMPTY Set in a
+    // helper — nothing ever drove executeTask with the flag set, so the
+    // branch could return `failed`, or drop the hash, with the suite
+    // green. The hash is the part that matters: it is computed precisely
+    // so dependents fold it, and dropping it moves every dependent's key.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      let ran = 0
+      const never = {
+        name: 'org/never',
+        execute: async () => {
+          ran++
+          return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+        },
+      } as never
+      const n = node(b, {
+        exec: { command: 'echo should-not-run' },
+        cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+      })
+      const o = await executeTask({
+        ...baseArgs(b, n, log),
+        executor: never,
+        remoteOnlyNoop: true,
+      })
+      expect([o.status, o.exitCode]).toEqual(['success', 0])
+      expect(ran).toBe(0)
+      expect(typeof o.hash).toBe('string')
+      expect(o.hash!.length).toBeGreaterThan(0)
+    } finally {
+      await closeBench(b)
+    }
+  })
+})
+
+describe('execute-task — what the outcome and the request carry', () => {
+  it('captures stdout only when it will be SAVED, and never stderr', async () => {
+    // "cache.save is the single consumer of result.stdout, and it runs
+    // only when this task will WRITE an entry; result.stderr has no
+    // consumer at all." Both streams still reach the logger live; only
+    // the retained copy is dropped, which for a chatty task is its full
+    // byte size in heap. That is a COST, invisible in any outcome — so
+    // the executor itself records what it was asked to capture.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      const seen: Array<{ stdout: boolean | undefined; stderr: boolean | undefined }> = []
+      const recorder = {
+        name: 'org/recorder',
+        execute: async (req: ExecuteRequest) => {
+          seen.push({ stdout: req.capture.stdout, stderr: req.capture.stderr })
+          return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+        },
+      } as never
+      const cached = node(b, {
+        exec: { command: 'true' },
+        cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+      })
+      await executeTask({ ...baseArgs(b, cached, log), executor: recorder })
+      // A task that will not write an entry retains nothing.
+      await executeTask({
+        ...baseArgs(b, cached, log),
+        executor: recorder,
+        cachePolicy: NO_CACHE,
+      })
+      expect(seen).toEqual([
+        { stdout: true, stderr: false },
+        { stdout: false, stderr: false },
+      ])
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it('reports the sandbox violation COUNT and lines on the outcome', async () => {
+    // The rewrite of a zero exit to 1 is pinned next door, but what the
+    // outcome then TELLS the reader was not: the count feeds the
+    // footer's sandbox column and the lines are the only record of which
+    // grant was missing.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      const n = node(b, { exec: { command: 'true', sandbox: {} } }, 'proj#sb')
+      const denied = {
+        name: 'org/denied',
+        execute: async () => ({
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [
+            { timestamp: new Date(), line: 'deny file-read-data /etc/hosts' },
+            { timestamp: new Date(), line: 'deny network-outbound' },
+          ],
+        }),
+      } as never
+      const o = await executeTask({ ...baseArgs(b, n, log), executor: denied })
+      expect(o.status).toBe('failed')
+      expect(o.sandboxViolations).toBe(2)
+      expect(o.sandboxViolationLines).toEqual([
+        'deny file-read-data /etc/hosts',
+        'deny network-outbound',
+      ])
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it('stamps the wallclock window start-before-end', async () => {
+    // The run-detail timeline reads these as a span. Swapped, every task
+    // renders a negative window — and the pair is only ever read
+    // together, so neither half alone says which is which.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      const n = node(b, { exec: { command: 'true' } })
+      const o = await executeTask({ ...baseArgs(b, n, log), executor: localExecutor() })
+      expect(o.wallclockStartNs).toBeDefined()
+      expect(o.wallclockEndNs).toBeDefined()
+      expect(o.wallclockEndNs!).toBeGreaterThan(o.wallclockStartNs!)
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it('an UNUSED write grant is not a violation on a successful exit', async () => {
+    // A literal write grant that names nothing on disk is bound as an
+    // empty file, and swept again if the task never wrote it. On a
+    // FAILING task that sweep is the one clue to a grant that meant a
+    // directory, so its line is attached — but on a task that exited 0
+    // it is not a denial at all. Reported anyway, it becomes a violation,
+    // and `userSandbox && violations > 0 && code === 0` rewrites the exit:
+    // a passing sandboxed task fails for not writing somewhere it was
+    // merely allowed to.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      const n = node(
+        b,
+        { exec: { command: 'true', sandbox: { allow: { write: ['unused.txt'] } } } },
+        'proj#grant',
+      )
+      const clean = {
+        name: 'org/clean',
+        execute: async () => ({
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [],
+        }),
+      } as never
+      const o = await executeTask({ ...baseArgs(b, n, log), executor: clean })
+      expect([o.status, o.exitCode]).toEqual(['success', 0])
+      expect(o.sandboxViolations).toBeUndefined()
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it('a SIGKILLed child is a FAILURE, not an abort', async () => {
+    // SIGINT/SIGTERM mean the run is tearing down, so the task never
+    // finished on its own terms. SIGKILL is an OOM or a forced kill —
+    // "stays a real failure" — and folding it in would hide every
+    // out-of-memory task from the footer's failure count.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      const n = node(b, { exec: { command: 'true' } }, 'proj#oom')
+      const killed = {
+        name: 'org/killed',
+        execute: async () => ({
+          exitCode: 137,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [],
+          signal: 'SIGKILL' as const,
+        }),
+      } as never
+      const o = await executeTask({ ...baseArgs(b, n, log), executor: killed })
+      expect(o.status).toBe('failed')
+      // CONTROL: the same shape with SIGTERM IS an abort.
+      const term = {
+        name: 'org/term',
+        execute: async () => ({
+          exitCode: 143,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [],
+          signal: 'SIGTERM' as const,
+        }),
+      } as never
+      const t = await executeTask({ ...baseArgs(b, n, log), executor: term })
+      expect(t.status).toBe('aborted')
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it('says nothing about empty inputs when the task DECLARED none', async () => {
+    // The warning names the globs that matched nothing, so a task with no
+    // `cache.inputs` at all has nothing to name — it would print an empty
+    // parenthesis on every miss of every uncached task in the run.
+    const b = await bench()
+    try {
+      const said: string[] = []
+      const log: Logger = {
+        status(line) {
+          said.push(line)
+        },
+        taskStdout() {},
+        taskStderr() {},
+        taskComplete() {},
+      }
+      // The task must be CACHEABLE with an empty declaration: a task with
+      // no `cache` block at all resolves no inputs, so `inputs !== undefined`
+      // answers first and the guard under test is never reached.
+      const n = node(
+        b,
+        {
+          exec: { command: 'true' },
+          cache: { inputs: { files: [] }, outputs: { files: [] } },
+        },
+        'proj#bare',
+      )
+      await executeTask({ ...baseArgs(b, n, log), executor: localExecutor() })
+      expect(said.filter((l) => l.includes('matched no files'))).toEqual([])
+
+      // CONTROL: the same task that DOES declare a glob, matching nothing,
+      // is exactly what the warning is for.
+      const declared = node(
+        b,
+        {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['nowhere/**'] }, outputs: { files: [] } },
+        },
+        'proj#declared',
+      )
+      await executeTask({ ...baseArgs(b, declared, log), executor: localExecutor() })
+      expect(said.filter((l) => l.includes('matched no files'))).toHaveLength(1)
+    } finally {
+      await closeBench(b)
+    }
+  })
+})
+
+describe('execute-task — what the clean and the fetch must NOT skip', () => {
+  it('marks WORKSPACE outputs it wiped, exactly as it marks project ones', async () => {
+    // Two calls, one rule: a wiped path must be marked so a stale git
+    // snapshot cannot keep listing it with its committed OID — which
+    // would hold a consumer's key unchanged while the file is gone from
+    // disk. The project-dir call is caught by the suite; its
+    // workspace-root twin, which can delete into OTHER projects' dirs,
+    // was free.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      await mkdir(path.join(b.root, 'shared'), { recursive: true })
+      await writeFile(path.join(b.root, 'shared', 'gen.txt'), 'stale')
+      // A REAL GitFilesCache with one method spied: a hand-rolled stub
+      // would enter by a different door than the product does (it also
+      // needs `snapshotFor` on the hash path), and could drift from the
+      // interface without the row noticing.
+      const gitFilesCache = new GitFilesCache()
+      const marked: Array<[string, readonly string[]]> = []
+      const markSpy = spyOn(gitFilesCache, 'markWorkspaceOutputsChanged').mockImplementation(
+        (rootDir: string, rels: readonly string[]) => {
+          marked.push([rootDir, [...rels]])
+        },
+      )
+      const n = node(b, {
+        exec: { command: 'true' },
+        cache: {
+          inputs: { files: ['package.json'] },
+          outputs: { files: [], workspaceFiles: ['shared/**'] },
+        },
+      })
+      await executeTask({ ...baseArgs(b, n, log), executor: localExecutor(), gitFilesCache })
+      markSpy.mockRestore()
+      expect(marked).toHaveLength(1)
+      expect(marked[0]![0]).toBe(b.root)
+      expect([...marked[0]![1]]).toEqual(['shared/gen.txt'])
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it('does not fetch deferred producers for a REMOTE-placed task', async () => {
+    // "A remote-placed task needs nothing: its worker grafts the upstream
+    // bytes by reference." Materializing anyway drags every deferred
+    // producer's outputs onto THIS machine — the whole cost the deferral
+    // exists to avoid — and nothing held the guard.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      let fetched = 0
+      const deferred = {
+        materializeFor: async () => {
+          fetched++
+        },
+        register: () => {},
+      } as never
+      const remote = {
+        name: 'org/remote',
+        remote: true,
+        execute: async () => ({
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [],
+        }),
+      } as never
+      const n = node(b, { exec: { command: 'true' } }, 'proj#far')
+      await executeTask({ ...baseArgs(b, n, log), executor: remote, deferred })
+      expect(fetched).toBe(0)
+
+      // CONTROL: the same task on a LOCAL executor does fetch them.
+      const local = {
+        name: 'org/here',
+        execute: async () => ({
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [],
+        }),
+      } as never
+      await executeTask({ ...baseArgs(b, n, log), executor: local, deferred })
+      expect(fetched).toBe(1)
+    } finally {
+      await closeBench(b)
+    }
+  })
 })
 
 describe('execute-task — output cleaning across retry attempts', () => {

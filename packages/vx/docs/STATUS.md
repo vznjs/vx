@@ -4752,6 +4752,69 @@ test` is transpile-only — it cannot see a type error at all, so
       lands. And the `heldSince` first-write guard is a claim about
       elapsed time that only a clock seam could pin deterministically.
 
+561.  DONE (2026-09-21, `orchestrator/execute-task.ts`, region:
+      `executeCachedTask`'s probe → clean → attempt → save path — the
+      file CLAUDE.md calls stale-hit-critical. Item 423 covered it as a
+      READ-AND-CHECK pass, not a mutation sweep. 43 mutations:
+      thirty-one caught, twelve survivors, eleven closed by ten rows,
+      one classified. No source change).
+      A READ-THROUGH AND A SWEEP ARE NOT SUBSTITUTES, and this is the
+      clearest case yet. 423 read this file end to end against the live
+      invariants and found two gaps; the sweep found ten more in the
+      same region — including the one sitting directly beside what 423
+      did pin.
+      `--force` AGAINST A WARM CACHE HAD NO WITNESS. `willRead` keys on
+      the READ axes exactly as `willWrite` keys on the write ones, and
+      423 pinned only the write half — it even noted that the wipe row
+      next door proves nothing about the asymmetry. But its own
+      `--force` fixture builds a FRESH project with no prior entry, so
+      whether a probe happens is invisible to it. Move `willRead` onto
+      the write axes and `--force` probes, hits and RESTORES: cached
+      bytes served at the one moment the user asked for a rebuild. The
+      new row counts executions on disk, with a read-only control
+      proving the entry is really warm.
+      THE `exec.remote: 'only'` LOCAL NO-OP BRANCH WAS UNDRIVEN.
+      `placement.test.ts` is the only other file that names
+      `remoteOnlyNoop`, and it uses it as an EMPTY Set in a helper — so
+      the branch could return `failed`, or drop the hash, with the
+      suite green. The hash is the point: it is computed precisely so
+      dependents fold it.
+      AND THE WORKSPACE TWIN OF A HELD RULE WAS FREE AGAIN (the same
+      shape as 559). The clean marks every wiped path in the git
+      snapshot so a deleted-and-not-recreated output cannot keep a
+      consumer's key unchanged; the project-dir call is caught by the
+      suite, its workspace-root twin — which can delete into OTHER
+      projects' dirs — was not.
+      THE REST: the capture config (stdout only when it will be SAVED,
+      never stderr — a heap cost with no outcome to read, so the
+      EXECUTOR records what it was asked for), the empty-input warning
+      firing for a task that declared no inputs at all, SIGKILL folded
+      in with SIGINT/SIGTERM as an abort (it is an OOM — a real
+      failure, and folding it hides every OOM from the failure count),
+      deferred producers fetched for a REMOTE-placed task (the whole
+      cost deferral avoids), and the violation count + lines the
+      footer renders.
+      WHAT IS ALREADY WELL HELD is substantial: the `preProbed` stable
+      key a restore-tier task must not recompute (52 rows red on one
+      mutation), the clean's write-gating and its deferral skip, a
+      sandbox violation failing a zero exit, the trapped-SIGTERM
+      timeout rewrite, the whole retry-precedence cluster, the save's
+      exit and deferral gates, and the `refresh` flag both ways.
+      ONE CLASSIFIED: `timedOut` is stamped only when the exit is
+      non-zero, and after the trap rewrite a timed-out task can no
+      longer exit 0 — the guard is defensive against a state the code
+      one branch up now prevents.
+      TWO FIXTURE CORRECTIONS OF MY OWN, both the standing shapes.
+      My first `gitFilesCache` stub entered by a different door than the
+      product does — the hash path also calls `snapshotFor` — so the row
+      died on the stub rather than the claim; replaced with a REAL
+      `GitFilesCache` and one spied method. And my empty-input row was
+      short-circuited a guard EARLIER: I gave the task no `cache` block
+      at all, so nothing resolved inputs and `inputs !== undefined`
+      answered before the guard under test. It needs a CACHEABLE task
+      whose declaration is empty (`inputs: { files: [] }`), with a
+      declared-but-matching-nothing control beside it.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
