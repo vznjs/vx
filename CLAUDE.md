@@ -360,6 +360,21 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   deleting it is vacuous, not a survivor (558). Measure that it FIRES —
   introduce the drift each arm exists to catch — instead of trying to
   test its existence.
+- THE STORAGE LAYER MAY BE ANSWERING FOR THE SORT YOU ARE TESTING.
+  Deleting `entries.sort(...)` in `cacheKeyDiff` changed nothing,
+  because `entry_inputs` is PRIMARY KEY (entry_hash, kind, name) and
+  the scan already returns that order — but in SQLite's BINARY
+  collation, while the sort is `localeCompare`. Measured: the scan
+  gives [Banana, Zed, apple], localeCompare gives [apple, Banana,
+  Zed] (item 559). An all-lowercase fixture makes the two agree and
+  hides the sort entirely; mixed case separates them. Same shape as
+  555 — find what answers first.
+- `bun:sqlite` returns a large INTEGER column as a JS number, not a
+  bigint, unless the handle sets `safeIntegers` — so a `bigint`
+  annotation on a read is false and the value rounds above 2^53 (item
+  559; a bound bigint parameter loses it on the WRITE side too, so
+  probe with a SQL literal). Check which the driver actually hands
+  back before believing a type that was never enforced.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a

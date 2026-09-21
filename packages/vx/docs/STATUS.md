@@ -4628,6 +4628,52 @@ test` is transpile-only — it cannot see a type error at all, so
       `Plugin` alone and a hook added to `PLUGIN_HOOKS` alone each
       make line 98 refuse to compile, so both arms fire.
 
+559.  DONE (2026-09-21, `orchestrator/metrics.ts` — the run-history
+      query layer behind `vx last`, `vx why`, `vx show` and `vx mcp`.
+      Never swept. 38 mutations: twenty-one caught, seventeen
+      survivors, all seventeen closed by nine rows and one extended.
+      One source de-claim).
+      `whyDidThisRerun` IS ALREADY WELL HELD — every one of its nine
+      mutations was caught, including the three endings an unchanged
+      key can have and the guard that the previous run must have
+      RECORDED a key. The holes were all next door.
+      TWO COPIES OF ONE RULE, ONE OF THEM FREE — twice.
+      `cacheKeyDiff` carries the same "previous run must have recorded
+      a key" restriction as `whyDidThisRerun`, with its own comment
+      explaining why (a `hash = ''` row would resolve the
+      `prev.hash === this_.hash` branch and answer "same inputs" for
+      two runs that never had a key) — and nothing held that copy. The
+      clause builder is the same story: `listRuns`'s `AND` join is
+      pinned by a row that passes two filters at once, while
+      `listInvocations`'s identical line was free, because every one of
+      its assertions passes exactly ONE filter and a single clause
+      reads the same under AND or OR.
+      A SORT THE STORAGE LAYER WAS ANSWERING FOR. Deleting
+      `entries.sort(...)` outright changed nothing: `entry_inputs` is
+      PRIMARY KEY (entry_hash, kind, name), so the scan already returns
+      kind-then-name. But in SQLite's BINARY collation, and the sort is
+      `localeCompare` — measured, the scan gives [Banana, Zed, apple]
+      and localeCompare gives [apple, Banana, Zed]. An all-lowercase
+      fixture makes the two agree; mixed-case kinds tell them apart.
+      AND A `bigint` THAT NEVER WAS. The raw row typed the wallclock ns
+      columns `bigint | null`, but `bun:sqlite` hands them back as JS
+      NUMBERS — the handle sets no `safeIntegers`, and the value I
+      wrote to probe it came back rounded at 2^53. Harmless: these are
+      ns RELATIVE to run t=0 and 2^53 ns is 104 days of run time. But
+      the annotation claimed a precision the read never had, so it is
+      corrected to `number | null` — the one source change, no
+      behaviour (`.toString()` reads the same on either).
+      THE REST WERE THE MAPPING AND THE NOTES: a pre-column NULL
+      `cacheHit`/`cached` could read as `false` (which states "declares
+      a cache block and missed" — a claim the row does not make), the
+      limit clamp could go (SQLite reads LIMIT 0 as none and LIMIT -1
+      as unbounded, so an unclamped caller number is two different
+      wrong answers), the tag filter could fire on half a pair or skip
+      the JSON escaping its LIKE depends on, and three of
+      `cacheKeyDiff`'s notes — the uncached-fingerprints sentence, the
+      one-side-pruned case, and "changed but no component differs" —
+      had no witness.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
