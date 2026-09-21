@@ -23,7 +23,7 @@ import {
   resolveSandboxConfig,
   runSandboxed,
 } from '../src/exec/sandbox-runtime.js'
-import { punchWritePaths } from '../src/exec/sandbox-binds.js'
+import { buildCustomConfig, punchWritePaths } from '../src/exec/sandbox-binds.js'
 import {
   bridgedPorts,
   portBridgeHostArgv,
@@ -2157,6 +2157,44 @@ describe.skipIf(process.platform !== 'linux')(
       expect(punchWritePaths(dir, ['/elsewhere/out'])).toEqual([dir])
       // a write path EQUAL to the grant is not an ancestor relationship
       expect(punchWritePaths(dir, [dir])).toEqual([dir])
+    })
+
+    it("a SIBLING sharing the grant's name prefix is not under it", () => {
+      // `under` tests `startsWith(readPath + path.sep)`. Without the
+      // separator, a write grant on `<dir>-out` counts as being inside
+      // `<dir>` and punches it apart — the read grant loses the directory
+      // ENTRY, which is what makes a command that stats its own cwd die
+      // (`bun build`, per the note above). The existing row above uses an
+      // unrelated absolute path, which fails `startsWith` outright and so
+      // never reaches this cut.
+      const sibling = `${dir}-out`
+      expect(punchWritePaths(dir, [sibling])).toEqual([dir])
+      // CONTROL, on its own path: a write grant genuinely under the grant
+      // still punches, so the row above is the SEPARATOR's doing and not a
+      // punch that stopped working.
+      expect(punchWritePaths(dir, [path.join(dir, 'dist')])).not.toEqual([dir])
+    })
+
+    it('passes a glob-shaped write grant to SRT as written', () => {
+      // A file-shaped grant is widened to its directory because bwrap
+      // cannot rename onto an active mount point. A GLOB is neither a file
+      // nor a directory: `statSync` throws on it, so without the glob
+      // check it falls through to `path.dirname` and the pattern the user
+      // wrote is replaced by a plain directory.
+      const cfg = { allowRead: [], allowWrite: [], ignore: undefined } as never
+      const write = (grants: string[]): string[] => {
+        const c = buildCustomConfig(
+          { config: cfg },
+          { allowRead: [], allowWrite: grants, denyRead: [] },
+        ) as { filesystem?: { allowWrite?: string[] } }
+        return c.filesystem?.allowWrite ?? []
+      }
+      expect(write([path.join(dir, 'dist', '**')])).toEqual([path.join(dir, 'dist', '**')])
+      // CONTROLS on their own grants: a directory stays exact, and a FILE
+      // is still widened to its directory — so the row above is the glob
+      // branch and not a widening that stopped happening.
+      expect(write([path.join(dir, 'dist')])).toEqual([path.join(dir, 'dist')])
+      expect(write([path.join(dir, 'dist', 'out.bin')])).toEqual([path.join(dir, 'dist')])
     })
 
     it('replaces the ancestor with its children, dropping the write path', () => {

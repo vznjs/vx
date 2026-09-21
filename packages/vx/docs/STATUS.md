@@ -2835,6 +2835,98 @@ delivery with a probe it then removes (recursive: true)` — the
       regression with no observable behaviour. The repo's own rule says
       a perf claim needs a number, not a row.
 
+520.  DONE (2026-09-21, `exec/sandbox-binds.ts` — twelfth by the age
+      rule, newest dated comment 2026-09-09. The write-grant boundary:
+      which paths a sandboxed task may write. The SILENT direction here
+      is too WIDE — too narrow fails loudly, because the task cannot
+      produce its declared output).
+      10 mutations. Five survived the file's own suite; two are real
+      and now pinned, three are classified.
+      THE SIBLING PREFIX, AGAIN. `punchWritePaths` decides what is
+      under a read grant with `w.startsWith(readPath + path.sep)`. Drop
+      the separator and a write grant on `<dir>-out` counts as being
+      INSIDE `<dir>`: the read grant is punched apart into its
+      children, which costs the directory ENTRY — exactly what makes a
+      command that stats its own cwd die (`bun build`, per the file's
+      own note). This is 514's `anchor-sep` in a second file, and the
+      existing row misses it for a precise reason: it uses
+      `/elsewhere/out`, an unrelated absolute path that fails
+      `startsWith` OUTRIGHT and so never reaches the cut. A sibling
+      sharing the prefix is the only member that discriminates it.
+      THE GLOB THAT BECOMES A DIRECTORY. `bindableWrites` widens a
+      FILE-shaped grant to its directory, deliberately — bwrap cannot
+      rename onto an active mount point, so a file bind breaks every
+      atomic writer. A GLOB is neither file nor directory: `statSync`
+      throws on it, and without the glob check it falls through to
+      `path.dirname`, so `dist/**` reaches SRT as `dist`. The pattern
+      the user wrote is replaced by a plain directory.
+      A PROBE THAT CONTRADICTED A SIGNAL I ALREADY HAD. My first
+      `buildCustomConfig` probe read `filesystem.writePaths`, which
+      does not exist — so it reported NO DIFFERENCE for all three
+      `bindableWrites` mutations, including the two the per-file
+      pre-check had already proven are CAUGHT by tests. That
+      contradiction is what exposed it: an independent signal
+      disagreed, so the probe was wrong, not the code. The field is
+      `allowWrite`. Had I probed only the one mutation I suspected, "no
+      difference" would have read as a clean equivalence and a real gap
+      would have been classified out of existence. When a probe and a
+      verdict disagree, the probe is the suspect — and running a
+      mutation you KNOW is caught is the cheapest way to find out.
+      CLASSIFIED, NOT PINNED. `w !== readPath`: measured redundant —
+      `readPath.startsWith(readPath + sep)` is false, so the equality
+      check can never change the answer (502's "strictly wider, so
+      redundant is right"). And both `process.platform !== 'linux'`
+      early returns: on this box the guard never fires, so removing it
+      changes nothing measurable here. They are macOS behaviour and
+      this platform cannot discriminate them — said plainly rather than
+      counted as equivalents.
+
+521.  DONE (2026-09-21, `orchestrator/history.ts` — thirteenth by the age
+      rule, newest dated comment 2026-09-09. The bounded window the
+      `schedule` plugin orders by and `--dry` predicts from. Every
+      wrong answer here is SILENT: a p50 off by an order of magnitude
+      re-orders the critical path and nothing says so).
+      18 mutations. Nine survived the file's own suite; four are real
+      and now pinned in three rows, five are measured equivalents.
+      THE EXCLUSION THE DOC PROMISES AND NOTHING HELD. `p50DurationMs`
+      is documented "Cache-hit rows excluded so this reflects work
+      actually done", and the percentile fixture DOES carry a hit —
+      it just cannot tell the answers apart. Three executed successes
+      at 100/200/300 plus a 5 ms hit: including the hit adds a value
+      BELOW the answer and shifts the index up by exactly one, so p50
+      stays 200 and p99 stays 300. A fixture can reach the mutated line
+      and still agree with it by arithmetic. One execution against
+      three near-free hits does not agree: p50 goes from 100 to 1.
+      LEXICOGRAPHIC ACROSS DIGIT COUNTS. `durations.sort()` without the
+      comparator is the classic, and every fixture in the file spans a
+      single digit count, where the lexicographic order IS the numeric
+      one. Over 1..100 it is not: p50 reads 54 instead of 51. The same
+      100-sample fixture is the fewest that puts the 95th and the 99th
+      percentile on different values (96 vs 100), so it pins the
+      percentile the field is named for as well.
+      A READER CORRECT ONLY BECAUSE OF WHAT THE WRITER OMITS.
+      `attempts > 1` is the retry signal, and `execute-task` writes the
+      column ONLY when it exceeds 1 — so every row in every fixture
+      leaves it NULL, `NULL >= 1` is NULL, and `> 1` was never told
+      apart from `>= 1`. Normalise the writer to always record the
+      count (the schema comment invites it) and `>= 1` marks every
+      green task in the history flaky-recoverable, because
+      `failureModeOf` takes `retried > 0` as proof of nondeterminism on
+      its own. The row puts the meaning on the reader's side: a row
+      with `attempts: 1` is stable, with a sibling at `attempts: 2`
+      as the control that the column reaches the query at all.
+      MEASURED EQUIVALENT, NOT ASSERTED. The `Math.min` percentile
+      clamp cannot fire — `floor(q * n) <= n - 1` for every q < 1,
+      checked over n up to 200 000. `duration_ms > 0` does not guard a
+      division by zero: SQLite returns NULL for `x / 0` and `MAX`
+      drops it (probed). The `cache_hit = 1` join gate is cost only —
+      `entries.hash` is the PRIMARY KEY so the join cannot fan a row
+      out, and the CASE never reads `e` on a non-hit row. The
+      mixed-outcome pre-filter is the same shape: `failureModeOf` takes
+      the count as a thunk, so a wider map changes no verdict. And
+      `total > 0 ? … : 0` is unreachable — `total` is `COUNT(*)` under
+      a `GROUP BY`, so a group that exists has a row in it.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
