@@ -2462,6 +2462,82 @@ description and plugin`, a third file. I had already written
       That is the fifth watch-row flap across two sweeps, and here the
       identical output rules out cause without needing a re-run.
 
+514.  DONE (2026-09-21, `exec/sandbox-violations.ts` — sixth by the age
+      rule, newest dated comment 2026-09-05. The richest file yet, and
+      the one where a wrong answer is quietest: a violation this drops
+      is a sandboxed task that TRIPPED reporting CLEAN, and since the
+      key folds a project's declared inputs, an undeclared read is
+      exactly what makes a cached artifact wrong later. The file's own
+      header already records one such incident — a single-line strace
+      regex silently dropped every interleaved syscall).
+      31 mutations. 17 caught; 14 survived the file's own suite AND the
+      whole suite, each confirmed against a pristine control. Eight new
+      rows catch 13; the fourteenth is classified.
+      THE END ANCHOR, and it is the sharpest thing this sweep has
+      found. `loopbackNoise` drops `deny(1) network-outbound` with
+      `\s*$` on the end, because the addressless record is noise no
+      grant can silence. Remove that one anchor and it also drops
+      `deny(1) network-outbound example.com:443` — a connection that
+      tried to LEAVE THE MACHINE, reported by SRT's proxy WITH its host
+      and port. The function's comment states that exact guarantee
+      ("a line this keeps") and nothing asserted it. Pinned under BOTH
+      grants that turn the filter on.
+      THE PROJECT BOUNDARY, twice. The deny anchor is
+      `abs === root || abs.startsWith(root + path.sep)`, and neither
+      half had a witness: drop the equality and a denial on the project
+      root itself vanishes; drop the separator and a SIBLING directory
+      (`/ws` matching `/wsother`) is reported as inside the project.
+      The same pair again in `withinReported`, where `within: '/'`
+      without its separator special-case drops every record there is —
+      a case that function's own comment calls out.
+      THE ALPHABETS. `openat|access|statx|newfstatat` and
+      `ENOENT|EACCES|EPERM`, the second in two different line shapes.
+      `newfstatat` and a completed-line `EPERM` each had no witness, so
+      every denial of that syscall or that errno was a line the report
+      would never mention. Pinned member by member in both shapes.
+      THREE MORE, all silent. The dedup key is `(syscall, path)`; key
+      it on the path alone and two different calls on one file collapse
+      to one, losing a denial. An `openat` is marked ignorable by BOTH
+      the read and the write list, because the trace does not carry the
+      flags that would say which — drop either and that grant stops
+      working. And the seatbelt target is captured LAZILY, so a line
+      with trailing spaces yields a clean target; make it greedy and no
+      `ignore` entry for the real path matches again.
+      THE GLOB THAT IS A FILENAME. `matchesIgnore` compares a pattern
+      exactly BEFORE globbing it. `a[1].txt` is a real filename whose
+      `[1]`, read as a glob, is a character class that does not match
+      it — so the exact compare is what lets an `ignore` entry copied
+      out of a real tree work at all. Pinned with a control on its own
+      pattern that the glob branch still globs, so the row cannot pass
+      on a matcher that lost globbing instead.
+      THE ONE LEFT CLASSIFIED. `matchesIgnore`'s `v.target === undefined`
+      guard: `reportableViolations` fills `target` from the line before
+      any filter runs, so "ignorable set, target undefined" is a state
+      neither producer reaches. My first row for it asserted a
+      targetless record is kept — and could not fail under ANY of the
+      31 mutations, because the record it used parses into a target.
+      Cut rather than contorted into forcing a crash on an unreachable
+      state; a guard against the unreachable is worth keeping in the
+      code and not worth a row.
+      THREE FIXTURE MISTAKES, and they are the lesson. The network
+      grant lives under `allow.network`; my first fixture put it at the
+      top level, so `resolveSandboxConfig` stored nothing, the filter
+      never turned on, and the arm "proved" the loopback record was
+      kept — a green reading of a switch that was off. My first probe
+      never called `parseStraceViolations` at all, so EIGHT survivors
+      came back "no observable difference" when the truth was that I
+      had not run the function they live in. And the targetless
+      assertion above could not fail. Every one is the same error in a
+      different coat: the fixture did not exercise the thing. 511 said
+      a survivor names the missing fixture; 514 adds the other half —
+      before believing "no difference", prove the probe reaches the
+      mutated line.
+      Flapper note: two of the fourteen verdicts showed a watch e2e row
+      appearing, both on mutations confined to violation filtering.
+      That is the sixth and seventh instance across four sweeps, the
+      pristine control was clean every time, and the list still names
+      three. Still not added: a yardstick entry swallows a real failure.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
