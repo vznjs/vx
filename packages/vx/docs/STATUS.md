@@ -4429,6 +4429,47 @@ between tests`, `0 pass` and no `(fail)` row, and the classifier —
       eight-dash floor (the one caller passes `vx <version>`, never a
       50-character mark) and the bold on that mark.
 
+555.  DONE (2026-09-21, `workspace/workspace.ts` — discovery: the root
+      walk, the package globs and their negations, and the project
+      list every other stage reads. Never swept. 32 mutations:
+      nineteen caught, thirteen survivors, nine closed by nine rows,
+      four measured equivalent. No source change).
+      A NEGATION SUBTRACTS FROM THE ROOT WALK, NOT ONLY THE PROJECT
+      LIST, and only the second half had a row. `packages/fx` matches
+      `packages/*` and is then excluded, so a command run inside it
+      belongs to the nearest signal it does have — its own manifest —
+      not to a root that disowned it. The fixture that separates this
+      took two tries: my first gave the excluded package its own
+      `workspaces` field, which claims the inner directory outright and
+      never consults the outer root's globs at all.
+      A NEGATION ALSO COVERS THE TREE UNDER IT, which the existing row
+      exercises only at the exact path, and a BARE `!` must exclude
+      nothing — the root's own relative path is the empty string, so
+      matching it against `''` would delete a single-project
+      workspace's only project.
+      AN UNPARSEABLE ROOT MANIFEST IS STILL THE ROOT. The comment says
+      so: a broken `package.json` claims no members but remains a
+      signal, because walking past it reports some ancestor (or
+      nothing) instead of the parse error the user has to fix.
+      `memberBaseDirs` HAD NO ROWS AT ALL — `vx watch` arms exactly the
+      `<dir>/*` directories so a package appearing is one directory
+      entry. A glob naming a TREE (`apps/**`, `apps/**/*`, a brace)
+      contributes none, and loosening the shape test to admit `**`
+      would arm a directory literally named `**`. Three rows now.
+      AND THE ORDER IS CODE UNIT, DELIBERATELY. Nothing asserted the
+      sort at all. The two orders differ for real names — measured:
+      `localeCompare` puts `apple` before `Zed`, code units put `Zed`
+      first — and ICU collation cost 28 ms of a 300 ms warm run at 1000
+      projects. A row with an uppercase name pins the machine-
+      independent one.
+      FOUR MEASURED EQUIVALENT, each checked rather than argued: `.`
+      never matches a directory below the root (`Bun.Glob('.')` against
+      `packages/a` is false), a literal negation run through
+      `Bun.Glob` answers exactly what the exact-equality check already
+      answered, an empty `below` list makes the claim loop vacuous, and
+      a negated glob cannot pass the `<dir>/*` shape test because of
+      its own `!`.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
