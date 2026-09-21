@@ -32,6 +32,20 @@ beforeAll(async () => {
       `if (process.argv[2] === 'alias') registerCoreAlias(() => import(${JSON.stringify(CORE_INDEX)}))\n` +
       `await import('./use.mjs')\n`,
   )
+  // A second entry that REGISTERS the alias and then decides whether to
+  // import through it. The loader prints a marker, so the question "was the
+  // facade loaded" is a line of output rather than a duration.
+  await writeFile(
+    path.join(root, 'lazy.ts'),
+    `import { registerCoreAlias } from ${JSON.stringify(CORE_ALIAS)}\n` +
+      `registerCoreAlias(async () => {\n` +
+      `  console.log('LOADED')\n` +
+      `  return await import(${JSON.stringify(CORE_INDEX)})\n` +
+      `})\n` +
+      `console.log('REGISTERED')\n` +
+      `if (process.argv[2] === 'import') await import('./use.mjs')\n` +
+      `console.log('DONE')\n`,
+  )
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
@@ -60,5 +74,34 @@ describe('registerCoreAlias', () => {
 
   it('control: without the alias the importer gets the node_modules copy', async () => {
     expect(await seen('plain')).toEqual({ fake: true, definePlugin: 'undefined' })
+  })
+
+  it('does not load the façade until something actually imports `@vzn/vx`', async () => {
+    // The docblock's reason for the lazy loader: "a verb that never loads a
+    // plugin never loads the façade". Both rows above import through the
+    // alias, so they cannot tell a lazy loader from an eager one — resolving
+    // `load()` at registration, or once inside `setup`, serves the same
+    // exports and passes them both. What changes is whether core's whole
+    // source is transpiled for `vx --version`.
+    const lazy = async (mode: 'import' | 'noimport'): Promise<string[]> => {
+      const proc = Bun.spawn({
+        cmd: ['bun', 'lazy.ts', mode],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+      expect(code, err).toBe(0)
+      return out.trim().split('\n')
+    }
+    // Registered, never imported: the loader must not have run.
+    expect(await lazy('noimport')).toEqual(['REGISTERED', 'DONE'])
+    // The control: the same entry that DOES import proves the loader is
+    // reachable at all, and that it runs only once the import asks for it.
+    expect(await lazy('import')).toEqual(['REGISTERED', 'LOADED', expect.any(String), 'DONE'])
   })
 })
