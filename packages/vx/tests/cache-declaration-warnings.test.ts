@@ -64,6 +64,19 @@ describe('cache declarations that match nothing', () => {
         // A deliberate cached no-op: empty outputs say nothing.
         noop: { exec: { command: 'true' },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
+        // Root-anchored outputs that match nothing. The warning counts
+        // BOTH output arrays on each side — declared and resolved — and
+        // every fixture above declares only \`files\`, so a task whose
+        // whole output declaration is root-anchored went unwarned.
+        wslost: { exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] },
+            outputs: { files: [], workspaceFiles: ['nowhere/**'] } } },
+        // The other side of the sum: \`files\` matches nothing but the
+        // root-anchored glob DOES match, so the outputs are not empty and
+        // there is nothing to warn about.
+        wsfound: { exec: { command: 'mkdir -p ../../shared && echo x > ../../shared/a.js' },
+          cache: { inputs: { files: ['src/**'] },
+            outputs: { files: ['build/**'], workspaceFiles: ['shared/**'] } } },
       } }\n`,
     )
     await gitInit(root)
@@ -91,6 +104,19 @@ describe('cache declarations that match nothing', () => {
     const out = lines.find((l) => l.includes('cache.outputs'))
     expect(out).toBeDefined()
     expect(out).not.toContain('exec.sandbox.allow.write')
+  })
+
+  it('counts BOTH output arrays, declared and resolved', async () => {
+    // Declared only as workspaceFiles, matching nothing: the warning names
+    // the root-anchored glob. Reading only `outputs.files` on the declared
+    // side leaves this task silent about an empty artifact.
+    expect((await runTask('wslost')).filter((l) => l.includes('cache.outputs'))).toEqual([
+      '[vx] app#wslost: cache.outputs matched no files (nowhere/**) — an empty artifact is saved; a later hit restores nothing',
+    ])
+    // And the resolved side: `files` matched nothing, but the root-anchored
+    // glob did, so the artifact is NOT empty and nothing is said. Reading
+    // only `outputFiles` here would warn about a task that saved outputs.
+    expect((await runTask('wsfound')).filter((l) => l.includes('cache.outputs'))).toEqual([])
   })
 
   it('matching globs and a deliberate empty output list say nothing (control)', async () => {
