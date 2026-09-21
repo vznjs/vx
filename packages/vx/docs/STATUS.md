@@ -3267,6 +3267,35 @@ delivery with a probe it then removes (recursive: true)` — the
       place. The row named for the precedence is about ARGV order, not
       statement order, and it is right not to care.
 
+530.  DONE (2026-09-21, `cli/run.ts`'s SELECTION region — the half 529
+      did not take. `--filter`, `--all`, `--affected` and the retired
+      spelling decide WHICH PROJECTS RUN, so a wrong answer runs the
+      wrong set and reports success over it. 10 mutations, EIGHT caught
+      by the flag and affected suites. A second zero-yield report, and
+      this time the doors were counted before declaring one.
+      WHAT IS ALREADY HELD, AND WORTH NAMING. The repeatable `--filter`
+      is pinned three ways — an empty value refused, the order kept,
+      and every occurrence kept rather than the last. `--affected`'s
+      sugar is pinned as `...[base]` and not `[base]`, which is item
+      287's own defect: the changed-only form is what the flag shipped
+      with while the guides promised dependents. The bare `--affected`
+      is pinned twice over, including against reading its empty-string
+      base as falsy — the trap in `if (parsed.affected)` — and the
+      retired camelCase spelling still names its replacement.
+      BOTH SURVIVORS ARE MEASURED, NOT ASSUMED. The filter array is
+      COPIED before `--affected` appends its sugar, and aliasing it
+      instead really does mutate the parsed args. It cannot change an
+      answer: `detectFlow` is the only reader after that point, it runs
+      at line 492 against a push at 442, and its predicate already ORs
+      in `affected !== undefined` — true in exactly the case the
+      injected element appears. Fragile rather than wrong: drop that
+      disjunct one day and the aliasing would hide it.
+      And the error-class guard on the default base re-throws anything
+      that is not a UserError. `defaultAffectedBase` has exactly ONE
+      throw site and it is a UserError, so the guard cannot fire today;
+      it defends against git itself failing under the spawn, which no
+      supported path produces. Defence in depth, named as such.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
