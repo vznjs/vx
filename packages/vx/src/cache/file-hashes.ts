@@ -7,7 +7,7 @@
 // the store's handle; `Cache` delegates.
 
 import type { Database } from 'bun:sqlite'
-import { lstatSync, readlinkSync, statSync } from 'node:fs'
+import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 import { FILE_HASH_RACY_MS } from './layer.js'
 
@@ -147,9 +147,21 @@ export class FileHashStore {
     }
     const stats = new Map<string, Stat>()
     for (const p of paths) {
-      if (stats.has(p)) continue
+      if (stats.has(p) || out.has(p)) continue
       try {
-        const st = statSync(p)
+        // lstat, not stat: `hashFile` folds a symlink as git folds it —
+        // the blob of its TARGET STRING — and this form promises the same
+        // digest. Following the link here instead hashed the target's
+        // BYTES, so the same path identified differently depending on
+        // which entry point the caller used, and the batch folded bytes
+        // `git diff` and `--affected` cannot see.
+        const st = lstatSync(p)
+        if (st.isSymbolicLink()) {
+          // No memo, for `hashFile`'s reason: the row would be keyed on
+          // the link's own stat, not its target's.
+          out.set(p, this.hashBlob(new TextEncoder().encode(readlinkSync(p))))
+          continue
+        }
         stats.set(p, {
           mtimeMs: Math.floor(st.mtimeMs),
           size: st.size,
