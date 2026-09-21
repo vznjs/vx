@@ -407,6 +407,86 @@ describe('key stage', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'an ARRAY and a NULL return are refused too, not just a string',
+    async () => {
+      // The row above exercises the non-record guard with ONE spelling, a
+      // string, which fails on its first arm (`typeof !== 'object'`). The
+      // guard has two more arms and neither had a witness, though both
+      // reach the same defect the comment above describes — or worse.
+      //
+      // An ARRAY is an object, so `Object.entries` walks it happily and
+      // folds parts named '0', '1', '2' into every key: the exact
+      // character-fold the string case was written for, arriving by the
+      // spelling nobody spelled.
+      //
+      // `null` is an object too (`typeof null === 'object'`), so it sails
+      // past the first arm and `Object.entries(null)` THROWS a TypeError
+      // naming neither the plugin nor the stage — the internal-error
+      // failure `safe()` exists to replace, from the one return value that
+      // most looks like "no material".
+      //
+      // Item 542 found this same `typeof [] === 'object'` trap covered on
+      // both arms in `lockfile.ts`. Here it was covered on neither.
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+      )
+      await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
+
+      await workspace([pluginSource('org/tool', `{ key() { return ['v22'] } }`)])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        "plugin 'org/tool' failed in key: returned an array, not a record of string values",
+      )
+
+      await workspace([pluginSource('org/tool', `{ key() { return null } }`)])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        "plugin 'org/tool' failed in key: returned null, not a record of string values",
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the fold is order-independent: two plugins key the same whichever is declared first',
+    async () => {
+      // The parts are sorted "so the fold is order-independent", and every
+      // fixture declares ONE key plugin — with one contributor there is no
+      // order to be independent of, so the sort had no witness. Without
+      // it the parts arrive in plugin-declaration order, and moving two
+      // plugins around in `vx.workspace.mjs` silently re-keys every task
+      // in the workspace: a full cold rebuild for an edit that changed no
+      // input.
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+      )
+      await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
+
+      const zed = pluginSource('org/zed', `{ key() { return { m: 'z' } } }`)
+      const abe = pluginSource('org/abe', `{ key() { return { m: 'a' } } }`)
+
+      await workspace([zed, abe])
+      const zedFirst = (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!
+        .hash
+      await workspace([abe, zed])
+      const abeFirst = (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!
+        .hash
+      expect(abeFirst).toBe(zedFirst)
+
+      // CONTROL: the material still counts — same order, different value,
+      // different key. Without this the row above would pass on a fold
+      // that ignored plugin parts altogether.
+      await workspace([zed, pluginSource('org/abe', `{ key() { return { m: 'a2' } } }`)])
+      expect(
+        (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash,
+      ).not.toBe(zedFirst)
+    },
+    TIMEOUT,
+  )
 })
 
 describe('fingerprint claim — a plugin keys a lockfile per project', () => {
