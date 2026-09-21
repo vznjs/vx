@@ -152,6 +152,38 @@ describe('evaluateConfigFresh: what crosses back', () => {
     expect(path.isAbsolute(rel)).toBe(false)
     expect(await evaluateConfigFresh(rel)).toEqual({ tasks: { a: { exec: { command: 'x' } } } })
   })
+
+  it('…and a relative path that does NOT climb to the root reaches the same file', async () => {
+    // The row above builds its path with `path.relative` from the test's
+    // cwd to a temp dir, which comes out as `../../../../tmp/…`. Posted
+    // to the worker WITHOUT `path.resolve`, that shape still lands on the
+    // right file: the worker's base is the inline `data:` URL, one
+    // segment deep, so four `..` climb past it to `/` and the rest of the
+    // path reads correctly from there. The row therefore passes with the
+    // resolve deleted — it states the contract its comment names and
+    // cannot witness it.
+    //
+    // A path with no `..` in it is the shape that separates them. Here
+    // the process cwd IS the fixture root for the length of the call, so
+    // `./cfg.N.mjs` has nowhere to climb from and resolves against
+    // `data:text/javascript,%0Ase…` instead, failing with a path the user
+    // never typed. `process.chdir` is process-wide, so it is restored in
+    // a `finally`; bun runs the tests in a file, and the files in a
+    // shard, one after another, so nothing else is mid-await while it is
+    // in effect.
+    const abs = await write(`export default { tasks: { b: { exec: { command: 'y' } } } }\n`)
+    const cwd = process.cwd()
+    try {
+      process.chdir(path.dirname(abs))
+      const dotted = `./${path.basename(abs)}`
+      expect(dotted.includes('..')).toBe(false)
+      expect(await evaluateConfigFresh(dotted)).toEqual({
+        tasks: { b: { exec: { command: 'y' } } },
+      })
+    } finally {
+      process.chdir(cwd)
+    }
+  })
 })
 
 describe('evaluateConfigFresh: import-closure freshness', () => {

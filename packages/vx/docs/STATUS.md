@@ -3783,6 +3783,60 @@ the root>`: the prefix is a STORAGE discriminator and the path
       the user the error is `(in :7:3)` — a location naming nothing.
       No `--frozen`, no `vx lock`: those paths are next.
 
+541.  DONE (2026-09-21, `workspace/config-eval.ts` — the WORKER every
+      repeat config load goes through, which item 540 discovered by
+      accident when a row failed returning `unset`. 22 mutations,
+      FOURTEEN caught, eight survivors, one row. A thin yield, and the
+      reason is worth more than the row).
+      THIS FILE IS THE BEST-HELD IN THE SERIES. Everything the header
+      argues for has a witness: that a worker gets a fresh module
+      registry (so a shared preset edit is not invisible — the defect it
+      was written for), that ONE worker serves a whole concurrent round
+      and is retired when the last load settles, that a config crosses
+      back as JSON, that a broken config's NAME, MESSAGE, STACK and a
+      transpile error's POSITION all survive the hop, that the env
+      budget is clamped and its pattern anchored, and that the timer is
+      cleared in a `finally` so a rejected evaluation leaves no orphan
+      to kill an unrelated later round. Fourteen of twenty-two
+      mutations die against the file's own two suites.
+      THE ONE HOLE, and it is a FIXTURE that cannot witness its own row.
+      A row already exists for the resolve on the way in, and its comment
+      states the contract exactly: callers "are usually absolute;
+      'usually' is not a contract". It builds its relative path with
+      `path.relative` from the test's cwd to a temp dir, which comes out
+      as four levels of dot-dot into `/tmp` — and THAT SHAPE SURVIVES
+      THE BUG. The worker is an inline data URL (it has to be:
+      `bun build --compile` does not embed a Worker entry point), so its
+      base is one segment deep; four dot-dots climb past it to the root
+      and the rest of the path reads correctly from there. Delete the
+      resolve and the row still passes.
+      The shape that separates them carries no dot-dot at all. With the
+      process cwd set to the fixture root for the length of the call, a
+      leading dot-slash name has nowhere to climb from and resolves
+      against the data URL instead, failing with a path the user never
+      typed. Measured both ways; the new row sits beside the old one and
+      says why the old one cannot fail.
+      SEVEN CLASSIFIED, none of them bent into a row.
+      MEASURED EQUIVALENT: the `json === null` guard before `JSON.parse`
+      — `JSON.parse(null)` coerces to `"null"` and returns `null`, so
+      the guard is readability, not behaviour.
+      DEFENSIVE AGAINST STATES THE FIXED WORKER SOURCE CANNOT PRODUCE:
+      the `messageerror` and `onerror` handlers. Both exist so "every
+      path off this worker must settle its pending promises", and the
+      worker only ever posts JSON strings and primitives, so neither can
+      be driven without replacing the worker source itself.
+      BELT-AND-BRACES: the `pending.delete(id)` in the `finally` (the
+      resolve path deletes on arrival and `rejectAll` clears the map),
+      and `timer.unref()` (the same `finally` clears the timer on every
+      exit, so it is only ever live during the await).
+      NEEDS A WEDGED WORKER TO SEE: not terminating on timeout, which
+      leaves the next round reusing the wedge.
+      UNOBSERVABLE WITHOUT WAITING IT OUT: the 30-second DEFAULT budget.
+      Its clamp and its anchored pattern are both held; only the number
+      itself would need a thirty-second row to pin, which is not worth
+      it — the docblock's argument that both ends break the feature is
+      already carried by the two rows that do exist.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
