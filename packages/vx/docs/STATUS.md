@@ -4390,6 +4390,45 @@ between tests`, `0 pass` and no `(fail)` row, and the classifier —
       produces that order anyway. The row was my invention, not the
       code's promise, and reading what it returned is what said so.
 
+554.  DONE (2026-09-21, `orchestrator/summary.ts` — the end-of-run
+      footer: the meters, the aborted/skipped/flaky sections and the
+      duration format. Never swept. 30 mutations: twenty-one caught,
+      nine survivors, five closed by five rows, four classified. No
+      source change).
+      A WHOLE SECTION FORMATTER WITH NO ROWS AT ALL.
+      `formatAbortedSection` is the only place an aborted task is
+      NAMED — the meters leave it out deliberately ("not counted
+      above") — so when this section is wrong the task vanishes from
+      the run's report entirely. Nothing referenced it: its header
+      printed on every ordinary run when nothing was aborted, "1
+      tasks" read in the plural, and the line could lose both the exit
+      code and "nothing cached", which is the part a reader acts on (a
+      child killed mid-write left partial outputs and stored no entry).
+      Three rows now, one per claim.
+      THE METERS THEMSELVES ARE WELL HELD — largest-remainder, the
+      guaranteed cell for a non-zero bucket and the debit that pays
+      for it, the floor-not-round, the descending fraction order:
+      every one caught, most by several rows. So is the skipped
+      section's cause vocabulary and the flaky section's history
+      sentence.
+      WHAT THE SKIPPED SECTION MISSED was its ORDER: causes are sorted
+      by how many tasks each blocked, so the biggest block reads
+      first, and insertion order is the order the scheduler happened
+      to finish tasks in, which is not an order at all.
+      AND A ROUNDING: sub-second durations round, and a truncating
+      `formatDuration` reads 1.6 ms as `1ms` — understating every
+      short task in a footer whose rows are compared against each
+      other.
+      FOUR CLASSIFIED, TWO OF THEM MEASURED RATHER THAN ARGUED. The
+      zero-total early return in `segmentBar` is a short-circuit, not
+      a behaviour: without it the cell counts go `NaN`, and
+      `'x'.repeat(NaN)` is `''` — the same empty bar (measured). The
+      colors-disabled fallback in `gradientRule` is the same shape: the
+      gradient path with `paint` disabled renders the rule BYTE FOR
+      BYTE identically (measured both ways). The other two are the
+      eight-dash floor (the one caller passes `vx <version>`, never a
+      50-character mark) and the bold on that mark.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

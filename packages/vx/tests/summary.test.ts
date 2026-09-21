@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
+  formatAbortedSection,
   formatDuration,
   formatFlakySection,
   formatRunSummary,
@@ -193,6 +194,45 @@ describe('formatDuration', () => {
     expect(formatDuration(1234)).toBe('1.23s')
     expect(formatDuration(60_000)).toBe('60.00s')
   })
+
+  it('ROUNDS sub-second, never truncates', () => {
+    // A 1.6 ms task that reads as `1ms` understates every short task in
+    // the run, and the rows they sit in are compared against each other.
+    expect(formatDuration(1.6)).toBe('2ms')
+    expect(formatDuration(0.4)).toBe('0ms')
+  })
+})
+
+describe('formatAbortedSection', () => {
+  // The section a Ctrl-C produces, and the only place an aborted task is
+  // named: the meters deliberately leave it out ("not counted above"), so
+  // if this section is wrong the task vanishes from the run's report
+  // entirely. It had no rows at all.
+  const killed = (id: string, exitCode = 130): TaskOutcome => ({
+    ...outcome(id, 'aborted', exitCode),
+  })
+
+  it('is empty when nothing was aborted — no header on an ordinary run', () => {
+    expect(formatAbortedSection([outcome('a#b', 'success'), outcome('c#d', 'failed', 1)])).toEqual(
+      [],
+    )
+  })
+
+  it('names each aborted task with its exit and that nothing was cached', () => {
+    // "nothing cached" is the part a reader acts on: the child died
+    // mid-write, so its outputs are partial and no entry was stored.
+    expect(formatAbortedSection([killed('a#build'), outcome('c#d', 'success')])).toEqual([
+      '',
+      '  Aborted:  1 task killed by a shutdown signal — not counted above',
+      '    ✗ a#build — exit 130, nothing cached',
+    ])
+  })
+
+  it('counts in the plural from two', () => {
+    expect(formatAbortedSection([killed('a#build'), killed('b#build', 143)])[1]).toBe(
+      '  Aborted:  2 tasks killed by a shutdown signal — not counted above',
+    )
+  })
 })
 
 describe('formatFlakySection', () => {
@@ -301,6 +341,22 @@ describe('formatSkippedSection', () => {
     expect(lines[2]).toBe(
       '    ⊘ after lib#build failed: p0#build, p1#build, p10#build, p2#build, p3#build, p4#build, p5#build, p6#build … +3 more',
     )
+  })
+
+  it('groups the causes by SIZE, so the biggest block reads first', () => {
+    // A run can stop for more than one reason, and the reader wants the
+    // one that cost the most first. Insertion order is the order the
+    // scheduler happened to finish tasks in, which is not an order.
+    const lines = formatSkippedSection([
+      dep('small#root', 'failed'),
+      dep('big#root', 'failed'),
+      dep('one#a', 'skipped', 'small#root'),
+      dep('two#a', 'skipped', 'big#root'),
+      dep('two#b', 'skipped', 'big#root'),
+      dep('two#c', 'skipped', 'big#root'),
+    ])
+    expect(lines[2]).toContain('after big#root failed')
+    expect(lines[3]).toContain('after small#root failed')
   })
 })
 
