@@ -4923,6 +4923,121 @@ test` is transpile-only — it cannot see a type error at all, so
       nothing was misreported — but a stray `--restore` mid-sweep
       manufactures a SURVIVED out of a mutation that was never tested,
       which is the exact failure this method exists to prevent.
+564.  DONE (2026-09-21, `cache/cache.ts`, region: `prune` — the TTL
+      sweep, the LRU byte budget, and the orphan reaper behind it. 30
+      mutations: twenty-one caught, nine survivors, seven closed by six
+      new rows and one repaired, two measured equivalent. No source
+      change).
+      THE HEADLINE IS AN ASSERTION AGAINST A PATH THAT NEVER EXISTED.
+      The TTL row checked `existsSync(<cacheDir>/h-old)` — a DIRECTORY
+      from the layout before an artifact became a single
+      `<hash>.tar.zst`. So it was false before the prune and false
+      after, and deleting prune's entire artifact unlink left the suite
+      green: every evicted entry's bytes stayed on disk until some
+      LATER prune's orphan sweep found them, a grace window away. The
+      row now asserts the artifact is there BEFORE (the control that
+      makes the "gone" assertion mean anything) and gone after.
+      THE SWEEP'S THREE NARROWING GUARDS WERE ALL UNHELD, for one
+      reason: every control in the orphan row is FRESH, so the grace
+      window alone was keeping them and no guard had a witness. Aged
+      past the window, each one bites — drop `endsWith('.tar.zst')` and
+      `cache.db` itself is unlinked (the INDEX, reaped by its own
+      prune); drop `st.isFile()` and a directory is counted and its
+      bytes reported; relax the temp test to `indexOf(...) >= 0` and a
+      name that is nothing but the suffix, belonging to no hash, is
+      reaped. One row with four aged controls and one real orphan
+      holds all three, and `scanOrphans`'s `readdir` swallow — never
+      exercised, because readdir does not fail in a fixture — is held
+      by a row that deletes the cache directory and asks
+      `orphanStats()` for nothing.
+      THAT LAST ROW COST A DARWIN CI CYCLE, and the answer was already
+      in the file. It first asked the bigger question — that a prune
+      still EVICTS with the directory gone — which is a LINUX-ONLY
+      claim: macOS answers `SQLITE_IOERR_VNODE` for a read through an
+      unlinked vnode. `close()`'s own catch has documented the WRITE
+      half of exactly that since it was written. The row now asks only
+      what holds everywhere: the scan reads the directory BEFORE it
+      queries the index, so a readdir that fails never reaches SQLite
+      at all.
+      THE STORAGE LAYER WAS ANSWERING FOR THE SORT AGAIN (the 559
+      shape, from the other side). `ORDER BY accessed_at ASC` reversed
+      to `DESC` is caught; DELETED it is not — the maxBytes fixture
+      saves h1, h2, h3 in exactly the order it then touches them, so
+      SQLite's rowid scan returns the LRU order for free. The new row
+      writes the rows LAST-used-first, the one order a rowid scan gets
+      wrong.
+      AND THE TWO POLICIES COMPOSE THROUGH ONE `remaining`, unheld in
+      both directions: the TTL-freed bytes must be subtracted before
+      the budget decides (drop it and the cap evicts entries the user's
+      own number says fit — measured 3 evicted where 1 is right), and a
+      TTL victim must not be re-counted as an LRU candidate (drop the
+      JS filter and `bytesFreed` inflates while a live entry the cap
+      has no room for survives — 1 evicted and 300 freed where 2 and
+      200 are right). Both need exact byte sizes and exact
+      `accessed_at`s, so the new rows INSERT into `entries` directly,
+      as the 900-victim row already did; `get()` cannot be the oracle
+      for a survivor there (no artifact on disk), so the index is.
+      TWO MEASURED EQUIVALENT. `remaining > maxBytes` → `>=` enters the
+      block when they are equal, and the loop's first statement is
+      `if (remaining <= maxBytes) break` — one wasted SELECT, no
+      outcome. `victims.size > 0` → `>= 0` runs the delete block with
+      an empty hash list: zero chunks, an empty transaction, and
+      `Promise.all([])`. Neither is a hole; both are recorded so the
+      next sweep does not re-litigate them.
+      WELL HELD: the argument guard (both arms), the TTL comparison's
+      direction and its byte tally, the budget's break condition in
+      both directions and the decrement behind it, all three `dryRun`
+      behaviours, the row DELETE, `unlink` over `rm({ force })` for the
+      concurrent-prune count, the reap-vs-stats distinction, the grace
+      window's existence and direction, and the temp sweep itself —
+      several at 4-10 rows red.
+565.  DONE (2026-09-21, `cache/inputs.ts`, region: `resolveFiles` —
+      the positive/negative split, the exclude set, the project
+      boundary patterns, the invisible-literal refusal, the per-run
+      memo and the existence probe. 31 mutations: twenty-three caught,
+      eight survivors, four closed by five rows, four classified. No
+      source change).
+      THE REGION IS THE BEST-HELD ONE SWEPT SO FAR — every arm of the
+      exclude set (ALWAYS_IGNORE, the boundary globs, the task's own
+      outputs, the negations), the tree expansion on each of them, the
+      `!` split and its slice, the default-globs branch, the boundary
+      pattern's shape and direction, the refusal's exists gate and its
+      resolve base, and the untrusted mid-run re-enumeration all go red,
+      several at 5-21 rows.
+      THE REFUSAL IS MASKED FOR DIRECTORIES, AND THAT HAS A COST.
+      Deleting the prefix arm of `settleLiterals` (`rel.startsWith(lit
+      - '/')`, the arm that lets `src/gen/a.ts`settle a literal naming`src/gen`) changes nothing — because `Bun.file(<a directory>)
+        .exists()`is FALSE (measured, Bun 1.3.11), so the refusal`continue`s past every literal that names a directory and never
+judges it. Two guards masking each other, the 563 shape. The cost
+is a live hole, now pinned as a FINDING: `cache.inputs.files:
+        ['gen']`on a gitignored`gen/`folds ZERO files and says
+NOTHING — exactly the stale hit the refusal exists to stop, one
+directory above where it looks. Not fixed here: the fix is a stat
+rather than`Bun.file`, and it would newly refuse a literal
+naming a tracked-but-empty directory, which is a separate call.
+AND THE `/`IN THAT ARM IS THE WHOLE GUARD, which WAS a hole:
+without it`gen-notes.txt`settles the literal`gen`, so a
+gitignored `gen`sails through the refusal and folds nothing.
+Reachable by naming one file next to another. Closed.
+THE PER-RUN MEMO WAS KEYED ON LESS THAN IT LOOKED. The key drops
+to the same string without the negations or without the boundary
+patterns, and the suite never noticed: the two rows that catch it
+now share ONE`GitFilesCache` between calls, which is what gives
+the second call the same snapshot ARRAY — the identity the memo
+demands before it answers from cache. The negation case is the
+everyday one (`build`folds the package,`lint`declares`!**/*.test.ts`): without it the second task is handed the
+first's answer and its key stops moving with what it excluded.
+FOUR CLASSIFIED, none a hole. `.split(path.sep).join('/')` on the
+boundary pattern is a NO-OP on this platform (`path.sep`is`/`)
+and the gate is Linux-only. `return [...resolved]` guards against
+a caller mutating the memoized array, and both consumers copy
+before they sort (`task-hash.ts:123`, `cache.ts:776`), so nothing
+reachable observes it. And the OID arm of the existence filter is
+a COST gate, not a correctness one: a path with a trusted index
+OID is clean per `git status`and therefore on disk, so`isInputOnDisk` would answer the same — the deleted-file case the
+comment names loses its OID before it gets here
+(`git-oid.test.ts`, "deleted → untrusted"). Its only observable
+        is a syscall count, with no public seam to read it from.
 
 ## In flight
 
