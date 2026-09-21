@@ -2835,6 +2835,52 @@ delivery with a probe it then removes (recursive: true)` — the
       regression with no observable behaviour. The repo's own rule says
       a perf claim needs a number, not a row.
 
+520.  DONE (2026-09-21, `exec/sandbox-binds.ts` — twelfth by the age
+      rule, newest dated comment 2026-09-09. The write-grant boundary:
+      which paths a sandboxed task may write. The SILENT direction here
+      is too WIDE — too narrow fails loudly, because the task cannot
+      produce its declared output).
+      10 mutations. Five survived the file's own suite; two are real
+      and now pinned, three are classified.
+      THE SIBLING PREFIX, AGAIN. `punchWritePaths` decides what is
+      under a read grant with `w.startsWith(readPath + path.sep)`. Drop
+      the separator and a write grant on `<dir>-out` counts as being
+      INSIDE `<dir>`: the read grant is punched apart into its
+      children, which costs the directory ENTRY — exactly what makes a
+      command that stats its own cwd die (`bun build`, per the file's
+      own note). This is 514's `anchor-sep` in a second file, and the
+      existing row misses it for a precise reason: it uses
+      `/elsewhere/out`, an unrelated absolute path that fails
+      `startsWith` OUTRIGHT and so never reaches the cut. A sibling
+      sharing the prefix is the only member that discriminates it.
+      THE GLOB THAT BECOMES A DIRECTORY. `bindableWrites` widens a
+      FILE-shaped grant to its directory, deliberately — bwrap cannot
+      rename onto an active mount point, so a file bind breaks every
+      atomic writer. A GLOB is neither file nor directory: `statSync`
+      throws on it, and without the glob check it falls through to
+      `path.dirname`, so `dist/**` reaches SRT as `dist`. The pattern
+      the user wrote is replaced by a plain directory.
+      A PROBE THAT CONTRADICTED A SIGNAL I ALREADY HAD. My first
+      `buildCustomConfig` probe read `filesystem.writePaths`, which
+      does not exist — so it reported NO DIFFERENCE for all three
+      `bindableWrites` mutations, including the two the per-file
+      pre-check had already proven are CAUGHT by tests. That
+      contradiction is what exposed it: an independent signal
+      disagreed, so the probe was wrong, not the code. The field is
+      `allowWrite`. Had I probed only the one mutation I suspected, "no
+      difference" would have read as a clean equivalence and a real gap
+      would have been classified out of existence. When a probe and a
+      verdict disagree, the probe is the suspect — and running a
+      mutation you KNOW is caught is the cheapest way to find out.
+      CLASSIFIED, NOT PINNED. `w !== readPath`: measured redundant —
+      `readPath.startsWith(readPath + sep)` is false, so the equality
+      check can never change the answer (502's "strictly wider, so
+      redundant is right"). And both `process.platform !== 'linux'`
+      early returns: on this box the guard never fires, so removing it
+      changes nothing measurable here. They are macOS behaviour and
+      this platform cannot discriminate them — said plainly rather than
+      counted as equivalents.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
