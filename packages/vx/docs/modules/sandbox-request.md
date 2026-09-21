@@ -18,6 +18,13 @@ export interface SandboxArmer {
 }
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null
 
+export interface SandboxRunUnion {
+  domains: string[] // every sandboxed task's `allow.network` list, deduped
+  unixSockets: boolean // SRT's all-or-nothing AF_UNIX filter, lifted for the run
+  weakerNested: boolean // true only when EVERY sandboxed task accepts it
+}
+export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | null
+
 export interface SandboxRequest {
   sandbox: NonNullable<ExecuteRequest['sandbox']> // the request's sandbox half
   placeholders: Placeholder[] // the empty files created for a literal write grant that named nothing yet
@@ -48,6 +55,16 @@ export function untouchedPlaceholderLine(projectDir: string, placeholder: string
   domains, and the unix-socket allowance (a `localBinding` port list,
   or `unixSockets`) is armed for the run the same way — the runtime
   reads both at `initialize()` only.
+- `sandboxRunUnion` is that fold, split out so it can be READ without
+  starting a sandbox: the `initialize()` call itself is observable only
+  through a live runtime, so what it carries had no witness of any kind
+  and three separate widenings of it survived a whole-suite mutation
+  sweep (item 537). `network: true` is deliberately absent from
+  `domains` — it SKIPS the proxy rather than passing through it, so
+  folding it in as `*` would widen the allowlist every other task in the
+  run is filtered against. An empty `unixSockets` list means none, and
+  `weakerNested` takes EVERY, so one task's opt-in cannot weaken the
+  profile the others run under.
 - `sandboxRequestFor` builds the sandbox half of one request, plus the
   placeholders.
 - `sweepPlaceholders` removes the placeholders the task never wrote
