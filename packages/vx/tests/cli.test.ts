@@ -1254,6 +1254,75 @@ describe('parseRunArgs', () => {
     )
   })
 
+  it('a verb cut takes only lines that START with its own `vx <verb>` form', () => {
+    const flagsIn = (s: string): string[] =>
+      [...new Set(s.match(/--[a-zA-Z][a-zA-Z-]*/g) ?? [])].sort()
+    // `--frozen`'s line mentions "pair with `vx lock --check`" MID-LINE, so
+    // without the start anchor that one cross-reference drags the whole
+    // `Execution (for run)` block — 26 lines of run's flags — into `vx lock
+    // --help`. The exact set is the assertion; a `not.toContain` would pass
+    // on any single flag leaking.
+    expect(flagsIn(verbHelpText('lock'))).toEqual(['--check', '--frozen'])
+    expect(flagsIn(verbHelpText('init'))).toEqual(['--dry', '--force', '--mjs'])
+    expect(flagsIn(verbHelpText('cache'))).toEqual([
+      '--cache-dir',
+      '--dry-run',
+      '--max-size',
+      '--older-than',
+    ])
+  })
+
+  it("`run`'s documented flags are exactly the flags of its `(for run)` sections", () => {
+    // An exact set, not a spot check: `--dry` and `--graph` are in here only
+    // because `Planning (for run — skips execution):` carries an em dash and
+    // so does NOT match the section-header pattern, leaving the scanner
+    // inside the previous `(for run)` section. Widen that pattern and the two
+    // silently leave the list `vx run --dryy` suggests from.
+    expect([...documentedFlags('run')].sort()).toEqual([
+      '--affected',
+      '--all',
+      '--cache',
+      '--cache-dir',
+      '--check',
+      '--concurrency',
+      '--continue',
+      '--download',
+      '--dry',
+      '--exclude-dependencies',
+      '--filter',
+      '--force',
+      '--frozen',
+      '--graph',
+      '--no-cache',
+      '--output-logs',
+      '--profile',
+      '--report',
+      '--report-file',
+      '--retry',
+      '--summarize',
+      '--tag',
+      '--timeout',
+      '--verbosity',
+    ])
+  })
+
+  it('the Plugin commands section appears only when there are plugin commands', () => {
+    expect(helpText().includes('Plugin commands:')).toBe(false)
+    // CONTROL: the section is emitted when the list is not empty, so the
+    // claim above is about the gate and not about a heading that never ships.
+    expect(helpText(['  vx deploy   ship it']).includes('Plugin commands:')).toBe(true)
+  })
+
+  it('a verb carrying regex syntax is an unknown verb, not a pattern', () => {
+    // The verb is interpolated into a RegExp. Unescaped, `r.n` matched the
+    // `vx run` Usage line and answered with a help cut for a verb that does
+    // not exist, and `.*` matched most of the reference — while the doc
+    // comment promised the whole thing for a verb it does not know.
+    for (const verb of ['.*', 'r.n', '(run)', 'ru+n', '[rn]un', 'run|watch', 'run?']) {
+      expect([verb, verbHelpText(verb)]).toEqual([verb, helpText()])
+    }
+  })
+
   it('parses --cache-dir (space + = forms) without colliding with --cache', () => {
     expect(parseRunArgs(['build', '--cache-dir', '/tmp/x']).cacheDir).toBe('/tmp/x')
     expect(parseRunArgs(['build', '--cache-dir=./out/cache']).cacheDir).toBe('./out/cache')
