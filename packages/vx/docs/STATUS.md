@@ -2538,6 +2538,70 @@ description and plugin`, a third file. I had already written
       pristine control was clean every time, and the list still names
       three. Still not added: a yardstick entry swallows a real failure.
 
+515.  DONE (2026-09-21, `orchestrator/framed-output.ts` — seventh by the
+      age rule, newest dated comment 2026-09-05. A report file, like
+      `cli/last.ts` in 510: every finding here is the run's own output
+      lying about what happened).
+      23 mutations over the row grid, the cells, the violation section
+      and the frame close. Seven caught by the file's own suites; 16
+      survived the per-file pre-check. Five new rows now catch 14 of
+      those 16 locally.
+      THE PRE-CHECK OVERSTATED THE GAP BY FIVE, and that is this item's
+      first lesson. Of the 16 survivors, the whole-suite verdicts found
+      witnesses for FIVE that the three-file pre-check never ran: the
+      failed and skipped GLYPHS are held by `the documented glyph set
+is the set the renderer prints`, a doc-drift row; `no-cache` vs
+      `miss` is held by five rows, one of them named almost exactly for
+      it (`a task without a cache block is no-cache, never miss — row
+words, legend and report column all agree`); the blank time cell
+      by five more; the skipped row's blocker suffix by three. I had
+      already written those up as gaps. 500's rule is not only "a
+      per-file check cannot say nowhere" — it is that the check will
+      HAPPILY SAY SOMETHING, and what it says is worth nothing until
+      the suite agrees.
+      THE REAL GAP WAS TEN, and the headline is the plainest failure a
+      report can have: `statusOf` losing its `failed` case makes a
+      FAILED task's row read `success`, and nothing in the repo
+      noticed. Verdicted twice at whole-suite scope — the first run's
+      only new row was the watch-loop flapper, the repeat had none at
+      all. Its siblings: a skipped outcome down the SHARED row path
+      reads `success` too, a failed task's cache cell goes blank, and
+      the remote fresh/restored pair inverts in both the word and the
+      glyph.
+      THE CRASH. The time cell pads with `' '.repeat(TIME_COL -
+raw.length)`, clamped at 0. Without the clamp a task running past
+      about 2.8 hours produces a duration string wider than the column,
+      the count goes negative, and `repeat` throws a RangeError — a
+      run that SUCCEEDED taken down by its own report. Pinned with a
+      99 999 999 ms row that renders `100000.00s`.
+      TWO MORE. A `sandboxViolationLines: []` — what every clean
+      sandboxed task carries — printed a `SANDBOX VIOLATIONS (0)`
+      heading over nothing when the guard keys on the field's presence
+      alone. And a persistent task that FAILED closed its frame as
+      `running`, which reports a dev server that is up when it is down;
+      the existing row covered only the success close that `running`
+      is actually for.
+      PINNED AS ONE GRID, not nine rows (505). The status word, the
+      cache word and the glyph are three axes of one table, and every
+      single-member mutation moves exactly one line of it — so the
+      assertion is the whole 9-line table. That one row catches eight
+      of the sixteen.
+      THE EQUIVALENT. `cell`'s `Math.max(0, width - text.length)`:
+      every status and cache word is a fixed literal no wider than its
+      column, so nothing reachable overflows it. Classified — unlike
+      the time cell, whose input is a duration and therefore unbounded.
+      Fixture note, the third item running. Two pairs looked equivalent
+      for reasons that had nothing to do with the mutations:
+      `formatTaskSkippedLine` hardcodes its own glyph and word, so a
+      skipped outcome only reaches `glyphShape`/`statusOf` through the
+      SHARED row path my probe was not using; and the first colour
+      probe passed `NO_COLOR`, which makes `paint` a no-op and hides
+      both styling mutations completely. Same shape as 514's three.
+      Flapper note: the watch row `a first sighting is a change only
+when its mtime falls after the arm` appeared again and did not
+      reproduce on the repeat — the ninth instance across five sweeps.
+      Still three on the list, still not added.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
