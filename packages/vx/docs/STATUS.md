@@ -2728,6 +2728,58 @@ prints`, in shard-3. It is the test's own CONTROL — it sabotages
       Mechanism unknown; not added to `base.names`, because a yardstick
       entry swallows a real failure.
 
+518.  DONE (2026-09-21, `workspace/config-cache.ts` — tenth by the age
+      rule, newest dated comment 2026-09-09. The purity deny-list
+      decides which configs get their evaluation CACHED AND REPLAYED,
+      and the module states its own stakes: the check fails SAFE, never
+      fast, because "a false negative costs one evaluation, a false
+      positive would cost a STALE KEY").
+      25 mutations: one per `IMPURE_RE` member, plus its three guards.
+      Ten survived the file's own suites. Each one is that false
+      positive made real — drop the member and a config reaching the
+      environment through it is CACHED AS PURE, measured, not argued.
+      THE LIST WAS NOT NEGLECTED, IT GREW. Thirteen members have their
+      own named row, including every one the file's comment records as
+      a past bug (`globalThis`, `global`, `self`, `Temporal`,
+      `constructor`, `localeCompare`). The gap is the newer entries,
+      which arrived without fixtures. Say it that way: this is drift at
+      the edge of a maintained list, not an unguarded one.
+      A DOC-DRIFT ROW IS NOT A BEHAVIOURAL WITNESS, and that is the
+      finding worth keeping. Of the ten, FIVE (`performance`,
+      `navigator`, `eval`, `await`, `toLocale*`) are caught at
+      whole-suite scope only by `a module page quotes a constant or a
+regex the module has > config-cache.md's impurity list is
+IMPURE_RE's`. That row notices a member being DELETED, because
+      the docs list it — it does not exercise the member at all, and
+      would not notice one that is present and broken. The other FIVE
+      (`Intl`, `crypto`, `Function`, dynamic `import(`, and the
+      stripper's `null` guard) are caught by nothing whatsoever.
+      TWO MEMBERS HIDING BEHIND EACH OTHER. The existing row named
+      `refuses to cache a config that mentions await import('./x.mjs')`
+      catches NEITHER `await` NOR dynamic `import(` when either is
+      dropped: its one snippet contains both, so each masks the other
+      and the row passes on the survivor. A fixture that names two
+      members holds neither. This is 510's lesson from a new angle —
+      there the wrong answer was a superstring of the right one, here
+      one member's witness is another member's.
+      So the replacement is a table with ONE MINIMAL SNIPPET PER
+      MEMBER, and the verification is the method point: each snippet
+      was checked to flip under its OWN member and no other, 22 of 22,
+      one-to-one. Without that check a table looks thorough and proves
+      nothing — exactly the state the `await import` row was already
+      in. Asserted as the whole list (505) with a pure control, so no
+      member can pass on another's account.
+      THE STRIPPER'S REFUSAL, pinned separately. `stripLiterals`
+      answers null for source it cannot scan — a regex literal (a bare
+      `/` it will not parse), an unterminated string. The deny-list
+      never sees that source, so the null IS the guard. Without it the
+      code does not merely mis-cache: it throws on `null.includes`.
+      Flapper note: the pristine control carried `armWatcher > proves
+delivery with a probe it then removes (recursive: true)` — the
+      sibling of the `recursive: false` entry already on the list.
+      Tenth instance of that family across six sweeps; still three
+      listed, still not added.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

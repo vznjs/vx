@@ -199,6 +199,75 @@ describe('configEvalKey ignores impure-looking text inside literals', () => {
   })
 })
 
+describe('the purity deny-list is the whole list', () => {
+  // The module states the stakes: the check fails SAFE, never fast — "a
+  // false negative costs one evaluation, a false positive would cost a
+  // STALE KEY, so the deny-list is deliberately wide". A member that drops
+  // off the list is exactly that false positive: a config observing the
+  // environment through it gets its evaluation cached and replayed.
+  //
+  // Asserted as the whole list rather than one row per global (a per-member
+  // row leaves every other member unheld), with one MINIMAL snippet each —
+  // verified one-to-one, so no snippet is refused on another member's
+  // account.
+  const CASES: ReadonlyArray<readonly [string, string]> = [
+    ['process', 'const v = process.env.FOO'],
+    ['Bun', 'const v = Bun.env.FOO'],
+    ['globalThis', 'const v = globalThis.x'],
+    ['global', 'const v = global.x'],
+    ['self', 'const v = self.x'],
+    ['fetch', 'const v = fetch'],
+    ['Date', 'const v = Date.now()'],
+    ['Temporal', 'const v = Temporal.Now'],
+    ['Intl', 'const v = new Intl.NumberFormat()'],
+    ['crypto', 'const v = crypto.randomUUID()'],
+    ['performance', 'const v = performance.now()'],
+    ['navigator', 'const v = navigator.userAgent'],
+    ['require', 'const v = require'],
+    ['eval', "const v = eval('1')"],
+    ['Function', "const v = new Function('return 1')"],
+    ['constructor', 'const v = ({}).constructor'],
+    ['localeCompare', "const v = 'a'.localeCompare('b')"],
+    ['await', 'const v = await Promise.resolve(1)'],
+    ['toLocaleUpperCase', "const v = 'x'.toLocaleUpperCase()"],
+    ['import.meta', 'const v = import.meta.dir'],
+    ['Math.random', 'const v = Math.random()'],
+    ['dynamic import', "const v = import('./x.js')"],
+  ]
+
+  it('refuses a config for every global on it, and caches one that touches none', async () => {
+    let i = 0
+    for (const [label, body] of CASES) {
+      const file = await write(
+        `packages/deny-${String(i++)}/vx.config.mjs`,
+        `${body}\nexport default { name: 'p' }\n`,
+      )
+      expect([label, await keyOf(file)]).toEqual([label, null])
+    }
+    // CONTROL: the refusals above are the LIST's doing, not a config shape
+    // this function rejects wholesale.
+    const pure = await write('packages/deny-pure/vx.config.mjs', "export default { name: 'p' }\n")
+    expect(await keyOf(pure)).not.toBeNull()
+  })
+
+  it('refuses a config the literal stripper cannot read, rather than trusting it', async () => {
+    // `stripLiterals` answers null for source it cannot scan safely — a
+    // regex literal (a bare `/` it will not try to parse), an unterminated
+    // string. The deny-list never sees that source, so the null is the only
+    // thing standing between it and a cached evaluation.
+    const withRegex = await write(
+      'packages/strip-regex/vx.config.mjs',
+      "export default { name: 'ab'.replace(/a/, 'b') }\n",
+    )
+    expect(await keyOf(withRegex)).toBeNull()
+    const unterminated = await write(
+      'packages/strip-open/vx.config.mjs',
+      "const s = 'oops\nexport default { name: 'p' }\n",
+    )
+    expect(await keyOf(unterminated)).toBeNull()
+  })
+})
+
 describe('loadProjectConfig with an eval cache', () => {
   it('stores a validated evaluation and serves the next load from it without evaluating', async () => {
     const cfg = await write(
