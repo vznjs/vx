@@ -5400,23 +5400,71 @@ tests/package-graph.test.ts` exits 124 under `timeout 25` and 0
       guard needs an order-graph cycle that the peer rule exists to
       prevent — reachable only through plugin task edges, and no
       fixture builds one.
+572.  DONE (2026-09-21, NOT a sweep: the two remaining sweep candidates
+      were evaluated against 570's bar and BOTH REJECTED, and an open
+      In-flight item was settled by measurement instead).
+      SAYING NO IS THE RESULT WORTH RECORDING. `graph/task-graph.ts`
+      has 42 rows on 620 lines and its failure mode is LOUD — a wrong
+      edge is a build that fails because its dependency had not run.
+      `cli/select.ts` is the assembly layer over `affected.ts`, which
+      568-569 just swept at 31 of 35; its silent-narrowing mode is the
+      one already covered. Neither clears "name the failure mode before
+      writing the table", so neither was swept. The cache module,
+      `affected.ts`, `package-graph.ts` and every git spawn are done;
+      STATUS's Next list holds nothing actionable (1 and 2 are "do it
+      when X happens", 6 was done today, 8(c)/(g) are "revisit when",
+      the rest are OWNER-gated). The list is exhausted, and that is an
+      answer rather than a reason to grind a low-yield file.
+      WHAT WAS WORTH DOING INSTEAD: `shard-9`'s SIGILL, open in In
+      flight since 2026-09-20 as "about 1 run in 8, on any tree" and
+      attributed to this runtime under twelve-way load. Today's Bun
+      finding made it testable — the attribution was half right, and
+      the missing half is that the runtime is a VERSION.
+      MEASURED, interleaved A/B over the shard's own 17 files in one
+      process, arms alternating every rep: bun 1.3.11 failed 3 of 24,
+      bun 1.4.2 failed 0 of 24. Three in 24 IS the documented 1-in-8;
+      zero in 24 against that rate is p = 0.04. Both signatures
+      appeared on 1.3.11 and neither on 1.4.2 — two
+      `panic(main thread): Segmentation fault` with exit 132, and one
+      bare SIGILL the shell reported as `Illegal instruction` with exit
+      1, which the old entry's "match the signature (exit 132 + a Bun
+      panic + no failing row)" would have MISSED.
+      SO THE RE-RUN RITUAL RETIRES WITH THE YARDSTICKS. Five things
+      this session turned out to be one thing: the three recorded
+      "flappers", the shard-9 SIGILL, and the inert symlink tripwires
+      that made 566 score three containment guards as survivors. All
+      of them are Bun 1.3.11, a version below this repo's own declared
+      floor, running a gate whose CI counterpart pins 1.4.2. The entry
+      under Releases already noted the mismatch; nobody had connected
+      it to the failures, because the note said upgrading was
+      impossible and it was not.
 
 ## In flight
 
-**`shard-9` segfaults about 1 run in 8, on any tree (measured
-2026-09-20, item 483).** `bun test` over the shard's 17 files in ONE
-process dies with `panic(main thread): Segmentation fault` and exit 132
-(128 + SIGILL) — Bun's own message says it is a bug in Bun. No file in
-the shard reproduces it alone. Interleaved A/B, same file list both
-ways: pristine 1/10, a docs-and-one-unrelated-test diff 3/11. It is
-deliberately NOT in the task baseline: a baseline entry would swallow a
-real shard-9 failure. When a gate run shows shard-9 failed with the
-NAMES yardstick unchanged and no `(fail)` row, re-run the shard before
-reading anything into it. The panic text VARIES: item 512's gate hit
-`panic: Floating point error at address …` rather than the segfault,
-same shard, same exit 132, same absence of a failing row, and it passed
-on re-run with vx recording the task flaky. Match the signature (exit
-132 + a Bun panic + no failing row), not the panic's wording.
+**`shard-9`'s SIGILL is CLOSED (2026-09-21, item 572): it was Bun
+1.3.11, not load.** It sat here since 2026-09-20 as "about 1 run in 8,
+on any tree", a `panic(main thread)` with exit 132 and no failing row,
+attributed to this runtime under twelve-way load. The attribution was
+half right and the actionable half was missing: it is the RUNTIME, and
+the runtime is a VERSION — 1.3.11, below this repo's own
+`engines.bun: >=1.4`, which is why CI at 1.4.2 never saw one and why
+the entry below already noted the mismatch without connecting the two.
+
+Measured by interleaved A/B, the shard's own 17 files in one process,
+arms alternating every rep so machine drift cannot land on one of them:
+**bun 1.3.11 failed 3 of 24, bun 1.4.2 failed 0 of 24.** Three in 24 is
+the documented 1-in-8; zero in 24 against that rate is p = 0.04
+(`(7/8)^24`). Both signatures appeared on 1.3.11 and neither on 1.4.2:
+two `panic(main thread): Segmentation fault at address …` with exit
+132, and one bare SIGILL the shell reported as `Illegal instruction`
+with exit 1 — worth recording, because the old note says to match the
+signature and exit 1 was not in it.
+
+So the re-run ritual is retired ALONG WITH the yardsticks: run the gate
+under 1.4.2 (`PATH=$SP/bun142bin:$PATH`, the release asset fetched per
+the correction under Releases) and a shard-9 failure is the diff's.
+Should one appear there, it is a new finding and this entry does not
+cover it.
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
 diagnosed 2026-09-20, item 418).** Three of the failures are one chain:
