@@ -3296,6 +3296,68 @@ delivery with a probe it then removes (recursive: true)` — the
       it defends against git itself failing under the spawn, which no
       supported path produces. Defence in depth, named as such.
 
+531.  DONE (2026-09-21, `cli/run.ts`'s LIMITS AND ENUMS — the third and
+      last region of the file, after 529's cache policy and 530's
+      selection. `--timeout`, `--retry`, `--continue`, `--output-logs`,
+      `--download` and `--cache-dir` between them set real execution
+      limits and decide what a failure takes down. 13 mutations, ELEVEN
+      caught; both survivors are the same shape.
+      ONE MEMBER OF A LIST, AGAIN. `--continue` takes its mode with an
+      `=` only, because `--continue never` would read the mode as a
+      TASK and end in "No projects declare task(s): never" — the
+      comment says exactly that. The refusal looks ahead for any of
+      three modes, and the row that covers it spells ONE: drop
+      `deps-ok` from the lookahead and nothing moves, because no
+      fixture ever writes that mode in the space form. Same for
+      `--download`, whose guard lists three modes and whose rows cover
+      `all` and `toplevel`: `none` — the form that keeps every
+      intermediate output remote — had no assertion anywhere, so
+      deleting it from the guard turns a documented mode into an
+      argument error. 518's deny-list and 526's write grant, a third
+      and fourth time, in flags this time: one argv per member.
+      WHAT IS HELD, AND WORTH THE LINE. The timeout ceiling is pinned
+      three ways — past 2^31-1 `setTimeout` fires at 1 ms, so a value
+      above it would kill every task the moment it spawned, and the
+      bound is refused rather than clamped. `--retry` rejects a
+      negative through `parseDecimalInt` rather than `Number`.
+      `--cache-dir` still refuses a flag-shaped value in the space
+      form, which is what keeps an unquoted empty shell variable from
+      creating a directory named `--force` and swallowing the flag.
+
+532.  DONE (2026-09-21, `workspace/config-schema.ts`'s GLOB REFUSALS —
+      850 lines, and 490 took only its timeout pairs. Picked because
+      527 leaned on exactly these rules: four of its six survivors were
+      classified unreachable BECAUSE the schema refuses absolute,
+      escaping, negated and directory-naming globs. If those refusals
+      are themselves unheld, that classification rests on nothing. 8
+      mutations, three caught, FIVE survivors, four of them real.
+      THE ESCAPE HATCH WAS HELD FOR ONE SHAPE OUT OF THREE. The `..`
+      refusal exists, in its own words, because a glob leaving the
+      project dir "would let cleanOutputs delete files outside it" —
+      the run deletes declared outputs before every attempt. Every
+      fixture spells that escape as a LEADING `../`, so narrowing the
+      whole-segment scan to a prefix test changes nothing the suite can
+      see, while `dist/../../etc/**` walks straight out of the
+      workspace. Inner, inner-twice and leading are three different
+      argv, and only the first had one.
+      AND THE MARKER COMES OFF FIRST. Inputs may be negated, so both
+      predicates strip a leading `!` before they look. Nothing held
+      either: `!..` splits to a single segment that equals no segment
+      at all, and `!.` reads as a name rather than as the directory
+      itself. Two more members, two more argv.
+      THE CONTROL THAT KEEPS THE REFUSAL HONEST. A segment must EQUAL
+      `..`, not begin with it — widen the test and an ordinary
+      `..foo/**` directory is refused. That direction is loud rather
+      than silent, and it is the reason the row asserts an ACCEPT.
+      MEASURED UNREACHABLE. `namesDirItself` also answers true for a
+      bare `/`, and no call site can reach it: all three loops refuse
+      an absolute glob BEFORE they ask, so every `/` is already gone.
+      Checked at each of the three, not argued from one.
+      WHAT THIS SAYS ABOUT 527. Its classification stands — the shapes
+      really are refused — but the refusals were held more thinly than
+      the argument assumed. A boundary argument needs the boundary
+      itself under test, not merely present.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

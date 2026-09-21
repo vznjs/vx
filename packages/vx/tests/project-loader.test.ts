@@ -307,6 +307,69 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/absolute paths are not allowed/)
     })
 
+    it('refuses an escaping glob wherever the `..` sits, and under a `!`', async () => {
+      // The `..` refusal exists because a glob that leaves the project dir
+      // "would let cleanOutputs delete files outside it" — its own words.
+      // Every fixture spells the escape as a LEADING `../`, so the check
+      // could be narrowed to that one shape and nothing would move, while
+      // `dist/../../etc/**` walked straight out of the project. The scan is
+      // over every segment, and the `!` comes off before it.
+      const refuses = async (where: 'inputs' | 'outputs', glob: string): Promise<void> => {
+        const file = path.join(dir, 'vx.config.mjs')
+        const inputs = where === 'inputs' ? [glob] : ['src/**']
+        const outputs = where === 'outputs' ? [glob] : ['dist/**']
+        await writeFile(
+          file,
+          `export default { tasks: { build: {
+            exec: { command: 'tsc' },
+            cache: { inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} } },
+          } } }`,
+        )
+        await expect(loadProjectConfig(file)).rejects.toThrow(/path segments are not allowed/)
+      }
+      // Leading, inner, and inner-twice — the last lands outside the
+      // workspace, not merely in a sibling project.
+      await refuses('outputs', '../escape/**')
+      await refuses('outputs', 'a/../b/**')
+      await refuses('outputs', 'dist/../../etc/**')
+      // Inputs may be negated, so the marker has to come off before the
+      // segments are read: `!..` splits to `['!..']`, which equals no
+      // segment at all unless the `!` is stripped first.
+      await refuses('inputs', '!../escape/**')
+      await refuses('inputs', '!a/../b/**')
+    })
+
+    it('a name that merely STARTS with dots is not an escape', async () => {
+      // The control: the refusal compares whole segments, and widening it
+      // to a prefix test would reject an ordinary directory. `..foo` is a
+      // legal name.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['..foo/**'] }, outputs: { files: ['dist/**'] } },
+        } } }`,
+      )
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.['build']?.cache?.inputs?.files).toEqual(['..foo/**'])
+    })
+
+    it('the directory-itself refusal also strips a leading `!`', async () => {
+      // `.` selects nothing and says so nowhere, which is why it is refused.
+      // A negated `!.` is the same mistake wearing a marker, and only
+      // stripping it before the comparison catches that.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['!.'] }, outputs: { files: ['dist/**'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/names the project directory itself/)
+    })
+
     // Two refusals for glob forms that currently select NOTHING and say so
     // nowhere. Both were reproduced end-to-end against the Turbo/Nx parity
     // research (docs/design/turbo-nx-parity-2026-07.md); both are refusals

@@ -2040,6 +2040,35 @@ describe('--continue parsing', () => {
     expect(ok.continueMode).toBe('always')
     expect(ok.tasks).toEqual(['build', 'test'])
   })
+
+  it('EVERY mode is refused in the space form, not just the first one', () => {
+    // The row above spells the refusal with `never`, so the lookahead's
+    // other two members ride on it: drop either from the list and
+    // `--continue deps-ok` goes back to being parsed as a bare --continue
+    // plus a task named `deps-ok`, which is the exact "No projects declare
+    // task(s)" dead end the refusal exists to replace. One argv per member.
+    for (const mode of ['never', 'deps-ok', 'always'] as const) {
+      expect(parseRunArgs(['build', '--continue', mode]).error).toBe(
+        `--continue takes its mode with '=': --continue=${mode}`,
+      )
+    }
+  })
+})
+
+describe('--download accepts exactly its three modes', () => {
+  it('names each one, in both spellings', () => {
+    // `none` had no row: the enum guard lists it, and dropping that member
+    // turns `--download=none` — the form that keeps every intermediate
+    // output remote — into an argument error. The modes decide which
+    // outputs come home, so each is worth its own assertion rather than a
+    // check that SOME value parses.
+    for (const mode of ['all', 'toplevel', 'none'] as const) {
+      expect(parseRunArgs(['build', `--download=${mode}`]).download).toBe(mode)
+      expect(parseRunArgs(['build', '--download', mode]).download).toBe(mode)
+    }
+    // The control: the guard still refuses what is not a mode.
+    expect(parseRunArgs(['build', '--download=some']).error).toContain('--download must be')
+  })
 })
 
 describe('unknown-flag hints reach three edits', () => {
