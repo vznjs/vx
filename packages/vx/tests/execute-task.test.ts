@@ -412,6 +412,126 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
   )
 })
 
+describe('execute-task — what one attempt may hand the next', () => {
+  it(
+    'a violation belongs to the attempt that produced it, never to the retry',
+    async () => {
+      // `violations` is a closure variable the attempt loop reuses, kept
+      // honest by TWO lines: the reset at the top of `runAttempt` and the
+      // whole-array assignment after the executor returns. Either alone is
+      // enough, so each masks the other and neither is held — drop both and
+      // a first attempt's denial re-fails a clean retry, with the earlier
+      // attempt's lines attached to an outcome that never tripped anything.
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const n = node(b, { exec: { command: 'true', sandbox: {}, retries: 1 } }, 'proj#retry')
+        let attempts = 0
+        const flaky = {
+          name: 'org/flaky-sandbox',
+          execute: async () => {
+            attempts++
+            return {
+              exitCode: 0,
+              durationMs: 1,
+              stdout: '',
+              stderr: '',
+              violations:
+                attempts === 1 ? [{ timestamp: new Date(), line: 'deny file-read-data /etc' }] : [],
+            }
+          },
+        } as never
+        const outcome = await executeTask({ ...baseArgs(b, n, log), executor: flaky })
+        // The control: the first attempt really did fail on its violation —
+        // a zero exit rewritten to 1 is the only reason a second one happened.
+        expect(attempts).toBe(2)
+        expect([outcome.status, outcome.exitCode]).toEqual(['success', 0])
+        expect(outcome.sandboxViolationLines).toBeUndefined()
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a violation on a task that declared NO sandbox is not core's to act on",
+    async () => {
+      // Fail-on-violation is scoped to `userSandbox` — `exec.sandbox` in the
+      // task config, the single source of truth for the contract. An executor
+      // that sandboxes on its OWN terms and reports denials for a task that
+      // asked for none does not get to fail it here: core never folded that
+      // grant into the key and has no contract to enforce. Dropping the scope
+      // is silent in-tree, because the local executor returns no violations
+      // unless it sandboxed, so only a plugin can reach it.
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const n = node(b, { exec: { command: 'true' } }, 'proj#unsandboxed')
+        const noisy = {
+          name: 'org/own-sandbox',
+          execute: async () => ({
+            exitCode: 0,
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+            violations: [{ timestamp: new Date(), line: 'deny file-read-data /etc' }],
+          }),
+        } as never
+        const outcome = await executeTask({ ...baseArgs(b, n, log), executor: noisy })
+        expect([outcome.status, outcome.exitCode]).toEqual(['success', 0])
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a TRAPPED timeout keeps its timeout line and gains no contradicting verdict',
+    async () => {
+      // `signal-death > vx's own timeout keeps its line and gets no signal
+      // verdict` asserts exactly this and cannot fail: its child is really
+      // SIGTERMed, so the runner reports the signal and `signalVerdict`
+      // declines a SIGINT/SIGTERM it was handed. Two copies of one rule, and
+      // the e2e fixture only ever reaches the inner one.
+      //
+      // A child that TRAPS SIGTERM and exits 0 reaches the other: the runner
+      // saw NO signal, execute-task rewrites the code to 143 itself, and
+      // `shellVerdict` then reads 143 as "128 + 15 … something outside vx
+      // asked the process to stop" — printed directly under the line saying
+      // vx's own deadline killed it. The `!res.timedOut` gate is what keeps
+      // the two from contradicting each other.
+      const b = await bench()
+      const f = { root: '', out: [] as string[], err: [] as string[] }
+      try {
+        const log = capturingLogger(f)
+        const n = node(b, { exec: { command: 'true', timeout: 300 } }, 'proj#trap')
+        const trapped = {
+          name: 'org/trapped',
+          execute: async () => ({
+            exitCode: 0,
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+            violations: [],
+            timedOut: true,
+          }),
+        } as never
+        const outcome = await executeTask({ ...baseArgs(b, n, log), executor: trapped })
+        const err = f.err.join('')
+        expect([outcome.status, outcome.exitCode]).toEqual(['failed', 143])
+        expect(err).toContain('[vx] timed out after 300ms')
+        expect(err).not.toContain('is 128 +')
+        expect(err).not.toContain('is how the shell reports')
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('execute-task — cache-hit materialization', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
