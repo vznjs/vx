@@ -3837,6 +3837,46 @@ the root>`: the prefix is a STORAGE discriminator and the path
       it — the docblock's argument that both ends break the feature is
       already carried by the two rows that do exist.
 
+542.  DONE (2026-09-21, `workspace/lockfile.ts` — the `--frozen` trust
+      boundary: what `vx lock` writes, what reads it back, and what a
+      frozen run is allowed to believe. ZERO mentions in STATUS's whole
+      history. 18 mutations, EIGHTEEN CAUGHT. A complete zero-yield
+      report, and the first one whose finding is that a file is
+      finished).
+      THIS IS WHAT HELD LOOKS LIKE, and it is worth recording because
+      the series keeps finding the opposite. Every guard has a row, and
+      every row is NAMED FOR THE GUARD it holds — the failing row under
+      each mutation reads like the mutation's own description. One row
+      per member, thirteen of them across the read boundary alone, and
+      not one shared witness doing double duty.
+      THE TWO TRAPS THE SOURCE COMMENTS NAME BOTH HAVE ROWS, which is
+      the part that matters most. `typeof [] === 'object'` and
+      `[] !== null`, so an array sails through a naive shape check: a
+      top-level array would be reported as "unsupported version
+      undefined", a version diagnostic for a shape problem, and a
+      `projects` ARRAY would be ACCEPTED outright because
+      `Object.entries` walks it happily, yielding a project literally
+      named "0" while `--frozen` looks up real names against a lock
+      that declares none of them. The comments explain both; the rows
+      are named "a top-level ARRAY is a SHAPE error, not a misread
+      version" and "a `projects` ARRAY is refused rather than
+      yielding…". A documented hazard WITH a row, for once.
+      THE TRUST PATH'S TWO ARMS ARE SEPARATELY WITNESSED. `--frozen`
+      refuses a project the lock does not know, AND refuses one whose
+      entry points at a DIFFERENT config path — the second is the arm
+      that would otherwise hand a project someone else's frozen config,
+      and it has its own row rather than riding on the first.
+      ALSO HELD: the lock is hand-editable, so the stored config is
+      re-validated on the way out ("a lock cannot inject a broken
+      config"); the version check refuses a STRING "1" as well as a
+      wrong number; a missing lock returns null rather than throwing,
+      which is what lets `--frozen` say its own sentence; and even the
+      written FILE SHAPE — two-space indent, trailing newline — is
+      pinned, because the file is committed and its diff is a contract.
+      Nothing to add. The sweep's value here is the negative result:
+      the highest-risk boundary in the config path is the best-tested
+      file this series has opened.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
