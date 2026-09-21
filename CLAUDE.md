@@ -340,6 +340,26 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   before ever calling it and the whole flush error path (its warn and
   its swallow) had no witness in any fixture (556). Read a fixture's
   steps in order and ask which of them the subject still sees.
+- `bun test` IS THE WRONG INSTRUMENT FOR A DECLARATION-HEAVY FILE, and
+  it fails silently: it is transpile-only, so a sweep over a file that
+  is mostly interfaces reports every schema claim as a survivor (item
+  558, `config.ts`). The gate already owns the other instrument —
+  `lint.oxlint` is `oxlint --type-aware --type-check`, it covers
+  `tests/` as well as `src/`, and a compile-time row is written as
+  `@ts-expect-error` (an unused one is TS2578, which is what makes it
+  fail when the refusal goes). Run both per mutation; a mutation the
+  gate refuses at either is caught.
+- And the TYPE-CHECK's file list is a fixture exactly as the sweep's
+  is: naming `src/` alone scored `defineProject`'s whole `dependsOn`
+  compile validation a hole, when `tests/config.test.ts` had pinned it
+  with an `@ts-expect-error` all along (558). Run the gate's own
+  discovery, not a list you chose.
+- A compile-time TRIPWIRE cannot catch its own removal. `_pluginHooksMatch`
+  refuses a `PLUGIN_HOOKS` that drifts from `Plugin`'s keys, but with no
+  drift on the tree a half pin and a whole one behave identically, so
+  deleting it is vacuous, not a survivor (558). Measure that it FIRES —
+  introduce the drift each arm exists to catch — instead of trying to
+  test its existence.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a

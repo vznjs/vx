@@ -4578,6 +4578,56 @@ import.meta`.
       and walking from the FILE path rather than its directory reaches
       the same package one iteration later.
 
+558.  DONE (2026-09-21, `config.ts` — the user-facing schema: the
+      plugin vocabulary every stage gate reads, and the two define*
+      identity functions. Never swept, and it needed a SECOND
+      INSTRUMENT. 25 mutations: twelve caught, thirteen survivors, ten
+      closed by six rows and one strengthened, three classified. No
+      source change).
+      `bun test` IS THE WRONG INSTRUMENT FOR A FILE THAT IS MOSTLY
+      DECLARATIONS. About 95% of this file is interfaces, and `bun
+test` is transpile-only — it cannot see a type error at all, so
+      a sweep run under it alone reports every schema claim as a
+      survivor. The repo already owns the right instrument: the gate's
+      `lint.oxlint` is `oxlint --type-aware --type-check`, it covers
+      `tests/` as well as `src/`, and this repo already writes
+      compile-time rows as `@ts-expect-error` (an unused one is
+      TS2578). So the sweep ran BOTH per mutation, and a mutation the
+      gate refuses at either one is caught.
+      AND THE TYPE-CHECK'S FILE LIST IS A FIXTURE TOO. My first pass
+      named `src/` only and scored the whole `dependsOn` compile
+      validation a hole — when `tests/config.test.ts` has pinned it
+      with an `@ts-expect-error` all along. Re-running with the gate's
+      own discovery flipped it to refused. The same lesson as item
+      553, one instrument later.
+      WHAT WAS ACTUALLY UNHELD. `PLUGIN_PACKAGE` is a REGISTRY symbol
+      so that a plugin package's own copy of `@vzn/vx` and a compiled
+      binary's stamp and check the same key — and neither half had a
+      witness: a plain `Symbol()` is unique per copy, and changing the
+      key string silently stops recognising every plugin built against
+      the old one. `PLUGIN_HOOKS` is documented as being IN PIPELINE
+      ORDER, but the doc-drift suites ask only that each name appears
+      somewhere, so the order was free. `PLUGIN_FUNCTION_HOOKS`
+      decides what the loader demands a function of, and its
+      membership was free in both directions — admitting `commands`
+      or `fingerprint` would reject a legal plugin.
+      A ROW NAMED FOR A TYPE CLAIM WHOSE ASSERTION WAS A RUNTIME ONE:
+      "preserves nested literal types via the generic" ends in
+      `toEqual(['dist/**'])`, which holds whether or not the generic
+      narrows. It now carries a typed binding as well.
+      AND THE SCHEMA'S OWN REQUIREMENTS WERE UNPINNED: architecture
+      principle #2 says `cache.inputs.files` is REQUIRED — there is no
+      inferred-input path — and that requirement lives only in this
+      type, which could go optional with the whole suite green.
+      `Plugin.name`, and `defineWorkspace`'s constraint and
+      non-widening return, were the same.
+      THREE CLASSIFIED, MEASURED. The `_pluginHooksMatch` line is a
+      compile-time TRIPWIRE, and removing a tripwire is not caught by
+      the tripwire: with no drift on the tree, a half pin and a whole
+      one behave identically. Measured live instead — a hook added to
+      `Plugin` alone and a hook added to `PLUGIN_HOOKS` alone each
+      make line 98 refuse to compile, so both arms fire.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
