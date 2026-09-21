@@ -17,7 +17,9 @@ import type { ProjectMeta } from '../src/workspace/workspace.js'
 import { listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
 import { loadCliProjects } from '../src/cli/workspace-config.js'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
+import { claimedAffected } from '../src/orchestrator/index.js'
+import type { FingerprintContext, VxPlugin } from '../src/index.js'
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
   // -c commit.gpgsign=false defends against environments (CI sandboxes,
@@ -602,6 +604,90 @@ describe('affectedProjects', () => {
         })
         expect([...out]).toEqual(['a'])
         expect(loaded.count).toBe(0)
+      })
+
+      // Every row above hands `affectedProjects` a shim whose `affected`
+      // returns a Set directly, so not one of them reaches the host that
+      // stands between a REAL plugin's answer and this selection:
+      // `claimedAffected`, wired in at its one call site, `cli/select.ts`
+      // (plugin-pipeline.test.ts pins that wire end to end through the CLI).
+      // The host's refusals are its own contract, and the string arm is the
+      // one its docblock names outright.
+      describe('claimedAffected — what a real plugin is allowed to answer', () => {
+        const change = { file: 'pnpm-lock.yaml', before: null, after: null }
+        const ctx = { projects: [] } as unknown as FingerprintContext
+        const answering = (answer: unknown): VxPlugin =>
+          testPlugin('org/pm', {
+            fingerprint: {
+              files: ['pnpm-lock.yaml'],
+              affected: () => answer as never,
+            },
+          })
+        const refusal = async (answer: unknown): Promise<string> => {
+          try {
+            await claimedAffected(answering(answer), change, ctx)
+          } catch (err) {
+            return err instanceof Error ? err.message : String(err)
+          }
+          return 'ACCEPTED'
+        }
+
+        it("a STRING is refused by name: 'all' does not select the projects a, l and l", async () => {
+          // A string IS iterable, so with no guard at all the fold below walks
+          // its CHARACTERS and the run silently narrows to whatever projects
+          // happen to be spelled with them. Measured: the guard's explicit
+          // `typeof answer === 'string'` arm is belt-and-braces — a string is
+          // not an `'object'` either, so the second arm refuses it with the
+          // same sentence. The arm states the intent; this row pins the
+          // behaviour, and fails when the guard goes.
+          expect(await refusal('all')).toBe(
+            "plugin 'org/pm' failed in fingerprint: returned a string, not a list of project names",
+          )
+        })
+
+        it('NULL and a number are refused with the same sentence, not a TypeError', async () => {
+          // `typeof null === 'object'`, so null reaches `for (const name of
+          // answer)` unless its own arm stops it — and what a `for…of` over
+          // null or a number throws is an internal error naming neither the
+          // plugin nor the hook.
+          expect(await refusal(null)).toBe(
+            "plugin 'org/pm' failed in fingerprint: returned null, not a list of project names",
+          )
+          expect(await refusal(42)).toBe(
+            "plugin 'org/pm' failed in fingerprint: returned a number, not a list of project names",
+          )
+        })
+
+        it('a name that is not a string is refused, rather than added as one', async () => {
+          expect(await refusal([1])).toBe(
+            "plugin 'org/pm' failed in fingerprint: affected project a number is not a name",
+          )
+        })
+
+        it('a plugin that THROWS in `affected` is named, not surfaced as an internal error', async () => {
+          const thrower = testPlugin('org/pm-boom', {
+            fingerprint: {
+              files: ['pnpm-lock.yaml'],
+              affected: () => {
+                throw new Error('boom')
+              },
+            },
+          })
+          await expect(claimedAffected(thrower, change, ctx)).rejects.toThrow(
+            "plugin 'org/pm-boom' failed in fingerprint: boom",
+          )
+        })
+
+        it('CONTROL: an array, a Set and "cannot tell" all pass through', async () => {
+          expect([...(await claimedAffected(answering(['a', 'b']), change, ctx))!]).toEqual([
+            'a',
+            'b',
+          ])
+          expect([...(await claimedAffected(answering(new Set(['b'])), change, ctx))!]).toEqual([
+            'b',
+          ])
+          expect(await claimedAffected(answering(undefined), change, ctx)).toBeUndefined()
+        })
       })
     })
 
