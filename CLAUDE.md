@@ -440,6 +440,13 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   the suite green; one of them reaps `cache.db` itself (564). Put each
   control PAST the coarse gate, so the only thing left holding it is
   the guard it is named for.
+- `Bun.file(<a directory>).exists()` IS FALSE. Measured on Bun 1.3.11.
+  So a guard written as `if (!(await Bun.file(p).exists())) continue`
+  silently skips every path that names a directory — which masked the
+  whole prefix arm of the invisible-literal refusal AND left a live
+  stale hit: a gitignored DIRECTORY named in `cache.inputs.files`
+  folds nothing and says nothing (item 565). Use a stat when the
+  question is "is there something here", not `Bun.file`.
 - THE PLATFORM ANSWER MAY ALREADY BE IN THE FILE YOU ARE TESTING.
   A row asserting a prune still evicts with its cache directory
   deleted went red on darwin: macOS answers `SQLITE_IOERR_VNODE` for a

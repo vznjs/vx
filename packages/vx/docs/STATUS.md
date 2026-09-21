@@ -4991,6 +4991,53 @@ test` is transpile-only — it cannot see a type error at all, so
       concurrent-prune count, the reap-vs-stats distinction, the grace
       window's existence and direction, and the temp sweep itself —
       several at 4-10 rows red.
+565.  DONE (2026-09-21, `cache/inputs.ts`, region: `resolveFiles` —
+      the positive/negative split, the exclude set, the project
+      boundary patterns, the invisible-literal refusal, the per-run
+      memo and the existence probe. 31 mutations: twenty-three caught,
+      eight survivors, four closed by five rows, four classified. No
+      source change).
+      THE REGION IS THE BEST-HELD ONE SWEPT SO FAR — every arm of the
+      exclude set (ALWAYS_IGNORE, the boundary globs, the task's own
+      outputs, the negations), the tree expansion on each of them, the
+      `!` split and its slice, the default-globs branch, the boundary
+      pattern's shape and direction, the refusal's exists gate and its
+      resolve base, and the untrusted mid-run re-enumeration all go red,
+      several at 5-21 rows.
+      THE REFUSAL IS MASKED FOR DIRECTORIES, AND THAT HAS A COST.
+      Deleting the prefix arm of `settleLiterals` (`rel.startsWith(lit
+      - '/')`, the arm that lets `src/gen/a.ts`settle a literal naming`src/gen`) changes nothing — because `Bun.file(<a directory>)
+        .exists()`is FALSE (measured, Bun 1.3.11), so the refusal`continue`s past every literal that names a directory and never
+judges it. Two guards masking each other, the 563 shape. The cost
+is a live hole, now pinned as a FINDING: `cache.inputs.files:
+        ['gen']`on a gitignored`gen/`folds ZERO files and says
+NOTHING — exactly the stale hit the refusal exists to stop, one
+directory above where it looks. Not fixed here: the fix is a stat
+rather than`Bun.file`, and it would newly refuse a literal
+naming a tracked-but-empty directory, which is a separate call.
+AND THE `/`IN THAT ARM IS THE WHOLE GUARD, which WAS a hole:
+without it`gen-notes.txt`settles the literal`gen`, so a
+gitignored `gen`sails through the refusal and folds nothing.
+Reachable by naming one file next to another. Closed.
+THE PER-RUN MEMO WAS KEYED ON LESS THAN IT LOOKED. The key drops
+to the same string without the negations or without the boundary
+patterns, and the suite never noticed: the two rows that catch it
+now share ONE`GitFilesCache` between calls, which is what gives
+the second call the same snapshot ARRAY — the identity the memo
+demands before it answers from cache. The negation case is the
+everyday one (`build`folds the package,`lint`declares`!**/*.test.ts`): without it the second task is handed the
+first's answer and its key stops moving with what it excluded.
+FOUR CLASSIFIED, none a hole. `.split(path.sep).join('/')` on the
+boundary pattern is a NO-OP on this platform (`path.sep`is`/`)
+and the gate is Linux-only. `return [...resolved]` guards against
+a caller mutating the memoized array, and both consumers copy
+before they sort (`task-hash.ts:123`, `cache.ts:776`), so nothing
+reachable observes it. And the OID arm of the existence filter is
+a COST gate, not a correctness one: a path with a trusted index
+OID is clean per `git status`and therefore on disk, so`isInputOnDisk` would answer the same — the deleted-file case the
+comment names loses its OID before it gets here
+(`git-oid.test.ts`, "deleted → untrusted"). Its only observable
+        is a syscall count, with no public seam to read it from.
 
 ## In flight
 

@@ -32,6 +32,7 @@ import {
   cleanOutputs,
   cleanWorkspaceOutputs,
   GitFilesCache,
+  type ProjectFilesCache,
   resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,
@@ -1168,6 +1169,160 @@ describe('runtime input memoization is scoped by design', () => {
     await expect(
       resolveInputs(args(projA, { workspaceRuntime: ['sh -c "echo nope 1>&2; exit 7"'] })),
     ).rejects.toThrow(/runtime command exited 7/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// Which declarations the refusal judges, and what the per-run memo is keyed on
+// ─────────────────────────────────────────────────────────────────────────
+describe('a declared literal settles on its own tree, and only its own', () => {
+  let root: string
+  let projectDir: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-literal-'))
+    projectDir = path.join(root, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+    gitInit(root)
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const filesOf = async (files: string[]): Promise<string[]> =>
+    (
+      await resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+      })
+    ).files.map((f) => path.relative(projectDir, f))
+
+  it('a literal naming a DIRECTORY is settled by a file inside it', async () => {
+    // A literal is settled by `rel === lit` OR `rel.startsWith(lit + '/')`,
+    // and only the second arm covers a directory: git reports
+    // `src/gen/a.ts`, never `src/gen`. Drop that arm and every config
+    // naming a directory — a perfectly ordinary `cache.inputs.files:
+    // ['src']` — is refused outright, because the directory EXISTS on disk
+    // and nothing settled it. The suite had no witness: every literal in
+    // it names a file.
+    await write(path.join(projectDir, 'src', 'gen', 'a.ts'), 'a')
+    await write(path.join(projectDir, 'other.ts'), 'o')
+
+    expect(await filesOf(['src/gen'])).toEqual(['src/gen/a.ts'])
+  })
+
+  it('FINDING: a gitignored DIRECTORY named as a literal is silently ignored', async () => {
+    // The refusal is masked for directories, and measurably so:
+    // `Bun.file(<a directory>).exists()` is FALSE (measured, Bun 1.3.11),
+    // so `assertNoInvisibleLiteralInputs` `continue`s past every literal
+    // that names one. That is why deleting the prefix arm of
+    // `settleLiterals` changes nothing — a directory literal never
+    // settles AND is never judged, so the two guards mask each other
+    // (the 563 shape).
+    //
+    // The cost of that masking is this: `cache.inputs.files: ['gen']` on
+    // a gitignored `gen/` folds ZERO files and says nothing, which is
+    // exactly the stale hit the refusal was written to stop, one
+    // directory up from where it looks. Pinned, not fixed: the fix is a
+    // stat rather than `Bun.file`, and it would newly refuse a literal
+    // naming a tracked-but-empty directory, which is a separate call to
+    // make.
+    await write(path.join(root, '.gitignore'), 'gen/\n')
+    await write(path.join(projectDir, 'gen', 'out.js'), 'built')
+    await write(path.join(projectDir, 'keep.ts'), 'k')
+
+    expect(await filesOf(['gen', 'keep.ts'])).toEqual(['keep.ts'])
+  })
+
+  it('a sibling that merely SHARES A PREFIX does not settle it', async () => {
+    // The `/` in `${lit}/` is the whole guard. Without it `gen-notes.txt`
+    // starts with `gen` and settles the literal `gen` — so a gitignored
+    // `gen` sails through the refusal, folds NOTHING into the key, and the
+    // task reports up-to-date forever while it changes. Exactly the stale
+    // hit the refusal exists to stop, reachable by naming one file next to
+    // another.
+    await write(path.join(root, '.gitignore'), 'gen\n')
+    await write(path.join(projectDir, 'gen'), 'ignored')
+    await write(path.join(projectDir, 'gen-notes.txt'), 'tracked')
+
+    const err = await filesOf(['gen', 'gen-notes.txt']).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.message).toContain('"gen" exists in')
+    expect(err?.message).toContain('contributes NOTHING to the cache key')
+  })
+})
+
+describe('the per-run files memo is keyed on everything that decides the answer', () => {
+  let root: string
+  let projectDir: string
+  let gitFilesCache: GitFilesCache
+  let projectFilesCache: ProjectFilesCache
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-filesmemo-'))
+    projectDir = path.join(root, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+    gitInit(root)
+    gitFilesCache = new GitFilesCache()
+    projectFilesCache = new Map()
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // Both calls share ONE gitFilesCache, so the second sees the same
+  // snapshot ARRAY as the first — which is the identity the memo requires
+  // before it will answer from cache. That is what makes a missing key
+  // component observable rather than theoretical.
+  const filesOf = async (files: string[], nestedProjectDirs: string[] = []): Promise<string[]> =>
+    (
+      await resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files },
+        ownOutputs: [],
+        nestedProjectDirs,
+        gitFilesCache,
+        projectFilesCache,
+      })
+    ).files
+      .map((f) => path.relative(projectDir, f))
+      .sort()
+
+  it('two tasks in one project with different NEGATIONS get different sets', async () => {
+    // The everyday case: `build` folds the whole package, `lint` declares
+    // `['**/*.ts', '!**/*.test.ts']`. Same project, same positives, same
+    // enumeration — so without the negations in the memo key the second
+    // task is handed the first task's answer and its key stops moving with
+    // whatever it excluded.
+    await write(path.join(projectDir, 'a.ts'), 'a')
+    await write(path.join(projectDir, 'a.test.ts'), 't')
+
+    expect(await filesOf(['**/*.ts'])).toEqual(['a.test.ts', 'a.ts'])
+    expect(await filesOf(['**/*.ts', '!**/*.test.ts'])).toEqual(['a.ts'])
+  })
+
+  it('and the project BOUNDARY is part of the key too', async () => {
+    // A nested project's directory is excluded by a pattern computed per
+    // call, so it belongs in the key beside the declaration. The product's
+    // own caller passes the same nested dirs for every task of a project,
+    // which is exactly why this arm had no witness — and why leaving it
+    // out would be invisible until the day something resolves a project
+    // twice under different boundaries.
+    await write(path.join(projectDir, 'a.ts'), 'a')
+    await write(path.join(projectDir, 'inner', 'b.ts'), 'b')
+
+    expect(await filesOf(['**/*.ts'])).toEqual(['a.ts', 'inner/b.ts'])
+    expect(await filesOf(['**/*.ts'], [path.join(projectDir, 'inner')])).toEqual(['a.ts'])
   })
 })
 
