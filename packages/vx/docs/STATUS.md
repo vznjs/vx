@@ -5238,6 +5238,23 @@ config --list` lowercases its keys.
       the same three passes: faster than the buggy original, not just
       than the fix it replaces. The level's removals also go out
       concurrently, which the per-directory walk could not do.
+      AND THE WORKSPACE-LEVEL A/B IS A TIE, which is the honest
+      reading and worth stating so nobody quotes the per-call number as
+      a product win. `vx-bench` at 100 projects x 5 reps, three
+      interleaved passes, arm A an immutable worktree at 4a90cc52 (the
+      only source delta between the arms is this function and the dead
+      `scanUnion` branch): no-cache 388/398/415 vs A's 401/388/413,
+      warm-no-restore 94/113/106 vs 116/100/108, warm-restore
+      155-161 vs 150-167. Every column overlaps.
+      The reason is the FIXTURE, not the change: `generate.ts` gives
+      each project one shallow `dist/`, so `pruneEmptiedDirs` has
+      almost nothing to walk. The 200-dir x 20-file microbenchmark is
+      the shape where the difference lives, and a workspace whose tasks
+      emit deep output trees (a bundler with per-route chunks, a
+      codegen fanning into hundreds of directories) is where a user
+      would see it. Recorded rather than chased: the change is
+      justified by CORRECTNESS, and the numbers say it costs nothing to
+      take.
       THE CACHE MODULE IS NOW SWEPT END TO END — `cache.ts` (four
       regions, 559-564), `inputs.ts` (three, 565-567) and this. The
       yield should be assumed to fall from here: the next valuable
