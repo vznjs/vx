@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseInitArgs } from '../src/cli/index.js'
-import { delegatedScript, loadProjectConfig } from '../src/workspace/index.js'
+import { delegatedScript, loadProjectConfig, migrateScripts } from '../src/workspace/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
@@ -152,6 +152,133 @@ describe('delegatedScript', () => {
     ['npm run $SCRIPT', null],
   ])('%s → %p', (command, expected) => {
     expect(delegatedScript(command)).toBe(expected)
+  })
+
+  it('a command carrying shell syntax is never read as a plain delegation', () => {
+    // One guard, thirteen members: the excluded set above is what keeps a
+    // command the shell would do something with from being mistaken for a
+    // bare `run <script>`. The pair form names the character that broke.
+    for (const c of ['&', '|', ';', '<', '>', '(', ')', '`', "'", '"', '\\', '$', ' ']) {
+      expect([c, delegatedScript(`npm run a${c}b`)]).toEqual([c, null])
+    }
+  })
+})
+
+/**
+ * The mapper on its own, without the `vx init` round trip: what a
+ * package.json's scripts become. Every case here is a shape the end-to-end
+ * rows above never build.
+ */
+describe('migrateScripts', () => {
+  const project = (scripts: unknown) =>
+    migrateScripts([
+      {
+        name: 'app',
+        dir: '/w/app',
+        packageJson: { name: 'app', scripts } as never,
+        configPath: null,
+      },
+    ]).projects[0] ?? null
+  const mapped = (scripts: unknown): Record<string, unknown> =>
+    Object.fromEntries((project(scripts)?.tasks ?? []).map((t) => [t.name, t.task]))
+
+  it('exactly the conventions that read a build wait for it, and `lint` does not', () => {
+    const tasks = mapped({
+      build: 'tsc -b',
+      test: 'v',
+      typecheck: 'tsc --noEmit',
+      check: 'c',
+      e2e: 'pw',
+      lint: 'eslint .',
+    })
+    const waits = Object.entries(tasks)
+      .filter(([, t]) => ((t as { dependsOn?: string[] }).dependsOn ?? []).includes('build'))
+      .map(([n]) => n)
+      .sort()
+    expect(waits).toEqual(['check', 'e2e', 'test', 'typecheck'])
+    // CONTROLS: a linter reads sources, and `build` waits for its dependants'.
+    expect(tasks['lint']).toEqual({ exec: { command: 'eslint .' } })
+    expect(tasks['build']).toEqual({ exec: { command: 'tsc -b' }, dependsOn: ['^build'] })
+  })
+
+  it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
+    // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
+    // so it wraps nothing here and has to stand alone or it disappears.
+    expect(
+      Object.keys(
+        mapped({
+          build: 'tsc',
+          install: 'node-gyp rebuild',
+          preinstall: 'a',
+          postinstall: 'b',
+          prepublish: 'c',
+          postpublish: 'd',
+          prepack: 'e',
+          postpack: 'f',
+          preversion: 'g',
+          postversion: 'h',
+          prepare: 'husky install',
+          prepublishOnly: 'i',
+          pack: 'echo pack',
+          postprepare: 'echo after prepare',
+        }),
+      ).sort(),
+    ).toEqual(['build', 'pack', 'postprepare'])
+  })
+
+  it('a delegation that cannot become a group stays the command it was', () => {
+    const tasks = mapped({
+      b: 'real',
+      missing: 'npm run nosuch',
+      loop: 'npm run loop',
+      hooked: 'npm run b',
+      prehooked: 'echo pre',
+    })
+    // A group over a script that does not exist names a task nothing defines.
+    expect(tasks['missing']).toEqual({ exec: { command: 'npm run nosuch' } })
+    // A group over ITSELF is a cycle.
+    expect(tasks['loop']).toEqual({ exec: { command: 'npm run loop' } })
+    // A group has no command, so a folded hook would be dropped silently.
+    expect(tasks['hooked']).toEqual({ exec: { command: 'echo pre && npm run b' } })
+    // CONTROL, on its own fixture: none of those problems, so still a group.
+    expect(mapped({ b: 'real', d: 'npm run b' })['d']).toEqual({ dependsOn: ['b'] })
+  })
+
+  it('nothing waits for a `build` the package does not have, and never twice', () => {
+    const edges = (tasks: Record<string, unknown>): string[] =>
+      Object.entries(tasks)
+        .flatMap(([n, t]) =>
+          ((t as { dependsOn?: string[] }).dependsOn ?? []).map((d) => `${n}→${d}`),
+        )
+        .sort()
+    // No `build` script: neither the command path nor the group path may
+    // invent an edge to one.
+    expect(
+      edges(
+        mapped({
+          test: 'vitest',
+          typecheck: 'tsc --noEmit',
+          'test:unit': 'v',
+          e2e: 'npm run test:unit',
+        }),
+      ),
+    ).toEqual(['e2e→test:unit'])
+    // And a group whose target IS `build` lists it once, not twice.
+    expect(edges(mapped({ build: 'tsc', test: 'npm run build' }))).toEqual([
+      'build→^build',
+      'test→build',
+    ])
+  })
+
+  it('a scripts field that is not an object of strings is skipped, never a crash', () => {
+    // package.json is a boundary. `typeof null === 'object'`, and a value
+    // that is not a string has no `.trim()` — both used to be a TypeError
+    // out of `vx init` rather than a package it declined to map.
+    expect(project(null)).toBeNull()
+    expect(project(['tsc'])).toBeNull()
+    expect(project('tsc')).toBeNull()
+    expect(Object.keys(mapped({ a: 123, b: 'ok' }))).toEqual(['b'])
+    expect(Object.keys(mapped({ a: '', b: 'ok' }))).toEqual(['b'])
   })
 })
 
