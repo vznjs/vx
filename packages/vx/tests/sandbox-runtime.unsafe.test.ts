@@ -31,7 +31,11 @@ import {
   portBridgeSocket,
 } from '../src/exec/sandbox-runtime.js'
 import { localBindingOn } from '../src/exec/sandbox-paths.js'
-import { deniedCalls, reportableViolations } from '../src/exec/sandbox-violations.js'
+import {
+  deniedCalls,
+  parseStraceViolations,
+  reportableViolations,
+} from '../src/exec/sandbox-violations.js'
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
@@ -1636,6 +1640,95 @@ describe('deniedCalls (strace trace parsing)', () => {
     ].join('\n')
     expect(deniedCalls(trace)).toEqual([])
   })
+
+  it('reads every traced syscall and every denial errno, in both line shapes', () => {
+    // Both alphabets, member by member. A syscall or an errno that falls
+    // out of either pattern is a denial the report never mentions — the
+    // exact failure this detector exists to prevent.
+    const done = (sc: string, pth: string, e: string): string =>
+      `1 ${sc}(AT_FDCWD, "${pth}", 0) = -1 ${e} (x)`
+    expect(
+      deniedCalls(
+        [
+          done('openat', '/ws/o', 'ENOENT'),
+          done('access', '/ws/a', 'EACCES'),
+          done('statx', '/ws/s', 'EPERM'),
+          done('newfstatat', '/ws/n', 'ENOENT'),
+        ].join('\n'),
+      ),
+    ).toEqual([
+      { syscall: 'openat', rawPath: '/ws/o', errno: 'ENOENT' },
+      { syscall: 'access', rawPath: '/ws/a', errno: 'EACCES' },
+      { syscall: 'statx', rawPath: '/ws/s', errno: 'EPERM' },
+      { syscall: 'newfstatat', rawPath: '/ws/n', errno: 'ENOENT' },
+    ])
+    // The split shape carries the errno on a second line, matched by its
+    // own pattern, so each spelling is asserted there too.
+    for (const errno of ['ENOENT', 'EACCES', 'EPERM']) {
+      const trace = `1 openat(AT_FDCWD, "/ws/x", 0 <unfinished ...>\n1 <... openat resumed>) = -1 ${errno} (x)`
+      expect([errno, deniedCalls(trace)]).toEqual([
+        errno,
+        [{ syscall: 'openat', rawPath: '/ws/x', errno }],
+      ])
+    }
+  })
+})
+
+describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-strace-')))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const produce = async (trace: string) => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, trace)
+    return await parseStraceViolations(
+      log,
+      { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+      { allowRead: [], denyRead: [ws], cwd: ws },
+    )
+  }
+  const targets = async (trace: string): Promise<string[]> =>
+    (await produce(trace)).map((v) => v.target ?? '')
+  const at = (pth: string): string => `1 openat(AT_FDCWD, "${pth}", 0) = -1 ENOENT (x)`
+
+  it('anchors on the deny root itself and on a separator, not a bare prefix', async () => {
+    const ws = path.join(dir, 'ws')
+    // The root itself is inside the anchor; a SIBLING whose name merely
+    // begins with it is not, and reporting it would cross the project
+    // boundary this filter exists to hold.
+    expect(await targets([at(ws), at(`${ws}other/x.ts`), at(`${ws}/a.ts`)].join('\n'))).toEqual([
+      ws,
+      `${ws}/a.ts`,
+    ])
+  })
+
+  it('dedups per syscall AND path, so two calls on one path stay two lines', async () => {
+    const ws = path.join(dir, 'ws')
+    expect(
+      await targets([at(`${ws}/x`), `1 access("${ws}/x", 4) = -1 ENOENT (x)`].join('\n')),
+    ).toEqual([`${ws}/x`, `${ws}/x`])
+  })
+
+  it('marks an openat ignorable by either list, since the trace lacks its flags', async () => {
+    const ws = path.join(dir, 'ws')
+    const produced = await produce(at(`${ws}/s.txt`))
+    expect(produced.map((v) => v.ignorable)).toEqual([['read', 'write']])
+    // The pair above is the claim; these two are what the claim is FOR.
+    for (const which of ['read', 'write'] as const) {
+      const cfg = resolveSandboxConfig({ ignore: { [which]: [`${ws}/s.txt`] } }, ws)
+      expect([which, reportableViolations(produced, { within: ws, config: cfg })]).toEqual([
+        which,
+        [],
+      ])
+    }
+  })
 })
 
 /**
@@ -1710,6 +1803,75 @@ describe('reportableViolations', () => {
       { within: PROJ, config: cfg },
     )
     expect(lines(kept)).toEqual([`openat(x) = -1 ENOENT  [${PROJ}/src/real.ts]`])
+  })
+
+  it('keeps an outbound denial that names a host and port, under either grant', () => {
+    // The addressless record is noise no config can silence. A connection
+    // that tried to LEAVE the machine is reported by SRT's proxy WITH its
+    // host and port, and that line must never be dropped — the end anchor
+    // is the only thing separating the two.
+    const noise = { line: 'bun(1) deny(1) network-outbound', timestamp: new Date() }
+    const real = { line: 'bun(1) deny(1) network-outbound example.com:443', timestamp: new Date() }
+    for (const cfg of [
+      resolveSandboxConfig({ allow: { localBinding: true } }, PROJ),
+      resolveSandboxConfig({ allow: { network: ['example.com'] } }, PROJ),
+    ]) {
+      expect(lines(reportableViolations([noise, real], { within: PROJ, config: cfg }))).toEqual([
+        'bun(1) deny(1) network-outbound example.com:443',
+      ])
+    }
+  })
+
+  it('keeps a denial on the project root itself, and reports everything under `/`', () => {
+    const cfg = resolveSandboxConfig({}, PROJ)
+    expect(
+      lines(reportableViolations([mac('file-read-data', PROJ)], { within: PROJ, config: cfg })),
+    ).toEqual([`bun(1) deny(1) file-read-data ${PROJ}`])
+    // `/` is the one prefix needing no separator appended; comparing
+    // against `//` would drop every record there is.
+    expect(
+      lines(
+        reportableViolations([mac('file-read-data', '/etc/passwd')], { within: '/', config: cfg }),
+      ),
+    ).toEqual(['bun(1) deny(1) file-read-data /etc/passwd'])
+  })
+
+  it('silences an `ignore` entry that is a literal path holding glob syntax', () => {
+    // `a[1].txt` is a real filename; read as a GLOB its `[1]` is a
+    // character class that does not match it. The exact compare is what
+    // lets an `ignore` entry copied from a real tree work at all.
+    const lit = `${PROJ}/a[1].txt`
+    const v: SandboxViolation = {
+      line: `openat(${lit}) = -1 ENOENT`,
+      timestamp: new Date(),
+      target: lit,
+      path: lit,
+      ignorable: ['read'],
+    }
+    expect(
+      reportableViolations([v], {
+        within: PROJ,
+        config: resolveSandboxConfig({ ignore: { read: [lit] } }, PROJ),
+      }),
+    ).toEqual([])
+    // CONTROL, on its own pattern: the glob branch still does the
+    // globbing, so the exact compare above is an addition, not a swap.
+    expect(
+      reportableViolations([v], {
+        within: PROJ,
+        config: resolveSandboxConfig({ ignore: { read: [`${PROJ}/a*.txt`] } }, PROJ),
+      }),
+    ).toEqual([])
+  })
+
+  it("trims a seatbelt record's trailing whitespace out of the target it matches on", () => {
+    // SRT's lines can carry trailing spaces; a greedy capture keeps them
+    // in `target`, and then no `ignore` entry for the clean path matches.
+    const kept = reportableViolations(
+      [{ line: `bun(1) deny(1) file-read-data ${PROJ}/a.ts   `, timestamp: new Date() }],
+      { within: PROJ, config: resolveSandboxConfig({}, PROJ) },
+    )
+    expect(kept.map((v) => v.target)).toEqual([`${PROJ}/a.ts`])
   })
 
   it('drops the addressless loopback denial only under localBinding', () => {
