@@ -9,7 +9,9 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { loadProjects, loadResolvedProjects, run } from '../src/orchestrator/index.js'
+import { buildPackageGraph, listProjects, loadWorkspace } from '../src/workspace/index.js'
+import type { ProjectEntry } from '../src/workspace/index.js'
 
 const TIMEOUT = 30_000
 let root: string
@@ -203,6 +205,114 @@ describe('scoped config loading', () => {
       await expect(run({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /never be evaluated/,
       )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a STAGED project does not consume another project’s evaluated config',
+    async () => {
+      // `withFile` skips a project the caller already staged for two
+      // reasons, and only one of them is written down. The stated one is
+      // cost: no second evaluation, no second `project` stage. The other is
+      // ALIGNMENT — the loop below walks the round and reads `loaded[next++]`
+      // for each project it did not skip, so an evaluated config that
+      // belongs to a staged project would shift every later project onto
+      // its neighbour's config. Wrong tasks, wrong commands, wrong cache
+      // keys, under a green run.
+      //
+      // Order matters for the witness: the staged project must come FIRST
+      // in the round, so its entry is the one the next project would read.
+      await addProject(
+        'a-staged',
+        "export default { tasks: { alpha: { exec: { command: 'echo a' } } } }\n",
+      )
+      await addProject(
+        'b-fresh',
+        "export default { tasks: { beta: { exec: { command: 'echo b' } } } }\n",
+      )
+      const metas = await listProjects(await loadWorkspace(root))
+      const staged = new Map<string, ProjectEntry>([
+        [
+          'a-staged',
+          {
+            name: 'a-staged',
+            dir: path.join(root, 'packages', 'a-staged'),
+            config: { tasks: { alpha: { exec: { command: 'echo staged' } } } },
+          },
+        ],
+      ])
+      const loaded = await loadProjects({
+        workspaceRoot: root,
+        cacheDir: path.join(root, '.vx/cache'),
+        plugins: [],
+        projectMetas: metas,
+        packageGraph: buildPackageGraph([...metas]),
+        seeds: 'all',
+        closure: false,
+        lock: null,
+        evalCache: undefined,
+        warn: () => {},
+        staged,
+      })
+      // Each project keeps its OWN tasks.
+      expect(Object.keys(loaded.projects.get('b-fresh')!.config.tasks ?? {})).toEqual(['beta'])
+      expect(Object.keys(loaded.projects.get('a-staged')!.config.tasks ?? {})).toEqual(['alpha'])
+      // And the staged entry is taken as given, not re-evaluated: the
+      // command is the one the caller staged, not the one on disk.
+      expect(loaded.projects.get('a-staged')!.config.tasks!['alpha']!.exec!.command).toBe(
+        'echo staged',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a malformed cross spec is the GRAPH BUILDER’s error, naming the task',
+    async () => {
+      // Config loading walks `dependsOn` to find `pkg#task` targets whose
+      // configs it must pull in, and swallows a spec it cannot parse on
+      // purpose: the graph builder reports it, with the offending task's id
+      // in front. Rethrowing here would surface the same sentence stripped
+      // of the one thing that says WHERE to fix it — and earlier, from a
+      // load that has no task to name.
+      await addProject(
+        'lib',
+        `export default { tasks: { build: {
+          dependsOn: ['^lib#build'],
+          exec: { command: 'echo x' },
+        } } }`,
+      )
+      const r = await run({ cwd: root, tasks: ['build'], log: silent() }).catch(
+        (err: unknown) => err,
+      )
+      const message = r instanceof Error ? r.message : String(r)
+      expect(message).toContain('Task lib#build:')
+      expect(message).toContain('"^" cannot combine with "pkg#task"')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a READER sees its scope and nothing else — no closure, no config-less packages',
+    async () => {
+      // `loadResolvedProjects` is what `vx show`, `vx mcp` and an embedder
+      // read. It passes `closure: false` deliberately: a reader asked about
+      // one project is answered about that project, where a RUN pulls the
+      // dependency closure in because `^task` needs it. And a package that
+      // wrote no config declares no tasks unless a `project` plugin fills
+      // the stage, so it is not a project here at all.
+      await addProject('lib', GOOD)
+      await addProject('app', GOOD, ['lib'])
+      const bare = path.join(root, 'packages', 'bare')
+      await mkdir(bare, { recursive: true })
+      await writeFile(path.join(bare, 'package.json'), JSON.stringify({ name: 'bare' }))
+
+      const scoped = await loadResolvedProjects(root, { scope: ['app'] })
+      expect([...scoped.keys()]).toEqual(['app'])
+      // CONTROL: unscoped, every CONFIGURED project — and still not `bare`.
+      const all = await loadResolvedProjects(root)
+      expect([...all.keys()].sort()).toEqual(['app', 'lib'])
     },
     TIMEOUT,
   )

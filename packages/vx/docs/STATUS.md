@@ -4077,6 +4077,53 @@ answer === 'string'` arm — the one its docblock names, "a plugin
       `cache.inputs.runtime`) keeps BOTH the task and its dependent in
       the plan, with an empty hash each.
 
+547.  DONE (2026-09-21, `orchestrator/projects.ts` — the staged config
+      load every reader and every run shares. Never swept. 25
+      mutations: ten caught, fifteen survivors, five closed by three
+      rows, ten classified. No source change).
+      A SKIP WRITTEN DOWN AS A SAVING IS ALSO AN ALIGNMENT. `withFile`
+      leaves out a project the caller already staged, and its comment
+      gives the reason as cost — no second evaluation, no second
+      `project` stage. The other reason is not written anywhere: the
+      round loop reads `loaded[next++]` for each project it did NOT
+      skip, so an evaluated config belonging to a staged project shifts
+      every later project onto its neighbour's config. Wrong tasks,
+      wrong commands, wrong cache keys, under a green run. The witness
+      needs the staged project FIRST in the round, so its entry is the
+      one the next project would read; nothing in the suite had that
+      shape, and the staged-once rows count `project`-stage calls, which
+      the shift leaves untouched.
+      Today's one caller stages every config-bearing project (the CLI's
+      selection pass runs with scope `all`), so the misalignment is not
+      reachable through it — the row pins the contract for the next
+      caller, and the failure class it guards is the worst one this
+      project has.
+      A SWALLOWED PARSE ERROR IS A PROMISE ABOUT WHO REPORTS IT.
+      `crossDepProjects` walks `dependsOn` for `pkg#task` targets and
+      swallows a spec it cannot parse, because the graph builder reports
+      it with the offending task's id in front. Rethrowing surfaces the
+      same sentence stripped of the one thing that says where to fix it,
+      from a load with no task to name. The comment says so; no row did,
+      and the suite never grepped "Invalid dependency spec" at all.
+      A READER IS NOT A RUN. `loadResolvedProjects` passes
+      `closure: false` deliberately — `vx show`, `vx mcp` and an
+      embedder asked about one project are answered about that project,
+      where a run pulls the dependency closure in because `^task` needs
+      it. Neither that nor "a package that wrote no config is not a
+      project" had a witness; one row now pins both, with the unscoped
+      control beside it.
+      TEN CLASSIFIED, and eight of them are cost, not behaviour: the
+      `config`-stage gate (an empty plugin list makes the call a no-op),
+      both closure short-circuits (they exist to avoid building the
+      package graph's transitive bitsets), the `#` fast path (a spec
+      without one cannot parse as cross), the reader's eval cache (a
+      stat instead of an evaluation) and its `cache.close()`. Pushing
+      every parsed spec's project rather than only a `cross` one is
+      measured equivalent: every `#`-bearing spec that parses IS cross,
+      and the parser throws on the rest. And a staged project's
+      cross-deps go unpulled without effect for the same reason the
+      alignment bug hides — the only caller stages them all.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
