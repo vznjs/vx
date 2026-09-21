@@ -4948,8 +4948,17 @@ test` is transpile-only — it cannot see a type error at all, so
       reaped. One row with four aged controls and one real orphan
       holds all three, and `scanOrphans`'s `readdir` swallow — never
       exercised, because readdir does not fail in a fixture — is held
-      by a row that deletes the cache directory out from under a prune
-      whose eviction half has already run.
+      by a row that deletes the cache directory and asks
+      `orphanStats()` for nothing.
+      THAT LAST ROW COST A DARWIN CI CYCLE, and the answer was already
+      in the file. It first asked the bigger question — that a prune
+      still EVICTS with the directory gone — which is a LINUX-ONLY
+      claim: macOS answers `SQLITE_IOERR_VNODE` for a read through an
+      unlinked vnode. `close()`'s own catch has documented the WRITE
+      half of exactly that since it was written. The row now asks only
+      what holds everywhere: the scan reads the directory BEFORE it
+      queries the index, so a readdir that fails never reaches SQLite
+      at all.
       THE STORAGE LAYER WAS ANSWERING FOR THE SORT AGAIN (the 559
       shape, from the other side). `ORDER BY accessed_at ASC` reversed
       to `DESC` is caught; DELETED it is not — the maxBytes fixture

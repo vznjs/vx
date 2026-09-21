@@ -1450,30 +1450,22 @@ describe('Cache storage (v10)', () => {
     expect(existsSync(path.join(cacheDir, 'cache.db'))).toBe(true)
   })
 
-  it('prune() still evicts when the cache directory cannot be read', async () => {
-    // The orphan scan runs LAST, after the rows and artifacts are already
-    // gone, so a readdir that fails must not turn a completed eviction
-    // into a rejected promise — the user would see `vx cache prune` throw
-    // with the work done and no way to tell. Nothing exercised the
-    // swallow: readdir never fails in a fixture, so replacing `return []`
-    // with a rethrow left the suite green.
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
-    db.prepare(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES ('h-gone', 'pkg', 'build', 'noop', 0, 0, 10, '', 1, 1)`,
-    ).run()
-    // The directory goes out from under the scan. The open DB handle
-    // survives it on Linux (an unlinked inode stays readable), which is
-    // what lets the eviction half still run.
+  it('the orphan scan swallows a readdir failure instead of rejecting', async () => {
+    // `vx info` calls this, and a prune ends with it, so a directory that
+    // cannot be read must report nothing rather than throw. Nothing
+    // exercised the swallow — readdir does not fail in a fixture — so
+    // replacing its `return []` with a rethrow left the suite green.
+    //
+    // The scan reads the directory BEFORE it queries the index, which is
+    // what makes this row platform-independent: a readdir that fails
+    // never reaches SQLite. The first version asked the bigger question —
+    // that a prune still EVICTS with the directory gone — and that is a
+    // LINUX-ONLY claim. `close()` already documents the other half of it:
+    // on macOS a write through an unlinked file answers
+    // SQLITE_IOERR_VNODE where Linux writes on. The READ does too, and
+    // darwin CI said so.
     await rm(cacheDir, { recursive: true, force: true })
 
-    const result = await cache.prune({ olderThanMs: 2 })
-    expect({
-      evicted: result.evicted,
-      orphans: result.orphans,
-      orphanBytes: result.orphanBytes,
-    }).toEqual({ evicted: 1, orphans: 0, orphanBytes: 0 })
     expect(await cache.orphanStats()).toEqual({ orphans: 0, orphanBytes: 0 })
   })
 

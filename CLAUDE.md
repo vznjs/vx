@@ -440,6 +440,16 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   the suite green; one of them reaps `cache.db` itself (564). Put each
   control PAST the coarse gate, so the only thing left holding it is
   the guard it is named for.
+- THE PLATFORM ANSWER MAY ALREADY BE IN THE FILE YOU ARE TESTING.
+  A row asserting a prune still evicts with its cache directory
+  deleted went red on darwin: macOS answers `SQLITE_IOERR_VNODE` for a
+  read through an unlinked vnode, and `close()`'s own catch had
+  documented the WRITE half of that since it was written (item 564).
+  Before writing a row that leans on an FS or syscall behaviour, grep
+  the module for the symptom — the platform note is often three
+  functions away — and prefer the claim that holds everywhere: here,
+  that the scan reads the directory BEFORE it queries the index, so
+  the failure never reaches SQLite.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a
