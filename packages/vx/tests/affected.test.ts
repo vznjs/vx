@@ -186,6 +186,31 @@ describe('affectedProjects', () => {
     }
   })
 
+  it('a git diff that FAILS is an error, never an empty change set', async () => {
+    // The third "ignores git's exit code" hole of this arc, and the one
+    // with the worst blast radius. `gitPaths` throws on a non-zero exit;
+    // without that the parse gets empty stdout, so `changed` is EMPTY,
+    // every project maps to nothing, and `vx run test --affected` exits
+    // 0 having run nothing. Green CI over a broken repository — which is
+    // the exact failure `docs/cli.md` states as a principle: "input
+    // hashing sees it, so `--affected` must too."
+    //
+    // Reaching it needs a repo where the ref VERIFIES and the diff does
+    // not, or the guard above answers first (the 561 shape). Deleting
+    // the commit's tree object is that: `rev-parse --verify HEAD` reads
+    // the commit and succeeds, `merge-base HEAD HEAD` succeeds, and
+    // `git diff HEAD` exits 128 with `bad tree object` (measured).
+    const tree = (await Bun.$`git -C ${root} rev-parse HEAD^{tree}`.text()).trim()
+    await rm(path.join(root, '.git', 'objects', tree.slice(0, 2), tree.slice(2)), { force: true })
+
+    const err = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).not.toBeNull()
+    expect(err?.message).toMatch(/git diff failed \(exit 128\)/)
+  })
+
   it('a project inside a nested repository is selected when git reports its repository changed', async () => {
     // The workspace repository sees a submodule or an embedded repository as
     // ONE path — the gitlink `vendor/sub` when its checkout is dirty or moved,
@@ -1383,5 +1408,65 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     const metas = await listProjects(await loadWorkspace(root))
     expect(await workspaceGlobOwners(root, metas, ['shared/x.ts'])).toEqual(['bare'])
     expect(await workspaceGlobOwners(root, metas, ['docs/x.md'])).toEqual([])
+  })
+})
+
+describe('a fingerprint claim in a workspace BELOW the git root', () => {
+  type Change = { file: string; before: Uint8Array | null; after: Uint8Array | null }
+  let repo: string
+  let ws: string
+  let projects: ProjectMeta[]
+
+  beforeEach(async () => {
+    repo = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-subdir-'))
+    ws = path.join(repo, 'code')
+    await mkdir(path.join(ws, 'packages/a'), { recursive: true })
+    await writeFile(path.join(ws, 'packages/a/file.txt'), 'a')
+    await writeFile(path.join(ws, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv1\n')
+    // A DECOY at the repo root, so reading the wrong anchor finds bytes
+    // rather than nothing — the reading this row exists to exclude is
+    // "resolved from the repo root", not merely "found nothing".
+    await writeFile(path.join(repo, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nDECOY\n')
+    projects = [
+      { name: 'a', dir: path.join(ws, 'packages/a'), configPath: null, packageJson: { name: 'a' } },
+    ]
+    await git(repo, 'init', '-q')
+    await git(repo, 'config', 'user.email', 'test@vx.local')
+    await git(repo, 'config', 'user.name', 'vx test')
+    await git(repo, 'add', '.')
+    await git(repo, 'commit', '-q', '-m', 'initial')
+  })
+
+  afterEach(async () => {
+    await rm(repo, { recursive: true, force: true })
+  })
+
+  it('reads the base-ref bytes from the WORKSPACE, not the repo root', async () => {
+    // `gitBytesAt` spells the path `${ref}:./${file}`, and the `./` is
+    // what anchors it to the cwd — the workspace — instead of the
+    // repository root. Every other fixture in this file has the two in
+    // the same place, so the anchor had no witness: drop it and a
+    // workspace under `code/` reads some other file's bytes, or none,
+    // and hands the plugin a `before` that was never its input.
+    await writeFile(path.join(ws, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv2\n')
+    const asked: Change[] = []
+
+    const out = await affectedProjects({
+      workspaceRoot: ws,
+      since: 'HEAD',
+      projects,
+      fingerprintClaims: async () => ({
+        files: new Set(['pnpm-lock.yaml']),
+        affected: async (c: Change) => {
+          asked.push(c)
+          return new Set(['a'])
+        },
+      }),
+    })
+
+    expect([...out]).toEqual(['a'])
+    expect(asked).toHaveLength(1)
+    expect(new TextDecoder().decode(asked[0]!.before!)).toBe('lockfileVersion: 9\nv1\n')
+    expect(new TextDecoder().decode(asked[0]!.after!)).toBe('lockfileVersion: 9\nv2\n')
   })
 })

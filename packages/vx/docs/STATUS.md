@@ -5259,6 +5259,52 @@ config --list` lowercases its keys.
       regions, 559-564), `inputs.ts` (three, 565-567) and this. The
       yield should be assumed to fall from here: the next valuable
       thing is Next 6, the warm-run A/B, not another sweep.
+569.  DONE (2026-09-21, `workspace/affected.ts` — what `--affected`
+      selects, and the security boundary on the base ref. 35 mutations
+      under Bun 1.4.2: THIRTY-ONE caught, four survivors, two closed by
+      two rows, two classified. No source change).
+      PICKED FOR THE FAILURE MODE, not because the arc had momentum:
+      `--affected` answering too NARROW is the same silent wrongness as
+      a stale hit — a task that should have run does not, and the run
+      exits 0. The cache module was done; this is the other surface
+      where being quietly wrong looks like success.
+      AND IT IS THE BEST-HELD FILE SWEPT ALL SESSION, 31 of 35. The
+      whole security boundary (empty ref, leading dash, the missing
+      guard, the ref verification), the merge-base choice, all three
+      diff flags — `--no-renames`, `--relative`, `-z` — the untracked
+      union and its `--exclude-standard`, the `vx-lock.json` exclusion
+      in both directions, every arm of the fingerprint widening
+      including "cannot tell", the config-import channel, the
+      workspaceFiles channel, all four arms of `workspaceGlobsMatch`,
+      and both halves of the NUL split. Several at 40+ rows red. The
+      file has had a lot of attention and it shows.
+      THE THIRD "IGNORES GIT'S EXIT CODE" HOLE OF THE ARC, and the one
+      with the worst blast radius. `gitPaths` throws on a non-zero
+      exit; without it the parse gets empty stdout, so `changed` is
+      EMPTY, every project maps to nothing, and `vx run test
+--affected` exits 0 having run nothing — green CI over a broken
+      repository, the exact failure `docs/cli.md` states as a
+      principle. Reaching it needs a repo where the ref VERIFIES and
+      the diff does not, or the guard above answers first (the 561
+      shape): deleting the commit's TREE object is that, measured —
+      `rev-parse --verify HEAD` and `merge-base` both succeed, `git
+diff HEAD` exits 128 with `bad tree object`.
+      AND THE `./` IN `gitBytesAt` IS A REAL ANCHOR. `${ref}:./${file}`
+      resolves against the cwd — the workspace — rather than the
+      repository root, and every fixture in the file had the two in the
+      same place, so it had no witness. A workspace under `code/` would
+      hand the plugin a `before` that was never its input. The new row
+      puts a DECOY lockfile at the repo root, so the reading it
+      excludes is "resolved from the wrong anchor", not merely "found
+      nothing".
+      TWO CLASSIFIED. `--end-of-options` on the diff is defence in
+      depth behind a guard that is itself fully held (the leading-dash
+      refusal, 5 rows red), so it cannot be isolated — the 563 masking
+      shape, but with the outer guard proven rather than absent.
+      And `gitBytesAt` swallowing EVERY git failure as "absent at
+      ref" needs an error that is neither of the two absence
+      messages nor a working `git show`; its sibling arm IS caught, so
+      the classification is about reach, not about the guard.
 
 ## In flight
 
