@@ -327,6 +327,19 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   explicit `typeof x === 'string'` changed nothing, because a string is
   not an `'object'` either (544). Measure WHICH arm fires before calling
   one unheld — and keep the row, which still fails when the guard goes.
+- A COST gate needs a fixture that can see the cost. `task.log`'s
+  opt-in row asserted only that no record arrived — which `deliver()`'s
+  own kind filter guarantees whether or not the gate above it exists, so
+  the gate AND the `wants` scan behind it could both go with the suite
+  green (item 556). When a later filter answers the same question, pin
+  the work that was skipped: the row now hands the subscriber an event
+  whose `chunk` is a GETTER and counts the reads.
+- A fixture can DISARM the claim it is named for, one step earlier in
+  its own body. "emitSummary + flush are crash-isolated" throws from
+  `onRunSummary` first, which DISABLES the sink — so `flush` returned
+  before ever calling it and the whole flush error path (its warn and
+  its swallow) had no witness in any fixture (556). Read a fixture's
+  steps in order and ask which of them the subject still sees.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a

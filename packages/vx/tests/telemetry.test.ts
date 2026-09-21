@@ -15,12 +15,15 @@ import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { run } from '../src/index.js'
 import { busLogger, createEventBus } from '../src/orchestrator/events.js'
 import {
+  assembleRunSummary,
   createTelemetrySource,
   deriveCacheSource,
   subscribeTelemetry,
   TELEMETRY_SCHEMA_VERSION,
   type RunContextRecord,
+  type RunEvent,
   type RunSummaryRecord,
+  type TaskTelemetry,
   type TelemetryRecord,
   type TelemetrySink,
   type VxPlugin,
@@ -89,6 +92,79 @@ describe('deriveCacheSource', () => {
     expect(deriveCacheSource('failed')).toBe('miss')
     expect(deriveCacheSource('skipped')).toBe('none')
     expect(deriveCacheSource('aborted')).toBe('none')
+  })
+})
+
+function tel(taskId: string, over: Partial<TaskTelemetry> = {}): TaskTelemetry {
+  const [project, task] = taskId.split('#') as [string, string]
+  return {
+    taskId,
+    project,
+    task,
+    status: 'success',
+    cacheSource: 'miss',
+    exitCode: 0,
+    durationMs: 1,
+    ...over,
+  }
+}
+
+describe('assembleRunSummary — the tallies a local and a distributed run share', () => {
+  // THE one place the RunSummaryRecord tallies are computed: run() calls it
+  // and so does the distributed controller, which is the whole point — the
+  // two produce byte-identical summaries and land in the same ingest. It was
+  // reached only through an end-to-end run(), whose fixture has no failure,
+  // no remote hit and no aborted task, so five of the six tallies could be
+  // wrong with every suite green.
+  const timing = { startedAt: 1_000, endedAt: 5_000, totalDurationMs: 250, exitOk: true }
+
+  it('counts only `failed` as a failure — an aborted task is not one', () => {
+    const summary = assembleRunSummary(
+      RUN,
+      [
+        tel('a#build', { status: 'failed', exitCode: 1 }),
+        tel('b#build', { status: 'aborted', cacheSource: 'none' }),
+        tel('c#build'),
+      ],
+      timing,
+    )
+    expect(summary.failedCount).toBe(1)
+    expect(summary.taskCount).toBe(3)
+  })
+
+  it('tallies local and remote hits apart, and hitCount is their sum', () => {
+    const summary = assembleRunSummary(
+      RUN,
+      [
+        tel('a#build', { status: 'cache-hit', cacheSource: 'local' }),
+        tel('b#build', { status: 'cache-hit-remote', cacheSource: 'remote' }),
+        tel('c#build', { status: 'cache-hit-remote', cacheSource: 'remote' }),
+        tel('d#build'),
+        tel('e#build', { status: 'skipped', cacheSource: 'none' }),
+      ],
+      timing,
+    )
+    expect(summary.hitLocalCount).toBe(1)
+    expect(summary.hitRemoteCount).toBe(2)
+    expect(summary.hitCount).toBe(3)
+  })
+
+  it('takes `exitOk` from the run, never from the task list', () => {
+    // The run's verdict counts skipped tasks BEYOND the recorded list, so a
+    // summary whose every recorded task passed can still belong to a failed
+    // run. Deriving exitOk from failedCount reports that run green.
+    const summary = assembleRunSummary(RUN, [tel('a#build')], { ...timing, exitOk: false })
+    expect(summary.failedCount).toBe(0)
+    expect(summary.exitOk).toBe(false)
+  })
+
+  it('takes `totalDurationMs` from the run, not from endedAt − startedAt', () => {
+    // run() passes a MONOTONIC hrtime measure; startedAt/endedAt are
+    // Date.now() epoch stamps taken at different points. Recomputing the
+    // duration from them swaps a monotonic number for a settable one.
+    const summary = assembleRunSummary(RUN, [tel('a#build')], timing)
+    expect(summary.totalDurationMs).toBe(250)
+    expect(summary.endedAt - summary.startedAt).toBe(4_000)
   })
 })
 
@@ -197,6 +273,44 @@ describe('createTelemetrySource — projection', () => {
     }
   })
 
+  it("stamps run.start with the RUN's start, not the projection's clock", () => {
+    // `startedAt` equals the summary's startedAt on purpose — a sink derives
+    // per-task timing from it DURING the run, before any summary exists. `ts`
+    // is when this record was projected, which is later and drifts per event.
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    src.subscriber({ kind: 'run:start', info: { total: 1, startedAtMs: 1_600_000_000_000 } })
+    const r = records[0]!
+    if (r.kind === 'run.start') {
+      expect(r.startedAt).toBe(1_600_000_000_000)
+      expect(r.startedAt).not.toBe(r.ts)
+    }
+
+    // CONTROL: an event that does not carry one falls back to the projection
+    // clock, so the field is never absent.
+    const later = recorder()
+    createTelemetrySource({ sinks: [later.sink], run: RUN }).subscriber({
+      kind: 'run:start',
+      info: { total: 1 },
+    })
+    const f = later.records[0]!
+    if (f.kind === 'run.start') expect(f.startedAt).toBe(f.ts)
+  })
+
+  it('carries `attempts` — the telemetry-side flaky signal — only when it retried', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node, { attempts: 3 }) })
+    // CONTROL: a task that ran once says nothing, so a reader can treat the
+    // field's presence as the signal.
+    src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node) })
+    expect(records.map((r) => (r.kind === 'task.end' ? r.attempts : 'not-task-end'))).toEqual([
+      3,
+      undefined,
+    ])
+  })
+
   it('skips group tasks (no exec) for task.start and task.end', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })
@@ -242,6 +356,49 @@ describe('createTelemetrySource — task.log opt-in', () => {
     }
   })
 
+  it('checks the opt-in BEFORE projecting, so a declined chunk is never read', () => {
+    // "The source checks this before projecting/cloning, so a sink pays
+    // nothing for kinds it declines." The row above it asserts only that no
+    // RECORD arrives — and deliver()'s own kind filter answers that whether
+    // or not the gate exists, so both the gate and the `wants` scan behind
+    // it could go with the suite green. What the gate actually buys is that
+    // the chunk is never touched: a getter counts the reads.
+    let chunkReads = 0
+    const event = { kind: 'task:stdout' as const, node: mkNode('a#build', 'x') }
+    Object.defineProperty(event, 'chunk', {
+      enumerable: true,
+      get: () => {
+        chunkReads++
+        return 'payload'
+      },
+    })
+
+    const declines = recorder() // default wants excludes task.log
+    createTelemetrySource({ sinks: [declines.sink], run: RUN }).subscriber(event as RunEvent)
+    expect(chunkReads).toBe(0)
+    expect(declines.records).toHaveLength(0)
+
+    // CONTROL: the same event past a sink that opts in reads the chunk once
+    // and carries it through, so the count is measuring the projection.
+    const wants = recorder(['task.log'])
+    createTelemetrySource({ sinks: [wants.sink], run: RUN }).subscriber(event as RunEvent)
+    expect(chunkReads).toBe(1)
+    const r = wants.records[0]!
+    expect(r.kind).toBe('task.log')
+    if (r.kind === 'task.log') expect(r.chunk).toBe('payload')
+  })
+
+  it('labels a stdout chunk `stdout` — the stream the reader routes on', () => {
+    const { sink, records } = recorder(['task.log'])
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    src.subscriber({ kind: 'task:stdout', node: mkNode('a#build', 'x'), chunk: 'out!' })
+    src.subscriber({ kind: 'task:stderr', node: mkNode('a#build', 'x'), chunk: 'err!' })
+    expect(records.map((r) => (r.kind === 'task.log' ? r.stream : r.kind))).toEqual([
+      'stdout',
+      'stderr',
+    ])
+  })
+
   it('a sink only receives the kinds it declares in wants', () => {
     const { sink, records } = recorder(['task.end'])
     const src = createTelemetrySource({ sinks: [sink], run: RUN })
@@ -252,6 +409,21 @@ describe('createTelemetrySource — task.log opt-in', () => {
     expect(records.map((r) => r.kind)).toEqual(['task.end'])
   })
 })
+
+const SUMMARY: RunSummaryRecord = {
+  v: TELEMETRY_SCHEMA_VERSION,
+  run: RUN,
+  startedAt: 0,
+  endedAt: 1,
+  totalDurationMs: 1,
+  taskCount: 0,
+  failedCount: 0,
+  hitCount: 0,
+  hitLocalCount: 0,
+  hitRemoteCount: 0,
+  exitOk: true,
+  tasks: [],
+}
 
 describe('createTelemetrySource — crash isolation', () => {
   it('disables a sink that throws and keeps delivering to the others', () => {
@@ -273,6 +445,55 @@ describe('createTelemetrySource — crash isolation', () => {
     expect(good.records.map((r) => r.kind)).toEqual(['run.start', 'run.end'])
   })
 
+  it('a sink disabled mid-run gets no run summary either', () => {
+    // "disabled for the rest of the run, FLUSH INCLUDED" — and the summary is
+    // the record that matters most, since an ingest persists a whole run from
+    // it. A sink that stopped being fed records the moment it threw would
+    // otherwise hand over a summary built from an incomplete buffer.
+    let badSummaries = 0
+    const bad: TelemetrySink = {
+      name: 'bad',
+      onRecord: () => {
+        throw new Error('boom')
+      },
+      onRunSummary: () => {
+        badSummaries++
+      },
+    }
+    const good = recorder()
+    const src = createTelemetrySource({ sinks: [bad, good.sink], run: RUN })
+    src.subscriber({ kind: 'run:start', info: { total: 1 } })
+    src.emitSummary(SUMMARY)
+    expect(badSummaries).toBe(0)
+    // CONTROL: a sink that never threw still gets it.
+    expect(good.summaries).toHaveLength(1)
+  })
+
+  it('reports a sink whose flush rejects, and still resolves', async () => {
+    // No fixture reached this path: the only sink whose flush threw had been
+    // disabled one line earlier by a throwing onRunSummary, so flush returned
+    // before ever calling it. A rejection here propagates through
+    // Promise.all into settleWithin and out of flush() — which run() awaits
+    // before closeCache(), so the cache never closes and the exit code is
+    // lost. And dropping it silently is the thing the standing rule forbids:
+    // this sink's whole export is gone.
+    const warns: string[] = []
+    const src = createTelemetrySource({
+      sinks: [
+        {
+          name: 'flaky-sink',
+          flush: async () => {
+            throw new Error('disk full')
+          },
+        },
+      ],
+      run: RUN,
+      warn: (m) => warns.push(m),
+    })
+    await expect(src.flush()).resolves.toBeUndefined()
+    expect(warns).toEqual(["[vx] telemetry sink 'flaky-sink' failed to flush: disk full"])
+  })
+
   it('emitSummary + flush are crash-isolated', async () => {
     const good = recorder()
     const bad: TelemetrySink = {
@@ -285,21 +506,7 @@ describe('createTelemetrySource — crash isolation', () => {
       },
     }
     const src = createTelemetrySource({ sinks: [bad, good.sink], run: RUN })
-    const summary: RunSummaryRecord = {
-      v: TELEMETRY_SCHEMA_VERSION,
-      run: RUN,
-      startedAt: 0,
-      endedAt: 1,
-      totalDurationMs: 1,
-      taskCount: 0,
-      failedCount: 0,
-      hitCount: 0,
-      hitLocalCount: 0,
-      hitRemoteCount: 0,
-      exitOk: true,
-      tasks: [],
-    }
-    expect(() => src.emitSummary(summary)).not.toThrow()
+    expect(() => src.emitSummary(SUMMARY)).not.toThrow()
     await expect(src.flush()).resolves.toBeUndefined()
     expect(good.summaries).toHaveLength(1)
     expect(good.flushed()).toBe(1)

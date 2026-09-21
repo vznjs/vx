@@ -4469,6 +4469,62 @@ between tests`, `0 pass` and no `(fail)` row, and the classifier —
       answered, an empty `below` list makes the claim loop vacuous, and
       a negated glob cannot pass the `<dir>/*` shape test because of
       its own `!`.
+556.  DONE (2026-09-21, `orchestrator/telemetry.ts` — the canonical
+      versioned export shape: the status vocabulary, the per-run
+      summary's tallies, and the source that projects RunEvents into
+      records for every sink. Never swept. 46 mutations: thirty
+      caught, sixteen survivors, twelve closed by ten rows, four
+      classified. No source change).
+      THE ONE PLACE A LOCAL AND A DISTRIBUTED RUN AGREE HAD NO DIRECT
+      TEST. `assembleRunSummary` is exported from the façade precisely
+      so the distributed controller computes the same tallies core
+      does — and every mutation of it was reached only through an
+      end-to-end `run()`, whose fixture has no failure, no remote hit
+      and no aborted task. So `failedCount` could count aborted tasks,
+      `hitRemoteCount` could count local hits, `hitCount` could drop
+      the remote half, `exitOk` could be re-derived from the task
+      list, and `totalDurationMs` could be recomputed from the epoch
+      stamps — five of six tallies, suite green. The last two matter
+      most: the run's verdict counts SKIPPED tasks beyond the recorded
+      list, so deriving `exitOk` from `failedCount` reports a failed
+      run green; and `totalDurationMs` is a MONOTONIC hrtime measure
+      while `startedAt`/`endedAt` are `Date.now()` stamps taken at a
+      different point.
+      A ROW NAMED FOR A COST GATE THAT A LATER FILTER ANSWERS FIRST.
+      "does NOT emit task.log when no sink wants it" asserts only that
+      no record arrives — which `deliver()`'s own kind filter
+      guarantees whether or not the `wantsLog` gate exists. Both the
+      gate and the `wants` scan behind it could go with the suite
+      green. What the gate buys is that the chunk is never touched, so
+      the new row hands the subscriber an event whose `chunk` is a
+      GETTER and counts the reads: zero for a declining sink, one for
+      an opting-in one.
+      THE FLUSH ERROR PATH WAS UNREACHABLE IN EVERY FIXTURE. The only
+      sink whose `flush()` threw had been disabled one line earlier by
+      a throwing `onRunSummary`, so `flush` returned before ever
+      calling it — leaving both the warn and the swallow untested. A
+      rejection there propagates through `Promise.all` into
+      `settleWithin` and out of `flush()`, which `run()` awaits before
+      `closeCache()`.
+      AND THREE MORE EDGES: a sink disabled mid-run still got the run
+      SUMMARY (the record an ingest persists a whole run from), only
+      the `stderr` label was asserted, `run.start`'s `startedAt` could
+      fall back to the projection clock instead of the run's own
+      start, and `attempts` — the telemetry-side flaky signal — could
+      be dropped entirely.
+      FOUR CLASSIFIED, EACH MEASURED. `isCacheHit`'s known-status
+      guard cannot change an answer: `deriveCacheSource` on an unknown
+      string falls off its switch and returns `undefined`, which is
+      neither `'local'` nor `'remote'`. The `else` in the hit tally is
+      a reading aid — no `cacheSource` value satisfies both branches.
+      `?? DEFAULT_KINDS` vs `?? []` in the `wantsLog` scan answer
+      identically because `DEFAULT_KINDS` holds no `task.log` (the
+      coupling is held separately: adding it there IS caught). And
+      `disable()`'s own dedup guard is unreachable — both call sites
+      pre-check `disabled.has`, measured with the same sink listed
+      TWICE and fed five records plus a summary: the throwing hook is
+      reached once and warns once. Those two pre-checks are pinned by
+      rows, which is what makes the third redundant.
 
 ## In flight
 
