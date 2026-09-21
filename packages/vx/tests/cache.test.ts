@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import type { Database } from 'bun:sqlite'
 import {
   Cache,
@@ -972,6 +972,48 @@ describe('Cache storage (v10)', () => {
     ).rejects.toThrow(/missing stdout entry/)
     expect(existsSync(path.join(cacheDir, 'h-no-stdout.tar.zst'))).toBe(false)
     expect(await cache.get('h-no-stdout')).toBeNull()
+  })
+
+  it('a second flush does not re-bump what the first already wrote', async () => {
+    // `accessed_at` bumps are deferred into `touched` and written by
+    // flushAccessed (from stats/prune/close). Clearing the set is what
+    // makes a flush idempotent: left in place, every later flush rewrites
+    // the same rows with the CURRENT time, so an entry touched once looks
+    // freshly used for as long as the process lives — and retention
+    // pruning, which is exactly an `accessed_at` cutoff, never reclaims
+    // it. Date.now is pinned so the two flushes carry different stamps
+    // and the difference is unambiguous.
+    await cache.save({
+      hash: 'h-flush',
+      projectDir,
+      outputFiles: [],
+      entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+    })
+    await cache.get('h-flush')
+    const readAccessed = (): number =>
+      (
+        cache
+          .dbHandle()
+          .query('SELECT accessed_at AS a FROM entries WHERE hash = ?')
+          .get('h-flush') as {
+          a: number
+        }
+      ).a
+
+    const clock = spyOn(Date, 'now')
+    try {
+      clock.mockReturnValue(1_700_000_000_000)
+      cache.stats()
+      const first = readAccessed()
+      expect(first).toBe(1_700_000_000_000)
+
+      // Nothing touched in between, so the second flush has nothing to do.
+      clock.mockReturnValue(1_700_000_099_000)
+      cache.stats()
+      expect(readAccessed()).toBe(first)
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   it('ingest() rejects a zstd frame declaring an oversize decompressed length (bomb)', async () => {

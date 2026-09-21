@@ -4869,6 +4869,61 @@ test` is transpile-only — it cannot see a type error at all, so
       compile error, which would have made every verdict
       INCONCLUSIVE. CI runs non-root with `VX_REQUIRE_NONROOT=1`.
 
+563.  DONE (2026-09-21, `cache/cache.ts`, region:
+      `writeArtifactAndIndex` — the UNTRUSTED ingest boundary and the
+      indexing that follows, where network bytes become a cache entry.
+      28 runs over 27 mutations plus one joint: eighteen caught, ten
+      survivors, one closed by one row, nine classified. No source
+      change).
+      THE HEADLINE IS A PAIR THAT MASKS ITSELF. Writing the artifact to
+      the FINAL path instead of a temp survives, and so does renaming
+      before the scan — because the failure path unlinks `tmpPath`,
+      which under either mutation IS the final path, so the four
+      existing rejection rows still see no file. Remove BOTH and seven
+      rows go red. The pair is held JOINTLY (the 536/544 shape), and
+      what is left unheld is not a hole a sequential row can reach: it
+      is the window in which a CONCURRENT reader sees unvalidated bytes
+      at the final path. Recorded rather than papered over.
+      WHAT A ROW DID CLOSE: `flushAccessed` must CLEAR `touched`.
+      Left in place, every later flush rewrites the same rows with the
+      current time, so an entry touched once reads as freshly used for
+      as long as the process lives — and retention pruning, which is
+      exactly an `accessed_at` cutoff, never reclaims it. Pinned with
+      `Date.now` frozen across two `stats()` calls.
+      FOUR MEASURED EQUIVALENT, and two of them killed a row I had
+      already written. Archive entry modes are ALREADY permission-only
+      (measured: `0o644`, zero type bits), so `& 0o777` is a no-op for
+      anything the reader produces. And `Bun.Archive` normalizes
+      `'outputs/'` to an entry named `outputs` — no trailing slash — so
+      `startsWith('outputs/')` is false and the empty-rel guard is
+      never reached: the case needs a hand-built tar header, which the
+      packer cannot emit. My row asserted both and discriminated
+      neither, so it was REMOVED rather than shipped (rule 15). Also
+      equivalent: the empty-`touched` short-circuit (the loop body
+      never runs anyway), and `totalBytes` from the file rather than
+      the buffer — the file at the final path was written from exactly
+      those bytes.
+      THREE CLASSIFIED AS OUT OF A SEQUENTIAL SUITE'S REACH: the two
+      bomb-gate SOURCE choices (in-memory vs streamed decode) are a
+      memory cost with no outcome to read; the `Math.floor` on the ms
+      mtime differs from `Math.round` only at a half-millisecond
+      boundary; and the 900-row chunk needs 901+ touched hashes in one
+      flush to exercise SQLite's bound-parameter ceiling.
+      AND THE REST OF THE REGION IS WELL HELD: the v17 stdout
+      invariant, the `outputs/` strip with the workspace prefix KEPT as
+      the namespace discriminator, the stdout row excluded, mtime at ms
+      rather than seconds, the pinned `exitCode` 0 that stops a foreign
+      row laundering a broken build into a green run, the usage read
+      from the artifact on both paths, the entry_inputs rows, and the
+      single indexing transaction — several of them at 40-78 rows red.
+      AN OPERATIONAL MISTAKE WORTH RECORDING: I applied and restored a
+      mutation BY HAND while the sweep was still running, and both
+      write the same file. Two verdicts were taken under that
+      interference. Re-run cleanly afterwards they were identical, so
+      nothing was misreported — but a stray `--restore` mid-sweep
+      manufactures a SURVIVED out of a mutation that was never tested,
+      which is the exact failure this method exists to prevent.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
