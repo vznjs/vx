@@ -4210,6 +4210,63 @@ only when its mtime falls after the arm` — the row item 509's
       not this one. Still not added to `base.names`, for the reason
       given there: a yardstick entry swallows a real failure.
 
+550.  DONE (2026-09-21, `orchestrator/lockfile-claim.ts` — the shell
+      every lockfile plugin wraps its parser in: the memo, the per-run
+      gate, the unlisted-project fallback, the `--affected` diff and
+      `reachDigests`. Never swept. 34 mutations: eighteen caught,
+      sixteen survivors, seven closed by six rows, nine classified. No
+      source change).
+      A METHOD FAILURE FIRST, because it nearly cost a false claim: a
+      mutation that does not COMPILE reads as a SURVIVOR. Deleting a
+      `catch` block left a dangling `try`; Bun printed `Unhandled error
+between tests`, `0 pass` and no `(fail)` row, and the classifier —
+      which counts failing rows — scored it SURVIVED. The write-up would
+      have reported a hole in code the run never loaded. `sweepverdict.sh`
+      now reports a module error, or a file that printed `0 pass` with
+      no failing row, as INCONCLUSIVE. A bare `^error:` grep does NOT
+      distinguish it (a failing assertion prints `error: expect(received)`
+      too) and called all twenty-one real catches compile failures;
+      the narrowed rule was re-run against every stored sweep log from
+      544 through 550, and no earlier verdict was affected.
+      `reachDigests` IS WHERE THE HOLES WERE — six of its seven
+      mutations survived, in the most intricate code in the file
+      (Tarjan's iterative walk plus a Merkle fold over components). The
+      three rows that guard it say the right things and their fixtures
+      cannot witness them: "independent of node numbering and edge
+      order" permutes the NODES but leaves every node's children
+      arriving in the same order, and the cycle row's ring closes with a
+      back edge to the frame directly above, which the on-stack branch
+      resolves alone. So: reversing one node's edge list, renumbering a
+      two-member component, a THREE-node ring (which needs the low-link
+      to travel back down the frame stack as each frame pops) and a
+      self-loop (an edge inside a component is not a child) each get a
+      row.
+      THE TWO SECTION COUNTS COVER EACH OTHER, so only the JOINT
+      mutation separates them. `members:N` and `children:N` introduce
+      the fold's two halves; drop both and the halves become one chain,
+      where a node whose CHILD digests to D collides exactly with a
+      component whose MEMBER material is the string D — and a child
+      digest is sixteen hex characters, which is what a lockfile's
+      material often is. The row builds that collision and requires the
+      two to differ.
+      A MEMO THAT CANNOT BE WRITTEN is a speed-up lost, never a failed
+      run — the source says so and nothing held it. The row points the
+      cache dir at a path that is a FILE, so the write fails for every
+      user including root, and asks for the key anyway.
+      NINE CLASSIFIED. Five are cost gates whose absence only re-reads
+      or re-parses (the absent-file memo, the mtime half of the stat
+      gate, the stat gate itself, the content gate, the per-run
+      WeakMap) — note the asymmetry: dropping SIZE from the stat gate
+      was caught by eight rows, because mtime is what moves on an edit,
+      while dropping MTIME is merely wasteful. Two are sibling-arm
+      equivalences: the root project's importer spelled `''` instead of
+      `'.'` misses and then falls back to the root importer, the same
+      value; and `'no-importer'` versus `''` is one constant for
+      another. One is a platform claim this Linux-only gate cannot
+      see (`path.sep` is already `/` here). One is a race — the
+      write-then-rename that keeps a reader from seeing a half-written
+      memo, which `readMemo`'s own catch turns into a miss.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

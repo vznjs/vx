@@ -116,6 +116,23 @@ describe('key', () => {
     expect(await hooks.key(task('.'), ctx())).toEqual({ bun: 'r' })
   })
 
+  it('a memo it CANNOT write is a speed-up lost, never a failed run', async () => {
+    // The memo is written under the cache dir; if that write fails — a
+    // read-only cache, a full disk, a path that is not a directory — the
+    // digests were computed anyway and the run must carry on. The next run
+    // simply computes them again.
+    await lock('.=root1\npackages/a=a1\n')
+    const blocked = path.join(root, 'not-a-dir')
+    await writeFile(blocked, 'this is a file, so lockfile-claims/ cannot be made under it')
+    const hooks = claim()
+    const blockedCtx = { workspaceRoot: root, cacheDir: blocked, warn() {} }
+    expect(await hooks.key(task('packages/a'), blockedCtx)).toEqual({ deps: 'a1' })
+    // A second run over the same content re-parses, since nothing was
+    // memoised — the cost the memo exists to avoid, paid rather than fatal.
+    expect(await claim().key(task('packages/a'), { ...blockedCtx })).toEqual({ deps: 'a1' })
+    expect(calls.length).toBe(2)
+  })
+
   it('refuses an unknown scope', () => {
     expect(() =>
       lockfileClaim({ file: 'bun.lock', version: 1, digest: () => new Map(), scope: 'x' as never }),
@@ -208,5 +225,61 @@ describe('reachDigests', () => {
     const d = reachDigests(graph(['a', 'b', 'c', 'd']))
     expect(d[1]).toBe(d[2])
     expect(d[0]).not.toBe(d[1])
+  })
+
+  it('a SELF-LOOP changes nothing — an edge inside a component is not a child', () => {
+    // Children are the components a component points OUT to. An edge that
+    // lands back inside it has already been folded as a member, and
+    // counting it again would fold a digest that does not exist yet.
+    const plain = reachDigests({ material: ['a'], edges: [[]] })
+    const loop = reachDigests({ material: ['a'], edges: [[0]] })
+    expect(loop[0]).toBe(plain[0])
+  })
+
+  it('a cycle LONGER than one edge is still one component', () => {
+    // The two-node fixture above closes its cycle with a back edge to the
+    // node one frame up, which the on-stack branch alone resolves. A
+    // three-node cycle needs the low-link to travel back DOWN the frame
+    // stack as each frame pops; without that the ring splits into three
+    // components that each claim to reach the others.
+    const d = reachDigests({ material: ['a', 'b', 'c'], edges: [[1], [2], [0]] })
+    expect(d[0]).toBe(d[1])
+    expect(d[1]).toBe(d[2])
+    // CONTROL: the same three nodes in a CHAIN are three distinct digests.
+    const chain = reachDigests({ material: ['a', 'b', 'c'], edges: [[1], [2], []] })
+    expect(new Set(chain).size).toBe(3)
+  })
+
+  it('the order a node lists its edges in does not move its digest', () => {
+    // The numbering row above permutes the nodes but leaves each node's
+    // children arriving in the same order, so it cannot see the sort that
+    // makes the fold order-free. Reversing ONE node's edge list can.
+    const fwd = reachDigests({ material: ['x', 'y', 'z'], edges: [[1, 2], [], []] })
+    const rev = reachDigests({ material: ['x', 'y', 'z'], edges: [[2, 1], [], []] })
+    expect(rev[0]).toBe(fwd[0])
+  })
+
+  it('the order a COMPONENT pops its members in does not move its digest', () => {
+    // Same argument one level down: a multi-member component folds its
+    // members sorted, because the pop order off Tarjan's stack is an
+    // artefact of where the walk entered the cycle.
+    const ab = reachDigests({ material: ['a', 'b'], edges: [[1], [0]] })
+    const ba = reachDigests({ material: ['b', 'a'], edges: [[1], [0]] })
+    expect(ba[0]).toBe(ab[0])
+    expect(ba[1]).toBe(ab[1])
+  })
+
+  it('a member and a child digest are in DIFFERENT sections — the counts separate them', () => {
+    // The fold is members-then-children, and each section is introduced by
+    // its count. Take those two introductions away together and the two
+    // sections become one undifferentiated chain, where a node whose CHILD
+    // digests to D collides with a component whose MEMBER material is the
+    // string D. Child digests are 16 hex chars, which a lockfile's material
+    // can be — an integrity hash, a resolved version string.
+    const childOnly = reachDigests({ material: ['zz'], edges: [[]] })[0]!
+    expect(childOnly).toMatch(/^[0-9a-f]{16}$/)
+    const asChild = reachDigests({ material: ['a', 'zz'], edges: [[1], []] })[0]!
+    const asMember = reachDigests({ material: ['a', childOnly], edges: [[1], [0]] })[0]!
+    expect(asMember).not.toBe(asChild)
   })
 })

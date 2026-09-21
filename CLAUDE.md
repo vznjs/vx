@@ -299,6 +299,16 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - A probe's negative case is checked before its result is read: a
   flag set to "broken" still matched a `grep -q ok` ("broken" holds
   "ok"), and the cycle that was to fail passed (2026-09-16).
+- A mutation that does not COMPILE reads as a survivor, not as a
+  catch: Bun prints `# Unhandled error between tests`, `0 pass` and NO
+  `(fail)` row, so a driver counting failures scores it SURVIVED and
+  the write-up claims a hole in code the run never loaded (item 550,
+  a `try` left dangling when its `catch` block was deleted). The
+  classifier now reports a module error, or a file that printed
+  `0 pass` with no failing row, as INCONCLUSIVE. A bare `^error:`
+  grep does NOT distinguish it — a failing assertion prints
+  `error: expect(received)…` too, and that check called every genuine
+  catch a compile failure.
 - A test fixture that stands in for a seam's CALLER enters by another
   door than the product does, so the host between them has no witness:
   nine rows handed `affectedProjects` a claim whose `affected` returned
