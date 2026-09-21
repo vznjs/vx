@@ -2602,6 +2602,53 @@ when its mtime falls after the arm` appeared again and did not
       reproduce on the repeat — the ninth instance across five sweeps.
       Still three on the list, still not added.
 
+516.  DONE (2026-09-21, `exec/local-executor.ts` — eighth by the age
+      rule, newest dated comment 2026-09-05, and 41 lines. Core's
+      FLOOR: the executor that runs a task when no plugin claims it, so
+      a field it drops is a feature that stops working with no plugin
+      in sight and nothing to point at).
+      The file is almost entirely field FORWARDING, which changes what
+      a sweep of it means — most single-field mutations are rejected by
+      the TYPE CHECKER, not by any test. So this sweep ran
+      `lint.oxlint` (type-aware) AND the tests for each of 18
+      mutations, and counted the two separately:
+      8 caught by a test, 7 caught by TYPES ONLY, 3 by neither.
+      Keeping those middle seven apart matters both ways. Calling them
+      survivors would have claimed a gap the type checker already
+      closes; calling them tested would have been false. They are the
+      sandbox forwards and the two conditional spreads, where
+      `exactOptionalPropertyTypes` makes `liveChildren: undefined` an
+      error on its own.
+      AND THE SCARIEST OF THE THREE WAS ALREADY COVERED. `liveChildren`
+      is the set the orchestrator's SIGINT/SIGTERM handler kills, so
+      not forwarding it leaves a child alive past Ctrl+C — the
+      orphaned-process class this repo keeps a helper for. I wrote it
+      up as the headline gap. The whole-suite verdict came back with
+      TEN failing rows: the signal e2e family (SIGINT/SIGTERM/SIGHUP
+      exits, grandchild reaping, SIGKILL after the grace) covers it
+      thoroughly. 500's rule again, and a sharper form of it — I had
+      ranked the three findings by how alarming each sounded, and the
+      alarming one was the tested one. Rank by what the VERDICT says,
+      never by the size of the consequence.
+      THE REAL GAP WAS TWO, both quiet. `onStderr` unforwarded means a
+      task's stderr never reaches the reporter — output vanishing with
+      the task still passing. `capture` unforwarded means a caller that
+      asked to retain NEITHER stream gets both, since the runner's
+      default is to keep them. Neither is a crash, neither fails a
+      task, and nothing exercised either.
+      Pinned as one row over all three forwards (the third is now
+      doubly held, which costs nothing): the kill-set registration via
+      a Set subclass that counts its own `add` calls — deterministic,
+      no sleep, no timing claim — plus the two callbacks and a
+      `capture: { stdout: false, stderr: false }` result.
+      Housekeeping note: the sweep wrote `m`, `out.txt` and `tries.txt`
+      into the REPO ROOT. The `drop-cwd` mutation makes a task run in
+      the process's cwd instead of its own, and `executor.test.ts`'s
+      fixture builds its request with `cwd: process.cwd()`. Untracked,
+      confirmed not in git, removed. A sweep that mutates a path can
+      write outside its sandbox: check `git status` for UNTRACKED files
+      after one, not only for modified ones.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

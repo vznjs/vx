@@ -65,6 +65,46 @@ describe('localExecutor', () => {
     expect(res.exitCode).not.toBe(0)
   })
 
+  it('forwards the callbacks, the capture config and the kill set', async () => {
+    // This executor is core's FLOOR, so a field it drops is a feature that
+    // stops working with no plugin in sight and nothing to point at. All
+    // three below are silent losses: the type checker cannot see them
+    // (every one is optional) and no other row exercised them.
+    class Recording extends Set<ReturnType<typeof Bun.spawn>> {
+      adds = 0
+      override add(child: ReturnType<typeof Bun.spawn>): this {
+        this.adds++
+        return super.add(child)
+      }
+    }
+    const live = new Recording()
+    let out = ''
+    let err = ''
+    const res = await localExecutor().execute(
+      req({
+        command: 'echo to-stderr 1>&2; echo to-stdout',
+        liveChildren: live,
+        onStdout: (c) => {
+          out += c
+        },
+        onStderr: (c) => {
+          err += c
+        },
+      }),
+    )
+    // `liveChildren` is the set the orchestrator's SIGINT/SIGTERM handler
+    // kills. Unforwarded, Ctrl+C leaves this child running past the run.
+    expect([live.adds, live.size]).toEqual([1, 0]) // registered, then retired
+    expect([out, err]).toEqual(['to-stdout\n', 'to-stderr\n'])
+    expect(res.exitCode).toBe(0)
+    // `capture` decides what the RESULT keeps; unforwarded, a caller that
+    // asked for neither stream gets both.
+    const dropped = await localExecutor().execute(
+      req({ command: 'echo kept 1>&2; echo kept', capture: { stdout: false, stderr: false } }),
+    )
+    expect([dropped.stdout, dropped.stderr]).toEqual(['', ''])
+  })
+
   it('is named local', () => {
     expect(localExecutor().name).toBe('local')
   })
