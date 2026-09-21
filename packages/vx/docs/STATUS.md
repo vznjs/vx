@@ -3677,6 +3677,68 @@ the root>`: the prefix is a STORAGE discriminator and the path
       Docs: the module page carries the new surface, and the interface
       joins `module-shape-drift`'s list so its fields stay honest.
 
+539.  DONE (2026-09-21, `workspace/config-imports.ts` — the third
+      `changed file → project` channel for `--affected`, and the guard
+      that refuses a config's bare import before Bun can download it.
+      ZERO mentions in STATUS's whole history. 23 mutations, eight
+      caught, FIFTEEN survivors, all confirmed whole-suite. Seven closed
+      by seven rows).
+      A HAZARD DOCUMENTED TWICE AND TESTED NEVER. Two docblocks warn
+      that `Bun.resolveSync` hands back REALPATH'D targets, so a raw
+      root "silently fails every containment check and the scan reports
+      no imports — indistinguishable from a clean tree", and that on
+      darwin a workspace under `os.tmpdir()` lives at `/var/folders/…`
+      while its realpath is `/private/var/…`. All THREE `realpath` calls
+      could be deleted without a single row moving: on Linux a temp dir
+      IS canonical, so every fixture normalised the difference away.
+      A root reached through a SYMLINK reproduces the darwin shape on
+      any platform — the trick 537's macOS failure taught, applied the
+      other way round — and turns three inconclusive mutations into
+      three rows. Without the root's realpath a changed preset selects
+      NOTHING; without the config's, the config changing selects
+      nothing; without the directory index's, every file looks unowned
+      and the walk descends through all of them.
+      THE SILENT ONE IS THE LOADER. It is chosen from the extension,
+      and every fixture's `.ts` config happens to be valid JavaScript
+      too, so the choice never mattered to any row. Scanning TS-only
+      syntax with the js loader THROWS, `scanLocalImports` catches it
+      and returns no edges, and a config that imports a changed preset
+      contributes nothing at all: `--affected` reports a clean tree and
+      the task that reads the edited preset never runs. Measured, not
+      assumed — `new Bun.Transpiler({loader:'js'}).scanImports` on a
+      type annotation throws "Failed to scan imports" while the ts
+      loader returns the specifier. Reachable by nothing more exotic
+      than `const v: number = p`.
+      A FIXTURE THAT CANNOT SEPARATE TWO LOOKUPS. The bare-import row
+      spells `@acme/preset` and provides it, so it cannot tell a lookup
+      of the PACKAGE from a lookup of its SCOPE: wherever any `@acme/*`
+      is installed, `node_modules/@acme` exists too and both answer
+      "provided". `@acme/missing` beside an installed `@acme/present`
+      is the case that separates them, and it is the one that matters —
+      a typo or a half-finished install, handed to Bun to fetch.
+      THE PRE-FILTER MUST NOT BE NARROWER THAN THE SCAN.
+      `hasBareCandidate` is textual and a source it rejects is never
+      scanned at all. Its regex spells three forms — `from`, `import`
+      and `require(` — and every fixture used the first two, so
+      dropping `require` cost nothing any row could see while making a
+      CommonJS-style config's missing import invisible: the guard
+      returns `[]` and the download happens. Same shape for the
+      `@vzn/vx/` SUBPATH exemption, served by the core alias inside the
+      compiled binary where there is no `node_modules` to find it in.
+      MEASURED UNREACHABLE, by enumerating the ONE caller: the
+      workspace-root prefix test without its separator (the
+      sibling-prefix mistake a fourth time — 520, 527, 537) changes
+      nothing, because `affected.ts` passes `changed` straight from git
+      as workspace-relative paths, and an edge recorded for a file
+      outside the root can only fire if that file appears in `changed`.
+      MEASURED EQUIVALENT: the textual fast path (same answer, slower
+      without it), the three early exits and the `skip` filter — all
+      perf, all reached only after the answer is already determined.
+      The `node_modules` guard is a blowup guard: without it the walk
+      descends a package's whole import graph, which costs wall time
+      rather than correctness, since git does not track `node_modules`.
+      No source change.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
