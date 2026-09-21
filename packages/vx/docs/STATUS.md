@@ -3149,6 +3149,41 @@ delivery with a probe it then removes (recursive: true)` — the
       its clean-path twin the same way — so what is true is that I have
       not built a shape that tells it apart, NOT that the line is dead.
 
+527.  DONE (2026-09-21, `util/paths.ts` — the pure-function core whose
+      own comments cite four past defects (441, 442, 445, 495), each a
+      stale hit or a pair of tasks deleting each other's outputs. 495
+      touched it only in passing. 25 mutations, NINETEEN caught by its
+      own suites; the six survivors split cleanly in two.
+      FOUR GUARD WHAT THE SCHEMA ALREADY REFUSES. A `cache.inputs` or
+      `cache.outputs` glob is validated relative, non-escaping,
+      non-negated, and not the directory itself. So the negation
+      exclusion in the whole-subtree regex, its absolute and `..`
+      refusals, and the empty-literal skip in `asTrees` all guard
+      shapes that cannot arrive through a config. Defence in depth,
+      right to keep, and not a testable gap — a row for any of them
+      could not fail by any supported path. The `.` refusal is
+      narrower still: no spelling survives `normalizeGlob` as a bare
+      dot, so it cannot fire at all.
+      AND TWO ARE NOT, BECAUSE A SANDBOX GRANT IS NOT A CONFIG GLOB.
+      `exec.sandbox.allow.read` is checked only for being an array of
+      strings, deliberately — an absolute grant is the POINT, since
+      macOS matches patterns natively and Linux expands them against
+      the filesystem at resolve time. So a grant of `/` or of the
+      root-anchored everything reaches `staticPrefix` unfiltered, and
+      both trim to the EMPTY STRING once the root case is gone.
+      `sandbox-request.ts` hands that result straight to `expandHome`
+      as a read path, where an empty string is not the root — it is
+      whatever the cwd makes of it. Every existing row feeds this
+      function a project-relative glob.
+      THE METHOD NOTE, AND IT COST THE ITEM'S HEADLINE. This was
+      written up as a second zero-yield report — all six survivors
+      "already refused at the boundary" — and that was wrong for two of
+      them. What corrected it was enumerating the CALL SITES instead of
+      stopping at the config validator: `staticPrefix` has four
+      callers and two are sandbox grants, which take a different
+      validation path entirely. A boundary argument is only as good as
+      the list of doors, so count the doors before trusting it.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
