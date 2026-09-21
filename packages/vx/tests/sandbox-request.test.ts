@@ -22,7 +22,15 @@ let root: string
 let dir: string
 
 beforeEach(async () => {
-  root = await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-request-'))
+  // CANONICAL, deliberately: macOS's temp dir is `/var/folders/...`, a
+  // symlink to `/private/var/...`. `linkedDeps` realpaths a link's TARGET
+  // and compares it against the granted directories as given, so under a
+  // non-canonical root the "already inside a granted directory" dedup
+  // never fires and every link is granted redundantly. That is harmless
+  // (the parent is granted anyway) but it makes the dedup untestable, and
+  // the row below is about the dedup rather than about macOS path
+  // canonicalisation. Found by CI: the control failed on darwin only.
+  root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-request-')))
   dir = path.join(root, 'proj')
   await mkdir(dir, { recursive: true })
 })

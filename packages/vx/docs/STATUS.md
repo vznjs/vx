@@ -3599,6 +3599,16 @@ the root>`: the prefix is a STORAGE discriminator and the path
       imports is silently not granted. The scoped shape had no fixture
       either — a package manager writes `node_modules/@acme/pkg` one
       level deeper, and the scan takes that step explicitly.
+      THE DEDUP NEEDS A CANONICAL ROOT, found by CI on darwin only and
+      then reproduced on Linux under a symlinked root: `linkedDeps`
+      realpaths a link's TARGET and compares it against the granted
+      directories AS GIVEN, so where the project path is not canonical —
+      macOS's `/var/folders` is a symlink to `/private/var` — nothing is
+      ever recognised as already inside a granted directory and every
+      link is granted redundantly. Harmless for enforcement, since the
+      parent is granted anyway, but it makes the dedup unobservable, so
+      the fixture takes a canonical root and the control tests the dedup
+      rather than the platform.
       THE WILDCARD CLASS IS ITSELF A LIST. `/[*?[\]]/` decides whether a
       grant is a glob or a literal path to bind as an empty file, and
       every fixture spells `*` — including every `**`, which is why a
