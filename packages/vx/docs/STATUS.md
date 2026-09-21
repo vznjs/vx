@@ -4163,6 +4163,53 @@ answer === 'string'` arm — the one its docblock names, "a plugin
       undefined-valued keys by itself and the two strings are
       identical.
 
+549.  DONE (2026-09-21, `orchestrator/task-log-buffer.ts` — the bounded
+      per-run log capture every telemetry sink shares. Never swept. 25
+      mutations: eighteen caught, seven survivors, five closed by four
+      rows, two measured equivalent. No source change).
+      THE SECOND WELL-HELD FILE IN A ROW, and for the same reason 542
+      was: the hard part is pinned member by member. Both caps, the
+      whole-chunk eviction, the single-chunk slice and its direction,
+      the per-chunk overhead (with the measured 1.4 MB vs 30 MB
+      reasoning), the charge/release symmetry across replace, evict and
+      take, successes stubbed before failures, the FIRST failure kept
+      last, and the stub that keeps `content.length === charsFull -
+truncatedHeadChars` honest — every one has a row named for it.
+      TWO GUARDS THAT EACH REFUSE EVERYTHING THE OTHER DOES. `finish`
+      drops a non-`miss` cacheSource AND a status that is neither
+      success nor failed, and `deriveCacheSource` is a TOTAL function
+      from status to source: a hit's status is never `success`, a
+      `miss` never carries `skipped`. So each guard is a complete
+      filter on its own, and removing either alone is invisible to
+      every reachable input — measured, not assumed. The new row
+      passes the two MISMATCHED pairs a future caller could hand it
+      (`success` with `local`, `skipped` with `miss`) and requires both
+      to drop, which is the only shape that separates them.
+      AN EMPTY WRITE IS NOT OUTPUT. `append('')` returned early with no
+      accumulator, and nothing said so: keeping it would ship an entry
+      for a task that printed nothing, the same confusion the eviction
+      stub exists to prevent, from the other direction.
+      TWO DELIVERY PATHS, ONE CONTENT STRING. `takeEntry` and `drain`
+      join the same chunk list, and only `drain`'s join had a witness —
+      a separator in one would make the same run read differently
+      depending on how a sink shipped it. And the drain ordering row
+      pinned failures-before-successes but not the tiebreak INSIDE each
+      tier, which is oldest-first so the log reads in run order.
+      Two measured equivalent, both micro-optimisations: the
+      early return in `evictToBudget` (the loop's own break covers it)
+      and its `chars === 0` skip (a stub costs `budgetCost(0, 0)`,
+      which is zero, so re-releasing it frees nothing).
+      GATE NOTE, second sighting of the fourth flapper: this item's
+      gate showed `vx watch loop (e2e) > a first sighting is a change
+only when its mtime falls after the arm` — the row item 509's
+      yardstick note already characterised as a flapper that appears
+      only under the loaded sandboxed run. It timed out in `until` at
+      `watch-loop.test.ts:86` waiting for the cycle, three isolated
+      runs of the file were clean, and a CONTROL gate on a stashed tree
+      at `origin/main` produced exactly the three recorded flappers and
+      not this one. Still not added to `base.names`, for the reason
+      given there: a yardstick entry swallows a real failure.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

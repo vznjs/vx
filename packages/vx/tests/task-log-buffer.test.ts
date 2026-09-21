@@ -49,6 +49,23 @@ describe('TaskLogBuffer — per-task tail cap', () => {
     buf.finish('p#a', 'success', 'miss')
     expect(entry(buf.drain('r', 'ws'), 'p#a')!.content).toBe('out1\nerr1\nout2\n')
   })
+
+  it('a task that emitted only EMPTY chunks ships nothing at all', () => {
+    // An empty write is a write that happened, not output: creating the
+    // in-flight accumulator for one makes a task that printed nothing
+    // indistinguishable from one whose output was dropped — the same
+    // confusion the stub exists to prevent, in the other direction.
+    const buf = new TaskLogBuffer()
+    buf.append('p#quiet', '')
+    buf.append('p#quiet', '')
+    buf.finish('p#quiet', 'success', 'miss')
+    expect(buf.size()).toBe(0)
+    expect(buf.drain('r', 'ws').tasks).toEqual([])
+    // CONTROL: one real char and the task ships.
+    buf.append('p#loud', 'x')
+    buf.finish('p#loud', 'success', 'miss')
+    expect(buf.drain('r', 'ws').tasks.map((t) => t.taskId)).toEqual(['p#loud'])
+  })
 })
 
 describe('TaskLogBuffer — retention decisions', () => {
@@ -69,6 +86,23 @@ describe('TaskLogBuffer — retention decisions', () => {
     buf.append('p#b', 'torn down')
     buf.finish('p#b', 'aborted', 'none')
     expect(buf.size()).toBe(0)
+  })
+
+  it('EITHER guard alone drops a mismatched pair, so a bad caller cannot retain a hit', () => {
+    // `finish` takes status and cacheSource as SEPARATE arguments, and in
+    // production they always agree: `deriveCacheSource` is a total function
+    // from one to the other, so a hit's status is never `success` and a
+    // `miss` never carries `skipped`. That makes the two guards each a
+    // COMPLETE filter today — measured: removing either one alone changes
+    // nothing any reachable input can see. This row is what keeps that
+    // true for a caller that passes a mismatched pair.
+    const buf = new TaskLogBuffer()
+    buf.append('p#hit', 'replayed bytes')
+    buf.finish('p#hit', 'success', 'local') // ran? no: restored — the SOURCE says so
+    buf.append('p#skip', 'partial')
+    buf.finish('p#skip', 'skipped', 'miss') // never ran — the STATUS says so
+    expect(buf.size()).toBe(0)
+    expect(buf.drain('r', 'ws').tasks).toEqual([])
   })
 
   it('RETAINS success + failed misses, carries the hash', () => {
@@ -279,5 +313,39 @@ describe('TaskLogBuffer — drain', () => {
       buf.finish(`p#${i}`, 'cache-hit', 'local', `h${i}`)
     }
     expect(buf.drain('r', 'ws').tasks).toEqual([])
+  })
+
+  it('takeEntry joins its chunks exactly as drain does — no separator', () => {
+    // Two delivery paths, one content string: a sink that ships per task
+    // must produce the same bytes a bundle would, or the same run reads
+    // differently depending on how it was shipped.
+    const buf = new TaskLogBuffer()
+    buf.append('p#a', 'one')
+    buf.append('p#a', 'two')
+    buf.append('p#a', 'three')
+    buf.finish('p#a', 'success', 'miss')
+    expect(buf.takeEntry('p#a')!.content).toBe('onetwothree')
+  })
+
+  it('within a tier the order is OLDEST first, for failures and successes alike', () => {
+    // The row above pins failures ahead of successes; this pins the
+    // tiebreak inside each tier. Reading a run's logs top to bottom should
+    // follow the run, and the first failure is the one that usually
+    // explains the rest.
+    const buf = new TaskLogBuffer()
+    for (const id of ['p#f1', 'p#f2']) {
+      buf.append(id, 'boom')
+      buf.finish(id, 'failed', 'miss')
+    }
+    for (const id of ['p#s1', 'p#s2']) {
+      buf.append(id, 'fine')
+      buf.finish(id, 'success', 'miss')
+    }
+    expect(buf.drain('r', 'ws').tasks.map((t) => t.taskId)).toEqual([
+      'p#f1',
+      'p#f2',
+      'p#s1',
+      'p#s2',
+    ])
   })
 })
