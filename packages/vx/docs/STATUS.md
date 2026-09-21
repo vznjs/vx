@@ -3936,6 +3936,71 @@ the root>`: the prefix is a STORAGE discriminator and the path
       and last are the same), and running the post-stage check when no
       plugin declared `graph` at all, which is the zero-cost gate and
       costs only the walk.
+544.  DONE (2026-09-21, `orchestrator/plugin-host.ts`'s REMAINING HOSTS
+      — `claimedAffected`, `applyScheduleHooks`, `buildAdmission`,
+      `teardownPlugins`: everything 536 and 543 left. 24 mutations:
+      eleven caught, thirteen survivors, nine closed by nine rows, four
+      classified. No source change).
+      A HOST WITH NO WITNESS AT ALL, because every fixture enters by
+      another door. `claimedAffected` is what stands between a real
+      plugin's answer and `--affected`'s selection, and its whole shape
+      guard could be DELETED with the suite green. The six rows in
+      `affected.test.ts` about claim semantics hand `affectedProjects` a
+      shim whose `affected` returns a `Set` directly — the host is wired
+      in one file over, at `cli/select.ts`, so not one of them reaches
+      it — and the single row that does go through it (the CLI end-to-end
+      pin in `plugin-pipeline.test.ts`) exercises the happy path and
+      "cannot tell". So: `null` and a number reached the fold's `for…of`
+      and threw a TypeError naming neither plugin nor hook; a non-string
+      element was added to the selection as a project; and a plugin that
+      THREW in `affected` surfaced its raw error rather than `safe()`'s
+      attributed sentence. Five rows, each asserting the exact message
+      with `toBe`.
+      A GUARD ARM CAN BE REFUSED BY ITS SIBLING, so measure which one
+      fires before calling it unheld. The guard's explicit `typeof
+answer === 'string'` arm — the one its docblock names, "a plugin
+      returning 'all' cannot select the projects spelled a, l, l" — is
+      belt-and-braces: a string is not an `'object'` either, so the
+      second arm refuses it with the same sentence, and removing the
+      string arm alone changes nothing. The row stays (it fails when the
+      guard goes) and says so in its comment. Same shape in
+      `applyScheduleHooks`: `typeof w !== 'number'` is redundant beside
+      `!Number.isFinite(w)`, which does not coerce.
+      ONLY AN EXPLICIT `false` REFUSES, and that strictness is what
+      keeps the file's own promise ("the predicate is never the reason a
+      task hangs") true for the likeliest plugin bug there is — a branch
+      with no `return`. A truthiness test reads that `undefined` as a
+      veto, and since nothing ever un-refuses a task, the run sits at
+      zero running tasks until the job dies. The new row catches that
+      mutation by its OWN 20-second timeout: a named failing row, not
+      543's whole-file wedge, which is the difference a per-row timeout
+      makes when the defect is a hang.
+      THE TEARDOWN BUDGET IS PER PLUGIN and nothing pinned it. The
+      docstring argues for it outright (plugins × bound: 3.0/6.0/9.0s,
+      "deliberate rather than overlooked") because the bound is read
+      INSIDE the loop. Sharing one budget across the loop does not merely
+      hurry the last plugin: it reports a plugin that tore down perfectly
+      well as having TIMED OUT — a warning about the wrong plugin, worse
+      than no warning. The row hangs one plugin and gives the next a
+      20 ms teardown against a 120 ms bound.
+      ALSO CLOSED: `undefined` is the one non-Map the `schedule` stage
+      must accept (a policy with nothing to say for this run), and every
+      other non-Map is a hard error — the abstain path had no row; and
+      `buildAdmission` returns `undefined` when no plugin answers, the
+      one stage gate with NOTHING observable from a run (a predicate that
+      admits everything and no predicate at all produce the same
+      schedule, the same outcomes and the same absent `admissionHeldMs`),
+      so it is witnessed by the one direct call in that file.
+      TWO MEASURED EQUIVALENT BY TRACING THE CONSUMER, not by assertion.
+      Dropping `schedule`'s `!nodes.has(id)` skip lets foreign ids into
+      the priorities map, and they are never read: `run.ts` gates on
+      `priorities.size > 0`, `mergePriorities` copies them, and
+      `ReadyHeap` looks up only graph ids, so the order is identical.
+      And `buildAdmission`'s `task === undefined → admit` is unreachable
+      from its one call site — `run.ts` hands the SAME `nodes` map to
+      the predicate and to `runGraph` — though the direction is the right
+      one: refusing an unknown id would hang, admitting defers to the
+      count limit.
 
 ## In flight
 

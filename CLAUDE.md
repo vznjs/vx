@@ -299,6 +299,16 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - A probe's negative case is checked before its result is read: a
   flag set to "broken" still matched a `grep -q ok` ("broken" holds
   "ok"), and the cycle that was to fail passed (2026-09-16).
+- A test fixture that stands in for a seam's CALLER enters by another
+  door than the product does, so the host between them has no witness:
+  nine rows handed `affectedProjects` a claim whose `affected` returned
+  a Set directly, and `claimedAffected`'s whole shape guard could be
+  deleted with the suite green (item 544). Check which door the fixture
+  uses before crediting coverage.
+- An arm of an `||` guard can be refused by a sibling arm: removing the
+  explicit `typeof x === 'string'` changed nothing, because a string is
+  not an `'object'` either (544). Measure WHICH arm fires before calling
+  one unheld — and keep the row, which still fails when the guard goes.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a

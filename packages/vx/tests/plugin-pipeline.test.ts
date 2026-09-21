@@ -9,7 +9,9 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
+import { pluginSource, testPlugin } from './helpers/plugin.js'
+import { buildAdmission } from '../src/orchestrator/plugin-host.js'
+import type { TaskNode } from '../src/graph/index.js'
 
 const TIMEOUT = 20_000
 let root: string
@@ -738,6 +740,33 @@ describe('admit stage', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'only an explicit `false` refuses — a policy that returns nothing admits',
+    async () => {
+      // The stage tests `=== false`, and that strictness is what keeps the
+      // promise above ("the predicate is never the reason a task hangs")
+      // true for the likeliest plugin bug there is: a branch with no
+      // `return`. A truthiness test would read that `undefined` as a veto,
+      // and since nothing ever un-refuses a task, the run would sit at zero
+      // running tasks until the job timed out — a hang with no diagnostic.
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        pluginSource('org/mute', `{ admit(task) { if (task.id === 'never#x') return false } }`),
+      ])
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(summary.outcomes.map((o) => o.node.id).sort()).toEqual(['a#build', 'b#build'])
+    },
+    TIMEOUT,
+  )
 })
 
 describe('schedule stage', () => {
@@ -803,6 +832,32 @@ describe('schedule stage', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a plugin that DECLINES to weigh this run is a no-op, not a refusal',
+    async () => {
+      // `undefined` is the one non-Map the stage must accept: a policy that
+      // has nothing to say for this run (no history yet, a filter that
+      // matched nothing) returns it, and the row above proves every OTHER
+      // non-Map is a hard error. Without the skip a declining plugin fails
+      // the run with "returned undefined, not a Map" — the stage would admit
+      // no way to abstain.
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([pluginSource('org/quiet', `{ schedule() { return undefined } }`)])
+      const log = silent()
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 1,
+        log,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(log.started).toEqual(['a#build', 'b#build'])
+    },
+    TIMEOUT,
+  )
 })
 
 describe('telemetry stage', () => {
@@ -826,6 +881,22 @@ describe('telemetry stage', () => {
 })
 
 describe('zero cost when absent', () => {
+  it('no plugin answers `admit` → no predicate at all, so the scheduler keeps its count-only path', () => {
+    // The only stage gate with nothing to observe from a run: a predicate
+    // that admits everything and no predicate at all produce the same
+    // schedule, the same outcomes and the same (absent) `admissionHeldMs`.
+    // What differs is the path — with a predicate in hand the scheduler
+    // tracks held-since state and scans its exec queue at capacity — so the
+    // gate is witnessed where it is decided, by the one direct call in this
+    // file.
+    const nodes = new Map<string, TaskNode>()
+    expect(buildAdmission([], nodes, 4, () => {})).toBeUndefined()
+    // CONTROL: one answering plugin and the predicate exists.
+    expect(
+      buildAdmission([testPlugin('org/gate', { admit: () => true })], nodes, 4, () => {}),
+    ).toBeInstanceOf(Function)
+  })
+
   it(
     'a workspace with no stage plugins validates each config exactly once',
     async () => {

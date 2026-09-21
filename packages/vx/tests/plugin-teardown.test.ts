@@ -93,6 +93,28 @@ describe('teardownPlugins — a dropped result is reported', () => {
     expect(healthyTornDown).toBe(true)
   })
 
+  it("the bound is PER PLUGIN: a hung neighbour does not spend a slow one's budget", async () => {
+    // The row above proves the next plugin is still ASKED. This one proves
+    // it is still given the whole deadline: the bound is read inside the
+    // loop, so the worst case is plugins × bound (the docstring's
+    // 3.0/6.0/9.0s), deliberately, rather than one budget the first hung
+    // plugin drains. Sharing it would report a plugin that tore down
+    // perfectly well as having timed out — a warning about the wrong
+    // plugin, which is worse than no warning.
+    const warnings: string[] = []
+    await teardownPlugins(
+      [
+        testPlugin('org/hung', { teardown: never }),
+        // Comfortably inside its own bound (120 ms) and far outside what a
+        // shared budget would leave after the hung plugin drained it.
+        testPlugin('org/slow', { teardown: () => Bun.sleep(20) }),
+      ],
+      (m) => warnings.push(m),
+    )
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('org/hung')
+  })
+
   // CONTROL: the common shape — plugins that declare no teardown.
   it('plugins with no teardown are skipped silently', async () => {
     const warnings: string[] = []
