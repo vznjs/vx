@@ -2373,6 +2373,7 @@ loop` becomes a SELF-CYCLE; drop `hooks.length === 0` and a
       check was right because the mapper has exactly one caller.
       Yardstick note: four of the 29 verdicts showed a watch-loop row
       DROPPING OUT of the baseline and one showed `vx watch loop (e2e)
+
       > a first sighting is a change only when its mtime falls after
       > the arm`appearing, which is not on the flapper list. Five runs
 of`watch-loop.test.ts`alone were clean — isolation is the wrong
@@ -2385,6 +2386,81 @@ failure, and the same rule that keeps `shard-9` out keeps this
       > out. A yardstick that moves in BOTH directions is the thing to
       > watch — the list names three and the watch family clearly has
       > more.
+
+513.  DONE (2026-09-21, `cli/help.ts` — fifth by the age rule, newest
+      dated comment 2026-09-04. The help text is where a user goes
+      when they are already lost, so a cut that shows another verb's
+      flags is worse than no cut at all).
+      20 mutations over the two functions that CUT the reference:
+      `verbHelpText`'s per-verb slicer and `documentedFlags`' section
+      scanner. Nine caught; eleven survived their own files. One of
+      those eleven was caught by the WHOLE SUITE (below); four were
+      real and are fixed or pinned; six are equivalents.
+      A DEFECT FOUND BEFORE THE SWEEP, by probing the function
+      directly. `verbHelpText` interpolates the verb into a `RegExp`
+      unescaped, so `r.n`, `(run)` and `[rn]un` each matched the
+      `vx run` Usage line and answered with a help cut for a verb that
+      does not exist, and `.*` returned 88 of the reference's 138
+      lines — while the function's own comment promises "a verb the
+      reference does not know gets the whole thing". A comment
+      claiming a guarantee the code lacks is a defect, and here
+      IMPLEMENTING it is one line (escape the verb) against
+      de-claiming it, so the escape went in. Scope stated honestly:
+      both callers gate on `CORE_VERBS.includes`, an exact-membership
+      test, so nothing reachable through the CLI hit it today — it was
+      a trap set for the third caller.
+      THE MISSING ANCHOR. Drop the `^` from that same pattern and
+      `vx lock --help` grows by 26 lines: the ENTIRE `Execution (for
+run)` block, because the `--frozen` line happens to say "pair
+      with `vx lock --check`" mid-line. The existing row checks `run`,
+      `cache` and `last` with `toContain` — 494's alphabet again, and
+      `lock` is the member whose cut the cross-reference poisons.
+      Pinned as the exact flag SET of three cuts, which is also 510's
+      rule: a `not.toContain` passes while any single flag leaks.
+      THE EM-DASH ACCIDENT. `documentedFlags` treats a line as a
+      section header via `/^[A-Z][A-Za-z ]*(?: \(for [a-z]+\))?:$/`.
+      Widen that character class by one character and `--dry` and
+      `--graph` silently LEAVE run's documented flags — because
+      `Planning (for run — skips execution):` carries an em dash, fails
+      the header test, and so leaves the scanner inside the previous
+      `(for run)` section. Those two flags are in the list by accident
+      of punctuation, and the list is what `vx run --dryy` suggests
+      from. Pinned as the exact sorted set of all 24.
+      THE EMPTY SECTION. `pluginCommands.length > 0` had no witness:
+      without it every `vx help` with no plugins prints a bare
+      `Plugin commands:` heading with nothing under it. Pinned with a
+      control that the section DOES appear when the list is not empty
+      (497), so the absence claim is about the gate.
+      500's RULE EARNS ITS KEEP AGAIN. `printHelp`'s
+      `verb === undefined` branch survived `cli.test.ts` and
+      `completions.test.ts` together — and the whole suite caught it in
+      `plugin commands > vx help lists plugin verbs with their
+description and plugin`, a third file. I had already written
+      "`vx help` is entirely unasserted" in my head; the verdict said
+      otherwise. The cheap check says "not here" and nothing more.
+      THE SIX EQUIVALENTS, measured not assumed: the word boundary
+      after the verb, `startsWith('Usage')` for `=== 'Usage:'`,
+      scanning the title block, `^[A-Za-z]` for `^[A-Z]`, dropping the
+      header pattern's end anchor, and `includes` for `endsWith` on
+      `(for <verb>):`. Each produces BYTE-IDENTICAL output for all
+      thirteen core verbs and is clean at whole-suite scope. They guard
+      against text this reference does not contain yet — a verb that
+      prefixes another, a block headed `Usage` without the colon — so a
+      row would assert today's wording, not a guarantee.
+      HARNESS NOTE, and it cost a full differential. The fix changed
+      the very line the mutation driver rewrites, so every mutation
+      generated from the OLD pristine silently reverted the escape too
+      — and the regex row reddened under all five, which reads exactly
+      like "they are all caught". Re-pointed the driver at the FIXED
+      source and re-ran; one payload (`nm-boundary`) did not contain
+      the replaced substring and had to be fixed by hand. When a fix
+      and a sweep touch the same lines, the sweep's baseline is the
+      FIXED file, and a differential where everything reddens is a
+      confound, not a result.
+      Flapper note: `df-noparen`, whose output is provably identical,
+      showed a watch e2e row appearing in its whole-suite verdict.
+      That is the fifth watch-row flap across two sweeps, and here the
+      identical output rules out cause without needing a re-run.
 
 ## In flight
 

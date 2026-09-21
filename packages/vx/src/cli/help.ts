@@ -11,8 +11,12 @@ export function printHelp(pluginCommands: readonly string[] = [], verb?: string)
 export function verbHelpText(verb: string): string {
   const blocks = helpText().split('\n\n')
   const title = blocks[0]!
+  // The verb goes into a RegExp, so it is escaped: `vx 'r.n' --help` is an
+  // unknown verb, not a pattern that matches `vx run` and answers with a
+  // help cut for a verb that does not exist.
+  const quoted = verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const names = (line: string): boolean =>
-    new RegExp(`^\\s*vx ${verb}( |$)`).test(line) ||
+    new RegExp(`^\\s*vx ${quoted}( |$)`).test(line) ||
     line.includes(`(for ${verb})`) ||
     line.includes(`(for ${verb} `)
   const kept: string[] = []
