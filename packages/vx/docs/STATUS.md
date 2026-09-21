@@ -3739,6 +3739,50 @@ the root>`: the prefix is a STORAGE discriminator and the path
       rather than correctness, since git does not track `node_modules`.
       No source change.
 
+540.  DONE (2026-09-21, `workspace/project-loader.ts` — how a config is
+      loaded, refused and its failure classified. Never swept. 19
+      mutations, fourteen caught, four survivors; three closed by three
+      rows and one measured unreachable. A ONE-LINE SOURCE FIX).
+      WORTH SAYING FIRST: this file is the best-held of the recent
+      sweeps. The default-export shape, the error classifier's two
+      names, its `instanceof`-free matching, the install hint, the
+      line/column and the wire to the bare-import refusal are all
+      pinned, several of them by rows written for item 517's defects.
+      THE LOADER, AGAIN, ONE FILE OVER. `refuseUnprovidedImports` picks
+      its loader with `/\.[cm]?ts$/`, and `vx.config.mts` is a
+      DISCOVERED config name. Every fixture spells `.mjs` or `.ts`, so
+      the `[cm]?` had no witness — and losing it does not merely
+      mislabel the file, it turns the guard OFF: scanning TS syntax with
+      the js loader throws, `unprovidedBareImports` catches that and
+      reports nothing missing, and the config goes to Bun, which
+      auto-installs the package from the registry. The download the
+      guard exists to prevent, reachable by renaming a config. 539 found
+      the same "loader from the extension" rule unheld in
+      `configImportOwners`; this is its second copy.
+      A ROW THAT FAILED ON PRISTINE AND TAUGHT ME THE MECHANISM. I set
+      out to pin that `fresh` re-evaluates under a changed environment,
+      because the docblock says the content-hash bust "would replay an
+      evaluation made under earlier env values". It failed — and not by
+      replaying: the second load returned `unset`. A REPEAT load in this
+      process does not use the module cache at all, it re-evaluates in a
+      WORKER. So the `fresh` UUID can never be observed: a first load
+      imports a URL never seen before, and every later load bypasses the
+      import entirely. Measured unreachable, and the row came out again
+      rather than being bent to fit.
+      THE FIX, one line and user-visible. The fallback arm of the
+      `ResolveMessage` branch strips vx's own module-cache bust from
+      Bun's message so "the user gets the file they wrote" — with
+      `\S+`, which is greedy and ate the CLOSING QUOTE too, handing the
+      user `from '/w/p/vx.config.ts` with no balancing quote. Every
+      existing row matches the `Cannot find package '<x>'` form and
+      never reaches that arm. Narrowed to `[^'"\s]*`; the row asserts
+      the balanced message, and a second mutation restoring `\S+` fails
+      it.
+      ALSO PINNED: a `BuildMessage` whose `position.file` is the EMPTY
+      string falls back to the config's own path, rather than telling
+      the user the error is `(in :7:3)` — a location naming nothing.
+      No `--frozen`, no `vx lock`: those paths are next.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

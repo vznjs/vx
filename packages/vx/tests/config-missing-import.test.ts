@@ -246,6 +246,36 @@ describe('a config importing what no node_modules provides', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
+  it('an .mts config is refused too — the loader is chosen for every TS extension', async () => {
+    // The refusal reads the source with a loader chosen from the
+    // extension, and `vx.config.mts` is a DISCOVERED config name
+    // (workspace.ts's CONFIG_FILENAMES lists .ts, .mts, .js, .mjs). Every
+    // fixture spells `.mjs` or `.ts`, so the `[cm]?` in that pattern had
+    // no witness — and losing it does not merely mislabel the file, it
+    // turns the guard OFF: scanning TS syntax with the js loader throws,
+    // `unprovidedBareImports` catches that and returns nothing missing,
+    // and the config is handed to Bun, which auto-installs the package
+    // from the registry. The download this guard exists to prevent,
+    // reachable by renaming a config.
+    //
+    // 539 found the same "loader from the extension" rule unheld in
+    // `configImportOwners`; this is its second copy, one file over.
+    const mts = path.join(dir, 'vx.config.mts')
+    await writeFile(
+      mts,
+      "import { preset } from 'nope-pkg'\nconst v: number = 1\nexport default { tasks: { build: { exec: { command: 'true' }, ...preset } }, v }\n",
+    )
+    let err: Error | undefined
+    try {
+      await loadProjectConfig(mts)
+    } catch (e) {
+      err = e as Error
+    }
+    expect(err?.message).toContain(
+      "cannot find 'nope-pkg' — no node_modules above the config provides it",
+    )
+  })
+
   it('is refused before the evaluation, naming the install', async () => {
     // No node_modules anywhere above (the temp dir): the shape Bun would
     // auto-install. The refusal is vx's own — its suffix is the proof it

@@ -1000,6 +1000,36 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     )
   })
 
+  it('a ResolveMessage vx cannot parse still reaches the user WITHOUT the bust query', () => {
+    // Every message above matches `Cannot find package '<x>'`, so the
+    // fallback arm — the raw message, with the module-cache bust stripped
+    // — had no witness. That query is vx's own invention (`?vx-bust=` +
+    // a content hash, added so a changed config re-evaluates), and the
+    // docblock's promise for this path is that "the user gets the file
+    // they wrote". Leaving it in hands them a path they never typed and
+    // cannot act on.
+    const err = {
+      name: 'ResolveMessage',
+      message: "Could not resolve: './missing.js' from '/w/p/vx.config.ts?vx-bust=9f1c2a'",
+    }
+    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
+    expect(user?.message).toBe(
+      "project config /w/p/vx.config.ts: Could not resolve: './missing.js' from '/w/p/vx.config.ts'",
+    )
+  })
+
+  it('a BuildMessage whose position names an EMPTY file falls back to the config', () => {
+    // `position.file` is Bun's, and an empty string is falsy-but-present:
+    // taken at face value the user is told the error is `(in :7:3)`, a
+    // location naming nothing. The row above always supplies a real file,
+    // so the length check that turns this case back into the config's own
+    // path had nothing holding it.
+    const err = { name: 'BuildMessage', message: 'Unexpected token' }
+    Object.assign(err, { position: { file: '', line: 7, column: 3 } })
+    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
+    expect(user?.message).toBe('project config /w/p/vx.config.ts:7:3: Unexpected token')
+  })
+
   it("everything else passes through: the config's own throw is not ours to reword", () => {
     // Narrower than the old guard, not wider — only Bun's two names match.
     expect(configLoadError(new Error('boom'), '/w/p/vx.config.ts', 'project')).toBeNull()

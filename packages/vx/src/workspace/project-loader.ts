@@ -120,7 +120,7 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
     const what =
-      spec === undefined ? message.replace(/\?vx-bust=\S+/g, '') : `cannot find '${spec}'`
+      spec === undefined ? message.replace(/\?vx-bust=[^'"\s]*/g, '') : `cannot find '${spec}'`
     const hint =
       spec?.startsWith('@vzn/vx') === true
         ? `; install it in the workspace: bun add -d @vzn/vx`
