@@ -1172,6 +1172,137 @@ describe('execute-task — a group is transparent to the executor input set', ()
   )
 })
 
+describe('execute-task — the executor input set is ADDRESSED and ORDERED', () => {
+  // `describeTaskInputs` builds `ExecuteRequest.inputs` — the closure an
+  // input-shipping executor places in a remote input root. The rows above
+  // pin WHICH upstream tasks appear; these pin the two things said about
+  // the rows themselves: where each output file lives, and in what order.
+
+  it(
+    'a workspace-level upstream output is addressed from the WORKSPACE root',
+    async () => {
+      // Workspace outputs are stored under the artifact's second namespace,
+      // so the index row reads `workspace-outputs/<path-from-the-root>`.
+      // That prefix is a STORAGE discriminator: the path behind it is
+      // already workspace-relative, while a project output's row is
+      // relative to the project dir and has to be rebased. Treat the two
+      // alike and the executor is handed `proj/workspace-outputs/shared/…`
+      // — a file that exists nowhere, so a worker stages nothing and the
+      // task runs without the upstream output it declared a dependency on.
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+
+        // One producer, both namespaces: the project output proves the
+        // rebase still happens for a project path in the same list, so the
+        // row cannot pass by treating every path as workspace-relative.
+        const producer = node(
+          b,
+          {
+            exec: {
+              command:
+                'mkdir -p dist ../shared && echo p > dist/lib.js && echo w > ../shared/gen.txt',
+            },
+            cache: {
+              inputs: { files: ['package.json'] },
+              outputs: { files: ['dist/**'], workspaceFiles: ['shared/**'] },
+            },
+          },
+          'proj#compile',
+        )
+        const made = await executeTask(baseArgs(b, producer, log))
+        expect(made.status).toBe('success')
+
+        let seen: ExecuteRequest | undefined
+        const capturing: TaskExecutor = {
+          name: 'capture',
+          execute: (req) => {
+            seen = req
+            return localExecutor().execute(req)
+          },
+        }
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['compile'],
+            exec: { command: 'true' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+          },
+          'proj#bundle',
+        )
+        await executeTask({
+          ...baseArgs(b, consumer, log),
+          upstream: [made],
+          executor: capturing,
+        })
+
+        expect(seen?.inputs?.upstream[0]?.outputs?.slice().sort()).toEqual([
+          'proj/dist/lib.js',
+          'shared/gen.txt',
+        ])
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the upstream list is ordered by hash, not by declaration order',
+    async () => {
+      // The docblock says the list — "and any action digest derived from
+      // it" — is independent of dependency declaration order. A remote
+      // executor that digests this list keys its action on it, so an order
+      // that follows `dependsOn` gives the same closure two digests and
+      // every reordering of a `dependsOn` array is a remote cache miss.
+      // Asserting sortedness alone would pass half the time on two
+      // members; asserting that BOTH declaration orders produce the same
+      // list cannot, whichever way the hashes happen to sort.
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const first = upstreamOutcome('proj#alpha', 'ffffffffffffffff')
+        const second = upstreamOutcome('proj#beta', '1111111111111111')
+
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['alpha', 'beta'],
+            exec: { command: 'true' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+          },
+          'proj#bundle',
+        )
+        const listFor = async (upstream: TaskOutcome[]): Promise<string[] | undefined> => {
+          let seen: ExecuteRequest | undefined
+          const capturing: TaskExecutor = {
+            name: 'capture',
+            execute: (req) => {
+              seen = req
+              return localExecutor().execute(req)
+            },
+          }
+          await executeTask({
+            ...baseArgs(b, consumer, log),
+            upstream,
+            executor: capturing,
+            cachePolicy: NO_CACHE,
+          })
+          return seen?.inputs?.upstream.map((u) => u.taskId)
+        }
+
+        const declared = await listFor([first, second])
+        const reversed = await listFor([second, first])
+        expect(declared).toEqual(['proj#beta', 'proj#alpha'])
+        expect(reversed).toEqual(declared)
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('execute-task — cache.inputs.tasks filters the KEY, not the input set', () => {
   // `cache.inputs.tasks` is defined as "which upstream tasks' cache KEYS
   // participate in this task's KEY" — an invalidation statement. What a task
