@@ -5349,6 +5349,57 @@ diff HEAD` exits 128 with `bad tree object`.
       it. A control that cannot distinguish the arms is not a control,
       which is the same lesson as 564's missing `existsSync` positive,
       arriving from the other direction.
+571.  DONE (2026-09-21, `workspace/package-graph.ts` — the order/reach
+      adjacencies, the peer-cycle rule, the bitset closure and its DFS
+      twin. 35 mutations under Bun 1.4.2: twenty-five caught, one
+      caught BY HANG, nine survivors; one closed by one row, one
+      comment corrected, seven classified).
+      PICKED AGAINST A NAMED FAILURE MODE, per the bar set in 570: a
+      missing REACH edge silently under-selects for `--affected` and
+      `--filter pkg...` — a task that should re-run does not — which is
+      the same class as a stale hit, approached from the other end from 569. That bar was worth keeping: `exec/env.ts` was the other
+      candidate and was REJECTED, 91 lines and four layers with 13 rows
+      already on them, with no failure mode nameable beyond "precedence
+      could be wrong".
+      THE ONE HANG IS A CATCH, NOT A SURVIVOR, and worth the words
+      because the classifier cannot tell. Removing the `seen` guard
+      from the cyclic DFS fallback loops forever: measured, `bun test
+tests/package-graph.test.ts` exits 124 under `timeout 25` and 0
+      on pristine. So a cyclic fixture DOES reach the fallback and the
+      guard is held — by a hang rather than an assertion.
+      MY OWN UPFRONT PREDICTION WAS WRONG, WHICH IS THE USEFUL PART.
+      I named the per-package peer sort as a determinism guard before
+      writing the table — the comment says so in words: "Peers are
+      tried in (package, peer) name order, so which edge of a two-peer
+      cycle stays is stable across runs." MEASURED, both manifest
+      orders give identical graphs in every arrangement tried (all
+      peers cycling, one cycling and one not, and the mutual p<->q
+      case), because `reaches(peer, p)` walks edges INTO `p` and adding
+      an edge OUT of `p` cannot change it. The stability is real and
+      the PACKAGE sort provides it — that arm IS caught. The comment
+      claimed a guarantee the peer sort does not give, so it is
+      de-claimed rather than left to mislead the next reader.
+      THE ROW THAT DID LAND: a package naming ITSELF. Both doors carry
+      the same `name !== p.name` guard — the manifest fields and the
+      task edges — and neither had a witness. A self-loop is a `^build`
+      that waits on itself: a task cycle reported far from the manifest
+      that caused it. One row takes both doors.
+      A THIRD SIGHTING OF "SOMETHING ELSE ANSWERS FIRST": the
+      `directDependents` sort is redundant, because the arrays are
+      filled by iterating `reachDeps`, which was built in sorted
+      project order — so insertion is already sorted. Same shape as
+      567's `.sort()` over git's already-sorted output and 559's
+      collation. Left in place (it costs nothing and does not depend on
+      a distant invariant), recorded so the next sweep does not chase
+      it.
+      SIX MORE CLASSIFIED: the unknown-edge index lookup cannot fire
+      (edges are filtered by `byName` at insert), the accessor's memo
+      and its lazy closure build are COST gates the file already
+      measures (12 ms of a 240 ms warm run at 1000 projects), an
+      unknown name never reaches the bit scan, and the `reaches` seen
+      guard needs an order-graph cycle that the peer rule exists to
+      prevent — reachable only through plugin task edges, and no
+      fixture builds one.
 
 ## In flight
 

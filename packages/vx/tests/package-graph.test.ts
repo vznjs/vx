@@ -12,6 +12,34 @@ function meta(name: string, deps: Record<string, string> = {}): ProjectMeta {
 }
 
 describe('buildPackageGraph', () => {
+  it('a package that names ITSELF is not its own dependency', () => {
+    // A package.json listing its own name — in devDependencies to pull
+    // its published self — is not exotic, and a self-loop here is a
+    // `^build` that waits on itself: a task cycle reported far from the
+    // manifest that caused it. BOTH doors carry the same guard
+    // (`name !== p.name`), the manifest fields and the task edges, and
+    // neither had a witness. This row takes both.
+    const g = buildPackageGraph(
+      [
+        {
+          name: 'self',
+          dir: '/ws/self',
+          configPath: null,
+          packageJson: { name: 'self', devDependencies: { self: '*', other: '*' } },
+        },
+        meta('other'),
+      ],
+      // The task-edge door: a plugin claiming `self` depends on `self`.
+      new Map([['self', ['self', 'other']]]),
+    )
+
+    expect(g.directDeps('self')).toEqual(['other'])
+    expect(g.transitiveDeps('self')).toEqual(['other'])
+    // And nothing lists itself as its own dependent, which is what would
+    // make `--filter self...` select a cycle.
+    expect(g.transitiveDependents('self')).toEqual([])
+  })
+
   it('builds an empty graph from no projects', () => {
     const g = buildPackageGraph([])
     // No-projects graph still answers queries — they just return [].
