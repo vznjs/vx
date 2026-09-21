@@ -4124,6 +4124,45 @@ answer === 'string'` arm — the one its docblock names, "a plugin
       cross-deps go unpulled without effect for the same reason the
       alignment bug hides — the only caller stages them all.
 
+548.  DONE (2026-09-21, `cli/show.ts` — `vx show`: the workspace's live
+      resolved configs, as a run would see them. Never swept. 28
+      mutations: eighteen caught, ten survivors, eight closed by seven
+      rows, two measured equivalent. No source change).
+      THE BEST-HELD CLI FILE THIS SERIES HAS OPENED — eighteen of
+      twenty-eight caught, the render path almost entirely pinned
+      (the group marker, the plugin-gave-it-tasks note, the singular
+      "1 task", the JSON list's exact shape, and every `taskBlock`
+      field including the cache block, with a docs-drift row catching
+      the one the e2e rows do not name).
+      WHAT IT MISSED WAS THE SECOND ARM OF EVERY REFUSAL. The unknown-
+      project guard fires for a bare name and for `pkg#task`, and only
+      the bare form had a row; the other arm would reach
+      `byName.get(name)!` and print a TypeError where the sentence
+      belongs. `vx show app#` (nothing after the hash) has its own
+      message and no row. `--format` with NO value takes the next argv,
+      which is not there, and the empty string must fail validation
+      rather than leaving `pretty` in place silently.
+      A SUGGESTION SUFFIX MUST DISAPPEAR WHEN THERE IS NOTHING TO
+      SUGGEST: with no near match the tail is omitted entirely, and
+      nothing pinned that — "did you mean ?" passed every row.
+      A SCOPED READ IS A PROMISE, NOT A SAVING. `vx show app` loads
+      app's config alone, so a broken config in another package does
+      not stop it answering; the run path has that row and the reader
+      did not. Its control shows the unscoped listing DOES hit the
+      broken config, so the fixture is really broken.
+      A UNIT IS PART OF THE VALUE: the block row asserted `5000`
+      appears, which a bare seconds-vs-milliseconds number satisfies
+      just as well. The new row reads `timeout: 5000ms`.
+      TWO MEASURED EQUIVALENT, both duplicated work. `suggest()`'s
+      substring pass re-does what `nearMatches` already does inside
+      (edit-distance.ts walks the same `includes` both ways); the only
+      behaviour it adds is escaping nearMatches' `limit = 3`, which is
+      a wart, not a contract, so it is recorded rather than pinned. And
+      the `JSON.parse(JSON.stringify(x))` round-trip before the pretty
+      print is a no-op: measured, `JSON.stringify(x, null, 2)` drops
+      undefined-valued keys by itself and the two strings are
+      identical.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

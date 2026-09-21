@@ -297,6 +297,68 @@ describe('vx show (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a target ending in `#` names the missing TASK, not an unknown one',
+    async () => {
+      const r = await vx(root, ['show', 'app#'])
+      expect(r.code).toBe(1)
+      expect(r.err).toContain(`missing task name after '#' in "app#"`)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an unknown project in the `pkg#task` form is named, not a crash',
+    async () => {
+      // The bare form has a row above; this is the other arm of the same
+      // guard, and the one that would otherwise reach `byName.get(...)!`
+      // and print a TypeError where a sentence belongs.
+      const r = await vx(root, ['show', 'nosuch#build'])
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('unknown project: "nosuch"')
+      expect(r.err).not.toContain('at ') // a clean UserError, no stack
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a name nothing resembles gets NO "did you mean" tail',
+    async () => {
+      // The suggestion is a suffix on the same sentence, so an empty set
+      // must produce no suffix at all rather than "did you mean ?".
+      const r = await vx(root, ['show', 'zzzzzzzz'])
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('unknown project or task: "zzzzzzzz"')
+      expect(r.err).not.toContain('did you mean')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a package with no config file says so, rather than "no tasks declared"',
+    async () => {
+      // Two different facts for the reader: a config that declares nothing,
+      // and no config at all. The list view distinguishes them; so does this.
+      const r = await vx(root, ['show', 'bare'])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('(no vx config)')
+      expect(r.out).not.toContain('(no tasks declared)')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a timeout carries its UNIT — 5000 alone is ambiguous',
+    async () => {
+      // The block row above asserts the number appears; a bare `5000` reads
+      // as seconds just as easily as milliseconds, and the schema means ms.
+      const r = await vx(root, ['show', 'app#dev'])
+      expect(r.code).toBe(0)
+      expect(r.out).toMatch(/timeout:\s+5000ms/)
+    },
+    TIMEOUT,
+  )
 })
 
 describe('vx show under a `project` plugin (e2e)', () => {
@@ -590,6 +652,13 @@ describe('parseShowArgs', () => {
     expect(parseShowArgs(['--format=json']).format).toBe('json')
   })
 
+  it('a --format with NO value is an error, not a silent default', () => {
+    // `--format` at the end of the line takes the next argv, which is not
+    // there: the empty string must fail the same validation `--format=x`
+    // does, rather than leaving `pretty` in place and saying nothing.
+    expect(parseShowArgs(['--format']).error).toBe('--format must be pretty or json')
+  })
+
   it('rejects an invalid format value', () => {
     expect(parseShowArgs(['--format', 'yaml']).error).toBe('--format must be pretty or json')
     expect(parseShowArgs(['--format=']).error).toBe('--format must be pretty or json')
@@ -648,4 +717,52 @@ describe('vx info — the workers and memory rows', () => {
       describeMemory({ usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null }),
     ).toBe('16 GB')
   })
+})
+
+describe('vx show <project> loads that project only (e2e)', () => {
+  // The scoped load is not only a saving: a config is a program, so a
+  // broken one in an unrelated package must not stop `vx show app` from
+  // answering about app. The run path makes the same promise
+  // (tests/scoped-config-loading.test.ts) and this is the reader's half.
+  let root: string
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-scope-'))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+    const app = path.join(root, 'packages', 'app')
+    await mkdir(app, { recursive: true })
+    await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'echo b' } } } }\n",
+    )
+    const broken = path.join(root, 'packages', 'broken')
+    await mkdir(broken, { recursive: true })
+    await writeFile(path.join(broken, 'package.json'), JSON.stringify({ name: 'broken' }))
+    await writeFile(path.join(broken, 'vx.config.mjs'), "throw new Error('never evaluated')\n")
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a broken config in another package does not break the scoped view',
+    async () => {
+      const r = await vx(root, ['show', 'app'])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('echo b')
+      expect(r.out).not.toContain('never evaluated')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROL: the unscoped listing DOES evaluate it, so the fixture is really broken',
+    async () => {
+      const r = await vx(root, ['show'])
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('never evaluated')
+    },
+    TIMEOUT,
+  )
 })
