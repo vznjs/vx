@@ -2927,6 +2927,45 @@ delivery with a probe it then removes (recursive: true)` — the
       `total > 0 ? … : 0` is unreachable — `total` is `COUNT(*)` under
       a `GROUP BY`, so a group that exists has a row in it.
 
+522.  DONE (2026-09-21, `cli/init.ts` — fourteenth by the age rule and
+      the last of the 2026-09-09 band. 75 lines, almost all forwarding,
+      which is exactly why it is worth saying that EIGHT of fourteen
+      mutations survived: a file being small is not the same as a file
+      being held).
+      THE REFUSAL HELD ONLY ITS MESSAGE. Both existing rows assert that
+      the error of `parseInitArgs([x])` CONTAINS x — and every branch
+      satisfies that. Weaken the exact match to a prefix and `--dryrun`
+      is accepted AS `--dry`, its error gone; test the dash with two
+      dashes instead of one and `-d` falls to the positional message.
+      Neither changes what the error mentions, because what changed is
+      WHICH refusal. The table now names the branch per argv shape, and
+      carries the help pointer as part of the answer: the unknown-flag
+      message ends in a pointer at the verb's help and the
+      unexpected-argument message does not, which is the distinction
+      a single-dash flag turns on.
+      AND THE TWO THINGS A CALLER ACTUALLY READS. The cli row named for
+      a bad argument to init pointing at its help reads the message and
+      stops there. The exit code and the stream were held by nothing: a
+      `vx init --bogus` that returns 0 is a CI step carrying on as if
+      the workspace had been scaffolded, and the same text on stdout is
+      a refusal piped into whatever consumes the scaffold. Measured:
+      exit 1, stderr, stdout empty, nothing written.
+      THE ROOT IT SCAFFOLDS IN. `init` resolves the workspace root
+      before it plans, and no test had ever run it from INSIDE a
+      package. Take `process.cwd()` for the root instead and the
+      workspace file lands in the package directory — a second
+      workspace nested in the real one, which is left untouched, with a
+      zero exit and no word. Measured from a package: the workspace
+      file at the root, only the config in the package.
+      TWO MARKERS IN ONE OR, AND NEITHER FIXTURE EXISTED. An Nx
+      workspace is recognised by `nx.json` or by the exported graph
+      under `.nx/workspace-data/` — 518's shape again, except here the
+      stronger fact came first: grep says no core test wrote EITHER
+      marker before this item, so the whole Nx branch was unreached and
+      both disjuncts were droppable. One fixture per marker, plus the
+      case the `else if` decides: a root holding both a turbo.json and
+      an nx.json gets the turbo note and only that one.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
