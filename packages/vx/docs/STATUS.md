@@ -3296,6 +3296,34 @@ delivery with a probe it then removes (recursive: true)` — the
       it defends against git itself failing under the spawn, which no
       supported path produces. Defence in depth, named as such.
 
+531.  DONE (2026-09-21, `cli/run.ts`'s LIMITS AND ENUMS — the third and
+      last region of the file, after 529's cache policy and 530's
+      selection. `--timeout`, `--retry`, `--continue`, `--output-logs`,
+      `--download` and `--cache-dir` between them set real execution
+      limits and decide what a failure takes down. 13 mutations, ELEVEN
+      caught; both survivors are the same shape.
+      ONE MEMBER OF A LIST, AGAIN. `--continue` takes its mode with an
+      `=` only, because `--continue never` would read the mode as a
+      TASK and end in "No projects declare task(s): never" — the
+      comment says exactly that. The refusal looks ahead for any of
+      three modes, and the row that covers it spells ONE: drop
+      `deps-ok` from the lookahead and nothing moves, because no
+      fixture ever writes that mode in the space form. Same for
+      `--download`, whose guard lists three modes and whose rows cover
+      `all` and `toplevel`: `none` — the form that keeps every
+      intermediate output remote — had no assertion anywhere, so
+      deleting it from the guard turns a documented mode into an
+      argument error. 518's deny-list and 526's write grant, a third
+      and fourth time, in flags this time: one argv per member.
+      WHAT IS HELD, AND WORTH THE LINE. The timeout ceiling is pinned
+      three ways — past 2^31-1 `setTimeout` fires at 1 ms, so a value
+      above it would kill every task the moment it spawned, and the
+      bound is refused rather than clamped. `--retry` rejects a
+      negative through `parseDecimalInt` rather than `Number`.
+      `--cache-dir` still refuses a flag-shaped value in the space
+      form, which is what keeps an unquoted empty shell variable from
+      creating a directory named `--force` and swallowing the flag.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
