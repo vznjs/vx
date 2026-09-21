@@ -426,6 +426,20 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   Remove both and seven rows go red (item 563, the 536/544 shape). When
   a guard survives, ask what ELSE would have to fail for the observable
   to change, and mutate that too before calling it unheld.
+- A NEGATIVE `existsSync` PROVES NOTHING WITHOUT THE POSITIVE FIRST.
+  The TTL prune row asserted `<cacheDir>/h-old` was gone — a directory
+  from a layout three schema versions old, so it was gone BEFORE the
+  prune too, and deleting prune's whole artifact unlink left the suite
+  green (item 564). Assert the thing is THERE first, in the same row;
+  a path that changed name is otherwise indistinguishable from a
+  deletion that works.
+- AND A CONTROL HELD BY A COARSE GATE HOLDS NOTHING ABOUT THE FINE
+  ONES. Every control in the orphan-sweep row was FRESH, so the grace
+  window alone kept them and all three narrowing guards — the
+  extension test, `isFile()`, the temp-suffix offset — could go with
+  the suite green; one of them reaps `cache.db` itself (564). Put each
+  control PAST the coarse gate, so the only thing left holding it is
+  the guard it is named for.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a

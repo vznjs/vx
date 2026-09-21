@@ -4923,6 +4923,65 @@ test` is transpile-only — it cannot see a type error at all, so
       nothing was misreported — but a stray `--restore` mid-sweep
       manufactures a SURVIVED out of a mutation that was never tested,
       which is the exact failure this method exists to prevent.
+564.  DONE (2026-09-21, `cache/cache.ts`, region: `prune` — the TTL
+      sweep, the LRU byte budget, and the orphan reaper behind it. 30
+      mutations: twenty-one caught, nine survivors, seven closed by six
+      new rows and one repaired, two measured equivalent. No source
+      change).
+      THE HEADLINE IS AN ASSERTION AGAINST A PATH THAT NEVER EXISTED.
+      The TTL row checked `existsSync(<cacheDir>/h-old)` — a DIRECTORY
+      from the layout before an artifact became a single
+      `<hash>.tar.zst`. So it was false before the prune and false
+      after, and deleting prune's entire artifact unlink left the suite
+      green: every evicted entry's bytes stayed on disk until some
+      LATER prune's orphan sweep found them, a grace window away. The
+      row now asserts the artifact is there BEFORE (the control that
+      makes the "gone" assertion mean anything) and gone after.
+      THE SWEEP'S THREE NARROWING GUARDS WERE ALL UNHELD, for one
+      reason: every control in the orphan row is FRESH, so the grace
+      window alone was keeping them and no guard had a witness. Aged
+      past the window, each one bites — drop `endsWith('.tar.zst')` and
+      `cache.db` itself is unlinked (the INDEX, reaped by its own
+      prune); drop `st.isFile()` and a directory is counted and its
+      bytes reported; relax the temp test to `indexOf(...) >= 0` and a
+      name that is nothing but the suffix, belonging to no hash, is
+      reaped. One row with four aged controls and one real orphan
+      holds all three, and `scanOrphans`'s `readdir` swallow — never
+      exercised, because readdir does not fail in a fixture — is held
+      by a row that deletes the cache directory out from under a prune
+      whose eviction half has already run.
+      THE STORAGE LAYER WAS ANSWERING FOR THE SORT AGAIN (the 559
+      shape, from the other side). `ORDER BY accessed_at ASC` reversed
+      to `DESC` is caught; DELETED it is not — the maxBytes fixture
+      saves h1, h2, h3 in exactly the order it then touches them, so
+      SQLite's rowid scan returns the LRU order for free. The new row
+      writes the rows LAST-used-first, the one order a rowid scan gets
+      wrong.
+      AND THE TWO POLICIES COMPOSE THROUGH ONE `remaining`, unheld in
+      both directions: the TTL-freed bytes must be subtracted before
+      the budget decides (drop it and the cap evicts entries the user's
+      own number says fit — measured 3 evicted where 1 is right), and a
+      TTL victim must not be re-counted as an LRU candidate (drop the
+      JS filter and `bytesFreed` inflates while a live entry the cap
+      has no room for survives — 1 evicted and 300 freed where 2 and
+      200 are right). Both need exact byte sizes and exact
+      `accessed_at`s, so the new rows INSERT into `entries` directly,
+      as the 900-victim row already did; `get()` cannot be the oracle
+      for a survivor there (no artifact on disk), so the index is.
+      TWO MEASURED EQUIVALENT. `remaining > maxBytes` → `>=` enters the
+      block when they are equal, and the loop's first statement is
+      `if (remaining <= maxBytes) break` — one wasted SELECT, no
+      outcome. `victims.size > 0` → `>= 0` runs the delete block with
+      an empty hash list: zero chunks, an empty transaction, and
+      `Promise.all([])`. Neither is a hole; both are recorded so the
+      next sweep does not re-litigate them.
+      WELL HELD: the argument guard (both arms), the TTL comparison's
+      direction and its byte tally, the budget's break condition in
+      both directions and the decrement behind it, all three `dryRun`
+      behaviours, the row DELETE, `unlink` over `rm({ force })` for the
+      concurrent-prune count, the reap-vs-stats distinction, the grace
+      window's existence and direction, and the temp sweep itself —
+      several at 4-10 rows red.
 
 ## In flight
 

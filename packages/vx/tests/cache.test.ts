@@ -1152,13 +1152,22 @@ describe('Cache storage (v10)', () => {
     // Wait a tick so olderThanMs = now strictly exceeds h-old's accessed_at.
     await new Promise((r) => setTimeout(r, 10))
 
+    // The artifact is on disk BEFORE the prune — without this control the
+    // unlink assertion below passes against a path that was never written.
+    // Which is what the old one did: it named `<cacheDir>/h-old`, a
+    // directory from the layout before artifacts became a single
+    // `<hash>.tar.zst`, so deleting prune's whole artifact unlink left the
+    // suite green and the evicted bytes stayed on disk until some LATER
+    // prune's orphan sweep found them, a grace window later.
+    expect(existsSync(cache.outputsPath('h-old'))).toBe(true)
+
     const result = await cache.prune({ olderThanMs: Date.now() })
     expect(result.evicted).toBe(1)
     expect(result.bytesFreed).toBeGreaterThanOrEqual(3)
 
-    // DB row gone + on-disk dir gone (logs live inside <hash>/, so one rm covers both).
+    // DB row gone, and the artifact with it.
     expect(await cache.get('h-old')).toBeNull()
-    expect(existsSync(path.join(cacheDir, 'h-old'))).toBe(false)
+    expect(existsSync(cache.outputsPath('h-old'))).toBe(false)
   })
 
   it('prune() with maxBytes evicts LRU until under the cap', async () => {
@@ -1223,6 +1232,131 @@ describe('Cache storage (v10)', () => {
     expect(await cache.get('h1')).toBeNull()
   })
 
+  it('prune() cutoff is exclusive: an entry accessed exactly at it survives', async () => {
+    // Rows straight into the index so accessed_at is EXACT. Every other
+    // prune fixture here lets `save()` stamp it and passes `Date.now()`,
+    // which puts the cutoff strictly above every row — so `accessed_at <`
+    // and `accessed_at <=` pick the same victims and the boundary has no
+    // witness. `olderThanMs` is documented as a cutoff, not a floor:
+    // "older THAN" excludes equality, and the entry touched at the very
+    // instant of the cutoff is the one a user racing a prune expects to
+    // keep.
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    const insert = db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, ?)`,
+    )
+    insert.run('h-below', 999)
+    insert.run('h-at', 1000)
+
+    const remaining = (): string[] =>
+      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+        (r) => r.hash,
+      )
+
+    const result = await cache.prune({ olderThanMs: 1000 })
+    expect(result.evicted).toBe(1)
+    // The index is the oracle, not `get()`: these rows have no artifact on
+    // disk, so `get()` reads null for a survivor too.
+    expect(remaining()).toEqual(['h-at'])
+  })
+
+  it('prune() counts TTL-freed bytes against maxBytes before evicting any LRU', async () => {
+    // The two policies compose through one `remaining`: what the TTL
+    // sweep already freed is subtracted before the byte budget decides
+    // whether anything else has to go. Drop that subtraction and the
+    // budget sees the PRE-prune total, so it evicts entries the user's
+    // own cap says fit — here both survivors, silently, on every
+    // `vx cache prune --older-than ... --max-bytes ...`.
+    //
+    //   correct:  remaining = 200 - 100 = 100, not > 100 → evicted 1
+    //   mutated:  remaining = 200            > 100 → evicted 3
+    //
+    // Sizes and timestamps go in directly: the artifacts compress to
+    // sizes that differ run to run (see the maxBytes row above), and the
+    // arithmetic this pins is exact.
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    const insert = db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
+    )
+    insert.run('h-stale', 100, 1)
+    insert.run('h-warm-a', 50, 10)
+    insert.run('h-warm-b', 50, 20)
+
+    const result = await cache.prune({ olderThanMs: 5, maxBytes: 100 })
+    expect(result.evicted).toBe(1)
+    expect(result.bytesFreed).toBe(100)
+    expect(
+      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+        (r) => r.hash,
+      ),
+    ).toEqual(['h-warm-a', 'h-warm-b'])
+  })
+
+  it('prune() picks LRU victims by accessed_at, not by the order rows were written', async () => {
+    // `ORDER BY accessed_at ASC` had no witness: the maxBytes row above
+    // saves h1, h2, h3 in that order AND touches them in that order, so
+    // SQLite's own rowid scan returns exactly the LRU order and dropping
+    // the ORDER BY changes nothing (`DESC` is caught; no clause at all is
+    // not). The 559 shape — the storage layer answering for the sort. So
+    // the rows go in LAST-used-first, which is the one order a rowid scan
+    // gets wrong.
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    const insert = db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
+    )
+    insert.run('h-newest', 30)
+    insert.run('h-oldest', 10)
+    insert.run('h-middle', 20)
+
+    // 300 bytes held, cap 200 → exactly one entry goes, and it is the
+    // least recently accessed one, which is the SECOND row written.
+    const result = await cache.prune({ maxBytes: 200 })
+    expect(result.evicted).toBe(1)
+    expect(result.bytesFreed).toBe(100)
+    expect(
+      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+        (r) => r.hash,
+      ),
+    ).toEqual(['h-middle', 'h-newest'])
+  })
+
+  it('prune() does not re-count a TTL victim as an LRU candidate', async () => {
+    // The LRU scan reads every entry, including the ones the TTL sweep
+    // already picked, and filters them in JS (a SQL NOT-IN would blow the
+    // bound-parameter ceiling). Drop that filter and the budget "frees"
+    // the stale entry a second time: `bytesFreed` inflates and `remaining`
+    // falls by bytes nothing is holding, so a live entry the cap has no
+    // room for survives.
+    //
+    //   correct:  evict h-stale (TTL) + h-warm-a (LRU) → evicted 2, freed 200
+    //   mutated:  h-stale counted twice → evicted 1, freed 300, 200 bytes
+    //             still on disk under a 100-byte cap
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    const insert = db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
+    )
+    insert.run('h-stale', 1)
+    insert.run('h-warm-a', 10)
+    insert.run('h-warm-b', 20)
+
+    const result = await cache.prune({ olderThanMs: 5, maxBytes: 100 })
+    expect(result.evicted).toBe(2)
+    expect(result.bytesFreed).toBe(200)
+    expect(
+      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+        (r) => r.hash,
+      ),
+    ).toEqual(['h-warm-b'])
+  })
+
   it('prune({ dryRun }) reports the victims and orphans and deletes nothing', async () => {
     const { mkdir, writeFile, utimes } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
@@ -1263,6 +1397,84 @@ describe('Cache storage (v10)', () => {
 
   it('prune() rejects empty options', async () => {
     await expect(cache.prune({})).rejects.toThrow(/at least one of/)
+  })
+
+  it('the orphan sweep will not unlink anything but a regular <hash>.tar.zst or its temp', async () => {
+    // The sweep DELETES, so what it declines to look at is the whole
+    // safety of it — and the row above proves none of that: every control
+    // there is FRESH, so the grace window alone keeps them, and each of
+    // the three narrowing guards could be deleted with the suite green.
+    // Measured, each on its own:
+    //
+    //   drop `endsWith('.tar.zst')`  → `cache.db` becomes an orphan and the
+    //                                  INDEX is unlinked
+    //   drop `st.isFile()`           → a directory is counted and its bytes
+    //                                  reported, then the unlink fails
+    //   `indexOf(...) >= 0`          → a name that is nothing BUT the temp
+    //                                  suffix, belonging to no hash, is reaped
+    //
+    // So every control here is AGED past the window: the only thing left
+    // holding them is the guard each one names.
+    const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
+    const age = async (p: string) => utimes(p, twoHoursAgo, twoHoursAgo)
+    const agedFile = async (name: string, bytes: string) => {
+      const file = path.join(cacheDir, name)
+      await writeFile(file, bytes)
+      await age(file)
+      return file
+    }
+
+    const orphan = await agedFile('h-real-orphan.tar.zst', 'x'.repeat(11))
+    // Not an artifact name at all.
+    const foreign = await agedFile('notes.txt', 'n')
+    // The temp suffix with no hash in front of it.
+    const hashless = await agedFile('.tar.zst.tmp-1-2-3', 't')
+    // A directory wearing the artifact name.
+    const dir = path.join(cacheDir, 'h-dir.tar.zst')
+    await mkdir(dir, { recursive: true })
+    await age(dir)
+    // The index itself, aged: prune's own writes go to the -wal, so
+    // `cache.db`'s mtime stays where this put it.
+    await age(path.join(cacheDir, 'cache.db'))
+
+    expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: 11 })
+    const result = await cache.prune({ olderThanMs: 1 })
+    expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
+      orphans: 1,
+      orphanBytes: 11,
+    })
+    expect(existsSync(orphan)).toBe(false)
+    expect(existsSync(foreign)).toBe(true)
+    expect(existsSync(hashless)).toBe(true)
+    expect(existsSync(dir)).toBe(true)
+    expect(existsSync(path.join(cacheDir, 'cache.db'))).toBe(true)
+  })
+
+  it('prune() still evicts when the cache directory cannot be read', async () => {
+    // The orphan scan runs LAST, after the rows and artifacts are already
+    // gone, so a readdir that fails must not turn a completed eviction
+    // into a rejected promise — the user would see `vx cache prune` throw
+    // with the work done and no way to tell. Nothing exercised the
+    // swallow: readdir never fails in a fixture, so replacing `return []`
+    // with a rethrow left the suite green.
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES ('h-gone', 'pkg', 'build', 'noop', 0, 0, 10, '', 1, 1)`,
+    ).run()
+    // The directory goes out from under the scan. The open DB handle
+    // survives it on Linux (an unlinked inode stays readable), which is
+    // what lets the eviction half still run.
+    await rm(cacheDir, { recursive: true, force: true })
+
+    const result = await cache.prune({ olderThanMs: 2 })
+    expect({
+      evicted: result.evicted,
+      orphans: result.orphans,
+      orphanBytes: result.orphanBytes,
+    }).toEqual({ evicted: 1, orphans: 0, orphanBytes: 0 })
+    expect(await cache.orphanStats()).toEqual({ orphans: 0, orphanBytes: 0 })
   })
 
   it('prune() handles more than 900 victims (chunked DELETE, no bound-parameter blowup)', async () => {
