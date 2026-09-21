@@ -3877,6 +3877,66 @@ the root>`: the prefix is a STORAGE discriminator and the path
       the highest-risk boundary in the config path is the best-tested
       file this series has opened.
 
+543.  DONE (2026-09-21, `orchestrator/plugin-host.ts`'s PIPELINE STAGES
+      — the four that shape the graph and the cache key, which 536 left
+      when it took only the capability gate. 13 mutations plus one
+      joint: five caught, two CAUGHT BY HANGING, six survivors, three
+      rows).
+      THE SAME TRAP 542 FOUND COVERED, HERE COVERED ON NEITHER ARM. The
+      `key` stage refuses material that is not a record of strings, and
+      its guard has three arms. One row exercises it, with ONE spelling
+      — a string, which fails on the first arm — and its comment
+      explains the defect it was written for: a plugin returning `'v22'`
+      "used to fold parts named '0', '1', '2' into every key, silently
+      and permanently".
+      An ARRAY reaches that same fold by the spelling nobody spelled:
+      `Object.entries` walks it happily and folds '0', '1', '2'. And
+      `null` is an object too, so it sails past the first arm into
+      `Object.entries(null)`, which THROWS a TypeError naming neither
+      the plugin nor the stage — the internal-error failure `safe()`
+      exists to replace, from the one return value that most looks like
+      "no material". Item 542's `lockfile.ts` has a row for both arms of
+      this exact `typeof [] === 'object'` trap; one file over, neither
+      had one.
+      THE SORT HAD NO WITNESS BECAUSE EVERY FIXTURE DECLARES ONE PLUGIN.
+      Parts are sorted "so the fold is order-independent", and with a
+      single contributor there is no order to be independent of. Without
+      it the parts arrive in plugin-declaration order, so moving two
+      plugins around in `vx.workspace.mjs` silently re-keys every task
+      in the workspace — a full cold rebuild for an edit that changed no
+      input. The row keys the same material both ways round, with a
+      control that a different value still moves the key.
+      CAUGHT BY HANGING IS NOT CAUGHT WELL, and it is this item's
+      method finding. Deleting the graph stage's dangling-dep check or
+      its cycle check does not redden a row: `plugin-pipeline.test.ts`
+      NEVER TERMINATES. Measured — the file alone, with the cycle check
+      gone, was killed at 90 seconds having printed nothing at all. The
+      rows exist and they do notice; what they produce is a job timeout
+      with no failing name, which in CI is indistinguishable from
+      infrastructure. My own driver met the same thing from the other
+      side: the first sweep run used a 400-second per-file bound against
+      a six-second baseline and wedged for the whole tool timeout. A
+      sweep needs a bound near the baseline, and a missing summary line
+      has to be read as INCONCLUSIVE whether it came from a panic (533)
+      or a hang.
+      MEASURED EQUIVALENT, and it needed the JOINT mutation to settle.
+      `applyKeyHooks` only sets `keyParts` when a plugin contributed
+      something, and `Cache.key` carries the SAME `length > 0` guard, so
+      removing either alone is invisible by construction. Removing BOTH
+      folds a `plugin:0` section into every task's key — a silent
+      workspace-wide key-domain shift, one cold rebuild for every user —
+      and the whole suite still passes, because nothing pins an
+      ABSOLUTE key. That is deliberate rather than missing: this
+      project's rule is that a key-derivation change is self-healing and
+      does NOT bump `CACHE_VERSION`, so a golden-key row would demand a
+      bump the invariant says is unnecessary.
+      TWO LEFT AS CLASSIFIED, both needing a second graph plugin no
+      fixture declares: which plugin a graph violation is blamed on (the
+      docblock chooses the LAST deliberately, and with one plugin first
+      and last are the same), and running the post-stage check when no
+      plugin declared `graph` at all, which is the zero-cost gate and
+      costs only the walk.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
