@@ -455,6 +455,34 @@ describe('a refused cache plugin leaks nothing', () => {
   )
 })
 
+describe('a broken config leaks nothing either', () => {
+  it(
+    'the local handle is closed when a project config throws, not only when a cache plugin is refused',
+    async () => {
+      // The twin of the row above, thirty lines earlier in `prepare.ts` and
+      // with the same one-line body and the same comment explaining it. The
+      // cache-plugin copy has a row named for it; this one had none, so the
+      // `localCache.close()` in the config catch could be deleted and the
+      // whole suite stayed green.
+      //
+      // Both matter for the same reason: the cache is opened BEFORE the
+      // configs load, because it is where their cached evaluations live. A
+      // throw between the open and the return strands an open SQLite handle
+      // for a process that keeps running — `vx watch`, an editor plugin, a
+      // daemon — and the next open of the same file meets a busy lock.
+      await pkg('app', 'export default { this is not javascript }')
+      const closes = spyOn(Cache.prototype, 'close')
+      try {
+        await expect(prepare()).rejects.toThrow()
+        expect(closes).toHaveBeenCalledTimes(1)
+      } finally {
+        closes.mockRestore()
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('the cache handle honours the resolved policy and dir', () => {
   it(
     '--cache-dir wins over the .vx/cache default',

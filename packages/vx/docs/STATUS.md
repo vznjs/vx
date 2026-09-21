@@ -3451,6 +3451,69 @@ the root>`: the prefix is a STORAGE discriminator and the path
       neither of which names a single symbol from the region.
       No source change.
 
+535.  DONE (2026-09-21, `orchestrator/prepare.ts` — the decisions made
+      ONCE per run that every task then inherits: scope, the fingerprint
+      every key folds, the cache dir, frozen mode, boundary geometry,
+      the cache seam and the two error paths. 20 mutations, fourteen
+      caught, six survivors, ONE real, one row. Never swept; one passing
+      mention in STATUS's whole history).
+      A SKIPPED ROW IS A SILENT PASS IN A SWEEP, and that is this item's
+      finding — 533's lesson in a second costume, found the same way.
+      `no-assert-writable` (deleting the `localCache.assertWritable()`
+      that refuses a cache directory this user cannot write) reported
+      SURVIVED. It is not a survivor: the row that catches it is
+      `describe.skipIf(skipAsRoot(...))` in
+      `cache-dir-selection.test.ts`, this container runs as uid 0, and
+      root bypasses the permission bit. `bun test` said `4 skip` in a
+      summary the driver never read — in all twenty runs.
+      ITEM 481 FOUND THIS EXACT HOLE FROM THE OTHER SIDE and built the
+      fix: `VX_REQUIRE_NONROOT=1`, which CI sets, so the row binds where
+      the merge is gated. What had no fix was the SWEEP, which never set
+      it and never counted skips. The verdict script now sums ` N skip`
+      and reports a partial verdict; a region whose rows skip here is
+      INCONCLUSIVE on this machine, never a survivor. The rule sits in
+      CLAUDE.md beside the crashed-run one.
+      Verdicting it properly needs a non-root user; creating one in this
+      container was refused, so it stays INCONCLUSIVE rather than
+      worked around. CI verdicts it on every push.
+      THE ONE REAL HOLE is the handle-hygiene PAIR, the same two-copies
+      shape as 534. The local cache opens BEFORE the configs load,
+      because it is where their cached evaluations live, so both throw
+      paths between the open and the return close it. The cache-plugin
+      copy has a row named for it. The config copy, thirty lines
+      earlier, with the same one-line body and the same comment, had
+      none — delete it and the suite stays green. A stranded SQLite
+      handle in a process that keeps running (`vx watch`, an editor
+      plugin, a daemon) meets a busy lock on the next open. The new row
+      catches only its own copy, and the old row only its own.
+      THREE EQUIVALENCES, each measured rather than argued.
+      The git enumeration's `usesWorkspaceInputs` flag: with it forced
+      false, a warm build still HIT the entry the pristine build saved
+      (identical key), and editing the shared workspace file still
+      MISSED. It is a pure up-front-enumeration optimisation — the
+      on-demand `runGitLsFiles` fallback resolves the same set, and the
+      lost OID merge is what 534 measured as one `hashFile` per file.
+      The config-eval cache keyed on `unclaimed` instead of `all`: the
+      only delta between the two digests is the files a `fingerprint`
+      plugin claims, and a CACHEABLE config cannot read one. Non-relative
+      imports beyond `@vzn/vx` are refused, an impure config is never
+      stored, and the `project` stage that could read a lockfile runs
+      AFTER the cache on the value it returned, so nothing lockfile-derived
+      is ever stored. The `all` keying re-evaluates every config on a
+      lockfile edit for no correctness gain today — worth keeping as the
+      safe side, but the comment's reason ("a config may import a
+      dependency") describes something the deny-list refuses.
+      The candidate filter: unreachable from the CLI. `cli/select.ts`
+      refuses an unmatched filter by name, every project it CAN name is
+      loaded (a config-less one gets an empty-task entry rather than
+      being absent), and `declaresTask` answers false for an unknown
+      name anyway. Only a library caller hand-passing a name that does
+      not exist sees a difference, and only in which message prints.
+      And the early-git predicate's `indexOf('#') <= 0`: `#task` is
+      refused by `resolveRunOptions` before it can reach here, and even
+      if it did, `['.']` is a superset partitioned by project dir.
+      No source change.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
