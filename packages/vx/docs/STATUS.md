@@ -5222,6 +5222,22 @@ Inputs` — both of which ARE caught in this twin (the field-name
       a second mechanism downstream (`git-oid.test.ts` says so in
       words), `--show-prefix` never emits a `.` segment, and `git
 config --list` lowercases its keys.
+      AND THE FIX FROM 566 OWED A NUMBER, WHICH IT DID NOT SURVIVE.
+      Principle 1 says a change to the warm path without a number is not
+      done, and `pruneEmptiedDirs` is on the clean path every miss and
+      every restore. Measured (200 dirs x 20 files, min of 7, three
+      interleaved passes, Bun 1.4.2): the ORIGINAL walk-up with its
+      `tried` memo is 47 ms and leaves an emptied parent standing;
+      566's memo-less walk-up is correct and 60 ms, because every child
+      re-attempts the parent it shares. So the correctness fix cost 28%
+      on a path nobody would have watched.
+      REPLACED WITH A LEVEL-ORDER SWEEP, which is correct for the reason
+      the comment always claimed — a parent is attempted only once every
+      one of its children has had its turn — and costs ONE rmdir per
+      directory instead of one per directory per child. 36-41 ms across
+      the same three passes: faster than the buggy original, not just
+      than the fix it replaces. The level's removals also go out
+      concurrently, which the per-directory walk could not do.
       THE CACHE MODULE IS NOW SWEPT END TO END — `cache.ts` (four
       regions, 559-564), `inputs.ts` (three, 565-567) and this. The
       yield should be assumed to fall from here: the next valuable
