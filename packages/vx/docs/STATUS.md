@@ -137,6 +137,18 @@ test is telling the truth.
       declare falls back with a todo naming it — the colon-fixture rows
       in `migrate.test.ts` cover all three.
 
+595.  DONE (2026-09-22, the Turbo guide walked the way the Nx one was,
+      594). Smaller findings, the guide being the older and better-worn
+      one: the install line sat after the workspace file it is needed
+      for; the "generated" `test` sample showed a narrowed input list the
+      mapper never writes (no `inputs` is `**/*`, Turbo's default, and
+      the sample says so now); "no `commands` array" is an Nx notion, so
+      the one-command bullet says what a Turbo user needs instead — the
+      script body with its `pre` / `post` hooks folded in; and
+      `--continue` and `--output-logs` had no command rows. No mapper
+      change; the pins on that page (its key table, the `--continue`
+      semantics) still hold.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -355,8 +367,8 @@ order: the 1,000-project number (593: 37 ms, and the workspace-root
 output defect it found); the persona walk of the from-nx guide (594:
 five gaps, one a mapper improvement); then the daily duties of 14at
 (warm A/B on any core run-path change — none since 589 — and the STATUS
-trim at twenty, next at 612), and the Turbo guide deserves the same
-walk the Nx one got. Never end with "what next?".
+trim at twenty, next at 612), the Turbo guide got the same walk
+(595). Never end with "what next?".
 
 ## Decisions (this arc)
 
