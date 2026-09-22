@@ -424,15 +424,14 @@ function buildTask(
       todos.push(`output ${JSON.stringify(o)} uses a token vx does not support`)
       continue
     }
-    // Plain paths resolve against the workspace root in nx.
+    // Plain paths resolve against the workspace root in nx. One outside
+    // the project dir is Nx's DEFAULT layout (`@nx/js:tsc` writes
+    // `dist/<project>` at the root), so it is the workspace-root output it
+    // is, not a gap: as a todo, every such target hit green and restored
+    // NOTHING (item 593, the bench workspace's 1,000 `build` targets).
     if (projectRel === '.') pushOut(s)
     else if (s.startsWith(`${projectRel}/`)) pushOut(s.slice(projectRel.length + 1))
-    else {
-      todos.push(
-        `output ${JSON.stringify(o)} falls outside the project dir — declare it in ` +
-          'cache.outputs.workspaceFiles (workspace-root-relative) if intended',
-      )
-    }
+    else wsOutFiles.push(dirGlob(path.posix.normalize(s).replace(/^\.\//, '')))
   }
 
   const deps: string[] = []
