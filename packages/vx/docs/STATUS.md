@@ -225,6 +225,26 @@ test is telling the truth.
       pays on mixed workloads. caching.md, the module page and the
       overlapping-outputs note say the new rule.
 
+585.  DONE (2026-09-22, the fresh-workspace walk on Bun 1.4.2 with the
+      day's compiled binary: two packages, `vx init` → cache blocks per
+      its TODO → cold run → warm run → `vx why` → an upstream edit →
+      `why` again → `vx last` → `vx info` → `vx watch` with an edit and
+      Ctrl-C). Every surface read true: `why` named the changed upstream
+      and its key pair, `last` the two executed tasks with their cpu
+      ratio, `info` the floor, the cgroup memory line and the sandbox
+      verdict, `watch` the file that started its cycle. Nothing off;
+      recorded so the next walk starts from what this one covered.
+
+586.  DECIDED (2026-09-22, In-flight 5 closed: macOS violation reporting
+      stays lossy under load, by design). The report reads a store the
+      unified log feeds asynchronously and drops under pressure; the
+      settle window that halved the loss (5.0 % → 2.2 %) cost 300 ms on
+      every clean sandboxed task and the owner removed it 2026-09-05; an
+      unprivileged process has no other channel for a denial that does
+      not kill the child (no strace on macOS, dtrace needs root).
+      Enforcement is unaffected. The introduction's Known limits already
+      say so; this moves the item from In flight to Decisions.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -241,16 +261,10 @@ the 23-test baseline as it stood on 1.3.11 is in
 `docs/history/2026-09-status-next-log.md` § "In flight as it stood
 2026-09-22"; the `ci` task refusing a Bun below the floor is plan F4.
 
-**Open after the sandbox arc (2026-09-05).** Its four Linux items
-closed by 2026-09-10; the record is in
-`docs/history/2026-09-status-next-log.md`. What stays open is the one
-that needs a macOS box:
-
-5. **macOS violation reporting is lossy while any violation fails the
-   task.** The unified log drops records under load, so the same task can
-   pass or fail run to run. Enforcement is unaffected — the OS denied the
-   operation either way — but the REPORT is not a reliable gate on that
-   platform.
+**The sandbox arc (2026-09-05) is closed.** Its four Linux items closed
+by 2026-09-10 (`docs/history/2026-09-status-next-log.md`); the fifth,
+macOS violation reporting being lossy under load, is a recorded decision
+since item 586 (Decisions below), not an open item.
 
 **Releases.** v0.0.21 is on npm, the four platform packages with it
 (2026-09-15, handoff 14d in the history file), published through
@@ -476,6 +490,12 @@ manual gate script in this container runs oxlint/oxfmt through
 
 ## Decisions (this arc)
 
+- **macOS violation reporting is lossy under load, and stays so
+  (2026-09-22, item 586).** The store is fed by the unified log, which
+  drops records under pressure; the settle window that halved the loss
+  cost 300 ms per clean sandboxed task and went 2026-09-05 (owner); no
+  unprivileged channel reports a denial the child survived. Enforcement
+  is unaffected and the Known limits page says so. Not an open item.
 - **`--affected` includes dependents (2026-09-16).** The sugar is
   `--filter '...[<base>]'`: the changed projects and everything that
   depends on them, the superset a CI gate needs and what the guides
