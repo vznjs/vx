@@ -47,7 +47,10 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   boundary-ignoring, so it can land in a dependent's own project dir; and
   execute-task reuses a `preProbed` hash verbatim, which makes probe reuse
   a stale-hit path when the key is preliminary.
-- On top of that, a graph declaring `outputs.workspaceFiles` anywhere
-  disables the restore tier graph-wide.
+- On top of that, `restoreTierExclusions` keeps out of the restore tier
+  every task whose project directory (or own `workspaceFiles` input
+  prefix) a declared workspace output's static prefix reaches, and every
+  transitive dependant of one; a prefix at the root reaches everything,
+  which is the graph-wide rule item 584 replaced.
 - Never throws — degrades to the normal schedule.
 - Measured: mixed workload −6.6%; warm all-hit at parity.

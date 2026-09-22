@@ -70,13 +70,14 @@ about where this task WRITES. The two do not coincide:
   restore-tier and not prefetched.
 - **Cross project**: B's project-relative outputs land in B's own
   directory, so an overlap requires root-anchored (`workspaceFiles`)
-  outputs on one side — and `local-shortcircuit.ts` already disables the
-  restore tier GRAPH-WIDE the moment any task declares
-  `cache.outputs.workspaceFiles`, for exactly this reason ("the
-  boundary-ignoring escape hatch could let a task write where a restore
-  touches — a blanket conservative exclusion"). Probe reuse still
-  applies, so those tasks are not probed twice; they simply stay
-  dep-gated.
+  outputs on one side — and `local-shortcircuit.ts` keeps every task
+  whose project directory such an output can REACH out of the restore
+  tier, and every dependant of one (`restoreTierExclusions`, item 584;
+  until then the tier was disabled graph-wide the moment any task
+  declared `cache.outputs.workspaceFiles`). In the fixture below B's
+  output reaches A's directory, so A is kept out, and B — A's dependant
+  — with it. Probe reuse still applies, so those tasks are not probed
+  twice; they simply stay dep-gated.
 
 **Measured, because an earlier draft of this note got it wrong.** The
 first version claimed the cross-project case was unguarded and that an
@@ -87,17 +88,21 @@ and detaches its key with `cache.inputs.tasks: []` so it can HIT while A
 misses — the only arrangement in which B could restore into a directory
 A is about to clean. Polling the directory through the run put `b.txt`
 at 1142 ms and `a.txt` at 1131 ms: B restored AFTER A, because with a
-workspace output in the graph nothing is restore-tier at all. Ten
+workspace output in the graph nothing was restore-tier at all (then; now
+because B's output reaches A's directory and B depends on A, so both are
+kept out — the same order by a narrower rule, pinned as § "the design
+note's cross-project overlap stays dep-gated on both sides"). Ten
 further reps with A's artifact at 2000 files left a correct tree every
 time.
 
 So the constraint for an implementation is not "add an exclusion" but
-**"do not remove the one that exists"**. The blanket rule is expensive —
-one `workspaceFiles` output anywhere costs the whole graph its restore
-tier — and narrowing it is the obvious future optimisation. Whoever
-narrows it owns this case, and the pin now exists to say so:
-`tests/local-shortcircuit.test.ts` § "a workspace-output writer anywhere
-keeps an UNRELATED project out of the tier" holds a project with no edge
+**"do not remove the one that exists"**. The blanket rule was expensive —
+one `workspaceFiles` output anywhere cost the whole graph its restore
+tier — and item 584 narrowed it to a reach test on the output's static
+prefix, propagated down the edges; the pins that own this case are
+`tests/local-shortcircuit.test.ts` § "an unrelated project whose
+DIRECTORY the writer's output reaches stays OUT" (item 425's claim,
+path-based) and the fixture row above. The older row held a project with no edge
 to the writer at all, with the same workspace and a project-relative
 output as its control. It fails against the obvious narrowing (exclude
 the declaring node) while the older dependent-of-a-producer row stays
@@ -127,10 +132,11 @@ paying for.
 
 1. A third repository shows the ADDITION shape (Next 16's own gate; the
    two known repositories are one of each, which is not a pattern yet).
-2. The restore-tier exclusion above still holds — today it does, via the
-   blanket `workspaceFiles` rule; a narrowed artifact is only safe while
-   it cannot be restored early, so anyone narrowing that rule pins this
-   case first.
+2. The restore-tier exclusion above still holds — via the reach test
+   (item 584): an overlap-narrowed artifact's output reaches the upstream's
+   directory by construction, so the dependant is kept out; a narrowed
+   artifact is only safe while it cannot be restored early, so anyone
+   changing that rule pins this case first.
 3. The snapshot/diff lands in `execute-task.ts`'s clean + save path,
    where `cleanOutputs` already returns the paths it removed and already
    marks them in the git files cache; the narrowed set flows to the same

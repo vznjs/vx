@@ -210,6 +210,21 @@ test is telling the truth.
       a string-anchored witness holds the message it asserts. Nothing
       to add. Both struck in the plan with these reasons.
 
+584.  DONE (2026-09-22, plan D3: the `workspaceFiles` restore-tier
+      exclusion is a reach test, not a graph-wide switch).
+      `restoreTierExclusions` (local-shortcircuit.ts) keeps out every
+      task whose project directory — or own `workspaceFiles` input
+      prefix — a declared workspace output's `staticPrefix` reaches, and
+      every transitive dependant of one (its up-front key folds a
+      preliminary key); a prefix at the root keeps the old rule. Item
+      425's pin is rewritten as four path-based rows plus the design
+      note's fixture, all red under the old rule (run); the BOTH-tiers
+      row now holds the producer alone in the tier. Measured, 1,000
+      projects with one writer of `shared/x.txt`: tier 0 → 1000; warm
+      all-hit min-of-11 base 177.2 ms, head 176.2 — a tie, as the tier
+      pays on mixed workloads. caching.md, the module page and the
+      overlapping-outputs note say the new rule.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
