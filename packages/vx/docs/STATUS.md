@@ -68,7 +68,11 @@ items 353–372 to
 `docs/history/2026-09-improvement-loop-413-432.md` on 2026-09-20
 (handoff 14an to the next-log file), and items 433–452 to
 `docs/history/2026-09-improvement-loop-433-452.md` on 2026-09-20
-(handoffs 14ao–14ap to the next-log file), so
+(handoffs 14ao–14ap to the next-log file), and items 453–572 to six
+files of twenty, `docs/history/2026-09-improvement-loop-453-472.md`
+through `-553-572.md`, on 2026-09-22 (item 573), and items 573–591 to
+`docs/history/2026-09-improvement-loop-573-591.md` later that day
+(handoffs 14aq–14au to the next-log file, item 592), so
 this file stays the handoff
 and not the log; numbering continues from there. Keep
 it that way: when the loop below passes forty items, move the oldest
@@ -84,239 +88,20 @@ recorded here as it lands. Layer map measured first (imports between
 orchestrator ← cli, `config.ts` a leaf, no back edges — the boundaries
 test is telling the truth.
 
-573.  DONE (2026-09-22, the trim the loop was owed since 452, and the
-      plan the week after the sweep works from). Items 453–572 moved
-      whole into six history files of twenty, `2026-09-improvement-loop-453-472.md`
-      through `-553-572.md`, every removed line checked
-      present in its new file before the write; STATUS 5,803 → under
-      600 lines. `docs/design/plan-2026-09-22.md` is the review of
-      that week in repo form: six fixes (F1–F6), seven improvements
-      (I1–I7), five arcs (D1–D5), each with its seam, constraint,
-      measurement and what not to do; Next 15 points at it. Handoff
-      14aq below. Rule for the entries that follow (plan I4): twelve
-      lines — what changed, the number, the test; the why is the PR.
-
-574.  DONE (2026-09-22, the 2026-09-16 PR #487 that the sweep week left
-      open, rebased: the what-vx-is post named ten of the thirteen plugin
-      hooks (`admit`, `setup`, `teardown` missing) — every `PLUGIN_HOOKS`
-      name is in its pipeline paragraph now, pinned to the list; the
-      no-choice post spelled the warm figures its own way — now the
-      benchmarks page's (3.59s, 760ms), pinned; the values post's
-      principle count is pinned to CLAUDE.md. Three rows in
-      `site-samples.unsafe.test.ts`; two fail on the old posts.
-
-575.  DONE (2026-09-22, plan F4: the gate refuses a Bun below the floor).
-      `check.bun` (`scripts/bun-floor.ts`) is a new uncached core task
-      that `install` depends on, so every shard, the unsafe suite, lint
-      and the binary check wait on it; below `MIN_BUN` it exits 1 in
-      under a second naming the release asset that downloads where
-      `bun upgrade` is refused. `bin.ts` still only warns for a user.
-      `tests/bun-floor.test.ts`: the verdict both ways, the asset name
-      per platform, and the script's exit on the running Bun. Ran
-      sandboxed as `probe` with `VX_REQUIRE_SANDBOX=1`: 88 ms.
-
-576.  DONE (2026-09-22, plan F1: a gitignored DIRECTORY named as a literal
-      input folded nothing in silence — 565's finding, a stale hit).
-      `assertNoInvisibleLiteralInputs` judged existence by
-      `Bun.file(p).exists()`, which is false for a directory on 1.3.11
-      and 1.4.2 alike, so it `continue`d past every literal naming one.
-      Existence is lstat now; an EMPTY directory is refused by the same
-      rule (decided: nothing under it can fold). Two rows in
-      `inputs-resolution.test.ts`, both red without the fix (run), with
-      the file-inside control beside the empty one. The class grepped:
-      the 17 other `Bun.file(…).exists()` sites in `src/` take file
-      paths; `tests/bun-file-exists-sites.test.ts` pins that set (plan
-      I7) so a new site is read for a directory operand.
-
-577.  DONE (2026-09-22, plan F3: the wildcard class was spelled nine
-      times — five with `{}`, four without). Two alphabets now, one
-      question each: `GLOB_WILDCARDS` / `isLiteralPattern` (util/paths.ts,
-      "must this declaration be MATCHED") at six sites incl. env names;
-      `MOUNT_WILDCARDS` / `isMountableLiteral` (exec/sandbox-paths.ts,
-      "can this grant be MOUNTED") at four. The brace is the whole
-      difference, and measured: `write: ['g/{a,b}.txt']` works as a
-      literal (placeholder, widened to `g/`) and, scanned, fails with
-      `Read-only file system` — new unsafe row, red with `{}` in the
-      mount set (run). `tests/sandbox-paths.test.ts`: both alphabets by
-      member, the source-diff pin, and no inline `[*?[` outside the
-      two homes. No behaviour change at any site.
-
-578.  DONE (2026-09-22, plan I1 and I4: the sweep's rules leave the
-      every-session memory). Twenty-six CLAUDE.md rules that only apply
-      while sweeping moved verbatim to
-      `docs/design/mutation-sweeps-2026-09.md`, under a seven-step
-      method distilled from them; CLAUDE.md keeps a pointer and five
-      short general rules (masking guards, the positive before the
-      negative, suspect the container, stat not `Bun.file`, the
-      platform answer in the file). CLAUDE.md 542 → 351 lines. I4 is
-      the item rule 573 set and 575–577 follow: twelve lines, the
-      number, the test; the why is the PR.
-
-579.  DONE (2026-09-22, plan I2 and I6: the suite's cost has a number and
-      the gate prints its box). CI wall time on main, eleven push runs
-      2026-09-21 (#671–#681): 2:23–3:16 each, all three jobs — under a
-      six-minute budget, so no witness file folds. `shard-weights.json`
-      refreshed from a JUnit run of all twelve shards on this box (Bun
-      1.4.2, 195 files, 17 of them new since 2026-09-16); the dealer
-      now balances to 15,968–15,969 ms per shard. `check.bun` prints a
-      second line — platform, cores with the cgroup quota, memory with
-      the cgroup limit, from `util/cgroup.ts` — so a figure recorded
-      from this gate carries where it was measured; the row in
-      `bun-floor.test.ts` pins its shape.
-
-580.  DONE (2026-09-22, plan D5: the sweep week's run-path changes
-      A/B'd, since none was measured as it landed). Compiled binaries,
-      main before the week (40aaab2f) against this branch, 1,000
-      projects warm all-hit, interleaved min-of-15, one copy per arm
-      pre-warmed by its arm: base 164.7 ms, head 167.8 ms. The A/A
-      control (base over both copies) read 170.1 against 169.2, so a
-      3 ms gap is inside this box's spread: a TIE, recorded as one.
-      #667's per-glob negation walk and #679/#680's git checks cost
-      nothing the warm path can see. Harness: `ab-week.ts` shape under
-      Next 6 (arms, A/A, min-of-N).
-
-581.  DONE (2026-09-22, plan D4, the agent's half: the release is one
-      click away). `docs/history/release-0.1.0-notes.md` groups the 341
-      PR titles since v0.0.21 by what a user meets (selecting, caching,
-      sandbox, failures, plugins, CLI, docs; internals in one line), so
-      the owner cuts `0.1.0` from it. The compiled-binary canary and
-      the site build ran green in this gate. NOT done: refreshing the
-      site's benchmark numbers — they were measured on the dev box, and
-      Next 6 says this container's absolutes are a different machine;
-      the owner's three items stand (NPM_TOKEN, the tag, the address).
-
-582.  DONE (2026-09-22, plan F2: the seatbelt profile's one unchecked
-      interpolation, 478's finding). The unix-socket loop emitted the
-      declared path through `sbplPath` and `toRealPath(sock)` raw, so a
-      symlink whose TARGET carried a quote rewrote the policy. A second
-      checker for filesystem-resolved paths refuses only what can leave
-      the quoted SBPL string or the shell argument (`"`, `'`, `\`, a
-      control character) — a space stays legal, so `/Users/Jane Smith`
-      is not regressed. Testable on Linux: `macProfileRules` builds text
-      and runs no seatbelt. `tests/seatbelt-profile.test.ts`: the
-      injection row (red with the one line reverted), the space and
-      plain-path controls, the checker member by member.
-
-583.  DECLINED (2026-09-22, plan I3 and I5, evaluated against the code).
-      I3 (one `tests/doc-pins/` directory for the three pin files): the
-      three answer different questions by design — interface field
-      lists, rendered samples byte for byte, class greps over every
-      page — and share only `handAuthoredDocs()`, which doc-class-pins
-      already owns; and `scripts/test-shard.ts` deals `readdirSync(TESTS)`
-      FLAT, so a subdirectory is invisible to the shards until the dealer
-      changes too. 2,751 lines moved for no new claim. I5 (a witness
-      dies with its guard): `oxlint --type-check` runs over `tests/` in
-      the gate, so a witness importing a removed symbol already fails;
-      a string-anchored witness holds the message it asserts. Nothing
-      to add. Both struck in the plan with these reasons.
-
-584.  DONE (2026-09-22, plan D3: the `workspaceFiles` restore-tier
-      exclusion is a reach test, not a graph-wide switch).
-      `restoreTierExclusions` (local-shortcircuit.ts) keeps out every
-      task whose project directory — or own `workspaceFiles` input
-      prefix — a declared workspace output's `staticPrefix` reaches, and
-      every transitive dependant of one (its up-front key folds a
-      preliminary key); a prefix at the root keeps the old rule. Item
-      425's pin is rewritten as four path-based rows plus the design
-      note's fixture, all red under the old rule (run); the BOTH-tiers
-      row now holds the producer alone in the tier. Measured, 1,000
-      projects with one writer of `shared/x.txt`: tier 0 → 1000; warm
-      all-hit min-of-11 base 177.2 ms, head 176.2 — a tie, as the tier
-      pays on mixed workloads. caching.md, the module page and the
-      overlapping-outputs note say the new rule.
-
-585.  DONE (2026-09-22, the fresh-workspace walk on Bun 1.4.2 with the
-      day's compiled binary: two packages, `vx init` → cache blocks per
-      its TODO → cold run → warm run → `vx why` → an upstream edit →
-      `why` again → `vx last` → `vx info` → `vx watch` with an edit and
-      Ctrl-C). Every surface read true: `why` named the changed upstream
-      and its key pair, `last` the two executed tasks with their cpu
-      ratio, `info` the floor, the cgroup memory line and the sandbox
-      verdict, `watch` the file that started its cycle. Nothing off;
-      recorded so the next walk starts from what this one covered.
-
-586.  DECIDED (2026-09-22, In-flight 5 closed: macOS violation reporting
-      stays lossy under load, by design). The report reads a store the
-      unified log feeds asynchronously and drops under pressure; the
-      settle window that halved the loss (5.0 % → 2.2 %) cost 300 ms on
-      every clean sandboxed task and the owner removed it 2026-09-05; an
-      unprivileged process has no other channel for a denial that does
-      not kill the child (no strace on macOS, dtrace needs root).
-      Enforcement is unaffected. The introduction's Known limits already
-      say so; this moves the item from In flight to Decisions.
-
-587.  DONE (2026-09-22, D1's gate answered by survey rather than by
-      waiting). Twelve more real monorepos scanned statically for two
-      cached targets of one project on overlapping outputs with an edge
-      between them: twenty (2 projects, `build` → `dist`,
-      `build:individual` → `dist/individual`) and storybook (44 sandbox
-      projects, `sandbox` → `sandbox/<dir>`, `build` →
-      `…/storybook-static`) show the ADDITION shape; ten show none; no
-      new rewrite-in-place. With strapi that is three, the note's own
-      condition (1). Table in the design note. D1 is the next arc, on
-      the note's design and matrix; the owner's waiver is no longer
-      needed.
-
-588.  DONE (2026-09-22, plan D1: overlapping outputs, the addition shape,
-      on the design note's design). An overlap WITH an edge is marked at
-      graph build (`addsToOutputsOf` / `outputsAddedToBy`), not refused;
-      the dependant's own set is what its run added or changed against a
-      size+mtime stamp taken before it (`stampOutputs`, `ownOutputsSince`),
-      it cleans and is judged current by its rows (`cleanOutputPaths`),
-      and the upstream drops strays a dependant's glob could have added
-      before judging its tree. `tests/overlapping-outputs.test.ts`: the
-      note's matrix over twenty's subdirectory shape and strapi's
-      same-tree shape, ten rows, each tree byte-identical to a cold run;
-      each of the three mechanisms reddens rows when disabled (run). The
-      migrator keeps an edge-ordered dependant cached. caching.md § Additive
-      outputs is the contract. Warm A/B, main against this head, 1,000
-      projects min-of-15: 173.5 vs 170.5 ms, A/A 168.3 vs 164.2 — a tie.
-      Observed, not 588's, and closed in 589: a hit whose entry has no
-      rows extracted its empty artifact rather than skipping.
-
-589.  DONE (2026-09-22, the observation 588 recorded). A hit whose entry
-      holds no rows — its declared outputs matched nothing at save time,
-      the warned case — extracted its empty artifact on every hit and
-      reported a restore. Now it is up-to-date while its globs still
-      match nothing (one walk, no tar read), and a stray under the glob
-      still falls through to the clean, as strict ownership requires.
-      Row in `cache-declaration-warnings.test.ts`, red without the
-      change; the matrix's `noop` rows read plain hits now.
-
-590.  DONE (2026-09-22, owner's ask: "support nx more, like their
-      executors … current nx configs, no changes … not in core"). An Nx
-      repo runs under vx with only a `vx.workspace.ts`: `nx()` in
-      `@vzn/vx-migrate` fills the `project` stage from Nx's RESOLVED
-      graph (snapshot under the cache dir, refreshed by `nx graph
---file` when `nx.json` or a `project.json` is newer, else the
-      stats alone), and every executor target is an `nx-exec` line —
-      a Node bin over Nx's public `runExecutor` that replaces the
-      target in the in-memory graph with the executor and options on
-      its command line, so the key sees them and the line pastes into
-      a shell. Measured against `nx run` daemon-off: 656 → 245 ms per
-      task at 200 projects, 1,104 → 272 at 1,000; a warm vx run pays
-      nothing. The migrator writes the same lines where it wrote a
-      placeholder. `tests/nx-exec.test.ts` (fake nx), `nx.test.ts`
-      (the plugin, a real round trip through the bin), the live suite
-      against Nx 22 in CI's packages job (`VX_REQUIRE_NX`). Design:
-      `docs/design/nx-unchanged-2026-09.md`.
-
-591.  DONE (2026-09-22, the real-Nx dogfood 14au asked for, on refine:
-      Nx 18.2, 38 packages + 167 examples). `nx()` on the clone with only
-      a `vx.workspace.mjs`: the first `--dry` paid one graph export (17 s,
-      Nx's own daemon-less computation), the second read the snapshot in
-      0.28 s; the build set equals `nx show projects --with-target build`
-      (205 = 205, no difference either way); `@refinedev/core#build` and
-      its two dependencies through the plugin wrote the same 1,320 files
-      by name and size as `nx run --skip-nx-cache` (8.1 s against 11.1 s),
-      and a restore replayed them identically in 0.36 s. Two mapping
-      defects it surfaced, fixed: a target with outputs and no `cache`
-      was cached (refine's 204 persistent `dev` targets) — Nx's rule now,
-      `cache: true` or the legacy `cacheableOperations` list, never a
-      persistent task; and "no inputs" is Nx's `default` named input, not
-      a gap to report (487 lines per run). Rows in `migrate.test.ts`
-      (executors, pkg-b); refine's warnings went from three lines to the
-      persistent note alone.
+592.  DONE (2026-09-22, the simplification 590 and 591 invited, and the
+      trim the loop reached twenty at). `turbo()` and `nx()` carried the
+      same skeleton — the per-run mapping memo keyed on `ctx.projects`,
+      the warn-once, the fill-never-overwrite loop — twice; it is
+      `src/adoption-plugin.ts` now (`adoptionPlugin(import.meta, mapRun)`)
+      and each plugin is the one call that says how its mapping is made.
+      The turbo and nx suites pass unchanged (122). The real-tree dogfood
+      of the EXECUTOR path was tried and dropped: nrwl/nx-examples needs
+      yarn 4 and the proxy's policy refuses repo.yarnpkg.com (403),
+      `create-nx-workspace` generates but its npm install dies on npm's
+      `edgesOut` null read; the live suite against Nx 22 (`@nx/js:tsc`
+      through `nx-exec`, in CI since 590) stands as the proof. Items
+      573–591 moved to `docs/history/2026-09-improvement-loop-573-591.md`
+      and handoffs 14aq–14au to the next-log file in this commit.
 
 ## In flight
 
@@ -507,9 +292,10 @@ state of each:
     394, 400, 403, 409, 412, 419, 426, 432, 441 and 452 (14–14ap) are
     in `docs/history/2026-09-status-next-log.md`; items 453–572 are in
     `docs/history/2026-09-improvement-loop-453-472.md` through
-    `-553-572.md`. The loop above is the record since 573; 14aq is
-    below with 14ar, 14as, 14at and 14au, and the next handoff written
-    here is 14av.
+    `-553-572.md`; items 573–591 are in
+    `docs/history/2026-09-improvement-loop-573-591.md` (handoffs
+    14aq–14au in the next-log file). The loop above is the record since
+    592; 14av is below, and the next handoff written here is 14aw.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -518,105 +304,25 @@ state of each:
     and what not to do; strike an entry through there when its item
     lands here.
 
-14aq. **Handoff after item 573 (2026-09-22).** One item since 14ap, and
-it is the shape of the week: 453–572 were a per-file mutation sweep
-of core that found real stale-hit and containment defects (#667 #679
-#680 #676 #661 #650 #642 #681), wrote the sweep rulebook into
-CLAUDE.md, and closed the shard-9 SIGILL as Bun 1.3.11. It also left
-STATUS at 5,803 lines, the suite 14k test lines heavier with no CI
-budget, three findings recorded and not fixed (565: a gitignored
-directory literal folds nothing — a stale hit; 478: the seatbelt
-profile interpolates a resolved socket path unchecked; 495's
-follow-up: the wildcard classifier spelled six ways), and no run-path
-change to A/B. 573 trimmed the loop and wrote the plan. NEXT, in
-order: plan F4 (the `ci` task refuses a Bun below `MIN_BUN`), F1
-(stat, not `Bun.file`, in `settleLiterals`; differential row on an
-ignored `gen/`), F3 (one predicate in `util/paths.ts`, measure the
-brace bind first), then I1/I4 and D3 before D1. Owner asked
-2026-09-22 whether D1 waits for a third repository. Never end with
-"what next?".
-
-14ar. **Handoff after item 584 (2026-09-22, evening).** Eleven items since
-14aq, all on PR #487, which carries the first day of
-`docs/design/plan-2026-09-22.md`: the gate refuses a Bun below the
-floor (575) and prints its box (579); the three findings the sweep
-recorded and left — a gitignored directory literal folding nothing
-(576, stale hit), the wildcard class spelled nine ways (577), the
-seatbelt profile's unchecked resolved path (582, testable on Linux
-because the profile is text) — are closed with differential rows; the
-sweep's rules left CLAUDE.md (578); the suite's cost has a number and
-the weights are fresh (579); the sweep week A/B'd as a tie (580); the
-0.1.0 notes are drafted (581); I3 and I5 declined with reasons (583);
-and the `workspaceFiles` restore-tier exclusion is a reach test
-(584, tier 0 → 1000 on the bench with one writer). One darwin-only
-red: the seatbelt rows built paths under the unresolved temp dir;
-fixed by realpath. WHAT REMAINS IN THE PLAN: D1 waits on the owner
-(a third repository, or a waiver — asked 2026-09-22); D2 waits on a
-workspace with > 100 MiB artifacts; F6 and D4's tail are the owner's
-three items. NEXT, in order: In-flight 5 (macOS violation reporting
-is lossy under load — the darwin CI job is the macOS box; design a
-report that does not depend on the unified log keeping up, or gate
-the failure on the denial the OS made rather than the record of it);
-then a fresh-workspace persona walk on Bun 1.4.2 (`vx init` → run →
-why → watch) for what the week's fixes changed for a user; then Next
-1's whole-graph REAPI run if a worker-side change needs it. The
-manual gate script in this container runs oxlint/oxfmt through
-`bunx` (bare names are not on its PATH). Never end with "what next?".
-
-14as. **Handoff after item 588 (2026-09-22, night).** Four items since
-14ar, on PR #682: the fresh-workspace walk found nothing off (585);
-In-flight 5 is a decision, not an item (586); D1's gate was answered
-by surveying twelve more monorepos — twenty and storybook show the
-addition shape, so with strapi that is three (587); and D1 shipped
-(588): two cached tasks of one project may share a tree when an edge
-orders them, the dependant owns what it adds. The plan of 2026-09-22 is
-now exhausted except D2 (waits on a workspace with > 100 MiB
-artifacts) and the owner's three items; the review doc's D1 question is
-moot. NEXT, in order: merge #682 when green; then the warm-path A/B
-duty for 588 (it touches the hit path of every task through
-`isAddition` — an empty `addedGlobs` costs one `some` per row, but
-the rule is a number, not a belief); then Next 1's whole-graph REAPI
-run if a worker-side change needs it; then the launch is the owner's.
-Never end with "what next?".
-
-14at. **Handoff after item 589 (2026-09-22, late).** Everything is merged
-(#487, #682, #683) and the branch stands on main with nothing in
-flight. 589 closed the one observation 588 left (a rowless hit no
-longer extracts its empty artifact), and the schema page and the
-ownership post name the ordered overlap. STATE OF THE PLAN
-(`docs/design/plan-2026-09-22.md`): every fix, improvement and arc is
-DONE or DECLINED with its reason, except D2 (the streaming remote
-seam, gated on a workspace with > 100 MiB artifacts) and the owner's
-three items (delete `NPM_TOKEN`, cut `0.1.0` from the drafted notes,
-the site's address). The Next list holds nothing an agent can start
-without an external event. WHAT A NEXT SESSION DOES: the daily duties
-(Next 6's warm A/B on any run-path change, with the A/A control; a
-STATUS trim at twenty items — the loop holds 573–589 now); a
-fresh-workspace walk when a user-facing surface changes; and, if the
-owner cuts the release, the site's benchmark refresh on the dev box.
-Do not start another mutation sweep (item 572's bar stands), do not
-narrow `local-shortcircuit.ts` without its pins, and do not touch the
-additive-output path (588) without the ten-row matrix red first. Never
-end with "what next?".
-
-14au. **Handoff after item 590 (2026-09-22, night).** One item since
-14at, and it is a new adoption surface: the owner asked for Nx
-executors to run under vx with no config change, then for the
-explicit `nx-exec <executor> [options]` shape; 590 shipped `nx-exec`,
-the `nx()` plugin and the migrator's use of both, with the design and
-the per-task numbers in `docs/design/nx-unchanged-2026-09.md`. The
-owner's standing direction after that: "never stop — find, simplify,
-speed up and improve things." WHAT TO WATCH: the live suite is new in
-CI's packages job (`npm install nx@22` into `packages/vx-migrate/.nx-live`,
-then the sandboxed `test` task with `VX_NX_MODULES` and
-`VX_REQUIRE_NX`); it passed on its first run (#685 merged
-2026-09-22 22:42Z). The refine dogfood is 591. NEXT, in order: a
-dogfood on a repo whose targets are EXECUTORS (refine and router are
-package-script repos, so `nx-exec` ran live only in the synthetic
-suite — an `@nx/vite` or `@nx/js:tsc` workspace proves the plugin's
-executor path on a real tree); then the STATUS trim at twenty items
-(the loop holds 573–591); the warm A/B duty has no arm (590 and 591
-touch no core run path). Never end with "what next?".
+14av. **Handoff after item 592 (2026-09-22, late).** Three items since
+14au, all merged (#685, #686, and 592's PR): an Nx repo runs under vx
+unchanged (`nx()`, `nx-exec`), the mapper caches by Nx's rule after the
+refine dogfood, and the two adoption plugins share one skeleton. The
+loop above holds 592 alone; 573–591 are in
+`docs/history/2026-09-improvement-loop-573-591.md`. The owner's
+standing direction: "never stop — find, simplify, speed up and improve
+things." WHAT IS PROVEN AND WHAT IS NOT: `nx()` on a real package-script
+Nx repo (refine, 205 = 205, identical outputs) and `nx-exec` on real Nx
+22 with `@nx/js:tsc` (the live CI suite); NOT yet an executor-backed
+real tree end to end through the plugin — the two candidates fell to the
+proxy's registry policy and an npm defect, so the next box with yarn 4
+reachable runs nrwl/nx-examples (`@nx/angular:application`). NEXT, in
+order: measure `nx()`'s per-run stat rule on a 1,000-project workspace
+(the bench generator's Nx layout; the claim is "a few ms", the number is
+owed); a persona walk of the from-nx guide as written (site
+`migrate/from-nx.md`, blog `from-nx.md`); then the daily duties of 14at
+(warm A/B on any core run-path change — none since 589 — and the STATUS
+trim at twenty, next at 612). Never end with "what next?".
 
 ## Decisions (this arc)
 

@@ -8,9 +8,9 @@
 // A task the package's own vx.config already declares wins; the plugin never
 // overwrites a user's hand.
 
-import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
-import { definePlugin, type ProjectMeta } from '@vzn/vx'
-import { collectGaps, type Gaps, warnGaps } from '../plugin-gaps.js'
+import type { ProjectMeta, VxPlugin } from '@vzn/vx'
+import { adoptionPlugin } from '../adoption-plugin.js'
+import { collectGaps, type Gaps } from '../plugin-gaps.js'
 import { mapTurboWorkspace, type TurboMappedProject } from './turbo-map.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
@@ -27,48 +27,13 @@ export interface TurboPluginOptions {
 }
 
 /**
- * The plugin. One mapping per run, computed on the first project the stage
- * visits and shared by the rest — turbo.json is one file for the whole
- * workspace, and a task's `dependsOn` is only valid against every package's
- * scripts at once. The packages are the ones core discovered
- * (`ctx.projects`): walking the workspace again here cost a 1,000-package
- * run a second discovery every time (2026-09-10).
+ * The plugin: the adoption skeleton over `mapTurboWorkspace`, one mapping
+ * per run (`adoption-plugin.ts` says why).
  */
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
-  // One mapping per RUN, not per process: the workspace module — and so
-  // this plugin instance — outlives a run under `vx watch`, and a mapping
-  // memoized for the process ran the cycle after a package.json script
-  // edit on the old command (2026-09-10). `ctx.projects` is one array per
-  // run, so its identity is the run's.
-  let mappedFor: readonly ProjectMeta[] | undefined
-  let mapping: Promise<Indexed> | undefined
-  let warned = false
-  const plugin = definePlugin(import.meta, {
-    async project(config: ProjectConfig, ctx) {
-      const root = options.root ?? ctx.workspaceRoot
-      if (mappedFor !== ctx.projects) {
-        mappedFor = ctx.projects
-        mapping = mapAll(root, ctx.projects)
-        warned = false
-      }
-      const mapped = await mapping!
-      if (!warned) {
-        warned = true
-        warnGaps(ctx.warn, plugin.name, mapped.gaps)
-      }
-      const project = mapped.byName.get(ctx.name)
-      if (project === undefined) return
-      config.tasks ??= {}
-      for (const t of project.tasks) {
-        if (t.task === null) continue
-        // The user's own declaration wins — the plugin fills, never overwrites.
-        // A copy per fill: the stage hands core an object it owns and edits
-        // in place, and the mapping outlives one run (the watch shape).
-        config.tasks[t.name] ??= structuredClone(t.task) as unknown as TaskConfig
-      }
-    },
-  })
-  return plugin
+  return adoptionPlugin(import.meta, (ctx) =>
+    mapAll(options.root ?? ctx.workspaceRoot, ctx.projects),
+  )
 }
 
 interface Indexed {
