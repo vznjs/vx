@@ -14,7 +14,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { normalizeGlob, staticPrefix, xxh3 } from '../util/index.js'
+import { isLiteralPattern, normalizeGlob, staticPrefix, xxh3 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
@@ -122,7 +122,7 @@ export function makeWatchIgnore(
 export function outputContainer(raw: string): string {
   const glob = normalizeGlob(raw)
   if (glob.startsWith('!')) return ''
-  if (!/[*?[\]{}]/.test(glob)) return glob.replace(/\/+$/, '')
+  if (isLiteralPattern(glob)) return glob.replace(/\/+$/, '')
   const prefix = staticPrefix(glob)
   return prefix === '.' || prefix === '/' ? '' : prefix
 }

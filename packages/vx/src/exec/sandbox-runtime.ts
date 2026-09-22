@@ -40,7 +40,13 @@ import {
 } from './runner.js'
 import { isTmpdirRefusal, staticPrefix, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
-import { localBindingOn, toRealPath, unique } from './sandbox-paths.js'
+import {
+  isMountableLiteral,
+  localBindingOn,
+  MOUNT_WILDCARDS,
+  toRealPath,
+  unique,
+} from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -996,15 +1002,9 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  * matches nothing is ordinary (an optional file, a cache not yet
  * populated), so only writes are reported.
  *
- * The classifier here is deliberately NOT `isLiteralPattern` (item 495's
- * shared one), which also counts `{}`. `write: ['g/{a,b}.txt']` is
- * classified a LITERAL here, gets a placeholder file, and is widened to
- * its directory like any other file-shaped grant — measured ok. Reading
- * the shared predicate instead would move that spelling into the scan
- * above and turn a working grant into `Read-only file system`. The two
- * predicates answer different questions: whether a declaration must be
- * MATCHED against other declarations (495), and whether a grant can be
- * mounted (here).
+ * The classifier is `isMountableLiteral` (sandbox-paths.ts), deliberately
+ * NOT `isLiteralPattern`: its docblock says why the brace is not a wildcard
+ * to a grant.
  */
 function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[] {
   // A pattern covering a directory WHOLE is that directory. `<d>/**/*` and
@@ -1019,13 +1019,13 @@ function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[
   if (process.platform !== 'linux') return collapsed
   const out: string[] = []
   for (const p of collapsed) {
-    if (!/[*?[\]]/.test(p)) {
+    if (isMountableLiteral(p)) {
       out.push(p)
       continue
     }
     // Anchor the scan at the longest literal prefix so a pattern does not
     // walk the whole filesystem to find its matches.
-    const base = path.dirname(p.slice(0, p.search(/[*?[\]]/)))
+    const base = path.dirname(p.slice(0, p.search(MOUNT_WILDCARDS)))
     const pattern = path.relative(base, p)
     let hits = 0
     for (const hit of new Bun.Glob(pattern).scanSync({ cwd: base, onlyFiles: false, dot: true })) {

@@ -19,6 +19,7 @@ import {
   nearest,
   normalizeGlob,
   UserError,
+  isLiteralPattern,
 } from '../util/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 
@@ -363,7 +364,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           // we add expansion later it'll be additive — until then,
           // surface the footgun instead of returning '' for the
           // literal env name `'VERCEL_*'`.
-          if (/[*?[\]]/.test(name)) {
+          if (!isLiteralPattern(name)) {
             throw new UserError(
               `${where}.cache.inputs.env: wildcards in env names are not supported ` +
                 `(got "${name}") — list explicit env var names instead`,

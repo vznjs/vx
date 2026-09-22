@@ -2,7 +2,7 @@ import type { Dirent } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { relPosix, UserError, normalizeGlob } from '../util/index.js'
+import { isLiteralPattern, relPosix, UserError, normalizeGlob } from '../util/index.js'
 
 export interface PackageJson {
   name: string
@@ -128,7 +128,7 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
   for (const neg of negative) {
     if (neg.length === 0) continue
     if (rel === neg || rel.startsWith(`${neg}/`)) return true
-    if (/[*?[\]{}]/.test(neg) && new Bun.Glob(neg).match(rel)) return true
+    if (!isLiteralPattern(neg) && new Bun.Glob(neg).match(rel)) return true
   }
   return false
 }

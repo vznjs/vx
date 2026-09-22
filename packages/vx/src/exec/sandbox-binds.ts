@@ -5,7 +5,7 @@
 
 import { lstatSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { localBindingOn, unique } from './sandbox-paths.js'
+import { isMountableLiteral, localBindingOn, unique } from './sandbox-paths.js'
 import type { SandboxedRunArgs } from './sandbox-runtime.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -30,7 +30,7 @@ function bindableWrites(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return unique(
     paths.map((p) => {
-      if (/[*?[\]]/.test(p)) return p
+      if (!isMountableLiteral(p)) return p
       try {
         if (statSync(p).isDirectory()) return p
       } catch {

@@ -41,7 +41,7 @@ export function staticPrefix(rawGlob: string): string {
   // A brace set is a wildcard too: `{dist,build}/**` reaches either dir,
   // and reading it as the literal directory `{dist,build}` gave the
   // sandbox baseline a prefix that exists nowhere (2026-09-10).
-  const wildcardIdx = glob.search(/[*?[\]{}]/)
+  const wildcardIdx = glob.search(GLOB_WILDCARDS)
   // A LITERAL keeps its trailing slash through `normalizeGlob` on purpose
   // (`asTrees` is what turns `out/` into the tree `out` + `out/**`), but a
   // prefix with a slash on the end compares as a different string: `out/`
@@ -112,8 +112,20 @@ export function normalizeGlob(glob: string): string {
  * of `outputsOverlap` in item 445.
  */
 export function isLiteralPattern(glob: string): boolean {
-  return !/[*?[\]{}]/.test(glob)
+  return !GLOB_WILDCARDS.test(glob)
 }
+
+/**
+ * The alphabet behind {@link isLiteralPattern}, for the two callers that need
+ * the POSITION of the first wildcard rather than a verdict. Every site that
+ * asks "must this declaration be matched?" reads this one regex: item 495
+ * found the fourth copy with a smaller set, and item 577 found the class
+ * written out nine times (five with braces, four without) — a spelling that
+ * drifts is how two guards come to answer differently for one pattern.
+ * The sandbox asks a DIFFERENT question of a grant (`exec/sandbox-paths.ts`,
+ * `MOUNT_WILDCARDS`), and that set is smaller on purpose.
+ */
+export const GLOB_WILDCARDS = /[*?[\]{}]/
 
 function stripTrailingSlash(p: string): string {
   return p.replace(/\/+$/, '')

@@ -128,6 +128,19 @@ test is telling the truth.
       paths; `tests/bun-file-exists-sites.test.ts` pins that set (plan
       I7) so a new site is read for a directory operand.
 
+577.  DONE (2026-09-22, plan F3: the wildcard class was spelled nine
+      times — five with `{}`, four without). Two alphabets now, one
+      question each: `GLOB_WILDCARDS` / `isLiteralPattern` (util/paths.ts,
+      "must this declaration be MATCHED") at six sites incl. env names;
+      `MOUNT_WILDCARDS` / `isMountableLiteral` (exec/sandbox-paths.ts,
+      "can this grant be MOUNTED") at four. The brace is the whole
+      difference, and measured: `write: ['g/{a,b}.txt']` works as a
+      literal (placeholder, widened to `g/`) and, scanned, fails with
+      `Read-only file system` — new unsafe row, red with `{}` in the
+      mount set (run). `tests/sandbox-paths.test.ts`: both alphabets by
+      member, the source-diff pin, and no inline `[*?[` outside the
+      two homes. No behaviour change at any site.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

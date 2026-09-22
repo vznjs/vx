@@ -13,7 +13,7 @@
 
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
-import { normalizeGlob, relPosix } from '../util/index.js'
+import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
 
 export interface DeriveStableKeysArgs {
@@ -232,7 +232,7 @@ export function workspaceInputsReach(
     const segments = entry.split('/')
     const literal: string[] = []
     for (const seg of segments) {
-      if (/[*?[\]{}]/.test(seg)) break
+      if (!isLiteralPattern(seg)) break
       literal.push(seg)
     }
     if (literal.length === 0) return true

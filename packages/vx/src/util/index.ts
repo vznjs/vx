@@ -21,6 +21,7 @@ export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
   asTrees,
   isLiteralPattern,
+  GLOB_WILDCARDS,
   normalizeGlob,
   relPosix,
   staticPrefix,
