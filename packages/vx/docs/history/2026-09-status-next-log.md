@@ -2053,3 +2053,105 @@ closed by 2026-09-10 — the docs build under bwrap, strace's seccomp
 filter, a sandboxed port, persistent tasks inside their sandbox; the
 record is in `docs/history/2026-09-status-next-log.md`. What stays
 open is the one that needs a macOS box:
+
+## Handoffs 14aq–14au (moved 2026-09-22 with item 592)
+
+14aq. **Handoff after item 573 (2026-09-22).** One item since 14ap, and
+it is the shape of the week: 453–572 were a per-file mutation sweep
+of core that found real stale-hit and containment defects (#667 #679
+#680 #676 #661 #650 #642 #681), wrote the sweep rulebook into
+CLAUDE.md, and closed the shard-9 SIGILL as Bun 1.3.11. It also left
+STATUS at 5,803 lines, the suite 14k test lines heavier with no CI
+budget, three findings recorded and not fixed (565: a gitignored
+directory literal folds nothing — a stale hit; 478: the seatbelt
+profile interpolates a resolved socket path unchecked; 495's
+follow-up: the wildcard classifier spelled six ways), and no run-path
+change to A/B. 573 trimmed the loop and wrote the plan. NEXT, in
+order: plan F4 (the `ci` task refuses a Bun below `MIN_BUN`), F1
+(stat, not `Bun.file`, in `settleLiterals`; differential row on an
+ignored `gen/`), F3 (one predicate in `util/paths.ts`, measure the
+brace bind first), then I1/I4 and D3 before D1. Owner asked
+2026-09-22 whether D1 waits for a third repository. Never end with
+"what next?".
+
+14ar. **Handoff after item 584 (2026-09-22, evening).** Eleven items since
+14aq, all on PR #487, which carries the first day of
+`docs/design/plan-2026-09-22.md`: the gate refuses a Bun below the
+floor (575) and prints its box (579); the three findings the sweep
+recorded and left — a gitignored directory literal folding nothing
+(576, stale hit), the wildcard class spelled nine ways (577), the
+seatbelt profile's unchecked resolved path (582, testable on Linux
+because the profile is text) — are closed with differential rows; the
+sweep's rules left CLAUDE.md (578); the suite's cost has a number and
+the weights are fresh (579); the sweep week A/B'd as a tie (580); the
+0.1.0 notes are drafted (581); I3 and I5 declined with reasons (583);
+and the `workspaceFiles` restore-tier exclusion is a reach test
+(584, tier 0 → 1000 on the bench with one writer). One darwin-only
+red: the seatbelt rows built paths under the unresolved temp dir;
+fixed by realpath. WHAT REMAINS IN THE PLAN: D1 waits on the owner
+(a third repository, or a waiver — asked 2026-09-22); D2 waits on a
+workspace with > 100 MiB artifacts; F6 and D4's tail are the owner's
+three items. NEXT, in order: In-flight 5 (macOS violation reporting
+is lossy under load — the darwin CI job is the macOS box; design a
+report that does not depend on the unified log keeping up, or gate
+the failure on the denial the OS made rather than the record of it);
+then a fresh-workspace persona walk on Bun 1.4.2 (`vx init` → run →
+why → watch) for what the week's fixes changed for a user; then Next
+1's whole-graph REAPI run if a worker-side change needs it. The
+manual gate script in this container runs oxlint/oxfmt through
+`bunx` (bare names are not on its PATH). Never end with "what next?".
+
+14as. **Handoff after item 588 (2026-09-22, night).** Four items since
+14ar, on PR #682: the fresh-workspace walk found nothing off (585);
+In-flight 5 is a decision, not an item (586); D1's gate was answered
+by surveying twelve more monorepos — twenty and storybook show the
+addition shape, so with strapi that is three (587); and D1 shipped
+(588): two cached tasks of one project may share a tree when an edge
+orders them, the dependant owns what it adds. The plan of 2026-09-22 is
+now exhausted except D2 (waits on a workspace with > 100 MiB
+artifacts) and the owner's three items; the review doc's D1 question is
+moot. NEXT, in order: merge #682 when green; then the warm-path A/B
+duty for 588 (it touches the hit path of every task through
+`isAddition` — an empty `addedGlobs` costs one `some` per row, but
+the rule is a number, not a belief); then Next 1's whole-graph REAPI
+run if a worker-side change needs it; then the launch is the owner's.
+Never end with "what next?".
+
+14at. **Handoff after item 589 (2026-09-22, late).** Everything is merged
+(#487, #682, #683) and the branch stands on main with nothing in
+flight. 589 closed the one observation 588 left (a rowless hit no
+longer extracts its empty artifact), and the schema page and the
+ownership post name the ordered overlap. STATE OF THE PLAN
+(`docs/design/plan-2026-09-22.md`): every fix, improvement and arc is
+DONE or DECLINED with its reason, except D2 (the streaming remote
+seam, gated on a workspace with > 100 MiB artifacts) and the owner's
+three items (delete `NPM_TOKEN`, cut `0.1.0` from the drafted notes,
+the site's address). The Next list holds nothing an agent can start
+without an external event. WHAT A NEXT SESSION DOES: the daily duties
+(Next 6's warm A/B on any run-path change, with the A/A control; a
+STATUS trim at twenty items — the loop holds 573–589 now); a
+fresh-workspace walk when a user-facing surface changes; and, if the
+owner cuts the release, the site's benchmark refresh on the dev box.
+Do not start another mutation sweep (item 572's bar stands), do not
+narrow `local-shortcircuit.ts` without its pins, and do not touch the
+additive-output path (588) without the ten-row matrix red first. Never
+end with "what next?".
+
+14au. **Handoff after item 590 (2026-09-22, night).** One item since
+14at, and it is a new adoption surface: the owner asked for Nx
+executors to run under vx with no config change, then for the
+explicit `nx-exec <executor> [options]` shape; 590 shipped `nx-exec`,
+the `nx()` plugin and the migrator's use of both, with the design and
+the per-task numbers in `docs/design/nx-unchanged-2026-09.md`. The
+owner's standing direction after that: "never stop — find, simplify,
+speed up and improve things." WHAT TO WATCH: the live suite is new in
+CI's packages job (`npm install nx@22` into `packages/vx-migrate/.nx-live`,
+then the sandboxed `test` task with `VX_NX_MODULES` and
+`VX_REQUIRE_NX`); it passed on its first run (#685 merged
+2026-09-22 22:42Z). The refine dogfood is 591. NEXT, in order: a
+dogfood on a repo whose targets are EXECUTORS (refine and router are
+package-script repos, so `nx-exec` ran live only in the synthetic
+suite — an `@nx/vite` or `@nx/js:tsc` workspace proves the plugin's
+executor path on a real tree); then the STATUS trim at twenty items
+(the loop holds 573–591); the warm A/B duty has no arm (590 and 591
+touch no core run path). Never end with "what next?".
