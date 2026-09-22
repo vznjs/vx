@@ -40,7 +40,13 @@ import {
 } from './runner.js'
 import { isTmpdirRefusal, staticPrefix, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
-import { localBindingOn, toRealPath, unique } from './sandbox-paths.js'
+import {
+  isMountableLiteral,
+  localBindingOn,
+  MOUNT_WILDCARDS,
+  toRealPath,
+  unique,
+} from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -879,7 +885,7 @@ function sbplToken(value: string, field: string): string {
  * grant passed there is silently dropped. vx is per-task by definition,
  * so it emits them itself. The rule text mirrors SRT's own.
  */
-function macProfileRules(c: ResolvedSandboxConfig): string[] {
+export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   const rules: string[] = []
   for (const t of c.systemInfo ?? []) {
     rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
@@ -903,7 +909,10 @@ function macProfileRules(c: ResolvedSandboxConfig): string[] {
       // Both the declared path and what it resolves to: seatbelt matches the
       // path the kernel sees, and on macOS `/tmp` is a symlink to
       // `/private/tmp` — a grant on the former alone never matches.
-      for (const p of unique([sbplPath(sock, 'allow.unixSockets'), toRealPath(sock)])) {
+      for (const p of unique([
+        sbplPath(sock, 'allow.unixSockets'),
+        sbplResolvedPath(toRealPath(sock), 'allow.unixSockets'),
+      ])) {
         rules.push(`(allow network-bind (local unix-socket (subpath "${p}")))`)
         rules.push(`(allow network-outbound (remote unix-socket (subpath "${p}")))`)
       }
@@ -922,6 +931,30 @@ function macProfileRules(c: ResolvedSandboxConfig): string[] {
 function sbplPath(value: string, field: string): string {
   if (!/^[A-Za-z0-9._\-/@+]+$/.test(value) || value.includes('..')) {
     throw new UserError(`${field}: '${value}' is not a valid path`)
+  }
+  return value
+}
+
+/**
+ * The check for a path the FILESYSTEM handed back (`toRealPath` of a
+ * declared socket), which the declared-value allowlist above is wrong for:
+ * a real macOS home is `/Users/Jane Smith`, and refusing the space would
+ * regress every such layout to close a hole. What can leave the quoted
+ * SBPL string, or the single-quoted `sandbox-exec -p '…'` argument it
+ * travels in, is exactly a double quote, a backslash, a single quote, or a
+ * control character — so only those are refused. Item 478 recorded the
+ * hole (a symlink whose TARGET carries a quote went into the profile
+ * unchecked, because the check was on the string the user wrote and the
+ * interpolation was of the string the kernel resolves); item 582 closed
+ * it. Refuse, never escape, as the sibling checkers do.
+ */
+export function sbplResolvedPath(value: string, field: string): string {
+  // eslint-disable-next-line no-control-regex -- the control range is the point
+  if (/["'\\\x00-\x1f\x7f]/.test(value)) {
+    throw new UserError(
+      `${field}: '${value}' (resolved from a symlink) carries a quote, a backslash or a control ` +
+        `character, which cannot go into a seatbelt profile; point the link at a plain path`,
+    )
   }
   return value
 }
@@ -996,15 +1029,9 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  * matches nothing is ordinary (an optional file, a cache not yet
  * populated), so only writes are reported.
  *
- * The classifier here is deliberately NOT `isLiteralPattern` (item 495's
- * shared one), which also counts `{}`. `write: ['g/{a,b}.txt']` is
- * classified a LITERAL here, gets a placeholder file, and is widened to
- * its directory like any other file-shaped grant — measured ok. Reading
- * the shared predicate instead would move that spelling into the scan
- * above and turn a working grant into `Read-only file system`. The two
- * predicates answer different questions: whether a declaration must be
- * MATCHED against other declarations (495), and whether a grant can be
- * mounted (here).
+ * The classifier is `isMountableLiteral` (sandbox-paths.ts), deliberately
+ * NOT `isLiteralPattern`: its docblock says why the brace is not a wildcard
+ * to a grant.
  */
 function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[] {
   // A pattern covering a directory WHOLE is that directory. `<d>/**/*` and
@@ -1019,13 +1046,13 @@ function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[
   if (process.platform !== 'linux') return collapsed
   const out: string[] = []
   for (const p of collapsed) {
-    if (!/[*?[\]]/.test(p)) {
+    if (isMountableLiteral(p)) {
       out.push(p)
       continue
     }
     // Anchor the scan at the longest literal prefix so a pattern does not
     // walk the whole filesystem to find its matches.
-    const base = path.dirname(p.slice(0, p.search(/[*?[\]]/)))
+    const base = path.dirname(p.slice(0, p.search(MOUNT_WILDCARDS)))
     const pattern = path.relative(base, p)
     let hits = 0
     for (const hit of new Bun.Glob(pattern).scanSync({ cwd: base, onlyFiles: false, dot: true })) {

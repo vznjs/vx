@@ -16,6 +16,7 @@
 // given, the base set is "all projects" and excluded packages are removed.
 
 import path from 'node:path'
+import { isLiteralPattern } from '../util/index.js'
 import type { PackageGraph } from './package-graph.js'
 import type { ProjectMeta } from './workspace.js'
 
@@ -88,7 +89,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     // `./packages/*` — pnpm's and Turbo's spelling for "every package under
     // packages": a glob over the root-relative project dir. Resolved
     // against the workspace root like the literal form.
-    if (/[*?[\]{}]/.test(pathForm)) {
+    if (!isLiteralPattern(pathForm)) {
       const rel = path.relative(workspaceRoot, matcher).split(path.sep).join('/')
       pathGlob = new Bun.Glob(rel.replace(/\/+$/, ''))
     }

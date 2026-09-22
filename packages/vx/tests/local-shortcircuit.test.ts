@@ -304,7 +304,10 @@ describe('local cache short-circuit', () => {
       // The dependent is unstable, so it is in NEITHER tier: it probes lazily
       // in execute-task, after its upstream has actually run.
       expect(c.preProbedIds.has('wapp#build')).toBe(false)
-      expect(c.restoreTier.size).toBe(0)
+      // The restore tier holds the PRODUCER alone (item 584): its key is
+      // stable and its early restore lands where nothing else in the tier
+      // reads; before 584 a workspace output anywhere emptied the tier.
+      expect([...c.restoreTier]).toEqual(['wlib#build'])
       // The PRODUCER keeps its own short-circuit — it has no output producer
       // upstream of itself, so its key was never preliminary. Without this the
       // fix could have been "mark everything unstable", which would pass the
@@ -555,26 +558,126 @@ describe('local cache short-circuit', () => {
     TIMEOUT,
   )
 
+  // The writer rows below share one shape: `solo` has no edge to the
+  // writer `wsw` in either direction, and only the writer's declared
+  // workspace output changes between rows. Item 425 pinned the graph-wide
+  // rule ("a workspace-output writer anywhere keeps an UNRELATED project out
+  // of the tier"); item 584 replaced it with a reach test, and its reason is
+  // kept exactly — a root-anchored output can land in ANY project's
+  // directory, edge or no edge — as the second row. `docs/design/
+  // overlapping-outputs-2026-09.md` asks for that row by name.
+  const soloAndWriter = async (outputs: string): Promise<(o: string) => Promise<void>> => {
+    await addProject(fixture.root, 'solo', {
+      files: { 'src/a.txt': 'a' },
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+            },
+          },
+        }
+      `,
+    })
+    const writerConfig = (o: string): string => `
+      export default {
+        tasks: {
+          build: {
+            exec: { command: "mkdir -p ../../shared ../solo/gen && echo x > ../../shared/g.txt && echo y > ../solo/gen/g.txt" },
+            cache: { inputs: { files: ['src/**'] }, outputs: ${o} },
+          },
+        },
+      }
+    `
+    await addProject(fixture.root, 'wsw', {
+      files: { 'src/b.txt': 'b' },
+      config: writerConfig(outputs),
+    })
+    return (o: string) =>
+      Bun.write(path.join(fixture.root, 'packages', 'wsw', 'vx.config.mjs'), writerConfig(o)).then(
+        () => undefined,
+      )
+  }
+
   it(
-    'a workspace-output writer anywhere keeps an UNRELATED project out of the tier',
+    "an unrelated project the writer's output cannot reach stays IN the tier",
     async () => {
-      // The exclusion is GRAPH-WIDE, not edge-scoped: `solo` neither depends
-      // on the writer nor is depended on by it, and it is still kept out of
-      // the restore tier. The neighbour test above pins the DEPENDENT of a
-      // workspace-output producer, which a narrowed rule ("exclude the
-      // declarer and its dependents") would keep passing while this case
-      // regressed — a root-anchored output can land in any project's
-      // directory, including one with no edge to it at all.
-      //
-      // `docs/design/overlapping-outputs-2026-09.md` asks for this pin by
-      // name: the blanket rule is what makes the cross-project overlap case
-      // safe, so whoever narrows it owns this case (2026-09-20).
-      await addProject(fixture.root, 'solo', {
-        files: { 'src/a.txt': 'a' },
+      // The new behaviour (item 584): `shared/g.txt` reaches nothing under
+      // `packages/solo`, so `solo` keeps its restore-tier hit. Before 584
+      // this row read `false` — the graph-wide rule. CONTROL: the same
+      // graph with the writer's output made project-relative, which never
+      // excluded anyone, reads the same.
+      const rewrite = await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.preProbedIds.has('solo#build')).toBe(true)
+      expect(c.restoreTier.has('solo#build')).toBe(true)
+      await rewrite(`{ files: ['out.txt'] }`)
+      expect((await classify(fixture, ['build'])).restoreTier.has('solo#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "an unrelated project whose DIRECTORY the writer's output reaches stays OUT",
+    async () => {
+      // Item 425's claim, now path-based and still edge-free: the writer
+      // declares `packages/solo/gen/g.txt`, so `solo`'s directory is where
+      // a restore-tier restore and a later write could meet, and `solo`
+      // stays dep-gated. Its probe-reuse entry stays (no double work).
+      const rewrite = await soloAndWriter(
+        `{ files: [], workspaceFiles: ['packages/solo/gen/g.txt'] }`,
+      )
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.preProbedIds.has('solo#build')).toBe(true)
+      expect(c.restoreTier.has('solo#build')).toBe(false)
+      // CONTROL: the writer's own project is not reached by its own output,
+      // so it keeps the tier — the exclusion is the path, not the declaring.
+      expect(c.restoreTier.has('wsw#build')).toBe(true)
+      // And the flip is the path alone: move the output out of solo's tree.
+      await rewrite(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      expect((await classify(fixture, ['build'])).restoreTier.has('solo#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a workspace output with no literal prefix keeps the graph-wide rule',
+    async () => {
+      // `**/g.txt` can land anywhere, so every task stays out, the writer
+      // included — exactly the rule 584 replaced, kept for the spelling
+      // that earns it.
+      await soloAndWriter(`{ files: [], workspaceFiles: ['**/g.txt'] }`)
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.preProbedIds.has('solo#build')).toBe(true)
+      expect(c.restoreTier.size).toBe(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'exclusion follows the edges down: a dependant of a reached project stays OUT',
+    async () => {
+      // `dep` depends on `solo` and nothing reaches `dep`'s directory, but
+      // its up-front key folds `solo`'s, which is preliminary while a write
+      // may land in `solo`'s tree; restoring `dep` early would restore an
+      // artifact keyed on the wrong `solo`. Its stability gate cannot see
+      // this (`solo` is not a WORKSPACE writer), so the exclusion carries it.
+      await soloAndWriter(`{ files: [], workspaceFiles: ['packages/solo/gen/g.txt'] }`)
+      await addProject(fixture.root, 'dep', {
+        files: { 'src/c.txt': 'c' },
+        deps: { solo: '*' },
         config: `
           export default {
             tasks: {
               build: {
+                dependsOn: ['^build'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
               },
@@ -582,39 +685,67 @@ describe('local cache short-circuit', () => {
           }
         `,
       })
-      const writerConfig = (outputs: string): string => `
-        export default {
-          tasks: {
-            build: {
-              exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" },
-              cache: { inputs: { files: ['src/**'] }, outputs: ${outputs} },
-            },
-          },
-        }
-      `
-      await addProject(fixture.root, 'wsw', {
-        files: { 'src/b.txt': 'b' },
-        config: writerConfig(`{ files: [], workspaceFiles: ['shared/g.txt'] }`),
-      })
-
       const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(cold.ok).toBe(true)
-
-      const withWorkspaceOutput = await classify(fixture, ['build'])
-      expect(withWorkspaceOutput.preProbedIds.has('solo#build')).toBe(true)
-      expect(withWorkspaceOutput.restoreTier.has('solo#build')).toBe(false)
-
-      // CONTROL, so the assertion above cannot pass for the wrong reason (a
-      // `solo` that simply never hit). The ONLY thing that changes is the
-      // writer's own output declaration — `solo`'s key is untouched, its
-      // artifact is the one the cold run just stored — and it is restore-tier
-      // the moment no task in the graph declares a workspace output.
+      const c = await classify(fixture, ['build'])
+      expect(c.preProbedIds.has('dep#build')).toBe(true)
+      expect(c.restoreTier.has('dep#build')).toBe(false)
+      // CONTROL: with the writer's output out of solo's tree, dep is in.
       await Bun.write(
         path.join(fixture.root, 'packages', 'wsw', 'vx.config.mjs'),
-        writerConfig(`{ files: ['out.txt'] }`),
+        `export default { tasks: { build: { exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/g.txt'] } } } } }`,
       )
-      const withoutIt = await classify(fixture, ['build'])
-      expect(withoutIt.restoreTier.has('solo#build')).toBe(true)
+      expect((await classify(fixture, ['build'])).restoreTier.has('dep#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "the design note's cross-project overlap stays dep-gated on both sides",
+    async () => {
+      // `docs/design/overlapping-outputs-2026-09.md`'s fixture: `a#build`
+      // writes `dist/**`, `b#build` declares a workspace output INSIDE a's
+      // dist, depends on a, and detaches its key with `inputs.tasks: []` so
+      // it could hit while a misses — the one arrangement in which b could
+      // restore into a directory a is about to clean. Under the reach rule
+      // (item 584) b's output reaches a's directory, so a is kept out, and b
+      // — a's dependant — with it: b restores AFTER a, as the note measured
+      // under the graph-wide rule. Both stay in probe reuse.
+      await addProject(fixture.root, 'a', {
+        files: { 'src/a.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'b', {
+        files: { 'src/b.txt': 'b' },
+        deps: { a: '*' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                dependsOn: ['^build'],
+                exec: { command: "echo b > ../a/dist/b.txt" },
+                cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: [], workspaceFiles: ['packages/a/dist/b.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.preProbedIds.has('a#build')).toBe(true)
+      expect(c.preProbedIds.has('b#build')).toBe(true)
+      expect(c.restoreTier.has('a#build')).toBe(false)
+      expect(c.restoreTier.has('b#build')).toBe(false)
     },
     TIMEOUT,
   )

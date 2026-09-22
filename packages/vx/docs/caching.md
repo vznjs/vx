@@ -153,7 +153,9 @@ over (in order):
     the task. If the file is generated, depend on the task that produces
     it via `cache.inputs.tasks`. A **glob** matching nothing stays
     silent — that is legitimate — and so does a literal naming a file
-    that does not exist.
+    that does not exist. A literal naming a **directory** is judged the
+    same way: an ignored one, or an empty one, has no file git lists
+    under it, folds nothing, and is refused (item 576).
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so three concurrent probes prune it:
@@ -267,8 +269,13 @@ project dir, where an ordinary project-relative glob reads it. Such a
 dependent is therefore in NEITHER tier — it is excluded from probe
 reuse as well as from the restore tier, because `execute-task` reuses a
 `preProbed` hash verbatim, so probe reuse is itself a stale-hit path
-when the key is preliminary. On top of that, a graph declaring any
-`outputs.workspaceFiles` disables the restore tier graph-wide. The
+when the key is preliminary. On top of that, an `outputs.workspaceFiles`
+declaration keeps every task whose project directory its static prefix
+can reach out of the restore tier — edge or no edge, because a
+root-anchored output can land in any project's directory — and every
+transitive dependant of one with it (their up-front keys fold a
+preliminary key); a glob with no literal prefix reaches every project.
+Before item 584 one such declaration emptied the tier graph-wide. The
 short-circuit never runs under a `LayeredCache` (remote prefetch owns
 those runs — an up-front `get` there would put remote GETs on the
 critical path), never fires with local reads off, and never throws —

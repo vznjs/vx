@@ -13,6 +13,7 @@ import {
   resolveSandboxConfig,
   thrownReason,
   type ExecuteRequest,
+  isMountableLiteral,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { staticPrefix, UserError } from '../util/index.js'
@@ -263,7 +264,7 @@ async function prepareOutputsForBind(
 ): Promise<Placeholder[]> {
   const placeholders: Placeholder[] = []
   for (const g of outputs) {
-    const hasWildcard = /[*?[\]]/.test(g)
+    const hasWildcard = !isMountableLiteral(g)
     // A grant OUTSIDE the project is the user's own path — never joined
     // onto the project dir, which would create a literal `~` there. Its
     // directory is still created when the grant is a glob, because then

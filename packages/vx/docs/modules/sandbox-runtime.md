@@ -150,6 +150,14 @@ export function releaseBridges(tag: string): void
 // A thrown value as a line a user can read — an FS refusal keeps its
 // errno, anything else its message. The sandbox never reports a stack.
 export function thrownReason(err: unknown, what?: string): string
+
+// sandbox-paths.ts: the wildcard alphabet of a GRANT. Smaller than
+// util/paths.ts's GLOB_WILDCARDS on purpose — `{}` is a literal to a
+// grant (a brace grant gets a placeholder and is widened to its
+// directory; scanned, it matches nothing before the task writes). The
+// request builder reads it to decide whether an output grant is a glob.
+export const MOUNT_WILDCARDS: RegExp
+export function isMountableLiteral(grant: string): boolean
 ```
 
 ## How it works

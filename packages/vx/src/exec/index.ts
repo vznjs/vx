@@ -28,6 +28,7 @@ export {
   thrownReason,
 } from './sandbox-runtime.js'
 export { type DeniedCall } from './sandbox-violations.js'
+export { isMountableLiteral, MOUNT_WILDCARDS } from './sandbox-paths.js'
 export { localExecutor } from './local-executor.js'
 export { killTree } from './kill-tree.js'
 export {

@@ -43,8 +43,26 @@ export default defineProject({
       dependsOn: ['lint', 'test', 'check.binary'],
     },
 
+    // `check.bun` sits under install so that every shard, the unsafe suite,
+    // the lint tasks and the binary check wait on it: a gate below the Bun
+    // floor stops here, in under a second, instead of an hour later with
+    // the runtime's verdicts (scripts/bun-floor.ts says which).
     install: {
-      dependsOn: ['^build'],
+      dependsOn: ['^build', 'check.bun'],
+    },
+
+    'check.bun': {
+      description: 'refuse a Bun below the floor (engines.bun) before any shard starts',
+      exec: {
+        command: 'bun scripts/bun-floor.ts',
+        sandbox: {
+          allow: {
+            read: ['scripts/bun-floor.ts', 'src/util/**'],
+          },
+        },
+      },
+      // Uncached on purpose: the runtime's version is not a key input, and a
+      // hit recorded under 1.4.2 must not answer for a later run under 1.3.11.
     },
 
     // Core is consumed as source: what a dependant's `install` pulls

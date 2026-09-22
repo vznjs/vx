@@ -32,16 +32,19 @@
 //   - Only STABLE-key, cacheable, local-read tasks are classified. A
 //     stable miss stays in the normal (dep-gated) schedule; an unstable
 //     task is never probed here.
-//   - If ANY task in the graph declares `cache.outputs.workspaceFiles`,
-//     no task is restore-tiered (the boundary-ignoring escape hatch
-//     could let a task write where a restore touches — a blanket
-//     conservative exclusion). Those tasks still get an exec-tier probe
-//     reuse entry so there's no double work.
+//   - A task that declares `cache.outputs.workspaceFiles` (the
+//     boundary-ignoring escape hatch) can write where a restore touches,
+//     so every task whose project directory a workspace-output glob's
+//     static prefix REACHES stays out of the restore tier, and so does
+//     every transitive dependant of one (its up-front key folds a key
+//     that is preliminary). A glob with no literal prefix reaches every
+//     project, which is the old graph-wide rule. Excluded tasks still get
+//     an exec-tier probe reuse entry so there's no double work.
 
-import { span } from '../util/index.js'
+import { normalizeGlob, relPosix, span, staticPrefix } from '../util/index.js'
 import type { CacheEntry, CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { deriveStableKeys } from './stable-keys.js'
+import { deriveStableKeys, workspaceInputsReach } from './stable-keys.js'
 import type { HashCache } from './task-hash.js'
 
 export interface ShortCircuitArgs {
@@ -107,19 +110,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   const candidates = stableKeys.filter(({ node }) => node.config.cache !== undefined)
   if (candidates.length === 0) return EMPTY
 
-  // Belt-and-suspenders for the boundary-ignoring escape hatch: a
-  // root-anchored output can land anywhere, so if ANY task declares
-  // workspace outputs a task could in principle write where a
-  // restore-tier task restores. Disable the RESTORE tier graph-wide —
-  // workspace outputs are rare bad-practice. (Probe reuse still applies,
-  // so there's no double work; those tasks just stay dep-gated.)
-  let anyWorkspaceOutputs = false
-  for (const node of args.nodes.values()) {
-    if ((node.config.cache?.outputs.workspaceFiles?.length ?? 0) > 0) {
-      anyWorkspaceOutputs = true
-      break
-    }
-  }
+  const keptOut = restoreTierExclusions(args.nodes, args.workspaceRoot)
 
   const preProbed = new Map<string, ProbedEntry>()
   const restoreTier = new Set<string>()
@@ -139,7 +130,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
       for (const { hash, node } of candidates) {
         const hit = hits.get(hash) ?? null
         preProbed.set(node.id, { hash, hit })
-        if (hit !== null && !anyWorkspaceOutputs) restoreTier.add(node.id)
+        if (hit !== null && !keptOut.has(node.id)) restoreTier.add(node.id)
       }
       return { preProbed, restoreTier }
     } catch {
@@ -156,7 +147,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
         const command = node.config.exec?.command ?? ''
         const hit = await args.cache.get(hash, { taskId: node.id, command })
         preProbed.set(node.id, { hash, hit })
-        if (hit !== null && !anyWorkspaceOutputs) restoreTier.add(node.id)
+        if (hit !== null && !keptOut.has(node.id)) restoreTier.add(node.id)
       } catch {
         // Leave this task out of preProbed → it probes lazily in
         // execute(), exactly as today.
@@ -166,4 +157,67 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   await Promise.all(Array.from({ length: workers }, () => pump()))
 
   return { preProbed, restoreTier }
+}
+
+/**
+ * The tasks a workspace-output declaration keeps out of the restore tier.
+ *
+ * A root-anchored output can land in any project's directory, edge or no
+ * edge (`tests/local-shortcircuit.test.ts` § "a workspace-output writer"
+ * rows, item 425), so the question is not who depends on the writer but
+ * WHERE it can write: each declared glob's static prefix is tested for
+ * reach against every project directory, and against every task's own
+ * `workspaceFiles` inputs, with the ancestor-or-equal relation
+ * `workspaceInputsReach` already uses. A prefix that is the root reaches
+ * everything — the graph-wide rule this replaced (item 584). Exclusion then
+ * follows the edges DOWN: a dependant's up-front key folds an excluded
+ * task's key, which is preliminary, so it cannot restore early either.
+ * Cost: one pass over the nodes, no filesystem.
+ */
+export function restoreTierExclusions(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot: string,
+): Set<string> {
+  const prefixes: string[] = []
+  let everything = false
+  for (const node of nodes.values()) {
+    for (const raw of node.config.cache?.outputs.workspaceFiles ?? []) {
+      const glob = normalizeGlob(raw)
+      if (glob.startsWith('!')) continue
+      const prefix = staticPrefix(glob)
+      if (prefix === '.' || prefix === '' || prefix === '/') everything = true
+      else prefixes.push(prefix.replace(/^\.\//, ''))
+    }
+  }
+  const out = new Set<string>()
+  if (everything) {
+    for (const id of nodes.keys()) out.add(id)
+    return out
+  }
+  if (prefixes.length === 0) return out
+  const reaches = (dir: string): boolean =>
+    dir === '' ||
+    dir === '.' ||
+    prefixes.some((p) => p === dir || p.startsWith(`${dir}/`) || dir.startsWith(`${p}/`))
+  const direct = new Map<string, boolean>()
+  for (const node of nodes.values()) {
+    const dir = relPosix(workspaceRoot, node.projectDir)
+    const wsInputs = node.config.cache?.inputs?.workspaceFiles ?? []
+    direct.set(
+      node.id,
+      reaches(dir) || (wsInputs.length > 0 && workspaceInputsReach(wsInputs, prefixes)),
+    )
+  }
+  const memo = new Map<string, boolean>()
+  const excluded = (id: string): boolean => {
+    const known = memo.get(id)
+    if (known !== undefined) return known
+    memo.set(id, false) // a cycle cannot exist in a built graph; this only guards the recursion
+    const node = nodes.get(id)
+    const v = direct.get(id) === true || (node !== undefined && node.deps.some(excluded))
+    memo.set(id, v)
+    return v
+  }
+  for (const id of nodes.keys()) if (excluded(id)) out.add(id)
+  return out
 }
