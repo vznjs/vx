@@ -35,7 +35,11 @@ whose output declarations provably overlap (equal literals, or a
 literal that another task's glob matches) are refused when the graph
 is built, because a restore of one would delete the other's work. Two
 globs that only *might* overlap are let through, and there the last
-restore wins.
+restore wins. The one overlap vx accepts is the ordered one: when the
+second task depends on the first, it runs after it and adds to the
+tree — twenty's `build:individual` writing `dist/individual` into
+`build`'s `dist` — and vx caches exactly what it added, never the
+files it found there.
 
 ## Why it is also the fast path
 

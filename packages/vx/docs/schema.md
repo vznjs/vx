@@ -840,7 +840,10 @@ PATH, not by spelling — `./dist/**` and `dist/**` are one declaration,
 and so are `dist//**` and `dist/./app.js` (item 441) — and a literal
 entry is read as the file OR its whole tree, the same rule the resolver
 uses, so `dist` collides with `dist/app.js` (item 442). Globs that only
-_might_ overlap are let through; there, last restore wins.
+_might_ overlap are let through; there, last restore wins. An overlap
+between two tasks one of which depends on the other is not refused: the
+dependant is additive and owns only what its run adds to the tree
+(`caching.md` § Additive outputs, item 588).
 
 ### `exec.sandbox` (optional)
 
