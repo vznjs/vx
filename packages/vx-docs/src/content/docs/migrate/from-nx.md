@@ -17,6 +17,10 @@ Nx has already applied `targetDefaults`, `namedInputs`, plugin-inferred
 targets and `{projectRoot}` tokens to — so every project's targets are
 vx tasks, with their inputs, outputs and `dependsOn`:
 
+```bash
+bun add -d @vzn/vx @vzn/vx-migrate   # the runner, and the plugin whose bin runs executors
+```
+
 ```ts
 // vx.workspace.ts — the only file
 import { defineWorkspace } from '@vzn/vx'
@@ -26,7 +30,8 @@ export default defineWorkspace({ plugins: [nx()] })
 ```
 
 ```bash
-vx run build --all      # what `nx run-many -t build` ran, under vx's cache
+vx run build --all               # what `nx run-many -t build` ran, under vx's cache
+vx run app#build:production      # `nx run app:build:production`
 ```
 
 Executor targets keep running as executors: each becomes an `nx-exec`
@@ -94,15 +99,17 @@ are ready, and fill the TODOs.
 | Nx                                   | vx                                              |
 | ------------------------------------ | ----------------------------------------------- |
 | a project's `targets`                | `tasks`                                          |
-| target `dependsOn` (`^build`, etc.)  | `dependsOn` — `'build'` and `'^build'` are the same syntax; Nx's `project:target` becomes vx's `project#target` (a configuration suffix has no vx equivalent and is dropped with a TODO) |
+| target `dependsOn` (`^build`, etc.)  | `dependsOn` — `'build'` and `'^build'` are the same syntax; Nx's `project:target` becomes vx's `project#target`, and `project:target:configuration` becomes `project#target:configuration` when that configuration is a task of its own (below), else the base task with a TODO |
+| a target's `configurations`          | one task per configuration: `build` carries the default configuration's options, `build:ci` the `ci` one |
 | `inputs` / `namedInputs` (resolved)  | `cache.inputs.files`                            |
 | `{workspaceRoot}/file` inputs        | `cache.inputs.workspaceFiles`                   |
 | `{ "env": "VAR" }` inputs            | `cache.inputs.env` **and** `exec.env.passThrough` (a vx task's env is isolated, so a hashed variable has to be let through too) |
 | `{ "runtime": "<cmd>" }` inputs      | `cache.inputs.runtime` — vx runs the command and hashes its output, same as Nx |
-| `outputs`                            | `cache.outputs.files`                           |
+| `outputs`                            | `cache.outputs.files`; a workspace-root path (`dist/<project>`, Nx's default layout) is `cache.outputs.workspaceFiles` |
 | `nx affected`                        | `vx run <task> --affected`                      |
 | `nx run-many --target=build`         | `vx run build --all`                            |
 | `nx build app`                       | `vx run app#build`                              |
+| `nx run app:build:production`        | `vx run app#build:production`                   |
 | local + Nx Cloud cache               | local + a remote-cache plugin (`nxCache()` keeps a self-hosted Nx cache) |
 
 `namedInputs` (Nx's reusable input sets) don't have a schema equivalent
@@ -121,8 +128,9 @@ inline for you.
 - **Caching that's stricter.** Resolved-config hashing (your imports and
   computed values are in the cache key) and outputs wiped before every
   restore (no stale files survive) — neither of which Nx does.
-- **A tiny surface.** One binary — no Node, no Bun — shell commands,
-  TypeScript config. The whole model fits in your head in an afternoon.
+- **A tiny surface.** One binary — no Node, no Bun, once the last
+  `nx-exec` line is gone — shell commands, TypeScript config. The whole
+  model fits in your head in an afternoon.
 - **Nx Cloud's answers, locally.** Flaky-task detection reads your own
   run history (`vx run` footer, `--summarize`, `vx info`); lockfile-aware
   hashing is `@vzn/vx-lockfile`; remote caching and remote execution are
