@@ -234,6 +234,17 @@ test is telling the truth.
       change; the record that both adoption paths run the same
       executor line end to end.
 
+604.  DONE (2026-09-23, a mode the index carried since the package's
+      first commit). `packages/vx-migrate/src/bin.ts` — the `vx-migrate`
+      bin — was 100644 in git while core's `bin.ts` and the new
+      `nx-exec.cjs` were 100755: npm sets the bit on install, so a
+      published bin works, but the shim `bun link` or a workspace
+      install writes would have failed with EACCES. Fixed in the index,
+      and a repo-wide law pins it: `tests/bins-executable.unsafe.test.ts`
+      finds every `bin` a package.json declares and requires mode
+      100755 and a shebang — red on the old mode, green after, both
+      shown.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
