@@ -12,7 +12,10 @@ export async function migrateNx(
   metas: readonly ProjectMeta[],
 ): Promise<MigrationPlan> {
   const graph = parseNxGraph(await Bun.file(path.join(root, NX_GRAPH_REL)).text(), NX_GRAPH_REL)
-  const mapped = await mapNxWorkspace(root, metas, graph, { persistentTodo: PERSISTENT_TODO })
+  const mapped = await mapNxWorkspace(root, metas, graph, {
+    persistentTodo: PERSISTENT_TODO,
+    cacheable: new Set(),
+  })
   return {
     headerNotes: [
       'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
