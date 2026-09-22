@@ -107,6 +107,12 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 
 ## The save
 
+An ADDITIVE task (`node.addsToOutputsOf`, item 588) is not cleaned by
+glob before an attempt: its outputs are stamped once before the first
+attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
+run added or changed against that stamp (`ownOutputsSince`), handed to
+`saveMiss` as `ownOutputFiles` in place of the glob walk.
+
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is
 [`miss-save.md`](./miss-save.md); `execute-task.ts` calls it under the

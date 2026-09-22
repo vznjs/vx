@@ -36,6 +36,16 @@ export function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome>
 `execute-task.ts` re-exports both, so the entry stays importable from
 where it was.
 
+## Additive tasks (item 588)
+
+An ADDITIVE task (`node.addsToOutputsOf`) is judged current by its
+recorded rows alone and cleans by those rows (`cleanOutputPaths`), never
+by its glob, which also selects the upstream's files it adds beside. An
+upstream that dependants add to (`node.outputsAddedToBy`) drops the
+strays their globs could have added before it judges its own tree, and
+never a row it recorded; its glob clean still takes them — the dependant
+restores or runs after it, by the edge.
+
 ## Since the split
 
 - A hit on a task with no declared outputs touches no artifact: nothing

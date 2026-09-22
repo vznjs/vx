@@ -6,6 +6,9 @@ import {
   type CachePolicy,
   cleanOutputs,
   cleanWorkspaceOutputs,
+  type OutputStamp,
+  ownOutputsSince,
+  stampOutputs,
   FULL_CACHE_POLICY,
   type GitFilesCache,
 } from '../cache/index.js'
@@ -449,6 +452,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     nestedProjectDirs: args.nestedProjectDirs,
   }
   const wsCleanArgs = { workspaceRoot: args.workspaceRoot, outputs: wsOutputs }
+  // An ADDITIVE task (its outputs overlap an upstream's, with the edge that
+  // orders them; item 588) does not clean by glob — the glob selects the
+  // upstream's files it adds beside. Its outputs are stamped once before
+  // the first attempt, and after a 0 exit its own set is what the run
+  // added or changed against that stamp. Stale files of its own from an
+  // earlier run are its command's to clean, as they are under Turbo.
+  const additive = (node.addsToOutputsOf?.length ?? 0) > 0
+  let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
 
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
@@ -546,7 +557,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // tree would replace a stale build with nothing at all. The eligibility
     // gate guarantees no key in this run can see what stays behind, and the
     // summary names every deferred task so `dist/` is not silently stale.
-    if (willWrite && !deferralRequested && outputs.length > 0) {
+    if (additive && willWrite && !deferralRequested && outputs.length > 0) {
+      const endStamp = span('miss: stamp outputs')
+      stampedBefore ??= await stampOutputs(cleanArgs)
+      endStamp()
+    } else if (willWrite && !deferralRequested && outputs.length > 0) {
       // Mark the wiped paths, exactly as the workspace twin below does. The
       // git snapshot still lists them with their committed index OIDs, and
       // resolveFiles SKIPS its existence probe for any path carrying a
@@ -757,7 +772,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
     }
   } else if (effectiveExitCode === 0 && willSave) {
+    const ownOutputFiles =
+      additive && stampedBefore !== undefined
+        ? await ownOutputsSince(cleanArgs, stampedBefore)
+        : undefined
     const { landed } = await saveMiss({
+      ...(ownOutputFiles !== undefined ? { ownOutputFiles } : {}),
       node,
       hash,
       cache,

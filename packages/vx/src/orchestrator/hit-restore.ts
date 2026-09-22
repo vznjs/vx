@@ -12,6 +12,7 @@ import path from 'node:path'
 import type { CacheConfig } from '../config.js'
 import {
   type CacheEntry,
+  cleanOutputPaths,
   cleanOutputs,
   cleanWorkspaceOutputs,
   resolveOutputs,
@@ -19,7 +20,7 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { span, wholeSubtreePrefixes } from '../util/index.js'
+import { asTrees, span, wholeSubtreePrefixes } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 
 export interface RestoreHitArgs {
@@ -56,6 +57,18 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     nestedProjectDirs: args.nestedProjectDirs,
   }
   const wsCleanArgs = { workspaceRoot: args.workspaceRoot, outputs: wsOutputs }
+  // The two sides of an overlapping pair (item 588). An ADDITIVE task owns
+  // only its recorded rows: its glob also selects the upstream's files it
+  // adds beside, so "no strays" is not a claim it can make, and its clean
+  // takes the rows, never the glob. The UPSTREAM ignores what its
+  // dependants declare they add when it judges its own tree current — an
+  // addition below is not a stray — while its glob clean still takes them:
+  // the dependant restores or runs after it, by the edge.
+  const additive = (node.addsToOutputsOf?.length ?? 0) > 0
+  const addedGlobs = (node.outputsAddedToBy ?? [])
+    .flatMap((g) => asTrees([g]))
+    .map((g) => new Bun.Glob(g))
+  const isAddition = (rel: string): boolean => addedGlobs.some((g) => g.match(rel))
 
   // "Tree is already current" short-circuit — skip cleanOutputs
   // + restoreOutputs when the on-disk state matches what this
@@ -129,13 +142,28 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         const expSet = new Set(exp.map((e) => e.path))
         return actual.length === expSet.size && actual.every((r) => expSet.has(r))
       }
-      const actualRels = actualAbs.map((p) =>
-        path.relative(node.projectDir, p).split(path.sep).join('/'),
-      )
-      const actualWsRels = actualWsAbs.map((p) =>
-        path.relative(args.workspaceRoot, p).split(path.sep).join('/'),
-      )
-      if (setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)) {
+      // A stray a dependant's glob could have added is not a stray; a path
+      // this entry recorded is never dropped, even where that glob covers
+      // the whole tree (strapi's shape: both on `dist`).
+      const expectedRels = new Set(projExpected.map((e) => e.path))
+      const expectedWsRels = new Set(wsExpected.map((e) => e.path))
+      const actualRels = actualAbs
+        .map((p) => path.relative(node.projectDir, p).split(path.sep).join('/'))
+        .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
+      const actualWsRels = actualWsAbs
+        .map((p) => path.relative(args.workspaceRoot, p).split(path.sep).join('/'))
+        .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
+      const rowsPresent = (
+        actual: readonly string[],
+        exp: ReadonlyArray<{ path: string }>,
+      ): boolean => {
+        const have = new Set(actual)
+        return exp.every((e) => have.has(e.path))
+      }
+      const treeMatches = additive
+        ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
+        : setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)
+      if (treeMatches) {
         const endStat = span('output stat')
         skipRestore =
           (await args.cache.isOutputsCurrent(node.projectDir, projExpected)) &&
@@ -153,8 +181,17 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   if (!skipRestore) {
     let cleanedRels: string[] = []
     let cleanedWsRels: string[] = []
-    if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
-    if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+    if (additive) {
+      cleanedRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
+      await cleanOutputPaths({ projectDir: node.projectDir, rels: cleanedRels })
+      cleanedWsRels = hit.outputFiles
+        .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
+        .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length))
+      await cleanOutputPaths({ projectDir: args.workspaceRoot, rels: cleanedWsRels })
+    } else {
+      if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
+      if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+    }
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
     // The directory snapshot behind the NEXT hit's skip-restore, taken at
     // run end when the run keeps a list (as the miss path does, see

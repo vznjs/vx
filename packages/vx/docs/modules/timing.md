@@ -51,6 +51,7 @@ Spans, accumulated per call:
 - `miss: execute`
 - `miss: resolve outputs`
 - `miss: save`
+- `miss: stamp outputs`
 - `output dirs`
 - `output glob`
 - `output rows`

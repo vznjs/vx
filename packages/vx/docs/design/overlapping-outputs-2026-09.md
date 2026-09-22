@@ -1,11 +1,15 @@
 # Two cached tasks, one output path (2026-09-20)
 
-**Status: design only. The implementation stays gated on Next 16's own
-condition — a THIRD repository showing the addition shape — and the
-rewrite-in-place shape stays refused. What this note adds to the sketch
-in STATUS Next 16 is the part that decides whether it is buildable: the
-two places vx would have to change, and the one invariant the sketch as
-written would break.**
+**Status: IMPLEMENTED 2026-09-22 (item 588), on the design below, after
+the survey met its own gate (three repositories with the addition
+shape). `docs/caching.md` § "Additive outputs" is the user-facing
+contract; `tests/overlapping-outputs.test.ts` is the matrix, run over
+both shapes in the wild (a subdirectory, and one `dist` for both). The
+rewrite-in-place shape is no longer refused but stays out of scope: it
+works, and costs the upstream a restore per warm run. What this note
+adds to the sketch is the part that decided whether it was buildable:
+the two places vx had to change, and the one invariant the sketch as
+written would have broken.**
 
 ## The shape
 
@@ -128,7 +132,29 @@ Admitting it needs one of:
 The second is what ships until a repository makes the first worth
 paying for.
 
-## What would have to be true to build it
+## Survey 2026-09-22: the gate is met
+
+Twelve more real monorepos, cloned at HEAD and scanned statically for two
+cached targets of one project whose declared outputs overlap where the
+second depends on the first (`turbo.json` tasks × package scripts;
+`project.json` targets with `nx.json` targetDefaults; item 587):
+
+| Repository                                                | Runner  | Pairs                        | Shape                                                                                                                                                     |
+| --------------------------------------------------------- | ------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| twentyhq/twenty                                           | Nx      | 2 (twenty-ui, twenty-shared) | ADDITION: `build` → `dist` (`emptyOutDir: false`), `build:individual` depends on it and writes `dist/individual` (`emptyOutDir: true` on its own subtree) |
+| storybookjs/storybook                                     | Nx      | 44 (every `code/sandbox/*`)  | ADDITION: `sandbox` generates `sandbox/<dir>`, `build` depends on it and writes `sandbox/<dir>/storybook-static` inside                                   |
+| novu, ngrx/platform, TanStack/query                       | Nx      | 0                            | —                                                                                                                                                         |
+| trpc, shadcn-ui/ui, formbricks, trigger.dev, dub, cal.com | Turbo   | 0                            | —                                                                                                                                                         |
+| supabase                                                  | neither | 0                            | —                                                                                                                                                         |
+
+So with strapi that is three repositories showing the ADDITION shape and
+still one (refine) showing the rewrite; condition (1) below holds, and
+the rewrite stays refused. The shape in the wild is a SUBDIRECTORY
+(`dist/individual`, `<dir>/storybook-static`) or a sibling file set,
+never an interleaving of the same files — which is what makes the
+size + mtime diff of the design sufficient.
+
+## What had to be true to build it (all four held, item 588)
 
 1. A third repository shows the ADDITION shape (Next 16's own gate; the
    two known repositories are one of each, which is not a pattern yet).

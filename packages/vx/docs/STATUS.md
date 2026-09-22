@@ -225,6 +225,55 @@ test is telling the truth.
       pays on mixed workloads. caching.md, the module page and the
       overlapping-outputs note say the new rule.
 
+585.  DONE (2026-09-22, the fresh-workspace walk on Bun 1.4.2 with the
+      day's compiled binary: two packages, `vx init` → cache blocks per
+      its TODO → cold run → warm run → `vx why` → an upstream edit →
+      `why` again → `vx last` → `vx info` → `vx watch` with an edit and
+      Ctrl-C). Every surface read true: `why` named the changed upstream
+      and its key pair, `last` the two executed tasks with their cpu
+      ratio, `info` the floor, the cgroup memory line and the sandbox
+      verdict, `watch` the file that started its cycle. Nothing off;
+      recorded so the next walk starts from what this one covered.
+
+586.  DECIDED (2026-09-22, In-flight 5 closed: macOS violation reporting
+      stays lossy under load, by design). The report reads a store the
+      unified log feeds asynchronously and drops under pressure; the
+      settle window that halved the loss (5.0 % → 2.2 %) cost 300 ms on
+      every clean sandboxed task and the owner removed it 2026-09-05; an
+      unprivileged process has no other channel for a denial that does
+      not kill the child (no strace on macOS, dtrace needs root).
+      Enforcement is unaffected. The introduction's Known limits already
+      say so; this moves the item from In flight to Decisions.
+
+587.  DONE (2026-09-22, D1's gate answered by survey rather than by
+      waiting). Twelve more real monorepos scanned statically for two
+      cached targets of one project on overlapping outputs with an edge
+      between them: twenty (2 projects, `build` → `dist`,
+      `build:individual` → `dist/individual`) and storybook (44 sandbox
+      projects, `sandbox` → `sandbox/<dir>`, `build` →
+      `…/storybook-static`) show the ADDITION shape; ten show none; no
+      new rewrite-in-place. With strapi that is three, the note's own
+      condition (1). Table in the design note. D1 is the next arc, on
+      the note's design and matrix; the owner's waiver is no longer
+      needed.
+
+588.  DONE (2026-09-22, plan D1: overlapping outputs, the addition shape,
+      on the design note's design). An overlap WITH an edge is marked at
+      graph build (`addsToOutputsOf` / `outputsAddedToBy`), not refused;
+      the dependant's own set is what its run added or changed against a
+      size+mtime stamp taken before it (`stampOutputs`, `ownOutputsSince`),
+      it cleans and is judged current by its rows (`cleanOutputPaths`),
+      and the upstream drops strays a dependant's glob could have added
+      before judging its tree. `tests/overlapping-outputs.test.ts`: the
+      note's matrix over twenty's subdirectory shape and strapi's
+      same-tree shape, ten rows, each tree byte-identical to a cold run;
+      each of the three mechanisms reddens rows when disabled (run). The
+      migrator keeps an edge-ordered dependant cached. caching.md § Additive
+      outputs is the contract. Warm A/B, main against this head, 1,000
+      projects min-of-15: 173.5 vs 170.5 ms, A/A 168.3 vs 164.2 — a tie.
+      Observed, not 588's: a hit whose entry has no rows extracts its
+      empty artifact rather than skipping.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -241,16 +290,10 @@ the 23-test baseline as it stood on 1.3.11 is in
 `docs/history/2026-09-status-next-log.md` § "In flight as it stood
 2026-09-22"; the `ci` task refusing a Bun below the floor is plan F4.
 
-**Open after the sandbox arc (2026-09-05).** Its four Linux items
-closed by 2026-09-10; the record is in
-`docs/history/2026-09-status-next-log.md`. What stays open is the one
-that needs a macOS box:
-
-5. **macOS violation reporting is lossy while any violation fails the
-   task.** The unified log drops records under load, so the same task can
-   pass or fail run to run. Enforcement is unaffected — the OS denied the
-   operation either way — but the REPORT is not a reliable gate on that
-   platform.
+**The sandbox arc (2026-09-05) is closed.** Its four Linux items closed
+by 2026-09-10 (`docs/history/2026-09-status-next-log.md`); the fifth,
+macOS violation reporting being lossy under load, is a recorded decision
+since item 586 (Decisions below), not an open item.
 
 **Releases.** v0.0.21 is on npm, the four platform packages with it
 (2026-09-15, handoff 14d in the history file), published through
@@ -380,7 +423,8 @@ state of each:
    needs an A/A control beside it. 2026-09-22 (item 580), the sweep week
    (items 342–572, PRs #488–#681) as one arm: base 164.7 ms, head
    167.8 ms warm min-of-15 at 1,000 projects, A/A 170.1 against 169.2 —
-   a tie.
+   a tie. Item 588 (the additive hit path, every task's): main 173.5
+   against head 170.5, A/A 168.3 against 164.2 — a tie.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
@@ -420,7 +464,7 @@ state of each:
     in `docs/history/2026-09-status-next-log.md`; items 453–572 are in
     `docs/history/2026-09-improvement-loop-453-472.md` through
     `-553-572.md`. The loop above is the record since 573; 14aq is
-    below with 14ar, and the next handoff written here is 14as.
+    below with 14ar and 14as, and the next handoff written here is 14at.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -474,8 +518,30 @@ why → watch) for what the week's fixes changed for a user; then Next
 manual gate script in this container runs oxlint/oxfmt through
 `bunx` (bare names are not on its PATH). Never end with "what next?".
 
+14as. **Handoff after item 588 (2026-09-22, night).** Four items since
+14ar, on PR #682: the fresh-workspace walk found nothing off (585);
+In-flight 5 is a decision, not an item (586); D1's gate was answered
+by surveying twelve more monorepos — twenty and storybook show the
+addition shape, so with strapi that is three (587); and D1 shipped
+(588): two cached tasks of one project may share a tree when an edge
+orders them, the dependant owns what it adds. The plan of 2026-09-22 is
+now exhausted except D2 (waits on a workspace with > 100 MiB
+artifacts) and the owner's three items; the review doc's D1 question is
+moot. NEXT, in order: merge #682 when green; then the warm-path A/B
+duty for 588 (it touches the hit path of every task through
+`isAddition` — an empty `addedGlobs` costs one `some` per row, but
+the rule is a number, not a belief); then Next 1's whole-graph REAPI
+run if a worker-side change needs it; then the launch is the owner's.
+Never end with "what next?".
+
 ## Decisions (this arc)
 
+- **macOS violation reporting is lossy under load, and stays so
+  (2026-09-22, item 586).** The store is fed by the unified log, which
+  drops records under pressure; the settle window that halved the loss
+  cost 300 ms per clean sandboxed task and went 2026-09-05 (owner); no
+  unprivileged channel reports a denial the child survived. Enforcement
+  is unaffected and the Known limits page says so. Not an open item.
 - **`--affected` includes dependents (2026-09-16).** The sugar is
   `--filter '...[<base>]'`: the changed projects and everything that
   depends on them, the superset a CI gate needs and what the guides

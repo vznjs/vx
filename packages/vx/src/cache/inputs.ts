@@ -513,6 +513,81 @@ export async function cleanOutputs(args: {
 }
 
 /**
+ * Remove exactly these project-relative paths — the recorded rows of an
+ * ADDITIVE task's own artifact (item 588), never a glob: the glob would
+ * take the upstream's files the task adds beside. Emptied directories are
+ * pruned as `cleanOutputs` prunes them, and stop at one the upstream still
+ * fills.
+ */
+export async function cleanOutputPaths(args: {
+  projectDir: string
+  rels: readonly string[]
+}): Promise<void> {
+  const files = args.rels.map((r) => path.resolve(args.projectDir, r))
+  await removeAll(files, args.projectDir)
+  await pruneEmptiedDirs(args.projectDir, files)
+}
+
+/** A file's identity for the additive diff: what the hit path's fingerprint trusts too. */
+export interface OutputStamp {
+  size: number
+  mtimeMs: number
+}
+
+/**
+ * The stamps of every file the declared outputs currently select — taken
+ * BEFORE an additive task runs, so what it added or changed can be told
+ * from what it found (item 588).
+ */
+export async function stampOutputs(args: {
+  projectDir: string
+  outputs: string[]
+  nestedProjectDirs: string[]
+}): Promise<Map<string, OutputStamp>> {
+  const files = await resolveOutputs(args)
+  const out = new Map<string, OutputStamp>()
+  for (const f of files) {
+    try {
+      const st = lstatSync(f)
+      out.set(f, { size: st.size, mtimeMs: st.mtimeMs })
+    } catch {
+      // Gone between the walk and the stat: not a file the task found.
+    }
+  }
+  return out
+}
+
+/**
+ * The files an additive task's run ADDED or CHANGED under its declared
+ * outputs: every selected file that was not in `before`, or whose size or
+ * mtime moved. Size + mtime is the proof the hit path already trusts for
+ * a current tree, so no new trust is introduced. A file the run rewrote
+ * with identical bytes counts as its own (the mtime moved), which is the
+ * rewrite-in-place cost the design note records.
+ */
+export async function ownOutputsSince(
+  args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
+  before: ReadonlyMap<string, OutputStamp>,
+): Promise<string[]> {
+  const after = await resolveOutputs(args)
+  const own: string[] = []
+  for (const f of after) {
+    const was = before.get(f)
+    if (was === undefined) {
+      own.push(f)
+      continue
+    }
+    try {
+      const st = lstatSync(f)
+      if (st.size !== was.size || st.mtimeMs !== was.mtimeMs) own.push(f)
+    } catch {
+      // Vanished since the walk: not an output.
+    }
+  }
+  return own
+}
+
+/**
  * A declared output the process cannot remove (a `dist/` another user
  * wrote, a read-only checkout) is the environment's failure, not vx's:
  * the scheduler prints any other error as an "internal error", which
