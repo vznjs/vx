@@ -124,7 +124,9 @@ vx run test --affected      # changed vs the base branch, and what depends on it
 vx doesn't touch your `package.json` scripts and writes only to its cache
 dir (`.vx/` by default — add it to `.gitignore`). You can keep Turborepo
 or Nx running the rest of the repo while you evaluate vx on a few
-packages, then switch over when you're confident.
+packages, then switch over when you're confident — or run the whole repo
+under vx as it is, with `turbo()` or `nx()` from `@vzn/vx-migrate` and
+no config written, and migrate packages one at a time from there.
 
 ## Next steps
 

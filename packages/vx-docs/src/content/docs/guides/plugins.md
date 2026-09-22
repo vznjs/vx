@@ -240,8 +240,8 @@ The plugins that ship alongside vx are ordinary consumers of these same
 seams: `@vzn/vx-reapi` fills `executor` and `cache` against any Bazel
 REAPI server, `turboCache()` and `nxCache()` from `@vzn/vx-migrate` fill `cache`
 against any server speaking Turbo's or Nx's self-hosted cache API,
-`turbo()` from the same package fills `project` so a `turbo.json` workspace runs with no
-`vx.config` written, `@vzn/vx-schedule-history` fills three at once — `schedule` with
+`turbo()` and `nx()` from the same package fill `project` so a `turbo.json` or an Nx
+workspace runs with no `vx.config` written, `@vzn/vx-schedule-history` fills three at once — `schedule` with
 critical-path priorities learned from past runs, `admit` with the memory
 each task reserves, and `commands` with `vx history` — `@vzn/vx-otel` and
 `@vzn/vx-github` fill `telemetry`, and `@vzn/vx-mcp` adds `vx mcp` through
