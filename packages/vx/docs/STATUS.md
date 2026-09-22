@@ -245,6 +245,18 @@ test is telling the truth.
       Enforcement is unaffected. The introduction's Known limits already
       say so; this moves the item from In flight to Decisions.
 
+587.  DONE (2026-09-22, D1's gate answered by survey rather than by
+      waiting). Twelve more real monorepos scanned statically for two
+      cached targets of one project on overlapping outputs with an edge
+      between them: twenty (2 projects, `build` → `dist`,
+      `build:individual` → `dist/individual`) and storybook (44 sandbox
+      projects, `sandbox` → `sandbox/<dir>`, `build` →
+      `…/storybook-static`) show the ADDITION shape; ten show none; no
+      new rewrite-in-place. With strapi that is three, the note's own
+      condition (1). Table in the design note. D1 is the next arc, on
+      the note's design and matrix; the owner's waiver is no longer
+      needed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
