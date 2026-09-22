@@ -188,6 +188,17 @@ test is telling the truth.
       command lands there. No change; the README's `nx()` section says
       what a cycle costs.
 
+600.  DONE (2026-09-23, the read-only verbs walked on the `nx()`
+      workspace: `vx info`, `vx show <project>`, `vx why`). Nothing off:
+      info names the plugin and its stage, show prints the `nx-exec`
+      lines with the folded default configuration, `**/*` inputs and
+      the `workspaceFiles` output, `why` asks for a recorded run as it
+      should. One thing a reader will meet and the README now says: Nx
+      injects an `nx-release-publish` target into every project with a
+      `package.json`, so it is one `nx-exec` task per package here too
+      (3,000 tasks for 1,000 projects in `vx info`), run only when
+      asked.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

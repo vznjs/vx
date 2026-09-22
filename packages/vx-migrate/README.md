@@ -77,6 +77,7 @@ Once per run the plugin compares its snapshot (`<cache dir>/nx-project-graph.jso
 
 - A task the package's own `vx.config` already declares is left alone — the plugin fills, it never overwrites. Migrate a package by writing its config; the rest of the repo keeps running from the graph.
 - Targets of an Nx project no workspace package matches — the root project, usually — have nowhere to go and are reported once per run; run them with `nx`, or declare them in a `vx.config`.
+- Nx adds an `nx-release-publish` target (`@nx/js:release-publish`) to every project with a `package.json`; it comes along as one `nx-exec` task per package, run only when asked (`vx run nx-release-publish --filter <pkg>`), and counts in `vx info`'s task total.
 - `nx-exec` must be on every task's PATH, which it is when `@vzn/vx-migrate` is a devDependency of the workspace (its bin lands in `node_modules/.bin`); a plugin loaded by path warns once per run when it is not.
 - Nx's configuration propagation (`nx run app:build:production` builds dependencies with `production` where they declare it): a `build:production` task's `^build` edges run the dependencies' default configuration, with a warning naming it.
 - Batch executors run one task per process; an executor that reads `context.taskGraph` under `NX_BUILDABLE_LIBRARIES_TASK_GRAPH` sees none and takes Nx's project-graph path.
