@@ -12,6 +12,8 @@ coverage
 .nxt
 .claude/worktrees/
 .nx
+# CI's real-Nx install for @vzn/vx-migrate's nx-exec live suite (VX_NX_MODULES)
+.nx-live
 .turbo
 *.cpuprofile
 *.heapsnapshot

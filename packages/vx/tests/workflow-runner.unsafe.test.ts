@@ -124,6 +124,7 @@ describe('a suite that skips without an env var', () => {
   it('is found by the shape, not by a list — and there are some', () => {
     expect(testFiles.length).toBeGreaterThan(100)
     expect([...gates.keys()].sort()).toEqual([
+      'VX_NX_MODULES',
       'VX_REAPI_EXEC_ENDPOINT',
       'VX_REAPI_TEST_ENDPOINT',
       'VX_SMALL_DISK',

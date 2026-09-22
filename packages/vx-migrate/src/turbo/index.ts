@@ -10,6 +10,7 @@
 
 import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
 import { definePlugin, type ProjectMeta } from '@vzn/vx'
+import { collectGaps, type Gaps, warnGaps } from '../plugin-gaps.js'
 import { mapTurboWorkspace, type TurboMappedProject } from './turbo-map.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
@@ -53,22 +54,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
       const mapped = await mapping!
       if (!warned) {
         warned = true
-        for (const note of mapped.notes) ctx.warn(`[${plugin.name}] ${note}`)
-        // One line per DISTINCT gap, not one per task: n8n has a `dev` and
-        // a `watch` in most of its 84 packages, and astro's `build` carries
-        // the same `!vendor/**` output in every package — the per-task form
-        // was a hundred identical lines before the first frame (2026-09-11).
-        for (const [todo, ids] of mapped.todos) {
-          if (ids.length === 1) {
-            ctx.warn(`[${plugin.name}] ${ids[0]}: ${todo}`)
-            continue
-          }
-          const names = [...new Set(ids.map((id) => id.slice(id.indexOf('#') + 1)))]
-          const packages = new Set(ids.map((id) => id.slice(0, id.indexOf('#'))))
-          ctx.warn(
-            `[${plugin.name}] ${ids.length} task(s) (${names.join(', ')} across ${packages.size} package(s)): ${todo}`,
-          )
-        }
+        warnGaps(ctx.warn, plugin.name, mapped.gaps)
       }
       const project = mapped.byName.get(ctx.name)
       if (project === undefined) return
@@ -87,9 +73,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
 
 interface Indexed {
   readonly byName: ReadonlyMap<string, TurboMappedProject>
-  readonly notes: readonly string[]
-  /** Every task-level gap, keyed on its text, to the `pkg#task` ids that carry it. */
-  readonly todos: ReadonlyMap<string, readonly string[]>
+  readonly gaps: Gaps
 }
 
 /**
@@ -105,18 +89,8 @@ async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Inde
     persistentTodo: PERSISTENT_NOTE,
   })
   const byName = new Map<string, TurboMappedProject>()
-  const todos = new Map<string, string[]>()
-  for (const project of mapped.projects) {
-    byName.set(project.name, project)
-    for (const t of project.tasks) {
-      for (const todo of t.todos) {
-        let ids = todos.get(todo)
-        if (ids === undefined) todos.set(todo, (ids = []))
-        ids.push(`${project.name}#${t.name}`)
-      }
-    }
-  }
-  return { byName, notes: mapped.notes, todos }
+  for (const project of mapped.projects) byName.set(project.name, project)
+  return { byName, gaps: collectGaps(mapped.projects, mapped.notes) }
 }
 
 // The mapper itself, for tools that render what this plugin runs live

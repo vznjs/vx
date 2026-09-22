@@ -197,6 +197,21 @@ jobs:
           VX_REQUIRE_REAPI_EXEC: '1'
         run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-reapi
 
+      # `@vzn/vx-migrate`'s `nx-exec` is a Node bin over Nx's own
+      # `runExecutor`, and the fake-Nx suite cannot prove Nx's side of that
+      # contract. A real install lives INSIDE the package (gitignored
+      # `.nx-live/`), so the sandboxed `test` task reads it under its own
+      # grant; the env names it and, like the REAPI flags, makes an absent
+      # install a failure. The task folds both variables into its key, so
+      # this live run never lands on the plain gate's skip-mode entry.
+      - name: Install Nx for the nx-exec live suite
+        run: npm install --no-audit --no-fund --prefix packages/vx-migrate/.nx-live nx@22 @nx/js@22 typescript@5
+      - name: vx run test (@vzn/vx-migrate, live nx-exec)
+        env:
+          VX_NX_MODULES: ${{ github.workspace }}/packages/vx-migrate/.nx-live
+          VX_REQUIRE_NX: '1'
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-migrate
+
   # The darwin job exists because THREE macOS-only defects reached main
   # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
   # broke every cache save; the /tmp -> /private/tmp symlinked-base

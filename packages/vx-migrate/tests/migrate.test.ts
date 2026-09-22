@@ -532,9 +532,12 @@ describe('vx migrate (nx)', () => {
       expect(test.exec?.command).toBe('jest')
       expect(test.cache?.inputs.files).toEqual(['**/*'])
 
-      // Foreign executor → placeholder command; dependsOn/cache parts kept.
+      // A foreign executor runs as itself through nx-exec, its options on
+      // the line; dependsOn/cache parts kept.
       const serve = tasks.serve!
-      expect(serve.exec?.command).toBe(PLACEHOLDER)
+      expect(serve.exec?.command).toBe(
+        `nx-exec @nx/webpack:dev-server --project pkg-a --target serve --options '{"port":4200}'`,
+      )
 
       // run-script on an empty script (novu's `test:watch: ""`) is the
       // placeholder with a todo, not `command: ''` — a config that refuses
@@ -595,7 +598,9 @@ describe('vx migrate (nx)', () => {
     expect(result.out).not.toMatch(/pkg-a#build: .*workspaceRoot/)
     expect(result.out).toMatch(/pkg-a#build: .*externalDependencies/)
     expect(result.out).toMatch(/pkg-a#build: .*params/)
-    expect(result.out).toMatch(/pkg-a#serve: .*@nx\/webpack:dev-server/)
+    // An executor is no gap any more: nx-exec runs it. Its lifetime still is.
+    expect(result.out).not.toMatch(/no shell equivalent/)
+    expect(result.out).toMatch(/pkg-a#serve: persistent task/)
     expect(result.out).toMatch(/pkg-a#test: /)
     expect(result.out).not.toMatch(/pkg-b#build: .*cwd/)
   })
@@ -951,8 +956,8 @@ describe('parseMigrateArgs', () => {
   })
 })
 
-describe('vx migrate (nx) — well-known executors', () => {
-  it('maps a known executor to its CLI under a TODO; an unknown one stays a placeholder', async () => {
+describe('vx migrate (nx) — executors', () => {
+  it('every executor becomes an nx-exec line carrying its options, with no TODO', async () => {
     const root = await makeRoot('vx-migrate-nx-exec-')
     try {
       await addPackage(root, 'app', {})
@@ -968,7 +973,21 @@ describe('vx migrate (nx) — well-known executors', () => {
                 root: 'packages/app',
                 targets: {
                   test: { executor: '@nx/vitest:test', options: {} },
-                  odd: { executor: '@acme/thing:do', options: { x: 1 } },
+                  odd: {
+                    executor: '@acme/thing:do',
+                    options: { x: 1, s: "it's", list: [{ a: 'b' }] },
+                  },
+                  // A configuration is a task of its own; the default one folds in.
+                  build: {
+                    executor: '@nx/js:tsc',
+                    options: { main: 'src/index.ts', mode: 'dev' },
+                    configurations: {
+                      production: { mode: 'prod' },
+                      ci: { mode: 'ci', extra: true },
+                    },
+                    defaultConfiguration: 'production',
+                    dependsOn: ['^build'],
+                  },
                 },
               },
             },
@@ -978,11 +997,28 @@ describe('vx migrate (nx) — well-known executors', () => {
       )
       const r = await vx(root, ['--from', 'nx'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-      const cfg = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
-      expect(cfg.tasks!['test']!.exec?.command).toBe('vitest run')
-      expect(cfg.tasks!['odd']!.exec?.command).toContain('TODO(vx-migrate)')
-      expect(r.out).toContain('mapped from executor "@nx/vitest:test"')
-      expect(r.out).toContain('executor "@acme/thing:do" has no shell equivalent')
+      const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts')))
+        .tasks!
+      expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'odd', 'test'])
+      expect(tasks['test']!.exec?.command).toBe(
+        'nx-exec @nx/vitest:test --project app --target test',
+      )
+      expect(tasks['odd']!.exec?.command).toBe(
+        `nx-exec @acme/thing:do --project app --target odd --options '{"x":1,"s":"it'\\''s","list":[{"a":"b"}]}'`,
+      )
+      expect(tasks['build']!.exec?.command).toBe(
+        `nx-exec @nx/js:tsc --project app --target build --configuration production --options '{"main":"src/index.ts","mode":"prod"}'`,
+      )
+      expect(tasks['build:ci']!.exec?.command).toBe(
+        `nx-exec @nx/js:tsc --project app --target build --configuration ci --options '{"main":"src/index.ts","mode":"ci","extra":true}'`,
+      )
+      expect(tasks['build:ci']!.dependsOn).toEqual(['^build'])
+      expect(r.out).not.toContain('no shell equivalent')
+      expect(r.out).not.toContain('mapped from executor')
+      expect(r.out).toContain(
+        'app#build:ci: configuration "ci": Nx runs dependencies with the same',
+      )
+      expect(r.out).toContain('executor targets run through `nx-exec`')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -1355,7 +1355,7 @@ edge); `dev` / `start` / `serve` / `watch` /
 On a repo that already has `turbo.json` or an Nx workspace, `init`
 still maps scripts only and says so, naming the richer path:
 `bunx @vzn/vx-migrate` (which auto-detects the source) or `plugins: [turbo()]`
-from `@vzn/vx-migrate`.
+/ `plugins: [nx()]` from `@vzn/vx-migrate`.
 
 A run in a root with no `vx.workspace.*` at all fails before any task
 with `no vx.workspace.ts found — run vx init …` ahead of the usual

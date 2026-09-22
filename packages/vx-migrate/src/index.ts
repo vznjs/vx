@@ -15,14 +15,15 @@ import {
   type MigrationPlan,
   UserError,
 } from '@vzn/vx'
-import { migrateNx } from './migrate-nx.js'
+import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
 import { migrateTurbo } from './migrate-turbo.js'
 
 export { migrateNx } from './migrate-nx.js'
 export { migrateTurbo } from './migrate-turbo.js'
-// The three plugins: the Turbo project stage (a repo runs unchanged), and
-// the two remote caches speaking Turbo's and Nx's wire.
+// The four plugins: the Turbo and Nx project stages (a repo runs
+// unchanged), and the two remote caches speaking Turbo's and Nx's wire.
 export * from './turbo/index.js'
+export * from './nx/index.js'
 export * from './turbo-cache/index.js'
 export * from './nx-cache/index.js'
 
@@ -57,8 +58,6 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   return out
 }
 
-const GRAPH_REL = path.join('.nx', 'workspace-data', 'project-graph.json')
-
 /** The command: detect the source, map it, hand the plan to core. Returns the exit code. */
 export async function migrateCmd(args: readonly string[]): Promise<number> {
   const parsed = parseMigrateArgs(args)
@@ -70,7 +69,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const metas = await listProjectMetas(await loadWorkspace(root))
 
   const hasTurbo = await Bun.file(path.join(root, 'turbo.json')).exists()
-  const hasGraph = await Bun.file(path.join(root, GRAPH_REL)).exists()
+  const hasGraph = await Bun.file(path.join(root, NX_GRAPH_REL)).exists()
   const hasNxJson = await Bun.file(path.join(root, 'nx.json')).exists()
 
   // Evaluating teams routinely have both runners checked in — never
@@ -89,7 +88,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   let plan: MigrationPlan
   if (parsed.from === 'nx' || (parsed.from === undefined && !hasTurbo)) {
     if (hasGraph) {
-      source = '.nx/workspace-data/project-graph.json'
+      source = NX_GRAPH_REL
       plan = await migrateNx(root, metas)
     } else if (hasNxJson || parsed.from === 'nx') {
       // Modern Nx stores the graph in SQLite — the JSON snapshot only
