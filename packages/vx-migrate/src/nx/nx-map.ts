@@ -25,6 +25,7 @@ import { nxRunCommand } from '../nx-command.js'
 import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
+import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
@@ -204,6 +205,7 @@ export async function mapNxWorkspace(
     )
   }
 
+  pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes }
 }
 

@@ -250,11 +250,27 @@ describe('turbo()', () => {
         pj.scripts['watch'] = 'echo watch'
         await writeFile(file, JSON.stringify(pj))
       }
+      // Nothing depends on dev or watch: the readiness note has nothing to
+      // gate, so it is not reported at all (item 602).
+      const quiet = silent()
+      await planRun({ cwd: root, tasks: ['build'], log: quiet })
+      expect(quiet.lines.filter((l) => l.includes('persistent'))).toEqual([])
+      // With a dependent, the note names the tasks it gates — once.
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            build: { outputs: ['dist/**'], dependsOn: ['dev'] },
+            dev: { persistent: true, cache: false },
+            watch: { persistent: true, cache: false },
+          },
+        }),
+      )
       const log = silent()
       await planRun({ cwd: root, tasks: ['build'], log })
       const lines = log.lines.filter((l) => l.includes('persistent'))
       expect(lines).toEqual([
-        '[@vzn/vx-migrate] 4 task(s) (dev, watch across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
+        '[@vzn/vx-migrate] 2 task(s) (dev across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
       ])
     },
     TIMEOUT,

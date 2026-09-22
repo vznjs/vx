@@ -271,13 +271,14 @@ describe('vx migrate (turbo)', () => {
   it('reports clean/TODO counts and lists each TODO as project#task: reason', () => {
     // app: codegen + lint clean; build 3 TODOs ($TURBO_ROOT$ dep,
     // output negation, env wildcard — the $TURBO_ROOT$ input now maps
-    // to inputs.workspaceFiles instead of a TODO), dev 1 (readyWhen),
-    // test 1 (interactive). lib#build 2 (inherited $TURBO_ROOT$ dep,
-    // env wildcard).
-    expect(result.out).toContain('2 tasks migrated clean')
-    expect(result.out).toContain('7 TODO')
+    // to inputs.workspaceFiles instead of a TODO), test 1 (interactive).
+    // lib#build 2 (inherited $TURBO_ROOT$ dep, env wildcard). app#dev is
+    // persistent and nothing depends on it, so its readiness note is no
+    // TODO: it counts as clean (item 602).
+    expect(result.out).toContain('3 tasks migrated clean')
+    expect(result.out).toContain('6 TODO')
     expect(result.out).toMatch(/app#build: .*\$TURBO_ROOT\$/)
-    expect(result.out).toMatch(/app#dev: .*readyWhen/)
+    expect(result.out).not.toMatch(/app#dev: .*readyWhen/)
     expect(result.out).toMatch(/app#test: .*interactive/)
     expect(result.out).toMatch(/lib#build: /)
   })
@@ -602,7 +603,8 @@ describe('vx migrate (nx)', () => {
     expect(result.out).toMatch(/pkg-a#build: .*params/)
     // An executor is no gap any more: nx-exec runs it. Its lifetime still is.
     expect(result.out).not.toMatch(/no shell equivalent/)
-    expect(result.out).toMatch(/pkg-a#serve: persistent task/)
+    // Nothing depends on serve: no readiness note to report (item 602).
+    expect(result.out).not.toMatch(/pkg-a#serve: persistent task/)
     // No `inputs` is Nx's own default set, not a gap (item 591).
     expect(result.out).not.toMatch(/cache enabled with no declared inputs/)
     expect(result.out).not.toMatch(/pkg-b#build: .*cwd/)
@@ -1112,6 +1114,12 @@ describe('vx migrate (nx) — a server target is persistent', () => {
                 targets: {
                   // The executor says server, whatever the target is called.
                   ui: { executor: '@nx/vite:dev-server', options: {} },
+                  // Depends on serve: the readiness note is serve's alone (602).
+                  e2e: {
+                    executor: 'nx:run-commands',
+                    options: { command: 'cypress' },
+                    dependsOn: ['serve'],
+                  },
                   preview: { executor: '@nx/vite:preview-server', options: {} },
                   // A shell wrapper says nothing about lifetime → the name does.
                   serve: { executor: 'nx:run-commands', options: { commands: ['node server.js'] } },
@@ -1135,7 +1143,9 @@ describe('vx migrate (nx) — a server target is persistent', () => {
         .sort()
       expect(persistent).toEqual(['preview', 'serve', 'ui'])
       expect(tasks['ui']!.exec?.persistent).toEqual({})
-      expect(r.out).toContain('set persistent.readyWhen')
+      expect(r.out).toContain('app#serve: persistent task')
+      expect(r.out).not.toContain('app#ui: persistent task')
+      expect(r.out).not.toContain('app#preview: persistent task')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

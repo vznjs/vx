@@ -210,6 +210,18 @@ test is telling the truth.
       real run's classify-and-probe cost, 0.08 ms of hashing per task
       plus one index lookup, and stays.
 
+602.  DONE (2026-09-23, noise a plugin user reads on every run). The
+      readiness note a persistent task carries — "add `readyWhen` to
+      gate dependents" — is moot for a task nothing depends on, and
+      refine printed it for 375 `dev` and `start` targets a run, none
+      anyone's dependency. Both mappers now run `persistent-note.ts`
+      last, over the whole mapping (a dependent may sit in another
+      package): the note stays only on a persistent task some
+      `dependsOn` names (`x`, `^x`, `pkg#x`). Rows in the turbo, nx and
+      migrate suites, each with the dependent as its control; the
+      migration's clean count moved with it (a dependent-less server is
+      clean). On refine the run prints nothing now but the tasks.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
