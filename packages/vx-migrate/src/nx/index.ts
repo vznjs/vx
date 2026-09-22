@@ -96,7 +96,10 @@ async function mapAll(
 ): Promise<Indexed> {
   const notes: string[] = []
   const graph = await loadGraph(root, cacheDir, metas, options.graph, notes)
-  const mapped = await mapNxWorkspace(root, metas, graph, { persistentTodo: PERSISTENT_NOTE })
+  const mapped = await mapNxWorkspace(root, metas, graph, {
+    persistentTodo: PERSISTENT_NOTE,
+    cacheable: new Set(),
+  })
   const byName = new Map<string, GeneratedProject>()
   const visited = new Set(metas.map((m) => m.name))
   const unattached: string[] = []
@@ -203,7 +206,7 @@ export {
   mapNxWorkspace,
   nxExecCommand,
   parseNxGraph,
-  readNamedInputs,
+  readNxJsonFacts,
   type MapNxOptions,
   type NxGraph,
   type NxMapping,

@@ -301,6 +301,23 @@ test is telling the truth.
       against Nx 22 in CI's packages job (`VX_REQUIRE_NX`). Design:
       `docs/design/nx-unchanged-2026-09.md`.
 
+591.  DONE (2026-09-22, the real-Nx dogfood 14au asked for, on refine:
+      Nx 18.2, 38 packages + 167 examples). `nx()` on the clone with only
+      a `vx.workspace.mjs`: the first `--dry` paid one graph export (17 s,
+      Nx's own daemon-less computation), the second read the snapshot in
+      0.28 s; the build set equals `nx show projects --with-target build`
+      (205 = 205, no difference either way); `@refinedev/core#build` and
+      its two dependencies through the plugin wrote the same 1,320 files
+      by name and size as `nx run --skip-nx-cache` (8.1 s against 11.1 s),
+      and a restore replayed them identically in 0.36 s. Two mapping
+      defects it surfaced, fixed: a target with outputs and no `cache`
+      was cached (refine's 204 persistent `dev` targets) — Nx's rule now,
+      `cache: true` or the legacy `cacheableOperations` list, never a
+      persistent task; and "no inputs" is Nx's `default` named input, not
+      a gap to report (487 lines per run). Rows in `migrate.test.ts`
+      (executors, pkg-b); refine's warnings went from three lines to the
+      persistent note alone.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -592,15 +609,14 @@ owner's standing direction after that: "never stop — find, simplify,
 speed up and improve things." WHAT TO WATCH: the live suite is new in
 CI's packages job (`npm install nx@22` into `packages/vx-migrate/.nx-live`,
 then the sandboxed `test` task with `VX_NX_MODULES` and
-`VX_REQUIRE_NX`); if Nx cannot compute a graph inside the sandbox
-(a write outside the project, a socket), the fix is a grant on that
-task, not an unsandboxed one. NEXT, in order: a real-Nx dogfood of
-`nx()` on a cloned repo (TanStack/router or refine, both Nx: run
-`vx run build --all` through the plugin and compare the set and the
-outputs with `nx run-many`); then the warm A/B duty (590 touches no
-core run path, so no arm — confirm by diff); then the daily duties of
-14at (STATUS trim at twenty items; the loop holds 573–590). Never end
-with "what next?".
+`VX_REQUIRE_NX`); it passed on its first run (#685 merged
+2026-09-22 22:42Z). The refine dogfood is 591. NEXT, in order: a
+dogfood on a repo whose targets are EXECUTORS (refine and router are
+package-script repos, so `nx-exec` ran live only in the synthetic
+suite — an `@nx/vite` or `@nx/js:tsc` workspace proves the plugin's
+executor path on a real tree); then the STATUS trim at twenty items
+(the loop holds 573–591); the warm A/B duty has no arm (590 and 591
+touch no core run path). Never end with "what next?".
 
 ## Decisions (this arc)
 

@@ -83,6 +83,8 @@ export function parseNxGraph(text: string, label: string): NxGraph {
 export interface MapNxOptions {
   /** The note a persistent task carries (the CLI's TODO, the plugin's warning). */
   readonly persistentTodo: string
+  /** nx.json's legacy `cacheableOperations`, for a graph whose targets carry no `cache` field. */
+  readonly cacheable: ReadonlySet<string>
 }
 
 export interface NxMapping {
@@ -104,7 +106,8 @@ export async function mapNxWorkspace(
   const nodeMap = graph.nodes
   const g = graph
 
-  const namedInputs = await readNamedInputs(root)
+  const { namedInputs, cacheable } = await readNxJsonFacts(root)
+  const mapOpts: MapNxOptions = { ...opts, cacheable: new Set([...opts.cacheable, ...cacheable]) }
 
   const metaByRel = new Map<string, ProjectMeta>()
   for (const meta of metas) metaByRel.set(normRel(relPosix(root, meta.dir)), meta)
@@ -156,7 +159,17 @@ export async function mapNxWorkspace(
     for (const [targetName, target] of Object.entries(targets)) {
       for (const v of variants(targetName, target)) {
         tasks.push(
-          buildTask(root, meta, projectName, targetName, target, v, namedInputs, metaByNode, opts),
+          buildTask(
+            root,
+            meta,
+            projectName,
+            targetName,
+            target,
+            v,
+            namedInputs,
+            metaByNode,
+            mapOpts,
+          ),
         )
       }
     }
@@ -221,17 +234,33 @@ function variants(targetName: string, target: NxTarget): Variant[] {
   return out
 }
 
-export async function readNamedInputs(root: string): Promise<Record<string, unknown[]> | null> {
+/** What the mapper reads from nx.json: the named inputs and the legacy cacheable list. */
+export interface NxJsonFacts {
+  readonly namedInputs: Record<string, unknown[]> | null
+  readonly cacheable: ReadonlySet<string>
+}
+
+export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
+  const none: NxJsonFacts = { namedInputs: null, cacheable: new Set() }
   const file = Bun.file(path.join(root, 'nx.json'))
-  if (!(await file.exists())) return null
+  if (!(await file.exists())) return none
   try {
-    const parsed = Bun.JSONC.parse(await file.text()) as { namedInputs?: unknown }
+    const parsed = Bun.JSONC.parse(await file.text()) as {
+      namedInputs?: unknown
+      tasksRunnerOptions?: { default?: { options?: { cacheableOperations?: unknown } } }
+    }
     const named = parsed?.namedInputs
-    if (typeof named !== 'object' || named === null) return null
-    return named as Record<string, unknown[]>
+    const ops = parsed?.tasksRunnerOptions?.default?.options?.cacheableOperations
+    return {
+      namedInputs:
+        typeof named === 'object' && named !== null ? (named as Record<string, unknown[]>) : null,
+      cacheable: new Set(
+        Array.isArray(ops) ? ops.filter((o): o is string => typeof o === 'string') : [],
+      ),
+    }
   } catch {
     // Unreadable nx.json just degrades named-input refs to TODOs.
-    return null
+    return none
   }
 }
 
@@ -471,9 +500,17 @@ function buildTask(
     todos.push(`dependsOn ${JSON.stringify(d)} not representable in vx`)
   }
 
+  // Nx's rule, not a guess: a target is cached when it says `cache: true`
+  // (Nx ≥ 17 writes it into the graph from `cacheableOperations` too —
+  // refine's `build` carries it, its `dev` does not) or its name is in the
+  // legacy `cacheableOperations` list. Until item 591 a target with
+  // outputs and no `cache` was cached anyway, so refine's 204 persistent
+  // `dev` targets (tsup --watch, outputs `dist`) were cached and then
+  // made uncached only by the shared-output rule (2026-09-22).
+  const persistent = persistentTarget(targetName, target.executor)
   const cacheEnabled =
-    target.cache === true ||
-    (target.cache === undefined && (target.inputs !== undefined || target.outputs !== undefined))
+    !persistent &&
+    (target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName)))
 
   if (command === null) {
     // nx:noop → vx group task: dependsOn only, no exec, no cache
@@ -494,18 +531,19 @@ function buildTask(
 
   const exec: Record<string, unknown> = { command }
   if (envNames.length > 0) exec.env = { passThrough: envNames }
-  if (persistentTarget(targetName, target.executor)) {
+  if (persistent) {
     exec.persistent = {}
     todos.push(opts.persistentTodo)
   }
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
   if (cacheEnabled) {
-    if (target.inputs === undefined && files.length === 0) {
-      files.push('**/*')
-      todos.push(
-        "cache enabled with no declared inputs — defaulting to ['**/*']; narrow to the real input set",
-      )
+    // No `inputs` is Nx's `default` named input when nx.json declares
+    // one, else the project's whole tree — the same set either way, so
+    // it is no gap to report (487 lines per run on refine, 2026-09-22).
+    if (target.inputs === undefined) {
+      if (namedInputs?.['default'] !== undefined) expandInput('default', new Set())
+      if (files.length === 0) files.push('**/*')
     }
     const inputs: Record<string, unknown> = { files }
     if (wsFiles.length > 0) inputs.workspaceFiles = wsFiles

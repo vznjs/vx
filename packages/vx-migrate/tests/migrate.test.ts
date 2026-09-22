@@ -585,9 +585,11 @@ describe('vx migrate (nx)', () => {
       const text = await Bun.file(path.join(root, 'packages', 'pkg-b', 'vx.config.ts')).text()
       expect(text).toContain('"out/**" that "build" also declares')
       // cache absent but outputs present → cache block emitted.
+      // Outputs without `cache: true` is an uncached target in Nx; the
+      // mapper used to cache it anyway (item 591).
       const pack = tasks.pack!
-      expect(pack.cache?.outputs.files).toEqual(['pkg/**'])
-      expect(pack.cache?.inputs.files).toEqual(['**/*'])
+      expect(pack.cache).toBeUndefined()
+      expect(pack.exec?.command).toBe('cd ../.. && pack')
     },
     TIMEOUT,
   )
@@ -601,7 +603,8 @@ describe('vx migrate (nx)', () => {
     // An executor is no gap any more: nx-exec runs it. Its lifetime still is.
     expect(result.out).not.toMatch(/no shell equivalent/)
     expect(result.out).toMatch(/pkg-a#serve: persistent task/)
-    expect(result.out).toMatch(/pkg-a#test: /)
+    // No `inputs` is Nx's own default set, not a gap (item 591).
+    expect(result.out).not.toMatch(/cache enabled with no declared inputs/)
     expect(result.out).not.toMatch(/pkg-b#build: .*cwd/)
   })
 
@@ -977,6 +980,13 @@ describe('vx migrate (nx) — executors', () => {
                     executor: '@acme/thing:do',
                     options: { x: 1, s: "it's", list: [{ a: 'b' }] },
                   },
+                  // Outputs and a serve-like name: persistent, so never cached,
+                  // whatever nx.json's list says (item 591).
+                  dev: {
+                    executor: 'nx:run-commands',
+                    options: { command: 'vite' },
+                    outputs: ['{projectRoot}/dist'],
+                  },
                   // A configuration is a task of its own; the default one folds in.
                   build: {
                     executor: '@nx/js:tsc',
@@ -995,11 +1005,27 @@ describe('vx migrate (nx) — executors', () => {
           dependencies: { app: [] },
         }),
       )
+      // Legacy nx.json: `odd` and `dev` are cacheable by name, `test` is not.
+      await Bun.write(
+        path.join(root, 'nx.json'),
+        JSON.stringify({
+          namedInputs: { default: ['{projectRoot}/src/**', '{workspaceRoot}/tsconfig.base.json'] },
+          tasksRunnerOptions: { default: { options: { cacheableOperations: ['odd', 'dev'] } } },
+        }),
+      )
       const r = await vx(root, ['--from', 'nx'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
       const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts')))
         .tasks!
-      expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'odd', 'test'])
+      expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'dev', 'odd', 'test'])
+      // Cached by the legacy list, inputs from nx.json's `default` named input.
+      expect(tasks['odd']!.cache).toEqual({
+        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+        outputs: { files: [] },
+      })
+      expect(tasks['test']!.cache).toBeUndefined()
+      expect(tasks['dev']!.cache).toBeUndefined()
+      expect(tasks['dev']!.exec?.persistent).toEqual({})
       expect(tasks['test']!.exec?.command).toBe(
         'nx-exec @nx/vitest:test --project app --target test',
       )
