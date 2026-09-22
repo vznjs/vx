@@ -141,6 +141,17 @@ test is telling the truth.
       member, the source-diff pin, and no inline `[*?[` outside the
       two homes. No behaviour change at any site.
 
+578.  DONE (2026-09-22, plan I1 and I4: the sweep's rules leave the
+      every-session memory). Twenty-six CLAUDE.md rules that only apply
+      while sweeping moved verbatim to
+      `docs/design/mutation-sweeps-2026-09.md`, under a seven-step
+      method distilled from them; CLAUDE.md keeps a pointer and five
+      short general rules (masking guards, the positive before the
+      negative, suspect the container, stat not `Bun.file`, the
+      platform answer in the file). CLAUDE.md 542 → 351 lines. I4 is
+      the item rule 573 set and 575–577 follow: twelve lines, the
+      number, the test; the why is the PR.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
