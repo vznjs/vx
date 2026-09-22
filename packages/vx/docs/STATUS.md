@@ -245,6 +245,17 @@ test is telling the truth.
       100755 and a shebang — red on the old mode, green after, both
       shown.
 
+605.  DONE (2026-09-23, the Turbo twin of 603, on a fresh shallow clone
+      of withastro/astro with nothing installed). `bunx @vzn/vx-migrate
+--from turbo --dry` reads turbo.json and 562 workspace packages
+      (the integrations' test fixtures are packages too, as Turbo sees
+      them) and reports the known gaps — the negated `!vendor/**`
+      output, `build:ci` sharing `dist/**/*` with `build` and running
+      uncached with the edge hint from 588; the write lands 115
+      configs and the workspace file, and `vx run build --all --dry`
+      plans 249 tasks through them with no install and no plugin.
+      Nothing off; the clone was restored after. No change.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -437,8 +448,8 @@ state of each:
     `-553-572.md`; items 573–591 are in
     `docs/history/2026-09-improvement-loop-573-591.md` (handoffs
     14aq–14au in the next-log file). The loop above is the record since
-    592; 14av and 14aw are below, and the next handoff written here is
-    14ax.
+    592; 14av, 14aw and 14ax are below, and the next handoff written
+    here is 14ay.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -488,6 +499,26 @@ persona walk of `vx watch` on an `nx()` workspace (a `project.json`
 edit is a graph export in the next cycle — is it, and how long is the
 cycle?); then the owner's three items stand. Never end with "what
 next?".
+
+14ax. **Handoff after item 605 (2026-09-23, before dawn).** Seven items
+since 14aw, each its own PR, merged in turn (#693 599, #694 600, #695
+601, #696 602, #697 603, #698 604, and 605 with this handoff): the `vx watch` and read-only verb
+walks on the `nx()` workspace found nothing off and one release target
+to name; a dry run's plan got its own timing row (105 ms had read as
+"close"); the readiness note on persistent tasks is reported only when
+something depends on them (refine's 375-line warning is gone); the
+migration path was exercised on real Nx 22 through to a tsc build and
+a restore; and the `vx-migrate` bin's index mode was 100644 since the
+package's first commit — fixed, with a repo-wide law that every
+declared bin is 100755 with a shebang. WHAT STANDS: the Nx surface is
+finished for what this box can reach; the loop holds 592–605, fourteen
+items, so the STATUS trim is due at 612. NO CORE RUN-PATH CHANGE since
+589 (601 touched `planRun`'s dry path only), so the warm A/B duty has
+no arm. NEXT, in order: keep finding — the owner's direction is "never
+stop; find, simplify, speed up, improve" (605 was the Turbo migration
+walked on astro, nothing off); then the trim at 612; the executor-backed real tree
+stays for a box with yarn 4 reachable; then the owner's three items.
+Never end with "what next?".
 
 ## Decisions (this arc)
 
