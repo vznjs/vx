@@ -1931,3 +1931,125 @@ load every reader shares. `attributesAbove` has no worktree or
 submodule fixture either — it derives the repo root from `git
 rev-parse --git-dir` and stops at the filesystem root, which is
 untested. Never end with "what next?".
+
+## In flight as it stood 2026-09-22 (moved from STATUS by item 573)
+
+The SIGILL closure and the 1.3.11 baseline diagnosis, verbatim, so the
+failing-test population and its causes stay findable.
+
+**`shard-9`'s SIGILL is CLOSED (2026-09-21, item 572): it was Bun
+1.3.11, not load.** It sat here since 2026-09-20 as "about 1 run in 8,
+on any tree", a `panic(main thread)` with exit 132 and no failing row,
+attributed to this runtime under twelve-way load. The attribution was
+half right and the actionable half was missing: it is the RUNTIME, and
+the runtime is a VERSION — 1.3.11, below this repo's own
+`engines.bun: >=1.4`, which is why CI at 1.4.2 never saw one and why
+the entry below already noted the mismatch without connecting the two.
+
+Measured by interleaved A/B, the shard's own 17 files in one process,
+arms alternating every rep so machine drift cannot land on one of them:
+**bun 1.3.11 failed 3 of 24, bun 1.4.2 failed 0 of 24.** Three in 24 is
+the documented 1-in-8; zero in 24 against that rate is p = 0.04
+(`(7/8)^24`). Both signatures appeared on 1.3.11 and neither on 1.4.2:
+two `panic(main thread): Segmentation fault at address …` with exit
+132, and one bare SIGILL the shell reported as `Illegal instruction`
+with exit 1 — worth recording, because the old note says to match the
+signature and exit 1 was not in it.
+
+So the re-run ritual is retired ALONG WITH the yardsticks: run the gate
+under 1.4.2 (`PATH=$SP/bun142bin:$PATH`, the release asset fetched per
+the correction under Releases) and a shard-9 failure is the diff's.
+Should one appear there, it is a new finding and this entry does not
+cover it.
+
+**The gate's baseline in a cloud container (2026-09-19; the RSS family
+diagnosed 2026-09-20, item 418).** Three of the failures are one chain:
+this container's Bun reports `resourceUsage().maxRSS` in the kernel's
+KILOBYTES, core reads the bytes Bun >= 1.4 documents, so every peak reads
+1024× small, falls under the parent-RSS floor and is never recorded —
+core's `resourceUsageToCpuRss` canary rows and both
+`@vzn/vx-schedule-history` memory rows follow from that one fact.
+
+**The gate's baseline in a cloud container (2026-09-19).** A session
+that gates somewhere other than a dev box will see `vx run ci --all`
+come back red with roughly two dozen failing tests and ten failing
+tasks, and diffing against that set is only honest once the set has a
+cause. On the 2026-09-19 container the cause is mostly ONE thing: the
+box ships **Bun 1.3.11** while both `package.json` files declare
+`"bun": ">=1.4"`, and one suite cross-checks vx's tar against
+`Bun.Archive` (item 389 corrected the claim that core DEPENDS on it —
+it does not; the oracle is where the failure lands).
+Ten of the 23 are that, verified — `@vzn/vx-reapi` refuses to load
+with its own version error (3 in the failing set, but SEVENTEEN rows
+behind it: the task stops at the first file, so the count was never the
+population — item 440 gated them all and that task is green here now),
+`tar-stream` fails inside
+`Bun.Archive` (1), `project-loader` got a `BuildMessage` where 1.4
+gives an Error — item 436 measured that and fixed the guard behind it,
+so those three are no longer in the set (3), the
+runner read no `peakRssBytes` at all until item 437 measured the unit
+instead of trusting it (2), and `bin.ts` truncated a
+2 MiB pipe write to 219 KB, the very defect the Rules section records
+as fixed — item 438 found the fix pinned to one runtime's flush timing
+and took `process.exit` out of the path entirely (1). Four more are downstream of that missing usage number
+(`vx last`, the remote-usage e2e, both schedule-history reservation
+cases). Seven WERE the watch loop and `armWatcher`, and item
+369 MEASURED what this sentence first guessed: they are the floor too.
+Item 431 acted on that measurement, so they are no longer in the set:
+the four e2e rows assert per delivery mode (the poll coalesces the
+follower, so two executions there and three under events), the two
+`armWatcher` rows are gated on the probe landing at all, and the
+seventh was load and passes alone.
+The baseline stands at THREE failing tests as of item 440
+(`armWatcher` non-recursive, the watch watched-set row, the
+`Bun.Archive` tar oracle) and three failing tasks.
+Bun 1.3.11's `fs.watch` never reports a DOT-prefixed filename — a
+plain file is delivered, `.vx-watch-probe` is dropped, in both
+recursive modes — and that probe is exactly how `armWatcher` proves a
+watcher is live. So 21 of the 23 are the runtime, not 10. That leaves TWO — the
+`--continue=always` pair — which item 435 measured and which are NOT
+load either: this host signs commits through a helper that dials
+loopback, a task sandbox denies the network, and that file was the one
+test with a private git runner missing the `commit.gpgsign=false` guard
+the shared helper carries. Fixed there, so load explains none of the
+23; what it explains is the SIGILL shape below and the watch timing 431
+left in place. The controlled comparison closes it: CI pins
+`bun-version: 1.4.2` in `ci.yml` and every PR of this arc went green
+there — same tree, same tests, 23 red here and none there. CORRECTED 2026-09-21 (item 566): UPGRADING IS
+AVAILABLE, and the yardstick is retired. `bun upgrade` is indeed
+refused by this build and bun.sh does answer 403, but the GitHub
+release asset does not —
+`github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip`
+downloads through the proxy in one curl, and the gate run with that
+binary first on PATH is **44 of 44 tasks green, three reps, zero
+failing tests**. So the three "flappers" were never flakes: they are
+1.3.11 failures of a runtime BELOW this repo's own declared floor
+(`engines.bun: >=1.4`), which is why CI at 1.4.2 never saw one. Run
+the gate under the pinned build; `$SP/bun142bin` is a directory
+holding just that symlink, for `PATH=$SP/bun142bin:$PATH`. The
+failing-task and failing-test yardsticks are no longer needed — a
+failure under 1.4.2 is the diff's, full stop.
+One more shape to expect, first seen 2026-09-19 under item 380: a
+shard can die with **exit 132 (128 + SIGILL)** and report no failing
+test at all — the Bun process crashed, so the failing-task count goes
+to eleven with nothing new in the failing-test set. Shard 9 did it
+once and then passed 271/271 twice in isolation and again on the next
+gate. Treat a bare SIGILL like that as this runtime under twelve-way
+load, not as a find: re-run the shard alone, and the gate once, before
+reading anything into it.
+Item 388 saw it twice in a row — under the gate and again alone, both
+times after the config-evaluation worker suite's last passing test —
+and then on a clean `origin/main` tree, which is the control that
+settles whose it is. Item 388's entry called it deterministic on that
+evidence; item 389's gate had shard 9 green, so it is NOT. Two
+recurrences are not a pattern: the count moves between ten and eleven
+failing tasks, and the eleventh names no test. What actually settles a
+SIGILL is the clean-tree run, not how many times in a row you saw it —
+a shard that dies without your diff is the runtime's however often it
+does it.
+
+**Open after the sandbox arc (2026-09-05).** Its four Linux items
+closed by 2026-09-10 — the docs build under bwrap, strace's seccomp
+filter, a sandboxed port, persistent tasks inside their sandbox; the
+record is in `docs/history/2026-09-status-next-log.md`. What stays
+open is the one that needs a macOS box:
