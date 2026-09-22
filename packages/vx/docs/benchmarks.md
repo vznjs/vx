@@ -73,7 +73,8 @@ Two tools, and they answer different questions:
   the run — `startup`, `workspace config`, `discover projects`,
   `package graph`, `open cache`, `load configs`, `git enumeration`,
   `build graph`, `plugin stages`, `classify + probe`, `run graph`,
-  `record history`, `save lane`, `output dir snapshots`, `close` — with
+  `record history`, `save lane`, `output dir snapshots`, `close`, and
+  in a dry run `plan` — with
   each stage's own and cumulative time, plus accumulated per-task spans (`cache.get`,
   `output glob`, `output stat` and `task hash` among them;
   [`modules/timing.md`](./modules/timing.md) lists every one). This is the first thing to

@@ -932,7 +932,10 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       return { tasks: [], unresolvedTasks: prepared.unresolvedTasks }
     }
     if (prepared.empty !== null) return { tasks: [] }
-    return await plan({
+    // Its own mark: a dry run's plan (every task's hash, the cache lookups,
+    // the history p50s) was booked under `close`, the next mark, and read
+    // as 105 ms of closing a cache at 1,000 projects (item 601).
+    const planned = await plan({
       nodes: prepared.nodes,
       workspaceRoot: prepared.workspaceRoot,
       workspaceFingerprint: prepared.workspaceFingerprint,
@@ -958,6 +961,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // cache capability, so plan mode gains no new class of side effect.
       ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
     })
+    mark('plan')
+    return planned
   } finally {
     prepared.cache.close()
     // The same table a run prints: a dry run is how the prepare stages
