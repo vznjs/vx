@@ -95,6 +95,31 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('lost')).toEqual([])
   })
 
+  it('a hit with no rows is up-to-date while its globs still match nothing, and wipes a stray', async () => {
+    // The warned entry holds no rows. Before item 589 its every hit
+    // extracted the empty artifact and reported a restore; now the hit is
+    // a no-op when the globs match nothing — and still a clean when a
+    // stray sits under them, which strict ownership requires.
+    const outcomes = async (): Promise<Record<string, boolean | undefined>> => {
+      const summary = await run({
+        cwd: root,
+        tasks: ['lost'],
+        projects: ['app'],
+        log: logger([]),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.restored]))
+    }
+    await outcomes()
+    expect(await outcomes()).toEqual({ lost: false })
+    const stray = path.join(root, 'packages', 'app', 'build', 'stray.js')
+    await mkdir(path.dirname(stray), { recursive: true })
+    await writeFile(stray, 'x')
+    expect(await outcomes()).toEqual({ lost: true })
+    expect(await Bun.file(stray).exists()).toBe(false)
+  })
+
   it('the output warning blames the sandbox only when there IS one', async () => {
     // `app#lost` is not sandboxed, so the cause clause added for sandboxed
     // tasks with no write grant (item 444) must not appear here. The
