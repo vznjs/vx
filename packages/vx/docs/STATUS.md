@@ -222,6 +222,18 @@ test is telling the truth.
       migration's clean count moved with it (a dependent-less server is
       clean). On refine the run prints nothing now but the tasks.
 
+603.  DONE (2026-09-23, the migration path on the real Nx 22 install,
+      which only fixtures had exercised since `nx-exec` lines replaced
+      the placeholders in 590). `bunx @vzn/vx-migrate --from nx` on the
+      bench workspace reads Nx 22's own cache-file shape, writes one
+      `vx.config.ts` per package with the `nx-exec @nx/js:tsc …` line
+      and the `workspaceFiles` output, and with the plugin's workspace
+      file moved aside — core's floor alone — `vx run build --filter
+@bench/p1` compiles through the written config (1.3 s, real tsc)
+      and the next run restores `dist/packages/p1` from the cache. No
+      change; the record that both adoption paths run the same
+      executor line end to end.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
