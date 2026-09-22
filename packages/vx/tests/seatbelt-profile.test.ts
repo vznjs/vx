@@ -6,6 +6,7 @@
 // kernel sees — and item 582 closed it with a checker written for paths a
 // filesystem hands back (a space is legal there; a quote is not).
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -38,7 +39,11 @@ describe('macProfileRules and a unix socket reached through a symlink', () => {
   beforeEach(async () => {
     // A short path directly under the OS temp dir, as the socket rows do:
     // seatbelt paths have a `sun_path` cap that a nested scratch dir exceeds.
-    root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbpl-'))
+    // REAL path: on macOS the temp dir is `/var/folders/…`, a symlink to
+    // `/private/var/…`, so a path built under the unresolved root differs
+    // from what `toRealPath` hands back and the two control rows below read
+    // two grants where they expect one (the darwin job, 2026-09-22).
+    root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbpl-')))
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
