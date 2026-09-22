@@ -257,6 +257,21 @@ test is telling the truth.
       the note's design and matrix; the owner's waiver is no longer
       needed.
 
+588.  DONE (2026-09-22, plan D1: overlapping outputs, the addition shape,
+      on the design note's design). An overlap WITH an edge is marked at
+      graph build (`addsToOutputsOf` / `outputsAddedToBy`), not refused;
+      the dependant's own set is what its run added or changed against a
+      size+mtime stamp taken before it (`stampOutputs`, `ownOutputsSince`),
+      it cleans and is judged current by its rows (`cleanOutputPaths`),
+      and the upstream drops strays a dependant's glob could have added
+      before judging its tree. `tests/overlapping-outputs.test.ts`: the
+      note's matrix over twenty's subdirectory shape and strapi's
+      same-tree shape, ten rows, each tree byte-identical to a cold run;
+      each of the three mechanisms reddens rows when disabled (run). The
+      migrator keeps an edge-ordered dependant cached. caching.md § Additive
+      outputs is the contract. Observed, not 588's: a hit whose entry has
+      no rows extracts its empty artifact rather than skipping.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -446,7 +461,7 @@ state of each:
     in `docs/history/2026-09-status-next-log.md`; items 453–572 are in
     `docs/history/2026-09-improvement-loop-453-472.md` through
     `-553-572.md`. The loop above is the record since 573; 14aq is
-    below with 14ar, and the next handoff written here is 14as.
+    below with 14ar and 14as, and the next handoff written here is 14at.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -499,6 +514,22 @@ why → watch) for what the week's fixes changed for a user; then Next
 1's whole-graph REAPI run if a worker-side change needs it. The
 manual gate script in this container runs oxlint/oxfmt through
 `bunx` (bare names are not on its PATH). Never end with "what next?".
+
+14as. **Handoff after item 588 (2026-09-22, night).** Four items since
+14ar, on PR #682: the fresh-workspace walk found nothing off (585);
+In-flight 5 is a decision, not an item (586); D1's gate was answered
+by surveying twelve more monorepos — twenty and storybook show the
+addition shape, so with strapi that is three (587); and D1 shipped
+(588): two cached tasks of one project may share a tree when an edge
+orders them, the dependant owns what it adds. The plan of 2026-09-22 is
+now exhausted except D2 (waits on a workspace with > 100 MiB
+artifacts) and the owner's three items; the review doc's D1 question is
+moot. NEXT, in order: merge #682 when green; then the warm-path A/B
+duty for 588 (it touches the hit path of every task through
+`isAddition` — an empty `addedGlobs` costs one `some` per row, but
+the rule is a number, not a belief); then Next 1's whole-graph REAPI
+run if a worker-side change needs it; then the launch is the owner's.
+Never end with "what next?".
 
 ## Decisions (this arc)
 

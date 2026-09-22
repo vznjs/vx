@@ -33,6 +33,7 @@ export interface SaveMissArgs {
   gitFilesCache?: GitFilesCache | undefined
   outputs: string[] // declared cache.outputs.files
   wsOutputs: string[] // declared cache.outputs.workspaceFiles
+  ownOutputFiles?: string[] | undefined // an ADDITIVE task's own set, in place of the glob walk (item 588)
   captured: readonly TaskInputComponent[] // Tier-3 rows from the pre-exec describe
   command: string
   durationMs: number

@@ -1,11 +1,15 @@
 # Two cached tasks, one output path (2026-09-20)
 
-**Status: design only. The implementation stays gated on Next 16's own
-condition — a THIRD repository showing the addition shape — and the
-rewrite-in-place shape stays refused. What this note adds to the sketch
-in STATUS Next 16 is the part that decides whether it is buildable: the
-two places vx would have to change, and the one invariant the sketch as
-written would break.**
+**Status: IMPLEMENTED 2026-09-22 (item 588), on the design below, after
+the survey met its own gate (three repositories with the addition
+shape). `docs/caching.md` § "Additive outputs" is the user-facing
+contract; `tests/overlapping-outputs.test.ts` is the matrix, run over
+both shapes in the wild (a subdirectory, and one `dist` for both). The
+rewrite-in-place shape is no longer refused but stays out of scope: it
+works, and costs the upstream a restore per warm run. What this note
+adds to the sketch is the part that decided whether it was buildable:
+the two places vx had to change, and the one invariant the sketch as
+written would have broken.**
 
 ## The shape
 
@@ -150,7 +154,7 @@ the rewrite stays refused. The shape in the wild is a SUBDIRECTORY
 never an interleaving of the same files — which is what makes the
 size + mtime diff of the design sufficient.
 
-## What would have to be true to build it
+## What had to be true to build it (all four held, item 588)
 
 1. A third repository shows the ADDITION shape (Next 16's own gate; the
    two known repositories are one of each, which is not a pattern yet).

@@ -19,7 +19,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { buildTaskGraph } from '../src/graph/index.js'
+import { buildTaskGraph, type TaskNode } from '../src/graph/index.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
 import type { PackageGraph } from '../src/workspace/index.js'
 import type { ProjectConfig, TaskConfig } from '../src/config.js'
@@ -64,6 +64,90 @@ function graph(projects: Record<string, Record<string, TaskConfig>>): void {
     ),
   })
 }
+
+/** Like `graph`, returning the nodes, for the rows that read what the build marked. */
+function graphNodes(projects: Record<string, Record<string, TaskConfig>>): Map<string, TaskNode> {
+  const entries = new Map<string, ProjectEntry>()
+  for (const [name, tasks] of Object.entries(projects)) {
+    entries.set(name, {
+      name,
+      dir: `/w/${name}`,
+      configPath: `/w/${name}/vx.config.ts`,
+      config: { tasks } as ProjectConfig,
+    } as ProjectEntry)
+  }
+  const pkg = {
+    transitiveDeps: () => [],
+    directDeps: () => [],
+    has: () => false,
+  } as unknown as PackageGraph
+  return buildTaskGraph({
+    projects: entries,
+    packageGraph: pkg,
+    requested: [...entries.values()].flatMap((e) =>
+      Object.keys(e.config.tasks ?? {}).map((t) => ({ project: e.name, task: t })),
+    ),
+  })
+}
+
+describe('an overlap WITH an edge is the addition shape, and is allowed (item 588)', () => {
+  // twenty's `build` → `dist` and `build:individual` → `dist/individual`,
+  // the second depending on the first: the order is fixed, so the dependant
+  // can add to the tree and tell its own files from what it found.
+  const dependant = (outputs: string[], on: string): TaskConfig => ({
+    ...task(outputs),
+    dependsOn: [on],
+  })
+
+  it('marks the dependant as adding to the upstream, and the upstream as added to', () => {
+    const nodes = graphNodes({
+      app: { build: task(['dist']), individual: dependant(['dist/individual'], 'build') },
+    })
+    expect(nodes.get('app#individual')?.addsToOutputsOf).toEqual(['app#build'])
+    expect(nodes.get('app#build')?.outputsAddedToBy).toEqual(['dist/individual'])
+    expect(nodes.get('app#build')?.addsToOutputsOf).toBeUndefined()
+  })
+
+  it('the dependant is the additive one whichever is declared first, and through a hop', () => {
+    const nodes = graphNodes({
+      app: {
+        individual: dependant(['dist/individual'], 'mid'),
+        mid: { dependsOn: ['build'] } as TaskConfig,
+        build: task(['dist']),
+      },
+    })
+    expect(nodes.get('app#individual')?.addsToOutputsOf).toEqual(['app#build'])
+    expect(nodes.get('app#build')?.outputsAddedToBy).toEqual(['dist/individual'])
+  })
+
+  it("strapi's shape: an identical glob is allowed too, once an edge orders it", () => {
+    const nodes = graphNodes({
+      app: { build: task(['dist/**']), types: dependant(['dist/**'], 'build') },
+    })
+    expect(nodes.get('app#types')?.addsToOutputsOf).toEqual(['app#build'])
+  })
+
+  it('workspace outputs across projects follow the same rule', () => {
+    const nodes = graphNodes({
+      a: { build: task([], ['shared/**']) },
+      b: { build: { ...task([], ['shared/b.txt']), dependsOn: ['a#build'] } as TaskConfig },
+    })
+    expect(nodes.get('b#build')?.addsToOutputsOf).toEqual(['a#build'])
+    expect(nodes.get('a#build')?.outputsAddedToBy).toEqual(['shared/b.txt'])
+  })
+
+  it('CONTROL: the same pair WITHOUT the edge is still refused', () => {
+    expect(() =>
+      graph({ app: { build: task(['dist']), individual: task(['dist/individual']) } }),
+    ).toThrow(/both declare the output/)
+  })
+
+  it('CONTROL: an edge to a task with a DISJOINT output marks nothing', () => {
+    const nodes = graphNodes({ app: { build: task(['dist']), docs: dependant(['out'], 'build') } })
+    expect(nodes.get('app#docs')?.addsToOutputsOf).toBeUndefined()
+    expect(nodes.get('app#build')?.outputsAddedToBy).toBeUndefined()
+  })
+})
 
 describe('two tasks cannot claim the same output', () => {
   it('refuses an identical glob declared by two tasks in one project', () => {

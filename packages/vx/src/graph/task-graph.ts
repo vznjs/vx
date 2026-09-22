@@ -44,6 +44,21 @@ export interface TaskNode {
    * Absent when no plugin declares the stage.
    */
   keyParts?: ReadonlyArray<readonly [name: string, value: string]>
+  /**
+   * Ids of upstream tasks whose declared outputs this task's outputs
+   * overlap: this task ADDS to their trees (twenty's `build:individual`
+   * into `build`'s `dist`; item 588). Its own output set is what its run
+   * added or changed, it cleans and restores only its recorded rows, and
+   * it is never restore-tier. Set by `detectOutputCollisions`, which refuses
+   * the same overlap without an edge.
+   */
+  addsToOutputsOf?: string[]
+  /**
+   * Declared output globs of dependants that add into this task's tree.
+   * The hit path ignores paths they match when it decides whether this
+   * task's tree is already current, so an addition below is not a stray.
+   */
+  outputsAddedToBy?: string[]
 }
 
 export function taskId(project: string, task: string): string {
@@ -474,6 +489,24 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
  * this only refuses a graph that was already destroying files.
  */
 function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
+  // Does `from` reach `to` through deps? Asked only for a colliding pair,
+  // so the walk is rare; memoised per source across the detector's calls.
+  const reachMemo = new Map<string, Set<string>>()
+  const reaches = (from: string, to: string): boolean => {
+    let seen = reachMemo.get(from)
+    if (seen === undefined) {
+      seen = new Set<string>()
+      const stack = [...(nodes.get(from)?.deps ?? [])]
+      while (stack.length > 0) {
+        const id = stack.pop()!
+        if (seen.has(id)) continue
+        seen.add(id)
+        for (const d of nodes.get(id)?.deps ?? []) if (!seen.has(d)) stack.push(d)
+      }
+      reachMemo.set(from, seen)
+    }
+    return seen.has(to)
+  }
   // INDEX FIRST, then compare — never all-pairs over the graph. A naive
   // pairwise loop that filters by project INSIDE the loop is quadratic in the
   // whole graph: measured 1.6 SECONDS at this project's stated target of 1000
@@ -505,7 +538,14 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
       for (let j = i + 1; j < bucket.length; j++) {
         const a = bucket[i]!
         const b = bucket[j]!
-        collide(a, b, a.config.cache?.outputs.files, b.config.cache?.outputs.files, 'files')
+        collide(
+          a,
+          b,
+          a.config.cache?.outputs.files,
+          b.config.cache?.outputs.files,
+          'files',
+          reaches,
+        )
       }
     }
   }
@@ -519,6 +559,7 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
         a.config.cache?.outputs.workspaceFiles,
         b.config.cache?.outputs.workspaceFiles,
         'workspaceFiles',
+        reaches,
       )
     }
   }
@@ -550,11 +591,27 @@ function collide(
   aGlobs: readonly string[] | undefined,
   bGlobs: readonly string[] | undefined,
   field: 'files' | 'workspaceFiles',
+  reaches: (from: string, to: string) => boolean,
 ): void {
   if (neverWritesLocally(a) || neverWritesLocally(b)) return
   for (const ga of aGlobs ?? []) {
     for (const gb of bGlobs ?? []) {
       if (!outputsOverlap(ga, gb)) continue
+      // An overlap WITH an edge is the addition shape (item 588): the
+      // dependant runs after its upstream and adds to that tree, so the
+      // order is fixed and the dependant's own set can be told apart from
+      // what it found. Marked on both, and the pair is allowed. Without an
+      // edge the two run in either order, and the refusal below stands.
+      const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
+      if (up !== undefined && down !== undefined) {
+        const downGlobs =
+          field === 'files'
+            ? down.config.cache?.outputs.files
+            : down.config.cache?.outputs.workspaceFiles
+        ;(down.addsToOutputsOf ??= []).push(up.id)
+        ;(up.outputsAddedToBy ??= []).push(...(downGlobs ?? []))
+        return
+      }
       throw new UserError(
         `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
           (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +

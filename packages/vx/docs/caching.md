@@ -499,6 +499,36 @@ state can survive. We've seen this cause:
 The strict-ownership behavior makes the project dir post-run a pure
 function of the cache key.
 
+### Additive outputs: two tasks, one tree, an edge between them
+
+Two cached tasks of one project whose declared outputs overlap are
+refused at graph build — unless one depends on the other (item 588).
+Then the order is fixed, and the dependant is **additive**: twenty's
+`build` fills `dist` and `build:individual` depends on it and writes
+`dist/individual`; strapi's `build:types` runs `tsc` into the same
+`dist` as `build`. For the dependant:
+
+- its **own output set** is what its run added or changed under its
+  declared outputs — the outputs are stamped (size, mtime) before the
+  run and diffed after, the same proof a hit's "already current" check
+  trusts — and only that set is saved;
+- it **cleans by recorded rows**, never by glob, before a run (nothing:
+  stale files of its own are its command's to clean, as under Turbo) and
+  before a restore (its rows only);
+- its "already current" check requires its rows present and current and
+  ignores everything else under the glob;
+- it is **never restore-tier**: it restores or runs after its upstream,
+  by the edge.
+
+The upstream keeps strict ownership of its glob — a miss or a restore
+wipes the whole tree, the dependant's additions included, and the
+dependant restores or runs after — and its "already current" check
+ignores strays a dependant's glob could have added, so a warm run stays
+a no-op for both. A file the dependant rewrites in place (refine's
+`types` regenerating `build`'s `.d.ts`) counts as the dependant's own
+(the mtime moved), which is correct and costs the upstream a restore on
+the next warm run; the design note keeps that shape out of scope.
+
 ## Invalidation paths
 
 A task's cache becomes invalid when any of these change:

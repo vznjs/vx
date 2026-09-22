@@ -37,6 +37,13 @@ export interface SaveMissArgs {
   /** Declared `cache.outputs.files` / `.workspaceFiles`. */
   outputs: string[]
   wsOutputs: string[]
+  /**
+   * An ADDITIVE task's own set (item 588): the files its run added or
+   * changed under its declared outputs, resolved by execute-task against
+   * the stamp it took before the run. Replaces the glob walk below, which
+   * would also take the upstream's files the task adds beside.
+   */
+  ownOutputFiles?: string[] | undefined
   /** The Tier-3 input fingerprint rows captured by the pre-exec describe. */
   captured: readonly TaskInputComponent[]
   command: string
@@ -60,11 +67,13 @@ export interface SaveMissArgs {
 export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void> }> {
   const { node, cache, log } = a
   const endResolve = span('miss: resolve outputs')
-  const outputFiles = await resolveOutputs({
-    projectDir: node.projectDir,
-    outputs: a.outputs,
-    nestedProjectDirs: a.nestedProjectDirs,
-  })
+  const outputFiles =
+    a.ownOutputFiles ??
+    (await resolveOutputs({
+      projectDir: node.projectDir,
+      outputs: a.outputs,
+      nestedProjectDirs: a.nestedProjectDirs,
+    }))
   const wsOutputFiles = await resolveWorkspaceOutputs({
     workspaceRoot: a.workspaceRoot,
     outputs: a.wsOutputs,

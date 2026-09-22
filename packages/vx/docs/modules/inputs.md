@@ -87,6 +87,28 @@ export async function cleanWorkspaceOutputs(args: {
 
 /** A literal entry compiles to itself plus its subtree: `src/` → `src`, `src/**`. */
 export function asTrees(patterns: readonly string[]): string[]
+
+// An ADDITIVE task (its outputs overlap an upstream's, with the edge that
+// orders them; item 588) owns what its run added or changed, not what
+// its glob selects: the stamp before, the diff after, and a clean by
+// recorded rows rather than by glob.
+export interface OutputStamp {
+  size: number
+  mtimeMs: number
+}
+export async function stampOutputs(args: {
+  projectDir: string
+  outputs: string[]
+  nestedProjectDirs: string[]
+}): Promise<Map<string, OutputStamp>>
+export async function ownOutputsSince(
+  args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
+  before: ReadonlyMap<string, OutputStamp>,
+): Promise<string[]>
+export async function cleanOutputPaths(args: {
+  projectDir: string
+  rels: readonly string[]
+}): Promise<void>
 ```
 
 ## File resolution rules

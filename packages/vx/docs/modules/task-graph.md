@@ -17,6 +17,8 @@ export interface TaskNode {
   config: TaskConfig
   deps: string[] // ids of tasks that must finish first; sorted
   requested: boolean // user-requested vs dep-pulled
+  addsToOutputsOf?: string[] // upstream ids whose output trees this task adds to (item 588)
+  outputsAddedToBy?: string[] // dependants' output globs that add into this task's tree
 }
 
 import type { ProjectEntry } from '../workspace/index.js' // { name, dir, config }

@@ -36,6 +36,10 @@ export {
   asTrees,
   type ProjectFilesCache,
   type WorkspaceFilesCache,
+  cleanOutputPaths,
+  ownOutputsSince,
+  stampOutputs,
+  type OutputStamp,
 } from './inputs.js'
 export {
   GitFilesCache,
