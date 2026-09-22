@@ -149,6 +149,12 @@ test is telling the truth.
       change; the pins on that page (its key table, the `--continue`
       semantics) still hold.
 
+596.  DONE (2026-09-22, a pointer 590 made stale). `vx init` on an Nx
+      workspace named one way to use it, the migration; the turbo.json
+      note has named both since 2026-09-09. It names `plugins: [nx()]`
+      too now, and the init suite's Nx rows pin the mention beside the
+      note (both ways, as the Turbo row is pinned).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -57,7 +57,8 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   ) {
     notes.push(
       'an Nx workspace found and not read — `bunx @vzn/vx-migrate --from nx` maps its ' +
-        'exported project graph',
+        'exported project graph, or `plugins: [nx()]` from @vzn/vx-migrate runs it with ' +
+        'nothing written',
     )
   }
   return applyMigration({
