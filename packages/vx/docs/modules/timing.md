@@ -42,6 +42,13 @@ pins this list to `prepare.ts` and `run.ts`, and the spans to every
 - `save lane`
 - `output dir snapshots`
 - `close`
+- `plan`
+
+`plan` is a dry run's only: `planRun` ends it after `build graph`, and it
+holds every task's hash, the cache lookups and the history p50s —
+`--dry`'s whole answer, booked under `close` until item 601. It is listed
+last because `planRun` follows `run` in the source, the order this list
+keeps.
 
 Spans, accumulated per call:
 

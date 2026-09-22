@@ -199,6 +199,17 @@ test is telling the truth.
       (3,000 tasks for 1,000 projects in `vx info`), run only when
       asked.
 
+601.  DONE (2026-09-23, a stage the timing table mislabelled). A dry
+      run's plan — every task's hash, the cache lookups, the history
+      p50s — had no mark of its own, so it was booked under `close`,
+      the next one: 105–117 ms of "closing a cache" at 1,000 projects,
+      against 1–3 ms in a real run, which is what the read-only walk
+      (600) turned up. `planRun` marks `plan` now; the same dry table
+      reads plan 116 ms, close 0.4 ms. `timing.md` lists the stage and
+      `timing-dry.test.ts` pins the row. The plan's cost itself is the
+      real run's classify-and-probe cost, 0.08 ms of hashing per task
+      plus one index lookup, and stays.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

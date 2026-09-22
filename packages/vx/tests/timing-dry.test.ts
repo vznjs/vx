@@ -55,6 +55,9 @@ describe('VX_TIMING on a dry run', () => {
       'load configs',
       'git enumeration',
       'build graph',
+      // The plan is its own row: a 1,000-project dry run read 105 ms of
+      // `close` before it had one (item 601).
+      'plan',
       'close',
     ]) {
       expect(out).toContain(stage)
