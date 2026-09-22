@@ -473,7 +473,8 @@ state of each:
     in `docs/history/2026-09-status-next-log.md`; items 453–572 are in
     `docs/history/2026-09-improvement-loop-453-472.md` through
     `-553-572.md`. The loop above is the record since 573; 14aq is
-    below with 14ar and 14as, and the next handoff written here is 14at.
+    below with 14ar, 14as and 14at, and the next handoff written here is
+    14au.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -542,6 +543,26 @@ duty for 588 (it touches the hit path of every task through
 the rule is a number, not a belief); then Next 1's whole-graph REAPI
 run if a worker-side change needs it; then the launch is the owner's.
 Never end with "what next?".
+
+14at. **Handoff after item 589 (2026-09-22, late).** Everything is merged
+(#487, #682, #683) and the branch stands on main with nothing in
+flight. 589 closed the one observation 588 left (a rowless hit no
+longer extracts its empty artifact), and the schema page and the
+ownership post name the ordered overlap. STATE OF THE PLAN
+(`docs/design/plan-2026-09-22.md`): every fix, improvement and arc is
+DONE or DECLINED with its reason, except D2 (the streaming remote
+seam, gated on a workspace with > 100 MiB artifacts) and the owner's
+three items (delete `NPM_TOKEN`, cut `0.1.0` from the drafted notes,
+the site's address). The Next list holds nothing an agent can start
+without an external event. WHAT A NEXT SESSION DOES: the daily duties
+(Next 6's warm A/B on any run-path change, with the A/A control; a
+STATUS trim at twenty items — the loop holds 573–589 now); a
+fresh-workspace walk when a user-facing surface changes; and, if the
+owner cuts the release, the site's benchmark refresh on the dev box.
+Do not start another mutation sweep (item 572's bar stands), do not
+narrow `local-shortcircuit.ts` without its pins, and do not touch the
+additive-output path (588) without the ten-row matrix red first. Never
+end with "what next?".
 
 ## Decisions (this arc)
 
