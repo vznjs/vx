@@ -283,6 +283,24 @@ test is telling the truth.
       Row in `cache-declaration-warnings.test.ts`, red without the
       change; the matrix's `noop` rows read plain hits now.
 
+590.  DONE (2026-09-22, owner's ask: "support nx more, like their
+      executors … current nx configs, no changes … not in core"). An Nx
+      repo runs under vx with only a `vx.workspace.ts`: `nx()` in
+      `@vzn/vx-migrate` fills the `project` stage from Nx's RESOLVED
+      graph (snapshot under the cache dir, refreshed by `nx graph
+--file` when `nx.json` or a `project.json` is newer, else the
+      stats alone), and every executor target is an `nx-exec` line —
+      a Node bin over Nx's public `runExecutor` that replaces the
+      target in the in-memory graph with the executor and options on
+      its command line, so the key sees them and the line pastes into
+      a shell. Measured against `nx run` daemon-off: 656 → 245 ms per
+      task at 200 projects, 1,104 → 272 at 1,000; a warm vx run pays
+      nothing. The migrator writes the same lines where it wrote a
+      placeholder. `tests/nx-exec.test.ts` (fake nx), `nx.test.ts`
+      (the plugin, a real round trip through the bin), the live suite
+      against Nx 22 in CI's packages job (`VX_REQUIRE_NX`). Design:
+      `docs/design/nx-unchanged-2026-09.md`.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -473,8 +491,8 @@ state of each:
     in `docs/history/2026-09-status-next-log.md`; items 453–572 are in
     `docs/history/2026-09-improvement-loop-453-472.md` through
     `-553-572.md`. The loop above is the record since 573; 14aq is
-    below with 14ar, 14as and 14at, and the next handoff written here is
-    14au.
+    below with 14ar, 14as, 14at and 14au, and the next handoff written
+    here is 14av.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -563,6 +581,26 @@ Do not start another mutation sweep (item 572's bar stands), do not
 narrow `local-shortcircuit.ts` without its pins, and do not touch the
 additive-output path (588) without the ten-row matrix red first. Never
 end with "what next?".
+
+14au. **Handoff after item 590 (2026-09-22, night).** One item since
+14at, and it is a new adoption surface: the owner asked for Nx
+executors to run under vx with no config change, then for the
+explicit `nx-exec <executor> [options]` shape; 590 shipped `nx-exec`,
+the `nx()` plugin and the migrator's use of both, with the design and
+the per-task numbers in `docs/design/nx-unchanged-2026-09.md`. The
+owner's standing direction after that: "never stop — find, simplify,
+speed up and improve things." WHAT TO WATCH: the live suite is new in
+CI's packages job (`npm install nx@22` into `packages/vx-migrate/.nx-live`,
+then the sandboxed `test` task with `VX_NX_MODULES` and
+`VX_REQUIRE_NX`); if Nx cannot compute a graph inside the sandbox
+(a write outside the project, a socket), the fix is a grant on that
+task, not an unsandboxed one. NEXT, in order: a real-Nx dogfood of
+`nx()` on a cloned repo (TanStack/router or refine, both Nx: run
+`vx run build --all` through the plugin and compare the set and the
+outputs with `nx run-many`); then the warm A/B duty (590 touches no
+core run path, so no arm — confirm by diff); then the daily duties of
+14at (STATUS trim at twenty items; the loop holds 573–590). Never end
+with "what next?".
 
 ## Decisions (this arc)
 

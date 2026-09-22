@@ -7,7 +7,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
-    "vx-migrate": "./src/bin.ts"
+    "vx-migrate": "./src/bin.ts",
+    "nx-exec": "./src/nx-exec.cjs"
   },
   "exports": {
     ".": {

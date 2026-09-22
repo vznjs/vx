@@ -1,6 +1,6 @@
 ---
 title: Migrate from Nx
-description: Move from Nx to vx — drop the daemon, the plugins, and the executors, keep the affected graph and the speed. How `bunx @vzn/vx-migrate` reads your Nx project graph.
+description: Run an Nx repo under vx unchanged with `nx()`, then move off — drop the daemon and the plugins at your pace, keep the affected graph and the speed. How `bunx @vzn/vx-migrate` reads your Nx project graph.
 ---
 
 Leaving Nx means trading a large, plugin-driven platform for a small,
@@ -9,35 +9,65 @@ task graph, `affected` — and shed the daemon, the executor plugins, and
 the generators. This guide covers the mapping and the honest
 trade-offs.
 
-## The core mental shift: executors → shell commands
+## Try it first: run the repo unchanged
 
-This is the one real difference. Nx targets run through **executors**
-(`@nx/js:tsc`, `@nx/vite:build`, …) — plugins that wrap a tool behind a
-JSON options object. vx has no executors. **A task is a shell command.**
+Nothing has to be written to find out. `nx()` from `@vzn/vx-migrate`
+fills vx's `project` stage from Nx's **resolved** project graph — the one
+Nx has already applied `targetDefaults`, `namedInputs`, plugin-inferred
+targets and `{projectRoot}` tokens to — so every project's targets are
+vx tasks, with their inputs, outputs and `dependsOn`:
 
-So an Nx target like:
+```ts
+// vx.workspace.ts — the only file
+import { defineWorkspace } from '@vzn/vx'
+import { nx } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [nx()] })
+```
+
+```bash
+vx run build --all      # what `nx run-many -t build` ran, under vx's cache
+```
+
+Executor targets keep running as executors: each becomes an `nx-exec`
+line (`nx-exec @nx/js:tsc --project lib --target build --options '{…}'`)
+that runs the executor in its own Node process through Nx's public
+`runExecutor`, with the options on the command line so vx's key sees
+them. `nx:run-commands` targets run as the shell they are. The plugin
+refreshes its graph snapshot when `nx.json` or a `project.json` changes,
+by running `nx graph --file` once; a warm vx run never runs Nx at all.
+
+## The mental shift, when you migrate: executors → shell commands
+
+Nx targets run through **executors** (`@nx/js:tsc`, `@nx/vite:build`, …)
+— plugins that wrap a tool behind a JSON options object. vx has no
+executors. **A task is a shell command.** `nx-exec` is the bridge: an
+executor target migrates as the line that runs it, so nothing is a
+placeholder and the repo runs on day one. Then, target by target, an
+`nx-exec` line becomes the command the executor was wrapping:
 
 ```jsonc
 { "build": { "executor": "@nx/js:tsc", "options": { "main": "src/index.ts", "tsConfig": "tsconfig.lib.json" } } }
 ```
 
-becomes the command that executor would have run:
-
 ```ts
+// what bunx @vzn/vx-migrate writes — runs unchanged, keyed on the options
+build: {
+  exec: { command: `nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'` },
+  cache: { inputs: { files: ['src/**', 'tsconfig.lib.json'] }, outputs: { files: ['dist/**'] } },
+}
+
+// what you replace it with when the target leaves Nx
 build: {
   exec: { command: 'tsc -b tsconfig.lib.json' },
   cache: { inputs: { files: ['src/**', 'tsconfig.lib.json'] }, outputs: { files: ['dist/**'] } },
 }
 ```
 
-This is more explicit and more portable — the command is right there, no
-plugin indirection — but it does mean executor-backed targets need a real
-command. `bunx @vzn/vx-migrate` infers it for the common executors — `@nx/vite:*`
-(`vite build`, `vite`, `vite preview`, `vitest run`), `@nx/vitest:test`,
-`@nx/jest:jest`, `@nx/eslint:lint`, `@nx/js:tsc` — under a TODO that
-asks you to check it against the executor's options, and leaves a
-`TODO(vx-migrate)` placeholder where it can't infer one, so nothing is
-silently wrong.
+The second form is more explicit and more portable — the command is right
+there, no plugin indirection, no `nx` in `devDependencies` — and it is
+yours to write at your pace. Keep `nx` and `@vzn/vx-migrate` installed for
+as long as a config carries an `nx-exec` line.
 
 ## Let `@vzn/vx-migrate` do the mechanical part
 
@@ -56,8 +86,8 @@ bunx @vzn/vx-migrate         # write them (won't overwrite without --force)
 If only `nx.json` is present (no resolved graph), `bunx @vzn/vx-migrate` tells you
 to run the `nx graph` command above — it won't guess at plugin-inferred
 targets. The generated configs freeze that resolved snapshot as static
-config; review them, replace executor placeholders with the real
-commands, and fill the TODOs.
+config; review them, replace `nx-exec` lines with bare commands when you
+are ready, and fill the TODOs.
 
 ## What maps directly
 
@@ -105,7 +135,8 @@ move carefully:
 
 - **Generators / scaffolding** (`nx generate`) — vx has none. Use the
   tools' own scaffolding, or a separate generator.
-- **Executor plugins and their option schemas** — replaced by shell
+- **Executor plugins and their option schemas** — they keep running
+  through `nx-exec` for as long as you want; the destination is shell
   commands you write.
 - **Module-boundary / lint rules, Nx Console, the plugin ecosystem** —
   out of scope for vx.

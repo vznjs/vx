@@ -48,6 +48,12 @@ export default defineProject({
       description: 'bun test',
       exec: {
         command: 'bun test',
+        // `nx-exec-live.test.ts` runs the bin against REAL Nx when
+        // VX_NX_MODULES names an install (CI puts one under `.nx-live/`,
+        // inside this project, so the sandbox's read grant covers it) and
+        // fails instead of skipping under VX_REQUIRE_NX. Both are key
+        // inputs: a skip-mode hit must never answer for the live run.
+        env: { passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX'] },
         sandbox: {
           allow: {
             read: ['**/*'],
@@ -58,7 +64,10 @@ export default defineProject({
       },
       dependsOn: ['install'],
       cache: {
-        inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+        inputs: {
+          files: ['src/**', 'tests/**', 'package.json'],
+          env: ['VX_NX_MODULES', 'VX_REQUIRE_NX'],
+        },
         outputs: { files: [] },
       },
     },

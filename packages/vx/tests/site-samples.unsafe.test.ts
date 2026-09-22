@@ -685,43 +685,33 @@ describe('the from-turborepo pages map every turbo.json key the mapper knows', (
   })
 })
 
-describe('the from-nx post names every executor the migration infers', () => {
+describe('the from-nx post says how executors run, and names the servers', () => {
+  // Since item 590 every executor runs through `nx-exec`; the one table
+  // left in the mapper decides LIFETIME, and the servers it names are a
+  // claim the post and the guide repeat.
   const src = readFileSync(
-    path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'migrate-nx.ts'),
+    path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-map.ts'),
     'utf8',
   )
   const page = readFileSync(path.join(DOCS, 'blog', 'from-nx.md'), 'utf8')
-  it('each KNOWN_EXECUTORS key is in its list, counted as the list counts them', () => {
-    const m = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
-    expect(m).not.toBeNull()
-    const names = [...m![1]!.matchAll(/'(@nx\/[^']+)'/g)].map((x) => x[1]!)
-    expect(names.length).toBe(8)
-    for (const name of names) expect(page).toContain('`' + name + '`')
-    expect(page).toContain('the eight executors')
-    // The two persistent ones are a claim of its own.
-    const persistent = [...m![1]!.matchAll(/'(@nx\/[^']+)': \{[^}]*persistent: true/g)].length
-    expect(persistent).toBe(2)
-    expect(page.replace(/\s+/g, ' ')).toContain('The two dev servers come through as persistent')
+  const guide = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
+  const m = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
+  const servers = [...m![1]!.matchAll(/'([^']+)': \{ persistent: true \}/g)].map((x) => x[1]!)
+  it('every server executor the mapper marks persistent is in the post', () => {
+    expect(servers.length).toBeGreaterThan(4)
+    expect({ missing: servers.filter((id) => !page.includes('`' + id + '`')) }).toEqual({
+      missing: [],
+    })
+    expect(page.replace(/\s+/g, ' ')).toContain('come through as persistent tasks')
   })
-  it('the MIGRATE GUIDE covers each of them too, by id or by command', () => {
-    // The post names all eight ids and counts them; the guide collapses the
-    // vite family to `@nx/vite:*` and names the four COMMANDS instead, which
-    // is accurate and reads better — so it is held to "id or command", not to
-    // the post's shape. A ninth executor still has to appear in one of the
-    // two (item 382, 2026-09-19).
-    const m = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
-    expect(m).not.toBeNull()
-    const entries = [...m![1]!.matchAll(/'(@nx\/[^']+)': \{ command: '([^']+)'/g)].map((x) => ({
-      id: x[1]!,
-      command: x[2]!,
-    }))
-    expect(entries.length).toBe(8)
-    const guide = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
-    expect({
-      missing: entries
-        .filter((e) => !guide.includes('`' + e.id + '`') && !guide.includes('`' + e.command + '`'))
-        .map((e) => e.id),
-    }).toEqual({ missing: [] })
+  it('the post and the guide both say every executor runs through nx-exec', () => {
+    expect(page).toContain('Every executor runs through `nx-exec`')
+    expect(guide).toContain('Executor targets keep running as executors')
+    // The mapper agrees: no executor maps to a bare command any more.
+    expect(src).not.toMatch(/'@nx\/[^']+': \{ command:/)
+    expect(src).toContain(
+      'return nxExecCommand(executor, projectName, targetName, configuration, options)',
+    )
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
@@ -1264,20 +1254,20 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
   })
 })
 
-describe('the migrate-from-nx guide expands the vite executors it abbreviates', () => {
-  it('the commands it lists are the @nx/vite ones KNOWN_EXECUTORS maps', () => {
-    const src = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'migrate-nx.ts'),
+describe('the migrate-from-nx guide shows the nx-exec line the mapper writes', () => {
+  it('its sample is the shape `nxExecCommand` produces, as vx-migrate’s own suite pins it', () => {
+    // The guide's sample and `tests/migrate.test.ts` ("executors") in
+    // vx-migrate spell the same line; a change to the bin's argv shape has
+    // to land in both.
+    const page = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
+    expect(page).toContain(
+      `nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'`,
+    )
+    const suite = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'tests', 'migrate.test.ts'),
       'utf8',
     )
-    const map = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
-    expect(map).not.toBeNull()
-    const vite = [...map![1]!.matchAll(/'@nx\/vite:[^']+': \{ command: '([^']+)'/g)].map(
-      (m) => m[1]!,
-    )
-    expect(vite.length).toBe(4)
-    const page = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
-    for (const command of vite) expect(page).toContain('`' + command + '`')
+    expect(suite).toContain('nx-exec @nx/vitest:test --project app --target test')
   })
 })
 

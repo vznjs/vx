@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - nx
-excerpt: "Leaving Nx means trading executors for shell commands and a daemon for none. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, with a TODO where a command has to be yours."
+excerpt: "Run an Nx repo under vx unchanged with `nx()`, executors included, then trade executors for shell commands at your pace. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the `nx-exec` line that runs it."
 ---
 
 Leaving Nx is a bigger step than leaving Turborepo, and the honest
@@ -17,6 +17,29 @@ the generators as a scaffolding system, that is a real loss and vx
 does not replace it. If you were using Nx as a task runner, everything
 below is a simplification.
 
+## Try it unchanged first
+
+Nothing has to be written to find out what vx does for the repo. `nx()`
+from `@vzn/vx-migrate` fills vx's `project` stage from the resolved
+project graph, so every project's targets are vx tasks with their
+inputs, outputs and `dependsOn`, and `vx run build --all` runs what
+`nx run-many -t build` ran, under vx's cache:
+
+```ts
+// vx.workspace.ts — the only file
+import { defineWorkspace } from '@vzn/vx'
+import { nx } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [nx()] })
+```
+
+Executor targets keep running as executors. Each becomes an `nx-exec`
+line that runs the executor in its own Node process through Nx's public
+`runExecutor`, with the executor and its options on the command line,
+so vx's key sees them and `vx show` prints what runs. A warm vx run
+never runs Nx at all; the plugin exports the graph again only when
+`nx.json` or a `project.json` changes. (Added 2026-09-22.)
+
 ## The one real shift: executors become commands
 
 An Nx target runs through an executor, a plugin that wraps a tool
@@ -26,8 +49,10 @@ behind a JSON options object:
 { "build": { "executor": "@nx/js:tsc", "options": { "main": "src/index.ts", "tsConfig": "tsconfig.lib.json" } } }
 ```
 
-vx has no executors. A task is the shell command the executor would
-have run:
+vx has no executors. A task is a shell command. When you migrate, an
+executor target is written as the `nx-exec` line that runs it — no
+placeholder, the repo runs on day one — and, target by target, that
+line becomes the command the executor was wrapping:
 
 ```ts
 build: {
@@ -37,15 +62,13 @@ build: {
 ```
 
 More explicit, more portable, and one less layer between you and the
-tool's own documentation. The cost is that every executor-backed target
-needs a real command. The migration infers it for the eight executors
-whose CLI is unambiguous — `@nx/vite:build`, `@nx/vite:dev-server`,
-`@nx/vite:preview-server`, `@nx/vite:test`, `@nx/vitest:test`,
-`@nx/jest:jest`, `@nx/eslint:lint` and `@nx/js:tsc` — under a TODO
-asking you to check it against the executor's options, which are not
-carried over. The two dev servers come through as persistent tasks,
-whatever the target is called. Every other executor gets a
-`TODO(vx-migrate)` placeholder. Nothing is silently wrong.
+tool's own documentation. Every executor runs through `nx-exec` until
+you replace it, `nx:run-commands` targets are the shell they already
+were, and the server executors — `@nx/vite:dev-server`,
+`@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
+`@nx/storybook:storybook` and `@angular-devkit/build-angular:dev-server`
+— come through as persistent tasks, whatever the target is called.
+Nothing is silently wrong.
 
 ## Read the graph Nx actually uses
 
@@ -63,7 +86,7 @@ bunx @vzn/vx-migrate         # write them; never overwrites without --force
 If only `nx.json` is present, the tool tells you to run the `nx graph`
 command rather than guessing at plugin-inferred targets. The generated
 files freeze that snapshot as static config: review them, replace the
-placeholders, fill the TODOs.
+`nx-exec` lines when you are ready, fill the TODOs.
 
 ## What maps
 
