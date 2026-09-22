@@ -18,8 +18,19 @@
 
 'use strict'
 
-const { createRequire } = require('node:module')
+const { createRequire, enableCompileCache } = require('node:module')
 const path = require('node:path')
+
+// Nx's module graph is ~150 ms of every executed task; Node's on-disk
+// compile cache (22.1+, a no-op below) takes ~30 of them back on the
+// second task, under os.tmpdir() by default, with nothing in a key.
+if (typeof enableCompileCache === 'function') {
+  try {
+    enableCompileCache()
+  } catch {
+    // A read-only temp dir just means no cache.
+  }
+}
 
 const USAGE =
   "usage: nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>']"

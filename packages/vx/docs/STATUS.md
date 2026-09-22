@@ -155,6 +155,18 @@ test is telling the truth.
       too now, and the init suite's Nx rows pin the mention beside the
       note (both ways, as the Turbo row is pinned).
 
+597.  DONE (2026-09-22, a speed-up with no config, no env and nothing
+      in a key). `nx-exec` enables Node's on-disk compile cache in its
+      own process before `nx` loads (`module.enableCompileCache`,
+      22.1+, a no-op below; the default dir under `os.tmpdir()`); Nx's
+      module graph is ~150 ms of every executed task's ~220 ms floor.
+      Fair A/B on the bench workspace, the same bin with the cache
+      disabled through `NODE_DISABLE_COMPILE_CACHE=1` against enabled,
+      interleaved min-of-15 on a `run-commands` noop: 243 → 214 ms min,
+      272 → 233 median. The fake and live suites pass unchanged. Also:
+      the parity map gained the `nx run app:build:production` row
+      (594's configuration tasks), pinned to `nx.test.ts`.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -130,6 +130,11 @@ Same at 1,000 projects, N=6: host 272, `nx run` daemon off 1,104,
 daemon warm 387. `@nx/js:tsc` build, 200 projects, `dist` removed
 before each: host 1,495, daemon off 2,249, daemon warm 1,907.
 
+Item 597 (2026-09-22): the bin enables Node's compile cache for its own
+process; the fair A/B (the same bin, cache disabled through
+`NODE_DISABLE_COMPILE_CACHE=1` against enabled, min-of-15) read 243 →
+214 ms min and 272 → 233 median on the noop arm.
+
 What it says: the host beats the CLI in every arm and the gap grows
 with the workspace, because the CLI rebuilds the project graph per
 invocation (with the daemon off, the only mode a sandbox allows) and
