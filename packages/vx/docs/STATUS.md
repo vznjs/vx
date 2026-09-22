@@ -269,8 +269,10 @@ test is telling the truth.
       same-tree shape, ten rows, each tree byte-identical to a cold run;
       each of the three mechanisms reddens rows when disabled (run). The
       migrator keeps an edge-ordered dependant cached. caching.md § Additive
-      outputs is the contract. Observed, not 588's: a hit whose entry has
-      no rows extracts its empty artifact rather than skipping.
+      outputs is the contract. Warm A/B, main against this head, 1,000
+      projects min-of-15: 173.5 vs 170.5 ms, A/A 168.3 vs 164.2 — a tie.
+      Observed, not 588's: a hit whose entry has no rows extracts its
+      empty artifact rather than skipping.
 
 ## In flight
 
@@ -421,7 +423,8 @@ state of each:
    needs an A/A control beside it. 2026-09-22 (item 580), the sweep week
    (items 342–572, PRs #488–#681) as one arm: base 164.7 ms, head
    167.8 ms warm min-of-15 at 1,000 projects, A/A 170.1 against 169.2 —
-   a tie.
+   a tie. Item 588 (the additive hit path, every task's): main 173.5
+   against head 170.5, A/A 168.3 against 164.2 — a tie.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
