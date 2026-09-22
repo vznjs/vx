@@ -197,6 +197,19 @@ test is telling the truth.
       injection row (red with the one line reverted), the space and
       plain-path controls, the checker member by member.
 
+583.  DECLINED (2026-09-22, plan I3 and I5, evaluated against the code).
+      I3 (one `tests/doc-pins/` directory for the three pin files): the
+      three answer different questions by design — interface field
+      lists, rendered samples byte for byte, class greps over every
+      page — and share only `handAuthoredDocs()`, which doc-class-pins
+      already owns; and `scripts/test-shard.ts` deals `readdirSync(TESTS)`
+      FLAT, so a subdirectory is invisible to the shards until the dealer
+      changes too. 2,751 lines moved for no new claim. I5 (a witness
+      dies with its guard): `oxlint --type-check` runs over `tests/` in
+      the gate, so a witness importing a removed symbol already fails;
+      a string-anchored witness holds the message it asserts. Nothing
+      to add. Both struck in the plan with these reasons.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
