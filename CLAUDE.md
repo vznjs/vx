@@ -93,7 +93,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - **Gate, push, open the PR, merge it yourself once CI is green** (owner,
   2026-09-10: "merge whenever you own the project"). Gate first, from the repo root:
   `bun packages/vx/src/bin.ts run ci --all` (lint → oxlint + oxfmt, test,
-  docs build). Then push and confirm the real CI conclusion.
+  docs build). Then push and confirm the real CI conclusion. The gate
+  refuses a Bun below `engines.bun` first (`check.bun`, item 575): a
+  verdict from 1.3.11 was the runtime's, not the diff's.
 - `bun test` alone is NOT the gate: it is transpile-only and cannot see a
   type error. Never pipe a gate through `tail`/`grep` — it masks the exit.
 - The core suite runs as `SHARD_COUNT` (12, `vx.config.ts`) parallel

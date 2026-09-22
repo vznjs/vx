@@ -105,6 +105,16 @@ test is telling the truth.
       principle count is pinned to CLAUDE.md. Three rows in
       `site-samples.unsafe.test.ts`; two fail on the old posts.
 
+575.  DONE (2026-09-22, plan F4: the gate refuses a Bun below the floor).
+      `check.bun` (`scripts/bun-floor.ts`) is a new uncached core task
+      that `install` depends on, so every shard, the unsafe suite, lint
+      and the binary check wait on it; below `MIN_BUN` it exits 1 in
+      under a second naming the release asset that downloads where
+      `bun upgrade` is refused. `bin.ts` still only warns for a user.
+      `tests/bun-floor.test.ts`: the verdict both ways, the asset name
+      per platform, and the script's exit on the running Bun. Ran
+      sandboxed as `probe` with `VX_REQUIRE_SANDBOX=1`: 88 ms.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
