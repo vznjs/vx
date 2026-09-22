@@ -271,8 +271,17 @@ test is telling the truth.
       migrator keeps an edge-ordered dependant cached. caching.md § Additive
       outputs is the contract. Warm A/B, main against this head, 1,000
       projects min-of-15: 173.5 vs 170.5 ms, A/A 168.3 vs 164.2 — a tie.
-      Observed, not 588's: a hit whose entry has no rows extracts its
-      empty artifact rather than skipping.
+      Observed, not 588's, and closed in 589: a hit whose entry has no
+      rows extracted its empty artifact rather than skipping.
+
+589.  DONE (2026-09-22, the observation 588 recorded). A hit whose entry
+      holds no rows — its declared outputs matched nothing at save time,
+      the warned case — extracted its empty artifact on every hit and
+      reported a restore. Now it is up-to-date while its globs still
+      match nothing (one walk, no tar read), and a stray under the glob
+      still falls through to the clean, as strict ownership requires.
+      Row in `cache-declaration-warnings.test.ts`, red without the
+      change; the matrix's `noop` rows read plain hits now.
 
 ## In flight
 

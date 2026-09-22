@@ -178,6 +178,28 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       }
     }
   }
+  // An entry with NO rows (its declared outputs matched nothing at save
+  // time, the warned case) is current exactly when the globs still match
+  // nothing: then the empty artifact has nothing to put back and the read
+  // of the tar is spared. A stray under the glob still falls through to
+  // the clean, as strict ownership requires (item 589).
+  if (anyOutputs && !skipRestore) {
+    const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    if (expected.length === 0) {
+      const endGlob = span('output glob')
+      const actual = await resolveOutputs({
+        projectDir: node.projectDir,
+        outputs,
+        nestedProjectDirs: args.nestedProjectDirs,
+      })
+      const actualWs = await resolveWorkspaceOutputs({
+        workspaceRoot: args.workspaceRoot,
+        outputs: wsOutputs,
+      })
+      endGlob()
+      skipRestore = actual.length === 0 && actualWs.length === 0
+    }
+  }
   if (!skipRestore) {
     let cleanedRels: string[] = []
     let cleanedWsRels: string[] = []
