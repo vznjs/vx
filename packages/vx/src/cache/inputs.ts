@@ -300,6 +300,16 @@ async function resolveWorkspaceFilesOver(
  * the paths that reach this probe are the ones without a trusted index OID
  * (untracked and dirty files), a handful on a warm run.
  */
+/** Anything at the path — file, directory, symlink to anything or to nothing. */
+function existsOnDisk(abs: string): boolean {
+  try {
+    lstatSync(abs)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function isInputOnDisk(abs: string): boolean {
   try {
     const st = lstatSync(abs)
@@ -638,6 +648,13 @@ function settleLiterals(unmatched: Set<string>, rel: string): void {
  * An entry that does NOT exist on disk stays silent: that is an ordinary stale
  * declaration, and refusing it would break every config that lists an
  * optional file.
+ *
+ * "Exists" is lstat, not `Bun.file(p).exists()`: that answers false for a
+ * DIRECTORY, so a literal naming a gitignored `gen/` was never judged and
+ * folded nothing in silence — the stale hit this refusal exists to stop, one
+ * directory above where it looked (item 565, fixed in 576). A literal naming
+ * an EMPTY directory is refused by the same rule, and that is right: git
+ * lists no file under it, so it folds nothing whether tracked or not.
  */
 async function assertNoInvisibleLiteralInputs(
   literals: ReadonlySet<string>,
@@ -645,7 +662,7 @@ async function assertNoInvisibleLiteralInputs(
   field: 'files' | 'workspaceFiles' = 'files',
 ): Promise<void> {
   for (const rel of literals) {
-    if (!(await Bun.file(path.resolve(base, rel)).exists())) continue
+    if (!existsOnDisk(path.resolve(base, rel))) continue
     throw new UserError(
       `cache.inputs.${field}: "${rel}" exists in ${base} but git does not report it, ` +
         `so it contributes NOTHING to the cache key — input globs filter the files git ` +

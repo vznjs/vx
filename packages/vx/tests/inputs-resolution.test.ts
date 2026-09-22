@@ -1216,27 +1216,47 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     expect(await filesOf(['src/gen'])).toEqual(['src/gen/a.ts'])
   })
 
-  it('FINDING: a gitignored DIRECTORY named as a literal is silently ignored', async () => {
-    // The refusal is masked for directories, and measurably so:
-    // `Bun.file(<a directory>).exists()` is FALSE (measured, Bun 1.3.11),
-    // so `assertNoInvisibleLiteralInputs` `continue`s past every literal
-    // that names one. That is why deleting the prefix arm of
-    // `settleLiterals` changes nothing — a directory literal never
-    // settles AND is never judged, so the two guards mask each other
-    // (the 563 shape).
-    //
-    // The cost of that masking is this: `cache.inputs.files: ['gen']` on
-    // a gitignored `gen/` folds ZERO files and says nothing, which is
-    // exactly the stale hit the refusal was written to stop, one
-    // directory up from where it looks. Pinned, not fixed: the fix is a
-    // stat rather than `Bun.file`, and it would newly refuse a literal
-    // naming a tracked-but-empty directory, which is a separate call to
-    // make.
+  it('REFUSES a gitignored DIRECTORY named as a literal', async () => {
+    // This row was a FINDING (item 565): `Bun.file(<a directory>).exists()`
+    // is FALSE (measured on 1.3.11 and 1.4.2), so the refusal `continue`d
+    // past every literal naming a directory, and `cache.inputs.files:
+    // ['gen']` on a gitignored `gen/` folded ZERO files and said nothing —
+    // the stale hit the refusal exists to stop, one directory above where it
+    // looked. A directory literal never settles (git lists files, not
+    // directories) AND was never judged, so the two guards masked each
+    // other (the 563 shape). Existence is lstat now (item 576); this row is
+    // the differential: it read `['keep.ts']` before the fix.
     await write(path.join(root, '.gitignore'), 'gen/\n')
     await write(path.join(projectDir, 'gen', 'out.js'), 'built')
     await write(path.join(projectDir, 'keep.ts'), 'k')
 
-    expect(await filesOf(['gen', 'keep.ts'])).toEqual(['keep.ts'])
+    const err = await filesOf(['gen', 'keep.ts']).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.message).toContain('"gen" exists in')
+    expect(err?.message).toContain('contributes NOTHING to the cache key')
+  })
+
+  it('REFUSES a literal naming an EMPTY directory, tracked or not', async () => {
+    // The case 565 named as the reason not to fix: a stat newly refuses a
+    // literal naming an empty directory. Decided (plan F1): git tracks no
+    // empty directory, so nothing under it can fold, and a literal that
+    // folds nothing is exactly what the refusal is for — silently keying
+    // on nothing is the stale hit, whatever put the directory there. The
+    // remedy in the message (depend on the producing task, or track the
+    // files) is the right one for this case too.
+    await mkdir(path.join(projectDir, 'gen'), { recursive: true })
+    await write(path.join(projectDir, 'keep.ts'), 'k')
+
+    const err = await filesOf(['gen', 'keep.ts']).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.message).toContain('"gen" exists in')
+    // Control beside it: the same literal with a file inside resolves.
+    await write(path.join(projectDir, 'gen', 'a.ts'), 'a')
+    expect(await filesOf(['gen', 'keep.ts'])).toEqual(['gen/a.ts', 'keep.ts'])
   })
 
   it('a sibling that merely SHARES A PREFIX does not settle it', async () => {

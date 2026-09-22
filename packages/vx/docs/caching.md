@@ -153,7 +153,9 @@ over (in order):
     the task. If the file is generated, depend on the task that produces
     it via `cache.inputs.tasks`. A **glob** matching nothing stays
     silent — that is legitimate — and so does a literal naming a file
-    that does not exist.
+    that does not exist. A literal naming a **directory** is judged the
+    same way: an ignored one, or an empty one, has no file git lists
+    under it, folds nothing, and is refused (item 576).
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so three concurrent probes prune it:

@@ -115,6 +115,19 @@ test is telling the truth.
       per platform, and the script's exit on the running Bun. Ran
       sandboxed as `probe` with `VX_REQUIRE_SANDBOX=1`: 88 ms.
 
+576.  DONE (2026-09-22, plan F1: a gitignored DIRECTORY named as a literal
+      input folded nothing in silence — 565's finding, a stale hit).
+      `assertNoInvisibleLiteralInputs` judged existence by
+      `Bun.file(p).exists()`, which is false for a directory on 1.3.11
+      and 1.4.2 alike, so it `continue`d past every literal naming one.
+      Existence is lstat now; an EMPTY directory is refused by the same
+      rule (decided: nothing under it can fold). Two rows in
+      `inputs-resolution.test.ts`, both red without the fix (run), with
+      the file-inside control beside the empty one. The class grepped:
+      the 17 other `Bun.file(…).exists()` sites in `src/` take file
+      paths; `tests/bun-file-exists-sites.test.ts` pins that set (plan
+      I7) so a new site is read for a directory operand.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
