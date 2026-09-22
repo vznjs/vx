@@ -72,9 +72,10 @@ What ships on those seams today, each its own package:
   shared cache _and_ as remote executors.
 - **[`@vzn/vx-migrate`](../migrate/from-turborepo/)** — adoption in one
   package: `turbo()` runs a `turbo.json` workspace under vx with nothing
-  written, the CLI writes configs from `turbo.json` or an Nx graph, and
-  `turboCache()` / `nxCache()` keep any server speaking Turbo's or Nx's
-  cache wire, Vercel's Remote Cache included.
+  written, `nx()` does the same for an Nx workspace (executors included,
+  through its `nx-exec` bin), the CLI writes configs from `turbo.json` or
+  an Nx graph, and `turboCache()` / `nxCache()` keep any server speaking
+  Turbo's or Nx's cache wire, Vercel's Remote Cache included.
 - **[`@vzn/vx-otel`](../guides/otel-bridge/)** — every run as
   OpenTelemetry traces, metrics and logs. No SDK.
 - **[`@vzn/vx-github`](../guides/ci/)** — the Actions job summary and a

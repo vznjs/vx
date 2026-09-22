@@ -167,6 +167,13 @@ test is telling the truth.
       the parity map gained the `nx run app:build:production` row
       (594's configuration tasks), pinned to `nx.test.ts`.
 
+598.  DONE (2026-09-23, the last three pages a reader with an Nx repo
+      lands on that named only `turbo()`: the introduction's package
+      list, the plugins guide's consumers paragraph and the
+      add-to-existing page's "running alongside" section, which now
+      offers the whole-repo path through `turbo()` or `nx()` before
+      the package-at-a-time one). Handoff 14aw.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -359,7 +366,8 @@ state of each:
     `-553-572.md`; items 573–591 are in
     `docs/history/2026-09-improvement-loop-573-591.md` (handoffs
     14aq–14au in the next-log file). The loop above is the record since
-    592; 14av is below, and the next handoff written here is 14aw.
+    592; 14av and 14aw are below, and the next handoff written here is
+    14ax.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -387,6 +395,28 @@ five gaps, one a mapper improvement); then the daily duties of 14at
 (warm A/B on any core run-path change — none since 589 — and the STATUS
 trim at twenty, next at 612), the Turbo guide got the same walk
 (595). Never end with "what next?".
+
+14aw. **Handoff after item 597 (2026-09-23, small hours).** Five items
+since 14av, each its own PR and merged in turn (#688 593, #689 594,
+#690 595–596, #691 597): the 1,000-project number for `nx()` (37 ms)
+and the stale-hit defect measuring it found (a root `dist/<project>`
+output restored nothing — `workspaceFiles` now); the Nx and Turbo
+guides walked as their readers; `vx init` names `nx()`; `nx-exec`
+enables Node's compile cache (243 → 214 ms min per executed task);
+and the parity map's configuration row. Also 598: the introduction,
+the plugins guide and the add-to-existing page name `nx()` beside
+`turbo()`. WHAT STANDS: the Nx surface is complete for package-script
+and executor repos alike, proven on refine (real, Nx 18) and on the
+bench workspace (real Nx 22 with `@nx/js:tsc`); the one thing still
+unproven is an executor-backed real tree through the plugin end to
+end, blocked here by the proxy's registry policy (yarn) and an npm
+defect — a box with yarn 4 reachable runs nrwl/nx-examples. NEXT, in
+order: the daily duties of 14at (warm A/B on any core run-path change
+— none since 589; the STATUS trim at twenty, next at 612); then a
+persona walk of `vx watch` on an `nx()` workspace (a `project.json`
+edit is a graph export in the next cycle — is it, and how long is the
+cycle?); then the owner's three items stand. Never end with "what
+next?".
 
 ## Decisions (this arc)
 
