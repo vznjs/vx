@@ -175,6 +175,28 @@ test is telling the truth.
       nothing the warm path can see. Harness: `ab-week.ts` shape under
       Next 6 (arms, A/A, min-of-N).
 
+581.  DONE (2026-09-22, plan D4, the agent's half: the release is one
+      click away). `docs/history/release-0.1.0-notes.md` groups the 341
+      PR titles since v0.0.21 by what a user meets (selecting, caching,
+      sandbox, failures, plugins, CLI, docs; internals in one line), so
+      the owner cuts `0.1.0` from it. The compiled-binary canary and
+      the site build ran green in this gate. NOT done: refreshing the
+      site's benchmark numbers — they were measured on the dev box, and
+      Next 6 says this container's absolutes are a different machine;
+      the owner's three items stand (NPM_TOKEN, the tag, the address).
+
+582.  DONE (2026-09-22, plan F2: the seatbelt profile's one unchecked
+      interpolation, 478's finding). The unix-socket loop emitted the
+      declared path through `sbplPath` and `toRealPath(sock)` raw, so a
+      symlink whose TARGET carried a quote rewrote the policy. A second
+      checker for filesystem-resolved paths refuses only what can leave
+      the quoted SBPL string or the shell argument (`"`, `'`, `\`, a
+      control character) — a space stays legal, so `/Users/Jane Smith`
+      is not regressed. Testable on Linux: `macProfileRules` builds text
+      and runs no seatbelt. `tests/seatbelt-profile.test.ts`: the
+      injection row (red with the one line reverted), the space and
+      plain-path controls, the checker member by member.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -218,7 +240,8 @@ state of each:
    `npm.yml`, so the trusted publishers exist). OWNER residue: delete
    the `NPM_TOKEN` repository secret if it still exists — nothing reads
    it. Documented in `docs/cli.md` § Releasing.
-2. OWNER: cut the release — a GitHub release with the tag is the whole
+2. OWNER: cut the release — the notes are drafted in
+   `docs/history/release-0.1.0-notes.md` (item 581); a GitHub release with the tag is the whole
    process (`release.yml` builds and signs the binaries, `npm.yml`
    publishes with provenance). Pick the version the articles will name;
    `0.1.0` says "first real release" where 0.0.19 says "another nightly".

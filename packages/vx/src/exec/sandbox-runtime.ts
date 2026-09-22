@@ -885,7 +885,7 @@ function sbplToken(value: string, field: string): string {
  * grant passed there is silently dropped. vx is per-task by definition,
  * so it emits them itself. The rule text mirrors SRT's own.
  */
-function macProfileRules(c: ResolvedSandboxConfig): string[] {
+export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   const rules: string[] = []
   for (const t of c.systemInfo ?? []) {
     rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
@@ -909,7 +909,10 @@ function macProfileRules(c: ResolvedSandboxConfig): string[] {
       // Both the declared path and what it resolves to: seatbelt matches the
       // path the kernel sees, and on macOS `/tmp` is a symlink to
       // `/private/tmp` — a grant on the former alone never matches.
-      for (const p of unique([sbplPath(sock, 'allow.unixSockets'), toRealPath(sock)])) {
+      for (const p of unique([
+        sbplPath(sock, 'allow.unixSockets'),
+        sbplResolvedPath(toRealPath(sock), 'allow.unixSockets'),
+      ])) {
         rules.push(`(allow network-bind (local unix-socket (subpath "${p}")))`)
         rules.push(`(allow network-outbound (remote unix-socket (subpath "${p}")))`)
       }
@@ -928,6 +931,30 @@ function macProfileRules(c: ResolvedSandboxConfig): string[] {
 function sbplPath(value: string, field: string): string {
   if (!/^[A-Za-z0-9._\-/@+]+$/.test(value) || value.includes('..')) {
     throw new UserError(`${field}: '${value}' is not a valid path`)
+  }
+  return value
+}
+
+/**
+ * The check for a path the FILESYSTEM handed back (`toRealPath` of a
+ * declared socket), which the declared-value allowlist above is wrong for:
+ * a real macOS home is `/Users/Jane Smith`, and refusing the space would
+ * regress every such layout to close a hole. What can leave the quoted
+ * SBPL string, or the single-quoted `sandbox-exec -p '…'` argument it
+ * travels in, is exactly a double quote, a backslash, a single quote, or a
+ * control character — so only those are refused. Item 478 recorded the
+ * hole (a symlink whose TARGET carries a quote went into the profile
+ * unchecked, because the check was on the string the user wrote and the
+ * interpolation was of the string the kernel resolves); item 582 closed
+ * it. Refuse, never escape, as the sibling checkers do.
+ */
+export function sbplResolvedPath(value: string, field: string): string {
+  // eslint-disable-next-line no-control-regex -- the control range is the point
+  if (/["'\\\x00-\x1f\x7f]/.test(value)) {
+    throw new UserError(
+      `${field}: '${value}' (resolved from a symlink) carries a quote, a backslash or a control ` +
+        `character, which cannot go into a seatbelt profile; point the link at a plain path`,
+    )
   }
   return value
 }
