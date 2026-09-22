@@ -690,7 +690,14 @@ describe('vx migrate (nx) — a project:target string dependency', () => {
                 build: {
                   executor: 'nx:run-commands',
                   options: { command: 'echo a' },
-                  dependsOn: ['^build', 'pkg-b:tool', 'pkg-b:tool:production', 'ghost:build'],
+                  dependsOn: [
+                    '^build',
+                    'pkg-b:tool',
+                    'pkg-b:tool:production',
+                    'pkg-b:tool:ci',
+                    'pkg-b:tool:dflt',
+                    'ghost:build',
+                  ],
                 },
               },
             },
@@ -700,7 +707,15 @@ describe('vx migrate (nx) — a project:target string dependency', () => {
             type: 'lib',
             data: {
               root: 'packages/pkg-b',
-              targets: { tool: { executor: 'nx:run-commands', options: { command: 'echo b' } } },
+              targets: {
+                tool: {
+                  executor: 'nx:run-commands',
+                  options: { command: 'echo b' },
+                  // `ci` is a task of its own; `dflt` is the default, folded into `tool`.
+                  configurations: { ci: { command: 'echo ci' }, dflt: {} },
+                  defaultConfiguration: 'dflt',
+                },
+              },
             },
           },
         },
@@ -717,13 +732,23 @@ describe('vx migrate (nx) — a project:target string dependency', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('becomes `project#target`, and `^build` is left alone', () => {
-    expect(tasks.build!.dependsOn).toEqual(['^build', 'pkg-b#tool', 'pkg-b#tool'])
+  it('becomes `project#target`; a configuration edge reaches its task, the default one the base', () => {
+    expect(tasks.build!.dependsOn).toEqual([
+      '^build',
+      'pkg-b#tool',
+      'pkg-b#tool',
+      'pkg-b#tool:ci',
+      'pkg-b#tool',
+    ])
   })
 
-  it('says a configuration is dropped, and names the edge it kept', async () => {
+  it('says when a configuration the target lacks was dropped, and names the edge it kept', async () => {
     const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
-    expect(text).toContain('vx has no target configurations — depending on pkg-b#tool')
+    expect(text).toContain(
+      'pkg-b declares no "production" configuration on tool — depending on pkg-b#tool',
+    )
+    expect(text).not.toContain('declares no "ci"')
+    expect(text).not.toContain('declares no "dflt"')
   })
 
   it('drops an edge to a project the graph does not have, and says so', async () => {

@@ -149,6 +149,14 @@ export async function mapNxWorkspace(
     nodeByMeta.set(synthetic, node)
   }
 
+  /** The vx task an Nx `project:target:configuration` reaches, or null when the target lacks it. */
+  const taskNameFor = (project: string, target: string, configuration: string): string | null => {
+    const t = nodeMap[project]?.data?.targets?.[target]
+    if (t === undefined) return null
+    const v = variants(target, t).find((x) => x.configuration === configuration)
+    return v === undefined ? null : v.name
+  }
+
   const projects: GeneratedProject[] = []
   for (const meta of allMetas) {
     const node = nodeByMeta.get(meta)
@@ -168,6 +176,7 @@ export async function mapNxWorkspace(
             v,
             namedInputs,
             metaByNode,
+            taskNameFor,
             mapOpts,
           ),
         )
@@ -273,6 +282,7 @@ function buildTask(
   variant: Variant,
   namedInputs: Record<string, unknown[]> | null,
   metaByNode: ReadonlyMap<string, ProjectMeta>,
+  taskNameFor: (project: string, target: string, configuration: string) => string | null,
   opts: MapNxOptions,
 ): GeneratedTask {
   const todos: string[] = []
@@ -449,20 +459,30 @@ function buildTask(
         deps.push(d)
         continue
       }
-      const [project, targetPart, configuration] = d.split(':')
-      const m = project === undefined ? undefined : metaByNode.get(project)
+      const [project = '', targetPart, configuration] = d.split(':')
+      const m = metaByNode.get(project)
       if (m === undefined || targetPart === undefined || targetPart === '') {
         todos.push(
-          `dependsOn ${JSON.stringify(d)} names ${JSON.stringify(project ?? '')}, which is not a ` +
+          `dependsOn ${JSON.stringify(d)} names ${JSON.stringify(project)}, which is not a ` +
             'workspace package in this graph — edge dropped',
         )
         continue
       }
+      // A configuration is a task of its own (`build:ci`) unless it is the
+      // target's default, which the base task carries; an edge naming one
+      // follows it there. A configuration the target does not declare has
+      // no task to reach, so the edge falls back to the base with a todo.
       if (configuration !== undefined) {
-        todos.push(
-          `dependsOn ${JSON.stringify(d)}: vx has no target configurations — depending on ` +
-            `${m.name}#${targetPart} without ${JSON.stringify(configuration)}`,
-        )
+        const named = taskNameFor(project, targetPart, configuration)
+        if (named === null) {
+          todos.push(
+            `dependsOn ${JSON.stringify(d)}: ${project} declares no ${JSON.stringify(configuration)} ` +
+              `configuration on ${targetPart} — depending on ${m.name}#${targetPart}`,
+          )
+        } else {
+          deps.push(`${m.name}#${named}`)
+          continue
+        }
       }
       deps.push(`${m.name}#${targetPart}`)
       continue

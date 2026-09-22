@@ -122,6 +122,21 @@ test is telling the truth.
       0.2 s hit), which is the executor-path dogfood 592 could not get
       from a cloned tree.
 
+594.  DONE (2026-09-22, the persona walk of the Nx guide 14av asked for,
+      read as an Nx user would). Five gaps in `migrate/from-nx.md`: no
+      install line before the workspace file (the plugin's bin is what
+      runs executors, so `@vzn/vx-migrate` is a devDependency, not a
+      transitive read); a table row that said a configuration suffix is
+      dropped, written before configurations were tasks (590); no word
+      that a root `dist/<project>` output is `workspaceFiles` (593); "no
+      Node" claimed while an `nx-exec` line exists; no
+      `nx run app:build:production` row. One was a mapper improvement:
+      a `project:target:configuration` edge reaches the configuration's
+      own task now (`pkg-b#tool:ci`), the default configuration's edge
+      the base task, and only a configuration the target does not
+      declare falls back with a todo naming it — the colon-fixture rows
+      in `migrate.test.ts` cover all three.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -337,10 +352,11 @@ real tree end to end through the plugin — the two candidates fell to the
 proxy's registry policy and an npm defect, so the next box with yarn 4
 reachable runs nrwl/nx-examples (`@nx/angular:application`). NEXT, in
 order: the 1,000-project number (593: 37 ms, and the workspace-root
-output defect it found); a persona walk of the from-nx guide as written
-(site `migrate/from-nx.md`, blog `from-nx.md`); then the daily duties of
-14at (warm A/B on any core run-path change — none since 589 — and the
-STATUS trim at twenty, next at 612). Never end with "what next?".
+output defect it found); the persona walk of the from-nx guide (594:
+five gaps, one a mapper improvement); then the daily duties of 14at
+(warm A/B on any core run-path change — none since 589 — and the STATUS
+trim at twenty, next at 612), and the Turbo guide deserves the same
+walk the Nx one got. Never end with "what next?".
 
 ## Decisions (this arc)
 
