@@ -38,6 +38,12 @@ const GRAPH = {
               options: { command: 'echo lint-ran > lint.log', cwd: 'packages/lib' },
             },
             serve: { executor: '@nx/vite:dev-server', options: { port: 4200 } },
+            // Depends on serve, so serve's readiness note is reported (602).
+            e2e: {
+              executor: 'nx:run-commands',
+              options: { command: 'echo e2e' },
+              dependsOn: ['serve'],
+            },
           },
         },
       },

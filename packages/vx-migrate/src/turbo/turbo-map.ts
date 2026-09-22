@@ -15,6 +15,7 @@ import { type ProjectMeta, UserError } from '@vzn/vx'
 import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
+import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 export interface TurboTask {
@@ -246,6 +247,7 @@ export async function mapTurboWorkspace(
     projects.push({ name: meta.name, dir: meta.dir, tasks })
   }
 
+  pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
 }
 
