@@ -174,6 +174,20 @@ test is telling the truth.
       offers the whole-repo path through `turbo()` or `nx()` before
       the package-at-a-time one). Handoff 14aw.
 
+599.  DONE (2026-09-23, the `vx watch` walk 14aw asked for, on the
+      bench workspace with real Nx 22, daemon off). `vx watch noop
+--filter @bench/p0`, then a `project.json` edit that changes the
+      target's command: the cycle fires on the file ("@bench/p0
+      project.json; re-running"), the plugin's stat rule sees it newer
+      than the snapshot and re-exports the graph inside that cycle, and
+      the NEW command runs — 1.3 s from the edit to its effect, Nx's own
+      daemon-less export of the 1,000-project tree being most of it.
+      One thing the walk taught the probe, not the code: an
+      `nx:run-commands` target runs from the workspace root, as Nx runs
+      it and the mapper's `cd` preserves, so a relative path in the
+      command lands there. No change; the README's `nx()` section says
+      what a cycle costs.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
