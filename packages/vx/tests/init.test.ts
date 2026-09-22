@@ -459,6 +459,8 @@ describe('vx init — the generated build is not a cached no-op', () => {
         expect(r.code).toBe(0)
         const text = `${r.out}${r.err}`
         expect(text.includes('an Nx workspace found and not read')).toBe(!alsoTurbo)
+        // Both ways to use it, as the turbo.json note names both of its own.
+        expect(text.includes('`plugins: [nx()]` from @vzn/vx-migrate')).toBe(!alsoTurbo)
         expect(text.includes('turbo.json found and not read')).toBe(alsoTurbo)
       } finally {
         await rm(root, { recursive: true, force: true })

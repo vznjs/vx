@@ -16,6 +16,10 @@ plugin fills vx's `project` stage from your `turbo.json` and each
 package's scripts, using the same mapper `bunx @vzn/vx-migrate` renders files from.
 One file, and the repo runs:
 
+```bash
+bun add -d @vzn/vx @vzn/vx-migrate
+```
+
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
@@ -25,8 +29,7 @@ export default defineWorkspace({ plugins: [turbo()] })
 ```
 
 ```bash
-bun add -d @vzn/vx @vzn/vx-migrate
-vx run build --all
+vx run build --all      # what `turbo run build` ran, under vx's cache
 ```
 
 Whatever the mapping cannot express is a warning on every run — the same
@@ -108,7 +111,8 @@ export default defineProject({
     test: {
       dependsOn: ['build'],
       exec: { command: 'bun test' },
-      cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
+      // No `inputs` in turbo.json is Turbo's whole-package default; narrow it on review.
+      cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
     },
   },
 })
@@ -143,6 +147,8 @@ explains why.
 | `turbo run build --affected`      | `vx run build --affected`       |
 | `turbo run build --dry`           | `vx run build --dry`            |
 | `turbo run build -- --flag`       | `vx run build -- --flag`        |
+| `turbo run build --continue`      | `vx run build --continue` (bare `--continue` is Turbo's `always`; the default with no flag is `deps-ok`) |
+| `turbo run build --output-logs=hash-only` | `vx run build --output-logs hash-only` |
 | `TURBO_TOKEN` / remote cache      | `turboCache()` from `@vzn/vx-migrate` reads the same variables |
 
 The remote cache is plugin-driven: `turboCache()` from `@vzn/vx-migrate`
@@ -157,8 +163,10 @@ BuildBuddy, Buildbarn, bazel-remote). See
   vx requires a `cache` block with both `inputs` and `outputs`. This is
   deliberate: a forgotten cache miss costs a re-run; a stale hit ships a
   broken artifact. `bunx @vzn/vx-migrate` fills these in from your `turbo.json`.
-- **One command per task.** No `commands` array — chain with `&&` or split
-  into `dependsOn`-linked tasks (which also lets each step cache).
+- **One command per task.** The command is the script body itself, with
+  its `pre<name>` / `post<name>` hooks folded in the way npm and pnpm run
+  them — one process less per task than `pnpm run <name>`. Chain with
+  `&&`, or split into `dependsOn`-linked tasks so each step caches.
 - **Default scope is the current package**, not the whole workspace. A bare
   `vx run build` inside a package runs that package (like running its
   script directly); use `--all` for Turborepo's run-everything default, or
