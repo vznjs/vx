@@ -980,6 +980,14 @@ describe('vx migrate (nx) — executors', () => {
                     executor: '@acme/thing:do',
                     options: { x: 1, s: "it's", list: [{ a: 'b' }] },
                   },
+                  // Nx's default layout: a workspace-root `dist/<project>` is a
+                  // workspaceFiles output, not a gap (item 593).
+                  pack: {
+                    executor: '@nx/js:tsc',
+                    options: { outputPath: 'dist/packages/app' },
+                    outputs: ['{options.outputPath}', 'dist/reports/app.json'],
+                    cache: true,
+                  },
                   // Outputs and a serve-like name: persistent, so never cached,
                   // whatever nx.json's list says (item 591).
                   dev: {
@@ -1017,7 +1025,12 @@ describe('vx migrate (nx) — executors', () => {
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
       const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts')))
         .tasks!
-      expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'dev', 'odd', 'test'])
+      expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'dev', 'odd', 'pack', 'test'])
+      expect(tasks['pack']!.cache?.outputs).toEqual({
+        files: [],
+        workspaceFiles: ['dist/packages/app/**', 'dist/reports/app.json'],
+      })
+      expect(r.out).not.toContain('falls outside the project dir')
       // Cached by the legacy list, inputs from nx.json's `default` named input.
       expect(tasks['odd']!.cache).toEqual({
         inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },

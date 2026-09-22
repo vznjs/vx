@@ -103,6 +103,25 @@ test is telling the truth.
       573–591 moved to `docs/history/2026-09-improvement-loop-573-591.md`
       and handoffs 14aq–14au to the next-log file in this commit.
 
+593.  DONE (2026-09-22, the number 14av owed and the defect it found).
+      `nx()` at 1,000 projects on the bench workspace (real Nx 22,
+      `@nx/js:tsc`): the export runs once, 1.73 s with the daemon off;
+      after it the whole `load configs` stage reads 61 ms against ~24 ms
+      for evaluated configs — the 2,001 stats and the mapping are ~37 ms,
+      the turbo mapping's size (42 ms, 2026-09-10). The defect: an Nx
+      output outside the project dir (`dist/<project>` at the root, the
+      DEFAULT `@nx/js:tsc` layout) was a todo, so all 1,000 `build`
+      targets cached with no outputs and a hit restored NOTHING under a
+      green run. It is a `workspaceFiles` output now; proven on the bench
+      by `rm -rf dist` then a hit that brings `dist/packages/p1` back,
+      and pinned in `migrate.test.ts`. Also: with the plugin loaded by
+      path there is no `node_modules/.bin/nx-exec` and every executor
+      task died `not found` (exit 127) — the plugin warns once naming
+      the devDependency; row in `nx.test.ts`. The real `@nx/js:tsc`
+      executor ran through the plugin end to end here (1.5 s miss,
+      0.2 s hit), which is the executor-path dogfood 592 could not get
+      from a cloned tree.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -317,12 +336,11 @@ Nx repo (refine, 205 = 205, identical outputs) and `nx-exec` on real Nx
 real tree end to end through the plugin — the two candidates fell to the
 proxy's registry policy and an npm defect, so the next box with yarn 4
 reachable runs nrwl/nx-examples (`@nx/angular:application`). NEXT, in
-order: measure `nx()`'s per-run stat rule on a 1,000-project workspace
-(the bench generator's Nx layout; the claim is "a few ms", the number is
-owed); a persona walk of the from-nx guide as written (site
-`migrate/from-nx.md`, blog `from-nx.md`); then the daily duties of 14at
-(warm A/B on any core run-path change — none since 589 — and the STATUS
-trim at twenty, next at 612). Never end with "what next?".
+order: the 1,000-project number (593: 37 ms, and the workspace-root
+output defect it found); a persona walk of the from-nx guide as written
+(site `migrate/from-nx.md`, blog `from-nx.md`); then the daily duties of
+14at (warm A/B on any core run-path change — none since 589 — and the
+STATUS trim at twenty, next at 612). Never end with "what next?".
 
 ## Decisions (this arc)
 

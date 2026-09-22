@@ -282,6 +282,24 @@ describe('nx()', () => {
   )
 
   it(
+    'without the nx-exec bin in node_modules/.bin the run warns once, naming the fix',
+    async () => {
+      await rm(path.join(root, 'node_modules', '.bin', 'nx-exec'))
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['build'], log })
+      expect(
+        log.lines.filter((l) => l.includes('`nx-exec`, which is not in node_modules/.bin')).length,
+      ).toBe(1)
+      // The control: with the bin there, no such line.
+      const quiet = silent()
+      await fakeNxCli(root).catch(() => {})
+      await planRun({ cwd: root, tasks: ['build'], log: quiet })
+      expect(quiet.lines.some((l) => l.includes('not in node_modules/.bin'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a server executor is a persistent task, reported once for all its tasks',
     async () => {
       const log = silent()

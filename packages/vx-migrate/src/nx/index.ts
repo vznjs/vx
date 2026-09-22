@@ -92,6 +92,21 @@ async function mapAll(
     )
   }
   notes.push(...mapped.notes)
+  // The bin every executor line starts with: installed by this package,
+  // so it is absent only when the plugin is loaded by path (a checkout, a
+  // link) — then every such task would fail with `nx-exec: not found`.
+  const usesBin = [...byName.values()].some((p) =>
+    p.tasks.some((t) => {
+      const cmd = (t.task?.['exec'] as { command?: unknown } | undefined)?.command
+      return typeof cmd === 'string' && cmd.startsWith('nx-exec ')
+    }),
+  )
+  if (usesBin && !(await Bun.file(path.join(root, 'node_modules', '.bin', 'nx-exec')).exists())) {
+    notes.push(
+      'executor targets run through `nx-exec`, which is not in node_modules/.bin — add ' +
+        "@vzn/vx-migrate to the workspace's devDependencies so its bin is on every task's PATH",
+    )
+  }
   return {
     byName,
     gaps: collectGaps(
