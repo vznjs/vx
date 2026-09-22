@@ -420,7 +420,7 @@ state of each:
     in `docs/history/2026-09-status-next-log.md`; items 453–572 are in
     `docs/history/2026-09-improvement-loop-453-472.md` through
     `-553-572.md`. The loop above is the record since 573; 14aq is
-    below, and the next handoff written here is 14ar.
+    below with 14ar, and the next handoff written here is 14as.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -446,6 +446,33 @@ ignored `gen/`), F3 (one predicate in `util/paths.ts`, measure the
 brace bind first), then I1/I4 and D3 before D1. Owner asked
 2026-09-22 whether D1 waits for a third repository. Never end with
 "what next?".
+
+14ar. **Handoff after item 584 (2026-09-22, evening).** Eleven items since
+14aq, all on PR #487, which carries the first day of
+`docs/design/plan-2026-09-22.md`: the gate refuses a Bun below the
+floor (575) and prints its box (579); the three findings the sweep
+recorded and left — a gitignored directory literal folding nothing
+(576, stale hit), the wildcard class spelled nine ways (577), the
+seatbelt profile's unchecked resolved path (582, testable on Linux
+because the profile is text) — are closed with differential rows; the
+sweep's rules left CLAUDE.md (578); the suite's cost has a number and
+the weights are fresh (579); the sweep week A/B'd as a tie (580); the
+0.1.0 notes are drafted (581); I3 and I5 declined with reasons (583);
+and the `workspaceFiles` restore-tier exclusion is a reach test
+(584, tier 0 → 1000 on the bench with one writer). One darwin-only
+red: the seatbelt rows built paths under the unresolved temp dir;
+fixed by realpath. WHAT REMAINS IN THE PLAN: D1 waits on the owner
+(a third repository, or a waiver — asked 2026-09-22); D2 waits on a
+workspace with > 100 MiB artifacts; F6 and D4's tail are the owner's
+three items. NEXT, in order: In-flight 5 (macOS violation reporting
+is lossy under load — the darwin CI job is the macOS box; design a
+report that does not depend on the unified log keeping up, or gate
+the failure on the denial the OS made rather than the record of it);
+then a fresh-workspace persona walk on Bun 1.4.2 (`vx init` → run →
+why → watch) for what the week's fixes changed for a user; then Next
+1's whole-graph REAPI run if a worker-side change needs it. The
+manual gate script in this container runs oxlint/oxfmt through
+`bunx` (bare names are not on its PATH). Never end with "what next?".
 
 ## Decisions (this arc)
 
