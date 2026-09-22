@@ -57,7 +57,7 @@ export default defineProject({
         command: 'bun scripts/bun-floor.ts',
         sandbox: {
           allow: {
-            read: ['scripts/bun-floor.ts', 'src/util/bun-version.ts'],
+            read: ['scripts/bun-floor.ts', 'src/util/**'],
           },
         },
       },

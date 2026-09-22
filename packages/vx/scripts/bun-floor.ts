@@ -7,7 +7,16 @@
 // not descend a symlinked directory), all of which 1.4.2 cleared (STATUS
 // items 566, 572). A verdict from below the floor is not a verdict, so the
 // gate stops here, in well under a second, and says where the binary is.
-import { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from '../src/util/bun-version.js'
+import os from 'node:os'
+import {
+  cgroupCpuQuota,
+  cgroupMemoryLimitBytes,
+  isUnsupportedBun,
+  machineMemoryBytes,
+  machineParallelism,
+  MIN_BUN,
+  unsupportedBunMessage,
+} from '../src/util/index.js'
 
 /** The release asset that downloads where `bun upgrade` is refused (a proxy that answers 403 for bun.sh). */
 export const RELEASE_ASSET = (
@@ -32,10 +41,29 @@ export function floorVerdict(version: string): { ok: boolean; message: string } 
   }
 }
 
+/**
+ * The box, on one line, so a figure a session records from this gate carries
+ * where it was measured (plan I6): the cores the scheduler will use and the
+ * memory budget, each with the cgroup limit that set it when one did.
+ */
+export function boxLine(): string {
+  const quota = cgroupCpuQuota()
+  const limit = cgroupMemoryLimitBytes()
+  const gib = (b: number): string => `${(b / 2 ** 30).toFixed(1)} GiB`
+  return (
+    `box: ${process.platform}-${process.arch} · ${machineParallelism()} cores` +
+    (quota === undefined
+      ? ` (${os.availableParallelism()} visible, no cgroup quota)`
+      : ` (cgroup quota ${quota})`) +
+    ` · ${gib(machineMemoryBytes())}` +
+    (limit === undefined ? ' (no cgroup limit)' : ' (cgroup limit)')
+  )
+}
+
 if (import.meta.main) {
   const verdict = floorVerdict(Bun.version)
   if (verdict.ok) {
-    process.stdout.write(`${verdict.message}\n`)
+    process.stdout.write(`${verdict.message}\n${boxLine()}\n`)
   } else {
     process.stderr.write(`${verdict.message}\n`)
     process.exitCode = 1

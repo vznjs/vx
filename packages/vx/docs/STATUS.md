@@ -152,6 +152,29 @@ test is telling the truth.
       the item rule 573 set and 575–577 follow: twelve lines, the
       number, the test; the why is the PR.
 
+579.  DONE (2026-09-22, plan I2 and I6: the suite's cost has a number and
+      the gate prints its box). CI wall time on main, eleven push runs
+      2026-09-21 (#671–#681): 2:23–3:16 each, all three jobs — under a
+      six-minute budget, so no witness file folds. `shard-weights.json`
+      refreshed from a JUnit run of all twelve shards on this box (Bun
+      1.4.2, 195 files, 17 of them new since 2026-09-16); the dealer
+      now balances to 15,968–15,969 ms per shard. `check.bun` prints a
+      second line — platform, cores with the cgroup quota, memory with
+      the cgroup limit, from `util/cgroup.ts` — so a figure recorded
+      from this gate carries where it was measured; the row in
+      `bun-floor.test.ts` pins its shape.
+
+580.  DONE (2026-09-22, plan D5: the sweep week's run-path changes
+      A/B'd, since none was measured as it landed). Compiled binaries,
+      main before the week (40aaab2f) against this branch, 1,000
+      projects warm all-hit, interleaved min-of-15, one copy per arm
+      pre-warmed by its arm: base 164.7 ms, head 167.8 ms. The A/A
+      control (base over both copies) read 170.1 against 169.2, so a
+      3 ms gap is inside this box's spread: a TIE, recorded as one.
+      #667's per-glob negation walk and #679/#680's git checks cost
+      nothing the warm path can see. Harness: `ab-week.ts` shape under
+      Next 6 (arms, A/A, min-of-N).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -264,7 +287,10 @@ state of each:
    instant on the wrong clock; the macOS intermittent extra cycle stays
    recorded under item 130.
 6. **Re-measure the warm run after each day's work** — the hot path is
-   the product. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
+   the product. CI wall time is the other number this duty carries
+   (plan I2): 2:23–3:16 per push run on main over 2026-09-21's eleven,
+   all three jobs; a run past six minutes is the signal to fold the
+   heaviest witness files onto a shared fixture. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap
    (`scratchpad/ab.ts`-style: alternate arms, min and median of N).
    The closing figures of 2026-09-03 → 09-10 and the refutations
@@ -300,7 +326,10 @@ state of each:
    for the table: 1,000 projects warm 194–204 ms total
    (`bun packages/vx-bench/run.ts 300 3`: no-cache 987 ms, warm
    172 ms, warm-restore 329 ms). Any future claim on this container
-   needs an A/A control beside it.
+   needs an A/A control beside it. 2026-09-22 (item 580), the sweep week
+   (items 342–572, PRs #488–#681) as one arm: base 164.7 ms, head
+   167.8 ms warm min-of-15 at 1,000 projects, A/A 170.1 against 169.2 —
+   a tie.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes

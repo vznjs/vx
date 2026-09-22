@@ -5,7 +5,7 @@
 // which is at or above the floor wherever the suite is green.
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { CI_BUN, floorVerdict, RELEASE_ASSET } from '../scripts/bun-floor.js'
+import { boxLine, CI_BUN, floorVerdict, RELEASE_ASSET } from '../scripts/bun-floor.js'
 import { isUnsupportedBun, MIN_BUN } from '../src/util/index.js'
 
 const script = path.resolve(import.meta.dir, '..', 'scripts', 'bun-floor.ts')
@@ -42,6 +42,14 @@ describe('scripts/bun-floor.ts', () => {
     const verdict = floorVerdict(Bun.version)
     expect(r.exitCode).toBe(verdict.ok ? 0 : 1)
     const out = new TextDecoder().decode(verdict.ok ? r.stdout : r.stderr)
-    expect(out.trim()).toBe(verdict.message)
+    // On success the box follows the verdict (plan I6): platform, cores and
+    // memory with their cgroup source, so a recorded figure carries its box.
+    expect(out.trim()).toBe(verdict.ok ? `${verdict.message}\n${boxLine()}` : verdict.message)
+  })
+
+  it('the box line names the platform, a core count and a memory figure', () => {
+    expect(boxLine()).toMatch(
+      /^box: (linux|darwin)-(x64|arm64) · \d+ cores \((\d+ visible, no cgroup quota|cgroup quota \d+(\.\d+)?)\) · \d+\.\d GiB \((no cgroup limit|cgroup limit)\)$/,
+    )
   })
 })
