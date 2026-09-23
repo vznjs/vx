@@ -10,8 +10,8 @@ remote layer comes from a plugin's `cache` capability (e.g. the
 `@vzn/vx-reapi` CAS client) or from an embedder
 via `RunOptions.remoteCache`.
 
-- **Read-through**: try local; on miss, fetch from remote, ingest into
-  local, return with `source: 'remote'`.
+- **Read-through**: try local; on miss, fetch from remote, stream the
+  body into local, return with `source: 'remote'`.
 - **Write-through with async upload**: write to local synchronously,
   then PUT to remote in the background (bounded at 4 concurrent;
   `run()` awaits `drainUploads()` before `cache.close()`). Remote
@@ -28,10 +28,10 @@ via `RunOptions.remoteCache`.
 export interface RemoteCacheLayer {
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
-  /** Fetch an artifact's bytes; `null` = miss. Errors THROW. */
-  get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null>
-  /** Store an artifact (fire-and-forget from LayeredCache's PoV). */
-  put(hash: string, body: ArrayBuffer | Uint8Array, meta: { durationMs: number }): Promise<void>
+  /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
+  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
 
 export class LayeredCache implements CacheLayer {
@@ -48,6 +48,21 @@ export interface LayeredCacheOptions {
 }
 ```
 
+## Bodies stream, both ways
+
+No artifact sits whole in memory on the remote path
+(`docs/design/streaming-remote-2026-09.md`). `get` resolves a `Blob` or a
+`Response`: an HTTP wire returns its `fetch` `Response` itself, a chunked
+wire `new Response(readableStream)`, bytes in hand `new Blob([bytes])`.
+`Cache.ingest` writes it to its temp with `Bun.write`, which streams a
+`Response` and copies a file `Blob` without collecting either, then
+validates from the temp; a body that fails mid-stream or fails validation
+leaves no temp. `put` receives `Bun.file(<local artifact>)`, opened when
+the plugin reads it, so a queued upload holds a path, not a buffer; a
+plugin that must digest first reads `body.stream()` twice. The one
+exception is `--cache=local:,remote:rw`: with no local artifact the bytes
+are packed in memory during `save` and sent as `new Blob([bytes])`.
+
 ## The never-fail contract
 
 `RemoteCacheLayer` implementations THROW on every failure (network,
@@ -56,12 +71,14 @@ catches **everything** and degrades to a cache miss via
 `onRemoteError` — no remote failure of any kind may fail a run. A
 corrupt remote body is additionally refused by `Cache.ingest`'s
 validation (zstd checks), which this layer also degrades to a miss. A
-result of the wrong SHAPE — a `get` whose `body` is not an
-`ArrayBuffer` or `Uint8Array`, a `hasMany` that is not a `Set` or
+result of the wrong SHAPE — a `get` whose `body` is not a `Blob` or a
+`Response` (the pre-stream `ArrayBuffer` / `Uint8Array` included, named
+as such: "body is a Uint8Array"), a `hasMany` that is not a `Set` or
 `null` — is the plugin's bug, named as such through `onRemoteError`
 ("remote cache layer returned an invalid result: get(<hash>) resolved
-body is string (expected …) — a plugin bug, degraded to a miss") and
-degraded the same way, never reported as a corrupt artifact.
+body is string (expected { body: Blob | Response, durationMs } or null)
+— a plugin bug, degraded to a miss") and degraded the same way, never
+reported as a corrupt artifact.
 
 ## Read path
 
@@ -72,7 +89,7 @@ degraded the same way, never reported as a corrupt artifact.
 2. If `policy.remoteRead` is off → miss. `prefetch` sits behind the
    same gate: nothing is warmed from the remote either (item 641).
 3. `pullFromRemote(hash)` — shared with `prefetch` through the
-   in-flight map: `remote.get` → `local.ingest(bytes)` → re-read
+   in-flight map: `remote.get` → `local.ingest(body)` → re-read
    local. `durationMs` from the wire rides the ingested entry; the
    producing execution's `cpuMs` / `peakRssBytes` ride the artifact's
    own sidecar, so no wire needs to carry them.
@@ -80,11 +97,12 @@ degraded the same way, never reported as a corrupt artifact.
 ## Write path
 
 1. `local.save(args)` — synchronous (honors its own local-write gate).
-2. If `policy.remoteWrite`: capture the artifact bytes NOW (read the
-   just-written local artifact, or pack in memory when local writes
-   are disabled — `--cache=local:,remote:rw`), then queue the PUT in
-   the bounded background pool. The task's worker slot is released
-   immediately; `run()` drains before close.
+2. If `policy.remoteWrite`: queue the PUT in the bounded background
+   pool with a file-backed `Blob` over the just-written local artifact
+   (or, when local writes are disabled — `--cache=local:,remote:rw` —
+   bytes packed in memory NOW, while the outputs are still on disk).
+   The task's worker slot is released immediately; `run()` drains
+   before close.
 
 ## Delegation
 

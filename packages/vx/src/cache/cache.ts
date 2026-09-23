@@ -12,7 +12,7 @@
 // metadata — taskId, command, exitCode, durationMs, storedAt — lives
 // in the SQLite `entries` row. The same tar.zst bytes ship to a remote
 // cache server unchanged; on remote-hit, the caller supplies metadata
-// via the `ingest(hash, bytes, meta)` API so the local SQL index gets
+// via the `ingest(hash, body, meta)` API so the local SQL index gets
 // populated without sniffing the artifact.
 //
 // We never cache failed runs, so stderr is dropped from the cached
@@ -1160,15 +1160,31 @@ export class Cache implements CacheLayer {
     return this.packArtifact(args)
   }
 
-  async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
-    await this.writeArtifactAndIndex(hash, compressed, meta)
+  /**
+   * The remote body goes to the temp by `Bun.write`, which streams a
+   * `Response` and copies a file `Blob` without collecting either, so a
+   * pull never holds the artifact. A body that fails mid-stream (a dropped
+   * socket) leaves a partial temp behind it, removed here; validation
+   * removes its own.
+   */
+  async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
+    const tmpPath = this.tempPath(hash)
+    try {
+      // Split only for the typings: Bun.write's Response and Blob overloads
+      // do not accept their union.
+      await (body instanceof Response ? Bun.write(tmpPath, body) : Bun.write(tmpPath, body))
+    } catch (err) {
+      await unlink(tmpPath).catch(() => undefined)
+      throw err
+    }
+    await this.writeArtifactAndIndex(hash, { tmpPath }, meta)
   }
 
   /**
    * Collect stdout + outputs into artifact bytes, zstd-compress, return
    * them. No disk write to the final cache path — that's the index
    * step's job. Pure transform, so `ingest()` can skip this and hand
-   * its remote-supplied bytes straight to `writeArtifactAndIndex`.
+   * its remote-supplied temp straight to `writeArtifactAndIndex`.
    *
    * Entries are named directly into the archive, so there is no staging
    * copy of every output byte and no `tar` subprocess (see
@@ -1196,7 +1212,8 @@ export class Cache implements CacheLayer {
   /**
    * The compressed artifact, in memory: the remote upload when local
    * writes are off. A large artifact is packed and compressed as a
-   * stream and collected — the seam takes bytes.
+   * stream and collected — with no local artifact the bytes must be
+   * captured while the outputs are still on disk.
    */
   private async packArtifact(args: {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
@@ -1257,8 +1274,8 @@ export class Cache implements CacheLayer {
   /**
    * Atomically write `compressed` to `<hash>.tar.zst` and (re)build the
    * entries + output_files SQL rows from the archive itself. Shared by
-   * `save()` (we just packed the bytes) and `ingest()` (we got them from
-   * the remote layer) — both index the identical values, because both
+   * `save()` (we just packed the bytes) and `ingest()` (it streamed them
+   * from the remote layer into a temp) — both index the identical values, because both
    * read them out of the artifact.
    */
   /** tmp suffix mixes pid + hrtime + a random hex chunk so two saves of
@@ -1275,7 +1292,7 @@ export class Cache implements CacheLayer {
     meta: IngestMeta,
   ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
-    // us network bytes; a truncated/garbage body that went live first
+    // us a temp of network bytes; a truncated/garbage body that went live first
     // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
     // since the decompress throw aborted indexing) for every later
     // reader to trip over. Decompress + parse also produce the
@@ -1296,12 +1313,12 @@ export class Cache implements CacheLayer {
       await writeFile(tmpPath, compressed)
       endWrite()
     } else {
-      // `save` already streamed the artifact into its temp.
+      // `save` or `ingest` already streamed the artifact into its temp.
       tmpPath = compressed.tmpPath
     }
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
-      // ingest() is the UNTRUSTED boundary — `compressed` is bytes just
+      // ingest() is the UNTRUSTED boundary — its temp holds bytes just
       // pulled from a remote. Refuse a bomb (declared or sizeless) before it
       // can expand into memory.
       const source =

@@ -9,7 +9,7 @@
 // tens of thousands of inputs and rehashing them per task would dwarf the
 // upload it is meant to avoid.
 
-import { createHash } from 'node:crypto'
+import { createHash, type Hash } from 'node:crypto'
 import { lstat, readlink, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { Digest, Directory, DirectoryNode, FileNode, SymlinkNode } from './wire.js'
@@ -446,6 +446,11 @@ export function digestWith(fn: DigestFunctionName, data: Uint8Array): Digest {
   const algo = HASH_ALGO[fn]
   if (algo === undefined) throw new Error(`@vzn/vx-reapi: unsupported digest function ${fn}`)
   return { hash: createHash(algo).update(data).digest('hex'), size_bytes: data.length }
+}
+
+/** `fn` as an incremental hasher, for a blob read as a stream; `undefined` when `canDigest` is false. */
+export function hasherFor(fn: DigestFunctionName): Hash | undefined {
+  return canDigest(fn) ? createHash(HASH_ALGO[fn]!) : undefined
 }
 
 /** True when this build of Bun/Node can compute the function at all. */

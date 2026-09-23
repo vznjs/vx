@@ -86,18 +86,18 @@ describe('NxRemoteCache against the spec server', () => {
   it('put → get round trip; a miss is 404 → null; a second put of the same hash is the spec’s 409 and fine', async () => {
     const c = cache()
     const body = new TextEncoder().encode('zstd-tar-bytes')
-    await c.put('aa11', body, { durationMs: 5 })
+    await c.put('aa11', new Blob([body]), { durationMs: 5 })
     const put = srv.seen.at(-1)!
     expect(put.method).toBe('PUT')
     expect(put.headers['authorization']).toBe(`Bearer ${TOKEN}`)
     expect(put.headers['content-type']).toBe('application/octet-stream')
     expect(put.headers['content-length']).toBe(String(body.byteLength))
     const got = await c.get('aa11')
-    expect(new Uint8Array(got!.body)).toEqual(body)
+    expect(await got!.body.bytes()).toEqual(body)
     expect(got!.durationMs).toBeUndefined()
     expect(await c.get('bb22')).toBeNull()
-    await c.put('aa11', new TextEncoder().encode('other'), { durationMs: 5 })
-    expect(new Uint8Array((await c.get('aa11'))!.body)).toEqual(body) // immutable record kept
+    await c.put('aa11', new Blob(['other']), { durationMs: 5 })
+    expect(await (await c.get('aa11'))!.body.bytes()).toEqual(body) // immutable record kept
   })
 
   it('has is a GET whose body the following get reuses — one transfer, not two', async () => {
@@ -105,11 +105,34 @@ describe('NxRemoteCache against the spec server', () => {
     const n = srv.seen.length
     expect(await c.has('aa11')).toBe(true)
     expect(srv.seen.length).toBe(n + 1)
-    expect(new Uint8Array((await c.get('aa11'))!.body)).toEqual(
-      new TextEncoder().encode('zstd-tar-bytes'),
-    )
+    expect(await (await c.get('aa11'))!.body.text()).toBe('zstd-tar-bytes')
     expect(srv.seen.length).toBe(n + 1)
     expect(await c.has('bb22')).toBe(false)
+  })
+
+  it('a probe no get follows is cancelled by the next, so its response holds no connection', async () => {
+    const cancelled: string[] = []
+    const streamed = (async (url: string) => {
+      const hash = url.slice(url.lastIndexOf('/') + 1)
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull: (c) => c.enqueue(new TextEncoder().encode(hash)),
+          cancel: () => {
+            cancelled.push(hash)
+          },
+        }),
+      )
+    }) as unknown as typeof fetch
+    const c = new NxRemoteCache({ server: 'http://nx.invalid', timeoutMs: 1_000 }, streamed)
+    expect(await c.has('aa11')).toBe(true)
+    expect(await c.has('bb22')).toBe(true)
+    expect(cancelled).toEqual(['aa11'])
+    // The kept response is the one the following get hands over, unread.
+    const got = await c.get('bb22')
+    const reader = got!.body.body!.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('bb22')
+    await reader.cancel()
+    expect(cancelled).toEqual(['aa11', 'bb22'])
   })
 
   it('a bad token throws ONCE even when the calls are concurrent', async () => {
@@ -131,7 +154,7 @@ describe('NxRemoteCache against the spec server', () => {
       c.get('aa11'),
       c.get('bb22'),
       c.has('cc33'),
-      c.put('dd44', new Uint8Array(1), { durationMs: 1 }),
+      c.put('dd44', new Blob(['x']), { durationMs: 1 }),
     ])
     const rejected = settled.flatMap((r, i) =>
       r.status === 'rejected' ? [{ name: names[i]!, message: String(r.reason.message) }] : [],
@@ -152,11 +175,11 @@ describe('NxRemoteCache against the spec server', () => {
     const n = srv.seen.length
     expect(await bad.get('aa11')).toBeNull()
     expect(await bad.has('aa11')).toBe(false)
-    await bad.put('cc33', new Uint8Array(1), { durationMs: 1 })
+    await bad.put('cc33', new Blob(['x']), { durationMs: 1 })
     expect(srv.seen.length).toBe(n)
     const ro = cache(READONLY)
     expect(await ro.has('aa11')).toBe(true) // reads are allowed
-    await expect(ro.put('dd44', new Uint8Array(1), { durationMs: 1 })).rejects.toThrow(
+    await expect(ro.put('dd44', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
       /403.*read-only/,
     )
   })

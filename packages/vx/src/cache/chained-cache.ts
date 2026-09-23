@@ -155,8 +155,8 @@ export class ChainedCache implements CacheLayer {
     }
   }
 
-  ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
-    return this.layers[0]!.ingest(hash, compressed, meta)
+  ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
+    return this.layers[0]!.ingest(hash, body, meta)
   }
 
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
