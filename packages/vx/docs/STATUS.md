@@ -276,6 +276,21 @@ test is telling the truth.
       the index, `git update-index --chmod=+x`, and the law of 604
       holds it.
 
+608.  DONE (2026-09-23, the mapping profiled and one hoist). A CPU
+      profile of `mapNxWorkspace` at 1,000 projects put `path.relative`
+      and its wrapper first: `buildTask` recomputed the project's
+      relative dir and read its scripts per task AND per configuration
+      variant, 3,000 times for 1,000 projects. Once per project now. In
+      isolation the warm mapping halves, 30.5 → 15 ms per call
+      (min-of-3 in one process, the 1.8 MB snapshot parsed once in
+      7 ms); at the stage level the interleaved A/B on this box reads
+      old 59.7 ms against new 57.4 ms min-of-6 — a tie by the box's
+      own rule (nothing under ~6 % resolves here), because the stage's
+      cost is the 2,001 stats, the parse, the first cold call and
+      3,000 `structuredClone`s as much as the mapping. Kept for the
+      isolation number and the simpler shape; the README's "about
+      37 ms" stands.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

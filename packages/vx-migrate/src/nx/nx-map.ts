@@ -167,12 +167,17 @@ export async function mapNxWorkspace(
     if (!targets) continue
     const tasks: GeneratedTask[] = []
     const projectName = node?.name ?? meta.name
+    // Once per project, not per task and variant: `path.relative` was a
+    // fifth of the mapping at 1,000 projects (item 608).
+    const projectRel = normRel(relPosix(root, meta.dir))
+    const scripts = packageScripts(meta)
     for (const [targetName, target] of Object.entries(targets)) {
       for (const v of variants(targetName, target)) {
         tasks.push(
           buildTask(
-            root,
             meta,
+            projectRel,
+            scripts,
             projectName,
             targetName,
             target,
@@ -278,8 +283,9 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
 }
 
 function buildTask(
-  root: string,
   meta: ProjectMeta,
+  projectRel: string,
+  scripts: Record<string, unknown>,
   projectName: string,
   targetName: string,
   target: NxTarget,
@@ -291,8 +297,6 @@ function buildTask(
 ): GeneratedTask {
   const todos: string[] = []
   const options = variant.options
-  const projectRel = normRel(relPosix(root, meta.dir))
-  const scripts = packageScripts(meta)
 
   const command = mapCommand(
     targetName,
