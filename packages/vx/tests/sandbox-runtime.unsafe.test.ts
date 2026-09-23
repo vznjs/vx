@@ -1588,6 +1588,32 @@ describe('resolveSandboxConfig', () => {
     }
   })
 
+  // Item 652: each capability the user wrote is carried to the resolved
+  // config under its own name. Rows that declare these run where the
+  // capability is not observable, so eight of the copies below could be
+  // deleted with the suite green. Written out, not derived.
+  const CARRIED: Array<[string, Record<string, unknown>, string, unknown]> = [
+    ['deny.network', { deny: { network: ['x.test'] } }, 'denyNetwork', ['x.test']],
+    ['allow.systemInfo', { allow: { systemInfo: ['hw.ncpu'] } }, 'systemInfo', ['hw.ncpu']],
+    ['allow.unixSockets', { allow: { unixSockets: true } }, 'unixSockets', true],
+    ['allow.machLookup', { allow: { machLookup: ['com.x'] } }, 'machLookup', ['com.x']],
+    ['allow.pty', { allow: { pty: true } }, 'pty', true],
+    ['allow.gitConfig', { allow: { gitConfig: true } }, 'gitConfig', true],
+    ['weakerWhenNested', { weakerWhenNested: true }, 'weakerWhenNested', true],
+    ['weakerNetworkIsolation', { weakerNetworkIsolation: true }, 'weakerNetworkIsolation', true],
+  ]
+  for (const [what, cfg, key, want] of CARRIED) {
+    it(`carries ${what} to ${key}`, () => {
+      const r = resolveSandboxConfig(cfg as never, '/nowhere/proj') as unknown as Record<
+        string,
+        unknown
+      >
+      expect(r[key]).toEqual(want)
+      // CONTROL: undeclared, it is not invented.
+      expect(key in resolveSandboxConfig({}, '/nowhere/proj')).toBe(false)
+    })
+  }
+
   // Item 652: no row granted a `~` path, so its expansion could go and
   // `~/.npmrc` would resolve against the project, a path that is not there.
   it('expands a leading `~` against the home directory, not the project', () => {
