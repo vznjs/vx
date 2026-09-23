@@ -917,6 +917,31 @@ check is on the project list, not the file system, so `parseFilter`
 stays pure. Parity audit §9 L255 struck; `cli.md` and the filter module
 page say so.
 
+14bm. **Item 665 (roadmap 2.3, 2026-09-23): a remote-cache URL with
+credentials in it is refused.** `turboCache()`'s `apiUrl` (or
+`TURBO_API`) and `nxCache()`'s `server` (or
+`NX_SELF_HOSTED_REMOTE_CACHE_SERVER`) accepted `https://user:pass@host`,
+and both print the URL in every refusal line, so the password reached
+the log. Both resolvers now refuse a URL with a user or a password,
+naming the token option to use instead; each row is red without its
+line, beside a control that the bare host resolves. Parity audit §8
+L232 struck; the vx-migrate README's option tables say so.
+
+14bn. **Item 666 (2026-09-23): a 255-byte file name restores.** Adding
+the NAME_MAX refusal the audit left open, its control row (a component
+of exactly 255 bytes restores) went red: the restore staged every file
+as `<target>.vx-tmp-<pid>-<seq>`, and that suffix pushed any legal name
+of 242–255 bytes past NAME_MAX, so a valid artifact holding one failed
+with ENAMETOOLONG. The temp is now a short sibling, `.vx-tmp-<pid>-<seq>`
+in the target's directory (the rename stays within one directory, so
+nothing about its atomicity changes). A component past NAME_MAX is now
+an `ArchiveSecurityError` by name rather than a raw ENAMETOOLONG. Both
+rows are red without their line. The leftover-temp row in
+`archive-security.test.ts` read `**/*.vx-tmp-*` through `Bun.Glob`,
+whose `*` skips a dotfile, so it would have passed on a leak under the
+new name; it reads the tree with `readdir` now. No `CACHE_VERSION`
+bump: the stored bytes did not change.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

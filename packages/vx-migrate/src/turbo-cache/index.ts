@@ -139,6 +139,15 @@ export function resolveTurboCacheConfig(
     '',
   )
   if (!apiUrl || !token) return undefined
+  // The URL is printed in every refusal line, so a `user:pass@` in it would
+  // leak to the log. Credentials go in the token.
+  if (URL.canParse(apiUrl)) {
+    const u = new URL(apiUrl)
+    if (u.username !== '' || u.password !== '')
+      throw new Error(
+        'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
+      )
+  }
   const teamId = options.teamId ?? env['TURBO_TEAMID']
   const teamSlug = options.teamSlug ?? env['TURBO_TEAM']
   const signatureKey = options.signatureKey ?? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY']

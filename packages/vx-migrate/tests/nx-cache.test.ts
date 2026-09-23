@@ -72,6 +72,29 @@ describe('resolveNxCacheConfig', () => {
       timeoutMs: 30_000,
     })
   })
+
+  it('refuses a server carrying user:pass@, from options or the env (gaps §8 L232)', () => {
+    const refusal = (f: () => unknown): string => {
+      try {
+        f()
+        return 'accepted'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    const MSG =
+      'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead'
+    expect([
+      refusal(() => resolveNxCacheConfig({ server: 'https://u:p@c.example' }, {})),
+      refusal(() =>
+        resolveNxCacheConfig({}, { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'https://u@c.example/' }),
+      ),
+    ]).toEqual([MSG, MSG])
+    // CONTROL: the same host without userinfo resolves.
+    expect(resolveNxCacheConfig({ server: 'https://c.example' }, {})?.server).toBe(
+      'https://c.example',
+    )
+  })
 })
 
 describe('NxRemoteCache against the spec server', () => {

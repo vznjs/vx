@@ -743,7 +743,7 @@ noise). Ingest lists entries through the reader without materialising
 a byte, and **restore streams it**: the zstd
 frame is decoded and the tar read as it arrives — ustar name/prefix,
 pax `path`/`size`, GNU long names, header checksums, truncation — and
-every regular entry is written beside its target as `.vx-tmp-*` and
+every regular entry is written beside its target as a short `.vx-tmp-*` sibling (never a suffix on the target's name, which pushed a legal 242–255-byte name past NAME_MAX) and
 renamed into place only after the whole archive has ended cleanly and
 the index's recorded outputs are all present. vx itself holds one
 chunk of the tar at a time (measured 2026-09-03, incompressible

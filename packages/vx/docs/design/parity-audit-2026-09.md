@@ -59,7 +59,7 @@ variables stay out of the key).
 | gaps §3 L116  | Memoizing `compileNameGlob`: filters parse once per run, so this is closed as not worth doing.                                                                                                                                                              | —    |
 | gaps §5 L157  | ~~Restore entries with lookalike Unicode (fullwidth dots, U+2215, bidi overrides).~~ closed (item 661): `archive-security.test.ts` "lookalike dots, a division slash and a bidi override …"                                                                 | S    |
 | gaps §5 L158  | ~~A restore entry longer than `PATH_MAX` refused as a user error, not `ENAMETOOLONG`.~~ closed (item 661): `archive-security.test.ts` "an entry name longer than PATH_MAX is refused …"; now an ArchiveSecurityError                                        | S    |
-| gaps §8 L232  | `turboCache()` / `nxCache()` accept an API URL carrying `user:pass@`.                                                                                                                                                                                       | S    |
+| gaps §8 L232  | ~~`turboCache()` / `nxCache()` accept an API URL carrying `user:pass@`.~~ closed (item 665): both resolvers refuse it by name; `turbo-cache.test.ts` and `nx-cache.test.ts` "refuses … carrying user:pass@"                                                 | S    |
 | gaps §9 L239  | ~~An input row that `src/*` includes `src/.env`.~~ closed (item 661): `inputs.test.ts` "`src/*` folds the dotfile `src/.env`"                                                                                                                               | S    |
 | gaps §9 L255  | ~~A project directory whose name holds brackets (`packages/[abc]`).~~ closed (item 664): a path naming a project dir is read literally before it is read as a glob; `workspace.test.ts` "the unescaped `./packages/[abc]` selects the directory it names …" | S    |
 | gaps §15 L355 | ~~The `vx cache prune` CLI row asserts the freed byte figure.~~ closed (item 661): `config-stage-verbs.test.ts` asserts the freed byte figure                                                                                                               | S    |
@@ -72,10 +72,13 @@ Item 661 left four rows open and found three more:
   form that selects a project directory literally is taken literally
   before it is read as a glob, as git reads a pathspec.
 - **Archive names past NAME_MAX or past PATH_MAX with the destination.**
-  Item 661 refuses a name whose own length passes PATH_MAX; one
-  component past NAME_MAX (255), or a destination plus name past
-  PATH_MAX, still reaches the file system as a raw `ENAMETOOLONG`. S.
-- N-M7, gaps §1 L48 and gaps §8 L232 stand as the table says.
+  Item 661 refuses a name whose own length passes PATH_MAX, and item 666
+  one component past NAME_MAX (255). Item 666 also found the restore's
+  temp name (`<target>.vx-tmp-…`) pushed a legal 242–255-byte component
+  past NAME_MAX, so a valid artifact failed to restore; the temp is now a
+  short sibling. Still open: a destination plus name past PATH_MAX
+  reaches the file system as a raw `ENAMETOOLONG`. S.
+- N-M7 and gaps §1 L48 stand as the table says; gaps §8 L232 closed in item 665.
 
 Everything not in this table is FIXED, DECLINED or OBSOLETE. The
 evidence for each (source line and test title) is in the audit's report
