@@ -4,7 +4,7 @@
 // in `exec.sandbox` met an unknown-field refusal instead of a fix.
 
 import { describe, expect, it } from 'bun:test'
-import { unavailableReason } from '../src/exec/index.js'
+import { socketPathRefusal, unavailableReason } from '../src/exec/index.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
 
 type Config = Parameters<typeof validateProjectConfig>[0]
@@ -40,5 +40,32 @@ describe('the sandbox-unavailable hint names a field the loader accepts', () => 
   it('a failure that is not the nested namespace carries no remedy', () => {
     const other = unavailableReason(127, 'bwrap: No such file or directory')
     expect(other).toBe('a sandboxed `true` failed (exit 127): bwrap: No such file or directory')
+  })
+
+  // Item 652: every stderr above is short, so the cap could go with the
+  // suite green — and a helper that dumps a page of diagnostics would put
+  // all of it into a one-line verdict.
+  it("carries the first 200 characters of the runtime's stderr, no more", () => {
+    expect(unavailableReason(1, 'x'.repeat(300))).toBe(
+      `a sandboxed \`true\` failed (exit 1): ${'x'.repeat(200)}`,
+    )
+  })
+})
+
+// Item 652: the socket-length refusal was driven only well past the limit,
+// so `<=` could become `<` — refusing a temp directory whose socket path
+// fits exactly — with the suite green. The limit is the OS's `sun_path`
+// less its NUL; the row sits on it and one byte past.
+describe('the socket-length refusal sits exactly on the limit', () => {
+  const limit = process.platform === 'darwin' ? 103 : 107
+  const dirOf = (length: number): string => {
+    const tail = `/srt-mux-${process.pid}-zzz.sock`
+    return '/' + 'd'.repeat(length - tail.length - 1)
+  }
+  it('a socket path of exactly the limit is accepted; one byte more is refused', () => {
+    expect(socketPathRefusal(dirOf(limit))).toBeUndefined()
+    expect(socketPathRefusal(dirOf(limit + 1))).toContain(
+      `is ${limit + 1} bytes where the OS allows ${limit}`,
+    )
   })
 })
