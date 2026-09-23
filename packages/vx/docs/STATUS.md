@@ -942,6 +942,18 @@ whose `*` skips a dotfile, so it would have passed on a leak under the
 new name; it reads the tree with `readdir` now. No `CACHE_VERSION`
 bump: the stored bytes did not change.
 
+14bp. **Item 668 (roadmap 1.2, 2026-09-23): the docs name only what the
+release publishes.** A row in `build-npm.unsafe.test.ts` walks the root
+and package READMEs, `packages/vx/docs` and the site's pages (design
+notes and the shipped history aside: they quote packages that never
+shipped, like `@vzn/cache`), collects every `@vzn/…` in an install or run
+command (`bunx`, `bun add`, `npm i`, `pnpm add`, `yarn add`, their `dlx`
+and `x` forms) or an `import … from`, and requires each to be in the
+emitter's own publish set plus `@vzn/vx`. It passes today; an install line naming a made-up
+package, appended to a README, turns it red, and a floor
+requires the walk to see `@vzn/vx-migrate` and `@vzn/vx-lockfile`.
+Milestone 1's agent work is done; 1.4 and 1.5 are the owner's.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

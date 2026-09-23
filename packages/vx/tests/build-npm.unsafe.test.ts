@@ -7,7 +7,7 @@
 //
 // `.unsafe`: the emitted package carries the repo-root README and LICENSE,
 // which a sandboxed project task may not read.
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -162,6 +162,56 @@ describe('the published plugin packages', async () => {
     // CONTROL: the one package with bins has both of them in the tree.
     const migrate = emitted.find((e) => e.name === '@vzn/vx-migrate')!
     expect(existsSync(path.join(migrate.dir, 'src', 'nx-exec.cjs'))).toBe(true)
+  })
+
+  // Roadmap 1.2 (item 668): a page that tells a user to install, run or
+  // import a package names one this release publishes. The set is the
+  // emitter's own output plus @vzn/vx, not a list kept beside it. Design
+  // notes and the shipped history quote packages that never shipped
+  // (`@vzn/cache`) and are not instructions.
+  it('are the only @vzn packages the docs tell a user to install, run or import', () => {
+    const published = new Set([...emitted.map((e) => e.name), '@vzn/vx'])
+    const walkMd = (dir: string, out: string[] = []): string[] => {
+      for (const name of readdirSync(dir)) {
+        const p = path.join(dir, name)
+        if (name === 'node_modules' || name === 'history' || name === 'design') continue
+        if (statSync(p).isDirectory()) walkMd(p, out)
+        else if (/\.mdx?$/.test(name)) out.push(p)
+      }
+      return out
+    }
+    const pages = [
+      path.join(REPO, 'README.md'),
+      ...readdirSync(path.join(REPO, 'packages'))
+        .map((d) => path.join(REPO, 'packages', d, 'README.md'))
+        .filter((f) => existsSync(f)),
+      ...walkMd(path.join(CORE, 'docs')),
+      ...walkMd(path.join(REPO, 'packages', 'vx-docs', 'src', 'content', 'docs')),
+    ]
+    const COMMAND =
+      /\b(?:bunx|npx|bun x|bun add|bun install|npm i|npm install|pnpm add|pnpm dlx|yarn add|yarn dlx)\b[^\n`]*/g
+    const IMPORT = /\bfrom\s+['"](@vzn\/[a-z0-9-]+)/g
+    const named = new Map<string, string>()
+    for (const file of pages) {
+      // The site tree is also @vzn/vx-docs#build's output: a page the import
+      // script is rewriting may vanish between the walk and the read.
+      let text: string
+      try {
+        text = readFileSync(file, 'utf8')
+      } catch {
+        continue
+      }
+      const rel = path.relative(REPO, file)
+      for (const m of text.matchAll(COMMAND))
+        for (const n of m[0].matchAll(/@vzn\/[a-z0-9-]+/g)) named.set(n[0], rel)
+      for (const m of text.matchAll(IMPORT)) named.set(m[1]!, rel)
+    }
+    const unpublished = [...named].filter(([name]) => !published.has(name))
+    expect(unpublished).toEqual([])
+    // Floor: the adoption entry point the README leads with is seen, so a
+    // walk or a pattern that finds nothing cannot pass.
+    expect(named.has('@vzn/vx-migrate')).toBe(true)
+    expect(named.has('@vzn/vx-lockfile')).toBe(true)
   })
 
   it('are published by the release workflow, after @vzn/vx', async () => {
