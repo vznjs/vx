@@ -310,6 +310,17 @@ scope`: an empty scope is refused earlier as "not inside a
       Scaling at 5×: warm 2.97×, restore 3.59×, cold 4.16× (was 2.98,
       3.81, 4.51). Rows in `docs/benchmarks.md` under the second
       machine's table.
+626.  DONE (2026-09-23, the head-to-head on this container class — the
+      other half of Next 6's duty, against the other runners).
+      `bun packages/vx-bench/compare.ts 10 5 1` here (46 packages,
+      Turbo 2.11.3, Nx 23.2.1, daemons on, vx compiled): vx cold 10.29 s /
+      warm 78 ms / restore 98 ms; Turbo 10.44 s / 112 / 150; Nx
+      27.21 s / 754 / 711; CPU cold 755 ms / 1.38 s / 1m 2s. The
+      2026-09-03 macOS warm tie (76 vs 71) is a 1.4× lead here, and
+      Nx's cold run 2.6× off (was 1.9×). A different machine, so the
+      page says only the ratios compare; the committed
+      `packages/vx-bench/RESULTS.md` stays the owner's dev-box run.
+      Block under the 2026-09-03 table in `docs/benchmarks.md`.
 
 ## In flight
 

@@ -134,6 +134,26 @@ answers "what changed" without a walk, vx pays one `git status`. vx wins
 the restore case and ties the cold one; Nx is 7× off. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
+The same 46-package run on the four-core Linux container (2026-09-23,
+after items 615 and 622; a different machine, so only the ratios compare
+with the table above). Turbo 2.11.3 and Nx 23.2.1, daemons on, vx as
+its compiled binary, median of 1. The CPU column is user + system of
+the invocation and every child it waited for; a daemon that outlives
+the invocation is not counted, so Turbo's and Nx's are floors:
+
+| Runner      | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold |
+| ----------- | ------- | ------------ | ----------------- | -------------- | --------- |
+| vx          | 0.0.0   | 10.29 s      | **78 ms**         | **98 ms**      | 755 ms    |
+| vx (frozen) | 0.0.0   | 10.27 s      | 80 ms             | 103 ms         | 754 ms    |
+| turbo       | 2.11.3  | 10.44 s      | 112 ms (1.4×)     | 150 ms (1.5×)  | 1.38 s    |
+| nx          | 23.2.1  | 27.21 s      | 754 ms (9.6×)     | 711 ms (7.3×)  | 1m 2s     |
+
+On this box the warm tie of 2026-09-03 is a 1.4× lead: Turbo 2.11's
+warm run costs 112 ms where its 2.10 cost 71 on the macOS machine, and
+vx's 78 ms is within the spread of its 76 there. The cold column is
+within 2 % of Turbo's again (the tasks are `sleep 1`, so both sit on
+the critical path), and Nx's cold run is 2.6× off where it was 1.9×.
+
 The same harness at **476 packages / 1,428 graph nodes**
 (`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
 point — the committed `packages/vx-bench/RESULTS.md` is the 3,270-task run below):
