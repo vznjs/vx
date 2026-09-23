@@ -192,6 +192,12 @@ test is telling the truth.
       `CacheLayer` seam change for a stage that small. And
       `synchronous = NORMAL` is already set, so an autocommit here is a
       WAL append, not an fsync — 615's win was the count, not the sync.
+617.  DONE (2026-09-23, three rules the morning taught, in CLAUDE.md's
+      list: a stage's SQLite cost is its statement count before its
+      sync mode, with the tally preload (`packages/vx-bench/sqlite-tally.ts`
+      now, beside `profile-summary.ts`) and its one trap; a summed span
+      is not a cost until the wall is A/B'd; a sandboxed shard has no
+      git). Handoff 14az with it; Next 6 carries the cold-path number.
 
 ## In flight
 
@@ -343,7 +349,11 @@ state of each:
    (items 342–572, PRs #488–#681) as one arm: base 164.7 ms, head
    167.8 ms warm min-of-15 at 1,000 projects, A/A 170.1 against 169.2 —
    a tie. Item 588 (the additive hit path, every task's): main 173.5
-   against head 170.5, A/A 168.3 against 164.2 — a tie.
+   against head 170.5, A/A 168.3 against 164.2 — a tie. The COLD path
+   has its own number since 2026-09-23 (item 615): 1,000 projects,
+   `.vx` removed, 2,938–3,420 ms before against 2,680–2,997 after, the
+   `load configs` stage 507–607 → 207–272; a cold arm is five reps with
+   the cache removed before each, no A/A needed at that size.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
@@ -386,7 +396,8 @@ state of each:
     `docs/history/2026-09-improvement-loop-573-591.md` and 592–611 in
     `docs/history/2026-09-improvement-loop-592-611.md` (handoffs
     14aq–14ax in the next-log file). The loop above is the record since
-    612; 14ay is below, and the next handoff written here is 14az.
+    612; 14ay and 14az are below, and the next handoff written here is
+    14ba.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -394,6 +405,29 @@ state of each:
     names its seam, the constraint that must survive, the measurement
     and what not to do; strike an entry through there when its item
     lands here.
+
+14az. **Handoff after item 617 (2026-09-23, mid-morning).** Five items
+since 14ay, each its own PR, merged in turn (#707 613, #708 614, #709
+615, #710 616, and 617 with this handoff): the export sweep became a law
+for values and the unsafe suite's key sees every package its laws read;
+every `VX_*` core reads has a table and `vx watch` says when it polls; a
+config round's evaluations are written once per table and the slow path
+keys from bytes — the cold `load configs` stage at 1,000 projects
+507–607 ms → 207–272; and the next cold lead, indexing a save from its
+plan, measured a 2–3 % tie and was put back, its agreement law kept.
+WHAT STANDS: the cold run at 1,000 projects is ~2.7 s, of which the
+tasks' own `spawn` is a quarter and the rest is spread (no single span
+past 5 % once overlap is discounted); the restore run ~1.2 s, its
+SQLite 58 ms total; the warm path unchanged since 589. The two leads
+measured and not taken are in 616 (output-dir snapshot batching, a seam
+change for 69 ms; the sync mode is already NORMAL). NO CORE RUN-PATH
+CHANGE on the WARM path since 589, so the warm A/B duty has no arm; 615
+changed the cold path and carries its own A/B. NEXT, in order: keep
+finding — the sweeps of this loop (exports, env reads, statement
+tallies) are shapes worth turning on the plugin packages and the site
+build; the trim next at 632; the executor-backed real tree stays for a
+box with yarn 4 reachable; then the owner's three items. Never end with
+"what next?".
 
 14ay. **Handoff after item 612 (2026-09-23, morning).** Seven items
 since 14ax, each its own PR, merged in turn (#700 606, #701 607, #702
