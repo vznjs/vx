@@ -32,6 +32,8 @@ export interface BuildGraphOptions {
 
 export function taskId(project: string, task: string): string
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode>
+// Lives in `src/util/task-id.ts` (the cache reads the same rule and may
+// not import the graph); re-exported here and on the façade.
 export function splitTaskId(id: string): [project: string, task: string]
 export function isGroupTask(node: TaskNode): boolean
 export function detectCycle(nodes: Map<string, TaskNode>): void

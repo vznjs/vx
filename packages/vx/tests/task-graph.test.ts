@@ -5,6 +5,8 @@ import {
   buildTaskGraph,
   expandRequested,
   markSurfacedDeps,
+  splitTaskId,
+  unresolvedRequests,
   type ProjectEntry,
 } from '../src/graph/task-graph.js'
 
@@ -615,6 +617,63 @@ describe('buildTaskGraph', () => {
 })
 
 const group = (deps: string[]): TaskConfig => ({ dependsOn: deps })
+
+describe('the request helpers dedupe (item 646)', () => {
+  // Both doc comments claimed it and nothing held either: deleting each
+  // `seen` check survived the whole core suite.
+  it('expandRequested: `vx run build app#build` is ONE entry, not two', () => {
+    const ps = projects(project('app', { build: cmd('b') }))
+    expect(expandRequested(['build', 'app#build'], ['app'], ps)).toEqual([
+      { project: 'app', task: 'build' },
+    ])
+  })
+
+  it('unresolvedRequests: `vx run x x` names x once', () => {
+    const ps = projects(project('app', { build: cmd('b') }))
+    expect(unresolvedRequests(['x', 'x', 'app#y', 'app#y'], ['app'], ps)).toEqual(['x', 'app#y'])
+  })
+})
+
+describe('splitTaskId', () => {
+  it('splits on the FIRST #, so a task name holding one round-trips', () => {
+    // Deleting the first-`#` rule (a `lastIndexOf`) survived the whole
+    // core suite (item 646): the pin the doc comment cites is on the
+    // dependency-spec side, not on this inverse. One row, one home —
+    // the cache's run history read a private copy until 646.
+    expect([splitTaskId('a#b#c'), splitTaskId('a#b'), splitTaskId('a')]).toEqual([
+      ['a', 'b#c'],
+      ['a', 'b'],
+      ['a', ''],
+    ])
+  })
+})
+
+describe('detectCycle skips a finished node', () => {
+  it('a chain of forty stacked diamonds is walked once per node, not once per path', () => {
+    // The BLACK skip in the cycle detector is the difference between one
+    // visit per node and 2^40 (deleting it survived the whole core suite,
+    // item 646: nothing in it stacks diamonds). Each level's two branches
+    // rejoin one level down, so without the skip the rejoin node is
+    // re-walked once per path above it; with it the walk is linear. A
+    // wall-clock bound only decides which side of "never" this lands on.
+    const tasks: Record<string, TaskConfig> = {}
+    const levels = 40
+    for (let i = 0; i < levels; i++) {
+      tasks[`d${i}`] = { dependsOn: [`l${i}`, `r${i}`] }
+      const below = i + 1 < levels ? [`d${i + 1}`] : []
+      tasks[`l${i}`] = { ...cmd('l'), dependsOn: below }
+      tasks[`r${i}`] = { ...cmd('r'), dependsOn: below }
+    }
+    const started = performance.now()
+    const nodes = buildTaskGraph({
+      projects: projects(project('app', tasks)),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'app', task: 'd0' }],
+    })
+    const elapsed = performance.now() - started
+    expect([nodes.size, elapsed < 5_000]).toEqual([levels * 3, true])
+  })
+})
 
 describe('markSurfacedDeps', () => {
   const surfaced = (nodes: Map<string, { surfaced?: boolean }>): string[] =>

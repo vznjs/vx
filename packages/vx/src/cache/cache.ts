@@ -29,7 +29,16 @@ import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { UserError, isDiskFull, isFsRefusal, relPosix, span, xxh3, xxh3hex } from '../util/index.js'
+import {
+  UserError,
+  isDiskFull,
+  isFsRefusal,
+  relPosix,
+  span,
+  splitTaskId,
+  xxh3,
+  xxh3hex,
+} from '../util/index.js'
 import {
   ArchiveSecurityError,
   type ExecUsage,
@@ -1657,10 +1666,4 @@ export class Cache implements CacheLayer {
   private tarPath(hash: string): string {
     return path.join(this.cacheDir, `${hash}.tar.zst`)
   }
-}
-
-function splitTaskId(id: string): [string, string] {
-  const i = id.indexOf('#')
-  if (i < 0) return [id, '']
-  return [id.slice(0, i), id.slice(i + 1)]
 }
