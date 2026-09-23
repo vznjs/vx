@@ -73,6 +73,22 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
   })
 })
 
+describe('cacheRetention refusals the sweep found unheld (item 653)', () => {
+  const SHAPE = `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`
+
+  it('a null retention is refused by name, not by a TypeError from the field scan', () => {
+    expect(refusal({ cacheRetention: null })).toBe(SHAPE)
+  })
+
+  it('a NUMBER maxSize is refused by name, not by a TypeError from parseSize', () => {
+    // `parseSize` takes a string; the type arm is what keeps a number from it.
+    expect(refusal({ cacheRetention: { maxSize: 1048576 } })).toBe(
+      `${WS}: \`cacheRetention\`.maxSize must be a size like '10G', '500MB' or '1048576'`,
+    )
+    expect(refusal({ cacheRetention: { maxSize: '1048576' } })).toBeNull()
+  })
+})
+
 describe('task refusals the sweep found unheld (item 653)', () => {
   it('a remote that is neither a boolean nor "only" is refused', () => {
     expect(taskRefusal({ exec: { command: 'x', remote: 'yes' } })).toBe(
