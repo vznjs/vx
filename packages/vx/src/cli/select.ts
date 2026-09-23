@@ -105,7 +105,7 @@ async function workspaceFingerprintClaims(
   }
 }
 
-export async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
+async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
   const root = await findWorkspaceRoot(cwd)
   const ws = await loadWorkspace(root)
   return await listProjects(ws)

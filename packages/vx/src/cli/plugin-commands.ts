@@ -24,7 +24,7 @@ export interface ResolvedPluginCommand {
  * An empty list is a workspace whose plugins declare no verb at all; `null`
  * from the lookup is no workspace.
  */
-export interface NoPluginCommand {
+interface NoPluginCommand {
   declaredVerbs: readonly string[]
 }
 

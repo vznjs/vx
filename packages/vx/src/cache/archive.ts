@@ -47,7 +47,7 @@ import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './t
 const META_ENTRY = '.vx-meta.json'
 
 /** Archive entry name of the always-present stdout record. */
-export const STDOUT_ENTRY = 'stdout'
+const STDOUT_ENTRY = 'stdout'
 
 /**
  * Sidecar shape. `files` maps an entry name to `[mode, mtimeMs]` — a

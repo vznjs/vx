@@ -16,7 +16,7 @@ const BIN = path.resolve(import.meta.dir, '..', '..', 'src', 'bin.ts')
 export const PARITY_TIMEOUT = 60_000
 
 /** A `build` that leaves an output and echoes its input, plus `test` and `lint`. */
-export function projectConfig(name: string, extra = ''): string {
+function projectConfig(name: string, extra = ''): string {
   return `
   export default {
     tasks: {

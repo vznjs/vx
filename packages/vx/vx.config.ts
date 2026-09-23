@@ -133,6 +133,20 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['**/*'],
+          // The repo-wide laws in this suite read every package, the
+          // workflows and the root files (bins, boundaries, exports, the
+          // runner, the site's samples); until item 613 the key saw only
+          // this package, so an edit elsewhere left the suite an up-to-date
+          // hit in the gate.
+          workspaceFiles: [
+            'packages/*/**',
+            '.github/**',
+            'scripts/**',
+            'CLAUDE.md',
+            'README.md',
+            'vx.config.ts',
+            'vx.workspace.ts',
+          ],
         },
         outputs: { files: [] },
       },

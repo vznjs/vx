@@ -747,7 +747,7 @@ export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
  * CI red on both platforms (2026-09-20). Compare like with like, or do not
  * compare at all.
  */
-export const MIN_PLAUSIBLE_PEAK_BYTES = 1024 * 1024
+const MIN_PLAUSIBLE_PEAK_BYTES = 1024 * 1024
 
 export function peakRssBytes(maxRSS: number): number {
   return maxRSS > 0 && maxRSS < MIN_PLAUSIBLE_PEAK_BYTES ? maxRSS * 1024 : maxRSS

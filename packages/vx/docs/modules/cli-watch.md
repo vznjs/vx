@@ -15,7 +15,6 @@ export async function watchCmd(args: readonly string[]): Promise<number>
 // The loop's parts, exported for the watch suites:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
 export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output
-export function outputContainer(raw: string): string // the directory holding an output tree
 export const WATCH_PROBE = '.vx-watch-probe'
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export interface WatchHandle {

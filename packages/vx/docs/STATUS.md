@@ -100,6 +100,28 @@ test is telling the truth.
       evaluated configs, and the per-task floor is Nx's own, 611), and
       two simplifications with no behaviour in them (606, 611). Next
       trim at 632.
+613.  DONE (2026-09-23, 611's sweep finished and made a law). The rest
+      of the repo: 12 more values in core (`describeSandbox`,
+      `renderInfo`, `restoreTierExclusions`, `MIN_PLAUSIBLE_PEAK_BYTES`,
+      `outputContainer` — exported, imported by nothing, on no module's
+      index), five in the test helpers, the shard dealer and the bench,
+      and one dead helper (`insideSandbox`, a sandbox gate nothing gated
+      on). The hand sweep missed core the first time (a shell loop that
+      printed nothing), which is why it is
+      `tests/exports-referenced.unsafe.test.ts` now: every exported
+      VALUE outside an index, a bin or a framework's config file is
+      named by another code file, or the law says which is not
+      (differential: re-exporting one helper fails it by name). Types
+      are not in it, and the first draft that had them taught why: 15
+      option and result interfaces are the module pages' documented
+      surface and `PersistentConfig` is the schema doc's, two pins that
+      hold whether or not another file names the type — so a type in an
+      exported signature stays exported, and `cli-watch.md` stops
+      listing `outputContainer` as surface. Found alongside and fixed:
+      `test.bun.unsafe` keyed on this package's files alone while eight
+      of its laws read every package, the workflows and the root — an
+      edit elsewhere left the suite an up-to-date hit in a warm gate. Its
+      inputs declare them now (`workspaceFiles`); the key costs 13 ms.
 
 ## In flight
 

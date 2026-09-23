@@ -17,7 +17,7 @@ export interface InfoArgs {
   error?: string
 }
 
-export function parseInfoArgs(args: readonly string[]): InfoArgs {
+function parseInfoArgs(args: readonly string[]): InfoArgs {
   const out: InfoArgs = { format: 'pretty' }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
@@ -57,7 +57,7 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
   return 0
 }
 
-export function renderInfo(f: InfoFacts): string {
+function renderInfo(f: InfoFacts): string {
   const rows: [string, string][] = [
     ['vx', f.vx],
     // The prose stays in the rendered row; `f.bun` itself is the bare
@@ -112,7 +112,7 @@ export function renderInfo(f: InfoFacts): string {
  * runtime cannot start fails the task, so the doctor names it before a run
  * does.
  */
-export function describeSandbox(s: InfoFacts['sandbox']): string {
+function describeSandbox(s: InfoFacts['sandbox']): string {
   const declared = `${s.declared} task${s.declared === 1 ? '' : 's'} declare${s.declared === 1 ? 's' : ''} exec.sandbox`
   if (s.available) return `available (${declared})`
   return `unavailable — ${s.reason}; ${declared}${s.declared > 0 ? ' and will fail' : ''}`
@@ -147,7 +147,7 @@ function describeProjects(f: InfoFacts): string {
   return `${f.projects} (${tasks} · ${n} config${n === 1 ? '' : 's'} did not load)`
 }
 
-export function describeFlakyTasks(tasks: readonly FlakyTask[]): string {
+function describeFlakyTasks(tasks: readonly FlakyTask[]): string {
   if (tasks.length === 0) return 'none'
   const parts = tasks.map(
     (t, i) =>
@@ -156,7 +156,7 @@ export function describeFlakyTasks(tasks: readonly FlakyTask[]): string {
   return `${tasks.length} — ${parts.join('; ')}`
 }
 
-export function describePlugins(
+function describePlugins(
   plugins: ReadonlyArray<{ name: string; seams: readonly string[] }>,
 ): string {
   if (plugins.length === 0) return 'none'

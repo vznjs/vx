@@ -26,7 +26,7 @@ function required(): boolean {
 }
 
 /** True when this process is root, so permission bits do not bind. */
-export function isRoot(): boolean {
+function isRoot(): boolean {
   return process.getuid?.() === 0
 }
 
