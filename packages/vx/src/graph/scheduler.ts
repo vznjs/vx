@@ -734,7 +734,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // ranking order (it is, but see `push`).
       for (const [id, seq] of parked) execReady.push(id, seq)
 
-      if (outcomes.size === nodes.size && active === 0 && activeRestore === 0) {
+      // The outcome count alone: a slot is released before its outcome
+      // lands (`leave()` precedes `finishOne` in both arms, and a skip
+      // takes none), so a task still holding one has no outcome yet, and
+      // the lane counters could add nothing — deleting both from this
+      // condition survived the whole core suite (item 644).
+      if (outcomes.size === nodes.size) {
         resolved = true
         resolve(outcomes)
       }
