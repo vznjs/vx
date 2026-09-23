@@ -546,7 +546,32 @@ test is telling the truth.
       absolute, so the arm served nothing and is gone; the row is red
       with it back. The sandbox is swept.
 
-<!-- item 653 lands above this line; drop this comment when it does -->
+653.  DONE (2026-09-23, the 628 method on the config loader). The gates
+      in `workspace/config-schema.ts`, `config-cache.ts` and the project
+      loader deleted in turn against the whole core suite, by an
+      implementer session (PR #751). Held now, each red with its line
+      gone: four workspace-schema refusals (the integer arm of
+      `concurrency`, an empty package stamp, a non-object `commands`, an
+      empty fingerprint claim), four task-schema refusals
+      (`exec.remote`'s type, a non-object `exec.env`, an array
+      `env.define`, a null `cache`), twelve of `validateSandbox`'s shape
+      checks (a scalar where an object belongs read as an empty object to
+      the unknown-key scan, so each stood alone), the glob-root and
+      empty-filter arms, and the workspace config's lookup order. The
+      eval cache: the loader's one-call-per-question round (a slower path
+      answered the same config, so counting stores pin the cost, which is
+      the claim), the slow-key hit and its re-index, the empty-round
+      skip, the relative-only import rule (the old row's specifiers did
+      not resolve, so resolution refused them first), the closure's
+      visited check, its `node_modules` refusal, its size cap at the
+      boundary, the unreadable-import fallback, the warm closure key
+      equalling the slow one, and every part of the key seed (re-derived
+      from `package.json` and the runtime, since nothing varies them
+      in-process). The literal stripper's escape skip, line-break bail
+      and template-expression depth are held too; the first line-break
+      row left a quote open, so the EOF bail refused it as well and it
+      passed with the bail deleted, and was re-spelt. No source defect.
+      The config loader is swept.
 
 654.  DONE (2026-09-23, the 628 method on the telemetry host, the
       telemetry record and the event bus). Ninety-eight gates and field

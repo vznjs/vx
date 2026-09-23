@@ -2,15 +2,18 @@
 // pure config is served from its stored evaluation, keyed by every byte the
 // evaluation could have read; anything that can observe the environment
 // evaluates live.
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { xxh3 } from '../src/util/index.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
 import {
   blobOidOf,
   configEvalKey,
+  configEvalKeyFromClosure,
   loadProjectConfig,
   loadProjectConfigs,
   type ConfigEvalStore,
@@ -138,6 +141,124 @@ describe('configEvalKey', () => {
     }
   })
 
+  it('refuses a non-relative import even when it RESOLVES outside node_modules (item 653)', async () => {
+    // The row above names specifiers that do not resolve, so resolution
+    // refused them and the relative-only rule had no witness. These two
+    // resolve to a pure file no node_modules segment names: an absolute
+    // path, and a bare package linked in from the workspace.
+    const preset = await write('shared/linked/index.mjs', "export const cmd = 'x'\n")
+    await write('shared/linked/package.json', JSON.stringify({ name: 'linked', main: 'index.mjs' }))
+    await mkdir(path.join(root, 'node_modules'), { recursive: true })
+    await symlink(path.join(root, 'shared/linked'), path.join(root, 'node_modules/linked'))
+    for (const spec of [await realpath(preset), 'linked']) {
+      const cfg = await write(
+        'packages/q2/vx.config.mjs',
+        `import { cmd } from '${spec}'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n`,
+      )
+      expect({ spec, key: await keyOf(cfg) }).toEqual({ spec, key: null })
+    }
+    // Control: the same file imported relatively is keyed.
+    const rel = await write(
+      'packages/q3/vx.config.mjs',
+      "import { cmd } from '../../shared/linked/index.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+    )
+    expect(await keyOf(rel)).not.toBeNull()
+  })
+
+  it('a file two imports reach is in the closure once (item 653)', async () => {
+    const c = await write('shared/d/c.mjs', "export const c = 'c'\n")
+    const a = await write('shared/d/a.mjs', "import { c } from './c.mjs'\nexport const a = c\n")
+    const b = await write('shared/d/b.mjs', "import { c } from './c.mjs'\nexport const b = c\n")
+    const cfg = await write(
+      'packages/dia/vx.config.mjs',
+      "import { a } from '../../shared/d/a.mjs'\nimport { b } from '../../shared/d/b.mjs'\nexport default { tasks: { t: { exec: { command: a + b } } } }\n",
+    )
+    expect((await keyedOf(cfg))?.closure).toEqual([
+      cfg,
+      await realpath(a),
+      await realpath(b),
+      await realpath(c),
+    ])
+  })
+
+  it('refuses a RELATIVE import that lands in node_modules (item 653)', async () => {
+    // Installed bytes are the lockfile's to vouch for, not the closure's:
+    // relative spelling does not make a package file part of the config.
+    await write('node_modules/nm-preset/x.mjs', "export const cmd = 'x'\n")
+    const cfg = await write(
+      'packages/nm/vx.config.mjs',
+      "import { cmd } from '../../node_modules/nm-preset/x.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+    )
+    expect(await keyOf(cfg)).toBeNull()
+  })
+
+  it('a closure past 32 files evaluates live; one at 32 is keyed (item 653)', async () => {
+    // A chain: the config imports c1, c1 imports c2, … The config counts.
+    const chain = async (dir: string, files: number) => {
+      for (let i = 1; i <= files; i++) {
+        const next = i < files ? `import './c${i + 1}.mjs'\n` : ''
+        await write(`${dir}/c${i}.mjs`, `${next}export const v = ${i}\n`)
+      }
+      return write(`${dir}/vx.config.mjs`, "import './c1.mjs'\nexport default { tasks: {} }\n")
+    }
+    expect(await keyOf(await chain('packages/at-cap', 31))).not.toBeNull()
+    expect(await keyOf(await chain('packages/past-cap', 32))).toBeNull()
+  })
+
+  it.skipIf(skipAsRoot('an import that resolves but cannot be read is not keyed'))(
+    'an import that resolves but cannot be read is not keyed (item 653)',
+    async () => {
+      // "Null when its closure cannot be read": the live evaluation then
+      // reports the file on its own terms, not a raw EACCES from keying.
+      const locked = await write('shared/locked.mjs', "export const cmd = 'x'\n")
+      await chmod(locked, 0o000)
+      const cfg = await write(
+        'packages/lk/vx.config.mjs',
+        "import { cmd } from '../../shared/locked.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+      )
+      expect(await keyOf(cfg)).toBeNull()
+    },
+  )
+
+  it('the warm key from the closure IS the slow key — the two paths share entries (item 653)', async () => {
+    // Were they to differ, every warm fast key would miss and the slow
+    // key's own lookup would still serve the config: correct, and every
+    // warm load paying the read and scan the index exists to skip.
+    const preset = await write('shared/same.mjs', "export const cmd = 'x'\n")
+    const cfg = await write(
+      'packages/same/vx.config.mjs',
+      "import { cmd } from '../../shared/same.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+    )
+    const slow = await keyedOf(cfg)
+    expect(slow?.closure).toEqual([cfg, await realpath(preset)])
+    const fast = await configEvalKeyFromClosure({
+      closure: slow!.closure,
+      hashFile: async (f) => blobOidOf(await Bun.file(f).bytes()),
+      workspaceFingerprint: 'fp',
+    })
+    expect(fast).toBe(slow!.key)
+  })
+
+  it('the key is seeded by the eval version, vx, Bun and the fingerprint, in that order (item 653)', async () => {
+    // A stored evaluation is served WITHOUT re-validation, so it must not
+    // outlive the vx or the Bun that validated it. Neither can change inside
+    // one process, so the seed is pinned by re-deriving the key here from
+    // the sources of truth (package.json, the runtime), not by varying them.
+    const cfg = await write('packages/seed/vx.config.mjs', 'export default { tasks: {} }\n')
+    const bytes = await Bun.file(cfg).bytes()
+    const vxVersion = (
+      JSON.parse(readFileSync(path.join(import.meta.dir, '..', 'package.json'), 'utf8')) as {
+        version: string
+      }
+    ).version
+    const seed = xxh3(`vx-config-eval-v${CONFIG_EVAL_VERSION}\0${vxVersion}\0${Bun.version}\0fp\0`)
+    const expected = xxh3(`${cfg}\0${blobOidOf(bytes)}`, seed)
+      .toString(16)
+      .padStart(16, '0')
+    expect(await keyOf(cfg, 'fp')).toBe(expected)
+    expect(await keyOf(cfg, 'fp2')).not.toBe(expected)
+  })
+
   it.each([
     'process.env.CI',
     'Bun.env.X',
@@ -195,6 +316,42 @@ describe('stripLiterals', () => {
   it('bails on a bare slash (regex or division) rather than guess', () => {
     expect(stripLiterals("const r = /'/; process.env.X")).toBeNull()
     expect(stripLiterals('const d = a / b')).toBeNull()
+  })
+  it('an escaped quote does not end a string (item 653)', () => {
+    // Without the escape skip the string ends at `\'`, the rest of the line
+    // reads as an open string and the whole config is refused: never a
+    // wrong key, but a pure config that never caches.
+    expect(stripLiterals('const s = \'it\\\'s\'\nconst t = "say \\"hi\\""\n')).toBe(
+      'const s =  \nconst t =  \n',
+    )
+  })
+  it('bails on a line break inside a quoted string (item 653)', () => {
+    // A quote the lexer misread would otherwise swallow the following lines
+    // as string text — here `process` — and call the file pure.
+    // Two quotes, so no string is left open at the end: only the line-break
+    // bail refuses it (a four-quote shape ends unterminated and the EOF bail
+    // answers first).
+    expect(stripLiterals("const a = 'x\nprocess.env.HOME\nconst b = 1'\n")).toBeNull()
+  })
+  it("an object literal's brace inside a template expression does not close it (item 653)", () => {
+    // Were `{a: 1}`'s `}` taken as the expression's end, `process` after it
+    // would be read as template text and stripped: a false "pure".
+    expect(stripLiterals('const s = `${ {a: 1}.a + process.env.X }`\n')).toBe(
+      'const s =   {a: 1}.a + process.env.X  \n',
+    )
+  })
+  it('a second ${} in one template is code too (item 653)', () => {
+    const out = stripLiterals('const s = `${a}-${process.env.X}`\n')
+    expect(out).toContain('process.env.X')
+    expect(out).not.toContain('-')
+  })
+  it('the expression closes after a nested object literal, and the file reads on (item 653)', () => {
+    // With the object's `}` never counted back down, the expression never
+    // ends and the template's closing backtick opens a new one to EOF: the
+    // file is refused. Conservative, but a pure config that never caches.
+    expect(stripLiterals('const s = `${ {a: 1}.a }`\nconst t = 1\n')).toBe(
+      'const s =   {a: 1}.a  \nconst t = 1\n',
+    )
   })
   it('bails on an unterminated literal', () => {
     expect(stripLiterals("const s = 'open")).toBeNull()
@@ -569,5 +726,132 @@ describe('Cache as a ConfigEvalStore', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// Loader paths the item-653 sweep found unheld: each is a COST claim (one
+// batched call, one lookup per round), invisible to a row that checks only
+// which config came back, because a slower path answers the same.
+describe('the eval-cache loader keeps its round to one call per question (item 653)', () => {
+  /** A store whose single-key lookups and per-file identities are counted. */
+  class CountingStore extends MemoryStore {
+    singleGets = 0
+    batchIdentities = 0
+    /** Paths `hashFiles` answers nothing for, as if their stat failed. */
+    unstatable = new Set<string>()
+    override getConfigEval(key: string): string | null {
+      this.singleGets++
+      return super.getConfigEval(key)
+    }
+    async hashFiles(files: readonly string[]): Promise<Map<string, string>> {
+      this.batchIdentities++
+      const out = new Map<string, string>()
+      for (const f of files) {
+        if (!this.unstatable.has(f)) out.set(f, blobOidOf(await Bun.file(f).bytes()))
+      }
+      return out
+    }
+  }
+
+  async function indexed(name: string) {
+    const cfg = await write(
+      `packages/${name}/vx.config.mjs`,
+      "export default { tasks: { build: { exec: { command: 'live' } } } }\n",
+    )
+    const store = new CountingStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(store.closures.get(cfg)).toEqual([cfg])
+    const [key] = [...store.rows.keys()]
+    store.rows.set(key!, JSON.stringify({ tasks: { build: { exec: { command: 'stored' } } } }))
+    store.hashes = 0
+    return { cfg, store, evalCache }
+  }
+
+  it('a warm load identifies the indexed closure in ONE hashFiles call, never per file', async () => {
+    const { cfg, store, evalCache } = await indexed('w1')
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
+    expect({
+      batch: store.batchIdentities,
+      perFile: store.hashes,
+      single: store.singleGets,
+    }).toEqual({ batch: 1, perFile: 0, single: 0 })
+  })
+
+  it('a fast key that cannot be built joins the round lookup on its slow key', async () => {
+    // The batch answers nothing for the config (a failed stat): no fast key.
+    // The slow key is then computed up front and asked in the ONE batched
+    // lookup — not re-derived later and asked one key at a time.
+    const { cfg, store, evalCache } = await indexed('w2')
+    store.unstatable.add(cfg)
+    const batchGets = store.batchGets
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
+    expect({ batchGets: store.batchGets - batchGets, single: store.singleGets }).toEqual({
+      batchGets: 1,
+      single: 0,
+    })
+  })
+
+  it('a config edited BACK is served by its slow key, and the index follows it back', async () => {
+    // A imports p1 (stored, indexed), then p2 (stored, re-indexed), then p1
+    // again: the index still names p2, so the fast key misses — but the slow
+    // key is the first round's, and that evaluation is served, not redone.
+    const p1 = await realpath(await write('shared/p1.mjs', "export const cmd = 'one'\n"))
+    const p2 = await realpath(await write('shared/p2.mjs', "export const cmd = 'two'\n"))
+    const via = (p: string) =>
+      `import { cmd } from '../../shared/${p}.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n`
+    const cfg = await write('packages/w4/vx.config.mjs', via('p1'))
+    const store = new CountingStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs([cfg], { evalCache })
+    const [keyOne] = [...store.rows.keys()]
+    store.rows.set(keyOne!, JSON.stringify({ tasks: { build: { exec: { command: 'stored' } } } }))
+    await writeFile(cfg, via('p2'))
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(store.closures.get(cfg)).toEqual([cfg, p2])
+    const puts = store.puts
+    await writeFile(cfg, via('p1'))
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
+    expect(store.puts).toBe(puts) // nothing evaluated
+    expect(store.closures.get(cfg)).toEqual([cfg, p1]) // re-indexed on the slow hit
+  })
+
+  it('a round with no cacheable config asks the store nothing', async () => {
+    // Every config impure: no key, so no lookup — not an empty `IN ()` query.
+    const cfg = await write(
+      'packages/w5/vx.config.mjs',
+      'export default { tasks: { build: { exec: { command: String(process.pid) } } } }\n',
+    )
+    const store = new CountingStore()
+    await loadProjectConfigs([cfg], { evalCache: { store, workspaceFingerprint: 'fp' } })
+    expect({ batchGets: store.batchGets, single: store.singleGets, puts: store.puts }).toEqual({
+      batchGets: 0,
+      single: 0,
+      puts: 0,
+    })
+  })
+
+  it('a store with no closure index is served from the round lookup', async () => {
+    // Only `hits` can serve here: with no index there is no fast key, so no
+    // indexed slow path re-asking the store one key at a time.
+    const cfg = await write(
+      'packages/w3/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'live' } } } }\n",
+    )
+    const rows = new Map<string, string>()
+    const store: ConfigEvalStore = {
+      getConfigEval: (k) => rows.get(k) ?? null,
+      putConfigEval: (k, json) => void rows.set(k, json),
+    }
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(rows.size).toBe(1)
+    const [key] = [...rows.keys()]
+    rows.set(key!, JSON.stringify({ tasks: { build: { exec: { command: 'stored' } } } }))
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
   })
 })
