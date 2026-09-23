@@ -453,6 +453,11 @@ describe('toWireEvent', () => {
     const stdout = toWireEvent({ kind: 'task:stdout', node, chunk: 'c' })
     expect(stdout).toEqual({ kind: 'task:stdout', taskId: 'a#build', chunk: 'c' })
 
+    // The stream a consumer routes a chunk to: a stderr chunk mapped to
+    // `task:stdout` passed every row until this one (654).
+    const stderr = toWireEvent({ kind: 'task:stderr', node, chunk: 'e' })
+    expect(stderr).toEqual({ kind: 'task:stderr', taskId: 'a#build', chunk: 'e' })
+
     const complete = toWireEvent({ kind: 'task:complete', node, outcome: mkOutcome(node) })
     expect(complete).toEqual({ kind: 'task:complete', outcome: projectOutcome(mkOutcome(node)) })
   })
