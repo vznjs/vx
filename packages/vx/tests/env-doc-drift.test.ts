@@ -7,19 +7,25 @@
 // directions, so neither an undocumented variable nor a documented ghost
 // lands quietly. The source of truth is the `process.env` reads themselves,
 // not a list a test could agree with.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
 const pkg = path.resolve(import.meta.dir, '..')
 
+/** Every `.ts` under `src`, walked — a sandboxed shard has no git to ask (darwin CI, 2026-09-23). */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name)
+    if (e.isDirectory()) out.push(...sourceFiles(p))
+    else if (e.name.endsWith('.ts')) out.push(p)
+  }
+  return out
+}
+
 function readInSource(): Set<string> {
-  const ls = Bun.spawnSync(['git', 'ls-files', '-z', 'src'], { cwd: pkg })
-  const sources = ls.stdout
-    .toString()
-    .split('\0')
-    .filter((f) => f.endsWith('.ts'))
-    .map((f) => readFileSync(path.join(pkg, f), 'utf8'))
+  const sources = sourceFiles(path.join(pkg, 'src')).map((f) => readFileSync(f, 'utf8'))
   // A read through a named constant (`process.env[VX_RUN_TASK_ENV]`,
   // exec/env.ts) is a read of the name the constant holds.
   const constants = new Map<string, string>()
