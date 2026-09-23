@@ -162,6 +162,22 @@ describe('configEvalKey', () => {
     expect(await keyOf(rel)).not.toBeNull()
   })
 
+  it('a file two imports reach is in the closure once (item 653)', async () => {
+    const c = await write('shared/d/c.mjs', "export const c = 'c'\n")
+    const a = await write('shared/d/a.mjs', "import { c } from './c.mjs'\nexport const a = c\n")
+    const b = await write('shared/d/b.mjs', "import { c } from './c.mjs'\nexport const b = c\n")
+    const cfg = await write(
+      'packages/dia/vx.config.mjs',
+      "import { a } from '../../shared/d/a.mjs'\nimport { b } from '../../shared/d/b.mjs'\nexport default { tasks: { t: { exec: { command: a + b } } } }\n",
+    )
+    expect((await keyedOf(cfg))?.closure).toEqual([
+      cfg,
+      await realpath(a),
+      await realpath(b),
+      await realpath(c),
+    ])
+  })
+
   it.each([
     'process.env.CI',
     'Bun.env.X',
