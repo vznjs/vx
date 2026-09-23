@@ -1,11 +1,29 @@
-# 0.1.0 — draft release notes (2026-09-22)
+# 0.1.0 — draft release notes (2026-09-22, refreshed 2026-09-23)
 
 **Status: a draft for the owner to cut the release from (launch checklist
-item 2; plan D4).** 341 pull requests merged since v0.0.21 (2026-09-15),
+item 2; plan D4).** 377 pull requests merged since v0.0.21 (2026-09-15),
 every one a titled squash, so GitHub's generated notes are accurate; this
 page is the same record grouped by what a user meets, with the internal
 work in one line at the end. Version: `0.1.0` says "first real release"
 where 0.0.22 says "another nightly".
+
+## Nx and Turbo repos, unchanged
+
+- `nx()` runs an Nx repo with nothing written: every target the resolved
+  project graph defines becomes a task, executor targets run through
+  `nx-exec` (one executor, one process, Nx's own `runExecutor`) and
+  run-commands targets as the shell they are; configurations are
+  `<target>:<configuration>` tasks; `cache: true` and the legacy list decide
+  caching; a root-relative output outside the project restores as a
+  workspace file. The graph is a snapshot under vx's cache dir, refreshed
+  by `nx graph --file` when `nx.json` or a `project.json` is newer.
+  Proven on refine (Nx 18, 205 of 205 targets identical) and on real Nx 22
+  with `@nx/js:tsc`; `nx-exec` starts in 214 ms against `nx run`'s 346
+  with the daemon warm.
+- `turbo()` runs a Turbo repo the same way; both share one adoption
+  skeleton, and `bunx @vzn/vx-migrate --from nx|turbo` writes the configs
+  when you want the files. The migration was walked on astro and on Nx
+  22 through to a build and a restore.
 
 ## Selecting and running
 
@@ -54,6 +72,11 @@ where 0.0.22 says "another nightly".
 - An upstream with no cache key is pinned and explained (`vx why` says why
   its consumer's key moved after the upstream's first run).
 
+- A cold run's config round is written once per table, not once per
+  config: `load configs` at 1,000 projects 507–607 ms → 207–272; the
+  output-directory snapshots land in one transaction at run end (the stage
+  52–70 ms → 10–17 cold, 64–75 → 12–14 on a restore).
+
 ## Sandbox (Linux `bwrap`, macOS seatbelt)
 
 - The post-run sweep no longer deletes what the task itself wrote; a
@@ -96,6 +119,10 @@ where 0.0.22 says "another nightly".
   `--force` reaches a remote executor.
 - A telemetry sink that swallows a failure still owes a warning; the
   plugin boundary's sentences are pinned.
+- `@vzn/vx-reapi` names `VX_REAPI_EXECUTE=1` beside its endpoint and
+  instance; each plugin's index carries what a workspace calls, its
+  internals live in files; the MCP README's tool table is held to the
+  server's list.
 
 ## CLI and upgrade
 
@@ -107,6 +134,10 @@ where 0.0.22 says "another nightly".
 stats` points at the verb that answers it.
 - Piped stdout is flushed before the CLI exits, and a reader that leaves
   (`| head`) does not fail the run.
+- The CLI reference lists every environment variable vx reads, with its
+  default and the fallback rule each timeout keeps; `vx watch` says when
+  it polls and `VX_WATCH_POLL=1` polls from the start; the picker names a
+  wrong answer, and `vx run` in CI says why it asked for nothing.
 
 ## Docs and site
 
@@ -120,4 +151,6 @@ stats` points at the verb that answers it.
 - A per-file mutation sweep of core (items 342–572) with ~14k lines of
   witness tests behind the fixes above; the suite's twelve shards are
   weighed and balanced; the gate refuses a Bun below the floor before any
-  shard starts; CLAUDE.md and STATUS trimmed to what a session needs.
+  shard starts; CLAUDE.md and STATUS trimmed to what a session needs. A
+  value export nothing imports is a test failure; a `bun:sqlite`
+  statement tally rides beside the profiler in the bench package.
