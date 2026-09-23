@@ -321,6 +321,32 @@ describe('LayeredCache', () => {
     expect(remote.hasManyCalls).toBe(0)
   })
 
+  it('prefetch() with remote reads off pulls nothing: no remote GET, false', async () => {
+    // The policy gate on `prefetch` (`if (!this.policy.remoteRead) return
+    // false`) survived the whole core suite with `remoteHasMany`'s twin
+    // held (item 641): a `--cache` that turns remote reads off must leave
+    // the prefetch pass, not only the lazy get, off the wire.
+    await saveSample(makeLayered(), 'h-off')
+    await wipeLocal()
+    const layered = new LayeredCache(local, remote.layer, {
+      policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
+      onRemoteError: () => {},
+    })
+    expect(await layered.prefetch('h-off', { taskId: 'pkg#build', command: 'x' })).toBe(false)
+    expect(remote.gets).toBe(0)
+  })
+
+  it('get() with remote reads off is a plain local miss: no remote GET, null', async () => {
+    await saveSample(makeLayered(), 'h-off')
+    await wipeLocal()
+    const layered = new LayeredCache(local, remote.layer, {
+      policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
+      onRemoteError: () => {},
+    })
+    expect(await layered.get('h-off', { taskId: 'pkg#build', command: 'x' })).toBeNull()
+    expect(remote.gets).toBe(0)
+  })
+
   it('markRemoteAbsent() makes a later get() a miss with NO remote GET', async () => {
     const layered = makeLayered()
     layered.markRemoteAbsent(['h-gone'])
