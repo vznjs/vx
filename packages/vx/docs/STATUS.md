@@ -296,6 +296,23 @@ test is telling the truth.
       with remote reads off, `prefetch` pulls nothing (false, no remote
       GET) and `get` is a plain local miss (null, no remote GET). Each
       red on its line alone.
+642.  DONE (2026-09-23, the 628 method on `LayeredCache`'s write path).
+      Eight gates deleted in turn against the whole core suite in the
+      worktree: packing now when local writes are off (six rows), the
+      upload's never-reject catch (three), the bytes read inside the
+      job (sixteen), the drain's early return (thirteen, one of them a
+      hang), the pool bound and the drain's wait for in-flight uploads
+      (one each) are held; the `policy.remoteWrite` gate on `save` and
+      the pack-failure catch survived. Two rows
+      (`layered-cache.test.ts`): with remote writes off, `save` lands
+      the local entry and issues no remote PUT (641's read twin); with
+      local writes off, a pack that throws is reported through
+      `onRemoteError`, skipped, and never thrown — the row's first
+      shape set the policy on the wrapper and passed on pristine code,
+      because the pack branch keys on the LOCAL cache's own write flag
+      (`localWritesEnabled`), so the row opens a `Cache` with writes
+      off and spies its `packArtifactBytes`. Each red on its line
+      alone. The layered cache is swept end to end (641, 642).
 
 ## In flight
 
