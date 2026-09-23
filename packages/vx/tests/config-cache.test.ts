@@ -2,12 +2,13 @@
 // pure config is served from its stored evaluation, keyed by every byte the
 // evaluation could have read; anything that can observe the environment
 // evaluates live.
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
 import {
   blobOidOf,
   configEvalKey,
@@ -201,6 +202,21 @@ describe('configEvalKey', () => {
     expect(await keyOf(await chain('packages/at-cap', 31))).not.toBeNull()
     expect(await keyOf(await chain('packages/past-cap', 32))).toBeNull()
   })
+
+  it.skipIf(skipAsRoot('an import that resolves but cannot be read is not keyed'))(
+    'an import that resolves but cannot be read is not keyed (item 653)',
+    async () => {
+      // "Null when its closure cannot be read": the live evaluation then
+      // reports the file on its own terms, not a raw EACCES from keying.
+      const locked = await write('shared/locked.mjs', "export const cmd = 'x'\n")
+      await chmod(locked, 0o000)
+      const cfg = await write(
+        'packages/lk/vx.config.mjs',
+        "import { cmd } from '../../shared/locked.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+      )
+      expect(await keyOf(cfg)).toBeNull()
+    },
+  )
 
   it.each([
     'process.env.CI',
