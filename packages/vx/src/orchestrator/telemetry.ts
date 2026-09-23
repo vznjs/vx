@@ -75,8 +75,6 @@ const PASSES: Record<TaskStatus, boolean> = {
  */
 export const TASK_STATUSES: readonly TaskStatus[] = Object.keys(PASSES) as TaskStatus[]
 
-const KNOWN_STATUSES: ReadonlySet<string> = new Set(TASK_STATUSES)
-
 /**
  * Did the task pass? A cache hit counts — it produced the same result without
  * spending the time, which is the whole point. `skipped` and `aborted` do NOT:
@@ -97,7 +95,8 @@ export function isPassStatus(status: string): boolean {
  * cannot disagree about what a hit is. Unknown strings read as not-a-hit.
  */
 export function isCacheHit(status: string): boolean {
-  if (!KNOWN_STATUSES.has(status)) return false
+  // No known-status guard: an unknown string falls through the switch to
+  // undefined, which is neither hit source (the guard survived item 654).
   const source = deriveCacheSource(status as TaskStatus)
   return source === 'local' || source === 'remote'
 }
@@ -364,8 +363,9 @@ export function createTelemetrySource(args: {
   // Never silently. The standing rule is that a never-fail path must still
   // WARN — telemetry that vanishes without a word is indistinguishable from
   // telemetry nobody configured.
+  // Every hook call site skips a disabled sink first, so this runs at most
+  // once per sink without a guard of its own (item 654).
   const disable = (sink: TelemetrySink, hook: string, err: unknown): void => {
-    if (disabled.has(sink)) return
     disabled.add(sink)
     warn?.(
       `[vx] telemetry sink '${sink.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
