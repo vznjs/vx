@@ -396,6 +396,29 @@ test is telling the truth.
       rewritten. The builder is swept;
       its detectors and helpers (cycle, collisions, overlap, surfaced
       deps, request expansion) are 646.
+646.  DONE (2026-09-23, the 628 method on the task graph's detectors
+      and helpers). Fifteen gates in `graph/task-graph.ts` deleted in
+      turn against the whole core suite in the worktree. Held: both
+      detector calls (five and thirty-five rows), the remote-only
+      exemption, the addition shape, all three overlap cases, both
+      surfacing bounds, the empty-scope rule, and the GRAY check — that
+      one timed the driver out at thirty minutes (a cycle the builder
+      no longer refuses reaches a scheduler that never resolves), and
+      the task-graph suite alone reddens five rows under it. Four
+      survived, four rows (`task-graph.test.ts`): `expandRequested`
+      dedupes (`vx run build app#build` is one entry) and
+      `unresolvedRequests` dedupes (`vx run x x` names x once) — both
+      doc comments claimed it; `splitTaskId` splits on the FIRST `#`
+      (the pin its comment cites is on the dependency-spec side, not
+      on the inverse); and the cycle detector's BLACK skip is walked
+      by forty stacked diamonds inside a five-second bound — without
+      it the walk is once per path, 2^40, and the differential was
+      killed at sixty seconds. Each red on its line alone. Grepping
+      the class found a second copy of the split rule: `cache.ts` had
+      its own `splitTaskId` for the run history (the cache may not
+      import the graph), so the function moved to `util/task-id.ts`,
+      the graph re-exports it, the façade is unchanged, and the copy is
+      gone. The task graph is swept end to end (645, 646).
 
 ## In flight
 
