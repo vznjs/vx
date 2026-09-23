@@ -1016,6 +1016,50 @@ describe('Cache storage (v10)', () => {
     }
   })
 
+  // The flush has three sites, and the row above drives `stats()` alone.
+  // A run reaches neither `stats()` nor `prune()`: its hits bump
+  // `accessed_at` only through close, so with that flush gone no run
+  // ever marks an entry used and a TTL prune evicts what is hit daily.
+  // Each row below is red with its site's flush deleted (item 629).
+  it("a hit's accessed_at bump survives close and is what the next process reads", async () => {
+    await cache.save({
+      hash: 'h-close',
+      projectDir,
+      outputFiles: [],
+      entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+    })
+    cache.dbHandle().query('UPDATE entries SET accessed_at = 1 WHERE hash = ?').run('h-close')
+    const before = Date.now()
+    await cache.get('h-close')
+    cache.close()
+    cache = new Cache(cacheDir)
+    const accessed = (
+      cache
+        .dbHandle()
+        .query('SELECT accessed_at AS a FROM entries WHERE hash = ?')
+        .get('h-close') as {
+        a: number
+      }
+    ).a
+    expect(accessed).toBeGreaterThanOrEqual(before)
+  })
+
+  it('a prune in the same process does not evict an entry hit since the last flush', async () => {
+    await cache.save({
+      hash: 'h-hit',
+      projectDir,
+      outputFiles: [],
+      entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+    })
+    cache.dbHandle().query('UPDATE entries SET accessed_at = 1 WHERE hash = ?').run('h-hit')
+    await cache.get('h-hit')
+    // The cutoff is above the ancient stamp and below the hit's: the bump
+    // pending in memory is the only thing that keeps the entry.
+    const result = await cache.prune({ olderThanMs: Date.now() - 60_000 })
+    expect(result.evicted).toBe(0)
+    expect(await cache.get('h-hit')).not.toBeNull()
+  })
+
   it('ingest() rejects a zstd frame declaring an oversize decompressed length (bomb)', async () => {
     // A minimal zstd frame header: magic + descriptor (8-byte FCS, not
     // single-segment) + window byte + an 8-byte Frame_Content_Size of 3 GiB.
