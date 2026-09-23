@@ -26,6 +26,9 @@ import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
+import { mapNxDeps, type TaskNameFor } from './nx-deps.js'
+import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
+import { mapNxOutputs } from './nx-outputs.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
@@ -150,8 +153,7 @@ export async function mapNxWorkspace(
     nodeByMeta.set(synthetic, node)
   }
 
-  /** The vx task an Nx `project:target:configuration` reaches, or null when the target lacks it. */
-  const taskNameFor = (project: string, target: string, configuration: string): string | null => {
+  const taskNameFor: TaskNameFor = (project, target, configuration) => {
     const t = nodeMap[project]?.data?.targets?.[target]
     if (t === undefined) return null
     const v = variants(target, t).find((x) => x.configuration === configuration)
@@ -284,7 +286,7 @@ function buildTask(
   variant: Variant,
   namedInputs: Record<string, unknown[]> | null,
   metaByNode: ReadonlyMap<string, ProjectMeta>,
-  taskNameFor: (project: string, target: string, configuration: string) => string | null,
+  taskNameFor: TaskNameFor,
   opts: MapNxOptions,
 ): GeneratedTask {
   const todos: string[] = []
@@ -303,223 +305,10 @@ function buildTask(
     todos,
   )
 
-  const files: string[] = []
-  const wsFiles: string[] = []
-  const envNames: string[] = []
-  // Nx's `{ runtime: "<cmd>" }` hashes the command's output, which is
-  // exactly `cache.inputs.runtime` — schema.md calls it "the Nx `runtime`
-  // input equivalent". It was reaching the fall-through and being reported
-  // as "not representable in vx" (walked the Nx path, 2026-09-20).
-  const runtimeCmds: string[] = []
-  const expandInput = (entry: unknown, seen: Set<string>): void => {
-    if (typeof entry === 'string') {
-      let s = entry
-      let neg = ''
-      if (s.startsWith('!')) {
-        neg = '!'
-        s = s.slice(1)
-      }
-      if (s.startsWith('{projectRoot}/')) {
-        files.push(neg + s.slice('{projectRoot}/'.length))
-        return
-      }
-      if (s.startsWith('{workspaceRoot}/')) {
-        wsFiles.push(neg + s.slice('{workspaceRoot}/'.length))
-        return
-      }
-      if (s.startsWith('^')) {
-        todos.push(
-          // Principle 5: the cascade folds each upstream task's KEY (its
-          // inputs), never its outputs — the old text said the reverse.
-          `deps-input ${JSON.stringify(entry)}: vx already folds each dependency's cache key ` +
-            '(its inputs, never its outputs) through dependsOn — usually safe to drop',
-        )
-        return
-      }
-      if (s.includes('{')) {
-        todos.push(`input ${JSON.stringify(entry)} uses a token vx does not support`)
-        return
-      }
-      // Bare string = named-input reference.
-      const named = namedInputs?.[s]
-      if (named === undefined) {
-        todos.push(
-          `named input ${JSON.stringify(s)} not found in nx.json — declare its globs manually`,
-        )
-        return
-      }
-      if (seen.has(s)) return
-      seen.add(s)
-      for (const e of named) expandInput(e, seen)
-      return
-    }
-    if (entry && typeof entry === 'object') {
-      const o = entry as Record<string, unknown>
-      if (typeof o.env === 'string') {
-        envNames.push(o.env)
-        return
-      }
-      if (typeof o.runtime === 'string') {
-        runtimeCmds.push(o.runtime)
-        return
-      }
-      if (typeof o.fileset === 'string') {
-        expandInput(o.fileset, seen)
-        return
-      }
-      if (o.externalDependencies !== undefined) {
-        todos.push(
-          `input {externalDependencies: ${JSON.stringify(o.externalDependencies)}}: vx hashes ` +
-            "the project's package.json into every key — usually safe to drop",
-        )
-        return
-      }
-      if (o.dependentTasksOutputFiles !== undefined) {
-        todos.push(
-          "input {dependentTasksOutputFiles: …}: vx already folds each dependency's cache key " +
-            '(its inputs, never its outputs) through dependsOn — a change upstream is a key change here',
-        )
-        return
-      }
-      if (typeof o.input === 'string') {
-        if (o.dependencies === true || o.projects !== undefined) {
-          todos.push(
-            `deps-input ${JSON.stringify(entry)}: vx folds upstream via dependsOn automatically`,
-          )
-          return
-        }
-        expandInput(o.input, seen)
-        return
-      }
-    }
-    todos.push(`input ${JSON.stringify(entry)} not representable in vx`)
-  }
-  for (const entry of target.inputs ?? []) expandInput(entry, new Set())
-
-  const outFiles: string[] = []
-  const wsOutFiles: string[] = []
-  // Heuristic: a bare directory path captures its whole subtree. A dot
-  // past the first character is an extension (`lcov.info`); a leading
-  // one is a hidden DIRECTORY (`.next`, `.output`, `.netlify` — what Nx
-  // plugins and router declare), and a bare name for a directory saves
-  // nothing: the output scan lists files, never a directory itself.
-  const dirGlob = (rel: string): string => {
-    const last = rel.split('/').at(-1)!
-    return !rel.includes('*') && !last.slice(1).includes('.') ? `${rel}/**` : rel
-  }
-  const pushOut = (rel: string): void => {
-    outFiles.push(dirGlob(rel))
-  }
-  for (const o of target.outputs ?? []) {
-    let s = o
-    const optTok = /\{options\.([^}]+)\}/.exec(s)
-    if (optTok) {
-      const v = options[optTok[1]!]
-      if (typeof v !== 'string') {
-        todos.push(
-          `output ${JSON.stringify(o)}: option ${JSON.stringify(optTok[1])} is not a literal ` +
-            'string — resolve manually',
-        )
-        continue
-      }
-      s = s.replace(optTok[0], v)
-    }
-    if (s.startsWith('{projectRoot}/')) {
-      pushOut(s.slice('{projectRoot}/'.length))
-      continue
-    }
-    if (s.startsWith('{workspaceRoot}/')) {
-      wsOutFiles.push(dirGlob(s.slice('{workspaceRoot}/'.length)))
-      continue
-    }
-    if (s.includes('{')) {
-      todos.push(`output ${JSON.stringify(o)} uses a token vx does not support`)
-      continue
-    }
-    // Plain paths resolve against the workspace root in nx. One outside
-    // the project dir is Nx's DEFAULT layout (`@nx/js:tsc` writes
-    // `dist/<project>` at the root), so it is the workspace-root output it
-    // is, not a gap: as a todo, every such target hit green and restored
-    // NOTHING (item 593, the bench workspace's 1,000 `build` targets).
-    if (projectRel === '.') pushOut(s)
-    else if (s.startsWith(`${projectRel}/`)) pushOut(s.slice(projectRel.length + 1))
-    else wsOutFiles.push(dirGlob(path.posix.normalize(s).replace(/^\.\//, '')))
-  }
-
-  const deps: string[] = []
-  for (const d of target.dependsOn ?? []) {
-    if (typeof d === 'string') {
-      // Nx separates a specific project's target with a COLON
-      // (`ui:build`); vx's separator is `#`. Passed through, the entry
-      // read as a task named `ui:build` in the DEPENDENT's own project
-      // and the migrated workspace refused to run — "depends on
-      // web#ui:build but no such task is declared", from a config
-      // vx-migrate itself wrote (walked the Nx path, 2026-09-20). The
-      // object form below already mapped it; this one did not.
-      const colon = d.indexOf(':')
-      if (colon <= 0) {
-        deps.push(d)
-        continue
-      }
-      const [project = '', targetPart, configuration] = d.split(':')
-      const m = metaByNode.get(project)
-      if (m === undefined || targetPart === undefined || targetPart === '') {
-        todos.push(
-          `dependsOn ${JSON.stringify(d)} names ${JSON.stringify(project)}, which is not a ` +
-            'workspace package in this graph — edge dropped',
-        )
-        continue
-      }
-      // A configuration is a task of its own (`build:ci`) unless it is the
-      // target's default, which the base task carries; an edge naming one
-      // follows it there. A configuration the target does not declare has
-      // no task to reach, so the edge falls back to the base with a todo.
-      if (configuration !== undefined) {
-        const named = taskNameFor(project, targetPart, configuration)
-        if (named === null) {
-          todos.push(
-            `dependsOn ${JSON.stringify(d)}: ${project} declares no ${JSON.stringify(configuration)} ` +
-              `configuration on ${targetPart} — depending on ${m.name}#${targetPart}`,
-          )
-        } else {
-          deps.push(`${m.name}#${named}`)
-          continue
-        }
-      }
-      deps.push(`${m.name}#${targetPart}`)
-      continue
-    }
-    if (d && typeof d === 'object') {
-      const o = d as Record<string, unknown>
-      const t = typeof o.target === 'string' ? o.target : undefined
-      if (t === undefined) {
-        todos.push(`dependsOn ${JSON.stringify(d)} has no target — dropped`)
-        continue
-      }
-      if (o.params !== undefined) {
-        todos.push(
-          `dependsOn ${JSON.stringify(t)}: params forwarding is not supported — forward args ` +
-            'via `vx run … -- args` instead',
-        )
-      }
-      const projects = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
-      if (projects === undefined || projects === 'self') deps.push(t)
-      else if (projects === 'dependencies') deps.push(`^${t}`)
-      else if (Array.isArray(projects)) {
-        for (const p of projects) {
-          const m = typeof p === 'string' ? metaByNode.get(p) : undefined
-          if (m) deps.push(`${m.name}#${t}`)
-          else {
-            todos.push(
-              `dependsOn project ${JSON.stringify(p)} is not a workspace package — edge dropped`,
-            )
-          }
-        }
-      } else todos.push(`dependsOn ${JSON.stringify(d)} not representable in vx`)
-      continue
-    }
-    todos.push(`dependsOn ${JSON.stringify(d)} not representable in vx`)
-  }
+  const inputs = emptyNxInputs()
+  expandNxInputs(target.inputs ?? [], namedInputs, inputs, todos)
+  const { outFiles, wsOutFiles } = mapNxOutputs(target.outputs ?? [], options, projectRel, todos)
+  const deps = mapNxDeps(target.dependsOn ?? [], metaByNode, taskNameFor, todos)
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`
   // (Nx ≥ 17 writes it into the graph from `cacheableOperations` too —
@@ -551,7 +340,7 @@ function buildTask(
   }
 
   const exec: Record<string, unknown> = { command }
-  if (envNames.length > 0) exec.env = { passThrough: envNames }
+  if (inputs.envNames.length > 0) exec.env = { passThrough: inputs.envNames }
   if (persistent) {
     exec.persistent = {}
     todos.push(opts.persistentTodo)
@@ -563,16 +352,17 @@ function buildTask(
     // one, else the project's whole tree — the same set either way, so
     // it is no gap to report (487 lines per run on refine, 2026-09-22).
     if (target.inputs === undefined) {
-      if (namedInputs?.['default'] !== undefined) expandInput('default', new Set())
-      if (files.length === 0) files.push('**/*')
+      if (namedInputs?.['default'] !== undefined)
+        expandNxInputs(['default'], namedInputs, inputs, todos)
+      if (inputs.files.length === 0) inputs.files.push('**/*')
     }
-    const inputs: Record<string, unknown> = { files }
-    if (wsFiles.length > 0) inputs.workspaceFiles = wsFiles
-    if (envNames.length > 0) inputs.env = envNames
-    if (runtimeCmds.length > 0) inputs.runtime = runtimeCmds
+    const cacheInputs: Record<string, unknown> = { files: inputs.files }
+    if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
+    if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
+    if (inputs.runtimeCmds.length > 0) cacheInputs.runtime = inputs.runtimeCmds
     const outputs: Record<string, unknown> = { files: outFiles }
     if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
-    task.cache = { inputs, outputs }
+    task.cache = { inputs: cacheInputs, outputs }
   }
 
   return { name: variant.name, todos, task }
