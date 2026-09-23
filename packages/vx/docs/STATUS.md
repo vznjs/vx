@@ -104,6 +104,17 @@ test is telling the truth.
       and save paths traced by syscall and shaved (627, 630, the tools
       in 631); and the two deferred flushes held site by site (628,
       629). Next trim at 652.
+633.  DONE (2026-09-23, the 628 method on `close()`'s other duties).
+      `Cache.close()` does four things: the two flushes (628, 629) and
+      two 30-day retention prunes. Each prune line deleted in turn
+      against `tests/cache.test.ts`: the history row asserted the
+      `invocations` header alone, so the `DELETE FROM runs` beside it
+      survived; the config-eval prune (`config_evals` and
+      `config_closures`, item 615's tables) was held by nothing. Now the
+      history row asserts both tables, and a new row ages one eval and
+      one closure past the window and reopens: the aged rows are gone,
+      the fresh ones kept — red with the prune, or either half of it,
+      deleted.
 
 ## In flight
 
