@@ -598,6 +598,20 @@ describe('createTelemetrySource — crash isolation', () => {
     expect(warns).toEqual(["[vx] telemetry sink 'flaky-sink' failed to flush: disk full"])
   })
 
+  it('a sink with no flush hook is not asked to flush, and nothing is said', async () => {
+    // `flush` is optional. Calling it anyway throws a TypeError the flush
+    // catch reports as "failed to flush" — a warning on every run for a
+    // sink that buffers nothing (654).
+    const warns: string[] = []
+    const src = createTelemetrySource({
+      sinks: [{ name: 'stream-only', onRecord: () => undefined }],
+      run: RUN,
+      warn: (m) => warns.push(m),
+    })
+    await src.flush()
+    expect(warns).toEqual([])
+  })
+
   it('emitSummary + flush are crash-isolated', async () => {
     const good = recorder()
     const bad: TelemetrySink = {
