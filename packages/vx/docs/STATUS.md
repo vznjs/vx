@@ -256,6 +256,17 @@ test is telling the truth.
       plans 249 tasks through them with no install and no plugin.
       Nothing off; the clone was restored after. No change.
 
+606.  DONE (2026-09-23, a simplification with no behaviour in it). The
+      Nx mapper's `buildTask` was a 300-line body carrying four concerns
+      — input expansion with its named-input recursion, output mapping
+      with the `{options.x}` and workspace-root rules, edge mapping with
+      the colon and configuration rules, and the task's assembly. The
+      first three are `nx-inputs.ts`, `nx-outputs.ts` and `nx-deps.ts`
+      now, each a pure function over the target's field with the todos
+      it owns, and `buildTask` is the assembly alone (about 90 lines;
+      `nx-map.ts` 737 → 527). The migrate, nx and shared-outputs suites
+      pass unchanged, which is the proof a move needs.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
