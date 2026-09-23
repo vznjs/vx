@@ -207,6 +207,49 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     utimesSync(path.join(proj, 'dist'), new Date(recorded.mtimeMs), new Date(recorded.mtimeMs))
     expect(await cache.outputDirsCurrent(proj, rows())).toBe(true) // the stray is invisible
   })
+  it('snapshots land together: pending until a read, a prune, a stat or close, then one transaction', async () => {
+    // A snapshot is read by the NEXT run's hit check, never by the task
+    // that took it, so nothing is written per task (a commit each was the
+    // whole run-end stage at 1,000 projects, item 622). The batch loader
+    // flushes first, so a same-process reader still sees every snapshot.
+    await mkdir(path.join(proj, 'dist', 'a'), { recursive: true })
+    await mkdir(path.join(proj, 'dist', 'b'), { recursive: true })
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 5)
+    // The rows reference their entries; `h1` is the fixture's, `h2` a second.
+    await cache.save({
+      hash: 'h2',
+      projectDir: proj,
+      outputFiles: [path.join(proj, 'dist/a.js')],
+      entry: { taskId: 'p#build', command: 'y', durationMs: 1, stdout: '' },
+    })
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.recordOutputDirs('h2', proj, ['dist/a'])
+    const count = () =>
+      (cache.dbHandle().query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
+    expect(count()).toBe(0)
+    expect((cache.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path).sort()).toEqual([
+      'dist',
+      'dist/a',
+      'dist/b',
+      'dist/sub',
+      'dist/sub/deep',
+    ])
+    // Both landed in that one flush, the second snapshot included.
+    expect(count()).toBe(6)
+    // A later snapshot for the same hash replaces the rows, again deferred.
+    await cache.recordOutputDirs('h1', proj, ['dist/b'])
+    expect(count()).toBe(6)
+    expect((cache.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path)).toEqual([
+      'dist/b',
+    ])
+    expect(count()).toBe(2)
+    // A snapshot whose entry another process pruned meanwhile lands as
+    // nothing, and does not fail the flush for the rest.
+    await cache.recordOutputDirs('h2', proj, ['dist/a'])
+    cache.dbHandle().prepare('DELETE FROM entries WHERE hash = ?').run('h2')
+    expect(cache.loadOutputDirsBatch(['h1', 'h2']).get('h1')?.length).toBe(1)
+    expect(count()).toBe(1)
+  })
 })
 
 describe('warm hits through run() with the short-circuit', () => {

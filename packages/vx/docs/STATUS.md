@@ -253,6 +253,23 @@ scope`: an empty scope is refused earlier as "not inside a
       lines (`cycle failed`, `cannot re-read`, `cannot watch root`) need
       a fault a test would have to inject. Alongside: plan F5 is struck
       through — the trim is a duty at every twenty since 573.
+622.  DONE (2026-09-23, the lead 616 declined as a seam change, done
+      without one). The run-end `output dir snapshots` stage was one
+      transaction per task — 1,000 commits, 47–72 ms cold and 64–75 on
+      a restore at 1,000 projects. A snapshot is read by the NEXT run's
+      hit check, never by the task that took it, so `OutputIndex` keeps
+      the rows pending and lands them in one transaction at the first
+      read, at prune (before any entry can cascade), at stats and at
+      close — the deferral `accessed_at` bumps already use. Interleaved
+      A/B, five reps: the stage cold 52–70 ms → 10–17, restore 64–75 →
+      12–14, `close` +5 ms for the flush; net ~50 ms per cold or restore
+      run, invisible end to end on this box, exact on the stage rows.
+      REFUTED first: the walk's `lstat`/`readdir` through the async pool
+      was the suspect (615's lesson), and a synchronous walk measured a
+      tie (47–72 → 49–63 cold) — the pool was not the cost, the commits
+      were. Row: two snapshots stay pending under a direct count, land
+      together on the batch read, and a later snapshot for the same hash
+      replaces its rows, again deferred.
 
 ## In flight
 

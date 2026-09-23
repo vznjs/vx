@@ -1435,6 +1435,7 @@ export class Cache implements CacheLayer {
   }
   stats(opts: CacheStatsOptions = {}): CacheStats {
     this.flushAccessed()
+    this.outputs.flushOutputDirs()
     const project = opts.project
     const scoped = project !== undefined
     const scopeParams: string[] = project === undefined ? [] : [project]
@@ -1463,6 +1464,9 @@ export class Cache implements CacheLayer {
 
   async prune(options: PruneOptions): Promise<PruneResult> {
     this.flushAccessed()
+    // Before any entry is deleted: a pending snapshot for a pruned hash
+    // would otherwise land after the cascade and orphan its rows.
+    this.outputs.flushOutputDirs()
     const { olderThanMs, maxBytes, dryRun = false } = options
     if (olderThanMs === undefined && maxBytes === undefined) {
       throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
@@ -1630,6 +1634,7 @@ export class Cache implements CacheLayer {
     }
     try {
       this.flushAccessed()
+      this.outputs.flushOutputDirs()
     } catch {
       // Same contract as the retention prune above, which was already
       // guarded while this sibling was not: `accessed_at` is LRU

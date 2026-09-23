@@ -24,6 +24,16 @@ export class OutputIndex {
   private readonly deleteOutputFiles: ReturnType<Database['prepare']>
   private readonly insertOutputDir: ReturnType<Database['prepare']>
   private readonly deleteOutputDirs: ReturnType<Database['prepare']>
+  private readonly entryExists: ReturnType<Database['prepare']>
+  /**
+   * Snapshots taken and not yet written, the last per hash. A snapshot is
+   * read by the NEXT run's hit check, never by the task that took it, so
+   * the rows land in one transaction at the first read, at prune, at
+   * stats or at close — the way `accessed_at` bumps do — instead of one
+   * commit per task: 1,000 of them were the whole `output dir snapshots`
+   * stage, 47–72 ms at run end (item 622).
+   */
+  private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
 
   constructor(private readonly db: Database) {
     this.insertOutputFile = this.db.prepare(`
@@ -39,6 +49,7 @@ export class OutputIndex {
       'INSERT INTO output_dirs(entry_hash, path, mtime_ms) VALUES (?, ?, ?)',
     )
     this.deleteOutputDirs = this.db.prepare('DELETE FROM output_dirs WHERE entry_hash = ?')
+    this.entryExists = this.db.prepare('SELECT 1 FROM entries WHERE hash = ?')
   }
 
   /**
@@ -177,16 +188,32 @@ export class OutputIndex {
     // parent trusted while an addition inside it bumps only the dropped one.
     const youngest = Date.now() - OUTPUT_DIRS_RACY_MS
     if (rows.some(([, mtime]) => mtime > youngest)) ok = false
+    this.pendingDirs.set(hash, ok ? rows : null)
+  }
+
+  /** Land every pending snapshot in ONE transaction; a null snapshot clears its rows. */
+  flushOutputDirs(): void {
+    if (this.pendingDirs.size === 0) return
+    const pending = [...this.pendingDirs]
+    this.pendingDirs.clear()
     this.db.transaction(() => {
-      this.deleteOutputDirs.run(hash)
-      if (!ok) return
-      for (const [rel, mtime] of rows) this.insertOutputDir.run(hash, rel, mtime)
+      for (const [hash, rows] of pending) {
+        this.deleteOutputDirs.run(hash)
+        // The rows reference the entry: one pruned by another process
+        // between the snapshot and this flush has nothing to describe,
+        // and its insert would fail the whole transaction on the FK.
+        if (rows === null || this.entryExists.get(hash) === null) continue
+        for (const [rel, mtime] of rows) this.insertOutputDir.run(hash, rel, mtime)
+      }
     })()
   }
 
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
     const out = new Map<string, OutputDirRow[]>()
     if (hashes.length === 0) return out
+    // A reader in the same process (`vx watch`'s next cycle, a test) sees
+    // what was snapshotted, not what was flushed.
+    this.flushOutputDirs()
     const placeholders = hashes.map(() => '?').join(',')
     const rows = this.db
       .query(
