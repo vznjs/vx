@@ -87,6 +87,10 @@ package's own `node_modules/.bin` is prepended to `PATH`, and vx sets
 `vx run` in its own workspace is refused before it forks without bound.
 Everything else is invisible unless passed through.
 
+That is what a task sees. What vx itself reads — `VX_TIMING`, the
+timeout rung, the kill grace, the watch poll switch — is the CLI
+reference's [Environment variables vx reads](../../cli/#environment-variables-vx-reads).
+
 ## Remote execution: only two of the three lists travel
 
 If a task runs on a remote worker (see
