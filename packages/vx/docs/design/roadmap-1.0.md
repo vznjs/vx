@@ -85,6 +85,37 @@ a core feature.
 **Exit:** 2.1–2.5 done, `parity.md` and `comparison.md` show no open
 row, and the STATUS "Next" list holds nothing but milestone 3.
 
+## Track W — the site teaches (owner, 2026-09-23)
+
+The owner asked for a site that explains what task orchestration is, with
+interactive examples and diagrams. It should show where vx is stronger:
+its performance, and also its architecture, its correctness guarantees
+and how far it can be extended. In the owner's words, "educate not only
+sell". The bar to beat is monorepo.tools, by "1000×" on education.
+The plan is `design/site-teaches-2026-09.md`.
+
+| #   | Item                                                                                                                                     | Size |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| W0  | A Learn section, stub pages, and the interactive-island pattern with a no-JavaScript fallback.                                           | S    |
+| W1  | What task orchestration is, with a graph explorer.                                                                                       | M    |
+| W2  | Caching from first principles, with a key calculator.                                                                                    | M    |
+| W3  | Correctness: trusting the cache, with a stale-hit demo.                                                                                  | S–M  |
+| W4  | Scheduling, with the item 669 simulator running in the browser.                                                                          | M    |
+| W5  | The architecture as a pipeline with seams, with a pipeline explorer.                                                                     | M    |
+| W6  | Extending vx: worked plugins that the site's tests type-check.                                                                           | M    |
+| W7  | Choosing between vx, Turbo, Nx and Bazel: design choices and their costs, not a feature table.                                           | M    |
+| W8  | A landing page that leads with the problem and the ideas, then the numbers.                                                              | S    |
+| W9  | The playground: the real planner (graph, keys, scheduler) running in the browser over a workspace the reader edits. Starts with a spike. | L    |
+| W10 | Labs: break a build on purpose (a stale hit, an undeclared input, an output collision) and see what catches it.                          | M    |
+| W11 | Checkpoints: one question per page, checked against the live model.                                                                      | S    |
+| W12 | A tool-neutral glossary that every page links into.                                                                                      | S    |
+
+**Exit:** every Learn page has a diagram and an interactive element and
+reads with JavaScript off. Every number comes from `benchmarks.md`,
+every guarantee links to its test, and every comparison names what vx's
+choice costs. The track does not block the 0.1.0 tag, but it lands
+before the release is announced.
+
 ## Milestone 3 — 1.0: the contract
 
 Feature complete says nothing will be added. 1.0 says what will not
@@ -112,6 +143,7 @@ actions and the soak are on the owner's clock.
 | 0 hardening arc     | ≈ ½ day (in flight)            | nothing                                             |
 | 1 installable 0.1.0 | ≈ 1 day                        | owner cuts the release and decides the site address |
 | 2 feature complete  | ≈ 3–5 days (2.2 is most of it) | owner confirms scope (2.4); a box for 2.5           |
+| W the site teaches  | ≈ 8–12 days                    | nothing (the site address is 1.5)                   |
 | 3 1.0 contract      | ≈ 2–3 days, plus the soak      | owner sets the soak length and tags                 |
 
 So **feature complete is milestone 2**. It is about a week of agent work
