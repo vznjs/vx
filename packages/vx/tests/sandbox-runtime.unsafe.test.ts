@@ -1755,6 +1755,36 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
       ])
     }
   })
+
+  // Item 652: every row above passes an EMPTY allowRead, so the skip for
+  // an explicitly granted path (`isUnderAny`) could lose its exact-match
+  // arm or its separator with the suite green. A grant covers itself and
+  // its subtree, and not a sibling whose name merely begins with it.
+  it('skips a granted path and its subtree, and reports a sibling sharing its name prefix', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, [at(`${ws}/lib`), at(`${ws}/lib/x.ts`), at(`${ws}/libx/y.ts`)].join('\n'))
+    const produced = await parseStraceViolations(
+      log,
+      { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+      { allowRead: [`${ws}/lib`], denyRead: [ws], cwd: ws },
+    )
+    expect(produced.map((v) => v.target)).toEqual([`${ws}/libx/y.ts`])
+  })
+
+  // A BUG, recorded not fixed (item 652): `absolutize` expands a leading
+  // `~` for the user's grants, but the same helper absolutizes the path a
+  // traced syscall named, and the kernel never expands `~` — `~cache/x`
+  // is `<cwd>/~cache/x`. Today it becomes `<home>/cache/x`, lands outside
+  // the deny anchor and is dropped, so an undeclared read of a project
+  // file under a directory named `~cache` is not reported. The grants
+  // reaching this helper are already absolute (`resolveSandboxConfig`
+  // expands `~`), so the branch serves nothing here.
+  it.todo('a traced relative path beginning with `~` resolves against the cwd', async () => {
+    const ws = path.join(dir, 'ws')
+    expect(await targets(at('~cache/x'))).toEqual([`${ws}/~cache/x`])
+  })
 })
 
 /**
@@ -2272,6 +2302,44 @@ describe.skipIf(process.platform !== 'linux')(
       // and which grant to move.
       expect(notices[0]).toContain('linked')
       expect(notices[0]).toContain('dist')
+    })
+
+    // Item 652: the row above has a symlink in every punch it makes, so the
+    // notice could lose its `linked.length > 0` gate — and tell every
+    // punched grant it flattened "0 symlinked entries" — with the suite
+    // green.
+    it('says nothing when the punched directory holds no symlink', async () => {
+      const written: string[] = []
+      const real = process.stderr.write.bind(process.stderr)
+      process.stderr.write = ((chunk: unknown): boolean => {
+        written.push(String(chunk))
+        return true
+      }) as typeof process.stderr.write
+      try {
+        punchWritePaths(dir, [path.join(dir, 'dist')])
+        // CONTROL, on a directory of its own: one symlink there is named.
+        await symlink(path.join(dir, 'src'), path.join(dir, 'nested', 'linked'))
+        punchWritePaths(path.join(dir, 'nested'), [path.join(dir, 'nested', 'deep')])
+      } finally {
+        process.stderr.write = real
+      }
+      const notices = written.filter((w) => w.includes('symlinked'))
+      expect(notices.map((n) => n.includes(`under ${path.join(dir, 'nested')} `))).toEqual([true])
+    })
+
+    // Item 652: two file-shaped grants in one directory both widen to it.
+    // The rows above widen one file at a time, so the dedup after the
+    // widening could go and SRT would be handed the directory twice.
+    it('two file grants in one directory widen to that directory once', () => {
+      const c = buildCustomConfig(
+        { config: { allowRead: [], allowWrite: [] } as never },
+        {
+          allowRead: [],
+          allowWrite: [path.join(dir, 'dist', 'a.bin'), path.join(dir, 'dist', 'b.bin')],
+          denyRead: [],
+        },
+      ) as { filesystem?: { allowWrite?: string[] } }
+      expect(c.filesystem?.allowWrite).toEqual([path.join(dir, 'dist')])
     })
 
     it('hands over a path it cannot read rather than dropping the grant', () => {
