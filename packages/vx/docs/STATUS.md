@@ -927,6 +927,21 @@ naming the token option to use instead; each row is red without its
 line, beside a control that the bare host resolves. Parity audit §8
 L232 struck; the vx-migrate README's option tables say so.
 
+14bn. **Item 666 (2026-09-23): a 255-byte file name restores.** Adding
+the NAME_MAX refusal the audit left open, its control row (a component
+of exactly 255 bytes restores) went red: the restore staged every file
+as `<target>.vx-tmp-<pid>-<seq>`, and that suffix pushed any legal name
+of 242–255 bytes past NAME_MAX, so a valid artifact holding one failed
+with ENAMETOOLONG. The temp is now a short sibling, `.vx-tmp-<pid>-<seq>`
+in the target's directory (the rename stays within one directory, so
+nothing about its atomicity changes). A component past NAME_MAX is now
+an `ArchiveSecurityError` by name rather than a raw ENAMETOOLONG. Both
+rows are red without their line. The leftover-temp row in
+`archive-security.test.ts` read `**/*.vx-tmp-*` through `Bun.Glob`,
+whose `*` skips a dotfile, so it would have passed on a leak under the
+new name; it reads the tree with `readdir` now. No `CACHE_VERSION`
+bump: the stored bytes did not change.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

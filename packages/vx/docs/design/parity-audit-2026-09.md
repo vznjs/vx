@@ -72,9 +72,12 @@ Item 661 left four rows open and found three more:
   form that selects a project directory literally is taken literally
   before it is read as a glob, as git reads a pathspec.
 - **Archive names past NAME_MAX or past PATH_MAX with the destination.**
-  Item 661 refuses a name whose own length passes PATH_MAX; one
-  component past NAME_MAX (255), or a destination plus name past
-  PATH_MAX, still reaches the file system as a raw `ENAMETOOLONG`. S.
+  Item 661 refuses a name whose own length passes PATH_MAX, and item 666
+  one component past NAME_MAX (255). Item 666 also found the restore's
+  temp name (`<target>.vx-tmp-…`) pushed a legal 242–255-byte component
+  past NAME_MAX, so a valid artifact failed to restore; the temp is now a
+  short sibling. Still open: a destination plus name past PATH_MAX
+  reaches the file system as a raw `ENAMETOOLONG`. S.
 - N-M7 and gaps §1 L48 stand as the table says; gaps §8 L232 closed in item 665.
 
 Everything not in this table is FIXED, DECLINED or OBSOLETE. The

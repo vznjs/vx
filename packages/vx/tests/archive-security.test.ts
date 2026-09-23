@@ -545,6 +545,26 @@ describe('name rejections', () => {
     expect(await readFile(path.join(dest, name.slice('outputs/'.length)), 'utf8')).toBe('x')
   })
 
+  // One component past NAME_MAX is the same raw ENAMETOOLONG (item 666).
+  it('an entry with a component past NAME_MAX is refused as an ArchiveSecurityError', async () => {
+    const part = 'y'.repeat(256)
+    const err = await restore(paxNamed(`outputs/dir/${part}`), dest).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(ArchiveSecurityError)
+    expect(err?.message).toBe(
+      `archive entry has a 256-byte component, past NAME_MAX (255) (unsafe): ${part.slice(0, 64)}…`,
+    )
+    expect(await readdir(dest)).toEqual([])
+  })
+
+  it('CONTROL: a component of exactly NAME_MAX bytes restores', async () => {
+    const part = 'y'.repeat(255)
+    await restore(paxNamed(`outputs/dir/${part}`), dest)
+    expect(await readFile(path.join(dest, 'dir', part), 'utf8')).toBe('x')
+  })
+
   it('accepts an entry whose data is fully present (control)', async () => {
     const body = new TextEncoder().encode('REAL-BYTES')
     await restore(
@@ -761,7 +781,11 @@ describe('archive restore — concurrent restores to the same anchor', () => {
       expect(restored).toEqual(Buffer.from(body))
     }
     // …and no scratch file survived to be swept into the next artifact.
-    const leftovers = [...new Bun.Glob('**/*.vx-tmp-*').scanSync({ cwd: dest })]
+    // A readdir, not a glob: the scratch name starts with a dot, which a
+    // glob's `*` does not match.
+    const leftovers = (await readdir(dest, { recursive: true })).filter((n) =>
+      n.includes('.vx-tmp-'),
+    )
     expect(leftovers).toEqual([])
     // 400 rounds run ~2 s idle and past the 5 s default under the ubuntu
     // gate's four parallel shards (red main, 2026-09-03); the bound is the
