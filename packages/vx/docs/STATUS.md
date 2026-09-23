@@ -1054,6 +1054,12 @@ A stale-hit fix ships in a patch even when it changes a key or a glob's
 reading. The freeze itself (3.1, 3.2) takes effect when the owner tags
 1.0.
 
+14bu. **Item 673 (roadmap 1.3, 2026-09-23): the 0.1.0 notes run through 672.** Added: the bracket fix as a breaking stale-hit fix with the v28
+bump and its first-run notice, `cacheRetention`, the long-name restore
+fixes and refusals, the credential-URL refusal, the literal path filter
+and the range-base refusal. The PR count is recounted when the tag is
+cut.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
