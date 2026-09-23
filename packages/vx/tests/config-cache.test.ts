@@ -2,7 +2,7 @@
 // pure config is served from its stored evaluation, keyed by every byte the
 // evaluation could have read; anything that can observe the environment
 // evaluates live.
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -136,6 +136,30 @@ describe('configEvalKey', () => {
       )
       expect({ spec, key: await keyOf(cfg) }).toEqual({ spec, key: null })
     }
+  })
+
+  it('refuses a non-relative import even when it RESOLVES outside node_modules (item 653)', async () => {
+    // The row above names specifiers that do not resolve, so resolution
+    // refused them and the relative-only rule had no witness. These two
+    // resolve to a pure file no node_modules segment names: an absolute
+    // path, and a bare package linked in from the workspace.
+    const preset = await write('shared/linked/index.mjs', "export const cmd = 'x'\n")
+    await write('shared/linked/package.json', JSON.stringify({ name: 'linked', main: 'index.mjs' }))
+    await mkdir(path.join(root, 'node_modules'), { recursive: true })
+    await symlink(path.join(root, 'shared/linked'), path.join(root, 'node_modules/linked'))
+    for (const spec of [await realpath(preset), 'linked']) {
+      const cfg = await write(
+        'packages/q2/vx.config.mjs',
+        `import { cmd } from '${spec}'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n`,
+      )
+      expect({ spec, key: await keyOf(cfg) }).toEqual({ spec, key: null })
+    }
+    // Control: the same file imported relatively is keyed.
+    const rel = await write(
+      'packages/q3/vx.config.mjs',
+      "import { cmd } from '../../shared/linked/index.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+    )
+    expect(await keyOf(rel)).not.toBeNull()
   })
 
   it.each([
