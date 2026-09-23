@@ -2155,3 +2155,67 @@ suite — an `@nx/vite` or `@nx/js:tsc` workspace proves the plugin's
 executor path on a real tree); then the STATUS trim at twenty items
 (the loop holds 573–591); the warm A/B duty has no arm (590 and 591
 touch no core run path). Never end with "what next?".
+
+## Handoffs 14av–14ax (moved 2026-09-23 with item 612)
+
+14av. **Handoff after item 592 (2026-09-22, late).** Three items since
+14au, all merged (#685, #686, and 592's PR): an Nx repo runs under vx
+unchanged (`nx()`, `nx-exec`), the mapper caches by Nx's rule after the
+refine dogfood, and the two adoption plugins share one skeleton. The
+loop above holds 592 alone; 573–591 are in
+`docs/history/2026-09-improvement-loop-573-591.md`. The owner's
+standing direction: "never stop — find, simplify, speed up and improve
+things." WHAT IS PROVEN AND WHAT IS NOT: `nx()` on a real package-script
+Nx repo (refine, 205 = 205, identical outputs) and `nx-exec` on real Nx
+22 with `@nx/js:tsc` (the live CI suite); NOT yet an executor-backed
+real tree end to end through the plugin — the two candidates fell to the
+proxy's registry policy and an npm defect, so the next box with yarn 4
+reachable runs nrwl/nx-examples (`@nx/angular:application`). NEXT, in
+order: the 1,000-project number (593: 37 ms, and the workspace-root
+output defect it found); the persona walk of the from-nx guide (594:
+five gaps, one a mapper improvement); then the daily duties of 14at
+(warm A/B on any core run-path change — none since 589 — and the STATUS
+trim at twenty, next at 612), the Turbo guide got the same walk
+(595). Never end with "what next?".
+
+14aw. **Handoff after item 597 (2026-09-23, small hours).** Five items
+since 14av, each its own PR and merged in turn (#688 593, #689 594,
+#690 595–596, #691 597): the 1,000-project number for `nx()` (37 ms)
+and the stale-hit defect measuring it found (a root `dist/<project>`
+output restored nothing — `workspaceFiles` now); the Nx and Turbo
+guides walked as their readers; `vx init` names `nx()`; `nx-exec`
+enables Node's compile cache (243 → 214 ms min per executed task);
+and the parity map's configuration row. Also 598: the introduction,
+the plugins guide and the add-to-existing page name `nx()` beside
+`turbo()`. WHAT STANDS: the Nx surface is complete for package-script
+and executor repos alike, proven on refine (real, Nx 18) and on the
+bench workspace (real Nx 22 with `@nx/js:tsc`); the one thing still
+unproven is an executor-backed real tree through the plugin end to
+end, blocked here by the proxy's registry policy (yarn) and an npm
+defect — a box with yarn 4 reachable runs nrwl/nx-examples. NEXT, in
+order: the daily duties of 14at (warm A/B on any core run-path change
+— none since 589; the STATUS trim at twenty, next at 612); then a
+persona walk of `vx watch` on an `nx()` workspace (a `project.json`
+edit is a graph export in the next cycle — is it, and how long is the
+cycle?); then the owner's three items stand. Never end with "what
+next?".
+
+14ax. **Handoff after item 605 (2026-09-23, before dawn).** Seven items
+since 14aw, each its own PR, merged in turn (#693 599, #694 600, #695
+601, #696 602, #697 603, #698 604, and 605 with this handoff): the `vx watch` and read-only verb
+walks on the `nx()` workspace found nothing off and one release target
+to name; a dry run's plan got its own timing row (105 ms had read as
+"close"); the readiness note on persistent tasks is reported only when
+something depends on them (refine's 375-line warning is gone); the
+migration path was exercised on real Nx 22 through to a tsc build and
+a restore; and the `vx-migrate` bin's index mode was 100644 since the
+package's first commit — fixed, with a repo-wide law that every
+declared bin is 100755 with a shebang. WHAT STANDS: the Nx surface is
+finished for what this box can reach; the loop holds 592–605, fourteen
+items, so the STATUS trim is due at 612. NO CORE RUN-PATH CHANGE since
+589 (601 touched `planRun`'s dry path only), so the warm A/B duty has
+no arm. NEXT, in order: keep finding — the owner's direction is "never
+stop; find, simplify, speed up, improve" (605 was the Turbo migration
+walked on astro, nothing off); then the trim at 612; the executor-backed real tree
+stays for a box with yarn 4 reachable; then the owner's three items.
+Never end with "what next?".
