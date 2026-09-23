@@ -273,6 +273,55 @@ describe('createTelemetrySource — projection', () => {
     }
   })
 
+  it('task.end carries every fact it copies, each under its own name', () => {
+    // A remote executor's `where` and a `--download=none` task's deferred
+    // `outputs` had no reader on the streaming record, so dropping either
+    // left the suite green (654). The whole record is compared, bar the
+    // projection clock.
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, {
+        status: 'success',
+        exitCode: 0,
+        durationMs: 12,
+        hash: 'h',
+        cpuMs: 5,
+        peakRssBytes: 2048,
+        where: 'worker-3',
+        outputs: 'deferred',
+        attempts: 2,
+        wallclockStartNs: 100n,
+        wallclockEndNs: 200n,
+      }),
+    })
+    const { ts, ...rest } = records[0] as TelemetryRecord & { ts: number }
+    expect(typeof ts).toBe('number')
+    expect(rest).toEqual({
+      v: TELEMETRY_SCHEMA_VERSION,
+      kind: 'task.end',
+      runId: 'run-1',
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 12,
+      hash: 'h',
+      cpuMs: 5,
+      peakRssBytes: 2048,
+      where: 'worker-3',
+      outputs: 'deferred',
+      attempts: 2,
+      wallclockStartNs: '100',
+      wallclockEndNs: '200',
+    })
+  })
+
   it("stamps run.start with the RUN's start, not the projection's clock", () => {
     // `startedAt` equals the summary's startedAt on purpose — a sink derives
     // per-task timing from it DURING the run, before any summary exists. `ts`
