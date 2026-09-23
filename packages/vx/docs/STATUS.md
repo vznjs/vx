@@ -497,6 +497,32 @@ test is telling the truth.
       executor is told `true` for a cached task and `false` for a plain
       one. Each red on its line alone. Placement is swept.
 
+651.  DONE (2026-09-23, the 628 method on the plugin host). Twenty-six
+      gates in `orchestrator/plugin-host.ts` deleted in turn against the
+      whole core suite, twenty-four held. Twenty-one went red in a row:
+      the cache-layer shape check, the naming of a throwing hook, the
+      project stage's check of each plugin's output, the key material and
+      value refusals, key sorting and namespacing, the affected answer
+      refusals, the schedule Map and finite-weight checks, the admit
+      predicate being off without an answering plugin, the broken-plugin
+      skip and the throwing-admit report, the local cache and executor
+      tails, a wrapping layer subsuming local, the executor name, and the
+      hung and throwing teardowns. The graph stage's two refusals (an
+      edge outside the graph, a cycle) are held by a HANG, not a red:
+      without either the plugin-pipeline suite never finishes, even under
+      a 20 s test timeout, while the unmutated rows run in 218 ms. A hang
+      fails CI, so both count as held. The sweep's first blame mutation
+      awaited an uncalled function and so deleted both checks; the
+      corrected one (an invoked wrapper that names no plugin) is red in
+      both refusal rows. Two survived. A schedule weight for a task
+      outside the run is dropped before it is checked: reachable (a
+      history-backed plugin weighs tasks a filtered run does not hold),
+      so it gets a row in `plugin-pipeline.test.ts`, red with the skip
+      deleted. The admit predicate's unknown-id arm was unreachable: the
+      scheduler asks only about ids in the same map the predicate was
+      built from, so the arm is gone and the lookup is asserted. The
+      plugin host is swept.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -735,6 +761,78 @@ box with `node_modules` (refine's were removed, astro is not cloned);
 the trim next at 652; the executor-backed real tree stays for a box
 with yarn 4 reachable; then the owner's three items. Never end with
 "what next?".
+
+14bc. **Roadmap to 1.0 (item 655, 2026-09-23).** Owner asked when vx is
+feature complete; the answer is `docs/design/roadmap-1.0.md`. Four
+milestones: 0 closes the sweep arc (651–654, then sweeps stop being the
+default loop); 1 makes 0.1.0 installable (publish the seven plugins,
+which npm 404s today, and make the docs match); 2 is FEATURE COMPLETE
+(run-time cache eviction, the streaming remote seam before any freeze,
+the stale parity ledgers closed, the scope list confirmed by the owner,
+the real-repo re-measure); 3 is the 1.0 contract (schema and plugin API
+frozen, cache-version and semver policy, a soak). After milestone 0 the
+loop takes its next item from the roadmap, in its order; strike an item
+there when it lands.
+
+14bd. **Item 656 (roadmap 1.1, 2026-09-23): the plugins publish with the
+release.** Only `@vzn/vx` and its four platform packages reached npm,
+while the docs told users to `bunx @vzn/vx-migrate`. `build-npm.ts`
+gained `emitPluginPackages` (`--only=plugins`): every public workspace
+package other than `@vzn/vx`, discovered rather than listed, copied from
+its own `files` with the root LICENSE, stamped with the release version,
+`@vzn/vx` peer-pinned to `^<version>` (one release train), and a
+`repository.directory` so provenance names the package's path.
+`npm.yml` builds them and publishes them after `@vzn/vx`, in the same
+idempotent loop. `build-npm.unsafe.test.ts` holds the set against a walk
+of the manifests (with a floor of the seven names), the manifest shape,
+every declared file and the executable bins, and the workflow order;
+the set row and the shape row each went red with their line mutated.
+`npm pack --dry-run` on the emitted `vx-migrate` and `vx-reapi` warned
+nothing. OWNER: add the seven trusted publishers before the next
+release (`cli.md` § Releasing names them and the one-time hand publish
+if npm requires the name to exist first). The item is 656, not 652:
+652–654 are the implementer sweeps' numbers in the loop above.
+
+14be. **Item 657 (roadmap 1.3, 2026-09-23): the 0.1.0 notes run through
+item 656.** The plugins reaching npm heads "Plugins and packages"; the
+restore and save syscall trims join "Caching"; "Internals" names the
+633–651 sweep and the three deletions it made. The PR count reads 408
+(counted at 656, `git log v0.0.21..origin/main`); recount at the cut.
+The 652–654 sweeps are named as in flight, not as shipped.
+
+14bf. **Item 658 (roadmap 2.1, 2026-09-23): the cache evicts itself.**
+`defineWorkspace({ cacheRetention: { olderThan: '30d', maxSize: '10G' } })`
+applies the `vx cache prune` policy at the end of every run that writes
+the local cache, after the saves and uploads settle and before plugin
+teardown. `Cache.evictIfDue` flushes the deferred `accessed_at` bumps,
+reads `MIN(accessed_at)` and `SUM(size_bytes)` in one scan, and calls
+`prune()` only when something is due; the run prints one line for what it
+evicted, and a failure is a warning, never a failed run. The parsers moved
+to `util/size.ts` (`parseDuration` beside `parseSize`, and `formatBytes`)
+so the schema and the run share the flags' spellings. Rows
+(`cache-retention.test.ts`): age and LRU eviction, nothing due means no
+`prune` call, a read-only handle evicts nothing, the schema's refusals,
+and a run that evicts what is due and one that declares nothing. Three
+mutations went red in their rows: the run's call, the nothing-due guard
+and the flush — the flush only after its row asked whether a prune ran,
+since `prune()` flushes too and the evicted set is the same either way
+(a masked pair, as 563). Warm no-op at 1,000 projects, min of 9
+interleaved: main 240 ms, unconfigured 238, configured with nothing due 237. No new index: a scan of the entries table is below the noise. The
+comparison page's row 11 is shipped; roadmap 2.1 struck.
+
+14bg. **Item 659 (roadmap 2.3, 2026-09-23): the parity ledgers have a
+status.** The two ledgers (`turbo-nx-parity-2026-07.md`, 44 entries;
+`turbo-nx-test-gaps.md`, 70 non-HAVE rows) were audited against source
+and tests, not their own text: 65 FIXED, 28 DECLINED, 4 OBSOLETE, 17
+OPEN. `docs/design/parity-audit-2026-09.md` holds the totals, the open
+table and the reasoning for Nx H7 (obsolete: the agents it targeted are
+gone; `--frozen` and `vx lock --check` cover live-evaluation drift) and
+Nx L2 (open: a bare name never selects a scoped package, deliberate but
+untested and undocumented). Both ledgers carry a banner pointing there.
+The open rows are the next work of 2.3: fifteen S rows, one S–M (a
+literal output path holding glob characters) and one M (the
+unknown-first scheduling benchmark); `compileNameGlob` memoization is
+closed as not worth doing.
 
 ## Decisions (this arc)
 

@@ -357,6 +357,19 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ['concurrency must be a positive integer', workspaceConfig('{ concurrency: 0 }')],
   ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
   ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
+  [
+    "cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }",
+    workspaceConfig('{ cacheRetention: "30d" }'),
+  ],
+  ['cacheRetention names neither olderThan nor maxSize', workspaceConfig('{ cacheRetention: {} }')],
+  [
+    "cacheRetention.olderThan must be a duration like '30d', '12h', '90m' or '45s'",
+    workspaceConfig('{ cacheRetention: { olderThan: "30 days" } }'),
+  ],
+  [
+    "cacheRetention.maxSize must be a size like '10G', '500MB' or '1048576'",
+    workspaceConfig('{ cacheRetention: { maxSize: "1.5G" } }'),
+  ],
   ['plugins must be an array of plugin objects', workspaceConfig('{ plugins: {} }')],
   ['plugins[<i>] must be an object', workspaceConfig('{ plugins: ["nope"] }')],
   [
@@ -460,7 +473,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     const message = await workspaceConfig('{ plugin: [{ name: "p", setup() {} }] }')()
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
-    expect(message).toContain('(allowed: cacheDir, concurrency, plugins, timeout)')
+    expect(message).toContain('(allowed: cacheDir, cacheRetention, concurrency, plugins, timeout)')
   })
 })
 

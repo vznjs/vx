@@ -299,8 +299,10 @@ export function buildAdmission(
   if (answering.length === 0) return undefined
   const broken = new Set<VxPlugin>()
   return (id, running) => {
-    const task = nodes.get(id)
-    if (task === undefined) return true
+    // The scheduler asks only about ids in this same map, so the lookup
+    // always lands: an unknown-id arm here was deleted with the whole core
+    // suite green (item 651).
+    const task = nodes.get(id)!
     const ctx = {
       running: [...running].flatMap((r) => nodes.get(r) ?? []),
       concurrency,

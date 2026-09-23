@@ -18,6 +18,8 @@ import {
   MAX_TIMEOUT_MS,
   nearest,
   normalizeGlob,
+  parseDuration,
+  parseSize,
   UserError,
   isLiteralPattern,
 } from '../util/index.js'
@@ -27,7 +29,37 @@ import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 // the same reason the task levels reject them: `plugin: [...]` (singular)
 // declared no plugins and ran the workspace bare, `cacheDirectory` left the
 // cache where it was — a config that loads and quietly does nothing it says.
-const WORKSPACE_FIELDS = new Set(['concurrency', 'cacheDir', 'timeout', 'plugins'])
+const WORKSPACE_FIELDS = new Set([
+  'concurrency',
+  'cacheDir',
+  'timeout',
+  'cacheRetention',
+  'plugins',
+])
+
+const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
+
+function validateRetention(retention: unknown, configPath: string): void {
+  const where = `${configPath}: \`cacheRetention\``
+  if (retention === null || typeof retention !== 'object' || Array.isArray(retention)) {
+    throw new UserError(`${where} must be { olderThan?: '30d', maxSize?: '10G' }`)
+  }
+  assertKnownFields(retention as Record<string, unknown>, RETENTION_FIELDS, where)
+  const { olderThan, maxSize } = retention as { olderThan?: unknown; maxSize?: unknown }
+  // An empty object would load and evict nothing, which reads as a policy.
+  if (olderThan === undefined && maxSize === undefined) {
+    throw new UserError(`${where} names neither \`olderThan\` nor \`maxSize\``)
+  }
+  if (
+    olderThan !== undefined &&
+    (typeof olderThan !== 'string' || parseDuration(olderThan) === null)
+  ) {
+    throw new UserError(`${where}.olderThan must be a duration like '30d', '12h', '90m' or '45s'`)
+  }
+  if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
+    throw new UserError(`${where}.maxSize must be a size like '10G', '500MB' or '1048576'`)
+  }
+}
 
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
   assertKnownFields(config, WORKSPACE_FIELDS, configPath)
@@ -54,6 +86,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     }
     assertTimeoutInRange(config.timeout, `${configPath}: \`timeout\``)
   }
+  if (config.cacheRetention !== undefined) validateRetention(config.cacheRetention, configPath)
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)

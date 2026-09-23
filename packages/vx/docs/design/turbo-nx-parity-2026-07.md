@@ -1,5 +1,9 @@
 # Turbo / Nx parity: behavioural contracts vx does not pin (2026-07)
 
+> **Status (2026-09-23):** audited in [`parity-audit-2026-09.md`](./parity-audit-2026-09.md)
+> (item 659). Most entries below are fixed, declined or obsolete; the
+> open ones are listed there. Read that page before acting on an entry.
+
 Two independent research passes, run 2026-07-28 against the current upstream
 trees, cataloguing behaviour those runners' own suites pin that vx has no
 equivalent test for. Commissioned by the owner directive _"Check nx and turbo
