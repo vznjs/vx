@@ -1021,6 +1021,25 @@ in `cache.test.ts` restores a 200-byte name into a destination 150 bytes
 short of PATH_MAX, red without the branch, with a control that the same
 artifact restores into the shallow directory.
 
+14bs. **Item 671 (roadmap 3.3, 2026-09-23): a cache-format bump is
+announced.** A `SCHEMA_VERSION` change already said `cache index reset`
+on the open that dropped the tables; a `CACHE_VERSION` bump (v27 → v28
+in item 667) keeps the index but moves every key, and its all-miss run
+said nothing. The cache now records the version it was written under in
+`schema_meta.cache_version`, and the first open that finds another one
+(or a store with entries and no record) sets `Cache.formatChange`;
+`noteSchemaReset` prints `[vx] cache format changed: vA → vB (vx
+upgraded); …` on the run's status line or a verb's stderr, once. A
+reset and a bump together say the reset alone. The notice first claimed
+`vx cache prune` reclaims the old artifacts, which is true of a reset's
+orphans and not of a bump's entries (they keep their rows): it names
+`--older-than` and `cacheRetention` instead. Rows in
+`schema-reset-notice.test.ts`: the bump named once then quiet, the
+unrecorded store, the reset winning; a fresh cache says nothing. On the
+way, `bun:sqlite`'s `.get()` returns `null`, not `undefined`, for no
+row: two comparisons against `undefined` made a fresh cache announce a
+change.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
