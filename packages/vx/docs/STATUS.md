@@ -406,6 +406,26 @@ negation is its control. Found by the 653 implementer, not a sweep
 survivor. A config that carried one now fails to load, where before
 it ran with the line ignored.
 
+14cb. **Item 680 (2026-09-23): the site-wide laws read `.mdx`.** W0 made
+a page that holds a widget `.mdx`, and four laws walked `.md` only, so
+such a page was invisible to them: the site's `config-snippets.test.ts`
+(every config block type-checks), `doc-class-pins.unsafe.test.ts` (six
+walkers: `handAuthoredDocs` and the five class pins with their own walk,
+the blog-table one included), `site-samples.unsafe.test.ts`
+(`handAuthoredSitePages`), and `doc-references.unsafe.test.ts` (the
+guides' core paths, and every relative link, whose target resolver
+also had no `.mdx` candidate: a link to the W1 page read as missing).
+Each now matches `/\.mdx?$/`. Proven with twelve probes, one per walker,
+each appended to the W1 page or a new `.mdx` beside the guides and blog,
+then restored: with the old laws P1–P10 passed (blind), and both links
+to the `.mdx` page (P11 with an anchor it lacks, P12 with none) failed
+as missing; with the new ones P1–P11 fail, each message naming the
+`.mdx` page or the bad anchor, and P12 passes (the control). No law is meaningless on MDX: the fences, headings and links
+these laws read are the same syntax there. Two walkers stay `.md` on
+purpose: `sidebar-coverage.test.ts`'s imported set and the safe
+`doc-references.test.ts` read what `import-docs.ts` generates from
+`packages/vx/docs`, which is Markdown only.
+
 14cd. **Item 682 (2026-09-24): the cache key carries 64 bits of state.**
 The W9 spike (item 676) measured that Bun's xxHash3 reads only the low
 32 bits of its seed, and every cache key, the workspace fingerprint,
