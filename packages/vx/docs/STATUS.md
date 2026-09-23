@@ -954,6 +954,27 @@ package, appended to a README, turns it red, and a floor
 requires the walk to see `@vzn/vx-migrate` and `@vzn/vx-lockfile`.
 Milestone 1's agent work is done; 1.4 and 1.5 are the owner's.
 
+14bq. **Item 669 (roadmap 2.3, 2026-09-23): a task with no history keeps
+the workspace median.** Parity row N-M7 asked whether vx should run a
+task the history has never seen FIRST, as Nx does, instead of giving it
+the median p50. The benchmark behind the question was deleted on
+2026-09-09; `packages/vx-bench/schedule-policy.ts` is its replacement: a
+discrete-event sim of `runGraph`'s exec tier ranked by the plugin's real
+`criticalPathPriorities` over core's `mergePriorities`, pinned on
+hand-computed schedules (Nx's fixture among them) and against the real
+`runGraph` on a virtual clock, every mirrored rule red when reversed.
+Nine shapes, 30 seeds, 0–100 % unknown: at 5–25 % unknown, unknown-first
+is −0.69 % mean makespan against the median (full history is −0.82 %,
+no plugin +3.51 %), but single graphs regress by up to +6.15 % there
+and +13.03 % at 75 %: an unknown that turns out short starts ahead of
+the known long chain. The adoption bar was a worst regression ≤ 1 % on
+any cell, so the plugin is unchanged; the table and the verdict are in
+`packages/vx-bench/schedule-policy.md`, and the parity audit's N-M7 row
+is struck.
+Coordinator's reading of the bar: "worst" is the worst single graph,
+not the worst cell mean (+0.23 %), because a user lives one run at a
+time and a +6 % run on a new task is the regression they would see.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

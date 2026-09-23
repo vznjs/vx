@@ -37,6 +37,7 @@
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
+        "@vzn/vx-schedule-history": "workspace:*",
       },
     },
     "packages/vx-docs": {

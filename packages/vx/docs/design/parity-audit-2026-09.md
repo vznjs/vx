@@ -51,7 +51,7 @@ variables stay out of the key).
 | T-M10         | ~~A range base (`HEAD~1..HEAD`) is refused with the generic "did not resolve"; name ranges.~~ closed (item 661): `affected.test.ts` "refuses the range … before git sees it"; a range is now a named refusal                                                | S    |
 | N-M4          | ~~`--affected` with sibling-prefix project directories (`app`, `app-e2e`).~~ closed (item 661): `affected.test.ts` "a change in a sibling-prefix project dir selects exactly that project"                                                                  | S    |
 | N-M6          | ~~Two positive globs with a negation that straddles both.~~ closed (item 661): `inputs.test.ts` "two positive globs with a negation straddling both fold exactly the survivors"                                                                             | S    |
-| N-M7          | Scheduling unknown-duration tasks first: the benchmark was never run.                                                                                                                                                                                       | M    |
+| N-M7          | ~~Scheduling unknown-duration tasks first: the benchmark was never run.~~ closed (item 669): `vx-bench/schedule-policy.md`; -0.69% mean at 5-25% unknown but +6.15% on single graphs, so the median stays                                                   | M    |
 | N-L1          | ~~`markSurfacedDeps` over two groups that depend on each other.~~ closed (item 661): `task-graph.test.ts` "two same-project groups that depend on each other terminate …"                                                                                   | S    |
 | N-L2          | ~~A bare name does not select a scoped package: a row and a `comparison.md` line.~~ closed (item 661): `filter.test.ts` "a bare 'core' is an exact match …"; `comparison.md` Filter DSL line                                                                | S    |
 | gaps §1 L48   | A literal output path holding glob characters (`app/[id]/page.js`).                                                                                                                                                                                         | S–M  |
@@ -78,7 +78,7 @@ Item 661 left four rows open and found three more:
   past NAME_MAX, so a valid artifact failed to restore; the temp is now a
   short sibling. Still open: a destination plus name past PATH_MAX
   reaches the file system as a raw `ENAMETOOLONG`. S.
-- N-M7 and gaps §1 L48 stand as the table says; gaps §8 L232 closed in item 665.
+- gaps §1 L48 stands as the table says; N-M7 closed in item 669; gaps §8 L232 closed in item 665.
 
 Everything not in this table is FIXED, DECLINED or OBSOLETE. The
 evidence for each (source line and test title) is in the audit's report
