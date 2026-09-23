@@ -624,6 +624,22 @@ describe('subscribeTelemetry — host', () => {
     expect(warnings.some((w) => w.includes('org/bad'))).toBe(true)
   })
 
+  it('passes over a plugin with no telemetry hook without a word', async () => {
+    // Calling the missing hook throws a TypeError, which the consultation's
+    // catch turned into "telemetry failed to initialize" for every plugin
+    // that never offered telemetry — a warning on every run of a workspace
+    // with a cache or executor plugin (654).
+    const warnings: string[] = []
+    const handle = await subscribeTelemetry(
+      [testPlugin('org/cache-only', {})],
+      createEventBus(),
+      { ...ctx, warn: (m) => warnings.push(m) },
+      RUN,
+    )
+    expect(handle).toBeUndefined()
+    expect(warnings).toEqual([])
+  })
+
   it('refuses a sink that is not an object, or whose wants is not an array, by name', async () => {
     // Without the shape checks a `null` sink is still refused — by the raw
     // TypeError of reading `.wants` off it — and a number is refused as
