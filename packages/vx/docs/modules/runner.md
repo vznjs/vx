@@ -191,9 +191,11 @@ A never-matching `readyWhen` on a child that keeps running would hang
 the run forever — bound the wait with `exec.timeout` (passed to
 `runPersistent` as `timeoutMs`): when set, a timer SIGTERMs the child
 and rejects `ready` with a clear timeout message once the window
-passes. The timer is cleared the moment ready fires, so a healthy
-server is never killed late. No default — opting into a readiness
-signal is explicit, and so is bounding it.
+passes. A healthy server is never killed late: the timer is cleared
+the moment ready fires, and its body re-checks readiness before it
+signals — two guards that mask each other, held together by one row
+(item 636). No default — opting into a readiness signal is explicit,
+and so is bounding it.
 The SIGTERM escalates to SIGKILL after the kill grace, as the run
 timeout's does: a never-ready server is not in the persistent
 registry, so nothing else would kill one that traps TERM.

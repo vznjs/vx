@@ -2,7 +2,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { isAlive, waitForDead } from './helpers/alive.js'
 import {
+  armTimeout,
   execWrap,
   ownRssHighWater,
   peakRssBytes,
@@ -363,6 +365,112 @@ describe('runPersistent', () => {
       readyWhen: 'Listening',
     })
     await expect(spawn.ready).rejects.toThrow(/exited before becoming ready/)
+  })
+})
+
+// The runner's exit bookkeeping, each line deleted in turn against the
+// runner-adjacent suite (item 636). What survived guards a process the
+// runner no longer owns: a timer or a set entry that outlives the child
+// signals whatever holds that pid next.
+describe('armTimeout — what clear() disarms', () => {
+  it('a child that exits in time is never signalled: clear() before the deadline', async () => {
+    // Detached like the runner's own spawns: killTree signals the group.
+    const proc = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore', detached: true })
+    try {
+      const handle = armTimeout(proc, 60)
+      handle.clear()
+      await Bun.sleep(150)
+      // Deleting the timer's clear reddens this: the stale deadline fires on
+      // a pid the runner has moved on from.
+      expect(handle.timedOut()).toBe(false)
+      expect(isAlive(proc.pid)).toBe(true)
+      // Control, past the same gate: an armed deadline that is not cleared
+      // does fire.
+      const armed = armTimeout(proc, 60)
+      await Bun.sleep(150)
+      expect(armed.timedOut()).toBe(true)
+      expect(await waitForDead(proc.pid, 1_000)).toBe(true)
+    } finally {
+      proc.kill('SIGKILL')
+      await proc.exited
+    }
+  })
+
+  it('a child that dies on the SIGTERM is not SIGKILLed after: clear() disarms the escalation', async () => {
+    // A server that ignores TERM keeps the pid alive so the escalation has a
+    // target; the runner's real clear() runs when the child exits, but the
+    // claim is the same — after clear(), no SIGKILL, whoever holds the pid.
+    const prev = process.env['VX_KILL_GRACE_MS']
+    process.env['VX_KILL_GRACE_MS'] = '200'
+    const proc = Bun.spawn(['sh', '-c', "trap '' TERM; exec sleep 30"], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+      detached: true,
+    })
+    try {
+      const handle = armTimeout(proc, 50)
+      await Bun.sleep(120)
+      expect(handle.timedOut()).toBe(true)
+      expect(isAlive(proc.pid)).toBe(true)
+      handle.clear()
+      await Bun.sleep(350)
+      // Deleting the kill timer's clear reddens this: the SIGKILL lands at
+      // 250 ms.
+      expect(isAlive(proc.pid)).toBe(true)
+    } finally {
+      if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
+      else process.env['VX_KILL_GRACE_MS'] = prev
+      proc.kill('SIGKILL')
+      await proc.exited
+    }
+  })
+})
+
+describe('runPersistent — what its exit bookkeeping keeps', () => {
+  let cwd: string
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-persistent-exit-'))
+  })
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('a server ready before the deadline outlives it', async () => {
+    // Two guards hold this and mask each other: markReady clears the
+    // readiness timer, and the timer's body re-checks readyAt. Deleting
+    // either alone stays green; deleting both kills a ready server at the
+    // deadline.
+    const spawn = runPersistent({
+      command: `printf 'Listening\n'; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'Listening',
+      timeoutMs: 150,
+    })
+    try {
+      await spawn.ready
+      await Bun.sleep(400)
+      expect(isAlive(spawn.child.pid)).toBe(true)
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  })
+
+  it('a child that exits before ready leaves the live set', async () => {
+    const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
+    const spawn = runPersistent({
+      command: 'echo nope; exit 1',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'Listening',
+      liveChildren,
+    })
+    await expect(spawn.ready).rejects.toThrow(/exited before becoming ready/)
+    // The exit handler is what removes it; the rejection is its second half.
+    expect(liveChildren.size).toBe(0)
   })
 })
 
