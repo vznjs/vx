@@ -571,3 +571,90 @@ describe('Cache as a ConfigEvalStore', () => {
     }
   })
 })
+
+// Loader paths the item-653 sweep found unheld: each is a COST claim (one
+// batched call, one lookup per round), invisible to a row that checks only
+// which config came back, because a slower path answers the same.
+describe('the eval-cache loader keeps its round to one call per question (item 653)', () => {
+  /** A store whose single-key lookups and per-file identities are counted. */
+  class CountingStore extends MemoryStore {
+    singleGets = 0
+    batchIdentities = 0
+    /** Paths `hashFiles` answers nothing for, as if their stat failed. */
+    unstatable = new Set<string>()
+    override getConfigEval(key: string): string | null {
+      this.singleGets++
+      return super.getConfigEval(key)
+    }
+    async hashFiles(files: readonly string[]): Promise<Map<string, string>> {
+      this.batchIdentities++
+      const out = new Map<string, string>()
+      for (const f of files) {
+        if (!this.unstatable.has(f)) out.set(f, blobOidOf(await Bun.file(f).bytes()))
+      }
+      return out
+    }
+  }
+
+  async function indexed(name: string) {
+    const cfg = await write(
+      `packages/${name}/vx.config.mjs`,
+      "export default { tasks: { build: { exec: { command: 'live' } } } }\n",
+    )
+    const store = new CountingStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(store.closures.get(cfg)).toEqual([cfg])
+    const [key] = [...store.rows.keys()]
+    store.rows.set(key!, JSON.stringify({ tasks: { build: { exec: { command: 'stored' } } } }))
+    store.hashes = 0
+    return { cfg, store, evalCache }
+  }
+
+  it('a warm load identifies the indexed closure in ONE hashFiles call, never per file', async () => {
+    const { cfg, store, evalCache } = await indexed('w1')
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
+    expect({
+      batch: store.batchIdentities,
+      perFile: store.hashes,
+      single: store.singleGets,
+    }).toEqual({ batch: 1, perFile: 0, single: 0 })
+  })
+
+  it('a fast key that cannot be built joins the round lookup on its slow key', async () => {
+    // The batch answers nothing for the config (a failed stat): no fast key.
+    // The slow key is then computed up front and asked in the ONE batched
+    // lookup — not re-derived later and asked one key at a time.
+    const { cfg, store, evalCache } = await indexed('w2')
+    store.unstatable.add(cfg)
+    const batchGets = store.batchGets
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
+    expect({ batchGets: store.batchGets - batchGets, single: store.singleGets }).toEqual({
+      batchGets: 1,
+      single: 0,
+    })
+  })
+
+  it('a store with no closure index is served from the round lookup', async () => {
+    // Only `hits` can serve here: with no index there is no fast key, so no
+    // indexed slow path re-asking the store one key at a time.
+    const cfg = await write(
+      'packages/w3/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'live' } } } }\n",
+    )
+    const rows = new Map<string, string>()
+    const store: ConfigEvalStore = {
+      getConfigEval: (k) => rows.get(k) ?? null,
+      putConfigEval: (k, json) => void rows.set(k, json),
+    }
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(rows.size).toBe(1)
+    const [key] = [...rows.keys()]
+    rows.set(key!, JSON.stringify({ tasks: { build: { exec: { command: 'stored' } } } }))
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
+  })
+})
