@@ -799,7 +799,9 @@ remote layers transport the exact same tar.zst bytes end-to-end.
 The index is authoritative: a lookup reads the row first and only then
 checks the file, so an artifact without a row (a `SCHEMA_VERSION` drop,
 a deleted `cache.db`) or a `.tmp-*` a crashed save left is never a hit
-and is never touched by a run — `vx cache prune` sweeps them, once they
+and is never touched by a run's lookups — `vx cache prune` (or a run
+whose workspace declares `cacheRetention` and has something due to
+evict) sweeps them, once they
 are older than an hour (a save renames the artifact into place before
 its row commits, so a fresh row-less file is a save in flight).
 Captured stdout is stored twice on purpose: in the artifact (so it

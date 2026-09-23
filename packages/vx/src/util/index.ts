@@ -28,7 +28,7 @@ export {
   wholeSubtreePrefixes,
 } from './paths.js'
 export { killGraceMs, settleWithin, teardownTimeoutMs } from './settle.js'
-export { parseSize } from './size.js'
+export { formatBytes, parseDuration, parseSize } from './size.js'
 export {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,

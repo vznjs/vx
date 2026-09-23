@@ -800,6 +800,26 @@ restore and save syscall trims join "Caching"; "Internals" names the
 (counted at 656, `git log v0.0.21..origin/main`); recount at the cut.
 The 652–654 sweeps are named as in flight, not as shipped.
 
+14bf. **Item 658 (roadmap 2.1, 2026-09-23): the cache evicts itself.**
+`defineWorkspace({ cacheRetention: { olderThan: '30d', maxSize: '10G' } })`
+applies the `vx cache prune` policy at the end of every run that writes
+the local cache, after the saves and uploads settle and before plugin
+teardown. `Cache.evictIfDue` flushes the deferred `accessed_at` bumps,
+reads `MIN(accessed_at)` and `SUM(size_bytes)` in one scan, and calls
+`prune()` only when something is due; the run prints one line for what it
+evicted, and a failure is a warning, never a failed run. The parsers moved
+to `util/size.ts` (`parseDuration` beside `parseSize`, and `formatBytes`)
+so the schema and the run share the flags' spellings. Rows
+(`cache-retention.test.ts`): age and LRU eviction, nothing due means no
+`prune` call, a read-only handle evicts nothing, the schema's refusals,
+and a run that evicts what is due and one that declares nothing. Three
+mutations went red in their rows: the run's call, the nothing-due guard
+and the flush — the flush only after its row asked whether a prune ran,
+since `prune()` flushes too and the evicted set is the same either way
+(a masked pair, as 563). Warm no-op at 1,000 projects, min of 9
+interleaved: main 240 ms, unconfigured 238, configured with nothing due 237. No new index: a scan of the entries table is below the noise. The
+comparison page's row 11 is shipped; roadmap 2.1 struck.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

@@ -1152,7 +1152,10 @@ vx cache prune ... --cache-dir <path>       # The cache a run with the same flag
 
 At least one of `--older-than` / `--max-size` is required. Both may
 be combined: age-based eviction runs first, then LRU eviction if the
-total is still over the size cap.
+total is still over the size cap. The same policy runs unattended at
+the end of every run when `vx.workspace.ts` declares
+`cacheRetention: { olderThan, maxSize }` (same spellings; see
+[schema](./schema.md)).
 
 After eviction, prune sweeps the cache directory for **orphans**: a
 `<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
