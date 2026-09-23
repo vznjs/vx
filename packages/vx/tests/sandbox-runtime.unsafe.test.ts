@@ -1532,6 +1532,54 @@ describe('resolveSandboxConfig', () => {
     },
   )
 
+  // Item 652: the scan behind a glob grant. Every fixture above matches
+  // plain files only and names patterns that either match or warn, so the
+  // scan's `dot` and `onlyFiles` options and the warning's own conditions
+  // (a hit, once per grant) could each go with the suite green.
+  it.skipIf(process.platform !== 'linux')(
+    'a glob grant covers the dotfiles and directories it matches',
+    async () => {
+      const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-scan-')))
+      try {
+        await mkdir(path.join(root, 'g', 'sub'), { recursive: true })
+        await writeFile(path.join(root, 'g', '.env'), '')
+        await writeFile(path.join(root, 'g', 'a.txt'), '')
+        const r = resolveSandboxConfig({ allow: { read: ['g/*'] } }, root)
+        expect([...r.allowRead].sort()).toEqual(
+          ['g/.env', 'g/a.txt', 'g/sub'].map((f) => path.join(root, f)),
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
+  it.skipIf(process.platform !== 'linux')(
+    'a write grant that matched something says nothing; one that matched nothing says so once',
+    async () => {
+      const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-warn-')))
+      try {
+        await mkdir(path.join(root, 'g'))
+        await writeFile(path.join(root, 'g', 'a.txt'), '')
+        const said: string[] = []
+        const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+          said.push(String(chunk))
+          return true
+        })
+        try {
+          resolveSandboxConfig({ allow: { write: ['g/*.txt'] } }, root)
+          resolveSandboxConfig({ allow: { write: ['g/*.bin'] } }, root)
+          resolveSandboxConfig({ allow: { write: ['g/*.bin'] } }, root)
+        } finally {
+          spy.mockRestore()
+        }
+        expect(said.map((l) => l.includes(`${root}/g/*.bin matches nothing yet`))).toEqual([true])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it('collapses a whole-subtree pattern to its directory, and a single-level one NEVER', async () => {
     // The collapse is documented as "not a widening": `<d>/**` already
     // covered every file under `<d>`, so folding it to `<d>` only adds the
@@ -2956,6 +3004,66 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         }),
       )
       expect([r.exitCode, notes(r)]).toEqual([3, [false]])
+    })
+  })
+
+  // Whether to trace is decided once per runtime, from `strace --version`.
+  // CI's strace answers 0 and a modern version, so a detector that ignored
+  // the exit, never memoized, or let a missing binary through unrecorded
+  // answered the same there. These rows put a different strace on PATH —
+  // in a process of its own, since `Bun.spawn` resolves a bare name against
+  // the PATH its process STARTED with, not a later `process.env.PATH`.
+  describe('strace detection', () => {
+    const detecting = (pathDirs: string): unknown => {
+      const src = path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts')
+      const script = [
+        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
+        `const calls = []`,
+        `const spawn = Bun.spawn`,
+        `Bun.spawn = (cmd, ...rest) => { if (Array.isArray(cmd) && cmd[0] === 'strace') calls.push(cmd.includes('-o') ? 'trace' : cmd.join(' ')); return spawn(cmd, ...rest) }`,
+        `await initSandbox()`,
+        `const dir = ${JSON.stringify(dir)}`,
+        `const outs = []`,
+        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseAllowWrite: [], baseDenyRead: [], reportWithin: dir, config: resolveSandboxConfig({}, dir) })).stdout)`,
+        `console.log(JSON.stringify({ outs, calls }))`,
+        `await resetSandbox()`,
+      ].join('\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, '-e', script],
+        env: { ...process.env, PATH: pathDirs },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const out = p.stdout.toString().trim()
+      return out === ''
+        ? { exit: p.exitCode, stderr: p.stderr.toString().slice(0, 400) }
+        : JSON.parse(out)
+    }
+
+    it('a strace whose --version fails is not used, and is asked once', async () => {
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      // Fails `--version`; as a tracer it would just run the command.
+      await writeFile(
+        path.join(bin, 'strace'),
+        '#!/bin/sh\n[ "$1" = --version ] && exit 1\nwhile [ "$1" != -- ]; do shift; done; shift; exec "$@"\n',
+        { mode: 0o755 },
+      )
+      expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
+        outs: ['ok\n', 'ok\n'],
+        calls: ['strace --version'],
+      })
+    })
+
+    it('no strace on PATH is no tracing, and is found out once', async () => {
+      // Every binary the runtime needs, and no strace.
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      for (const name of ['sh', 'bash', 'bwrap', 'socat', 'rg']) {
+        const found = Bun.which(name)
+        if (found !== null) await symlink(found, path.join(bin, name))
+      }
+      expect(detecting(bin)).toEqual({ outs: ['ok\n', 'ok\n'], calls: ['strace --version'] })
     })
   })
 
