@@ -662,6 +662,21 @@ describe('the eval-cache loader keeps its round to one call per question (item 6
     expect(store.closures.get(cfg)).toEqual([cfg, p1]) // re-indexed on the slow hit
   })
 
+  it('a round with no cacheable config asks the store nothing', async () => {
+    // Every config impure: no key, so no lookup — not an empty `IN ()` query.
+    const cfg = await write(
+      'packages/w5/vx.config.mjs',
+      'export default { tasks: { build: { exec: { command: String(process.pid) } } } }\n',
+    )
+    const store = new CountingStore()
+    await loadProjectConfigs([cfg], { evalCache: { store, workspaceFingerprint: 'fp' } })
+    expect({ batchGets: store.batchGets, single: store.singleGets, puts: store.puts }).toEqual({
+      batchGets: 0,
+      single: 0,
+      puts: 0,
+    })
+  })
+
   it('a store with no closure index is served from the round lookup', async () => {
     // Only `hits` can serve here: with no index there is no fast key, so no
     // indexed slow path re-asking the store one key at a time.
