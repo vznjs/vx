@@ -258,6 +258,30 @@ test is telling the truth.
       swept, so nobody sweeps it again. The 628 method has now walked
       `close()`, the run's end and its finally block, the runner's
       exit, `saveMiss`, `restoreHit` and `executeTask` (633–639).
+640.  DONE (2026-09-23, the 628 method on the local short-circuit's
+      classify). Nine gates deleted in turn against the whole core
+      suite in the worktree: the derivation-throw fallback, the batch
+      probe's kept-out check, the root-reaching prefix and the
+      edges-down exclusion are held; five survived. Two were dead: the
+      cacheable filter was a second copy (`deriveStableKeys` pushes
+      only `cacheEnabled && !unstable`) and the negated-glob skip
+      guarded a shape the schema refuses (`validateWorkspaceGlobs`
+      throws on `!` in output globs — a row that tried to declare one
+      found out); both gone, with the reason in place. Three get rows
+      (`local-shortcircuit.test.ts`): a task whose `workspaceFiles`
+      INPUTS read the writer's output stays OUT of the tier, edge or no
+      edge — its up-front key folded the bytes as they were before this
+      run's writer ran, and restoring it early restores an artifact
+      keyed on old bytes (the `workspaceInputsReach` term; the row's
+      first shape passed with the term deleted because the reader's
+      cold-run key depended on whether it ran before or after the
+      writer, so the writer's bytes are on disk before the cold run);
+      a cache without `getMany` — a `ChainedCache` of a local plugin
+      layer over the floor has none — classifies through the per-task
+      pool with the same exclusion; a batch probe that throws falls
+      back to that pool (`classifyWith` shapes the cache the classify
+      sees: `Object.create` over the real one, `getMany` overridden).
+      Each row red on its line alone.
 
 ## In flight
 

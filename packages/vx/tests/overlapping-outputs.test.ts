@@ -5,7 +5,7 @@
 // compares the tree under `dist` byte for byte with a COLD run of the same
 // sources in a fresh workspace, which is the design note's acceptance:
 // whatever the cache did, the tree is what the two commands produce.
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
