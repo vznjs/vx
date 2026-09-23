@@ -793,6 +793,13 @@ release (`cli.md` § Releasing names them and the one-time hand publish
 if npm requires the name to exist first). The item is 656, not 652:
 652–654 are the implementer sweeps' numbers in the loop above.
 
+14be. **Item 657 (roadmap 1.3, 2026-09-23): the 0.1.0 notes run through
+item 656.** The plugins reaching npm heads "Plugins and packages"; the
+restore and save syscall trims join "Caching"; "Internals" names the
+633–651 sweep and the three deletions it made. The PR count reads 408
+(counted at 656, `git log v0.0.21..origin/main`); recount at the cut.
+The 652–654 sweeps are named as in flight, not as shipped.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
