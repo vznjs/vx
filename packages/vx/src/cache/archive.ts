@@ -524,7 +524,13 @@ class Extractor {
     //
     // A directory at the target makes the rename fail — the same
     // fail-closed outcome the plain write had.
-    const tmp = `${target}.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`
+    // The temp is a sibling with its own short name, never `<target>.suffix`:
+    // a suffix pushed a legal name of 242–255 bytes past NAME_MAX, and the
+    // restore of a valid artifact failed with ENAMETOOLONG (item 666).
+    const tmp = path.join(
+      path.dirname(target),
+      `.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`,
+    )
     this.staged.push({ name, tmp, target, created })
     if (body instanceof Uint8Array) {
       this.inflightBytes += body.byteLength
@@ -658,7 +664,33 @@ function assertSafeName(name: string): void {
   if (name.includes('\0')) {
     throw new ArchiveSecurityError(`archive entry name contains a null byte (unsafe): ${name}`)
   }
+  // Only a pax `path` record can carry a name this long. Left to the file
+  // system it is a raw ENAMETOOLONG, which the restore reports as an
+  // internal error rather than a refused artifact. A UTF-16 unit is at most
+  // three UTF-8 bytes, so the common short name never pays for the count.
+  if (name.length * 3 >= PATH_MAX && Buffer.byteLength(name) >= PATH_MAX) {
+    throw new ArchiveSecurityError(
+      `archive entry name is ${Buffer.byteLength(name)} bytes, past PATH_MAX (${PATH_MAX}) (unsafe): ${name.slice(0, 64)}…`,
+    )
+  }
+  // The same raw ENAMETOOLONG for one component past NAME_MAX, the same on
+  // Linux and macOS. Same cheap bound: a name under 86 units cannot hold one.
+  if (name.length * 3 > NAME_MAX) {
+    for (const part of name.split('/')) {
+      if (part.length * 3 > NAME_MAX && Buffer.byteLength(part) > NAME_MAX) {
+        throw new ArchiveSecurityError(
+          `archive entry has a ${Buffer.byteLength(part)}-byte component, past NAME_MAX (${NAME_MAX}) (unsafe): ${part.slice(0, 64)}…`,
+        )
+      }
+    }
+  }
 }
+
+/** Bytes one path component may hold (limits.h), on Linux and macOS alike. */
+const NAME_MAX = 255
+
+/** Bytes a path may hold, its terminating NUL included (limits.h). */
+const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
 
 function hasParentSegment(p: string): boolean {
   if (p === '..' || p.startsWith('../') || p.endsWith('/..')) return true

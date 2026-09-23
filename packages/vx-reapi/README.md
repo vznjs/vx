@@ -143,7 +143,19 @@ a named integrity error instead of being written into the local
 content-addressed store: a corrupt or poisoned remote degrades to a miss
 (the cache invariant), never to wrong bytes under a trusted name. Uploads
 were always server-verified; this is the mirror on the read side, the same
-check Bazel's client performs.
+check Bazel's client performs. A streamed read (the cache artifact) is
+hashed as its bytes pass and errors at its end on a mismatch, so vx's
+ingest fails and the hit is a miss.
+
+## Artifacts stream
+
+The cache layer never holds an artifact whole. `put` digests the file-backed
+`Blob` vx hands it in one pass over its stream, asks `FindMissingBlobs`, and
+uploads from a second pass: past the batch limit (about 4 MiB) the file is
+read `chunkBytes` at a time as the ByteStream write drains, identity-encoded
+(the artifact is zstd already). `get` returns the ByteStream read as a
+`Response`, each message taken from the call as vx writes the previous one
+to disk.
 
 ## Deadlines: a wedged server degrades, it does not hang
 

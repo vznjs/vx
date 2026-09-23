@@ -1,7 +1,8 @@
-# 0.1.0 — draft release notes (2026-09-22, refreshed 2026-09-23)
+# 0.1.0 — draft release notes (2026-09-22, refreshed 2026-09-23 through item 672)
 
 **Status: a draft for the owner to cut the release from (launch checklist
-item 2; plan D4).** 377 pull requests merged since v0.0.21 (2026-09-15),
+item 2; plan D4).** 408 pull requests merged since v0.0.21 (2026-09-15,
+counted at item 656; recount when the tag is cut),
 every one a titled squash, so GitHub's generated notes are accurate; this
 page is the same record grouped by what a user meets, with the internal
 work in one line at the end. Version: `0.1.0` says "first real release"
@@ -27,6 +28,9 @@ where 0.0.22 says "another nightly".
 
 ## Selecting and running
 
+- `--filter ./packages/[abc]` selects the directory it names: a path that
+  names a project directory is read literally before it is read as a glob.
+  A range base (`--affected=HEAD~1..HEAD`) is refused by name.
 - `--affected` selects the changed projects **and their dependents**, the
   superset a CI gate needs; `--filter '[<base>]'` is the changed-only form.
   A base that is HEAD itself, and a shallow clone, are named for what they
@@ -45,6 +49,23 @@ where 0.0.22 says "another nightly".
   1.4); `vx info` reports it, and `vx` warns once below it.
 
 ## Caching
+
+- **Breaking, and a stale-hit fix:** a bracket is a literal character in
+  every task glob (`cache.inputs.files`, `cache.outputs.files`,
+  `workspaceFiles`), so a route directory like Next.js's `app/[id]/` is
+  what its pattern names. Read as a character class, an input over one
+  keyed nothing and replayed an old output on an edit, and an output
+  under one deleted its namesake (`app/i/page.js`) while saving nothing.
+  `\[id\]` still works. `CACHE_VERSION` moves to v28, and the first run
+  after the upgrade says `cache format changed` (every bump will).
+- `cacheRetention: { olderThan, maxSize }` in `vx.workspace.ts` evicts at
+  the end of a run, by the policy `vx cache prune` takes as flags, and
+  only when something is due.
+- A restore writes a 242–255-byte file name (the staging suffix pushed it
+  past NAME_MAX); a component past NAME_MAX, a name past PATH_MAX and a
+  destination too deep for a name are each refused by name.
+- A remote-cache URL carrying `user:pass@` is refused (`turboCache()`,
+  `nxCache()`); the URL is printed in their error lines.
 
 - A negation pattern subtracts from the root walk too; a literal output is
   read as the tree it deletes; glob prefixes compare as paths, not
@@ -76,6 +97,10 @@ where 0.0.22 says "another nightly".
   config: `load configs` at 1,000 projects 507–607 ms → 207–272; the
   output-directory snapshots land in one transaction at run end (the stage
   52–70 ms → 10–17 cold, 64–75 → 12–14 on a restore).
+- A restore stopped probing, re-creating and realpathing what it had just
+  made, and a save stopped re-creating the cache directory twice per
+  artifact; both paths were traced by counting vx's own syscalls, a
+  method now in the bench package (`strace-vx.ts`).
 
 ## Sandbox (Linux `bwrap`, macOS seatbelt)
 
@@ -105,6 +130,17 @@ where 0.0.22 says "another nightly".
 
 ## Plugins and packages
 
+- **Breaking for remote-cache plugin authors:** `RemoteCacheLayer.get`
+  resolves `{ body: Blob | Response }` and `put` takes a `Blob`, so an
+  artifact streams between disk and the wire instead of sitting in
+  memory (a 150 MiB round trip: +495 MiB peak RSS before, +45 after). A
+  layer that still resolves bytes is refused as invalid, naming the new
+  shape. Every first-party layer moved with it.
+- **The seven plugin packages are on npm for the first time**, published
+  with every release at the core's version and peer-pinned to it:
+  `@vzn/vx-migrate`, `@vzn/vx-lockfile`, `@vzn/vx-reapi`, `@vzn/vx-otel`,
+  `@vzn/vx-github`, `@vzn/vx-mcp` and `@vzn/vx-schedule-history`. Until
+  now `bunx @vzn/vx-migrate` named a package the registry did not have.
 - `@vzn/vx-migrate`: Nx's runtime input maps to `cache.inputs.runtime`,
   `project:target` to `project#target`, a package `turbo.json` merges over
   the root task, `extends` is in the table; the generated `vx-preset.ts`
@@ -154,3 +190,15 @@ stats` points at the verb that answers it.
   shard starts; CLAUDE.md and STATUS trimmed to what a session needs. A
   value export nothing imports is a test failure; a `bun:sqlite`
   statement tally rides beside the profiler in the bench package.
+- A second sweep (items 633–651) deleted every guard and duty line in the
+  run's lifecycle, the runner, the save and restore paths, the local and
+  layered caches, the remote prefetch, the scheduler, the task graph, the
+  input resolvers, git enumeration, `--filter`/`--affected`, placement and
+  the plugin host in turn. The sandbox, workspace config and telemetry
+  sweeps (652–654) are in flight; add them here when they merge.
+  Each survivor became a row, a corrected comment or a deletion: three
+  pieces of dead code went (a placement parameter no caller set, the
+  filter's redundant bare-name branch, an unreachable admit arm) and a
+  duplicated task-id splitter became one.
+- The roadmap to 1.0 (`design/roadmap-1.0.md`) defines feature complete
+  and what remains before it.

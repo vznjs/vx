@@ -35,6 +35,8 @@ describe('wholeSubtreePrefixes (eligibility)', () => {
     expect(wholeSubtreePrefixes(['dist/**'])).toEqual(['dist'])
     // the spellings normalizeGlob folds: the short-circuit must not lose them
     expect(wholeSubtreePrefixes(['./dist/**', 'build//out/**'])).toEqual(['dist', 'build/out'])
+    // a route directory is a plain dir (item 667), in either spelling
+    expect(wholeSubtreePrefixes(['app/[id]/**', 'app/\\[x\\]/**'])).toEqual(['app/[id]', 'app/[x]'])
     expect(wholeSubtreePrefixes(['dist/**', 'build/out/**', 'dist/**'])).toEqual([
       'dist',
       'build/out',

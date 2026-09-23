@@ -7,6 +7,9 @@
 //   vx/                — the primary @vzn/vx package: library source
 //                        (exports ./src/index.ts) PLUS a Node launcher +
 //                        the 4 platform packages as optionalDependencies.
+//   plugins/<dir>/     — every other public workspace package (the plugins),
+//                        at the same version, peer-pinned to this @vzn/vx
+//                        (`--only=plugins` emits these alone).
 //
 // npm installs only the platform package matching the user's os/cpu, and the
 // launcher execs its binary — so `npm i -g @vzn/vx` gives the command with NO
@@ -15,10 +18,10 @@
 // Publishing is done by the workflow (`npm publish` in each emitted dir); this
 // script only builds the tree.
 //
-//   bun packages/vx/scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64]
+//   bun packages/vx/scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64|plugins]
 
 import { existsSync } from 'node:fs'
-import { chmod, cp, mkdir, rm } from 'node:fs/promises'
+import { chmod, cp, mkdir, readdir, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 interface Target {
@@ -196,9 +199,79 @@ export async function emitMainPackage(args: { version: string; outDir: string })
   return mainDir
 }
 
+interface WorkspaceManifest {
+  name: string
+  private?: boolean
+  files?: string[]
+  peerDependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  scripts?: Record<string, string>
+  [field: string]: unknown
+}
+
+/**
+ * Every public workspace package other than `@vzn/vx` — the plugins — as a
+ * publishable directory under `<outDir>/plugins/<dir>`. They ship as the
+ * TypeScript source Bun runs (no build step), at the release's version, with
+ * `@vzn/vx` peer-pinned to the same minor: one release train, so a plugin
+ * never meets a core it was not tested against. Discovered, not listed, so a
+ * new package cannot be left off the publish.
+ */
+export async function emitPluginPackages(args: {
+  version: string
+  outDir: string
+}): Promise<Array<{ name: string; dir: string }>> {
+  const { version, outDir } = args
+  const emitted: Array<{ name: string; dir: string }> = []
+  const packagesDir = join(ROOT, 'packages')
+  for (const entry of (await readdir(packagesDir, { withFileTypes: true })).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )) {
+    if (!entry.isDirectory()) continue
+    const manifestPath = join(packagesDir, entry.name, 'package.json')
+    if (!existsSync(manifestPath)) continue
+    const pkg = (await Bun.file(manifestPath).json()) as WorkspaceManifest
+    if (pkg.private === true || pkg.name === '@vzn/vx') continue
+    const src = join(packagesDir, entry.name)
+    const dir = join(outDir, 'plugins', entry.name)
+    await mkdir(dir, { recursive: true })
+    const files = pkg.files ?? []
+    for (const f of files) {
+      if (!existsSync(join(src, f))) {
+        throw new Error(`${pkg.name} would ship ${f}, but ${join(src, f)} does not exist`)
+      }
+      // `cp` keeps the mode, so a bin marked executable in the tree stays so.
+      await cp(join(src, f), join(dir, f), { recursive: true })
+    }
+    await cp(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'))
+    const { devDependencies: _dev, scripts: _scripts, private: _private, ...published } = pkg
+    await writeJson(join(dir, 'package.json'), {
+      ...published,
+      version,
+      peerDependencies: { ...pkg.peerDependencies, '@vzn/vx': `^${version}` },
+      files: [...files, 'LICENSE'],
+      repository: { ...REPOSITORY, directory: `packages/${entry.name}` },
+      homepage: `${REPO_URL}/tree/main/packages/${entry.name}#readme`,
+      bugs: `${REPO_URL}/issues`,
+    })
+    emitted.push({ name: pkg.name, dir })
+  }
+  return emitted
+}
+
 async function main(): Promise<void> {
   const { version, out, only } = parseArgs(Bun.argv.slice(2))
   const outDir = isAbsolute(out) ? out : join(ROOT, out)
+  if (only === 'plugins') {
+    await rm(outDir, { recursive: true, force: true })
+    const plugins = await emitPluginPackages({ version, outDir })
+    process.stdout.write(
+      `built plugin packages at ${out} (version ${version}):\n` +
+        plugins.map((p) => `  ${p.name}`).join('\n') +
+        '\n',
+    )
+    return
+  }
   const targets = only ? TARGETS.filter((t) => t.target === only) : TARGETS
   if (targets.length === 0) throw new Error(`--only=${only}: unknown target`)
 

@@ -4,7 +4,7 @@
 // them, not only to `vx run`. Subprocess-driven so the dispatcher wiring is
 // the one a user hits.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -108,9 +108,18 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
   it(
     '`vx cache prune` prunes the moved directory and never creates the default one',
     async () => {
+      // The freed figure is the artifact the prune deletes, measured on disk
+      // rather than read back from the index the prune itself sums.
+      const moved = path.join(root, '.vx', 'moved')
+      const artifacts = (await readdir(moved)).filter((f) => f.endsWith('.tar.zst'))
+      expect(artifacts).toHaveLength(1)
+      const size = (await stat(path.join(moved, artifacts[0]!))).size
+      expect(size).toBeLessThan(1024)
+
       const r = await vx(root, ['cache', 'prune', '--max-size', '1B'])
       expect(`${r.code}\n${r.err}`).toBe('0\n')
-      expect(r.out).toContain('Pruned 1 entry')
+      expect(r.out).toBe(`Pruned 1 entry (${size} B freed)\n`)
+      expect(existsSync(path.join(moved, artifacts[0]!))).toBe(false)
       expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
     },
     TIMEOUT,

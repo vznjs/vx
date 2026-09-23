@@ -20,15 +20,19 @@ export { mark, printTimings, span } from './timing.js'
 export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
   asTrees,
+  BUN_GLOB_WILDCARDS,
+  grantPrefix,
   isLiteralPattern,
   GLOB_WILDCARDS,
+  normalizeBunGlob,
   normalizeGlob,
   relPosix,
   staticPrefix,
+  taskGlob,
   wholeSubtreePrefixes,
 } from './paths.js'
 export { killGraceMs, settleWithin, teardownTimeoutMs } from './settle.js'
-export { parseSize } from './size.js'
+export { formatBytes, parseDuration, parseSize } from './size.js'
 export {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,

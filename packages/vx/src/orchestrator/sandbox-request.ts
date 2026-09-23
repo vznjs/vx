@@ -16,7 +16,7 @@ import {
   isMountableLiteral,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { staticPrefix, UserError } from '../util/index.js'
+import { grantPrefix, UserError } from '../util/index.js'
 
 /**
  * Arm the sandbox runtime for a run, lazily: only when at least one task
@@ -275,12 +275,12 @@ async function prepareOutputsForBind(
     // reported a network error for an unwritable cache; 2026-09-05).
     if (path.isAbsolute(g) || g.startsWith('~')) {
       if (!hasWildcard) continue
-      const abs = expandHome(staticPrefix(g))
+      const abs = expandHome(grantPrefix(g))
       await mkdir(abs, { recursive: true }).catch(() => undefined)
       continue
     }
     if (hasWildcard || g.endsWith('/')) {
-      const abs = path.join(projectDir, hasWildcard ? staticPrefix(g) : g)
+      const abs = path.join(projectDir, hasWildcard ? grantPrefix(g) : g)
       await mkdir(abs, { recursive: true })
     } else {
       const abs = path.join(projectDir, g)

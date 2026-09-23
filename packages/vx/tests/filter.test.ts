@@ -202,6 +202,21 @@ describe('applyFilters', () => {
       ])
     })
 
+    // Nx resolves a bare `core` to `@acme/core`; vx's name form is an exact
+    // anchored match (docs/comparison.md, Filter DSL), so the scope or a
+    // leading `*` is how to reach it.
+    it("a bare 'core' is an exact match and selects nothing against '@acme/core'", () => {
+      const filters = [parseFilter('core', ROOT)]
+      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })]).toEqual([])
+    })
+
+    it("'*core' reaches '@acme/core' across the scope", () => {
+      const filters = [parseFilter('*core', ROOT)]
+      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })]).toEqual([
+        '@acme/core',
+      ])
+    })
+
     it("'!*utils' excludes a scoped project from the full set", () => {
       const filters = [parseFilter('!*utils', ROOT)]
       expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })].sort()).toEqual([

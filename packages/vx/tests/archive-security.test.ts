@@ -470,6 +470,101 @@ describe('name rejections', () => {
     expect(existsSync(path.join(dest, 'truncated.js'))).toBe(false)
   })
 
+  // Unicode lookalikes are ordinary bytes to a POSIX file system: a
+  // fullwidth full stop (U+FF0E) is not `.`, a division slash (U+2215) is
+  // not `/`, and a bidi override only reorders display. Each lands as the
+  // literal name inside the anchor. A normalization step (NFKC folds
+  // U+FF0E to `.`) placed before the checks is what would turn one into a
+  // traversal.
+  it('lookalike dots, a division slash and a bidi override land as literal names inside the anchor', async () => {
+    const names = [
+      'outputs/．．/fullwidth.txt',
+      'outputs/．．∕slash.txt',
+      'outputs/‮txt.exe',
+      'outputs/‮../bidi.txt',
+    ]
+    const body = new TextEncoder().encode('x')
+    const tar = concatTar([
+      ...names.flatMap((name) => [
+        makeHeader({ name, size: body.length, typeFlag: '0' }),
+        makeDataBlock(body),
+      ]),
+      EOF_BLOCKS,
+    ])
+    await restore(tar, dest)
+    expect((await readdir(dest, { recursive: true })).sort()).toEqual(
+      ['．．', '．．/fullwidth.txt', '．．∕slash.txt', '‮txt.exe', '‮..', '‮../bidi.txt'].sort(),
+    )
+    expect(await readdir(path.dirname(dest))).not.toContain('fullwidth.txt')
+  })
+
+  // A name past PATH_MAX reaches the file system as a raw ENAMETOOLONG,
+  // which the cache reports as an internal error over a corrupt artifact
+  // instead of a refused one. Only a pax `path` record carries a name that
+  // long, and a component stays under NAME_MAX so the length is the only
+  // thing wrong with it.
+  const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
+  const nameOf = (bytes: number): string => {
+    const name = `outputs/${Array.from({ length: 30 }, () => 'x'.repeat(200)).join('/')}`.slice(
+      0,
+      bytes,
+    )
+    return name.endsWith('/') ? `${name.slice(0, -1)}x` : name
+  }
+  const paxNamed = (name: string): Uint8Array => {
+    const payload = `path=${name}\n`
+    let len = payload.length + 2
+    while (`${len} ${payload}`.length !== len) len = `${len} ${payload}`.length
+    const pax = new TextEncoder().encode(`${len} ${payload}`)
+    return concatTar([
+      makeHeader({ name: 'PaxHeaders/x', size: pax.length, typeFlag: 'x' }),
+      makeDataBlock(pax),
+      makeHeader({ name: 'outputs/benign.txt', size: 1, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('x')),
+      EOF_BLOCKS,
+    ])
+  }
+
+  it('an entry name longer than PATH_MAX is refused as an ArchiveSecurityError', async () => {
+    const long = nameOf(4097)
+    expect(long.length).toBe(4097)
+    const err = await restore(paxNamed(long), dest).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(ArchiveSecurityError)
+    expect(err?.message).toBe(
+      `archive entry name is 4097 bytes, past PATH_MAX (${PATH_MAX}) (unsafe): ${long.slice(0, 64)}…`,
+    )
+    expect(await readdir(dest)).toEqual([])
+  })
+
+  it('CONTROL: a name a few hundred bytes under PATH_MAX restores', async () => {
+    const name = nameOf(PATH_MAX - 300)
+    await restore(paxNamed(name), dest)
+    expect(await readFile(path.join(dest, name.slice('outputs/'.length)), 'utf8')).toBe('x')
+  })
+
+  // One component past NAME_MAX is the same raw ENAMETOOLONG (item 666).
+  it('an entry with a component past NAME_MAX is refused as an ArchiveSecurityError', async () => {
+    const part = 'y'.repeat(256)
+    const err = await restore(paxNamed(`outputs/dir/${part}`), dest).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(ArchiveSecurityError)
+    expect(err?.message).toBe(
+      `archive entry has a 256-byte component, past NAME_MAX (255) (unsafe): ${part.slice(0, 64)}…`,
+    )
+    expect(await readdir(dest)).toEqual([])
+  })
+
+  it('CONTROL: a component of exactly NAME_MAX bytes restores', async () => {
+    const part = 'y'.repeat(255)
+    await restore(paxNamed(`outputs/dir/${part}`), dest)
+    expect(await readFile(path.join(dest, 'dir', part), 'utf8')).toBe('x')
+  })
+
   it('accepts an entry whose data is fully present (control)', async () => {
     const body = new TextEncoder().encode('REAL-BYTES')
     await restore(
@@ -686,7 +781,11 @@ describe('archive restore — concurrent restores to the same anchor', () => {
       expect(restored).toEqual(Buffer.from(body))
     }
     // …and no scratch file survived to be swept into the next artifact.
-    const leftovers = [...new Bun.Glob('**/*.vx-tmp-*').scanSync({ cwd: dest })]
+    // A readdir, not a glob: the scratch name starts with a dot, which a
+    // glob's `*` does not match.
+    const leftovers = (await readdir(dest, { recursive: true })).filter((n) =>
+      n.includes('.vx-tmp-'),
+    )
     expect(leftovers).toEqual([])
     // 400 rounds run ~2 s idle and past the 5 s default under the ubuntu
     // gate's four parallel shards (red main, 2026-09-03); the bound is the

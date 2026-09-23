@@ -8,7 +8,13 @@
 
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import { asTrees, UserError, gitSpawnRefusal, isExecutableMissing } from '../util/index.js'
+import {
+  asTrees,
+  UserError,
+  gitSpawnRefusal,
+  isExecutableMissing,
+  taskGlob,
+} from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners } from './config-imports.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
@@ -97,6 +103,16 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   if (args.since.length === 0 || args.since.startsWith('-')) {
     throw new UserError(
       `git ref "${args.since}" is not a ref: a base cannot be empty or start with "-".`,
+    )
+  }
+  // `A..B` / `A...B` reached `rev-parse --verify`, which refuses a range, and
+  // the user read "did not resolve" about refs that both exist. `..` is
+  // illegal in a ref name (git-check-ref-format), so this refuses no ref.
+  const range = args.since.indexOf('..')
+  if (range >= 0) {
+    throw new UserError(
+      `git ref "${args.since}" is a range: ranges are not supported — pass the base alone ` +
+        `("${args.since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
     )
   }
   await verifyRef(args.workspaceRoot, args.since)
@@ -231,8 +247,8 @@ export function workspaceGlobsMatch(globs: readonly string[], rel: string): bool
     else positive.push(entry)
   }
   if (positive.length === 0) return false
-  if (!asTrees(positive).some((g) => new Bun.Glob(g).match(rel))) return false
-  return !asTrees(negative).some((g) => new Bun.Glob(g).match(rel))
+  if (!asTrees(positive).some((g) => taskGlob(g).match(rel))) return false
+  return !asTrees(negative).some((g) => taskGlob(g).match(rel))
 }
 
 /**

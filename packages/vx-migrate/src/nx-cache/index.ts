@@ -41,6 +41,15 @@ export function resolveNxCacheConfig(
 ): NxCacheConfig | undefined {
   const server = (options.server ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
   if (!server) return undefined
+  // The URL is printed in every refusal line, so a `user:pass@` in it would
+  // leak to the log. Credentials go in the access token.
+  if (URL.canParse(server)) {
+    const u = new URL(server)
+    if (u.username !== '' || u.password !== '')
+      throw new Error(
+        'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead',
+      )
+  }
   const accessToken = options.accessToken ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
   return {
     server,
@@ -51,9 +60,12 @@ export function resolveNxCacheConfig(
 
 /**
  * The seam implementation over Nx's two endpoints. The spec has no
- * existence probe, so `has` is a GET whose body is kept for the `get` that
- * follows it (the prefetch pass asks exactly that way), which makes a probe
- * plus a fetch one transfer instead of two. `put` treats `409` as success:
+ * existence probe, so `has` is a GET whose unread response is kept for the
+ * `get` that follows it (the prefetch pass asks exactly that way), which
+ * makes a probe plus a fetch one transfer instead of two; a probe that no
+ * `get` follows has its body cancelled by the next, so it holds no
+ * connection. Bodies stream: `get` returns the `fetch` Response and `put`
+ * sends the Blob core hands it. `put` treats `409` as success:
  * the record is immutable and content-addressed, so "already there" is the
  * outcome wanted. An auth failure (401/403) throws ONCE — LayeredCache
  * reports it — and then turns the layer off for the rest of the process;
@@ -62,7 +74,7 @@ export function resolveNxCacheConfig(
  */
 export class NxRemoteCache implements RemoteCacheLayer {
   private disabled = false
-  private last: { hash: string; body: ArrayBuffer } | undefined
+  private last: { hash: string; res: Response } | undefined
   constructor(
     private readonly config: NxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
@@ -77,13 +89,13 @@ export class NxRemoteCache implements RemoteCacheLayer {
   private async request(
     method: 'GET' | 'PUT',
     hash: string,
-    body?: Uint8Array,
+    body?: Blob,
   ): Promise<Response | undefined> {
     const headers: Record<string, string> = {}
     if (this.config.accessToken) headers['Authorization'] = `Bearer ${this.config.accessToken}`
     if (body !== undefined) {
       headers['Content-Type'] = 'application/octet-stream'
-      headers['Content-Length'] = String(body.byteLength)
+      headers['Content-Length'] = String(body.size)
     }
     const res = await this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
       method,
@@ -102,37 +114,38 @@ export class NxRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  async get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null> {
+  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
+    const res = await this.take(hash)
+    // The Nx wire carries no producing-task duration.
+    return res === null ? null : { body: res, durationMs: undefined }
+  }
+
+  private async take(hash: string): Promise<Response | null> {
     if (this.disabled) return null
     if (this.last?.hash === hash) {
-      const { body } = this.last
+      const { res } = this.last
       this.last = undefined
-      return { body, durationMs: undefined }
+      return res
     }
     const res = await this.request('GET', hash)
     if (res === undefined) return null
     if (res.status === 404) return null
     if (res.status !== 200) throw new Error(`GET ${hash} → ${res.status}`)
-    // The Nx wire carries no producing-task duration.
-    return { body: await res.arrayBuffer(), durationMs: undefined }
+    return res
   }
 
   async has(hash: string): Promise<boolean> {
-    const got = await this.get(hash)
-    if (got === null) return false
-    this.last = { hash, body: got.body }
+    const res = await this.take(hash)
+    if (res === null) return false
+    await this.last?.res.body?.cancel()
+    this.last = { hash, res }
     return true
   }
 
   // Nx's record carries no duration; the seam's `meta` is accepted and unused.
-  async put(
-    hash: string,
-    body: ArrayBuffer | Uint8Array,
-    _meta: { durationMs: number },
-  ): Promise<void> {
+  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void> {
     if (this.disabled) return
-    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body)
-    const res = await this.request('PUT', hash, bytes)
+    const res = await this.request('PUT', hash, body)
     if (res === undefined) return
     if (res.status === 200 || res.status === 202 || res.status === 409) return
     throw new Error(`PUT ${hash} → ${res.status}`)

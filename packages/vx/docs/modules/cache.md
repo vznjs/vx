@@ -200,7 +200,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v27'
+export const CACHE_VERSION = 'vx-cache-v28'
 export const SCHEMA_VERSION = 'v27'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
@@ -406,7 +406,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v27'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v28'`; `SCHEMA_VERSION` is
 `'v27'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
@@ -425,7 +425,7 @@ status line, or a verb's stderr — `[vx] cache index reset: schema v24 →
 v25 (vx upgraded); every cached task misses once and re-saves, and
 \`vx cache prune\` reclaims the old artifacts`. An upgrade's all-miss
 run, and the `vx last` with nothing to show after it, are explained
-rather than silent (`tests/schema-reset-notice.test.ts`). A new `CacheKeyInput`field that
+rather than silent (`tests/schema-reset-notice.test.ts`). A `CACHE_VERSION`bump alone keeps the index, so`Cache.formatChange`carries`{ from, to }`on the open that first sees the new version (from`schema_meta.cache_version`; a store with entries and no record reads `an earlier format`), and the same `noteSchemaReset`prints`[vx] cache format changed: …`instead (item 671). A new`CacheKeyInput`field that
 is **NOT folded** (a pure side-channel like`captureInto`/`upstreamIds`) needs neither bump: the key is byte-identical. The Tier-3
 tables (`invocations`, `entry_inputs`) rolled `SCHEMA_VERSION`to`v22`but left`CACHE_VERSION`at`v24`for exactly this reason — they persist
 components already fed to`key()`.

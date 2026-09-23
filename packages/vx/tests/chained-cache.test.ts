@@ -262,7 +262,7 @@ describe('ChainedCache — layers sharing one local handle', () => {
       const remoteB: RemoteCacheLayer = {
         // No hasMany — an older serve / a wire without a batch probe.
         has: async () => true,
-        get: async () => ({ body: artifact.buffer as ArrayBuffer, durationMs: 1 }),
+        get: async () => ({ body: new Blob([artifact]), durationMs: 1 }),
         put: async () => undefined,
       }
       const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }

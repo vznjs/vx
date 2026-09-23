@@ -668,6 +668,39 @@ describe('Cache storage (v10)', () => {
     },
   )
 
+  // Item 670: a legal entry under a destination deep enough that the two
+  // together pass PATH_MAX is the workspace's location, not a bad artifact.
+  it('restoreOutputs() into a directory too deep for its output names says so, as a user error', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
+    const name = 'n'.repeat(200)
+    const outFile = path.join(projectDir, 'dist', name)
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'produced')
+    await cache.save({
+      hash: 'h-deep',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
+    })
+    // A destination short of PATH_MAX that the output's name then passes.
+    let deep = projectDir
+    while (deep.length < PATH_MAX - 150) deep = path.join(deep, 'd'.repeat(100))
+    await mkdir(deep, { recursive: true })
+    const err = await cache.restoreOutputs('h-deep', deep).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect(err?.message).toMatch(
+      /^restore of h-deep into .* could not write its outputs \(ENAMETOOLONG: .*\)\. An output path under this directory is longer than the file system allows — move the workspace to a shorter path\.$/,
+    )
+    // CONTROL: the same artifact restores into the shallow directory.
+    await rm(outFile)
+    await cache.restoreOutputs('h-deep', projectDir)
+    expect(await Bun.file(outFile).text()).toBe('produced')
+  })
+
   it('assertWritable() passes on a cache this user owns', () => {
     expect(() => cache.assertWritable()).not.toThrow()
   })
@@ -843,7 +876,7 @@ describe('Cache storage (v10)', () => {
     const other = new Cache(otherDir)
     try {
       const bytes = await Bun.file(path.join(cacheDir, 'h-usage.tar.zst')).bytes()
-      await other.ingest('h-usage', bytes, {
+      await other.ingest('h-usage', new Blob([bytes]), {
         taskId: 'pkg#build',
         command: 'tsc',
         durationMs: 3000,
@@ -871,7 +904,11 @@ describe('Cache storage (v10)', () => {
   it('ingest() rejects corrupt zstd bytes — no artifact on disk, no SQL row', async () => {
     const garbage = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4, 5, 6, 7, 8])
     await expect(
-      cache.ingest('h-corrupt', garbage, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+      cache.ingest('h-corrupt', new Blob([garbage]), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      }),
     ).rejects.toThrow(CorruptArtifactError)
     expect(existsSync(path.join(cacheDir, 'h-corrupt.tar.zst'))).toBe(false)
     expect(await cache.get('h-corrupt')).toBeNull()
@@ -885,7 +922,7 @@ describe('Cache storage (v10)', () => {
   it('ingest() rejects valid zstd whose bytes are not a tar at all', async () => {
     const notTar = await Bun.zstdCompress(new TextEncoder().encode('not a tar archive at all'))
     await expect(
-      cache.ingest('h-not-tar', new Uint8Array(notTar), {
+      cache.ingest('h-not-tar', new Blob([new Uint8Array(notTar)]), {
         taskId: 'pkg#build',
         command: 'tsc',
         durationMs: 1,
@@ -965,10 +1002,18 @@ describe('Cache storage (v10)', () => {
     const tar = await new Bun.Archive({ 'outputs/dist/app.js': 'BUILT' }).bytes()
     const bytes = new Uint8Array(await Bun.zstdCompress(tar))
     await expect(
-      cache.ingest('h-no-stdout', bytes, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+      cache.ingest('h-no-stdout', new Blob([bytes]), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      }),
     ).rejects.toThrow(CorruptArtifactError)
     await expect(
-      cache.ingest('h-no-stdout', bytes, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+      cache.ingest('h-no-stdout', new Blob([bytes]), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      }),
     ).rejects.toThrow(/missing stdout entry/)
     expect(existsSync(path.join(cacheDir, 'h-no-stdout.tar.zst'))).toBe(false)
     expect(await cache.get('h-no-stdout')).toBeNull()
@@ -1070,7 +1115,11 @@ describe('Cache storage (v10)', () => {
     for (let i = 0; i < 8; i++) fcs[i] = Number((threeGiB >> BigInt(8 * i)) & 0xffn)
     const frame = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0xc0, 0x00, ...fcs, 0, 0, 0, 0])
     await expect(
-      cache.ingest('h-bomb', frame, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+      cache.ingest('h-bomb', new Blob([frame]), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      }),
     ).rejects.toThrow(CorruptArtifactError)
     expect(existsSync(path.join(cacheDir, 'h-bomb.tar.zst'))).toBe(false)
     expect(await cache.get('h-bomb')).toBeNull()
@@ -1089,7 +1138,7 @@ describe('Cache storage (v10)', () => {
       ).arrayBuffer(),
     )
     expect(zstdContentSize(sizeless)).toBeNull() // CONTROL: the frame really is sizeless
-    await cache.ingest('h-sizeless', sizeless, {
+    await cache.ingest('h-sizeless', new Blob([sizeless]), {
       taskId: 'pkg#build',
       command: 'tsc',
       durationMs: 1,
@@ -1098,7 +1147,11 @@ describe('Cache storage (v10)', () => {
 
     const garbage = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x00, 0x01, 0x00, 0x00])
     await expect(
-      cache.ingest('h-garbage', garbage, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+      cache.ingest('h-garbage', new Blob([garbage]), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      }),
     ).rejects.toThrow(CorruptArtifactError)
     expect(existsSync(path.join(cacheDir, 'h-garbage.tar.zst'))).toBe(false)
   })
@@ -1116,7 +1169,11 @@ describe('Cache storage (v10)', () => {
     for (let i = 0; i < 4; i++) fcs[i] = (threeGiB >>> (8 * i)) & 0xff
     const frame = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x80, 0x00, ...fcs])
     await expect(
-      cache.ingest('h-bomb4', frame, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+      cache.ingest('h-bomb4', new Blob([frame]), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      }),
     ).rejects.toThrow(/declares .* decompressed bytes/)
     expect(existsSync(path.join(cacheDir, 'h-bomb4.tar.zst'))).toBe(false)
     expect(await cache.get('h-bomb4')).toBeNull()
@@ -1990,7 +2047,7 @@ describe('Cache storage (v10)', () => {
       }
       const cache = new Cache(path.join(workspaceRoot, 'cache-ingest'))
       try {
-        await cache.ingest('ingest-symmetry', bytes, {
+        await cache.ingest('ingest-symmetry', new Blob([bytes]), {
           taskId: 'pkg#build',
           command: 'x',
           durationMs: 7,
@@ -2127,7 +2184,8 @@ describe('Cache schema/version recovery', () => {
         (raw.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
       ]),
     )
-    expect(Object.values(before).every((n) => n === 1)).toBe(true)
+    // `schema_meta` holds the schema version and the cache format (item 671).
+    expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, t === 'schema_meta' ? 2 : 1])))
     raw.prepare("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
 
@@ -2702,7 +2760,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     expect(recorded % 1000).toBe(250)
 
     const bytes = await Bun.file(cache.outputsPath('ms3')).bytes()
-    await cache.ingest('ms3-remote', bytes, {
+    await cache.ingest('ms3-remote', new Blob([bytes]), {
       taskId: 'pkg#build',
       command: 'b',
       durationMs: 1,
