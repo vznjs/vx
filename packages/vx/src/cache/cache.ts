@@ -1051,6 +1051,15 @@ export class Cache implements CacheLayer {
             `Declared outputs are wiped before a restore, so this is a path the output globs do not cover — remove it and re-run.`,
         )
       }
+      // A legal name under a destination deep enough that the two together
+      // pass PATH_MAX: the artifact is fine, the workspace's location is
+      // not (the parity audit's last open archive row, item 670).
+      if (code === 'ENAMETOOLONG') {
+        throw new UserError(
+          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${(err as Error).message}). ` +
+            `An output path under this directory is longer than the file system allows — move the workspace to a shorter path.`,
+        )
+      }
       // Same distinction for a tree the process cannot write into — a
       // `dist/` another user owns, a read-only checkout, a full disk: the
       // artifact is intact, the tree is not the process's to change.
