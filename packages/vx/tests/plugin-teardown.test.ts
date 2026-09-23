@@ -21,7 +21,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { teardownPlugins } from '../src/orchestrator/plugin-host.js'
-import { run } from '../src/index.js'
+import { run, type Logger } from '../src/index.js'
+import { createEventBus } from '../src/orchestrator/index.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 /** Short enough that a hung plugin does not hold the suite for 3s. */
@@ -183,5 +184,106 @@ describe('the lifecycle is reached on a run that FAILED', () => {
     expect(summary.ok).toBe(false)
     const seen = (globalThis as unknown as { __vxLifecycle: string[] }).__vxLifecycle
     expect(seen).toEqual(['flush', 'teardown'])
+  })
+})
+
+// `RunOptions.bus` is the surface seam: an embedder's bus outlives the run
+// it is handed to. Everything run() subscribes on it — the terminal
+// renderer, a plugin's setup subscription, the telemetry source — must
+// leave with the run, or the next run on the same bus reports every event
+// once per run so far. The finally-path disposers are that contract's
+// second half; item 635 swept them.
+describe('an injected bus outlives the run: what a run subscribed leaves with it', () => {
+  let root: string
+  const silent: Logger = {
+    runStart: () => undefined,
+    taskStart: () => undefined,
+    taskStdout: () => undefined,
+    taskStderr: () => undefined,
+    taskComplete: () => undefined,
+    runEnd: () => undefined,
+    status: () => undefined,
+  }
+
+  beforeEach(async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'vx-plugin-bus-'))
+    await Bun.write(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['a'] }),
+    )
+    await Bun.write(path.join(root, 'a/package.json'), JSON.stringify({ name: 'a' }))
+    await Bun.write(
+      path.join(root, 'a/vx.config.mjs'),
+      `export default { tasks: { hello: { exec: { command: 'echo hello' } } } }`,
+    )
+    await Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/counting',
+            `{ setup(ctx) { ctx.bus.subscribe(() => { globalThis.__vxBusSeen.plugin++ }) },
+         telemetry() { return { onRecord() { globalThis.__vxBusSeen.telemetry++ }, async flush() {} } },
+       }`,
+          ),
+        ],
+        `globalThis.__vxBusSeen = { plugin: 0, telemetry: 0 }
+`,
+      ),
+    )
+    gitInitCommit(root, 'i')
+  })
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  const seen = (): { plugin: number; telemetry: number } =>
+    (globalThis as unknown as { __vxBusSeen: { plugin: number; telemetry: number } }).__vxBusSeen
+
+  it("a plugin's setup subscription and its telemetry sink hear one run each", async () => {
+    const bus = createEventBus()
+    const opts = {
+      cwd: root,
+      projects: ['a'],
+      tasks: ['hello'],
+      log: silent,
+      handleSignals: false,
+      bus,
+    }
+    expect((await run(opts)).ok).toBe(true)
+    const first = { ...seen() }
+    expect(first.plugin).toBeGreaterThan(0)
+    expect(first.telemetry).toBeGreaterThan(0)
+
+    seen().plugin = 0
+    seen().telemetry = 0
+    expect((await run(opts)).ok).toBe(true)
+    // A subscription the first run left behind would hear this run too,
+    // and the counts would read double.
+    expect(seen()).toEqual(first)
+  })
+
+  it('the terminal renderer hears one run', async () => {
+    const bus = createEventBus()
+    let completes = 0
+    const counting: Logger = {
+      ...silent,
+      taskComplete: () => {
+        completes++
+      },
+    }
+    const opts = {
+      cwd: root,
+      projects: ['a'],
+      tasks: ['hello'],
+      log: counting,
+      handleSignals: false,
+      bus,
+    }
+    expect((await run(opts)).ok).toBe(true)
+    expect(completes).toBe(1)
+    expect((await run(opts)).ok).toBe(true)
+    expect(completes).toBe(2)
   })
 })

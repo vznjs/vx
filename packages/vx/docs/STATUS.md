@@ -135,6 +135,32 @@ test is telling the truth.
       new row (`orchestrator-remote.test.ts`) warms a remote, wipes the
       local cache, runs pre-aborted against a 150 ms remote and asserts
       the next run pulls nothing — red with the await deleted.
+635.  DONE (2026-09-23, the 628 method on the run's finally block). Each
+      of its five lines deleted in turn against the whole core suite:
+      `signals.remove()` is held by two rows; `log.runEnd?.()`, the
+      abort listener's removal, `disposePlugins?.()` and
+      `telemetry?.dispose()` survived. The runEnd is a floor with no
+      path to it: the ticker starts in `runStart`, and every call
+      between it and the success path's runEnd is crash-isolated (the
+      bus swallows a subscriber's throw, so even a logger whose
+      `runStart` throws does not fail the run — a row that tried was
+      green with the line deleted); the comment now says so instead of
+      promising a crashed cycle. The other three exist for a bus or a
+      signal that outlives the run — `RunOptions.bus` and `vx watch`'s
+      one `stop` signal over every cycle — and nothing in the suite
+      reused either. Now two rows run twice on one bus
+      (`plugin-teardown.test.ts`): a plugin's setup subscription and its
+      telemetry sink hear one run each, and so does the terminal
+      renderer; one row (`signal-handling.test.ts`) runs twice on one
+      signal and counts its abort listeners. Writing them found two
+      leaks the disposers never covered: the terminal renderer's own
+      subscription was never removed, so a second run on an injected
+      bus reported every task twice (run() now subscribes it in a
+      wrapper whose finally unsubscribes; `runOnBus` is the body), and
+      a plugin's direct `ctx.bus.subscribe` bypassed the disposer list
+      (the context's bus records what it hands out). Each of the five
+      lines — the two fixes, the two disposers and the listener removal
+      — is red on its own with its row.
 
 ## In flight
 

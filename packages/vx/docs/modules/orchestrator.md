@@ -53,7 +53,12 @@ export interface RunSummary {
 1. **Color decision + event bus.** Programmatic logger → plain text;
    default logger → `detectColors()`. The renderer SUBSCRIBES to the
    run event bus (`terminalSubscriber`); `run()` emits through
-   `busLogger` — it never calls the logger directly.
+   `busLogger` — it never calls the logger directly. The bus may be
+   the caller's (`RunOptions.bus`) and outlive the run, so what `run()`
+   subscribes on it leaves with the run: the renderer in the wrapper's
+   finally (`runOnBus` is the body), a plugin's hooks and its direct
+   `ctx.bus.subscribe` with `disposePlugins`, the telemetry source with
+   its handle's `dispose()` (item 635).
 2. **`prepareRun(options, log)`** — shared setup: discovery, scoped
    config loading (lock-backed under `--frozen`), package + task
    graph, cache open (local policy slice; the declared `cache`

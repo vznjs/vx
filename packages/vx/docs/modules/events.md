@@ -6,7 +6,9 @@
 `RunEvent` through `busLogger` onto an in-process bus; the terminal
 renderer is just the always-on subscriber. An embedder attaches as
 another subscriber with no orchestrator change (`@vzn/vx-mcp` reads run
-history, not the bus).
+history, not the bus). A bus handed in through `RunOptions.bus` keeps
+the embedder's subscribers across runs; what each run adds to it, the
+run removes on its way out (`orchestrator.md`).
 
 ## Public surface
 

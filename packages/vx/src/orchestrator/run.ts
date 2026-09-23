@@ -30,14 +30,14 @@ import {
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import { busLogger, createEventBus, terminalSubscriber } from './events.js'
+import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
 import { installPlugins } from './plugin.js'
 import { buildAdmission, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
-import { detectColors } from './colors.js'
+import { detectColors, type ColorSupport } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
@@ -176,10 +176,24 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // preserving, so terminal output is byte-identical to a direct call.
   // See docs/design/event-stream-2026-06.md.
   const sink = options.log ?? defaultLogger(colors, resolveOutputView(options))
-  // An injected bus (e.g. from `--ui`) already has surfaces subscribed;
-  // we just add the terminal renderer. Otherwise a fresh internal bus.
+  // An injected bus already has surfaces subscribed; we add the terminal
+  // renderer for this run and take it off again on every way out: the bus
+  // outlives the run, and a renderer left behind reported the next run on
+  // it twice (item 635). Otherwise a fresh internal bus.
   const bus = options.bus ?? createEventBus()
-  bus.subscribe(terminalSubscriber(sink))
+  const unsubscribeTerminal = bus.subscribe(terminalSubscriber(sink))
+  try {
+    return await runOnBus(options, bus, colors)
+  } finally {
+    unsubscribeTerminal()
+  }
+}
+
+async function runOnBus(
+  options: RunOptions,
+  bus: EventBus,
+  colors: ColorSupport,
+): Promise<RunSummary> {
   const log = busLogger(bus)
 
   const prepared = await prepareRun(options, log)
@@ -891,8 +905,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     return { ok, outcomes: list }
   } finally {
-    // Idempotent; also reached on mid-run throws, so a crashed cycle
-    // can't leave a live status-line ticker behind.
+    // Idempotent. The status-line ticker starts in runStart, and every
+    // call between it and the success path's runEnd is crash-isolated
+    // today (admit, the observers, execute's rejection arm, the
+    // short-circuit, the prefetch, killTree; the bus swallows a
+    // subscriber's throw, so even a logger's own runStart cannot reach
+    // here), so deleting this line reddens nothing (item 635). It is the
+    // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
     signals.remove()
     options.signal?.removeEventListener('abort', onAbort)
