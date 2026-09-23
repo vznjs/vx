@@ -237,6 +237,22 @@ test is telling the truth.
       only what a workspace calls is a decision for the API pass before
       0.1.0 (the notes in `docs/history/release-0.1.0-notes.md`), not a
       pin; recorded here so the next sweep does not re-find it.
+621.  DONE (2026-09-23, the CLI's refusals held to their words). A sweep
+      of every `vx <verb>: …` line core writes to stderr against the
+      tests found four a user meets with no row naming them: `vx cache`
+      with no subcommand, the picker's `invalid selection: <answer>` (a
+      word and an out-of-range number, each named), `no tasks declared
+in any project` when the menu would be empty, and the non-TTY
+      refusal — `missing task name (stdin is not a TTY)`, which the
+      existing row matched only by its first half, so a CI user asking
+      why nothing was asked would have found no test of the answer.
+      Rows in `cli.test.ts` and `cli-picker.test.ts`. Two of the
+      remaining lines are unreachable from the CLI (`no projects in
+scope`: an empty scope is refused earlier as "not inside a
+      project" or "no projects matched"), and the three watch failure
+      lines (`cycle failed`, `cannot re-read`, `cannot watch root`) need
+      a fault a test would have to inject. Alongside: plan F5 is struck
+      through — the trim is a duty at every twenty since 573.
 
 ## In flight
 

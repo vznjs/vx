@@ -203,9 +203,12 @@ describe('cli run()', () => {
     expect(stderr).not.toContain('@vzn/vx-cloud')
   })
 
-  it('rejects run with no task', async () => {
+  it('rejects run with no task — and says why the picker did not open', async () => {
+    // The suite's stdin is not a terminal, so this is the non-TTY refusal,
+    // not the picker: the line says so, or a user in CI is left wondering
+    // why nothing was asked (item 621).
     expect(await run(['run'])).toBe(1)
-    expect(stderr).toContain('missing task name')
+    expect(stderr).toContain('vx run: missing task name (stdin is not a TTY)')
   })
 
   it('rejects run with bad flag value (parser error surfaced)', async () => {
@@ -1795,6 +1798,17 @@ describe('vx cache prune command', () => {
     const code = await run(['cache', 'prune'])
     expect(code).toBe(1)
     expect(stderr).toContain('--older-than')
+  })
+
+  it('errors with no subcommand at all, naming the one that exists', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    expect(await run(['cache'])).toBe(1)
+    expect(stderr).toContain('vx cache: missing subcommand. Try `vx cache prune`.')
   })
 
   it('reports 0 entries pruned from an empty cache', async () => {

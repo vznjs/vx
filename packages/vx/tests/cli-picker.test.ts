@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { pickTask } from '../src/cli/select.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
@@ -28,7 +28,46 @@ describe('vx run interactive picker', () => {
   })
 
   afterEach(async () => {
+    vi.restoreAllMocks()
     await rm(root, { recursive: true, force: true })
+  })
+
+  it('refuses an answer that is not a listed number, naming it', async () => {
+    let stderr = ''
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    // A word and an out-of-range number are refused the same way, and the
+    // answer is named, so a typo is not mistaken for an empty menu.
+    for (const answer of ['x', '9']) {
+      const input = new PassThrough()
+      const output = new PassThrough()
+      output.on('data', () => undefined)
+      const picking = pickTask(root, { input, output })
+      await Bun.sleep(50)
+      input.write(`${answer}\n`)
+      expect(await picking).toBeNull()
+      expect(stderr).toContain(`vx run: invalid selection: ${answer}`)
+    }
+  })
+
+  it('says when no project declares a task, instead of an empty menu', async () => {
+    for (const name of ['alpha', 'beta']) {
+      await writeFile(
+        path.join(root, 'packages', name, 'vx.config.mjs'),
+        'export default { tasks: {} }\n',
+      )
+    }
+    let stderr = ''
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const output = new PassThrough()
+    output.on('data', () => undefined)
+    expect(await pickTask(root, { input: new PassThrough(), output })).toBeNull()
+    expect(stderr).toContain('vx run: no tasks declared in any project')
   })
 
   it('lists tasks and returns the numbered selection', async () => {
