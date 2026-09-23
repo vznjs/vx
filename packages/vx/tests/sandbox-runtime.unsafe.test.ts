@@ -7,7 +7,7 @@
 // skipping, because a skipped suite reports green and this one covers
 // the isolation boundary. A local host without the deps still skips.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -2893,6 +2893,70 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     } finally {
       spy.mockRestore()
     }
+  })
+
+  it('removes its trace log, and reports the resources the task used', async () => {
+    const logs = (): string[] =>
+      readdirSync(os.tmpdir()).filter((f) => f.startsWith('vx-strace-') && f.endsWith('.log'))
+    const before = logs()
+    const during: string[][] = []
+    const r = await runSandboxed(
+      args('echo up; sleep 0.1', { onStdout: () => during.push(logs()) }),
+    )
+    // Positive first: the log was there while the task ran.
+    expect(during[0]?.filter((f) => !before.includes(f))).toHaveLength(1)
+    expect(logs()).toEqual(before)
+    expect([typeof r.cpuMs, typeof r.peakRssBytes]).toEqual(['number', 'number'])
+  })
+
+  it('hands the runtime back its per-command cleanup', async () => {
+    const spy = spyOn(SandboxManager, 'cleanupAfterCommand')
+    try {
+      await runSandboxed(args('true'))
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  // The note macOS needs (it logs nothing when the cwd is not granted) is
+  // added on any platform when a task FAILED, reported nothing, and its
+  // cwd lies outside every read grant. Each of the three is a row here.
+  describe('the ungranted-cwd note', () => {
+    const NOTE = "vx: this sandbox grants no read access to the task's own working directory"
+    const notes = (r: { violations: SandboxViolation[] }): boolean[] =>
+      r.violations.map((v) => v.line.startsWith(NOTE))
+
+    it('is added to a failure with nothing to show, when no grant covers the cwd', async () => {
+      await mkdir(path.join(dir, 'sub'))
+      const r = await runSandboxed(args('exit 3', { baseAllowRead: [path.join(dir, 'sub')] }))
+      expect([r.exitCode, notes(r)]).toEqual([3, [true]])
+    })
+
+    it('is added when the only grant is a sibling whose name prefixes the cwd', async () => {
+      // `<dir>/proj` is a string prefix of `<dir>/proj-x` and covers none
+      // of it; the separator is what keeps it from reading as the grant.
+      await mkdir(path.join(dir, 'proj'))
+      await mkdir(path.join(dir, 'proj-x'))
+      const r = await runSandboxed(
+        args('exit 3', { cwd: path.join(dir, 'proj-x'), baseAllowRead: [path.join(dir, 'proj')] }),
+      )
+      expect([r.exitCode === 0, notes(r)]).toEqual([false, [true]])
+      // CONTROL: a grant that does cover the cwd adds no note.
+      const granted = await runSandboxed(args('exit 3'))
+      expect([granted.exitCode, notes(granted)]).toEqual([3, []])
+    })
+
+    it('is not added when the task already reported a denial', async () => {
+      await mkdir(path.join(dir, 'sub'))
+      const r = await runSandboxed(
+        args(`cat ${dir}/secret.txt; exit 3`, {
+          baseAllowRead: [path.join(dir, 'sub')],
+          baseDenyRead: [dir],
+        }),
+      )
+      expect([r.exitCode, notes(r)]).toEqual([3, [false]])
+    })
   })
 
   it('a trace that cannot be parsed costs the report, never the task', async () => {
