@@ -346,6 +346,26 @@ test is telling the truth.
       verdict (the mark survives, the gate is caught by the convergence
       row), and the mark's whole-suite re-run alone reddened nothing.
       The prefetch, deferral and dedup paths are swept.
+644.  DONE (2026-09-23, the 628 method on the scheduler). Eighteen
+      gates in `graph/scheduler.ts` deleted in turn against the whole
+      core suite in the worktree, seventeen held: the fail-fast trip,
+      both observer isolations, the restore-tier single dispatch, the
+      abort skip and the aborted status, the dep-check bypass,
+      `continue=always`, aborted propagation, the full-lane scan (the
+      6,000-task pin ran 28 s without it, the number its comment
+      records), the doomed-task park, the hold's start, the skip root,
+      the running-set unlist (eight rows, three of them the 60 s
+      timeout: a wedged policy hangs), the `settledOf` wait (133 rows),
+      the plain user-error report and the override scale. One
+      survived: `activeRestore === 0` in the resolve condition — and by
+      the same argument `active === 0` beside it: a slot is released
+      before its outcome lands (`leave()` precedes `finishOne` in both
+      arms, and a skip takes none), so a task still holding one has no
+      outcome yet. Deleting BOTH survived the whole core suite, so the
+      condition is the outcome count alone, with that reason as its
+      comment. No row: there is no state in which the counts disagree
+      with the count of outcomes, so nothing can observe them. The
+      scheduler is swept.
 
 ## In flight
 
