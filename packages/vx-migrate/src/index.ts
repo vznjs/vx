@@ -18,8 +18,6 @@ import {
 import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
 import { migrateTurbo } from './migrate-turbo.js'
 
-export { migrateNx } from './migrate-nx.js'
-export { migrateTurbo } from './migrate-turbo.js'
 // The four plugins: the Turbo and Nx project stages (a repo runs
 // unchanged), and the two remote caches speaking Turbo's and Nx's wire.
 export * from './turbo/index.js'

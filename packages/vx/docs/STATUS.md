@@ -270,6 +270,23 @@ scope`: an empty scope is refused earlier as "not inside a
       were. Row: two snapshots stay pending under a direct count, land
       together on the batch read, and a later snapshot for the same hash
       replaces its rows, again deferred.
+623.  DONE (2026-09-23, the part of 620's API question that needed no
+      decision). Fourteen names left the plugin indexes that nothing
+      outside their package called and no README named: the REAPI
+      digest helpers, the GitHub summary sink and its clamp and cap, the
+      OTLP sink class and config-resolving helpers, every MCP handler
+      and type (the index is `mcp()` now), and the two migration
+      re-exports. Every plugin's tests import those from their files
+      already, so no test moved. Three kept exports gained the README
+      line they lacked (`ReapiRemoteCache`, `GithubPluginOptions` with
+      `renderJobSummary`, `OtelPluginOptions`). NOT done, and the law
+      draft that showed why was dropped: "every index export is named in
+      the README" fails `@vzn/vx-reapi` on about fifty names — its wire
+      and merkle library is a deliberate public surface documented by
+      the design note, not the README, and whether it stays public is
+      the 0.1.0 API decision 620 recorded. The 620 probe's count of 28
+      was a shell loop that read single-line export lists only; the
+      real number is in the law's output above.
 
 ## In flight
 
@@ -468,8 +485,8 @@ state of each:
     `docs/history/2026-09-improvement-loop-573-591.md` and 592–611 in
     `docs/history/2026-09-improvement-loop-592-611.md` (handoffs
     14aq–14ax in the next-log file). The loop above is the record since
-    612; 14ay and 14az are below, and the next handoff written here is
-    14ba.
+    612; 14ay, 14az and 14ba are below, and the next handoff written
+    here is 14bb.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -477,6 +494,30 @@ state of each:
     names its seam, the constraint that must survive, the measurement
     and what not to do; strike an entry through there when its item
     lands here.
+
+14ba. **Handoff after item 623 (2026-09-23, late morning).** Six items
+since 14az, each its own PR, merged in turn (#712 618, #713 619, #714
+620, #715 621, #716 622, and 623 with this handoff): the REAPI plugin
+names its execute switch and the env pins spell `Bun.env`; the `vx mcp`
+walk found nothing off; the MCP README's tool table is a pin; four CLI
+refusals gained the rows that name them; the run-end output-dir
+snapshots land in one transaction (the stage 52–70 ms → 10–17 cold,
+64–75 → 12–14 on a restore, at 1,000 projects); and fourteen internals
+left the plugin indexes. WHAT STANDS: the loop holds 612–623, twelve
+items, so the trim is due at 632. The cold run at 1,000 projects is
+~2.7 s with the tasks' own `spawn` a quarter of it; the restore run
+~0.8 s; the warm path unchanged since 589, so the warm A/B duty has no
+arm; 615 and 622 changed the cold and restore paths and carry their own
+A/Bs. Two decisions wait for the 0.1.0 pass: whether `@vzn/vx-reapi`'s
+wire and merkle library stays on its index (623), and the owner's three
+items. NEXT, in order: keep finding — the sweeps of this loop (exports,
+env reads, statement tallies, refusal lines, README pins) are spent on
+core and the plugins; the next shapes are a real-repo re-measure of
+the cold and restore runs after 615 and 622 (refine under `nx()`, astro
+under `turbo()`), and the `vx watch` cycle under the deferred snapshot
+(a same-process reader flushes; is the second cycle's hit check still
+a skip?); then the trim at 632; the executor-backed real tree stays for
+a box with yarn 4 reachable. Never end with "what next?".
 
 14az. **Handoff after item 617 (2026-09-23, mid-morning).** Five items
 since 14ay, each its own PR, merged in turn (#707 613, #708 614, #709

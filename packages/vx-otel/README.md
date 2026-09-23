@@ -7,6 +7,8 @@ package stays zero-dependency and version-drift-free).
 
 ## Usage
 
+The options type is `OtelPluginOptions`.
+
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'

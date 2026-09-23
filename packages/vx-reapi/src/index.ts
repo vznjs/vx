@@ -20,7 +20,7 @@ import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
 import { ReapiClient, type ReapiOptions } from './wire.js'
 
-export { actionDigestFor, digestOf, ReapiRemoteCache } from './cache.js'
+export { ReapiRemoteCache } from './cache.js'
 export {
   acceptsTask,
   globToOutputPath,

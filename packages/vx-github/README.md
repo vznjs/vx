@@ -27,6 +27,9 @@ nothing, so declaring it unconditionally is safe.
 
 ## Options
 
+The options type is `GithubPluginOptions`; `renderJobSummary` renders the
+summary lines the plugin posts (the site's CI guide sample is rendered from it).
+
 ```ts
 github({
   summaryFile: '/path/override.md', // default: $GITHUB_STEP_SUMMARY
