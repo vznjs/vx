@@ -3,7 +3,6 @@
 // and the prefix test.
 
 import { realpathSync } from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 
 /**
@@ -49,7 +48,6 @@ export function toRealPath(p: string): string {
 }
 
 export function absolutize(p: string, cwd?: string): string {
-  if (p.startsWith('~')) return path.join(os.homedir(), p.slice(1))
   if (path.isAbsolute(p)) return p
   return path.resolve(cwd ?? process.cwd(), p)
 }

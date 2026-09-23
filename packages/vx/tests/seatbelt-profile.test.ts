@@ -84,3 +84,61 @@ describe('macProfileRules and a unix socket reached through a symlink', () => {
     expect(rules.filter((r) => r.startsWith('(allow network-bind'))).toHaveLength(1)
   })
 })
+
+// Item 652: each capability's rules, written out. The rows above drive only
+// the unix-socket LIST, so the system-info, loopback, all-sockets and
+// mach-lookup rules — and the refusals on a declared name or path — could
+// each be deleted with the suite green. What reaches a profile is text, so
+// every row compares the exact rule list.
+describe('macProfileRules, capability by capability', () => {
+  const LOOPBACK = [
+    '(allow network-bind (local ip "*:*"))',
+    '(allow network-inbound (local ip "*:*"))',
+    '(allow network-outbound (remote ip "localhost:*"))',
+  ]
+  const ROWS: Array<[string, Record<string, unknown>, string[]]> = [
+    ['nothing declared', {}, []],
+    ['systemInfo', { systemInfo: ['hw.ncpu'] }, ['(allow system-info (info-type "hw.ncpu"))']],
+    ['localBinding: true', { localBinding: true }, LOOPBACK],
+    ['a localBinding port list', { localBinding: [3000] }, LOOPBACK],
+    ['localBinding: false', { localBinding: false }, []],
+    [
+      'unixSockets: true',
+      { unixSockets: true },
+      [
+        '(allow system-socket (socket-domain AF_UNIX))',
+        '(allow network-bind (local unix-socket (path-regex #"^/")))',
+        '(allow network-outbound (remote unix-socket (path-regex #"^/")))',
+      ],
+    ],
+    ['an empty unixSockets list', { unixSockets: [] }, []],
+    ['machLookup', { machLookup: ['com.x'] }, ['(allow mach-lookup (global-name "com.x"))']],
+  ]
+  for (const [what, extra, want] of ROWS) {
+    it(what, () => {
+      expect(macProfileRules({ ...base, ...extra })).toEqual(want)
+    })
+  }
+
+  it('refuses a declared name or path that could leave its quoted string', () => {
+    const refused = (extra: Record<string, unknown>): string => {
+      try {
+        macProfileRules({ ...base, ...extra })
+        return 'accepted'
+      } catch (err) {
+        return err instanceof UserError ? err.message : `threw ${String(err)}`
+      }
+    }
+    expect([
+      refused({ systemInfo: ['hw")(allow default)("'] }),
+      refused({ machLookup: ['com.x")'] }),
+      refused({ unixSockets: ['/tmp/a"b.sock'] }),
+      refused({ unixSockets: ['/tmp/../etc/x.sock'] }),
+    ]).toEqual([
+      `allow.systemInfo: 'hw")(allow default)("' is not a valid name`,
+      `allow.machLookup: 'com.x")' is not a valid name`,
+      `allow.unixSockets: '/tmp/a"b.sock' is not a valid path`,
+      `allow.unixSockets: '/tmp/../etc/x.sock' is not a valid path`,
+    ])
+  })
+})

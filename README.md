@@ -308,7 +308,8 @@ maintainers' handoff is [`packages/vx/docs/STATUS.md`](packages/vx/docs/STATUS.m
 ## Status
 
 **Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather
-than maintain back-compat. **~3,000 core tests plus the package suites; CI green on every commit**;
+than maintain back-compat. What 1.0 will promise is in
+[`versioning-1.0.md`](packages/vx/docs/design/versioning-1.0.md). **~3,000 core tests plus the package suites; CI green on every commit**;
 the project dogfoods itself (`vx run ci`). Published on npm:
 [`@vzn/vx`](https://www.npmjs.com/package/@vzn/vx) (a prebuilt standalone
 binary).

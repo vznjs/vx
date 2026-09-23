@@ -53,7 +53,7 @@ install.
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---- |
 | 1.1 | ~~Publish the plugin packages.~~ DONE in item 656: `build-npm.ts --only=plugins` emits every public package and `npm.yml` publishes them after `@vzn/vx`. Owner: add the seven trusted publishers (`cli.md` § Releasing). Extend `npm.yml` to publish the seven plugins with provenance, at the core's version, core first. Add a law that every non-private package is in the publish set. | agent     | S    |
 | 1.2 | ~~Make the docs match.~~ DONE in item 668: `build-npm.unsafe.test.ts` holds every `@vzn/…` a page tells a user to install, run or import to the emitter's publish set. Every "published" or `bunx @vzn/…` line is true on the day of the release, pinned by a test that reads the publish list.                                                                                             | agent     | S    |
-| 1.3 | ~~Refresh the 0.1.0 notes with items 624–654.~~ DONE through 656 (item 657); 652–654 are added when they merge, and the PR count is recounted at the cut.                                                                                                                                                                                                                                   | agent     | S    |
+| 1.3 | ~~Refresh the 0.1.0 notes with items 624–654.~~ DONE through 672 (items 657, 673); 652–654 are added when they merge, and the PR count is recounted at the cut.                                                                                                                                                                                                                             | agent     | S    |
 | 1.4 | Cut 0.1.0 (tag and workflow run).                                                                                                                                                                                                                                                                                                                                                           | **owner** | —    |
 | 1.5 | Delete the `NPM_TOKEN` secret, since publishing uses OIDC. Decide the site's address. Optionally enable private vulnerability reporting.                                                                                                                                                                                                                                                    | **owner** | —    |
 
@@ -78,25 +78,56 @@ a core feature.
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
 | 2.1 | ~~**Automatic cache eviction during a run.**~~ DONE in item 658: `cacheRetention: { olderThan, maxSize }` in `vx.workspace.ts`, applied at run end when something is due.                                                                                                                                                 | The one open parity row.                                                                                                                                                                        | M                                             |
 | 2.2 | ~~**Streaming remote seam (D2).**~~ DONE in item 662: 150 MiB round trip +495 → +45 MiB peak RSS. `RemoteCacheLayer.get/put` stream a `Blob` or `ReadableStream` instead of a whole buffer. `vx-reapi` gets a streaming digest and chunked upload.                                                                        | It is a breaking change to the plugin API. Deferred "until a workspace uploads > 100 MiB", but a seam that will change cannot be frozen. It must land before milestone 3, demand signal or not. | L                                             |
-| 2.3 | ~~**Close the stale parity ledgers.**~~ Audited in item 659 (`parity-audit-2026-09.md`): of 114 rows, 65 FIXED, 28 DECLINED, 4 OBSOLETE, 17 OPEN. Nx H7 is obsolete; Nx L2 is open. The open rows are small test rows (one M benchmark) and close as they land.                                                           | "Parity complete" has to be a checkable claim, not a memory.                                                                                                                                    | S–M                                           |
+| 2.3 | ~~**Close the stale parity ledgers.**~~ Audited in item 659 (`parity-audit-2026-09.md`): of 114 rows, 65 FIXED, 28 DECLINED, 4 OBSOLETE, 17 OPEN. Nx H7 is obsolete; Nx L2 is open. All 17 open rows closed by item 670 (items 661, 664–667, 669, 670); DONE.                                                             | "Parity complete" has to be a checkable claim, not a memory.                                                                                                                                    | S–M                                           |
 | 2.4 | **Confirm the scope list.** Record the out-of-scope set as final: daemon, JS-function tasks, generators, TUI, non-JS projects, native Windows (WSL only), inferred inputs, graph UI, `nx release`, workspace env, Nx configurations in the native schema, and boundaries. Anything the owner moves in becomes a 2.x item. | Without it "feature complete" has no edge.                                                                                                                                                      | **owner**, S                                  |
 | 2.5 | **Real-repo re-measure.** Refine or router (Nx), astro (Turbo), with `node_modules` present. Warm, cold and restore against the published numbers.                                                                                                                                                                        | The perf claim is the first decision driver, and the last real-repo numbers predate items 615–630.                                                                                              | M, needs a box with `node_modules` and yarn 4 |
 
 **Exit:** 2.1–2.5 done, `parity.md` and `comparison.md` show no open
 row, and the STATUS "Next" list holds nothing but milestone 3.
 
+## Track W — the site teaches (owner, 2026-09-23)
+
+The owner asked for a site that explains what task orchestration is, with
+interactive examples and diagrams. It should show where vx is stronger:
+its performance, and also its architecture, its correctness guarantees
+and how far it can be extended. In the owner's words, "educate not only
+sell". The bar to beat is monorepo.tools, by "1000×" on education.
+The plan is `design/site-teaches-2026-09.md`.
+
+| #   | Item                                                                                                                                     | Size |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| W0  | A Learn section, stub pages, and the interactive-island pattern with a no-JavaScript fallback.                                           | S    |
+| W1  | What task orchestration is, with a graph explorer.                                                                                       | M    |
+| W2  | Caching from first principles, with a key calculator.                                                                                    | M    |
+| W3  | Correctness: trusting the cache, with a stale-hit demo.                                                                                  | S–M  |
+| W4  | Scheduling, with the item 669 simulator running in the browser.                                                                          | M    |
+| W5  | The architecture as a pipeline with seams, with a pipeline explorer.                                                                     | M    |
+| W6  | Extending vx: worked plugins that the site's tests type-check.                                                                           | M    |
+| W7  | Choosing between vx, Turbo, Nx and Bazel: design choices and their costs, not a feature table.                                           | M    |
+| W8  | A landing page that leads with the problem and the ideas, then the numbers.                                                              | S    |
+| W9  | The playground: the real planner (graph, keys, scheduler) running in the browser over a workspace the reader edits. Starts with a spike. | L    |
+| W10 | Labs: break a build on purpose (a stale hit, an undeclared input, an output collision) and see what catches it.                          | M    |
+| W11 | Checkpoints: one question per page, checked against the live model.                                                                      | S    |
+| W12 | A tool-neutral glossary that every page links into.                                                                                      | S    |
+
+**Exit:** every Learn page has a diagram and an interactive element and
+reads with JavaScript off. Every number comes from `benchmarks.md`,
+every guarantee links to its test, and every comparison names what vx's
+choice costs. The track does not block the 0.1.0 tag, but it lands
+before the release is announced.
+
 ## Milestone 3 — 1.0: the contract
 
 Feature complete says nothing will be added. 1.0 says what will not
 break.
 
-| #   | Item                                                                                                                                                                                                                                                   | Size        |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| 3.1 | **Freeze the config schema.** `config-schema.ts` becomes the 1.0 schema. Later changes are additive, or deprecated for one minor before removal, with the refusal message naming the replacement.                                                      | M           |
-| 3.2 | **Freeze the plugin API.** The 13 hooks in `PLUGIN_HOOKS`, the `CacheLayer`, `TaskExecutor` and telemetry record shapes, and the façade export list (already snapshot-pinned). Same deprecation rule.                                                  | M           |
-| 3.3 | **Cache compatibility policy.** A `CACHE_VERSION` bump stays allowed, since a stale hit is worse than a cold run. It becomes a documented, announced event (release notes plus a one-line notice on the first run after upgrade), never a silent wipe. | S           |
-| 3.4 | **Semver and support statement.** What a minor or patch may change, the Bun floor policy, supported platforms (Linux and macOS, Windows via WSL), and the README maturity table moved from "Pre-alpha".                                                | S           |
-| 3.5 | **Soak.** Run 0.x on real repos (vx itself, one Turbo repo and one Nx repo, through the adoption plugins) for a period the owner chooses, with no correctness regression before 1.0 is tagged.                                                         | owner-timed |
+| #   | Item                                                                                                                                                                                                                                                                                                                                                             | Size        |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 3.1 | **Freeze the config schema.** Policy written in item 672 (`versioning-1.0.md`); takes effect at 1.0. `config-schema.ts` becomes the 1.0 schema. Later changes are additive, or deprecated for one minor before removal, with the refusal message naming the replacement.                                                                                         | M           |
+| 3.2 | **Freeze the plugin API.** Policy written in item 672 (`versioning-1.0.md`); takes effect at 1.0. The 13 hooks in `PLUGIN_HOOKS`, the `CacheLayer`, `TaskExecutor` and telemetry record shapes, and the façade export list (already snapshot-pinned). Same deprecation rule.                                                                                     | M           |
+| 3.3 | ~~**Cache compatibility policy.**~~ DONE in item 671: the first open after a `CACHE_VERSION` bump prints `cache format changed: vA → vB`. A `CACHE_VERSION` bump stays allowed, since a stale hit is worse than a cold run. It becomes a documented, announced event (release notes plus a one-line notice on the first run after upgrade), never a silent wipe. | S           |
+| 3.4 | ~~**Semver and support statement.**~~ DONE in item 672: `versioning-1.0.md`; the README points to it at 1.0. What a minor or patch may change, the Bun floor policy, supported platforms (Linux and macOS, Windows via WSL), and the README maturity table moved from "Pre-alpha".                                                                               | S           |
+| 3.5 | **Soak.** Run 0.x on real repos (vx itself, one Turbo repo and one Nx repo, through the adoption plugins) for a period the owner chooses, with no correctness regression before 1.0 is tagged.                                                                                                                                                                   | owner-timed |
 
 **Exit:** 3.1–3.4 merged and the soak clean. The owner tags 1.0.
 
@@ -112,6 +143,7 @@ actions and the soak are on the owner's clock.
 | 0 hardening arc     | ≈ ½ day (in flight)            | nothing                                             |
 | 1 installable 0.1.0 | ≈ 1 day                        | owner cuts the release and decides the site address |
 | 2 feature complete  | ≈ 3–5 days (2.2 is most of it) | owner confirms scope (2.4); a box for 2.5           |
+| W the site teaches  | ≈ 8–12 days                    | nothing (the site address is 1.5)                   |
 | 3 1.0 contract      | ≈ 2–3 days, plus the soak      | owner sets the soak length and tags                 |
 
 So **feature complete is milestone 2**. It is about a week of agent work

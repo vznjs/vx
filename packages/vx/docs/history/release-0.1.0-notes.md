@@ -1,4 +1,4 @@
-# 0.1.0 — draft release notes (2026-09-22, refreshed 2026-09-23 through item 656)
+# 0.1.0 — draft release notes (2026-09-22, refreshed 2026-09-23 through item 672)
 
 **Status: a draft for the owner to cut the release from (launch checklist
 item 2; plan D4).** 408 pull requests merged since v0.0.21 (2026-09-15,
@@ -28,6 +28,9 @@ where 0.0.22 says "another nightly".
 
 ## Selecting and running
 
+- `--filter ./packages/[abc]` selects the directory it names: a path that
+  names a project directory is read literally before it is read as a glob.
+  A range base (`--affected=HEAD~1..HEAD`) is refused by name.
 - `--affected` selects the changed projects **and their dependents**, the
   superset a CI gate needs; `--filter '[<base>]'` is the changed-only form.
   A base that is HEAD itself, and a shallow clone, are named for what they
@@ -46,6 +49,23 @@ where 0.0.22 says "another nightly".
   1.4); `vx info` reports it, and `vx` warns once below it.
 
 ## Caching
+
+- **Breaking, and a stale-hit fix:** a bracket is a literal character in
+  every task glob (`cache.inputs.files`, `cache.outputs.files`,
+  `workspaceFiles`), so a route directory like Next.js's `app/[id]/` is
+  what its pattern names. Read as a character class, an input over one
+  keyed nothing and replayed an old output on an edit, and an output
+  under one deleted its namesake (`app/i/page.js`) while saving nothing.
+  `\[id\]` still works. `CACHE_VERSION` moves to v28, and the first run
+  after the upgrade says `cache format changed` (every bump will).
+- `cacheRetention: { olderThan, maxSize }` in `vx.workspace.ts` evicts at
+  the end of a run, by the policy `vx cache prune` takes as flags, and
+  only when something is due.
+- A restore writes a 242–255-byte file name (the staging suffix pushed it
+  past NAME_MAX); a component past NAME_MAX, a name past PATH_MAX and a
+  destination too deep for a name are each refused by name.
+- A remote-cache URL carrying `user:pass@` is refused (`turboCache()`,
+  `nxCache()`); the URL is printed in their error lines.
 
 - A negation pattern subtracts from the root walk too; a literal output is
   read as the tree it deletes; glob prefixes compare as paths, not

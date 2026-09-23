@@ -523,7 +523,55 @@ test is telling the truth.
       built from, so the arm is gone and the lookup is asserted. The
       plugin host is swept.
 
-<!-- items 652 and 653 land above this line; drop this comment when they do -->
+652.  DONE (2026-09-23, the 628 method on the sandbox). The sandbox's
+      gates in `exec/sandbox-*.ts` and `exec/seatbelt-profile.ts`
+      deleted in turn against the whole core and unsafe suites, by an
+      implementer session (PR #750). Every row reached `runSandboxed`
+      through `run()`, which forwards no arguments, never times out and
+      resets the runtime, so the forwarded arguments and their quoting,
+      the tag's nonce, the host bridge, the spawn-failure catch, the
+      process group, the live-child set, the timeout and both capture
+      flags all survived; a direct block now holds each. Also held: every
+      field `resolveSandboxConfig` copies and `buildCustomConfig` hands
+      SRT, every `macProfileRules` capability and its refusals, the
+      seatbelt classifier's arms, the strace pass's canonical paths,
+      grant skip and dedup, the trace log's removal (followed by the path
+      its tracer was handed, since a listing of the shared tmpdir raced
+      other suites on CI), the ungranted-cwd note's three conditions,
+      strace detection's memo and probe, and the socket-length and
+      stderr-cap edges. One defect, fixed: `absolutize` expanded a
+      leading `~` for the path a traced syscall named, which the kernel
+      never does, so an undeclared read under a project directory named
+      `~cache` was dropped from the report. Grants reach it already
+      absolute, so the arm served nothing and is gone; the row is red
+      with it back. The sandbox is swept.
+
+653.  DONE (2026-09-23, the 628 method on the config loader). The gates
+      in `workspace/config-schema.ts`, `config-cache.ts` and the project
+      loader deleted in turn against the whole core suite, by an
+      implementer session (PR #751). Held now, each red with its line
+      gone: four workspace-schema refusals (the integer arm of
+      `concurrency`, an empty package stamp, a non-object `commands`, an
+      empty fingerprint claim), four task-schema refusals
+      (`exec.remote`'s type, a non-object `exec.env`, an array
+      `env.define`, a null `cache`), twelve of `validateSandbox`'s shape
+      checks (a scalar where an object belongs read as an empty object to
+      the unknown-key scan, so each stood alone), the glob-root and
+      empty-filter arms, and the workspace config's lookup order. The
+      eval cache: the loader's one-call-per-question round (a slower path
+      answered the same config, so counting stores pin the cost, which is
+      the claim), the slow-key hit and its re-index, the empty-round
+      skip, the relative-only import rule (the old row's specifiers did
+      not resolve, so resolution refused them first), the closure's
+      visited check, its `node_modules` refusal, its size cap at the
+      boundary, the unreadable-import fallback, the warm closure key
+      equalling the slow one, and every part of the key seed (re-derived
+      from `package.json` and the runtime, since nothing varies them
+      in-process). The literal stripper's escape skip, line-break bail
+      and template-expression depth are held too; the first line-break
+      row left a quote open, so the EOF bail refused it as well and it
+      passed with the bail deleted, and was re-spelt. No source defect.
+      The config loader is swept.
 
 654.  DONE (2026-09-23, the 628 method on the telemetry host, the
       telemetry record and the event bus). Ninety-eight gates and field
@@ -1009,6 +1057,79 @@ is struck.
 Coordinator's reading of the bar: "worst" is the worst single graph,
 not the worst cell mean (+0.23 %), because a user lives one run at a
 time and a +6 % run on a new task is the regression they would see.
+
+14br. **Item 670 (roadmap 2.3, 2026-09-23): the parity audit has no open
+row.** Its last one: a legal output name under a destination deep enough
+that the two pass PATH_MAX reached the user as a raw `ENAMETOOLONG`,
+which the scheduler printed as an internal error. The restore's catch
+now names it like `EACCES` and `ENOSPC` beside it: a `UserError` that the
+output path under this directory is longer than the file system allows,
+with the remedy (a shorter workspace path); the artifact is fine. The row
+in `cache.test.ts` restores a 200-byte name into a destination 150 bytes
+short of PATH_MAX, red without the branch, with a control that the same
+artifact restores into the shallow directory.
+
+14bs. **Item 671 (roadmap 3.3, 2026-09-23): a cache-format bump is
+announced.** A `SCHEMA_VERSION` change already said `cache index reset`
+on the open that dropped the tables; a `CACHE_VERSION` bump (v27 → v28
+in item 667) keeps the index but moves every key, and its all-miss run
+said nothing. The cache now records the version it was written under in
+`schema_meta.cache_version`, and the first open that finds another one
+(or a store with entries and no record) sets `Cache.formatChange`;
+`noteSchemaReset` prints `[vx] cache format changed: vA → vB (vx
+upgraded); …` on the run's status line or a verb's stderr, once. A
+reset and a bump together say the reset alone. The notice first claimed
+`vx cache prune` reclaims the old artifacts, which is true of a reset's
+orphans and not of a bump's entries (they keep their rows): it names
+`--older-than` and `cacheRetention` instead. Rows in
+`schema-reset-notice.test.ts`: the bump named once then quiet, the
+unrecorded store, the reset winning; a fresh cache says nothing. On the
+way, `bun:sqlite`'s `.get()` returns `null`, not `undefined`, for no
+row: two comparisons against `undefined` made a fresh cache announce a
+change.
+
+14bt. **Item 672 (roadmap 3.1, 3.2, 3.4, 2026-09-23): the 1.0 contract is
+written down.** `design/versioning-1.0.md` names the surfaces semver
+covers from 1.0 (the config schema, the plugin API with the telemetry
+records, the façade exports, the CLI's verbs, flags, exit codes and
+machine-readable outputs, and task-glob semantics), the ones it does not
+(terminal output, internals, the cache format, performance), the
+three-step deprecation (a minor warns naming the replacement, one more
+minor ships it, the next major removes it with a refusal naming both),
+the plugin release train, the Bun floor (raised only in a minor), and
+tier-1 platforms (Linux and macOS, x64 and arm64; Windows through WSL).
+A stale-hit fix ships in a patch even when it changes a key or a glob's
+reading. The freeze itself (3.1, 3.2) takes effect when the owner tags
+1.0.
+
+14bu. **Item 673 (roadmap 1.3, 2026-09-23): the 0.1.0 notes run through 672.** Added: the bracket fix as a breaking stale-hit fix with the v28
+bump and its first-run notice, `cacheRetention`, the long-name restore
+fixes and refusals, the credential-URL refusal, the literal path filter
+and the range-base refusal. The PR count is recounted when the tag is
+cut.
+
+14bv. **Item 674 (2026-09-23): the site-redo track is planned.** The
+owner asked for a site that educates, not only sells: interactive
+examples, diagrams, and vx's strengths beyond speed (architecture,
+correctness, extensibility). `design/site-teaches-2026-09.md` sets out
+the principles (teach first, be honest about costs, link every claim to
+its proof, work without JavaScript, no UI framework without a reason,
+run the real code where it is pure) and thirteen steps, W0 to W12,
+with monorepo.tools (read from its source) as the bar to beat on
+education. Roadmap
+track W and Next item 16 record it.
+
+16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
+    site so it explains task orchestration before it sells vx: a Learn
+    section with one diagram and one interactive element per page
+    (a graph explorer, a key calculator, the scheduler simulator in the
+    browser, a pipeline explorer, worked plugins), and a choosing page
+    that states what each design choice costs. Plan and order:
+    `design/site-teaches-2026-09.md`. The bar is monorepo.tools, "1000×"
+    better on education: mechanisms instead of checkmarks, the real
+    planner running in the browser (W9), labs where the reader breaks a
+    build (W10), checkpoints (W11) and a glossary (W12). Next step: W0,
+    the skeleton and the island pattern.
 
 ## Decisions (this arc)
 

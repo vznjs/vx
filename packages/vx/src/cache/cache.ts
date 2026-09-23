@@ -153,6 +153,13 @@ export interface SchemaReset {
 
 /** Say once, on the channel the opener has, that an upgrade emptied the index. */
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void {
+  if (cache.formatChange !== null) {
+    const { from, to } = cache.formatChange
+    warn(
+      `[vx] cache format changed: ${from} → ${to} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+    )
+    return
+  }
   if (cache.schemaReset === null) return
   const { from, to } = cache.schemaReset
   warn(
@@ -343,6 +350,13 @@ export class Cache implements CacheLayer {
    * silence, and the all-miss run that follows looks like a bug.
    */
   readonly schemaReset: SchemaReset | null = null
+
+  /**
+   * Set when THIS open found entries written under another
+   * `CACHE_VERSION`: the index survives, but no old key is derived again,
+   * so every cached task misses once. Reported by `noteSchemaReset`.
+   */
+  readonly formatChange: SchemaReset | null = null
 
   constructor(
     private readonly cacheDir: string,
@@ -659,6 +673,25 @@ export class Cache implements CacheLayer {
     this.configEvals = new ConfigEvalTable(this.db, { read: this.read, write: this.write })
     this.outputs = new OutputIndex(this.db)
     this.history = new RunHistory(this.db)
+
+    // A CACHE_VERSION bump keeps the index but moves every key, so the run
+    // after an upgrade misses everything. Roadmap 3.3: that is announced,
+    // never silent. A store with no recorded version and no entries is
+    // new; one with entries predates the record (item 671).
+    const format = this.db
+      .prepare("SELECT value FROM schema_meta WHERE key = 'cache_version'")
+      .get() as { value: string } | null
+    if (format?.value !== CACHE_VERSION && this.writeBlocked === null) {
+      const hasEntries = this.db.prepare('SELECT 1 FROM entries LIMIT 1').get() != null
+      if (this.schemaReset === null && (format !== null || hasEntries)) {
+        this.formatChange = { from: format?.value ?? 'an earlier format', to: CACHE_VERSION }
+      }
+      this.db
+        .prepare(
+          "INSERT INTO schema_meta(key, value) VALUES ('cache_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .run(CACHE_VERSION)
+    }
   }
 
   // --- config evaluations: `ConfigEvalStore`, delegated to `ConfigEvalTable` ---
@@ -1049,6 +1082,15 @@ export class Cache implements CacheLayer {
         throw new UserError(
           `restore of ${hash} into ${projectDir} was blocked by what is on disk (${code}: ${(err as Error).message}). ` +
             `Declared outputs are wiped before a restore, so this is a path the output globs do not cover — remove it and re-run.`,
+        )
+      }
+      // A legal name under a destination deep enough that the two together
+      // pass PATH_MAX: the artifact is fine, the workspace's location is
+      // not (the parity audit's last open archive row, item 670).
+      if (code === 'ENAMETOOLONG') {
+        throw new UserError(
+          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${(err as Error).message}). ` +
+            `An output path under this directory is longer than the file system allows — move the workspace to a shorter path.`,
         )
       }
       // Same distinction for a tree the process cannot write into — a
