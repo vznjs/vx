@@ -637,6 +637,31 @@ describe('the eval-cache loader keeps its round to one call per question (item 6
     })
   })
 
+  it('a config edited BACK is served by its slow key, and the index follows it back', async () => {
+    // A imports p1 (stored, indexed), then p2 (stored, re-indexed), then p1
+    // again: the index still names p2, so the fast key misses — but the slow
+    // key is the first round's, and that evaluation is served, not redone.
+    const p1 = await realpath(await write('shared/p1.mjs', "export const cmd = 'one'\n"))
+    const p2 = await realpath(await write('shared/p2.mjs', "export const cmd = 'two'\n"))
+    const via = (p: string) =>
+      `import { cmd } from '../../shared/${p}.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n`
+    const cfg = await write('packages/w4/vx.config.mjs', via('p1'))
+    const store = new CountingStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs([cfg], { evalCache })
+    const [keyOne] = [...store.rows.keys()]
+    store.rows.set(keyOne!, JSON.stringify({ tasks: { build: { exec: { command: 'stored' } } } }))
+    await writeFile(cfg, via('p2'))
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(store.closures.get(cfg)).toEqual([cfg, p2])
+    const puts = store.puts
+    await writeFile(cfg, via('p1'))
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('stored')
+    expect(store.puts).toBe(puts) // nothing evaluated
+    expect(store.closures.get(cfg)).toEqual([cfg, p1]) // re-indexed on the slow hit
+  })
+
   it('a store with no closure index is served from the round lookup', async () => {
     // Only `hits` can serve here: with no index there is no fast key, so no
     // indexed slow path re-asking the store one key at a time.
