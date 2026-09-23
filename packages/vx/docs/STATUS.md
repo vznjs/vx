@@ -774,6 +774,25 @@ frozen, cache-version and semver policy, a soak). After milestone 0 the
 loop takes its next item from the roadmap, in its order; strike an item
 there when it lands.
 
+14bd. **Item 656 (roadmap 1.1, 2026-09-23): the plugins publish with the
+release.** Only `@vzn/vx` and its four platform packages reached npm,
+while the docs told users to `bunx @vzn/vx-migrate`. `build-npm.ts`
+gained `emitPluginPackages` (`--only=plugins`): every public workspace
+package other than `@vzn/vx`, discovered rather than listed, copied from
+its own `files` with the root LICENSE, stamped with the release version,
+`@vzn/vx` peer-pinned to `^<version>` (one release train), and a
+`repository.directory` so provenance names the package's path.
+`npm.yml` builds them and publishes them after `@vzn/vx`, in the same
+idempotent loop. `build-npm.unsafe.test.ts` holds the set against a walk
+of the manifests (with a floor of the seven names), the manifest shape,
+every declared file and the executable bins, and the workflow order;
+the set row and the shape row each went red with their line mutated.
+`npm pack --dry-run` on the emitted `vx-migrate` and `vx-reapi` warned
+nothing. OWNER: add the seven trusted publishers before the next
+release (`cli.md` § Releasing names them and the one-time hand publish
+if npm requires the name to exist first). The item is 656, not 652:
+652–654 are the implementer sweeps' numbers in the loop above.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

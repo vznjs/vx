@@ -1270,8 +1270,9 @@ Exit codes:
 
 A GitHub release publishes everything: `release.yml` builds the four
 binaries, ad-hoc signs the darwin ones and attaches them; `npm.yml`
-builds the five npm packages (`@vzn/vx` and one per platform) and
-publishes them with **npm trusted publishing** — the job's OIDC token
+builds the twelve npm packages (`@vzn/vx`, one per platform, and the
+seven plugin packages) and publishes them with **npm trusted
+publishing** — the job's OIDC token
 is exchanged for a short-lived credential and provenance is attached,
 so no long-lived npm token exists anywhere. Both publish loops skip a
 package already on the registry, so a re-run (`npm publish` →
@@ -1292,8 +1293,21 @@ then stopped exactly there.
 One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
 workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
-`@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64` and
-`@vzn/vx-linux-arm64`. Then delete the `NPM_TOKEN` repository secret:
+`@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
+`@vzn/vx-linux-arm64` and the seven plugins: `@vzn/vx-github`,
+`@vzn/vx-lockfile`, `@vzn/vx-mcp`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
+`@vzn/vx-reapi` and `@vzn/vx-schedule-history`.
+
+The plugins ship as the TypeScript source Bun runs, at the release's
+version, with `@vzn/vx` as a peer on the same minor (`^<version>`).
+`scripts/build-npm.ts --only=plugins` emits every public workspace
+package other than `@vzn/vx`, so a new plugin package is published
+without a workflow edit, and `tests/build-npm.unsafe.test.ts` holds the
+set. If npm will not add a trusted publisher to a name that has never
+been published, publish that plugin once by hand from an owner's
+account (`npm publish dist/npm-plugins/plugins/<dir> --access public`
+after the same `--only=plugins` build), then add the publisher. Then
+delete the `NPM_TOKEN` repository secret:
 the workflow no longer reads it, and npm restricts classic tokens for
 direct publishing (the `E401 token is invalid` that stopped v0.0.17).
 Every `uses:` in both workflows is pinned to a commit SHA with the

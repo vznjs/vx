@@ -7,11 +7,11 @@
 //
 // `.unsafe`: the emitted package carries the repo-root README and LICENSE,
 // which a sandboxed project task may not read.
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { coreEntries, emitMainPackage } from '../scripts/build-npm.ts'
+import { coreEntries, emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const out = mkdtempSync(path.join(tmpdir(), 'vx-build-npm-'))
@@ -81,5 +81,95 @@ describe('coreEntries', () => {
         './adapters/turbo': {},
       }),
     ).toEqual(['index.ts', 'src', 'adapters', 'plugins'])
+  })
+})
+
+// Item 656: until 0.1.0 only @vzn/vx reached npm, while the docs told users
+// to `bunx @vzn/vx-migrate`. Every public workspace package is now emitted
+// and published with the release; these rows hold the set and the shape.
+describe('the published plugin packages', async () => {
+  const REPO = path.resolve(CORE, '..', '..')
+  const pluginOut = path.join(out, 'plugins-tree')
+  const emitted = await emitPluginPackages({ version: '9.9.9', outDir: pluginOut })
+
+  it('are every public workspace package but @vzn/vx, and no other', async () => {
+    const publicNames: string[] = []
+    for (const dir of readdirSync(path.join(REPO, 'packages'))) {
+      const file = path.join(REPO, 'packages', dir, 'package.json')
+      if (!existsSync(file)) continue
+      const pkg = (await Bun.file(file).json()) as { name: string; private?: boolean }
+      if (pkg.private !== true && pkg.name !== '@vzn/vx') publicNames.push(pkg.name)
+    }
+    expect(emitted.map((e) => e.name).sort()).toEqual(publicNames.sort())
+    // A floor, so a walk that finds nothing cannot agree with an emitter
+    // that emits nothing.
+    expect(publicNames).toEqual(
+      expect.arrayContaining([
+        '@vzn/vx-github',
+        '@vzn/vx-lockfile',
+        '@vzn/vx-mcp',
+        '@vzn/vx-migrate',
+        '@vzn/vx-otel',
+        '@vzn/vx-reapi',
+        '@vzn/vx-schedule-history',
+      ]),
+    )
+  })
+
+  it('carry the release version, a peer on the same @vzn/vx and a provenance-ready repository', async () => {
+    const shapes: unknown[] = []
+    for (const { name, dir } of emitted) {
+      const m = (await Bun.file(path.join(dir, 'package.json')).json()) as Record<string, unknown>
+      shapes.push({
+        name,
+        version: m.version,
+        peer: (m.peerDependencies as Record<string, string>)['@vzn/vx'],
+        repository: m.repository,
+        dev: m.devDependencies,
+      })
+    }
+    expect(shapes).toEqual(
+      emitted.map(({ name, dir }) => ({
+        name,
+        version: '9.9.9',
+        peer: '^9.9.9',
+        repository: {
+          type: 'git',
+          url: 'git+https://github.com/vznjs/vx.git',
+          directory: `packages/${path.basename(dir)}`,
+        },
+        dev: undefined,
+      })),
+    )
+  })
+
+  it('ship every file they declare, with every bin still executable', async () => {
+    const missing: string[] = []
+    const notExecutable: string[] = []
+    for (const { name, dir } of emitted) {
+      const m = (await Bun.file(path.join(dir, 'package.json')).json()) as {
+        files: string[]
+        bin?: Record<string, string>
+      }
+      for (const f of m.files) if (!existsSync(path.join(dir, f))) missing.push(`${name}: ${f}`)
+      for (const bin of Object.values(m.bin ?? {})) {
+        if ((statSync(path.join(dir, bin)).mode & 0o111) === 0)
+          notExecutable.push(`${name}: ${bin}`)
+      }
+    }
+    expect(missing).toEqual([])
+    expect(notExecutable).toEqual([])
+    // CONTROL: the one package with bins has both of them in the tree.
+    const migrate = emitted.find((e) => e.name === '@vzn/vx-migrate')!
+    expect(existsSync(path.join(migrate.dir, 'src', 'nx-exec.cjs'))).toBe(true)
+  })
+
+  it('are published by the release workflow, after @vzn/vx', async () => {
+    const wf = await Bun.file(path.join(REPO, '.github', 'workflows', 'npm.yml')).text()
+    expect(wf).toContain('--only=plugins --out=dist/npm-plugins')
+    const core = wf.indexOf('dist/npm/vx \\')
+    const plugins = wf.indexOf('dist/npm-plugins/plugins/*; do')
+    expect(core).toBeGreaterThan(-1)
+    expect(plugins).toBeGreaterThan(core)
   })
 })
