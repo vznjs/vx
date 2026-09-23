@@ -294,6 +294,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   pass; the file list is the fixture; type-check per mutation for a
   declaration-heavy file) — is `docs/design/mutation-sweeps-2026-09.md`.
   Read it before sweeping; nothing below repeats it.
+- A mutation's replacement text is code: `void (…,)` does not compile
+  and reddened 164 unrelated rows, and a replacement line that opens
+  with `(` is a call on the line above (`disabled.add(sink)(…)`).
+  Neutralise a call as `;((_: unknown) => {})(…)` (item 654).
 - Two guards can mask each other: each alone survives and only the
   pair is held. When a guard survives, ask what ELSE would have to
   fail for the observable to change, and mutate that too (item 563).
@@ -357,7 +361,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v27`, core `SCHEMA_VERSION` `v27`,
+- `CACHE_VERSION` `vx-cache-v28`, core `SCHEMA_VERSION` `v27`,
   `TELEMETRY_SCHEMA_VERSION` 2. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.

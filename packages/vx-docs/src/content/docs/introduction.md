@@ -178,9 +178,6 @@ Stated plainly, so nothing here surprises you later:
   the OS denies the operation either way — but the violation report
   that fails a task can miss records when the unified log is busy, so
   the same task can pass or fail run to run there.
-- **A remote cache moves whole artifacts in memory.** Fine below
-  ~100 MiB per artifact; a workspace whose artifacts are larger should
-  wait for the streaming seam.
 - **A task's replayed output is the first and last 8 MiB.** The live
   run streams everything; what the cache entry keeps and a hit replays
   is bounded, with the dropped middle named where it was.

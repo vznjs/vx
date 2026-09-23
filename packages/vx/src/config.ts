@@ -14,6 +14,15 @@ export interface WorkspaceConfig {
    */
   timeout?: number
   /**
+   * Evict from the local cache at the end of every run that writes to it,
+   * by the same policy `vx cache prune` takes as flags: entries not used
+   * for `olderThan` (`30d`, `12h`), then least-recently-used entries
+   * until the cache is under `maxSize` (`10G`, `500MB`). Either or both.
+   * Omitted → nothing is evicted unless you run `vx cache prune`. Never
+   * folded into a cache key.
+   */
+  cacheRetention?: { olderThan?: string; maxSize?: string }
+  /**
    * Plugins registered for this workspace, consulted in this order once
    * per `vx run`: each fills any of the pipeline stages and capabilities
    * below, and core's own executor and cache store sit at the tail of

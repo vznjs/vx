@@ -94,15 +94,12 @@ export async function subscribeTelemetry(
   if (sinks.length === 0) return undefined
 
   const source = createTelemetrySource({ sinks, run, warn: (m) => ctx.warn(m) })
+  // The bus's unsubscribe is idempotent, so it is the handle's dispose as
+  // is (a once-flag here survived item 654).
   const dispose = bus.subscribe(source.subscriber)
-  let disposed = false
   return {
     emitSummary: (summary) => source.emitSummary(summary),
     flush: () => source.flush(),
-    dispose() {
-      if (disposed) return
-      disposed = true
-      dispose()
-    },
+    dispose,
   }
 }

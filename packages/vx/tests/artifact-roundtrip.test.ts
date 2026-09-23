@@ -513,7 +513,7 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     const whole = Bun.zstdCompressSync(tar)
     expect(whole.byteLength).toBeGreaterThan(4 * 1024 * 1024)
     await expect(
-      cache.ingest('cutin', whole.subarray(0, whole.byteLength - 4096), {
+      cache.ingest('cutin', new Blob([whole.subarray(0, whole.byteLength - 4096)]), {
         taskId: 'a#build',
         command: 'build',
         durationMs: 1,
@@ -526,7 +526,7 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
 
   it('ingesting a large intact artifact indexes it and restores it (control)', async () => {
     const tar = await new Bun.Archive({ stdout: 'hello', 'outputs/dist/big.bin': big }).bytes()
-    await cache.ingest('bigin', Bun.zstdCompressSync(tar), {
+    await cache.ingest('bigin', new Blob([Bun.zstdCompressSync(tar)]), {
       taskId: 'a#build',
       command: 'build',
       durationMs: 1,

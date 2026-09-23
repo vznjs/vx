@@ -5,6 +5,7 @@ import {
   busLogger,
   failedLabel,
   createEventBus,
+  outcomeWord,
   projectNode,
   projectOutcome,
   terminalSubscriber,
@@ -106,6 +107,22 @@ describe('createEventBus', () => {
     bus.emit({ kind: 'run:end' })
     expect(going).toEqual([])
     expect(kept).toEqual(['run:end', 'late:run:end'])
+  })
+
+  it('a second call of one disposer removes nothing else', () => {
+    // `indexOf` answers -1 once the subscriber is gone, and `splice(-1, 1)`
+    // removes the LAST subscriber — a surface that detaches twice (a
+    // devtool's close and its error path) would take the renderer with it.
+    // The telemetry handle guards its own disposer, so nothing else in the
+    // suite calls a bus disposer twice (item 654).
+    const bus = createEventBus()
+    const kept: string[] = []
+    const dispose = bus.subscribe(() => undefined)
+    bus.subscribe((e) => kept.push(e.kind))
+    dispose()
+    dispose()
+    bus.emit({ kind: 'run:end' })
+    expect(kept).toEqual(['run:end'])
   })
 })
 
@@ -327,6 +344,58 @@ describe('projectOutcome', () => {
     expect(view.durationMs).toBe(6)
     expect(view.storedDurationMs).toBe(2006)
   })
+
+  it('carries every optional fact an outcome holds, each under its own name', () => {
+    // One copy per field, and each copy was its own line to lose: the
+    // stored cpu and peak RSS a `--report` hit row prints had no reader
+    // here, so dropping either left the suite green (654). The whole view
+    // is compared, so a field copied under a wrong name reddens it too.
+    const node = mkNode({ id: 'a#build', command: 'x' })
+    ;(node.config as { cache?: unknown }).cache = { inputs: { files: [] } }
+    const view = projectOutcome(
+      mkOutcome(node, {
+        status: 'failed',
+        exitCode: 143,
+        durationMs: 6,
+        storedDurationMs: 2006,
+        storedCpuMs: 1500,
+        storedPeakRssBytes: 4096,
+        hash: 'h',
+        cpuMs: 5,
+        peakRssBytes: 2048,
+        admissionHeldMs: 7,
+        timedOut: true,
+        notReady: 'timeout',
+        blockedBy: 'z#y',
+        restored: true,
+        sandboxViolations: 2,
+        sandboxViolationLines: ['write /etc'],
+        wallclockStartNs: 10n,
+        wallclockEndNs: 20n,
+      }),
+    )
+    expect(view).toEqual({
+      taskId: 'a#build',
+      status: 'failed',
+      exitCode: 143,
+      durationMs: 6,
+      storedDurationMs: 2006,
+      storedCpuMs: 1500,
+      storedPeakRssBytes: 4096,
+      hash: 'h',
+      cpuMs: 5,
+      peakRssBytes: 2048,
+      admissionHeldMs: 7,
+      timedOut: true,
+      notReady: 'timeout',
+      blockedBy: 'z#y',
+      restored: true,
+      sandboxViolations: 2,
+      sandboxViolationLines: ['write /etc'],
+      wallclockStartNs: '10',
+      wallclockEndNs: '20',
+    })
+  })
 })
 
 describe('the label vocabulary at its edges', () => {
@@ -344,6 +413,14 @@ describe('the label vocabulary at its edges', () => {
     // true would surface every task in a consumer's view.
     expect(projectNode(mkNode({ id: 'a#build', command: 'x' })).surfaced).toBe(false)
     expect(projectNode(mkNode({ id: 'a#build', command: 'x', surfaced: true })).surfaced).toBe(true)
+  })
+  it('a hit that materialized nothing is up-to-date whichever layer answered', () => {
+    // The local arm is held by the framed-output rows; the remote arm had
+    // no reader, so a remote hit that restored nothing read
+    // `restored-remote` with the suite green (654).
+    expect(outcomeWord({ status: 'cache-hit-remote', restored: false })).toBe('up-to-date')
+    expect(outcomeWord({ status: 'cache-hit-remote', restored: true })).toBe('restored-remote')
+    expect(outcomeWord({ status: 'cache-hit-remote' })).toBe('restored-remote')
   })
 })
 
@@ -375,6 +452,11 @@ describe('toWireEvent', () => {
 
     const stdout = toWireEvent({ kind: 'task:stdout', node, chunk: 'c' })
     expect(stdout).toEqual({ kind: 'task:stdout', taskId: 'a#build', chunk: 'c' })
+
+    // The stream a consumer routes a chunk to: a stderr chunk mapped to
+    // `task:stdout` passed every row until this one (654).
+    const stderr = toWireEvent({ kind: 'task:stderr', node, chunk: 'e' })
+    expect(stderr).toEqual({ kind: 'task:stderr', taskId: 'a#build', chunk: 'e' })
 
     const complete = toWireEvent({ kind: 'task:complete', node, outcome: mkOutcome(node) })
     expect(complete).toEqual({ kind: 'task:complete', outcome: projectOutcome(mkOutcome(node)) })

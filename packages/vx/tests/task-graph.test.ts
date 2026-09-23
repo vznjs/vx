@@ -740,6 +740,30 @@ describe('markSurfacedDeps', () => {
     expect(surfaced(nodes)).toEqual(['app#compile'])
   })
 
+  // buildTaskGraph refuses a cycle, so the back edge is added by hand:
+  // markSurfacedDeps is exported and its own `visited` set is what ends
+  // the walk, whoever built the map.
+  it('two same-project groups that depend on each other terminate and surface only their real tasks', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          a: group(['b', 'x']),
+          b: group(['y']),
+          x: cmd('x'),
+          y: cmd('y'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [
+        { project: 'app', task: 'a' },
+        { project: 'app', task: 'b' },
+      ],
+    })
+    nodes.get('app#b')!.deps.push('app#a')
+    expect(markSurfacedDeps(nodes)).toBe(2)
+    expect(surfaced(nodes)).toEqual(['app#x', 'app#y'])
+  })
+
   it('surfaces nothing for a requested non-group task', () => {
     const nodes = buildTaskGraph({
       projects: projects(

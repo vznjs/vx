@@ -99,6 +99,39 @@ describe.if(CHUNKING_SUPPORTED)('CAS download integrity', () => {
     }
   })
 
+  it('readBlobStream errors a stream whose bytes do not hash to the requested digest', async () => {
+    // The streamed read hands its bytes over as they arrive, so the check
+    // runs as they pass and errors the stream at its end: core's write of
+    // the body fails and the ingest is a miss (streaming-remote-2026-09).
+    // One digest the lie misses by size, one it matches in size and misses by
+    // hash alone: the streamed hasher is the only thing that sees the second.
+    const sameSize = sha256(new TextEncoder().encode('x'.repeat(EVIL.length)))
+    const client = new ReapiClient({ endpoint })
+    try {
+      const outcomes: string[] = []
+      for (const digest of [GOOD_DIGEST, sameSize]) {
+        const stream = await client.readBlobStream(digest)
+        // Settled by hand: `expect(p).rejects` on this grpc-backed promise sat
+        // until the test's timeout, though `.then`, a reader and Bun.write all
+        // see the rejection at once.
+        outcomes.push(
+          await new Response(stream).bytes().then(
+            () => 'resolved',
+            (err: Error) =>
+              /blob integrity failure for .*: size /.test(err.message)
+                ? 'refused by size'
+                : /blob integrity failure: bytes hash to /.test(err.message)
+                  ? 'refused by hash'
+                  : err.message,
+          ),
+        )
+      }
+      expect(outcomes).toEqual(['refused by size', 'refused by hash'])
+    } finally {
+      client.close()
+    }
+  })
+
   it('batchReadBlobs refuses a lying entry', async () => {
     const client = new ReapiClient({ endpoint })
     try {
@@ -161,6 +194,8 @@ describe.if(CHUNKING_SUPPORTED)('CAS download integrity', () => {
       const one = await client.readBlob(GOOD_DIGEST)
       expect(one).not.toBeNull()
       expect(Buffer.compare(Buffer.from(one!), Buffer.from(GOOD))).toBe(0)
+      const streamed = await new Response(await client.readBlobStream(GOOD_DIGEST)).bytes()
+      expect(Buffer.compare(Buffer.from(streamed), Buffer.from(GOOD))).toBe(0)
       const batch = await client.batchReadBlobs([GOOD_DIGEST])
       expect(Buffer.compare(Buffer.from(batch.get(GOOD_DIGEST.hash)!), Buffer.from(GOOD))).toBe(0)
     } finally {

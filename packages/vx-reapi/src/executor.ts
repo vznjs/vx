@@ -12,7 +12,7 @@
 import { mkdir, writeFile, chmod, rm, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { UserError } from '@vzn/vx'
+import { isLiteralPattern, normalizeGlob, UserError } from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
@@ -108,7 +108,7 @@ async function decomposeOutputDir(
 
   for (const glob of wild) {
     const rest = glob.slice(entry.path.length + 1).split('/')
-    if (rest.some((seg) => seg !== '*' && /[*?[\]{]/.test(seg))) continue
+    if (rest.some((seg) => seg !== '*' && !isLiteralPattern(seg))) continue
     walk(tree.root, rest, entry.path)
   }
   if (out.length === 0) return [entry]
@@ -874,7 +874,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         const declaredGlobs = [
           ...req.outputs.workspaceFiles,
           ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
-        ]
+        ].map((g) => normalizeGlob(g))
         const recordedDirs: Array<{ path: string; tree_digest: Digest }> = []
         for (const d of result.output_directories ?? []) {
           const rebased = { path: rebase(d.path), tree_digest: d.tree_digest }
@@ -1021,7 +1021,7 @@ export function globToOutputPath(glob: string): string {
   const segments = glob.split('/')
   const literal: string[] = []
   for (const seg of segments) {
-    if (/[*?[\]{]/.test(seg)) break
+    if (!isLiteralPattern(seg)) break
     literal.push(seg)
   }
   if (literal.length === segments.length) return glob // no wildcard: a literal path
@@ -1072,7 +1072,10 @@ export function outputPathSets(
   // PROJECT-relative globs are the ones needing a prefix.
   const prefix = (p: string): string =>
     workingDirectory === '' && projectRel !== '' ? `${projectRel}/${p}` : p
-  const globs = [...req.outputs.files.map(prefix), ...req.outputs.workspaceFiles.map(rebase)]
+  // Core's spelling first: `app/\[id\]/x` names the file `app/[id]/x` (item 667).
+  const globs = [...req.outputs.files.map(prefix), ...req.outputs.workspaceFiles.map(rebase)].map(
+    (g) => normalizeGlob(g),
+  )
   const paths = new Set<string>()
   const files = new Set<string>()
   const dirs = new Set<string>()

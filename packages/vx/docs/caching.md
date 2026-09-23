@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v27'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v28'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -156,6 +156,15 @@ over (in order):
     that does not exist. A literal naming a **directory** is judged the
     same way: an ignored one, or an empty one, has no file git lists
     under it, folds nothing, and is refused (item 576).
+
+    A **bracket is literal** in a task glob, and there are no character
+    classes (item 667): `app/[id]/**` folds the route directory
+    `app/[id]`, and `app/\[id\]/**` is the same path. Read as a class
+    — what `Bun.Glob`, Turbo and Nx do — it matched `app/i/…` and never
+    the route, so the route's files keyed nothing (an edit replayed the
+    old output, green) and an output declared under it cleaned an
+    unrelated `app/i/page.js` before every run while the artifact
+    saved nothing.
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so three concurrent probes prune it:
@@ -743,7 +752,7 @@ noise). Ingest lists entries through the reader without materialising
 a byte, and **restore streams it**: the zstd
 frame is decoded and the tar read as it arrives — ustar name/prefix,
 pax `path`/`size`, GNU long names, header checksums, truncation — and
-every regular entry is written beside its target as `.vx-tmp-*` and
+every regular entry is written beside its target as a short `.vx-tmp-*` sibling (never a suffix on the target's name, which pushed a legal 242–255-byte name past NAME_MAX) and
 renamed into place only after the whole archive has ended cleanly and
 the index's recorded outputs are all present. vx itself holds one
 chunk of the tar at a time (measured 2026-09-03, incompressible
@@ -799,7 +808,9 @@ remote layers transport the exact same tar.zst bytes end-to-end.
 The index is authoritative: a lookup reads the row first and only then
 checks the file, so an artifact without a row (a `SCHEMA_VERSION` drop,
 a deleted `cache.db`) or a `.tmp-*` a crashed save left is never a hit
-and is never touched by a run — `vx cache prune` sweeps them, once they
+and is never touched by a run's lookups — `vx cache prune` (or a run
+whose workspace declares `cacheRetention` and has something due to
+evict) sweeps them, once they
 are older than an hour (a save renames the artifact into place before
 its row commits, so a fresh row-less file is a save in flight).
 Captured stdout is stored twice on purpose: in the artifact (so it
@@ -1104,6 +1115,15 @@ never wrong. Details and the deny-list:
 
 ## Bumping `CACHE_VERSION`
 
+A bump is announced, never silent (roadmap 3.3, item 671): the cache
+records the version it was written under (`schema_meta.cache_version`),
+and the first open after an upgrade prints one line, on the run's
+status line or a verb's stderr: `[vx] cache format changed:
+vx-cache-v27 → vx-cache-v28 (vx upgraded); …`. The index survives, so
+the old entries stay until they age out under `vx cache prune
+--older-than` or `cacheRetention`; no key derives to them again. A
+bump that lands with a `SCHEMA_VERSION` reset says the reset alone.
+
 Required when:
 
 - A new field is added to the cache key derivation (step list above).
@@ -1133,6 +1153,18 @@ version — the decision log it once named was retired 2026-09-02),
 was not), and the cache tests.
 
 ### History
+
+- **v27 → v28**: stored bytes wrong under a key the fix does not change —
+  the v25/v26 shape (item 667). A bracket in a task glob became a literal
+  character; before, `Bun.Glob` read it as a character class. An INPUT
+  glob over a route directory folded the wrong files, and that fix is
+  self-healing: the file set, and so the key, moves. An OUTPUT glob is
+  not: `outputs: ['app/[id]/page.js']` folds as its text, which the fix
+  leaves unchanged, and the entries under it hold nothing (or the class's
+  namesake `app/i/page.js`). Proven through a real run: an entry written
+  by v27 code, read by the fixed code, was a `cache-hit` that cleaned
+  `app/[id]/page.js` and restored nothing; under v28 it is a miss, and
+  the next hit restores the route.
 
 - **v26 → v27**: the artifact CONTAINER changed, so the stored bytes
   under an unchanged key are no longer readable the same way — the

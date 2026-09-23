@@ -100,7 +100,11 @@ describe('a save and an ingest of the same bytes index the same rows', () => {
     // same rows and the same entry.
     const other = new Cache(path.join(root, 'other'))
     try {
-      await other.ingest('h-plan', bytes, { taskId: 'pkg#build', command: 'make', durationMs: 42 })
+      await other.ingest('h-plan', new Blob([bytes]), {
+        taskId: 'pkg#build',
+        command: 'make',
+        durationMs: 42,
+      })
       expect(rows(other, 'h-plan')).toEqual(saved)
       const [a, b] = [await cache.get('h-plan'), await other.get('h-plan')]
       expect({ stdout: b?.stdout, cpuMs: b?.cpuMs, peakRssBytes: b?.peakRssBytes }).toEqual({
@@ -132,7 +136,11 @@ describe('a save and an ingest of the same bytes index the same rows', () => {
     const other = new Cache(path.join(root, 'other-empty'))
     try {
       const bytes = await Bun.file(cache.outputsPath('h-empty')).bytes()
-      await other.ingest('h-empty', bytes, { taskId: 'pkg#lint', command: 'lint', durationMs: 1 })
+      await other.ingest('h-empty', new Blob([bytes]), {
+        taskId: 'pkg#lint',
+        command: 'lint',
+        durationMs: 1,
+      })
       expect(rows(other, 'h-empty')).toEqual([])
       expect((await other.get('h-empty'))?.stdout).toBe('')
     } finally {

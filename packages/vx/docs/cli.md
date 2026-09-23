@@ -124,17 +124,17 @@ full workspace.
 The full DSL lives in `src/workspace/filter.ts`; this is the user-
 facing summary.
 
-| Form            | Meaning                                                                                             |
-| --------------- | --------------------------------------------------------------------------------------------------- |
-| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.                                   |
-| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root).                       |
-| `{<dir>}`       | Same as `./<dir>`.                                                                                  |
-| `./<glob>`      | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). |
-| `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.                           |
-| `<pattern>...`  | Match + all transitive dependencies (see below what an edge is).                                    |
-| `...<pattern>`  | Match + all transitive dependents.                                                                  |
-| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                             |
-| `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                               |
+| Form            | Meaning                                                                                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.                                                                                                                                               |
+| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root).                                                                                                                                   |
+| `{<dir>}`       | Same as `./<dir>`.                                                                                                                                                                                              |
+| `./<glob>`      | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
+| `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.                                                                                                                                       |
+| `<pattern>...`  | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                |
+| `...<pattern>`  | Match + all transitive dependents.                                                                                                                                                                              |
+| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                         |
+| `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                                                                                                                                           |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
@@ -180,7 +180,11 @@ failed to spawn 'git' … Install git and re-run` — the same the input
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
-  would be a real `git diff` option.
+  would be a real `git diff` option. A range (`HEAD~1..HEAD`,
+  `main...feature`) is refused there too, naming the base to pass
+  alone — `ranges are not supported — pass the base alone ("HEAD~1")`
+  — because the other end is always the working tree. A ref that does
+  not exist is `git ref "<ref>" did not resolve`.
 - The diff runs from the **merge base** of the ref and `HEAD`, not from
   the ref itself, so a branch whose base has moved on sees only its own
   changes — never the files other people landed on `main` since it
@@ -1152,7 +1156,10 @@ vx cache prune ... --cache-dir <path>       # The cache a run with the same flag
 
 At least one of `--older-than` / `--max-size` is required. Both may
 be combined: age-based eviction runs first, then LRU eviction if the
-total is still over the size cap.
+total is still over the size cap. The same policy runs unattended at
+the end of every run when `vx.workspace.ts` declares
+`cacheRetention: { olderThan, maxSize }` (same spellings; see
+[schema](./schema.md)).
 
 After eviction, prune sweeps the cache directory for **orphans**: a
 `<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
@@ -1270,8 +1277,9 @@ Exit codes:
 
 A GitHub release publishes everything: `release.yml` builds the four
 binaries, ad-hoc signs the darwin ones and attaches them; `npm.yml`
-builds the five npm packages (`@vzn/vx` and one per platform) and
-publishes them with **npm trusted publishing** — the job's OIDC token
+builds the twelve npm packages (`@vzn/vx`, one per platform, and the
+seven plugin packages) and publishes them with **npm trusted
+publishing** — the job's OIDC token
 is exchanged for a short-lived credential and provenance is attached,
 so no long-lived npm token exists anywhere. Both publish loops skip a
 package already on the registry, so a re-run (`npm publish` →
@@ -1292,8 +1300,21 @@ then stopped exactly there.
 One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
 workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
-`@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64` and
-`@vzn/vx-linux-arm64`. Then delete the `NPM_TOKEN` repository secret:
+`@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
+`@vzn/vx-linux-arm64` and the seven plugins: `@vzn/vx-github`,
+`@vzn/vx-lockfile`, `@vzn/vx-mcp`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
+`@vzn/vx-reapi` and `@vzn/vx-schedule-history`.
+
+The plugins ship as the TypeScript source Bun runs, at the release's
+version, with `@vzn/vx` as a peer on the same minor (`^<version>`).
+`scripts/build-npm.ts --only=plugins` emits every public workspace
+package other than `@vzn/vx`, so a new plugin package is published
+without a workflow edit, and `tests/build-npm.unsafe.test.ts` holds the
+set. If npm will not add a trusted publisher to a name that has never
+been published, publish that plugin once by hand from an owner's
+account (`npm publish dist/npm-plugins/plugins/<dir> --access public`
+after the same `--only=plugins` build), then add the publisher. Then
+delete the `NPM_TOKEN` repository secret:
 the workflow no longer reads it, and npm restricts classic tokens for
 direct publishing (the `E401 token is invalid` that stopped v0.0.17).
 Every `uses:` in both workflows is pinned to a commit SHA with the
@@ -1504,7 +1525,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v27 · index schema v27
+cache versions:   keys vx-cache-v28 · index schema v27
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)

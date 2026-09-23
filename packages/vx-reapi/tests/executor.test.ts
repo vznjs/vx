@@ -27,8 +27,14 @@ describe('globToOutputPath', () => {
     ['a/b/c.txt', 'a/b/c.txt'],
     ['*.js', ''],
     ['**', ''],
-    ['out-[ab].txt', ''],
     ['gen?/x', ''],
+    ['{a,b}/x', ''],
+    // A bracket is literal in a vx task glob (item 667): the route directory
+    // `app/[id]` read as a class collapsed to `app`, so the worker returned
+    // the whole of `app` and a consumer's graft replaced its sources.
+    ['out-[ab].txt', 'out-[ab].txt'],
+    ['app/[id]/page.js', 'app/[id]/page.js'],
+    ['app/[id]/*.js', 'app/[id]'],
   ])('%s → %j', (glob, expected) => {
     expect(globToOutputPath(glob)).toBe(expected)
   })
@@ -69,6 +75,15 @@ describe('outputPathSets', () => {
     // The shape the fix replaced: same declaration, anchored at the project.
     const sets = outputPathSets(req(['dist/**'], ['node_modules']), 'packages/vx')
     expect(sets.outputPaths).toContain('../../node_modules')
+  })
+
+  it("reads core's spelling: the escaped bracket names the same literal file (item 667)", () => {
+    const sets = outputPathSets(req(['app/\\[id\\]/page.js', 'app/[slug]/*.js']), '')
+    expect(sets).toEqual({
+      outputPaths: ['app/[id]/page.js', 'app/[slug]'],
+      legacyFiles: ['app/[id]/page.js'],
+      legacyDirectories: ['app/[slug]'],
+    })
   })
 
   it('a first-segment wildcard collapses to "" — the whole working directory', () => {

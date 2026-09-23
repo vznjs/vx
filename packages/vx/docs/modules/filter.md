@@ -39,16 +39,16 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 
 ## Filter grammar
 
-| Form                  | Meaning                                                                                                                                                                                 |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<pattern>`           | Name match. `*` is the sole metacharacter and means any characters — pnpm's rule, so `*core*` crosses the `@scope/` boundary.                                                           |
-| `./<dir>` / `{<dir>}` | Packages whose dir is at or under `<dir>` (workspace-relative; `.` is the root). A glob in the path (`./apps/*`, `{apps/**}`) is matched over each project's root-relative dir instead. |
-| `<pattern>...`        | Match + all transitive workspace dependencies.                                                                                                                                          |
-| `...<pattern>`        | Match + all transitive workspace dependents.                                                                                                                                            |
-| `<pattern>^...`       | Only the transitive deps of pattern (excluding the matched pkg).                                                                                                                        |
-| `!<pattern>`          | Exclude.                                                                                                                                                                                |
-| `[<git-ref>]`         | Projects affected since `<git-ref>`. Resolved by caller via                                                                                                                             |
-|                       | `workspace/affected.ts:affectedProjects`.                                                                                                                                               |
+| Form                  | Meaning                                                                                                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<pattern>`           | Name match. `*` is the sole metacharacter and means any characters — pnpm's rule, so `*core*` crosses the `@scope/` boundary.                                                                                                                                 |
+| `./<dir>` / `{<dir>}` | Packages whose dir is at or under `<dir>` (workspace-relative; `.` is the root). A glob in the path (`./apps/*`, `{apps/**}`) is matched over each project's root-relative dir instead, unless the path selects a project dir literally (`./packages/[abc]`). |
+| `<pattern>...`        | Match + all transitive workspace dependencies.                                                                                                                                                                                                                |
+| `...<pattern>`        | Match + all transitive workspace dependents.                                                                                                                                                                                                                  |
+| `<pattern>^...`       | Only the transitive deps of pattern (excluding the matched pkg).                                                                                                                                                                                              |
+| `!<pattern>`          | Exclude.                                                                                                                                                                                                                                                      |
+| `[<git-ref>]`         | Projects affected since `<git-ref>`. Resolved by caller via                                                                                                                                                                                                   |
+|                       | `workspace/affected.ts:affectedProjects`.                                                                                                                                                                                                                     |
 
 ## Algorithm
 

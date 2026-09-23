@@ -18,8 +18,10 @@ import {
   MAX_TIMEOUT_MS,
   nearest,
   normalizeGlob,
+  parseDuration,
+  parseSize,
   UserError,
-  isLiteralPattern,
+  BUN_GLOB_WILDCARDS,
 } from '../util/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 
@@ -27,7 +29,37 @@ import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 // the same reason the task levels reject them: `plugin: [...]` (singular)
 // declared no plugins and ran the workspace bare, `cacheDirectory` left the
 // cache where it was — a config that loads and quietly does nothing it says.
-const WORKSPACE_FIELDS = new Set(['concurrency', 'cacheDir', 'timeout', 'plugins'])
+const WORKSPACE_FIELDS = new Set([
+  'concurrency',
+  'cacheDir',
+  'timeout',
+  'cacheRetention',
+  'plugins',
+])
+
+const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
+
+function validateRetention(retention: unknown, configPath: string): void {
+  const where = `${configPath}: \`cacheRetention\``
+  if (retention === null || typeof retention !== 'object' || Array.isArray(retention)) {
+    throw new UserError(`${where} must be { olderThan?: '30d', maxSize?: '10G' }`)
+  }
+  assertKnownFields(retention as Record<string, unknown>, RETENTION_FIELDS, where)
+  const { olderThan, maxSize } = retention as { olderThan?: unknown; maxSize?: unknown }
+  // An empty object would load and evict nothing, which reads as a policy.
+  if (olderThan === undefined && maxSize === undefined) {
+    throw new UserError(`${where} names neither \`olderThan\` nor \`maxSize\``)
+  }
+  if (
+    olderThan !== undefined &&
+    (typeof olderThan !== 'string' || parseDuration(olderThan) === null)
+  ) {
+    throw new UserError(`${where}.olderThan must be a duration like '30d', '12h', '90m' or '45s'`)
+  }
+  if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
+    throw new UserError(`${where}.maxSize must be a size like '10G', '500MB' or '1048576'`)
+  }
+}
 
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
   assertKnownFields(config, WORKSPACE_FIELDS, configPath)
@@ -54,6 +86,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     }
     assertTimeoutInRange(config.timeout, `${configPath}: \`timeout\``)
   }
+  if (config.cacheRetention !== undefined) validateRetention(config.cacheRetention, configPath)
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
@@ -364,7 +397,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           // we add expansion later it'll be additive — until then,
           // surface the footgun instead of returning '' for the
           // literal env name `'VERCEL_*'`.
-          if (!isLiteralPattern(name)) {
+          // An env name is no path, so a bracket is no route directory: the
+          // whole `Bun.Glob` alphabet stays refused here.
+          if (BUN_GLOB_WILDCARDS.test(name)) {
             throw new UserError(
               `${where}.cache.inputs.env: wildcards in env names are not supported ` +
                 `(got "${name}") — list explicit env var names instead`,

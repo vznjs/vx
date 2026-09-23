@@ -61,6 +61,14 @@ describe('the ignore filter', () => {
   })
 })
 
+describe("a task's own outputs are not edits, and a route directory is literal (item 667)", () => {
+  it('ignores a write under the route and not one under the class sibling', () => {
+    const dir = path.join(os.tmpdir(), 'vx-watch-route')
+    const ignore = makeWatchIgnore(path.join(dir, '.vx'), new Map([[dir, ['app/[id]/*.js']]]))
+    expect([ignore(dir, 'app/[id]/x.js'), ignore(dir, 'app/i/x.js')]).toEqual([true, false])
+  })
+})
+
 describe('the ignore filter follows the RESOLVED cache dir, not the .vx literal', () => {
   // `cacheDir` is a shipped `defineWorkspace` field. Point it out of `.vx/` and
   // the hard-coded segment list stops covering it, so vx's own cache writes land
@@ -235,6 +243,11 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['nested/vx.workspace.ts', false],
   ])('%s → %s', (rel, kept) => {
     expect({ rel, kept: matters(rel.split('/').join(path.sep)) }).toEqual({ rel, kept })
+  })
+
+  it('a route directory in a workspaceFiles glob is the directory, not a class (item 667)', () => {
+    const route = makeRootEventFilter(root, [], ['app/[id]/**'])
+    expect([route('app/[id]/page.js'), route('app/i/page.js')]).toEqual([true, false])
   })
 
   it('the sweep hands the loop every declared workspaceFiles glob, deduplicated', async () => {

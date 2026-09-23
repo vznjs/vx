@@ -16,7 +16,7 @@
 // given, the base set is "all projects" and excluded packages are removed.
 
 import path from 'node:path'
-import { isLiteralPattern } from '../util/index.js'
+import { BUN_GLOB_WILDCARDS } from '../util/index.js'
 import type { PackageGraph } from './package-graph.js'
 import type { ProjectMeta } from './workspace.js'
 
@@ -89,7 +89,8 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     // `./packages/*` — pnpm's and Turbo's spelling for "every package under
     // packages": a glob over the root-relative project dir. Resolved
     // against the workspace root like the literal form.
-    if (!isLiteralPattern(pathForm)) {
+    // A member glob, not a task glob: `Bun.Glob`'s alphabet, the class included.
+    if (BUN_GLOB_WILDCARDS.test(pathForm)) {
       const rel = path.relative(workspaceRoot, matcher).split(path.sep).join('/')
       pathGlob = new Bun.Glob(rel.replace(/\/+$/, ''))
     }
@@ -120,6 +121,15 @@ function matchProjects(
   }
   const out: string[] = []
   if (filter.isPath) {
+    const prefix = filter.matcher + path.sep
+    for (const p of projects) {
+      if (p.dir === filter.matcher || p.dir.startsWith(prefix)) out.push(p.name)
+    }
+    // A path that names a project directory literally means that directory,
+    // as git reads a pathspec, even when it holds glob characters
+    // (`./packages/[abc]`); only a path that selects nothing literally is
+    // read as a glob.
+    if (out.length > 0) return out
     if (filter.pathGlob !== undefined) {
       // The glob is matched against the project's own dir, as pnpm and
       // Turbo do: `./packages/*` is the packages directly under `packages`,
@@ -131,11 +141,6 @@ function matchProjects(
           .join('/')
         if (filter.pathGlob.match(rel)) out.push(p.name)
       }
-      return out
-    }
-    const prefix = filter.matcher + path.sep
-    for (const p of projects) {
-      if (p.dir === filter.matcher || p.dir.startsWith(prefix)) out.push(p.name)
     }
     return out
   }

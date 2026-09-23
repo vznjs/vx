@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Implements `vx cache prune` plus the duration parser, exported for
-tests (the size parser is `util/size.ts`'s, re-exported here). Drives
+Implements `vx cache prune`. Both parsers are `util/size.ts`'s,
+re-exported here: the workspace's `cacheRetention` field reads the
+same spellings the flags do. Drives
 `Cache.prune({...})` from `src/cache/cache.ts` against the cache
 directory a run would use.
 
@@ -21,8 +22,7 @@ interface PruneArgs {
 }
 
 export function parsePruneArgs(args: readonly string[]): PruneArgs
-export function parseDuration(input: string): number | null
-export { parseSize } from '../util/index.js'
+export { parseDuration, parseSize } from '../util/index.js'
 ```
 
 ## Subcommand surface

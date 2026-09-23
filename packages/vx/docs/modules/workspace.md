@@ -8,8 +8,11 @@ subtracts from what the positive globs found — a literal one excludes
 its tree — in both discovery and the root-claim walk. Handed to the
 glob engine raw, a leading `!` negated the whole pattern and made every
 manifest in the tree a member (2026-09-10). Every entry goes through
-`normalizeGlob` first: `!./packages/legacy` and `!packages//legacy`
-excluded nothing until they did (same day).
+`normalizeBunGlob` first: `!./packages/legacy` and `!packages//legacy`
+excluded nothing until they did (same day). A member glob keeps the
+package manager's grammar, so a bracket there is a class and `\[` a
+literal bracket — unlike a task glob, where a bracket is literal (item
+667).
 
 Find the workspace root, enumerate its projects, and resolve the
 cache directory. Supports pnpm / npm / yarn / Bun workspaces, plus a

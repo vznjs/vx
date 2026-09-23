@@ -63,14 +63,34 @@ describe.if(run)('REAPI round-trip against a live server', () => {
       const body = new Uint8Array(1024 * 1024)
       crypto.getRandomValues(body)
       expect(await cache.has(key)).toBe(false)
-      await cache.put(key, body, { durationMs: 4242 })
+      await cache.put(key, new Blob([body]), { durationMs: 4242 })
       expect(await cache.has(key)).toBe(true)
       const got = await cache.get(key)
       expect(got).not.toBeNull()
-      expect(Buffer.compare(Buffer.from(got!.body), Buffer.from(body))).toBe(0)
+      expect(Buffer.compare(Buffer.from(await got!.body.bytes()), Buffer.from(body))).toBe(0)
       // durationMs survives whether the server keeps stdout inline or
       // normalises it into CAS (bazel-remote does the latter).
       expect(got!.durationMs).toBe(4242)
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('streams an artifact past the batch limit both ways, byte-identical', async () => {
+    // Past SAFE_BATCH_BYTES the upload reads the Blob as a stream and the
+    // download hands core a stream: the path a large artifact takes, against
+    // the real server's flow control rather than grpc-js's.
+    const cache = new ReapiRemoteCache({ endpoint })
+    try {
+      const key = `vx-stream-${nonce()}`
+      const body = new Uint8Array(6 * 1024 * 1024)
+      for (let at = 0; at < body.length; at += 65536) {
+        crypto.getRandomValues(body.subarray(at, at + 65536))
+      }
+      await cache.put(key, new Blob([body]), { durationMs: 9 })
+      const got = await cache.get(key)
+      expect(got).not.toBeNull()
+      expect(Buffer.compare(Buffer.from(await got!.body.bytes()), Buffer.from(body))).toBe(0)
     } finally {
       cache.close()
     }
@@ -93,10 +113,10 @@ describe.if(run)('REAPI round-trip against a live server', () => {
     try {
       const key = `vx-dup-${nonce()}`
       const body = new TextEncoder().encode(`dup-${nonce()}`)
-      await cache.put(key, body, { durationMs: 1 })
+      await cache.put(key, new Blob([body]), { durationMs: 1 })
       // Second put: the blob is already present, so FindMissingBlobs returns
       // nothing and writeBlob is skipped — the entry must still be readable.
-      await cache.put(key, body, { durationMs: 2 })
+      await cache.put(key, new Blob([body]), { durationMs: 2 })
       expect((await client.findMissingBlobs([digestOf(body)])).length).toBe(0)
       const got = await cache.get(key)
       expect(got!.durationMs).toBe(2)
@@ -145,10 +165,10 @@ describe.if(run)('chunkBytes is a real escape hatch, not just an option', () => 
       const key = `vx-chunk-${nonce()}`
       const body = new Uint8Array(512 * 1024)
       crypto.getRandomValues(body)
-      await cache.put(key, body, { durationMs: 7 })
+      await cache.put(key, new Blob([body]), { durationMs: 7 })
       const got = await cache.get(key)
       expect(got).not.toBeNull()
-      expect(Buffer.compare(Buffer.from(got!.body), Buffer.from(body))).toBe(0)
+      expect(Buffer.compare(Buffer.from(await got!.body.bytes()), Buffer.from(body))).toBe(0)
     } finally {
       cache.close()
     }

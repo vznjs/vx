@@ -12,7 +12,7 @@
 // metadata — taskId, command, exitCode, durationMs, storedAt — lives
 // in the SQLite `entries` row. The same tar.zst bytes ship to a remote
 // cache server unchanged; on remote-hit, the caller supplies metadata
-// via the `ingest(hash, bytes, meta)` API so the local SQL index gets
+// via the `ingest(hash, body, meta)` API so the local SQL index gets
 // populated without sniffing the artifact.
 //
 // We never cache failed runs, so stderr is dropped from the cached
@@ -130,7 +130,12 @@ import { RunHistory } from './run-history.js'
 // `LayeredCache` uploads them, so the reach is a whole team's shared cache
 // rather than one developer's disk. Pre-alpha, so one cold rebuild is the
 // cheap side of that trade.
-export const CACHE_VERSION = 'vx-cache-v27'
+// v28: the same shape again (item 667). An output glob over a bracket route
+// directory (`app/[id]/page.js`) was read as a character class, so its
+// entries saved nothing (or the class's namesakes) under a key the fix
+// leaves unchanged: the glob text is what folds. Read literally, the first
+// hit on such an entry cleaned the route and restored nothing, green.
+export const CACHE_VERSION = 'vx-cache-v28'
 
 /**
  * An artifact or temp file without an `entries` row is reaped by
@@ -148,6 +153,13 @@ export interface SchemaReset {
 
 /** Say once, on the channel the opener has, that an upgrade emptied the index. */
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void {
+  if (cache.formatChange !== null) {
+    const { from, to } = cache.formatChange
+    warn(
+      `[vx] cache format changed: ${from} → ${to} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+    )
+    return
+  }
   if (cache.schemaReset === null) return
   const { from, to } = cache.schemaReset
   warn(
@@ -338,6 +350,13 @@ export class Cache implements CacheLayer {
    * silence, and the all-miss run that follows looks like a bug.
    */
   readonly schemaReset: SchemaReset | null = null
+
+  /**
+   * Set when THIS open found entries written under another
+   * `CACHE_VERSION`: the index survives, but no old key is derived again,
+   * so every cached task misses once. Reported by `noteSchemaReset`.
+   */
+  readonly formatChange: SchemaReset | null = null
 
   constructor(
     private readonly cacheDir: string,
@@ -654,6 +673,25 @@ export class Cache implements CacheLayer {
     this.configEvals = new ConfigEvalTable(this.db, { read: this.read, write: this.write })
     this.outputs = new OutputIndex(this.db)
     this.history = new RunHistory(this.db)
+
+    // A CACHE_VERSION bump keeps the index but moves every key, so the run
+    // after an upgrade misses everything. Roadmap 3.3: that is announced,
+    // never silent. A store with no recorded version and no entries is
+    // new; one with entries predates the record (item 671).
+    const format = this.db
+      .prepare("SELECT value FROM schema_meta WHERE key = 'cache_version'")
+      .get() as { value: string } | null
+    if (format?.value !== CACHE_VERSION && this.writeBlocked === null) {
+      const hasEntries = this.db.prepare('SELECT 1 FROM entries LIMIT 1').get() != null
+      if (this.schemaReset === null && (format !== null || hasEntries)) {
+        this.formatChange = { from: format?.value ?? 'an earlier format', to: CACHE_VERSION }
+      }
+      this.db
+        .prepare(
+          "INSERT INTO schema_meta(key, value) VALUES ('cache_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .run(CACHE_VERSION)
+    }
   }
 
   // --- config evaluations: `ConfigEvalStore`, delegated to `ConfigEvalTable` ---
@@ -1046,6 +1084,15 @@ export class Cache implements CacheLayer {
             `Declared outputs are wiped before a restore, so this is a path the output globs do not cover — remove it and re-run.`,
         )
       }
+      // A legal name under a destination deep enough that the two together
+      // pass PATH_MAX: the artifact is fine, the workspace's location is
+      // not (the parity audit's last open archive row, item 670).
+      if (code === 'ENAMETOOLONG') {
+        throw new UserError(
+          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${(err as Error).message}). ` +
+            `An output path under this directory is longer than the file system allows — move the workspace to a shorter path.`,
+        )
+      }
       // Same distinction for a tree the process cannot write into — a
       // `dist/` another user owns, a read-only checkout, a full disk: the
       // artifact is intact, the tree is not the process's to change.
@@ -1160,15 +1207,31 @@ export class Cache implements CacheLayer {
     return this.packArtifact(args)
   }
 
-  async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
-    await this.writeArtifactAndIndex(hash, compressed, meta)
+  /**
+   * The remote body goes to the temp by `Bun.write`, which streams a
+   * `Response` and copies a file `Blob` without collecting either, so a
+   * pull never holds the artifact. A body that fails mid-stream (a dropped
+   * socket) leaves a partial temp behind it, removed here; validation
+   * removes its own.
+   */
+  async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
+    const tmpPath = this.tempPath(hash)
+    try {
+      // Split only for the typings: Bun.write's Response and Blob overloads
+      // do not accept their union.
+      await (body instanceof Response ? Bun.write(tmpPath, body) : Bun.write(tmpPath, body))
+    } catch (err) {
+      await unlink(tmpPath).catch(() => undefined)
+      throw err
+    }
+    await this.writeArtifactAndIndex(hash, { tmpPath }, meta)
   }
 
   /**
    * Collect stdout + outputs into artifact bytes, zstd-compress, return
    * them. No disk write to the final cache path — that's the index
    * step's job. Pure transform, so `ingest()` can skip this and hand
-   * its remote-supplied bytes straight to `writeArtifactAndIndex`.
+   * its remote-supplied temp straight to `writeArtifactAndIndex`.
    *
    * Entries are named directly into the archive, so there is no staging
    * copy of every output byte and no `tar` subprocess (see
@@ -1196,7 +1259,8 @@ export class Cache implements CacheLayer {
   /**
    * The compressed artifact, in memory: the remote upload when local
    * writes are off. A large artifact is packed and compressed as a
-   * stream and collected — the seam takes bytes.
+   * stream and collected — with no local artifact the bytes must be
+   * captured while the outputs are still on disk.
    */
   private async packArtifact(args: {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
@@ -1257,8 +1321,8 @@ export class Cache implements CacheLayer {
   /**
    * Atomically write `compressed` to `<hash>.tar.zst` and (re)build the
    * entries + output_files SQL rows from the archive itself. Shared by
-   * `save()` (we just packed the bytes) and `ingest()` (we got them from
-   * the remote layer) — both index the identical values, because both
+   * `save()` (we just packed the bytes) and `ingest()` (it streamed them
+   * from the remote layer into a temp) — both index the identical values, because both
    * read them out of the artifact.
    */
   /** tmp suffix mixes pid + hrtime + a random hex chunk so two saves of
@@ -1275,7 +1339,7 @@ export class Cache implements CacheLayer {
     meta: IngestMeta,
   ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
-    // us network bytes; a truncated/garbage body that went live first
+    // us a temp of network bytes; a truncated/garbage body that went live first
     // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
     // since the decompress throw aborted indexing) for every later
     // reader to trip over. Decompress + parse also produce the
@@ -1296,12 +1360,12 @@ export class Cache implements CacheLayer {
       await writeFile(tmpPath, compressed)
       endWrite()
     } else {
-      // `save` already streamed the artifact into its temp.
+      // `save` or `ingest` already streamed the artifact into its temp.
       tmpPath = compressed.tmpPath
     }
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
-      // ingest() is the UNTRUSTED boundary — `compressed` is bytes just
+      // ingest() is the UNTRUSTED boundary — its temp holds bytes just
       // pulled from a remote. Refuse a bomb (declared or sizeless) before it
       // can expand into memory.
       const source =
@@ -1473,6 +1537,36 @@ export class Cache implements CacheLayer {
       runCountLast24h: runs.total,
       hitCountLast24h: runs.hits,
     }
+  }
+
+  /**
+   * The workspace's `cacheRetention`, applied at the end of a run: `prune()`
+   * with the same policy, but only when it would evict something. A run with
+   * nothing due pays the accessed-at flush it owed at close anyway and one
+   * scan of the index — never the orphan sweep's readdir. Null when nothing
+   * was due or this handle does not write.
+   */
+  async evictIfDue(
+    policy: { maxAgeMs?: number; maxBytes?: number },
+    now: number = Date.now(),
+  ): Promise<PruneResult | null> {
+    if (!this.write) return null
+    // First: an entry this run restored still carries its old `accessed_at`
+    // until the deferred bump lands, and would read as due for eviction.
+    this.flushAccessed()
+    const olderThanMs = policy.maxAgeMs === undefined ? undefined : now - policy.maxAgeMs
+    const { oldest, bytes } = this.db
+      .prepare(
+        'SELECT MIN(accessed_at) AS oldest, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries',
+      )
+      .get() as { oldest: number | null; bytes: number }
+    const ageDue = olderThanMs !== undefined && oldest !== null && oldest < olderThanMs
+    const sizeDue = policy.maxBytes !== undefined && bytes > policy.maxBytes
+    if (!ageDue && !sizeDue) return null
+    return this.prune({
+      ...(olderThanMs !== undefined ? { olderThanMs } : {}),
+      ...(policy.maxBytes !== undefined ? { maxBytes: policy.maxBytes } : {}),
+    })
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {

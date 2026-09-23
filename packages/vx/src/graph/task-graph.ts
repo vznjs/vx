@@ -1,5 +1,5 @@
 import type { TaskConfig } from '../config.js'
-import { asTrees, isLiteralPattern, UserError } from '../util/index.js'
+import { asTrees, isLiteralPattern, taskGlob, UserError } from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import {
   DependencySpecError,
@@ -445,9 +445,9 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
       if (isLiteralPattern(a) && isLiteralPattern(b)) {
         if (a === b) return true
       } else if (isLiteralPattern(a)) {
-        if (new Bun.Glob(b).match(a)) return true
+        if (taskGlob(b).match(a)) return true
       } else if (isLiteralPattern(b)) {
-        if (new Bun.Glob(a).match(b)) return true
+        if (taskGlob(a).match(b)) return true
       } else if (a === b) return true
     }
   }

@@ -134,7 +134,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Log replay on hit        | yes                                        | yes                    | yes                          | yes                                                                                                                                                          |
 | Output restore on hit    | yes                                        | yes                    | yes                          | yes                                                                                                                                                          |
 | Output cleaning          | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                                                                                                |
-| Cache pruning (CLI)      | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                                                                                                   |
+| Cache pruning            | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `cacheRetention: { olderThan, maxSize }` in `vx.workspace.ts` (run end), `vx cache prune --older-than / --max-size`                                          |
 | Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; `vx last`                                                                               |
 | Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                                                                                       |
 | Flaky task detection     | —                                          | Nx Cloud (paid)        | —                            | **local** — same key, both outcomes on record: the run's footer, `--summarize` (`flaky`), `vx info`                                                          |
@@ -292,8 +292,10 @@ upstream repos.
     `--docker` json/full split for layer caching.
     - Turbo: `turbo prune`.
 
-11. **Cache TTL / size caps in config.** vx has them as CLI flags on
-    `vx cache prune` but doesn't auto-evict during runs.
+11. **Cache TTL / size caps in config — shipped (2026-09-23, item 658) as `cacheRetention`.** `defineWorkspace({ cacheRetention: {
+olderThan: '30d', maxSize: '10G' } })` applies the `vx cache
+prune` policy at the end of every run that writes the local cache,
+    only when something is due.
     - Turbo: `cacheMaxAge`, `cacheMaxSize` (verified in the 2.10
       configuration reference).
     - Nx: `maxCacheSize`.
@@ -512,6 +514,11 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   vx always starts from the universe and applies filters as set ops.
   Same observable behavior for every documented case; simpler
   implementation.
+- **A bare name is an exact match; it never reaches into a scope.**
+  Nx resolves `core` to `@acme/core`; vx's `--filter core` selects only
+  a package named exactly `core`. Name the scope (`@acme/core`) or lead
+  with `*` (`*core`) (tests/filter.test.ts > applyFilters > scoped
+  names).
 
 ### Affected detection
 
@@ -558,6 +565,15 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   directory are followed; the symlink-cycle test pins that the
   resolver doesn't hang. Document via pinning test rather than
   reimplementing Turbo's distinction.
+- **A bracket is literal; no character classes (item 667).** Turbo and
+  Nx read `[id]` in a glob as a class, so `app/[id]/**` matches
+  `app/i/…` and never the route directory. Bracket route directories are
+  everywhere in JS monorepos (Next.js, SvelteKit, Astro), and a class
+  there silently keys nothing — a stale hit — while an output clean
+  deletes the class's namesakes. vx reads `[` and `]` literally in every
+  task glob; the escaped `\[id\]` Turbo users write means the same path.
+  Member globs and `--filter` path globs keep the package manager's
+  grammar.
 
 ### Engine / scheduling
 

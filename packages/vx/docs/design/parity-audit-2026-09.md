@@ -1,0 +1,106 @@
+# Parity ledger audit (2026-09-23, item 659, roadmap 2.3)
+
+The two parity ledgers, `turbo-nx-parity-2026-07.md` and
+`turbo-nx-test-gaps.md`, listed behaviours vx did not pin, and neither
+said which were ever closed. This page is their status. Every verdict
+was checked against today's source and tests, not against the ledgers'
+own text. Fixes that predate the repository import (`fd161d2d`,
+2026-09-03) carry no STATUS item number.
+
+A verdict is one of:
+
+- **FIXED:** the behaviour exists and a test holds it.
+- **OPEN:** missing or untested.
+- **DECLINED:** out of scope by a written decision.
+- **OBSOLETE:** the entry targets code that no longer exists.
+
+## Totals
+
+| Ledger                | FIXED | OPEN | DECLINED | OBSOLETE | Rows |
+| --------------------- | ----- | ---- | -------- | -------- | ---- |
+| parity 2026-07, Turbo | 21    | 3    | 1        | 0        | 25   |
+| parity 2026-07, Nx    | 13    | 5    | 0        | 1        | 19   |
+| test gaps 2026-05     | 31    | 9    | 27       | 3        | 70   |
+
+Two FIXED verdicts are "decided and pinned, behaviour unchanged": T-H5
+(`--filter .` is the workspace root) and N-H9 (the essential env
+variables stay out of the key).
+
+## The two entries the roadmap named
+
+- **Nx H7, live evaluation without a frozen lock: OBSOLETE.** The entry
+  targeted remote agents evaluating configs; those agents and their
+  protocol were removed, and `@vzn/vx-reapi` never evaluates a config.
+  What remains is covered: a live run hashes the resolved config, so two
+  machines that evaluate differently get different keys (a miss, never a
+  stale hit); `vx lock --check` names the drift, and `--frozen` consumes
+  the lock (`tests/lock.test.ts` "freezes env-dependent configs: live
+  runs see env; --frozen trusts the lock; --check audits").
+- **Nx L2, a bare name against a scoped package: OPEN.** `--filter core`
+  compiles to an exact anchored match (`workspace/filter.ts`
+  `compileNameGlob`), so it never selects `@acme/core`; `'*core'` or the
+  full name does. Deliberate, but neither a test nor `comparison.md`'s
+  Filter DSL section said so.
+
+## Open items
+
+| Ledger ID     | What is missing                                                                                                                                                                                                                                             | Size |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| T-M4          | ~~A row that `build --filter docs app#lint` plans `docs#build` and `app#lint` and never `app#build`.~~ closed (item 661): `task-selection.test.ts` "build --filter docs app#lint plans docs#build and app#lint, never app#build"                            | S    |
+| T-M6          | ~~The `{"name": ""}` spelling of an unnamed member, beside the pinned `{}`.~~ closed (item 661): `workspace.test.ts` "an EMPTY-string name with a vx config gets the same warning as a missing one"                                                         | S    |
+| T-M10         | ~~A range base (`HEAD~1..HEAD`) is refused with the generic "did not resolve"; name ranges.~~ closed (item 661): `affected.test.ts` "refuses the range … before git sees it"; a range is now a named refusal                                                | S    |
+| N-M4          | ~~`--affected` with sibling-prefix project directories (`app`, `app-e2e`).~~ closed (item 661): `affected.test.ts` "a change in a sibling-prefix project dir selects exactly that project"                                                                  | S    |
+| N-M6          | ~~Two positive globs with a negation that straddles both.~~ closed (item 661): `inputs.test.ts` "two positive globs with a negation straddling both fold exactly the survivors"                                                                             | S    |
+| N-M7          | ~~Scheduling unknown-duration tasks first: the benchmark was never run.~~ closed (item 669): `vx-bench/schedule-policy.md`; -0.69% mean at 5-25% unknown but +6.15% on single graphs, so the median stays                                                   | M    |
+| N-L1          | ~~`markSurfacedDeps` over two groups that depend on each other.~~ closed (item 661): `task-graph.test.ts` "two same-project groups that depend on each other terminate …"                                                                                   | S    |
+| N-L2          | ~~A bare name does not select a scoped package: a row and a `comparison.md` line.~~ closed (item 661): `filter.test.ts` "a bare 'core' is an exact match …"; `comparison.md` Filter DSL line                                                                | S    |
+| gaps §1 L48   | ~~A literal output path holding glob characters (`app/[id]/page.js`).~~ closed (item 667): a bracket is literal in every task glob, inputs and outputs; `task-glob-brackets.test.ts`                                                                        | S–M  |
+| gaps §1 L53   | ~~Key derivation and a hit inside a linked `git worktree`.~~ closed (item 661): `git-subdir-workspace.test.ts` "workspace inside a linked git worktree …"                                                                                                   | S    |
+| gaps §3 L116  | Memoizing `compileNameGlob`: filters parse once per run, so this is closed as not worth doing.                                                                                                                                                              | —    |
+| gaps §5 L157  | ~~Restore entries with lookalike Unicode (fullwidth dots, U+2215, bidi overrides).~~ closed (item 661): `archive-security.test.ts` "lookalike dots, a division slash and a bidi override …"                                                                 | S    |
+| gaps §5 L158  | ~~A restore entry longer than `PATH_MAX` refused as a user error, not `ENAMETOOLONG`.~~ closed (item 661): `archive-security.test.ts` "an entry name longer than PATH_MAX is refused …"; now an ArchiveSecurityError                                        | S    |
+| gaps §8 L232  | ~~`turboCache()` / `nxCache()` accept an API URL carrying `user:pass@`.~~ closed (item 665): both resolvers refuse it by name; `turbo-cache.test.ts` and `nx-cache.test.ts` "refuses … carrying user:pass@"                                                 | S    |
+| gaps §9 L239  | ~~An input row that `src/*` includes `src/.env`.~~ closed (item 661): `inputs.test.ts` "`src/*` folds the dotfile `src/.env`"                                                                                                                               | S    |
+| gaps §9 L255  | ~~A project directory whose name holds brackets (`packages/[abc]`).~~ closed (item 664): a path naming a project dir is read literally before it is read as a glob; `workspace.test.ts` "the unescaped `./packages/[abc]` selects the directory it names …" | S    |
+| gaps §15 L355 | ~~The `vx cache prune` CLI row asserts the freed byte figure.~~ closed (item 661): `config-stage-verbs.test.ts` asserts the freed byte figure                                                                                                               | S    |
+
+Item 661 left four rows open and found three more:
+
+- **gaps §9 L255, a project directory named with brackets.** Inputs and
+  outputs resolved, but the path filter `./packages/[abc]` compiled as a
+  glob and selected the sibling `packages/a`. Closed in item 664: a path
+  form that selects a project directory literally is taken literally
+  before it is read as a glob, as git reads a pathspec.
+- **Archive names past NAME_MAX or past PATH_MAX with the destination.**
+  Item 661 refuses a name whose own length passes PATH_MAX, and item 666
+  one component past NAME_MAX (255). Item 666 also found the restore's
+  temp name (`<target>.vx-tmp-…`) pushed a legal 242–255-byte component
+  past NAME_MAX, so a valid artifact failed to restore; the temp is now a
+  short sibling. A destination plus name past PATH_MAX is the
+  workspace's location, not a bad artifact: since item 670 the restore
+  names it as a user error (move the workspace to a shorter path).
+- **gaps §1 L48, a bracket in a task glob.** Worse than the row said: an
+  input glob over a route directory (`app/[id]/**`) keyed nothing and
+  replayed a stale hit, and an output under one deleted the class's
+  namesake (`app/i/page.js`) while saving nothing. Closed in item 667: a
+  bracket is literal in every task glob.
+- gaps §1 L48 closed in item 667, N-M7 in item 669 and gaps §8 L232 in item 665.
+
+Everything not in this table is FIXED, DECLINED or OBSOLETE. The
+evidence for each (source line and test title) is in the audit's report
+of 2026-09-23, summarised here by ledger section:
+
+- **Parity, Turbo:** H1–H6, M1–M3, M5, M8, M9, M11, M12 and L1–L7 are
+  FIXED; M7 (a watch edit during the first run) is DECLINED, reasoned in
+  `src/cli/watch.ts`.
+- **Parity, Nx:** H1–H6, H8, H9, M1–M3, M5 and L3 are FIXED; H7 is
+  OBSOLETE (above).
+- **Test gaps:** the DECLINED rows each cite `comparison.md`'s
+  deliberate differences or CLAUDE.md's rejected list; the OBSOLETE rows
+  are a symlink target check (no symlink is ever restored), pre-signed
+  URLs and the core HTTP cache (the wire lives in `@vzn/vx-migrate`), and
+  pruning a full graph (only the requested closure is built).
+
+The ledgers themselves are left as written, each with a banner that
+points here. When an open item closes, strike its row in this table in
+the same commit.

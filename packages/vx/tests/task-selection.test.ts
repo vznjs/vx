@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { planRun, run } from '../src/orchestrator/index.js'
 import { resolveRunOptions, parseRunArgs } from '../src/cli/index.js'
 
 const TIMEOUT = 30_000
@@ -200,6 +200,26 @@ describe('task selection', () => {
       const r = await run({ ...resolved, log: silent() })
       expect(r.ok).toBe(true)
       expect(r.outcomes.map((o) => o.node.id)).toEqual(['a#build'])
+    },
+    TIMEOUT,
+  )
+
+  // Turbo cross-products `web#lint build --filter docs` into web#build too;
+  // vx gives the bare name the filter's scope only (docs/comparison.md's
+  // flag map). The anchor's project is loaded, so it is in the graph's
+  // reach — only the candidate scope keeps `build` out of it.
+  it(
+    'build --filter docs app#lint plans docs#build and app#lint, never app#build',
+    async () => {
+      await addProject('app', ['build', 'lint'])
+      await addProject('docs', ['build', 'lint'])
+      const parsed = parseRunArgs(['build', 'app#lint', '--filter', 'docs'])
+      expect(parsed.error).toBeUndefined()
+      const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
+      if ('error' in resolved || 'nothingSelected' in resolved) throw new Error('unreachable')
+
+      const plan = await planRun({ ...resolved, log: silent() })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#lint', 'docs#build'])
     },
     TIMEOUT,
   )

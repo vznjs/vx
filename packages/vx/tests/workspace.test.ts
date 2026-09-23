@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
@@ -8,6 +8,10 @@ import {
   loadWorkspace,
   memberBaseDirs,
 } from '../src/workspace/workspace.js'
+import { applyFilters, parseFilter } from '../src/workspace/filter.js'
+import { buildPackageGraph } from '../src/workspace/package-graph.js'
+import { run } from '../src/orchestrator/index.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 describe('findWorkspaceRoot', () => {
   let dir: string
@@ -230,6 +234,37 @@ describe('listProjects', () => {
     expect(notices[0]).not.toContain('quiet')
   })
 
+  // `{"name": ""}` is the other spelling of a nameless manifest: a check on
+  // `name === undefined` would admit it as a project named "" that nothing
+  // can address, and say nothing.
+  it('an EMPTY-string name with a vx config gets the same warning as a missing one', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await mkdir(path.join(dir, 'packages/blank'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/blank/package.json'), '{"name": ""}')
+    await writeFile(
+      path.join(dir, 'packages/blank/vx.config.mjs'),
+      'export default { tasks: {} }\n',
+    )
+
+    const written: string[] = []
+    const real = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((chunk: unknown): boolean => {
+      written.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+    let projects: Awaited<ReturnType<typeof listProjects>>
+    try {
+      projects = await listProjects(await loadWorkspace(dir))
+    } finally {
+      process.stderr.write = real
+    }
+
+    expect(projects.map((p) => p.name)).toEqual([])
+    expect(written).toEqual([
+      'vx: packages/blank has a vx config but its package.json has no "name" — skipped\n',
+    ])
+  })
+
   // pnpm, npm, yarn and Bun all take `!packages/fixtures` in the list. Handed
   // to Bun.Glob raw, the `!` negated the WHOLE pattern — every manifest in
   // the tree matched, so the excluded package ran under --all and any
@@ -282,6 +317,32 @@ describe('listProjects', () => {
       const projects = await listProjects(ws)
       expect(projects.map((p) => p.name).sort()).toEqual(['a'])
     }
+  })
+
+  it('a member glob keeps npm/pnpm semantics: a bracket is a class there (item 667)', async () => {
+    // Task globs read `[` literally; a package manager's member list does not,
+    // and vx must find the members the package manager installs.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'r',
+        private: true,
+        // …and `\[` is how a member list names a literal bracket.
+        workspaces: ['packages/*', '!packages/[ab]', '!packages/\\[x\\]'],
+      }),
+    )
+    for (const [rel, name] of [
+      ['a', 'a'],
+      ['b', 'b'],
+      ['c', 'c'],
+      ['x', 'x'],
+      ['[x]', 'bracket-x'],
+    ] as const) {
+      await mkdir(path.join(dir, 'packages', rel), { recursive: true })
+      await writeFile(path.join(dir, 'packages', rel, 'package.json'), JSON.stringify({ name }))
+    }
+    const projects = await listProjects(await loadWorkspace(dir))
+    expect(projects.map((p) => p.name)).toEqual(['c', 'x'])
   })
 
   it('a negation covers everything UNDER it, not just the exact path', async () => {
@@ -527,5 +588,87 @@ describe('memberBaseDirs', () => {
     expect(memberBaseDirs(ws(['packages/*', '!packages/fx']))).toEqual([
       path.resolve('/ws', 'packages'),
     ])
+  })
+})
+
+// A directory name holding glob metacharacters is still a literal directory
+// to the key and the cache: git's pathspec match tries the literal path
+// first, and outputs are scanned from inside the project dir, so `[abc]` is
+// never read as a character class that also matches the sibling
+// `packages/a`. The path FILTER keeps `Bun.Glob`'s alphabet, but a path that
+// names a project directory is that directory first (item 664), so
+// `./packages/[abc]` selects it; only a bracket path naming no directory is
+// read as a glob. (A bracket INSIDE a task glob is literal: item 667.)
+describe('a project directory named packages/[abc]', () => {
+  let root: string
+  const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-ws-brackets-' })
+    const dir = await addProject(root, 'br', {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'cat src/in.txt > out.txt' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+            },
+          },
+        }
+      `,
+      files: { 'src/in.txt': 'v1' },
+    })
+    await rename(dir, path.join(root, 'packages', '[abc]'))
+    await addProject(root, 'a', { files: { 'src/in.txt': 'a1' } })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('its inputs key the task, its outputs restore, and a sibling matching the class changes nothing', async () => {
+    const out = path.join(root, 'packages', '[abc]', 'out.txt')
+    const statuses = async (): Promise<string[]> =>
+      (await run({ cwd: root, tasks: ['build'], projects: ['br'], log: quiet })).outcomes.map(
+        (o) => `${o.node.id} ${o.status}`,
+      )
+
+    expect(await statuses()).toEqual(['br#build success'])
+    await rm(out)
+    expect(await statuses()).toEqual(['br#build cache-hit'])
+    expect(await readFile(out, 'utf8')).toBe('v1')
+
+    await writeFile(path.join(root, 'packages', 'a', 'src', 'in.txt'), 'a2')
+    expect(await statuses()).toEqual(['br#build cache-hit'])
+
+    await writeFile(path.join(root, 'packages', '[abc]', 'src', 'in.txt'), 'v2')
+    expect(await statuses()).toEqual(['br#build success'])
+    expect(await readFile(out, 'utf8')).toBe('v2')
+  }, 30_000)
+
+  it('a path filter with the brackets escaped selects it, and only it', async () => {
+    const projects = await listProjects(await loadWorkspace(root))
+    const graph = buildPackageGraph(projects)
+    const select = (f: string): string[] =>
+      [...applyFilters({ filters: [parseFilter(f, root)], projects, graph })].sort()
+    expect(select('./packages/\\[abc\\]')).toEqual(['br'])
+    expect(select('./packages')).toEqual(['a', 'br'])
+  })
+
+  // A path that names a project directory literally is that directory, as
+  // git reads a pathspec (item 664; before it the form compiled as a glob and
+  // selected the sibling the class matches).
+  it('the unescaped `./packages/[abc]` selects the directory it names, not the sibling `a`', async () => {
+    const projects = await listProjects(await loadWorkspace(root))
+    const graph = buildPackageGraph(projects)
+    const select = (f: string): string[] =>
+      [...applyFilters({ filters: [parseFilter(f, root)], projects, graph })].sort()
+    expect(select('./packages/[abc]')).toEqual(['br'])
+    expect(select('{packages/[abc]}')).toEqual(['br'])
+    // CONTROL: a bracket path that names no directory is still a glob.
+    expect(select('./packages/[ab]')).toEqual(['a'])
   })
 })

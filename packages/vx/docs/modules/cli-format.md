@@ -2,12 +2,15 @@
 
 ## Purpose
 
-Small string formatters shared by multiple CLI subcommands.
+Small string formatters shared by multiple CLI subcommands. The one
+formatter lives in `util/size.ts` since item 658 (a run names what the
+workspace's `cacheRetention` evicted, and the orchestrator may not
+import the CLI); this file re-exports it for the verbs.
 
 ## Public surface
 
 ```ts
-export function formatBytes(n: number): string
+export { formatBytes } from '../util/index.js' // (n: number) => string
 ```
 
 Human-readable byte size with `B / KB / MB / GB / TB / PB` suffixes
@@ -30,6 +33,7 @@ and one decimal of precision below 10 of any unit. Powers of 1024.
 - The `vx info` doctor printout (`vx stats` is a deprecated alias): the
   cache-size line (`cache entries    N (1.3 GB)`).
 - `vx last`: each executed task's peak RSS.
+- The run's `cacheRetention` line (`vx: cache retention evicted N entries (1.3 GB)`).
 - Re-exported from `cli/index.ts` for the verbs a plugin adds.
 
 ## Tests

@@ -20,7 +20,7 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { asTrees, span, wholeSubtreePrefixes } from '../util/index.js'
+import { asTrees, span, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 
 export interface RestoreHitArgs {
@@ -67,7 +67,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   const addedGlobs = (node.outputsAddedToBy ?? [])
     .flatMap((g) => asTrees([g]))
-    .map((g) => new Bun.Glob(g))
+    .map((g) => taskGlob(g))
   const isAddition = (rel: string): boolean => addedGlobs.some((g) => g.match(rel))
 
   // "Tree is already current" short-circuit — skip cleanOutputs
