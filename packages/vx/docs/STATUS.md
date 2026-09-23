@@ -820,6 +820,20 @@ since `prune()` flushes too and the evicted set is the same either way
 interleaved: main 240 ms, unconfigured 238, configured with nothing due 237. No new index: a scan of the entries table is below the noise. The
 comparison page's row 11 is shipped; roadmap 2.1 struck.
 
+14bg. **Item 659 (roadmap 2.3, 2026-09-23): the parity ledgers have a
+status.** The two ledgers (`turbo-nx-parity-2026-07.md`, 44 entries;
+`turbo-nx-test-gaps.md`, 70 non-HAVE rows) were audited against source
+and tests, not their own text: 65 FIXED, 28 DECLINED, 4 OBSOLETE, 17
+OPEN. `docs/design/parity-audit-2026-09.md` holds the totals, the open
+table and the reasoning for Nx H7 (obsolete: the agents it targeted are
+gone; `--frozen` and `vx lock --check` cover live-evaluation drift) and
+Nx L2 (open: a bare name never selects a scoped package, deliberate but
+untested and undocumented). Both ledgers carry a banner pointing there.
+The open rows are the next work of 2.3: fifteen S rows, one S–M (a
+literal output path holding glob characters) and one M (the
+unknown-first scheduling benchmark); `compileNameGlob` memoization is
+closed as not worth doing.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

@@ -1,5 +1,9 @@
 # Turbo + Nx test gap analysis
 
+> **Status (2026-09-23):** audited in [`parity-audit-2026-09.md`](./parity-audit-2026-09.md)
+> (item 659). Most entries below are fixed, declined or obsolete; the
+> open ones are listed there. Read that page before acting on an entry.
+
 Generated: 2026-05-17. Source enumeration of ~205 Turbo tests (Rust unit + Cucumber-style `.t` integration fixtures across `turborepo-task-hash`, `turborepo-cache`, `turborepo-scm`, `turborepo-scope`, `turborepo-globwalk`, `turborepo-filewatch`, `turborepo-lib`) + ~140 Nx tests (`packages/nx/src/hasher`, `tasks-runner`, `project-graph`, `utils`); deduped to ~165 unique semantic properties. vx covers ~108 of 165; ~57 fillable gaps + ~12 deliberate divergences identified.
 
 ## How to read
