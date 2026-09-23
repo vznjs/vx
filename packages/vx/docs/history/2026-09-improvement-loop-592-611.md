@@ -28,7 +28,8 @@ Items 1–64 in
 `2026-09-improvement-loop-513-532.md`, items 533–552 in
 `2026-09-improvement-loop-533-552.md`, items 553–572 in
 `2026-09-improvement-loop-553-572.md`, items 573–591 in
-`2026-09-improvement-loop-573-591.md`; items 612 onward continue in
+`2026-09-improvement-loop-573-591.md`; items 612–631 in
+`2026-09-improvement-loop-612-631.md`; items 632 onward continue in
 `docs/STATUS.md`.
 
 592.  DONE (2026-09-22, the simplification 590 and 591 invited, and the

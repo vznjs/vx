@@ -2219,3 +2219,75 @@ stop; find, simplify, speed up, improve" (605 was the Turbo migration
 walked on astro, nothing off); then the trim at 612; the executor-backed real tree
 stays for a box with yarn 4 reachable; then the owner's three items.
 Never end with "what next?".
+
+## Handoffs 14ay–14ba (moved 2026-09-23 with item 632)
+
+14ay. **Handoff after item 612 (2026-09-23, morning).** Seven items
+since 14ax, each its own PR, merged in turn (#700 606, #701 607, #702
+608, #703 609, #704 610, #705 611, and 612 with this handoff): the Nx
+mapper's `buildTask` split into inputs, outputs and deps modules; three
+rules in CLAUDE.md; the mapping's per-task `path.relative` hoisted and
+the adoption skeleton's per-fill clone dropped (30 → 15 ms and −10 ms
+at 1,000 projects, measured in isolation, since this box resolves
+nothing under 6 % end to end); the warm dry-run profile with the tree
+git-tracked (no core hot spot); and an export sweep of the plugin
+packages (21 keywords, one dead function). WHAT STANDS: the plugin-cost
+arc is closed — the `nx()` stage is 51–59 ms at 1,000 projects against
+~24 for evaluated configs, the mapping 15 of them, and `nx-exec`'s
+218 ms per executed task is Nx's own module graph (611 measured the
+path around `runExecutor`: the same 112 ms). The loop above holds 612
+alone; 592–611 are in
+`docs/history/2026-09-improvement-loop-592-611.md`. NO CORE RUN-PATH
+CHANGE since 589, so the warm A/B duty has no arm. NEXT, in order: keep
+finding — the owner's direction is "never stop; find, simplify, speed
+up, improve", and the dead-export sweep is a shape worth repeating on
+core's tests and on the site package; the trim next at 632; the
+executor-backed real tree stays for a box with yarn 4 reachable; then
+the owner's three items. Never end with "what next?".
+
+14az. **Handoff after item 617 (2026-09-23, mid-morning).** Five items
+since 14ay, each its own PR, merged in turn (#707 613, #708 614, #709
+615, #710 616, and 617 with this handoff): the export sweep became a law
+for values and the unsafe suite's key sees every package its laws read;
+every `VX_*` core reads has a table and `vx watch` says when it polls; a
+config round's evaluations are written once per table and the slow path
+keys from bytes — the cold `load configs` stage at 1,000 projects
+507–607 ms → 207–272; and the next cold lead, indexing a save from its
+plan, measured a 2–3 % tie and was put back, its agreement law kept.
+WHAT STANDS: the cold run at 1,000 projects is ~2.7 s, of which the
+tasks' own `spawn` is a quarter and the rest is spread (no single span
+past 5 % once overlap is discounted); the restore run ~1.2 s, its
+SQLite 58 ms total; the warm path unchanged since 589. The two leads
+measured and not taken are in 616 (output-dir snapshot batching, a seam
+change for 69 ms; the sync mode is already NORMAL). NO CORE RUN-PATH
+CHANGE on the WARM path since 589, so the warm A/B duty has no arm; 615
+changed the cold path and carries its own A/B. NEXT, in order: keep
+finding — the sweeps of this loop (exports, env reads, statement
+tallies) are shapes worth turning on the plugin packages and the site
+build; the trim next at 632; the executor-backed real tree stays for a
+box with yarn 4 reachable; then the owner's three items. Never end with
+"what next?".
+
+14ba. **Handoff after item 623 (2026-09-23, late morning).** Six items
+since 14az, each its own PR, merged in turn (#712 618, #713 619, #714
+620, #715 621, #716 622, and 623 with this handoff): the REAPI plugin
+names its execute switch and the env pins spell `Bun.env`; the `vx mcp`
+walk found nothing off; the MCP README's tool table is a pin; four CLI
+refusals gained the rows that name them; the run-end output-dir
+snapshots land in one transaction (the stage 52–70 ms → 10–17 cold,
+64–75 → 12–14 on a restore, at 1,000 projects); and fourteen internals
+left the plugin indexes. WHAT STANDS: the loop holds 612–623, twelve
+items, so the trim is due at 632. The cold run at 1,000 projects is
+~2.7 s with the tasks' own `spawn` a quarter of it; the restore run
+~0.8 s; the warm path unchanged since 589, so the warm A/B duty has no
+arm; 615 and 622 changed the cold and restore paths and carry their own
+A/Bs. Two decisions wait for the 0.1.0 pass: whether `@vzn/vx-reapi`'s
+wire and merkle library stays on its index (623), and the owner's three
+items. NEXT, in order: keep finding — the sweeps of this loop (exports,
+env reads, statement tallies, refusal lines, README pins) are spent on
+core and the plugins; the next shapes are a real-repo re-measure of
+the cold and restore runs after 615 and 622 (refine under `nx()`, astro
+under `turbo()`), and the `vx watch` cycle under the deferred snapshot
+(a same-process reader flushes; is the second cycle's hit check still
+a skip?); then the trim at 632; the executor-backed real tree stays for
+a box with yarn 4 reachable. Never end with "what next?".
