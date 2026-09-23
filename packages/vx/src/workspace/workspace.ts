@@ -2,7 +2,7 @@ import type { Dirent } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { isLiteralPattern, relPosix, UserError, normalizeGlob } from '../util/index.js'
+import { BUN_GLOB_WILDCARDS, relPosix, UserError, normalizeBunGlob } from '../util/index.js'
 
 export interface PackageJson {
   name: string
@@ -117,7 +117,7 @@ function splitPackageGlobs(globs: readonly string[]): { positive: string[]; nega
   // `!./packages/legacy` and `!packages//legacy` excluded nothing, silently
   // (2026-09-10): the same spellings the input globs normalize.
   for (const raw of globs) {
-    const g = normalizeGlob(raw)
+    const g = normalizeBunGlob(raw)
     if (g.startsWith('!')) negative.push(g.slice(1).replace(/\/+$/, ''))
     else positive.push(g)
   }
@@ -128,7 +128,7 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
   for (const neg of negative) {
     if (neg.length === 0) continue
     if (rel === neg || rel.startsWith(`${neg}/`)) return true
-    if (!isLiteralPattern(neg) && new Bun.Glob(neg).match(rel)) return true
+    if (BUN_GLOB_WILDCARDS.test(neg) && new Bun.Glob(neg).match(rel)) return true
   }
   return false
 }

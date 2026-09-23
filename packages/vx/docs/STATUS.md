@@ -942,6 +942,41 @@ whose `*` skips a dotfile, so it would have passed on a leak under the
 new name; it reads the tree with `readdir` now. No `CACHE_VERSION`
 bump: the stored bytes did not change.
 
+14bo. **Item 667 (parity gaps §1 L48, 2026-09-23): a bracket is literal
+in a task glob.** `Bun.Glob` reads `[id]` as a character class, and so did
+every task glob: `inputs.files: ['app/[id]/**']` matched `app/i/…` and
+never the Next.js route directory, so an edit to `app/[id]/page.js` was a
+green `cache-hit` replaying the old output; `outputs.files:
+['app/[id]/page.js']` saved an empty artifact and its pre-run clean
+deleted an unrelated tracked `app/i/page.js`. Both probed through `run()`
+before the fix. Now `[` and `]` are literal in `cache.inputs.files`,
+`cache.outputs.files` and `workspaceFiles` and in everything read from
+them (`--affected`, watch, the overlapping-output refusal, the additive
+hit's set-aside, the subtree short-circuit, stable-key reach, REAPI
+`output_paths`); there are no character classes. `GLOB_WILDCARDS` lost
+the brackets, every task glob compiles through one door (`taskGlob`, which
+escapes them), and `normalizeGlob` turns Turbo's `\[id\]` into `[id]`, so
+both spellings are one literal. Member globs, `--filter` path globs, env
+names and sandbox grants keep `Bun.Glob`'s alphabet
+(`BUN_GLOB_WILDCARDS`, `normalizeBunGlob`, `grantPrefix`), each pinned by a
+row. The façade gains `isLiteralPattern` and `normalizeGlob` for
+`@vzn/vx-reapi`, whose copy of the class collapsed `app/[id]/page.js` to
+the output path `app`, and `@vzn/vx-migrate`'s wild-first-segment check
+reads the same predicate. Differential: every new core row red on the
+unfixed tree except the controls (the escaped spelling already matched
+through `Bun.Glob`, and the member-glob and env rows hold the old
+alphabet both ways); each `taskGlob` call site, the unescape, the
+alphabet, the member and filter alphabets and the subtree regex were
+mutated back one at a time and each reddened a row. **`CACHE_VERSION`
+v27 → v28**, not self-healing: the input half moves the key (the file set
+changes), but an output glob folds as its TEXT, which the fix leaves
+unchanged, so the empty v27 artifact sits under the key the fixed code
+derives — proven: a v27 entry read by the fixed code was a `cache-hit`
+that cleaned the route and restored nothing; under v28 it misses and the
+next hit restores. Warm `run build --all` at 1,000 projects, interleaved,
+min of 7: 240 ms before, 242 ms after (noise; the new work is per
+pattern with an `includes('[')` fast path).
+
 14bp. **Item 668 (roadmap 1.2, 2026-09-23): the docs name only what the
 release publishes.** A row in `build-npm.unsafe.test.ts` walks the root
 and package READMEs, `packages/vx/docs` and the site's pages (design

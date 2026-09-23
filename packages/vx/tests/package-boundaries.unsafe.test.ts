@@ -124,6 +124,10 @@ describe('package boundaries', () => {
       'exitSignal',
       'findWorkspaceRoot',
       'isCacheHit',
+      // Widened 2026-09-23 (item 667): `@vzn/vx-reapi` maps declared output
+      // globs to literal REAPI paths, and its own wildcard class read the
+      // route directory `app/[id]` as a class — requesting all of `app`.
+      'isLiteralPattern',
       'isPassStatus',
       'isUserError',
       'latestRunId',
@@ -135,6 +139,7 @@ describe('package boundaries', () => {
       'machineMemoryBytes',
       'machineParallelism',
       'nearMatches',
+      'normalizeGlob',
       // Widened 2026-09-20 (item 445): `@vzn/vx-migrate` asks the same
       // "do these two output globs provably overlap?" question at
       // migration time, and asked it with a COPY of core's function. The

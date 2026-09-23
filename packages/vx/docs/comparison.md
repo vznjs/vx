@@ -565,6 +565,15 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   directory are followed; the symlink-cycle test pins that the
   resolver doesn't hang. Document via pinning test rather than
   reimplementing Turbo's distinction.
+- **A bracket is literal; no character classes (item 667).** Turbo and
+  Nx read `[id]` in a glob as a class, so `app/[id]/**` matches
+  `app/i/…` and never the route directory. Bracket route directories are
+  everywhere in JS monorepos (Next.js, SvelteKit, Astro), and a class
+  there silently keys nothing — a stale hit — while an output clean
+  deletes the class's namesakes. vx reads `[` and `]` literally in every
+  task glob; the escaped `\[id\]` Turbo users write means the same path.
+  Member globs and `--filter` path globs keep the package manager's
+  grammar.
 
 ### Engine / scheduling
 

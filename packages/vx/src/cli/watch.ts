@@ -14,7 +14,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { isLiteralPattern, normalizeGlob, staticPrefix, xxh3 } from '../util/index.js'
+import { isLiteralPattern, normalizeGlob, staticPrefix, taskGlob, xxh3 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
@@ -91,7 +91,7 @@ export function makeWatchIgnore(
     ([dir, globs]) =>
       [
         path.resolve(dir),
-        asTrees(globs).map((g) => new Bun.Glob(g)),
+        asTrees(globs).map((g) => taskGlob(g)),
         globs.map(outputContainer).filter((c) => c !== ''),
       ] as const,
   )
@@ -616,7 +616,7 @@ export function makeRootEventFilter(
   const globs = workspaceInputs
     .map(normalizeGlob)
     .filter((g) => !g.startsWith('!'))
-    .map((g) => new Bun.Glob(g))
+    .map((g) => taskGlob(g))
   return (filename: string): boolean => {
     const rel = filename.split(path.sep).join('/')
     // The depth test is a READING AID, not a guard: both predicates below

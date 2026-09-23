@@ -54,7 +54,7 @@ variables stay out of the key).
 | N-M7          | ~~Scheduling unknown-duration tasks first: the benchmark was never run.~~ closed (item 669): `vx-bench/schedule-policy.md`; -0.69% mean at 5-25% unknown but +6.15% on single graphs, so the median stays                                                   | M    |
 | N-L1          | ~~`markSurfacedDeps` over two groups that depend on each other.~~ closed (item 661): `task-graph.test.ts` "two same-project groups that depend on each other terminate …"                                                                                   | S    |
 | N-L2          | ~~A bare name does not select a scoped package: a row and a `comparison.md` line.~~ closed (item 661): `filter.test.ts` "a bare 'core' is an exact match …"; `comparison.md` Filter DSL line                                                                | S    |
-| gaps §1 L48   | A literal output path holding glob characters (`app/[id]/page.js`).                                                                                                                                                                                         | S–M  |
+| gaps §1 L48   | ~~A literal output path holding glob characters (`app/[id]/page.js`).~~ closed (item 667): a bracket is literal in every task glob, inputs and outputs; `task-glob-brackets.test.ts`                                                                        | S–M  |
 | gaps §1 L53   | ~~Key derivation and a hit inside a linked `git worktree`.~~ closed (item 661): `git-subdir-workspace.test.ts` "workspace inside a linked git worktree …"                                                                                                   | S    |
 | gaps §3 L116  | Memoizing `compileNameGlob`: filters parse once per run, so this is closed as not worth doing.                                                                                                                                                              | —    |
 | gaps §5 L157  | ~~Restore entries with lookalike Unicode (fullwidth dots, U+2215, bidi overrides).~~ closed (item 661): `archive-security.test.ts` "lookalike dots, a division slash and a bidi override …"                                                                 | S    |
@@ -78,7 +78,12 @@ Item 661 left four rows open and found three more:
   past NAME_MAX, so a valid artifact failed to restore; the temp is now a
   short sibling. Still open: a destination plus name past PATH_MAX
   reaches the file system as a raw `ENAMETOOLONG`. S.
-- gaps §1 L48 stands as the table says; N-M7 closed in item 669; gaps §8 L232 closed in item 665.
+- **gaps §1 L48, a bracket in a task glob.** Worse than the row said: an
+  input glob over a route directory (`app/[id]/**`) keyed nothing and
+  replayed a stale hit, and an output under one deleted the class's
+  namesake (`app/i/page.js`) while saving nothing. Closed in item 667: a
+  bracket is literal in every task glob.
+- gaps §1 L48 closed in item 667, N-M7 in item 669 and gaps §8 L232 in item 665.
 
 Everything not in this table is FIXED, DECLINED or OBSOLETE. The
 evidence for each (source line and test title) is in the audit's report

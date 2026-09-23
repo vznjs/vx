@@ -204,10 +204,10 @@ describe('two tasks cannot claim the same output', () => {
   // to `*` alone passed the entire suite, because every fixture above
   // spells its wildcard `*` — measured on the predicate, `dist/a?.txt` vs
   // `dist/ab.txt` and `dist/[ab].txt` vs `dist/a.txt` both go true → false
-  // (item 494).
+  // (item 494). The class left this list in item 667: a bracket is a
+  // literal in a task glob, and the rows below the loop pin that reading.
   const otherWildcards: Array<[string, string, string]> = [
     ['?', 'dist/a?.txt', 'dist/ab.txt'],
-    ['a character class', 'dist/[ab].txt', 'dist/a.txt'],
     // This one was a LIVE defect, not just an unpinned claim: the
     // classifier this refusal read omitted braces, so `Bun.Glob` matched
     // `dist/a.txt` while the refusal compared two unequal strings and let
@@ -229,16 +229,39 @@ describe('two tasks cannot claim the same output', () => {
 
   it('CONTROL: those wildcards do not refuse a literal they do not match', () => {
     // Without this, the two rows above would also pass on a rule that
-    // refused any pair merely containing a `?` or a bracket.
+    // refused any pair merely containing a `?` or a brace.
     expect(() =>
       graph({ app: { a: task(['dist/a?.txt']), b: task(['dist/zz.txt']) } }),
     ).not.toThrow()
     expect(() =>
-      graph({ app: { a: task(['dist/[ab].txt']), b: task(['dist/c.txt']) } }),
-    ).not.toThrow()
-    expect(() =>
       graph({ app: { a: task(['dist/{a,b}.txt']), b: task(['dist/c.txt']) } }),
     ).not.toThrow()
+  })
+
+  // A bracket is a LITERAL in a task glob (item 667): `app/[id]` is a route
+  // directory, not the class that also names `app/i`. So the route and the
+  // class's sibling are two paths, and the refusal must not break a Next.js
+  // app whose `app/i/page.js` sits beside `app/[id]/page.js` — while two
+  // tasks that both declare the route do delete each other's file.
+  it('a route directory overlaps itself and not the sibling a class would have matched', () => {
+    expect(() =>
+      graph({ app: { a: task(['app/[id]/page.js']), b: task(['app/i/page.js']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task(['app/[id]/*.js']), b: task(['app/i/page.js']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task(['app/i/page.js']), b: task(['app/[id]/*.js']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task(['app/[id]/page.js']), b: task(['app/[id]/page.js']) } }),
+    ).toThrow(/both declare the output/)
+    expect(() =>
+      graph({ app: { a: task(['app/[id]/*.js']), b: task(['app/[id]/page.js']) } }),
+    ).toThrow(/both declare the output/)
+    expect(() =>
+      graph({ app: { a: task(['app/\\[id\\]/page.js']), b: task(['app/[id]/page.js']) } }),
+    ).toThrow(/both declare the output/)
   })
 })
 
