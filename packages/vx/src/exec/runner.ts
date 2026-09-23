@@ -241,17 +241,16 @@ const POST_EXIT_DRAIN_MS = 250
  * reach EOF — but bound it: an orphaned grandchild holding the pipe open would
  * hang the run forever (there is no default task timeout). If the grace expires
  * first, abort the reader signal so `streamToString` cancels its read and
- * returns whatever it captured. The timer is cleared AND unref'd so it can
- * never keep the CLI alive after the readers settle (the plugin-flush lesson).
+ * returns whatever it captured. The timer is unref'd so it can never keep
+ * the CLI alive after the readers settle (the plugin-flush lesson); it is
+ * not cleared, because a late resolve on a race already won by the drain
+ * changes nothing (item 636 deleted the clear and nothing reddened).
  */
 export async function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => resolve('timeout'), POST_EXIT_DRAIN_MS)
-    timer.unref?.()
+    setTimeout(() => resolve('timeout'), POST_EXIT_DRAIN_MS).unref?.()
   })
   const winner = await Promise.race([streams.then(() => 'drained' as const), deadline])
-  if (timer !== undefined) clearTimeout(timer)
   if (winner === 'timeout') ac.abort()
 }
 

@@ -161,6 +161,33 @@ test is telling the truth.
       (the context's bus records what it hands out). Each of the five
       lines — the two fixes, the two disposers and the listener removal
       — is red on its own with its row.
+636.  DONE (2026-09-23, the 628 method on the runner's exit
+      bookkeeping). `runner.ts`'s eight exit-path lines — the run
+      timeout's two clears, the drain race's clear, the readiness
+      timer's clear at ready and at exit, the two `liveChildren`
+      deletes, the stream reader's abort-listener removal — each
+      deleted in turn against the 55 runner-adjacent files (in a
+      worktree this time; a sweep in the checkout blocks every edit
+      until it restores). Two were held (the run path's `liveChildren`
+      delete by the local-executor row; the listener removal by the
+      pre-ready flood row); six survived. What they guard is a pid the
+      runner no longer owns: a timer that outlives its child signals
+      whatever holds that pid next. Now `armTimeout` has two rows
+      (`runner.test.ts`, children spawned detached like the runner's
+      own, or `killTree`'s group kill reads ESRCH): a child that exits
+      in time is never signalled (the deadline's clear), and one that
+      dies on the SIGTERM is not SIGKILLed after (the escalation's
+      clear); a server ready before its deadline outlives it, held by a
+      masked PAIR — `markReady`'s clear and the timer body's `readyAt`
+      re-check each survive alone and only both deleted kill the
+      server, so the row pins the rule and both copies stay; a child
+      that exits before ready leaves the live set. The drain race's
+      clear went: a late resolve on a race the drain already won
+      changes nothing, so `drainOrAbort` unrefs and forgets. Held by
+      nothing observable and kept: the readiness timer's clear on
+      exit-before-ready — its body's every effect is a no-op on an
+      exited child and a settled promise, and the pid-reuse hazard it
+      closes cannot be forced by a row.
 
 ## In flight
 
