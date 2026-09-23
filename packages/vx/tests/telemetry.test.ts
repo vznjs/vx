@@ -311,6 +311,48 @@ describe('createTelemetrySource — projection', () => {
     ])
   })
 
+  // BUG (item 654, not fixed: a source change needs the coordinator's
+  // approval). `TaskTelemetry` is "shared by the streaming task.end record
+  // and the per-run summary's tasks[]", and the summary's copy
+  // (`telemetryOf` in run-records.ts) carries blockedBy, timedOut,
+  // sandboxViolations and notReady — but the task.end projection in
+  // `createTelemetrySource` copies none of the four, so a streaming sink
+  // (otel) sees a timed-out, sandbox-violating or never-ready failure as a
+  // plain `failed`, and a blocked skip with no blocker. Repro: this row;
+  // each field reads `undefined`.
+  it.todo('task.end carries the failure and skip reasons the summary row carries', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, {
+        status: 'failed',
+        exitCode: 143,
+        timedOut: true,
+        sandboxViolations: 2,
+        notReady: 'timeout',
+      }),
+    })
+    const skipped = mkNode('b#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node: skipped,
+      outcome: mkOutcome(skipped, { status: 'skipped', blockedBy: 'a#build' }),
+    })
+    expect(
+      records.map((r) =>
+        r.kind === 'task.end'
+          ? [r.timedOut, r.sandboxViolations, r.notReady, r.blockedBy]
+          : 'not-task-end',
+      ),
+    ).toEqual([
+      [true, 2, 'timeout', undefined],
+      [undefined, undefined, undefined, 'a#build'],
+    ])
+  })
+
   it('skips group tasks (no exec) for task.start and task.end', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })
