@@ -79,7 +79,6 @@ export function locallyPlaced(placements: Placements, ids: Iterable<string>): Se
 export function placeTasks(
   nodes: Map<string, TaskNode>,
   executors: readonly TaskExecutor[],
-  pinAllLocal = false,
 ): Placements {
   const pinned = pinnedLocalSet(nodes)
   const placements: Placements = {
@@ -94,7 +93,7 @@ export function placeTasks(
       projectName: node.projectName,
       projectDir: node.projectDir,
       command: node.config.exec!.command,
-      pinnedLocal: pinAllLocal || pinned.has(node.id),
+      pinnedLocal: pinned.has(node.id),
       cacheable: node.config.cache !== undefined,
     })
     placements.executors.set(node.id, executor)

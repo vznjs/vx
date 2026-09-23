@@ -21,7 +21,6 @@ export interface Placements {
 export function placeTasks(
   nodes: Map<string, TaskNode>,
   executors: readonly TaskExecutor[],
-  pinAllLocal?: boolean, // a run that must stay on this machine (default false)
 ): Placements
 
 export async function planExecutorOf(
