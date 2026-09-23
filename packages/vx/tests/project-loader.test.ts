@@ -951,6 +951,12 @@ describe('loadWorkspaceConfig', () => {
     expect(cfg).toEqual({ concurrency: 4, cacheDir: 'build/.vx-cache' })
   })
 
+  it('takes the FIRST file in lookup order when two exist (item 653)', async () => {
+    await writeFile(path.join(dir, 'vx.workspace.ts'), 'export default { concurrency: 2 }')
+    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { concurrency: 3 }')
+    expect(await loadWorkspaceConfig(dir)).toEqual({ concurrency: 2 })
+  })
+
   it('throws when concurrency is non-positive or non-integer', async () => {
     await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { concurrency: 0 }')
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/positive integer/)
