@@ -5,6 +5,7 @@ import {
   busLogger,
   failedLabel,
   createEventBus,
+  outcomeWord,
   projectNode,
   projectOutcome,
   terminalSubscriber,
@@ -360,6 +361,14 @@ describe('the label vocabulary at its edges', () => {
     // true would surface every task in a consumer's view.
     expect(projectNode(mkNode({ id: 'a#build', command: 'x' })).surfaced).toBe(false)
     expect(projectNode(mkNode({ id: 'a#build', command: 'x', surfaced: true })).surfaced).toBe(true)
+  })
+  it('a hit that materialized nothing is up-to-date whichever layer answered', () => {
+    // The local arm is held by the framed-output rows; the remote arm had
+    // no reader, so a remote hit that restored nothing read
+    // `restored-remote` with the suite green (654).
+    expect(outcomeWord({ status: 'cache-hit-remote', restored: false })).toBe('up-to-date')
+    expect(outcomeWord({ status: 'cache-hit-remote', restored: true })).toBe('restored-remote')
+    expect(outcomeWord({ status: 'cache-hit-remote' })).toBe('restored-remote')
   })
 })
 
