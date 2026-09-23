@@ -299,6 +299,17 @@ scope`: an empty scope is refused earlier as "not inside a
       through the deferral, because each cycle's `run()` closes its
       cache and close flushes — the second cycle reads rows the first
       wrote.
+625.  DONE (2026-09-23, the harness rows after the cold-path work — Next
+      6's duty for the cold and restore arms). `bun packages/vx-bench/run.ts
+1000 5` and `5000 3` on this container class: 1,000 projects warm
+      239 ms (231–265), restore 906 (831–1,009), cold 2,634
+      (2,418–2,814); 5,000 warm 711 (702–733), restore 3,253
+      (2,993–3,630), cold 10,950 (10,896–11,547). Against the
+      2026-09-20 rows of the same class: cold −16 % and −23 %, restore
+      −12 % and −17 %; warm within the ±13 % spread, claiming nothing.
+      Scaling at 5×: warm 2.97×, restore 3.59×, cold 4.16× (was 2.98,
+      3.81, 4.51). Rows in `docs/benchmarks.md` under the second
+      machine's table.
 
 ## In flight
 
