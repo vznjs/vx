@@ -65,6 +65,21 @@ warm arm spreads ±13 % about its median on identical code, because every
 rep is a whole CLI invocation. An A/B here needs an effect bigger than
 that, and a control arm beside it.
 
+The same container class on 2026-09-23, after the cold-path work of
+items 615 (a config round's evaluations written once per table) and 622
+(output-directory snapshots landed in one transaction), medians with the
+full spread, five reps at 1,000 and three at 5,000:
+
+| Projects | Warm             | Restore             | Cold                      |
+| -------- | ---------------- | ------------------- | ------------------------- |
+| 1000     | 239 ms (231–265) | 906 ms (831–1009)   | 2634 ms (2418–2814)       |
+| 5000     | 711 ms (702–733) | 3253 ms (2993–3630) | 10 950 ms (10 896–11 547) |
+
+Against the 2026-09-20 rows: cold −16 % at 1,000 and −23 % at 5,000,
+restore −12 % and −17 %; the warm rows moved within the ±13 % spread
+and claim nothing — the warm path is unchanged since item 589. Scaling
+5× the projects: warm 2.97×, restore 3.59×, cold 4.16×.
+
 ### Profiling a run
 
 Two tools, and they answer different questions:
