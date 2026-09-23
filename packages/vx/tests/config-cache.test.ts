@@ -12,6 +12,7 @@ import { skipAsRoot } from './helpers/nonroot-gate.js'
 import {
   blobOidOf,
   configEvalKey,
+  configEvalKeyFromClosure,
   loadProjectConfig,
   loadProjectConfigs,
   type ConfigEvalStore,
@@ -217,6 +218,25 @@ describe('configEvalKey', () => {
       expect(await keyOf(cfg)).toBeNull()
     },
   )
+
+  it('the warm key from the closure IS the slow key — the two paths share entries (item 653)', async () => {
+    // Were they to differ, every warm fast key would miss and the slow
+    // key's own lookup would still serve the config: correct, and every
+    // warm load paying the read and scan the index exists to skip.
+    const preset = await write('shared/same.mjs', "export const cmd = 'x'\n")
+    const cfg = await write(
+      'packages/same/vx.config.mjs',
+      "import { cmd } from '../../shared/same.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+    )
+    const slow = await keyedOf(cfg)
+    expect(slow?.closure).toEqual([cfg, await realpath(preset)])
+    const fast = await configEvalKeyFromClosure({
+      closure: slow!.closure,
+      hashFile: async (f) => blobOidOf(await Bun.file(f).bytes()),
+      workspaceFingerprint: 'fp',
+    })
+    expect(fast).toBe(slow!.key)
+  })
 
   it.each([
     'process.env.CI',
