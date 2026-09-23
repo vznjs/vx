@@ -9,7 +9,7 @@ import type { InvocationRecord, RunRecord } from '../cache/index.js'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { VERSION } from '../version.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
-import { deriveCacheSource, isCacheHit, type TaskTelemetry } from './telemetry.js'
+import { isCacheHit, taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]
@@ -60,7 +60,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (isGroupTask(o.node)) continue
     // aborted (killed by a shutdown signal) isn't a real run.
     if (o.status === 'aborted') continue
-    if (input.withTelemetry) telemetryTasks.push(telemetryOf(o))
+    if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
     runs.push({
       ...(o.hash !== undefined ? { hash: o.hash } : {}),
       project: o.node.projectName,
@@ -129,29 +129,4 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     tags: JSON.stringify(input.tags),
   }
   return { runs, invocation, telemetryTasks }
-}
-
-function telemetryOf(o: TaskOutcome): TaskTelemetry {
-  const t: TaskTelemetry = {
-    taskId: o.node.id,
-    project: o.node.projectName,
-    task: o.node.taskName,
-    status: o.status,
-    cacheSource: deriveCacheSource(o.status),
-    exitCode: o.exitCode,
-    durationMs: o.durationMs,
-  }
-  if (o.hash !== undefined) t.hash = o.hash
-  if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
-  if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
-  if (o.where !== undefined) t.where = o.where
-  if (o.outputs !== undefined) t.outputs = o.outputs
-  if (o.attempts !== undefined) t.attempts = o.attempts
-  if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
-  if (o.timedOut === true) t.timedOut = true
-  if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
-  if (o.notReady !== undefined) t.notReady = o.notReady
-  if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
-  if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
-  return t
 }

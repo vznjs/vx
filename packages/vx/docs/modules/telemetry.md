@@ -16,6 +16,9 @@ is pre-folded, bigint wallclock spans are decimal strings.
   per-task `TaskTelemetry[]`. What every telemetry sink receives at
   end of run.
 - `deriveCacheSource(status)` — `'local' | 'remote' | 'miss' | null`.
+- `taskTelemetryOf(outcome)` — the one projection of a `TaskOutcome` into
+  `TaskTelemetry`, used by the streaming `task.end` record and the
+  summary's `tasks[]` alike, so the two cannot drift (item 660).
 - `createTelemetrySource(bus, sinks, ctx)` — projects the bus once and
   fans out to sinks.
 - `TelemetrySink` — what a `telemetry` plugin returns: an optional
