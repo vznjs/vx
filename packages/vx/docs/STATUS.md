@@ -287,6 +287,18 @@ scope`: an empty scope is refused earlier as "not inside a
       the 0.1.0 API decision 620 recorded. The 620 probe's count of 28
       was a shell loop that read single-line export lists only; the
       real number is in the law's output above.
+624.  DONE (2026-09-23, the release notes the owner cuts from, brought
+      to today). `docs/history/release-0.1.0-notes.md` was drafted at
+      581 and said nothing of the Nx surface: it opens with "Nx and
+      Turbo repos, unchanged" now (`nx()`, `nx-exec`, the migration
+      walks, the refine and Nx 22 proofs with their numbers), carries
+      615 and 622's cold-path rows under Caching, 614 and 621 under CLI,
+      618, 620 and 623 under Plugins, and 613 and 617 under Internals;
+      the PR count is 377, counted from `v0.0.21..main`. Closed by
+      reading, from 14ba's list: `vx watch` cannot see a stale snapshot
+      through the deferral, because each cycle's `run()` closes its
+      cache and close flushes — the second cycle reads rows the first
+      wrote.
 
 ## In flight
 
