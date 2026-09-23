@@ -282,6 +282,20 @@ test is telling the truth.
       back to that pool (`classifyWith` shapes the cache the classify
       sees: `Object.create` over the real one, `getMany` overridden).
       Each row red on its line alone.
+641.  DONE (2026-09-23, the 628 method on `LayeredCache`'s read and
+      pull paths). Thirteen gates deleted in turn against the whole
+      core suite in the worktree: the `hasMany` and `get` result-shape
+      checks, `markRemoteAbsent`, the remote-sourced label, `has`'s and
+      `get`'s and the ingest's degrade-to-miss catches, one pull per
+      hash, the local-first skip and `remoteHasMany`'s policy gate are
+      held (one to eleven rows each); the `policy.remoteRead` gate on
+      `prefetch` and on `get` survived — `remoteHasMany` had the policy
+      row, its two siblings had none, so a `--cache` that turns remote
+      reads off left the prefetch pass and the lazy get on the wire as
+      far as the suite could tell. Two rows (`layered-cache.test.ts`):
+      with remote reads off, `prefetch` pulls nothing (false, no remote
+      GET) and `get` is a plain local miss (null, no remote GET). Each
+      red on its line alone.
 
 ## In flight
 

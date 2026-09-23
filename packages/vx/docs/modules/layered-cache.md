@@ -69,7 +69,8 @@ degraded the same way, never reported as a corrupt artifact.
    was materialized FROM remote earlier this run (prefetch or a
    sibling's read-through), the source flips to `'remote'` so
    provenance stays honest.
-2. If `policy.remoteRead` is off → miss.
+2. If `policy.remoteRead` is off → miss. `prefetch` sits behind the
+   same gate: nothing is warmed from the remote either (item 641).
 3. `pullFromRemote(hash)` — shared with `prefetch` through the
    in-flight map: `remote.get` → `local.ingest(bytes)` → re-read
    local. `durationMs` from the wire rides the ingested entry; the
