@@ -122,6 +122,14 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     expect(cacheRefusal({ files: ['src/**', '!dist/**'] })).toBeNull()
   })
 
+  it('a negated absolute path in inputs.files is refused like workspaceFiles refuses it (item 679)', () => {
+    // It subtracts nothing from project-relative globs: a silent no-op.
+    expect(cacheRefusal({ files: ['src/**', '!/etc/passwd'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: absolute paths are not allowed (got "!/etc/passwd") — inputs must be project-relative globs`,
+    )
+    expect(cacheRefusal({ files: ['src/**', '!src/**/*.spec.ts'] })).toBeNull()
+  })
+
   it('"." in workspaceFiles names the workspace root and is refused', () => {
     expect(cacheRefusal({ files: ['src/**'], workspaceFiles: ['.'] })).toBe(
       `${CFG}: tasks.t.cache.inputs.workspaceFiles: "." names the workspace root itself and selects nothing — use "**" for everything under it`,

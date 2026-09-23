@@ -358,6 +358,17 @@ implementer drove (#772): deleting either reddened nothing, and the
 bust beside the repeat routing reddened the same seven rows the
 routing alone does. Loader, lock and schema suites green (215 rows).
 
+14ca. **Item 679 (2026-09-23): a negated absolute path in
+`inputs.files` is refused.** `cache.inputs.files` refused `/x` but took
+`!/x`, which subtracts nothing from project-relative globs, so it sat
+in a config as a silent no-op; `workspaceFiles` already refused both
+spellings. The inputs check now refuses it with the absolute-path
+message, after the directory-itself check so a bare `!/` keeps its
+more precise one. The row is red with the guard gone; a relative
+negation is its control. Found by the 653 implementer, not a sweep
+survivor. A config that carried one now fails to load, where before
+it ran with the line ignored.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

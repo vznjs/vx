@@ -472,6 +472,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
             `${where}.cache.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
           )
         }
+        // A negated absolute path subtracts nothing (the positive globs are
+        // project-relative), so it would sit in the config as a silent no-op;
+        // `workspaceFiles` refuses both spellings the same way (item 679).
+        if (g.startsWith('!/')) {
+          throw new UserError(
+            `${where}.cache.inputs.files: absolute paths are not allowed (got "${g}") — ` +
+              `inputs must be project-relative globs`,
+          )
+        }
         assertNotDoubleNegated(g, `${where}.cache.inputs.files`)
       }
       // A list of ONLY negations selects nothing at all. `resolveFiles`
