@@ -291,6 +291,20 @@ test is telling the truth.
       isolation number and the simpler shape; the README's "about
       37 ms" stands.
 
+609.  DONE (2026-09-23, the clone the per-process memo left behind).
+      The adoption skeleton copied every mapped task with
+      `structuredClone` before handing it to the stage — "the mapping
+      outlives one run", the comment said, which stopped being true
+      when the memo went per run on 2026-09-10 — and 3,000 clones cost
+      10 ms per run at 1,000 projects, measured directly (three reps:
+      12.8, 10.2, 9.8 ms), more than the mapping hoist of 608 bought.
+      Core only reads a stage-given task after validating it
+      (`validateProjectConfig` writes nothing back; the one
+      `normalizeGlob` feeds a predicate), and a run's mapping is its
+      own, so the object goes in as it is now. The turbo and nx suites
+      pass, the watch-shape row (a script edited between two runs in
+      one process is the second run's command) included.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
