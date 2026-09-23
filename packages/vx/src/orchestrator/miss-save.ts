@@ -132,23 +132,22 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
       },
     })
     endSave()
-    // The directory snapshot behind the next hit's skip-restore. Taken at
-    // run end when the run keeps a list: the task wrote these directories
+    // The directory snapshot behind the next hit's skip-restore, taken at
+    // run end from the run's list: the task wrote these directories
     // milliseconds ago, inside the snapshot's racy window, so a snapshot
     // taken here was refused and the next hit walked every output tree —
     // 1,000 walks, 296 ms accumulated, on the first warm run after a cold
-    // build of the 1,000-project bench (2026-09-10).
+    // build of the 1,000-project bench (2026-09-10). A caller with no
+    // list gets no snapshot: recording here was that same refusal (item
+    // 637 deleted the fallback and nothing reddened), and the next hit
+    // walks, as it did.
     const savedDirPrefixes = wholeSubtreePrefixes(a.outputs)
-    if (savedDirPrefixes !== null) {
-      if (a.outputDirSnapshots !== undefined) {
-        a.outputDirSnapshots.push({
-          hash: a.hash,
-          projectDir: node.projectDir,
-          prefixes: savedDirPrefixes,
-        })
-      } else {
-        await cache.recordOutputDirs?.(a.hash, node.projectDir, savedDirPrefixes)
-      }
+    if (savedDirPrefixes !== null && a.outputDirSnapshots !== undefined) {
+      a.outputDirSnapshots.push({
+        hash: a.hash,
+        projectDir: node.projectDir,
+        prefixes: savedDirPrefixes,
+      })
     }
   }
   // This task just wrote outputs to the project's tree. Record the
