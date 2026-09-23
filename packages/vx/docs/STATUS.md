@@ -225,6 +225,18 @@ test is telling the truth.
       specifier and reported the file not found. And the site's
       environment-variables guide, which is a TASK's env model, now
       points at the CLI reference's table of what vx itself reads.
+620.  DONE (2026-09-23, the README shape turned on `vx mcp`, and where
+      it stops). `packages/vx-mcp/tests/readme-tools.test.ts` holds the
+      README's tool table to `listTools()` in both directions
+      (differential: a row removed fails it by name); the table was
+      right, and stays right. The same shape tried on every plugin's
+      index found 28 exports no README names — `digestOf`,
+      `renderJobSummary`, `pnpmLock`, `handleMessage` — which are the
+      packages' test hooks and internals riding their public index,
+      not documentation gaps. Whether a plugin's index should carry
+      only what a workspace calls is a decision for the API pass before
+      0.1.0 (the notes in `docs/history/release-0.1.0-notes.md`), not a
+      pin; recorded here so the next sweep does not re-find it.
 
 ## In flight
 
