@@ -1,11 +1,15 @@
 import { realpathSync } from 'node:fs'
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects } from '../src/workspace/index.js'
 import { GitFilesCache, repoRootOf } from '../src/cache/index.js'
 import { populateGitFilesCache } from '../src/cache/inputs.js'
+import { run, type Logger } from '../src/orchestrator/index.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
+
+const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 
 // Regression: when the vx workspace root is a SUBDIR of the git repo (a polyglot
 // repo whose JS workspace lives under e.g. `code/`), `git ls-files` prints
@@ -129,5 +133,58 @@ describe('the repo root the attributes gate stops at', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  }, 30_000)
+})
+
+// A linked `git worktree add` checkout has a `.git` FILE pointing into the
+// main repository, and `git status` there reports against the worktree's
+// own index. The key reads that enumeration, so a run there must miss,
+// save, hit, and re-key on an edit exactly as in the main checkout.
+describe('workspace inside a linked git worktree', () => {
+  let main: string
+  let linked: string
+
+  beforeEach(async () => {
+    main = await makeWorkspace({ prefix: 'vx-wt-main-' })
+    await addProject(main, 'app', {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'cat src/in.txt > out.txt' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+            },
+          },
+        }
+      `,
+      files: { 'src/in.txt': 'v1' },
+    })
+    await git(main, ['add', '-A'])
+    await git(main, ['commit', '-q', '-m', 'init'])
+    linked = await mkdtemp(path.join(tmpdir(), 'vx-wt-linked-'))
+    await git(main, ['worktree', 'add', '-q', linked])
+  })
+
+  afterEach(async () => {
+    await rm(linked, { recursive: true, force: true })
+    await rm(main, { recursive: true, force: true })
+  })
+
+  it('a first run misses and saves, a second hits and restores, an edit re-keys', async () => {
+    expect((await stat(path.join(linked, '.git'))).isFile()).toBe(true)
+    const out = path.join(linked, 'packages', 'app', 'out.txt')
+    const statuses = async (): Promise<string[]> =>
+      (await run({ cwd: linked, tasks: ['build'], log: quiet })).outcomes.map(
+        (o) => `${o.node.id} ${o.status}`,
+      )
+
+    expect(await statuses()).toEqual(['app#build success'])
+    await rm(out)
+    expect(await statuses()).toEqual(['app#build cache-hit'])
+    expect(await readFile(out, 'utf8')).toBe('v1')
+
+    await writeFile(path.join(linked, 'packages', 'app', 'src', 'in.txt'), 'v2')
+    expect(await statuses()).toEqual(['app#build success'])
+    expect(await readFile(out, 'utf8')).toBe('v2')
   }, 30_000)
 })

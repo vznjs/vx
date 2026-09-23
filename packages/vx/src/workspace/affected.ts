@@ -99,6 +99,16 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
       `git ref "${args.since}" is not a ref: a base cannot be empty or start with "-".`,
     )
   }
+  // `A..B` / `A...B` reached `rev-parse --verify`, which refuses a range, and
+  // the user read "did not resolve" about refs that both exist. `..` is
+  // illegal in a ref name (git-check-ref-format), so this refuses no ref.
+  const range = args.since.indexOf('..')
+  if (range >= 0) {
+    throw new UserError(
+      `git ref "${args.since}" is a range: ranges are not supported — pass the base alone ` +
+        `("${args.since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+    )
+  }
   await verifyRef(args.workspaceRoot, args.since)
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
   // on a branch whose base has moved on, `git diff <base>` reports every

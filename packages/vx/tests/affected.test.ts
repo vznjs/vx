@@ -20,6 +20,7 @@ import { loadCliProjects } from '../src/cli/workspace-config.js'
 import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
 import { claimedAffected } from '../src/orchestrator/index.js'
 import type { FingerprintContext, VxPlugin } from '../src/index.js'
+import { UserError } from '../src/util/index.js'
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
   // -c commit.gpgsign=false defends against environments (CI sandboxes,
@@ -152,6 +153,41 @@ describe('affectedProjects', () => {
       expect(existsSync(out)).toBe(false)
     },
   )
+
+  // Turbo migrants type `--affected=HEAD~1..HEAD`; git's own refusal read as
+  // "did not resolve" about two refs that exist. The non-repository root
+  // proves the refusal comes before any git spawn: there, git's answer would
+  // be "not a git repository".
+  it.each([
+    ['HEAD~1..HEAD', 'HEAD~1'],
+    ['main...feature', 'main'],
+    ['..HEAD', 'HEAD'],
+  ])('refuses the range %j before git sees it, naming the base %j', async (since, base) => {
+    const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-range-'))
+    try {
+      for (const workspaceRoot of [root, bare]) {
+        const err = await affectedProjects({ workspaceRoot, since, projects }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        )
+        expect(err).toBeInstanceOf(UserError)
+        expect(err?.message).toBe(
+          `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
+            `("${base}"); vx diffs it against the working tree.`,
+        )
+      }
+    } finally {
+      await rm(bare, { recursive: true, force: true })
+    }
+  })
+
+  it('CONTROL: the base a range refusal names works on its own', async () => {
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-rev2')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'rev2')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
+    expect([...out]).toEqual(['a'])
+  })
 
   it('CONTROL: the injection the guard refuses is real — git honours --output as an option', async () => {
     const out = path.join(root, 'injected')
@@ -331,6 +367,27 @@ describe('affectedProjects', () => {
       projects: nestedProjects,
     })
     expect([...out]).toEqual(['inner'])
+  })
+
+  // Nx's sibling-prefix case: a string-prefix owner test would hand
+  // `packages/app-e2e/x` to `packages/app` as well (or instead).
+  it('a change in a sibling-prefix project dir selects exactly that project', async () => {
+    const names = ['app', 'app-e2e', 'app-e2e-utils']
+    for (const name of names) {
+      await mkdir(path.join(root, 'packages', name), { recursive: true })
+      await writeFile(path.join(root, 'packages', name, 'file.txt'), `${name}-initial`)
+    }
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'siblings')
+    const siblings: ProjectMeta[] = names.map((name) => ({
+      name,
+      dir: path.join(root, 'packages', name),
+      configPath: null,
+      packageJson: { name },
+    }))
+    await writeFile(path.join(root, 'packages/app-e2e/file.txt'), 'app-e2e-changed')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: siblings })
+    expect([...out]).toEqual(['app-e2e'])
   })
 
   it('selects via committed-only history (no working-tree changes)', async () => {

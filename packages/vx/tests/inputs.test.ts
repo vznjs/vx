@@ -296,6 +296,44 @@ describe('resolveInputs', () => {
     expect(got.files).toContain(path.join(projectDir, 'src', 'index.ts'))
   })
 
+  // Nx's straddling negation: the exclude is matched against every
+  // positive's hits, not only the glob it happens to overlap.
+  it('two positive globs with a negation straddling both fold exactly the survivors', async () => {
+    for (const f of ['a.ts', 'b.js', 'c.spec.ts', 'd.md'])
+      await write(path.join(projectDir, 'src', f))
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**/*.ts', 'src/**/*.js', '!src/**/*.spec.ts'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files).toEqual([
+      path.join(projectDir, 'src', 'a.ts'),
+      path.join(projectDir, 'src', 'b.js'),
+    ])
+  })
+
+  // Minimatch-style globbing skips dotfiles unless asked; a `.env` a task
+  // reads would then change no key.
+  it('`src/*` folds the dotfile `src/.env`', async () => {
+    await write(path.join(projectDir, 'src', '.env'), 'SECRET=1')
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files).toEqual([
+      path.join(projectDir, 'src', '.env'),
+      path.join(projectDir, 'src', 'index.ts'),
+    ])
+  })
+
   it('returns [] for files when inputs.files is empty (no file inputs at all)', async () => {
     await write(path.join(projectDir, 'a.txt'), 'a')
     const got = await resolveInputs({

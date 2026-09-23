@@ -50,7 +50,11 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
    opaque), but an option-like value is a real option — `--output=<path>`
    is an arbitrary file write from a CI-supplied string. Every git call
    in the module also ends its options (`--end-of-options`) before the
-   ref, so a new caller cannot lose the guard by accident.
+   ref, so a new caller cannot lose the guard by accident. A range
+   (`A..B`, `A...B`) is refused there too, naming `A` as the base to
+   pass alone: `rev-parse --verify` refuses a range, and its "did not
+   resolve" blamed refs that exist. `..` is illegal in a ref name, so
+   the check refuses no real ref.
 1. `verifyRef(workspaceRoot, since)` — `git rev-parse --verify --quiet
 --end-of-options <ref>`. Throws `UserError` if the ref doesn't resolve
    locally.

@@ -875,6 +875,21 @@ coordinator's decisions on it: the two guards it left unheld
 (`isCacheHit`'s known-status check, `disable`'s once-guard) are implied by
 the neighbouring line and need no row.
 
+14bi. **Item 661 (roadmap 2.3, 2026-09-23): twelve open parity rows
+closed.** A developer agent wrote them in a worktree; each went red with
+the line it holds mutated. Two needed source: `--affected` refuses a range
+base (`HEAD~1..HEAD`) by name before git sees it (`..` is illegal in a ref
+name, so no ref is refused), and an archive entry name past PATH_MAX is an
+`ArchiveSecurityError`, not a raw `ENAMETOOLONG` reported as an internal
+error. The linked-worktree row caught a real hazard under mutation:
+reading git's status prefix from the common dir made an edited run a
+stale hit. Open still, in `parity-audit-2026-09.md`: N-M7 (the
+unknown-first benchmark), L48 (a literal output path with glob
+characters), L232 (credentials in a remote-cache URL), and two new
+findings: `--filter ./packages/[abc]` reads the brackets as a class
+(decision: literal first when the directory exists) and names past
+NAME_MAX still reach the file system.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
