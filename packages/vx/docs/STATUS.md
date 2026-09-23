@@ -736,6 +736,18 @@ the trim next at 652; the executor-backed real tree stays for a box
 with yarn 4 reachable; then the owner's three items. Never end with
 "what next?".
 
+14bc. **Roadmap to 1.0 (item 655, 2026-09-23).** Owner asked when vx is
+feature complete; the answer is `docs/design/roadmap-1.0.md`. Four
+milestones: 0 closes the sweep arc (651–654, then sweeps stop being the
+default loop); 1 makes 0.1.0 installable (publish the seven plugins,
+which npm 404s today, and make the docs match); 2 is FEATURE COMPLETE
+(run-time cache eviction, the streaming remote seam before any freeze,
+the stale parity ledgers closed, the scope list confirmed by the owner,
+the real-repo re-measure); 3 is the 1.0 contract (schema and plugin API
+frozen, cache-version and semver policy, a soak). After milestone 0 the
+loop takes its next item from the roadmap, in its order; strike an item
+there when it lands.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
