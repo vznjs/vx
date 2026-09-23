@@ -1742,6 +1742,15 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     ).toEqual([`${ws}/x`, `${ws}/x`])
   })
 
+  // Item 652: the row above holds the KEY; nothing held the dedup itself —
+  // a tool that probes one missing path ten times would report ten lines.
+  it('reports one line for the same syscall on the same path, however often', async () => {
+    const ws = path.join(dir, 'ws')
+    expect(await targets([at(`${ws}/x`), at(`${ws}/x`), at(`${ws}/x`)].join('\n'))).toEqual([
+      `${ws}/x`,
+    ])
+  })
+
   it('marks an openat ignorable by either list, since the trace lacks its flags', async () => {
     const ws = path.join(dir, 'ws')
     const produced = await produce(at(`${ws}/s.txt`))
