@@ -544,7 +544,8 @@ test is telling the truth.
       flag and the bus disposer's found-guard mask each other; one row
       goes red only with both deleted. Two survived with no row and wait
       on the coordinator: `isCacheHit`'s known-status guard and
-      `disable`'s once-guard are implied by what follows or precedes them.
+      `disable`'s once-guard are implied by what follows or precedes them
+      (deleted in item 663, with the `disposed` flag).
       One BUG, left as an `it.todo` row: the streaming `task.end` drops
       `blockedBy`, `timedOut`, `sandboxViolations` and `notReady`, which
       the summary's copy of the same `TaskTelemetry` carries.
@@ -894,6 +895,27 @@ crash in REAPI's `durationOf` on an absent `stdout_digest` was fixed on
 the way. The introduction's "whole artifacts in memory" known limit is
 gone. Plugin API: this is the breaking change the 1.0 freeze was waiting
 on.
+
+14bk. **Item 663 (2026-09-23): the three telemetry guards 654 left are
+gone.** `isCacheHit`'s known-status set (an unknown string falls through
+`deriveCacheSource`'s switch to `undefined`, which is neither hit source),
+`disable`'s once-guard (every hook site skips a disabled sink before it
+calls) and the telemetry handle's `disposed` flag (the bus's unsubscribe
+is idempotent, so the handle returns it as is). Each deletion was already
+green against the whole core suite in 654; each site now says why in one
+line. The masked pair's row (disposer called twice) still holds the bus
+side. CLAUDE.md gains 654's lesson: a mutation's replacement text is code.
+
+14bl. **Item 664 (roadmap 2.3, 2026-09-23): a bracketed project directory
+is selectable by its path.** `--filter ./packages/[abc]` compiled as a
+glob and selected the sibling `packages/a` (the FINDING row of item
+661). A path form now matches literally first, as git reads a pathspec,
+and is read as a glob only when it selects no project literally. The
+FINDING row became the fix's row, red without it, with a control that a
+bracket path naming no directory (`./packages/[ab]`) still globs. The
+check is on the project list, not the file system, so `parseFilter`
+stays pure. Parity audit §9 L255 struck; `cli.md` and the filter module
+page say so.
 
 ## Decisions (this arc)
 

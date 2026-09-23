@@ -44,35 +44,33 @@ variables stay out of the key).
 
 ## Open items
 
-| Ledger ID     | What is missing                                                                                                                                                                                                                  | Size |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| T-M4          | ~~A row that `build --filter docs app#lint` plans `docs#build` and `app#lint` and never `app#build`.~~ closed (item 661): `task-selection.test.ts` "build --filter docs app#lint plans docs#build and app#lint, never app#build" | S    |
-| T-M6          | ~~The `{"name": ""}` spelling of an unnamed member, beside the pinned `{}`.~~ closed (item 661): `workspace.test.ts` "an EMPTY-string name with a vx config gets the same warning as a missing one"                              | S    |
-| T-M10         | ~~A range base (`HEAD~1..HEAD`) is refused with the generic "did not resolve"; name ranges.~~ closed (item 661): `affected.test.ts` "refuses the range … before git sees it"; a range is now a named refusal                     | S    |
-| N-M4          | ~~`--affected` with sibling-prefix project directories (`app`, `app-e2e`).~~ closed (item 661): `affected.test.ts` "a change in a sibling-prefix project dir selects exactly that project"                                       | S    |
-| N-M6          | ~~Two positive globs with a negation that straddles both.~~ closed (item 661): `inputs.test.ts` "two positive globs with a negation straddling both fold exactly the survivors"                                                  | S    |
-| N-M7          | Scheduling unknown-duration tasks first: the benchmark was never run.                                                                                                                                                            | M    |
-| N-L1          | ~~`markSurfacedDeps` over two groups that depend on each other.~~ closed (item 661): `task-graph.test.ts` "two same-project groups that depend on each other terminate …"                                                        | S    |
-| N-L2          | ~~A bare name does not select a scoped package: a row and a `comparison.md` line.~~ closed (item 661): `filter.test.ts` "a bare 'core' is an exact match …"; `comparison.md` Filter DSL line                                     | S    |
-| gaps §1 L48   | A literal output path holding glob characters (`app/[id]/page.js`).                                                                                                                                                              | S–M  |
-| gaps §1 L53   | ~~Key derivation and a hit inside a linked `git worktree`.~~ closed (item 661): `git-subdir-workspace.test.ts` "workspace inside a linked git worktree …"                                                                        | S    |
-| gaps §3 L116  | Memoizing `compileNameGlob`: filters parse once per run, so this is closed as not worth doing.                                                                                                                                   | —    |
-| gaps §5 L157  | ~~Restore entries with lookalike Unicode (fullwidth dots, U+2215, bidi overrides).~~ closed (item 661): `archive-security.test.ts` "lookalike dots, a division slash and a bidi override …"                                      | S    |
-| gaps §5 L158  | ~~A restore entry longer than `PATH_MAX` refused as a user error, not `ENAMETOOLONG`.~~ closed (item 661): `archive-security.test.ts` "an entry name longer than PATH_MAX is refused …"; now an ArchiveSecurityError             | S    |
-| gaps §8 L232  | `turboCache()` / `nxCache()` accept an API URL carrying `user:pass@`.                                                                                                                                                            | S    |
-| gaps §9 L239  | ~~An input row that `src/*` includes `src/.env`.~~ closed (item 661): `inputs.test.ts` "`src/*` folds the dotfile `src/.env`"                                                                                                    | S    |
-| gaps §9 L255  | A project directory whose name holds brackets (`packages/[abc]`).                                                                                                                                                                | S    |
-| gaps §15 L355 | ~~The `vx cache prune` CLI row asserts the freed byte figure.~~ closed (item 661): `config-stage-verbs.test.ts` asserts the freed byte figure                                                                                    | S    |
+| Ledger ID     | What is missing                                                                                                                                                                                                                                             | Size |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| T-M4          | ~~A row that `build --filter docs app#lint` plans `docs#build` and `app#lint` and never `app#build`.~~ closed (item 661): `task-selection.test.ts` "build --filter docs app#lint plans docs#build and app#lint, never app#build"                            | S    |
+| T-M6          | ~~The `{"name": ""}` spelling of an unnamed member, beside the pinned `{}`.~~ closed (item 661): `workspace.test.ts` "an EMPTY-string name with a vx config gets the same warning as a missing one"                                                         | S    |
+| T-M10         | ~~A range base (`HEAD~1..HEAD`) is refused with the generic "did not resolve"; name ranges.~~ closed (item 661): `affected.test.ts` "refuses the range … before git sees it"; a range is now a named refusal                                                | S    |
+| N-M4          | ~~`--affected` with sibling-prefix project directories (`app`, `app-e2e`).~~ closed (item 661): `affected.test.ts` "a change in a sibling-prefix project dir selects exactly that project"                                                                  | S    |
+| N-M6          | ~~Two positive globs with a negation that straddles both.~~ closed (item 661): `inputs.test.ts` "two positive globs with a negation straddling both fold exactly the survivors"                                                                             | S    |
+| N-M7          | Scheduling unknown-duration tasks first: the benchmark was never run.                                                                                                                                                                                       | M    |
+| N-L1          | ~~`markSurfacedDeps` over two groups that depend on each other.~~ closed (item 661): `task-graph.test.ts` "two same-project groups that depend on each other terminate …"                                                                                   | S    |
+| N-L2          | ~~A bare name does not select a scoped package: a row and a `comparison.md` line.~~ closed (item 661): `filter.test.ts` "a bare 'core' is an exact match …"; `comparison.md` Filter DSL line                                                                | S    |
+| gaps §1 L48   | A literal output path holding glob characters (`app/[id]/page.js`).                                                                                                                                                                                         | S–M  |
+| gaps §1 L53   | ~~Key derivation and a hit inside a linked `git worktree`.~~ closed (item 661): `git-subdir-workspace.test.ts` "workspace inside a linked git worktree …"                                                                                                   | S    |
+| gaps §3 L116  | Memoizing `compileNameGlob`: filters parse once per run, so this is closed as not worth doing.                                                                                                                                                              | —    |
+| gaps §5 L157  | ~~Restore entries with lookalike Unicode (fullwidth dots, U+2215, bidi overrides).~~ closed (item 661): `archive-security.test.ts` "lookalike dots, a division slash and a bidi override …"                                                                 | S    |
+| gaps §5 L158  | ~~A restore entry longer than `PATH_MAX` refused as a user error, not `ENAMETOOLONG`.~~ closed (item 661): `archive-security.test.ts` "an entry name longer than PATH_MAX is refused …"; now an ArchiveSecurityError                                        | S    |
+| gaps §8 L232  | `turboCache()` / `nxCache()` accept an API URL carrying `user:pass@`.                                                                                                                                                                                       | S    |
+| gaps §9 L239  | ~~An input row that `src/*` includes `src/.env`.~~ closed (item 661): `inputs.test.ts` "`src/*` folds the dotfile `src/.env`"                                                                                                                               | S    |
+| gaps §9 L255  | ~~A project directory whose name holds brackets (`packages/[abc]`).~~ closed (item 664): a path naming a project dir is read literally before it is read as a glob; `workspace.test.ts` "the unescaped `./packages/[abc]` selects the directory it names …" | S    |
+| gaps §15 L355 | ~~The `vx cache prune` CLI row asserts the freed byte figure.~~ closed (item 661): `config-stage-verbs.test.ts` asserts the freed byte figure                                                                                                               | S    |
 
 Item 661 left four rows open and found three more:
 
 - **gaps §9 L255, a project directory named with brackets.** Inputs and
-  outputs resolve, but the path filter `./packages/[abc]` compiles as a
-  glob and selects the sibling `packages/a`; only the escaped form
-  selects the directory (pinned as a FINDING row in `workspace.test.ts`).
-  Decision (coordinator): a path form that names an existing directory
-  literally is taken literally before it is read as a glob, as git reads
-  a pathspec. S.
+  outputs resolved, but the path filter `./packages/[abc]` compiled as a
+  glob and selected the sibling `packages/a`. Closed in item 664: a path
+  form that selects a project directory literally is taken literally
+  before it is read as a glob, as git reads a pathspec.
 - **Archive names past NAME_MAX or past PATH_MAX with the destination.**
   Item 661 refuses a name whose own length passes PATH_MAX; one
   component past NAME_MAX (255), or a destination plus name past

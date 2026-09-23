@@ -630,13 +630,17 @@ describe('a project directory named packages/[abc]', () => {
     expect(select('./packages')).toEqual(['a', 'br'])
   })
 
-  // FINDING (open): the unescaped path form is compiled as a glob over the
-  // root-relative dir (filter.ts, `pathGlob`), so it selects the sibling the
-  // class matches and never the directory it names.
-  it('FINDING: the unescaped `./packages/[abc]` selects the sibling `a`, not the directory', async () => {
+  // A path that names a project directory literally is that directory, as
+  // git reads a pathspec (item 664; before it the form compiled as a glob and
+  // selected the sibling the class matches).
+  it('the unescaped `./packages/[abc]` selects the directory it names, not the sibling `a`', async () => {
     const projects = await listProjects(await loadWorkspace(root))
     const graph = buildPackageGraph(projects)
-    const filters = [parseFilter('./packages/[abc]', root)]
-    expect([...applyFilters({ filters, projects, graph })]).toEqual(['a'])
+    const select = (f: string): string[] =>
+      [...applyFilters({ filters: [parseFilter(f, root)], projects, graph })].sort()
+    expect(select('./packages/[abc]')).toEqual(['br'])
+    expect(select('{packages/[abc]}')).toEqual(['br'])
+    // CONTROL: a bracket path that names no directory is still a glob.
+    expect(select('./packages/[ab]')).toEqual(['a'])
   })
 })
