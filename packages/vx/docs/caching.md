@@ -1115,6 +1115,15 @@ never wrong. Details and the deny-list:
 
 ## Bumping `CACHE_VERSION`
 
+A bump is announced, never silent (roadmap 3.3, item 671): the cache
+records the version it was written under (`schema_meta.cache_version`),
+and the first open after an upgrade prints one line, on the run's
+status line or a verb's stderr: `[vx] cache format changed:
+vx-cache-v27 → vx-cache-v28 (vx upgraded); …`. The index survives, so
+the old entries stay until they age out under `vx cache prune
+--older-than` or `cacheRetention`; no key derives to them again. A
+bump that lands with a `SCHEMA_VERSION` reset says the reset alone.
+
 Required when:
 
 - A new field is added to the cache key derivation (step list above).

@@ -668,6 +668,39 @@ describe('Cache storage (v10)', () => {
     },
   )
 
+  // Item 670: a legal entry under a destination deep enough that the two
+  // together pass PATH_MAX is the workspace's location, not a bad artifact.
+  it('restoreOutputs() into a directory too deep for its output names says so, as a user error', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
+    const name = 'n'.repeat(200)
+    const outFile = path.join(projectDir, 'dist', name)
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'produced')
+    await cache.save({
+      hash: 'h-deep',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
+    })
+    // A destination short of PATH_MAX that the output's name then passes.
+    let deep = projectDir
+    while (deep.length < PATH_MAX - 150) deep = path.join(deep, 'd'.repeat(100))
+    await mkdir(deep, { recursive: true })
+    const err = await cache.restoreOutputs('h-deep', deep).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect(err?.message).toMatch(
+      /^restore of h-deep into .* could not write its outputs \(ENAMETOOLONG: .*\)\. An output path under this directory is longer than the file system allows — move the workspace to a shorter path\.$/,
+    )
+    // CONTROL: the same artifact restores into the shallow directory.
+    await rm(outFile)
+    await cache.restoreOutputs('h-deep', projectDir)
+    expect(await Bun.file(outFile).text()).toBe('produced')
+  })
+
   it('assertWritable() passes on a cache this user owns', () => {
     expect(() => cache.assertWritable()).not.toThrow()
   })
@@ -2151,7 +2184,8 @@ describe('Cache schema/version recovery', () => {
         (raw.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
       ]),
     )
-    expect(Object.values(before).every((n) => n === 1)).toBe(true)
+    // `schema_meta` holds the schema version and the cache format (item 671).
+    expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, t === 'schema_meta' ? 2 : 1])))
     raw.prepare("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
 
