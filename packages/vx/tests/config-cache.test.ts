@@ -340,6 +340,11 @@ describe('stripLiterals', () => {
       'const s =   {a: 1}.a + process.env.X  \n',
     )
   })
+  it('a second ${} in one template is code too (item 653)', () => {
+    const out = stripLiterals('const s = `${a}-${process.env.X}`\n')
+    expect(out).toContain('process.env.X')
+    expect(out).not.toContain('-')
+  })
   it('bails on an unterminated literal', () => {
     expect(stripLiterals("const s = 'open")).toBeNull()
     expect(stripLiterals('const t = `open ${x}')).toBeNull()
