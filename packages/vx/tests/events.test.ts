@@ -107,6 +107,22 @@ describe('createEventBus', () => {
     expect(going).toEqual([])
     expect(kept).toEqual(['run:end', 'late:run:end'])
   })
+
+  it('a second call of one disposer removes nothing else', () => {
+    // `indexOf` answers -1 once the subscriber is gone, and `splice(-1, 1)`
+    // removes the LAST subscriber — a surface that detaches twice (a
+    // devtool's close and its error path) would take the renderer with it.
+    // The telemetry handle guards its own disposer, so nothing else in the
+    // suite calls a bus disposer twice (item 654).
+    const bus = createEventBus()
+    const kept: string[] = []
+    const dispose = bus.subscribe(() => undefined)
+    bus.subscribe((e) => kept.push(e.kind))
+    dispose()
+    dispose()
+    bus.emit({ kind: 'run:end' })
+    expect(kept).toEqual(['run:end'])
+  })
 })
 
 describe('busLogger + terminalSubscriber', () => {

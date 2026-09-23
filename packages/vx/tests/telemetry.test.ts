@@ -624,6 +624,35 @@ describe('subscribeTelemetry — host', () => {
     expect(warnings.some((w) => w.includes('org/bad'))).toBe(true)
   })
 
+  it('refuses a sink that is not an object, or whose wants is not an array, by name', async () => {
+    // Without the shape checks a `null` sink is still refused — by the raw
+    // TypeError of reading `.wants` off it — and a number is refused as
+    // "handles nothing"; only the words change, so the row pins the words.
+    // A string `wants` is worse: `'run.start'.includes(kind)` is a
+    // SUBSTRING match, so it was accepted and filtered by accident (654).
+    const bad = (name: string, result: unknown): VxPlugin =>
+      testPlugin(name, { telemetry: () => result as TelemetrySink })
+    const warnings: string[] = []
+    const handle = await subscribeTelemetry(
+      [
+        bad('org/null', null),
+        bad('org/number', 42),
+        bad('org/wants', { wants: 'run.start', onRecord: () => undefined }),
+      ],
+      createEventBus(),
+      { ...ctx, warn: (m) => warnings.push(m) },
+      RUN,
+    )
+    expect(handle).toBeUndefined()
+    const why = (name: string, msg: string) =>
+      `[vx] plugin '${name}' telemetry failed to initialize; disabled for this run: ${msg}`
+    expect(warnings).toEqual([
+      why('org/null', 'telemetry sink must be an object, got null'),
+      why('org/number', 'telemetry sink must be an object, got number'),
+      why('org/wants', "telemetry sink 'wants' must be an array, got string"),
+    ])
+  })
+
   it('dispose() removes the bus subscription (idempotent)', async () => {
     const bus = createEventBus()
     const rec = recorder()
