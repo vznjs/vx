@@ -1079,6 +1079,20 @@ of truth. A change to an irrelevant file produces a cache-hit run
 (typically tens of ms); the cost is much smaller than the engineering
 cost of a per-event glob match.
 
+### How changes are seen
+
+One recursive OS watcher (`fs.watch`) per project directory in scope,
+plus the workspace root for the fingerprint files. Each watcher must
+prove it delivers: a directory whose watcher reports nothing within
+2 s of the probe is polled every 250 ms instead, with a one-line
+notice on stderr (`no OS watch events within 2000 ms; polling every
+250 ms instead`). Where the watcher is known not to deliver — a sandbox
+without FSEvents access on macOS, a network mount, a container bind —
+`VX_WATCH_POLL=1` polls from the start and skips the 2 s probe; the loop
+says so once (`vx watch: polling every 250 ms (VX_WATCH_POLL)`). The
+poller walks the same tree the event filter keeps: the always-ignored
+segments and the run's declared output containers are never sampled.
+
 ### Workspace fingerprint changes
 
 Edits to a lockfile (`pnpm-lock.yaml`, `bun.lock`, …) or
@@ -1727,6 +1741,28 @@ nothing is close enough to guess, a second line says where a verb can
 come from — the verbs declared here, or that `vx.workspace.ts` is what
 would declare one, or that there is no workspace here at all. Core still
 names no package: it lists what the workspace itself declares.
+
+## Environment variables vx reads
+
+The variables core reads. Each is read where it applies, per call, so a
+value set for one invocation is that invocation's. A plugin's own (the
+REAPI endpoints, the GitHub token) are in its README; what a TASK sees
+is `exec.env` in `docs/schema.md`, and the two markers vx sets on every
+task are the last row.
+
+| Var                               | Value                 | Default | Effect                                                                                                                                                                                                                                                                                |
+| --------------------------------- | --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VX_TIMING`                       | any non-empty         | off     | Print the stage table to stderr after a run or a `--dry` (`docs/modules/timing.md`).                                                                                                                                                                                                  |
+| `VX_TASK_TIMEOUT`                 | positive integer (ms) | none    | The default timeout for tasks without their own `exec.timeout`, one rung below `--timeout` / `RunOptions.timeout` and one above the workspace `timeout`. Empty, non-integer or non-positive is ignored; a value past the largest timer (~24.8 days) is clamped to it, never refused.  |
+| `VX_KILL_GRACE_MS`                | positive integer (ms) | 2000    | The SIGTERM → SIGKILL grace a child that ignores SIGTERM gets: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks. Out of range falls back to the default.                                                                                                 |
+| `VX_TEARDOWN_TIMEOUT_MS`          | integer (ms)          | 3000    | The bound on one plugin's end-of-run flush or teardown, so a third party's I/O cannot hold the exit. Out of range falls back to the default, never clamps: a bound of 24.8 days is no bound.                                                                                          |
+| `VX_CONFIG_WORKER_TIMEOUT_MS`     | integer (ms)          | 30000   | How long one `vx.config.ts` evaluation may take before its worker is treated as wedged (a real evaluation is ~10 ms). Out of range falls back to the default.                                                                                                                         |
+| `VX_WATCH_POLL`                   | any non-empty         | off     | `vx watch` polls every 250 ms from the start instead of probing the OS watcher (§ `vx watch` › How changes are seen).                                                                                                                                                                 |
+| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx             | —       | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`). |
+
+Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
+`FORCE_COLOR`); `GITHUB_STEP_SUMMARY` is where `--report` writes on
+Actions.
 
 ## Output format
 
