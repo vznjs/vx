@@ -80,7 +80,7 @@ export class FileHashStore {
     // file's content, because the file is an input in its own right. No
     // memo: readlink is one syscall, and the row would be keyed on the
     // link's own stat, not its target's.
-    if (st.isSymbolicLink()) return this.hashBlob(new TextEncoder().encode(readlinkSync(filePath)))
+    if (st.isSymbolicLink()) return this.hashBytes(new TextEncoder().encode(readlinkSync(filePath)))
     const mtimeMs = Math.floor(st.mtimeMs)
     const size = st.size
     // ctime + ino are what make this memo SAFE, not merely fast. mtime is
@@ -159,7 +159,7 @@ export class FileHashStore {
         if (st.isSymbolicLink()) {
           // No memo, for `hashFile`'s reason: the row would be keyed on
           // the link's own stat, not its target's.
-          out.set(p, this.hashBlob(new TextEncoder().encode(readlinkSync(p))))
+          out.set(p, this.hashBytes(new TextEncoder().encode(readlinkSync(p))))
           continue
         }
         stats.set(p, {
@@ -235,11 +235,16 @@ export class FileHashStore {
    * spawn per file.
    */
   private async hashFileFromDisk(filePath: string): Promise<string> {
-    return this.hashBlob(await Bun.file(filePath).bytes(), filePath)
+    return this.hashBytes(await Bun.file(filePath).bytes(), filePath)
   }
 
-  /** `git hash-object` of `bytes`: the blob OID in the repo's object format. */
-  private hashBlob(bytes: Uint8Array, nearPath?: string): string {
+  /**
+   * `git hash-object` of `bytes`: the blob OID in the repo's object format —
+   * what `hashFile` returns for a file holding them, with no stat and no
+   * memo row. `nearPath` says which repo's format applies (the cache dir's
+   * when absent).
+   */
+  hashBytes(bytes: Uint8Array, nearPath?: string): string {
     const hasher = new Bun.CryptoHasher(
       this.objectFormat ?? this.detectObjectFormat(nearPath ?? this.cacheDir),
     )

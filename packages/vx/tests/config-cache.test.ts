@@ -80,6 +80,25 @@ class MemoryStore implements ConfigEvalStore {
   }
 }
 
+/** The store with the batched writes: a round lands in one call per table; `puts` still counts entries. */
+class BatchedStore extends MemoryStore {
+  batchEvalPuts = 0
+  batchClosurePuts = 0
+  bytesHashes = 0
+  putConfigEvals(entries: ReadonlyArray<readonly [string, string]>): void {
+    this.batchEvalPuts++
+    for (const [k, json] of entries) this.putConfigEval(k, json)
+  }
+  putConfigClosures(entries: ReadonlyArray<readonly [string, readonly string[]]>): void {
+    this.batchClosurePuts++
+    for (const [p, files] of entries) this.putConfigClosure(p, files)
+  }
+  hashBytes(bytes: Uint8Array): string {
+    this.bytesHashes++
+    return blobOidOf(bytes)
+  }
+}
+
 describe('configEvalKey', () => {
   it('keys a pure config on its bytes, its relative import closure and the fingerprint', async () => {
     const preset = await write('shared/preset.mjs', "export const cmd = 'echo one'\n")
@@ -316,6 +335,61 @@ describe('loadProjectConfig with an eval cache', () => {
     expect(store.batchGets).toBe(before + 1) // one lookup for the round
   })
 
+  it('a round writes what it learned once per table, and keys the slow path from bytes, not the memo', async () => {
+    const preset = await write('shared/batch-preset.mjs', "export const cmd = 'echo b'\n")
+    const cfgs: string[] = []
+    for (const name of ['b1', 'b2', 'b3']) {
+      cfgs.push(
+        await write(
+          `packages/${name}/vx.config.mjs`,
+          "import { cmd } from '../../shared/batch-preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+        ),
+      )
+    }
+    const store = new BatchedStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs(cfgs, { evalCache })
+    // Three evaluations, three closures: one batched call each (a per-config
+    // put was an autocommit transaction each; item 615).
+    expect({
+      evalPuts: store.batchEvalPuts,
+      closurePuts: store.batchClosurePuts,
+      entries: store.puts,
+      closures: store.closures.size,
+    }).toEqual({ evalPuts: 1, closurePuts: 1, entries: 3, closures: 3 })
+    // The slow path keyed every closure file from the bytes it read to
+    // scan it: no stat-memo call, so no memo row per file.
+    expect({ bytesHashes: store.bytesHashes, memoHashes: store.hashes }).toEqual({
+      bytesHashes: 6, // three configs and the preset each of them imports
+      memoHashes: 0,
+    })
+    // The fast path next time is the memo's (hashFile per closure file),
+    // and the batch wrote nothing more: nothing evaluated, nothing put.
+    await loadProjectConfigs(cfgs, { evalCache })
+    expect({
+      evalPuts: store.batchEvalPuts,
+      entries: store.puts,
+      hashed: store.hashes > 0,
+    }).toEqual({ evalPuts: 1, entries: 3, hashed: true })
+    // A store without the batched methods is given the entries one by one.
+    const plain = new MemoryStore()
+    await loadProjectConfigs(cfgs, { evalCache: { store: plain, workspaceFingerprint: 'fp' } })
+    expect({ puts: plain.puts, closures: plain.closures.size }).toEqual({ puts: 3, closures: 3 })
+    // A failed round still keeps what it learned before the failure.
+    const bad = await write('packages/b-bad/vx.config.mjs', 'export default { tasks: 42 }\n')
+    const partial = new BatchedStore()
+    await expect(
+      loadProjectConfigs([cfgs[0]!, bad], {
+        evalCache: { store: partial, workspaceFingerprint: 'fp' },
+      }),
+    ).rejects.toThrow(/b-bad/)
+    expect({ evalPuts: partial.batchEvalPuts, entries: partial.puts }).toEqual({
+      evalPuts: 1,
+      entries: 1,
+    })
+    void preset
+  })
+
   it('a round with two broken configs names the FIRST in the given order, as one-by-one did', async () => {
     const ok = await write(
       'packages/ok/vx.config.mjs',
@@ -439,6 +513,41 @@ describe('Cache as a ConfigEvalStore', () => {
     noRead.putConfigEval('k', '{}')
     expect(noRead.getConfigEval('k')).toBeNull()
     noRead.close()
+  })
+  it('the batched puts honour the write axis and land as the single puts do', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-batch-'))
+    try {
+      const wo = new Cache(dir, { read: true, write: false })
+      wo.putConfigEvals([['k1', '{}']])
+      wo.putConfigClosures([['/p/vx.config.mjs', ['/p/vx.config.mjs']]])
+      expect({
+        evals: wo.getConfigEvals(['k1']).size,
+        closures: wo.getConfigClosures(['/p/vx.config.mjs']).size,
+      }).toEqual({ evals: 0, closures: 0 })
+      wo.close()
+      const rw = new Cache(dir)
+      rw.putConfigEvals([
+        ['k1', '{"tasks":{}}'],
+        ['k2', '{"tasks":{"a":{}}}'],
+      ])
+      rw.putConfigClosures([
+        ['/p/vx.config.mjs', ['/p/vx.config.mjs', '/p/preset.mjs']],
+        ['/q/vx.config.mjs', ['/q/vx.config.mjs']],
+      ])
+      expect(
+        [...rw.getConfigEvals(['k1', 'k2']).entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)),
+      ).toEqual([
+        ['k1', '{"tasks":{}}'],
+        ['k2', '{"tasks":{"a":{}}}'],
+      ])
+      expect(
+        rw.getConfigClosures(['/p/vx.config.mjs', '/q/vx.config.mjs']).get('/p/vx.config.mjs'),
+      ).toEqual(['/p/vx.config.mjs', '/p/preset.mjs'])
+      expect(rw.getConfigEval('k2')).toBe('{"tasks":{"a":{}}}') // the single read sees the batched write
+      rw.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
   it('the closure index honours the local read/write axes too', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-axes-'))

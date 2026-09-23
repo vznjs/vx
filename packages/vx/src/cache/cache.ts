@@ -663,9 +663,18 @@ export class Cache implements CacheLayer {
   putConfigEval(key: string, json: string): void {
     this.configEvals.putConfigEval(key, json)
   }
+  putConfigEvals(entries: ReadonlyArray<readonly [string, string]>): void {
+    this.configEvals.putConfigEvals(entries)
+  }
+  putConfigClosures(entries: ReadonlyArray<readonly [string, readonly string[]]>): void {
+    this.configEvals.putConfigClosures(entries)
+  }
   // --- input file hashes: delegated to `FileHashStore` (see file-hashes.ts) ---
   hashFile(filePath: string): Promise<string> {
     return this.files.hashFile(filePath)
+  }
+  hashBytes(bytes: Uint8Array, nearPath: string): string {
+    return this.files.hashBytes(bytes, nearPath)
   }
   hashFiles(paths: readonly string[]): Promise<Map<string, string>> {
     return this.files.hashFiles(paths)

@@ -51,6 +51,19 @@ describe('Cache.hashFiles', () => {
     expect(rows.map((r) => r.path)).toEqual([a, b])
   })
 
+  it('hashBytes is hashFile of a file holding the bytes, and writes no memo row', async () => {
+    const a = path.join(dir, 'bytes.txt')
+    await aged(a, 'from bytes\n')
+    const fromBytes = cache.hashBytes(new TextEncoder().encode('from bytes\n'), a)
+    const rowsBefore = cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes').get() as {
+      n: number
+    }
+    expect(rowsBefore.n).toBe(0)
+    expect(fromBytes).toBe(await cache.hashFile(a))
+    // CONTROL: other bytes are another identity.
+    expect(cache.hashBytes(new TextEncoder().encode('other\n'), a)).not.toBe(fromBytes)
+  })
+
   it('agrees on a symlink too — the blob of the link text, not the target bytes', async () => {
     // The agreement above only ever used regular files. The batch form
     // stat'ed (following the link) while `hashFile` lstat'ed, so the same

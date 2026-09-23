@@ -46,41 +46,6 @@ function required(): boolean {
  * is the point: the suite cannot vanish quietly on the one machine whose
  * result gates a merge.
  */
-/**
- * Whether violation REPORTING can be relied on here.
- *
- * Enforcement and reporting are different properties with different
- * reliability, and conflating them cost real coverage. macOS feeds SRT's
- * violation store asynchronously from the unified log, which DROPS records
- * under load (~5% measured, structural — the settle window halves it and the
- * residual is gone, not late). So a pin asserting a violation LINE exists
- * flakes at the OS's loss rate on a loaded runner, while a pin asserting the
- * task FAILED or that the secret never reached the artifact does not — the
- * enforcement canary has been 340/340 across 17 CI runs on exactly that
- * distinction.
- *
- * Use this ONLY for tests whose product is the report itself (the
- * `undeclared-inputs` verdict, a line naming the file). Everything else
- * should assert on the artifact and run everywhere the sandbox exists.
- */
-async function sandboxReportingReliable(label: string): Promise<boolean> {
-  if (!(await sandboxAvailable(label))) return false
-  // darwin, not only darwin CI: the sharded gate loads a dev box the way
-  // CI loads a runner, and the residual reached the local gate twice on
-  // 2026-09-03 (`--verify=all … leaky task` answering ok: true). The
-  // records are DROPPED, not late, so no timeout helps. Enforcement stays
-  // asserted everywhere; the reporting pins run on linux (bubblewrap) and
-  // on any darwin box that opts in with VX_REQUIRE_SANDBOX.
-  if (process.platform === 'darwin' && !required()) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[${label}] skipping the REPORTING assertions on darwin — the unified log drops violation records under load; enforcement is still covered here and by the canary (set VX_REQUIRE_SANDBOX=1 to run them anyway)`,
-    )
-    return false
-  }
-  return true
-}
-
 export async function sandboxAvailable(label: string): Promise<boolean> {
   // macOS CI runners: the sandbox PROBES healthy but violation REPORTING is
   // lossy-by-OS under load (~5% of denials arrive with no unified-log
@@ -95,9 +60,9 @@ export async function sandboxAvailable(label: string): Promise<boolean> {
   // 2026-08-25, when the un-gate condition recorded with that decision was
   // met: their enforcement pins assert on ARTIFACTS (the task failed, the
   // secret never reached out.txt, the escape file does not exist), which
-  // reporting loss cannot move. Only the pins whose PRODUCT is the report
-  // — a verdict, a line naming a file — are still withheld there, by
-  // `sandboxReportingReliable` above.
+  // reporting loss cannot move. The pins whose PRODUCT was the report — a
+  // verdict, a line naming a file — went with `--verify` (2026-09-04); the
+  // gate that withheld them on darwin outlived them until item 615.
   const availability = await probeSandbox()
   if (availability.available) return true
 

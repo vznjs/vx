@@ -58,8 +58,25 @@ export interface ConfigEvalStore {
    * files through this in a single call when the store offers it.
    */
   hashFiles?(files: readonly string[]): Promise<Map<string, string>>
+  /**
+   * The identity `hashFile` would return for a file holding `bytes`, from
+   * the bytes alone — no stat, no memo row. The slow path has every
+   * closure file's bytes in hand (it reads them to scan for imports), and
+   * keying through `hashFile` there cost a memo upsert per file, each its
+   * own autocommit transaction (1,000 configs: 50 ms, item 615). The first
+   * warm load after it reads those files once for the memo, in one
+   * transaction. `nearPath` says which repo's object format applies.
+   */
+  hashBytes?(bytes: Uint8Array, nearPath: string): string
   getConfigClosures?(configPaths: readonly string[]): Map<string, string[]>
   putConfigClosure?(configPath: string, files: readonly string[]): void
+  /**
+   * A round's closures in one write (optional; a store without it is
+   * given them one by one). One transaction where the per-config put was
+   * one each: 1,000 autocommit inserts measured 180–240 ms against 2.5 in
+   * one transaction (item 615).
+   */
+  putConfigClosures?(entries: ReadonlyArray<readonly [string, readonly string[]]>): void
   getConfigEval(key: string): string | null
   /**
    * Many keys in one round-trip (optional; a store without it is asked per
@@ -68,6 +85,8 @@ export interface ConfigEvalStore {
    */
   getConfigEvals?(keys: readonly string[]): Map<string, string>
   putConfigEval(key: string, json: string): void
+  /** A round's evaluations in one write, as `putConfigClosures` (optional). */
+  putConfigEvals?(entries: ReadonlyArray<readonly [string, string]>): void
 }
 
 /** What `configEvalKey` learned besides the key, for the store's closure index. */
@@ -81,6 +100,8 @@ export interface ConfigEvalKeyResult {
 
 export interface ConfigEvalKeyArgs {
   configPath: string
+  /** The identity of a file from its bytes; preferred over `hashFile`, which stats and memoises. */
+  hashBytes?: (bytes: Uint8Array, nearPath: string) => string
   /**
    * Per-file identity, the same function the store's warm path uses. Absent
    * (tests, a store without one), the git blob id is computed from the
@@ -256,7 +277,11 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
     // A backslash in code position is an identifier escape (`\u0070rocess`
     // IS `process`) — the one spelling the deny-list cannot see. Refuse it.
     if (code === null || code.includes('\\') || IMPURE_RE.test(code)) return null
-    const identity = a.hashFile ? await a.hashFile(file) : await hashOf(file, bytes)
+    const identity = a.hashBytes
+      ? a.hashBytes(bytes, file)
+      : a.hashFile
+        ? await a.hashFile(file)
+        : await hashOf(file, bytes)
     h = xxh3(`${file}\0${identity}`, h)
     closure.push(file)
     for (const m of source.matchAll(IMPORT_RE)) {
