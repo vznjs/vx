@@ -333,6 +333,13 @@ describe('stripLiterals', () => {
     // answers first).
     expect(stripLiterals("const a = 'x\nprocess.env.HOME\nconst b = 1'\n")).toBeNull()
   })
+  it("an object literal's brace inside a template expression does not close it (item 653)", () => {
+    // Were `{a: 1}`'s `}` taken as the expression's end, `process` after it
+    // would be read as template text and stripped: a false "pure".
+    expect(stripLiterals('const s = `${ {a: 1}.a + process.env.X }`\n')).toBe(
+      'const s =   {a: 1}.a + process.env.X  \n',
+    )
+  })
   it('bails on an unterminated literal', () => {
     expect(stripLiterals("const s = 'open")).toBeNull()
     expect(stripLiterals('const t = `open ${x}')).toBeNull()
