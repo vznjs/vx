@@ -1040,6 +1040,20 @@ way, `bun:sqlite`'s `.get()` returns `null`, not `undefined`, for no
 row: two comparisons against `undefined` made a fresh cache announce a
 change.
 
+14bt. **Item 672 (roadmap 3.1, 3.2, 3.4, 2026-09-23): the 1.0 contract is
+written down.** `design/versioning-1.0.md` names the surfaces semver
+covers from 1.0 (the config schema, the plugin API with the telemetry
+records, the façade exports, the CLI's verbs, flags, exit codes and
+machine-readable outputs, and task-glob semantics), the ones it does not
+(terminal output, internals, the cache format, performance), the
+three-step deprecation (a minor warns naming the replacement, one more
+minor ships it, the next major removes it with a refusal naming both),
+the plugin release train, the Bun floor (raised only in a minor), and
+tier-1 platforms (Linux and macOS, x64 and arm64; Windows through WSL).
+A stale-hit fix ships in a patch even when it changes a key or a glob's
+reading. The freeze itself (3.1, 3.2) takes effect when the owner tags
+1.0.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
