@@ -328,7 +328,10 @@ describe('stripLiterals', () => {
   it('bails on a line break inside a quoted string (item 653)', () => {
     // A quote the lexer misread would otherwise swallow the following lines
     // as string text — here `process` — and call the file pure.
-    expect(stripLiterals("const a = 'x\nprocess.env.HOME\nconst b = 'y'\n")).toBeNull()
+    // Two quotes, so no string is left open at the end: only the line-break
+    // bail refuses it (a four-quote shape ends unterminated and the EOF bail
+    // answers first).
+    expect(stripLiterals("const a = 'x\nprocess.env.HOME\nconst b = 1'\n")).toBeNull()
   })
   it('bails on an unterminated literal', () => {
     expect(stripLiterals("const s = 'open")).toBeNull()
