@@ -64,7 +64,6 @@ Spans, accumulated per call:
 - `output rows`
 - `output stat`
 - `probe`
-- `restore: exists`
 - `restore: extract`
 - `restore: rows`
 - `save: index tx`
