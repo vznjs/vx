@@ -317,6 +317,14 @@ describe('stripLiterals', () => {
     expect(stripLiterals("const r = /'/; process.env.X")).toBeNull()
     expect(stripLiterals('const d = a / b')).toBeNull()
   })
+  it('an escaped quote does not end a string (item 653)', () => {
+    // Without the escape skip the string ends at `\'`, the rest of the line
+    // reads as an open string and the whole config is refused: never a
+    // wrong key, but a pure config that never caches.
+    expect(stripLiterals('const s = \'it\\\'s\'\nconst t = "say \\"hi\\""\n')).toBe(
+      'const s =  \nconst t =  \n',
+    )
+  })
   it('bails on an unterminated literal', () => {
     expect(stripLiterals("const s = 'open")).toBeNull()
     expect(stripLiterals('const t = `open ${x}')).toBeNull()
