@@ -102,6 +102,16 @@ Two tools, and they answer different questions:
   time by function and by file. Good for finding a hot loop; unreliable
   about where an `await` waited (it attributes the wait to whatever frame
   was on the stack).
+- **`strace -f -c`** around a run, against the same run on a `git worktree`
+  of the base: a syscall count is deterministic where this container's
+  wall time is not, and the restore path's three spare round trips per
+  artifact (item 627) were three rows of that table — `readlink` 1,003 →
+  3, `mkdir` 2,002 → 1,002, `newfstatat` −2,000 — before they were a
+  number. `bun --preload ./packages/vx-bench/sqlite-tally.ts …` is the
+  same idea for SQLite statements, and
+  `bun packages/vx-bench/restore-bench.ts <repo> <workspace>` restores every
+  artifact sequentially, where a per-artifact change shows above the
+  four-worker run's noise.
 
 Three measurement lessons from this wave, recorded so they are not
 re-learned. A compiled Bun 1.4.0 binary resolves on-disk packages by

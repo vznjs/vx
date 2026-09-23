@@ -286,7 +286,10 @@ export async function extractArtifactStream(
   workspaceDest: string | undefined,
   verify?: (provided: ReadonlySet<string>) => void,
 ): Promise<Set<string>> {
-  await mkdir(destDir, { recursive: true })
+  // No `mkdir -p` of the destination here: `stage` creates each entry's
+  // directory chain, the destination included, and the cache restores
+  // into a project directory that exists. The eager one cost every
+  // restore a thread-pool round trip for an EEXIST and a stat (item 627).
   const x = new Extractor(destDir, workspaceDest)
   const provided = new Set<string>()
   const headerMtime = new Map<string, number>()
@@ -458,12 +461,15 @@ class Extractor {
     name: string,
   ): Promise<void> {
     const baseResolved = path.resolve(base)
-    const realBase = await this.realBaseOf(base)
     // Only ancestors strictly BELOW the base are candidates — those are the
     // ones a poisoned entry could follow out of the tree. The walk must never
     // climb past the base: when the base itself does not exist yet (the
     // workspace-outputs anchor is created lazily), its parent legitimately
     // resolves outside and comparing against it would reject every entry.
+    // The base's own real path is resolved only once an ancestor EXISTS to
+    // compare it with: after a clean pruned the output directories (the
+    // common restore) nothing below the base is there, and the memoised
+    // resolve was a round trip spent on a comparison never made (item 627).
     let probe = path.dirname(targetResolved)
     while (probe.startsWith(baseResolved + path.sep)) {
       const real = await realpath(probe).then(
@@ -471,6 +477,7 @@ class Extractor {
         () => null,
       )
       if (real !== null) {
+        const realBase = await this.realBaseOf(base)
         if (real !== realBase && !real.startsWith(realBase + path.sep)) {
           throw new ArchiveSecurityError(
             `archive entry escapes destDir via a symlinked parent: ${name}`,

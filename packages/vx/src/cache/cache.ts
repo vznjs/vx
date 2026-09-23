@@ -974,19 +974,16 @@ export class Cache implements CacheLayer {
     // (a concurrent `vx cache prune` is the documented way) — fail loud; the
     // task re-runs.
     //
-    // The FAILING is held twice: without this check the decode below reaches
-    // the same missing file and throws `CorruptArtifactError` from the
-    // extract catch. What this check carries alone is the MESSAGE, and the
-    // two point at opposite remedies — a prune raced this run (re-run) versus
-    // the cache holds bad bytes (a reason to throw the cache dir away). That
-    // is what the roundtrip row asserts (item 481); a test that only asserts
-    // "corrupt artifact" passes with this check deleted.
-    const endExists = span('restore: exists')
-    const exists = await Bun.file(src).exists()
-    endExists()
-    if (!exists) {
-      throw new CorruptArtifactError(hash, 'artifact file vanished before restore')
-    }
+    // The FAILING is held twice: the decode below reaches the missing file
+    // and throws `CorruptArtifactError` from the extract catch either way.
+    // What the `ENOENT` mapping in that catch carries alone is the MESSAGE,
+    // and the two point at opposite remedies — a prune raced this run
+    // (re-run) versus the cache holds bad bytes (a reason to throw the
+    // cache dir away). That is what the roundtrip row asserts (item 481); a
+    // test that only asserts "corrupt artifact" passes with the mapping
+    // deleted. It was a separate `exists()` probe until item 627: one
+    // thread-pool round trip per restore, spent to learn what the read
+    // reports itself.
     const endRows = span('restore: rows')
     // The index says exactly which files this entry materializes. If the
     // archive cannot produce one of them, restoring "successfully" leaves a
@@ -1050,6 +1047,11 @@ export class Cache implements CacheLayer {
         throw new UserError(
           `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${err.message}). ${remedy}`,
         )
+      }
+      // The artifact itself is gone: the read names its path (`bytes()`
+      // opens it; a staged file's ENOENT names the temp below).
+      if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
+        throw new CorruptArtifactError(hash, 'artifact file vanished before restore')
       }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs

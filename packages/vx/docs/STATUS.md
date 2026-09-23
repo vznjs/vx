@@ -321,6 +321,28 @@ scope`: an empty scope is refused earlier as "not inside a
       page says only the ratios compare; the committed
       `packages/vx-bench/RESULTS.md` stays the owner's dev-box run.
       Block under the 2026-09-03 table in `docs/benchmarks.md`.
+627.  DONE (2026-09-23, the restore path's spare round trips — the lead
+      the restore profile gave, since a restore at 1,000 projects costs
+      3.8× the warm run for the same graph). `strace -f -c` of that run
+      against main's put three rows on the extract: a `Bun.file.exists()`
+      probe before the read (one thread-pool round trip to learn what the
+      read's `ENOENT` says itself), a `mkdir -p` of the project directory
+      at the top of `extractArtifactStream` (an EEXIST and a stat for a
+      directory that always exists; `stage` builds each entry's chain),
+      and the base's `realpath` resolved before the ancestor walk that
+      needs it only when a directory below the base EXISTS — after a
+      clean pruned `dist`, the common restore, never. Now: the vanished
+      message comes from the read's `ENOENT` on the artifact's own path
+      (the roundtrip row holds it; a staged temp's `ENOENT` keeps its
+      own line), the eager `mkdir` is gone, the base resolves lazily.
+      Counts per run: `readlink` 1,003 → 3, `mkdir` 2,002 → 1,002,
+      `newfstatat` −2,000, `openat` −1,000, `futex` −1,447. Sequential
+      restore of the 1,000 artifacts (`packages/vx-bench/restore-bench.ts`,
+      new, min of 5, three interleaved rounds): 525–576 µs → 470–484 per
+      artifact, −10 %, arms disjoint. The four-worker restore run: min
+      658 → 637 ms, median 859 → 841 (7 reps interleaved) — inside this
+      box's noise, as every sub-6 % change here is. The `restore: exists`
+      span left `docs/modules/timing.md` with the probe.
 
 ## In flight
 
