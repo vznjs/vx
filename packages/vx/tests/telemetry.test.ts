@@ -684,10 +684,17 @@ describe('subscribeTelemetry — host', () => {
     const rec = recorder()
     const plugins: VxPlugin[] = [testPlugin('org/tel', { telemetry: () => rec.sink })]
     const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
+    // Subscribed AFTER the sink, so a second dispose that reached the bus
+    // with the sink already gone would splice(-1, 1) this one away. The
+    // handle's `disposed` flag and the bus disposer's found-guard each
+    // prevent it alone; this row holds the pair (654).
+    const renderer: string[] = []
+    bus.subscribe((e) => renderer.push(e.kind))
     handle!.dispose()
     handle!.dispose() // idempotent — must not throw
     busLogger(bus).runStart?.({ total: 1 })
     expect(rec.records).toHaveLength(0)
+    expect(renderer).toEqual(['run:start'])
   })
 })
 
