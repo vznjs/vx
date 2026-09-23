@@ -6,7 +6,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
 import type { InvocationRecord } from '../src/cache/index.js'
@@ -345,6 +345,48 @@ describe('LayeredCache', () => {
     })
     expect(await layered.get('h-off', { taskId: 'pkg#build', command: 'x' })).toBeNull()
     expect(remote.gets).toBe(0)
+  })
+
+  it('save() with remote writes off uploads nothing: local entry, no remote PUT', async () => {
+    // The write twin of the two read gates (item 641): `--cache` turning
+    // remote writes off must leave the upload pool idle, and the local
+    // save still lands. Deleting the gate survived the whole core suite
+    // (item 642).
+    const layered = new LayeredCache(local, remote.layer, {
+      policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: false },
+      onRemoteError: () => {},
+    })
+    await saveSample(layered, 'h-nowrite')
+    await layered.drainUploads()
+    expect(remote.puts).toBe(0)
+    expect(remote.store.has('h-nowrite')).toBe(false)
+    expect(await local.has('h-nowrite')).toBe('local')
+  })
+
+  it('save() with local writes off: a pack that throws is reported and skipped, never thrown', async () => {
+    // With local writes off the bytes are packed NOW (there is no on-disk
+    // artifact to read later); a pack that fails is a remote-side loss,
+    // not the task's — reported, no PUT, the task already succeeded.
+    // Deleting the catch survived the whole core suite (item 642).
+    const errors: Error[] = []
+    const writeless = new Cache(path.join(workspaceRoot, '.vx', 'nowrite-pack'), {
+      read: true,
+      write: false,
+    })
+    const layered = new LayeredCache(writeless, remote.layer, {
+      policy: { localRead: true, localWrite: false, remoteRead: true, remoteWrite: true },
+      onRemoteError: (e) => errors.push(e),
+    })
+    const pack = spyOn(writeless, 'packArtifactBytes').mockRejectedValue(new Error('pack exploded'))
+    try {
+      await saveSample(layered, 'h-pack')
+      await layered.drainUploads()
+    } finally {
+      pack.mockRestore()
+      writeless.close()
+    }
+    expect(errors.map((e) => e.message)).toEqual(['pack exploded'])
+    expect(remote.puts).toBe(0)
   })
 
   it('markRemoteAbsent() makes a later get() a miss with NO remote GET', async () => {
