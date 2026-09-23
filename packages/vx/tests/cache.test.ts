@@ -2431,7 +2431,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     }
   })
 
-  it('close() prunes invocations older than 30 days (header never outlives its runs)', async () => {
+  it('close() prunes runs and invocations older than 30 days (header never outlives its runs)', async () => {
     const cache = new Cache(cacheDir)
     const old = 40 * 24 * 60 * 60 * 1000
     const runRow = (runId: string, endedAt: number) => ({
@@ -2467,6 +2467,46 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         db.prepare('SELECT run_id FROM invocations ORDER BY run_id').all() as { run_id: string }[]
       ).map((r) => r.run_id)
       expect(ids).toEqual(['recent-run'])
+      // The runs half: this row asserted the header alone until item 633,
+      // and the `DELETE FROM runs` beside it survived deletion.
+      const hashes = (
+        db.prepare('SELECT hash FROM runs ORDER BY hash').all() as { hash: string }[]
+      ).map((r) => r.hash)
+      expect(hashes).toEqual(['h-recent-run'])
+    } finally {
+      reopened.close()
+    }
+  })
+
+  it('close() prunes config evals and closures not loaded in 30 days and keeps the rest', async () => {
+    // The third duty of close(), beside the history prune and the two
+    // flushes: a config not loaded in 30 days was edited or its project
+    // left, and its rows would otherwise grow the index forever. Held by
+    // nothing until item 633.
+    const cache = new Cache(cacheDir)
+    cache.putConfigEvals([
+      ['k-old', '{"old":true}'],
+      ['k-new', '{"new":true}'],
+    ])
+    cache.putConfigClosures([
+      ['/w/old/vx.config.ts', ['/w/old/a.ts']],
+      ['/w/new/vx.config.ts', ['/w/new/b.ts']],
+    ])
+    const old = Date.now() - 40 * 24 * 60 * 60 * 1000
+    const db = cache.dbHandle()
+    db.prepare('UPDATE config_evals SET created_at = ? WHERE key = ?').run(old, 'k-old')
+    db.prepare('UPDATE config_closures SET created_at = ? WHERE config_path = ?').run(
+      old,
+      '/w/old/vx.config.ts',
+    )
+    cache.close()
+
+    const reopened = new Cache(cacheDir)
+    try {
+      expect([...reopened.getConfigEvals(['k-old', 'k-new']).keys()]).toEqual(['k-new'])
+      expect([
+        ...reopened.getConfigClosures(['/w/old/vx.config.ts', '/w/new/vx.config.ts']).keys(),
+      ]).toEqual(['/w/new/vx.config.ts'])
     } finally {
       reopened.close()
     }
