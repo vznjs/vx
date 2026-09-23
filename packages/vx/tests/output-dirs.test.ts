@@ -250,6 +250,61 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     expect(cache.loadOutputDirsBatch(['h1', 'h2']).get('h1')?.length).toBe(1)
     expect(count()).toBe(1)
   })
+
+  // The row above names four flush sites and drives one. The three below
+  // each drive another, and each fails with its site's flush deleted
+  // (item 628): a pending snapshot lives in the object, so a site that
+  // does not land it loses it.
+  it('a snapshot pending at close is what the next process reads (the vx watch cycle)', async () => {
+    // Each `vx watch` cycle's run() closes its cache; the second cycle's
+    // hit check reads rows the first wrote only because close lands them.
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    const dir = path.join(root, 'cache')
+    cache.close()
+    cache = new Cache(dir)
+    expect(
+      rows()
+        .map((r) => r.path)
+        .sort(),
+    ).toEqual(['dist', 'dist/sub', 'dist/sub/deep'])
+  })
+
+  it('stats() lands a pending snapshot before it counts', async () => {
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    const count = () =>
+      (cache.dbHandle().query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
+    expect(count()).toBe(0)
+    cache.stats()
+    expect(count()).toBe(3)
+  })
+
+  it("prune lands the kept entry's snapshot and leaves no rows for the evicted one", async () => {
+    await cache.save({
+      hash: 'h2',
+      projectDir: proj,
+      outputFiles: [path.join(proj, 'dist/a.js')],
+      entry: { taskId: 'p#build', command: 'y', durationMs: 1, stdout: '' },
+    })
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.recordOutputDirs('h2', proj, ['dist/sub'])
+    // Evict h2 by age: its `accessed_at` is set back past the cutoff.
+    cache.dbHandle().prepare('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h2')
+    const result = await cache.prune({ olderThanMs: 1 })
+    expect(result.evicted).toBe(1)
+    const all = cache
+      .dbHandle()
+      .query('SELECT entry_hash AS h, path FROM output_dirs ORDER BY h, path')
+      .all() as Array<{ h: string; path: string }>
+    // Held two ways: the flush before the delete lets the cascade take
+    // h2's rows, and the flush's own entry check would drop them after
+    // it. Either alone keeps the table free of orphans, so this row pins
+    // the OUTCOME; the kept entry's rows are what the order alone holds.
+    expect(all).toEqual([
+      { h: 'h1', path: 'dist' },
+      { h: 'h1', path: 'dist/sub' },
+      { h: 'h1', path: 'dist/sub/deep' },
+    ])
+  })
 })
 
 describe('warm hits through run() with the short-circuit', () => {
