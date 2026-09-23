@@ -102,9 +102,11 @@ export interface ReapiPluginOptions extends Partial<ReapiOptions> {
  * Declines when no endpoint is configured, so it is safe to leave declared.
  */
 function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
-  const endpoint = options.endpoint ?? Bun.env['VX_REAPI_ENDPOINT']
+  // `process.env`, not `Bun.env`, for core's reason (exec/sandbox-runtime.ts):
+  // an embedder that replaces the env object leaves `Bun.env` on the old one.
+  const endpoint = options.endpoint ?? process.env['VX_REAPI_ENDPOINT']
   if (endpoint === undefined || endpoint === '') return undefined
-  const instanceName = options.instanceName ?? Bun.env['VX_REAPI_INSTANCE']
+  const instanceName = options.instanceName ?? process.env['VX_REAPI_INSTANCE']
   return {
     ...options,
     endpoint,
@@ -117,7 +119,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
     async executor(ctx): Promise<TaskExecutor | undefined> {
-      const wanted = options.execute === true || Bun.env['VX_REAPI_EXECUTE'] === '1'
+      const wanted = options.execute === true || process.env['VX_REAPI_EXECUTE'] === '1'
       const conn = connection(options)
       if (!wanted || conn === undefined) return undefined
       executorClient = new ReapiClient({ ...conn, onWarn: (m) => ctx.warn(m) })
