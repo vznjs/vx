@@ -8,6 +8,7 @@ import {
   LayeredCache,
   type RemoteCacheLayer,
 } from '../src/cache/index.js'
+import type { CacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun, run } from '../src/orchestrator/index.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
@@ -53,6 +54,15 @@ async function classify(
   fixture: Fixture,
   tasks: string[],
 ): Promise<{ restoreTier: Set<string>; preProbedIds: Set<string> }> {
+  return classifyWith(fixture, tasks, (cache) => cache)
+}
+
+/** `classify` with the cache the short-circuit sees shaped by `shape`. */
+async function classifyWith(
+  fixture: Fixture,
+  tasks: string[],
+  shape: (cache: CacheLayer) => CacheLayer,
+): Promise<{ restoreTier: Set<string>; preProbedIds: Set<string> }> {
   const prepared = await prepareRun(
     { cwd: fixture.root, tasks, log: silentLogger(fixture) },
     silentLogger(fixture),
@@ -60,7 +70,7 @@ async function classify(
   try {
     const sc = await startLocalShortCircuit({
       nodes: prepared.nodes,
-      cache: prepared.cache,
+      cache: shape(prepared.cache),
       workspaceRoot: prepared.workspaceRoot,
       workspaceFingerprint: prepared.workspaceFingerprint,
       nestedDirsByProject: prepared.nestedDirsByProject,
@@ -641,6 +651,85 @@ describe('local cache short-circuit', () => {
       // And the flip is the path alone: move the output out of solo's tree.
       await rewrite(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
       expect((await classify(fixture, ['build'])).restoreTier.has('solo#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a task whose workspaceFiles INPUTS read the writer's output stays OUT, edge or no edge",
+    async () => {
+      // `rdr` lives where no output lands and has no edge to the writer, so
+      // its key is stable and probed; but its up-front key folded
+      // `shared/**` as it was BEFORE this run's writer ran. Restoring it
+      // early would restore an artifact keyed on the old bytes — the
+      // `workspaceInputsReach` term of the exclusion, held by nothing until
+      // item 640. CONTROL: `solo`, which reads nothing there, keeps the tier.
+      await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      // The writer's bytes are on disk before the cold run, so rdr's key is
+      // the same whether it ran before or after the writer in that run.
+      await Bun.write(path.join(fixture.root, 'shared', 'g.txt'), 'x\n')
+      await addProject(fixture.root, 'rdr', {
+        files: { 'src/r.txt': 'r' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: "cat ../../shared/g.txt > out.txt 2>/dev/null || : > out.txt" },
+                cache: {
+                  inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.preProbedIds.has('rdr#build')).toBe(true)
+      expect(c.restoreTier.has('rdr#build')).toBe(false)
+      expect(c.restoreTier.has('solo#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cache without getMany classifies through per-task probes, exclusions intact',
+    async () => {
+      // `getMany` is optional on CacheLayer; a layer without it takes the
+      // per-task pool, and the pool applies the same exclusion — held for
+      // the batch path by three rows above and for the pool by none until
+      // item 640. Same fixture as the DIRECTORY row: `solo` stays OUT.
+      await soloAndWriter(`{ files: [], workspaceFiles: ['packages/solo/gen/g.txt'] }`)
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+      const c = await classifyWith(fixture, ['build'], (cache) =>
+        Object.create(cache, { getMany: { value: undefined } }),
+      )
+      expect(c.preProbedIds.has('solo#build')).toBe(true)
+      expect(c.restoreTier.has('solo#build')).toBe(false)
+      expect(c.restoreTier.has('wsw#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a batch probe that throws falls back to per-task probes',
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+      const c = await classifyWith(fixture, ['build'], (cache) =>
+        Object.create(cache, {
+          getMany: {
+            value: () => Promise.reject(new Error('batch probe exploded')),
+          },
+        }),
+      )
+      // The pool classified what the batch could not.
+      expect(c.preProbedIds.has('solo#build')).toBe(true)
+      expect(c.restoreTier.has('solo#build')).toBe(true)
     },
     TIMEOUT,
   )

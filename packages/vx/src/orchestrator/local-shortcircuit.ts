@@ -107,7 +107,10 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   } finally {
     endKeys()
   }
-  const candidates = stableKeys.filter(({ node }) => node.config.cache !== undefined)
+  // Every stable key is a cacheable task's: deriveStableKeys pushes only
+  // `cacheEnabled && !unstable` (item 640 deleted a second filter here and
+  // nothing reddened).
+  const candidates = stableKeys
   if (candidates.length === 0) return EMPTY
 
   const keptOut = restoreTierExclusions(args.nodes, args.workspaceRoot)
@@ -179,8 +182,10 @@ function restoreTierExclusions(nodes: Map<string, TaskNode>, workspaceRoot: stri
   let everything = false
   for (const node of nodes.values()) {
     for (const raw of node.config.cache?.outputs.workspaceFiles ?? []) {
+      // No negation to skip: the schema refuses '!' in output globs
+      // (`validateWorkspaceGlobs`), so the `continue` that stood here
+      // guarded a shape no config can carry (item 640).
       const glob = normalizeGlob(raw)
-      if (glob.startsWith('!')) continue
       const prefix = staticPrefix(glob)
       if (prefix === '.' || prefix === '' || prefix === '/') everything = true
       else prefixes.push(prefix.replace(/^\.\//, ''))
