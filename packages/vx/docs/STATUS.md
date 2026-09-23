@@ -571,7 +571,28 @@ test is telling the truth.
       and template-expression depth are held too; the first line-break
       row left a quote open, so the EOF bail refused it as well and it
       passed with the bail deleted, and was re-spelt. No source defect.
-      The config loader is swept.
+      The count: 225 mutations over the three files, 173 caught first
+      time, 51 survived, 1 scored INCONCLUSIVE that was a catch (no
+      workspace file crashed every `beforeAll` that loads one). All 51
+      re-driven over the whole suite with the rows in: 47 caught, the
+      unreadable-import row skipping as root (proven red and green as
+      `probe`). `cacheRetention` (#755) landed after the baseline and was
+      swept on the merge: eleven gates, nine held; its null arm and
+      `maxSize`'s type arm get rows (a null and a number each reached a
+      raw TypeError). Three wait on the coordinator with no row: the
+      `'*'`/`'^*'` skip in the filter-name check is implied by the
+      `includes('*')` skip after it; the `fresh` random import bust is
+      masked by the repeat routing (deleting it beside `loadedConfigs`
+      reddens the identical seven rows the routing alone does, so its
+      comment describes a path the loader no longer takes); and
+      `realpathSync` on a resolved import is a darwin claim, since
+      `Bun.resolveSync` answers the real path on Linux both through a
+      symlinked directory and under a symlinked root. Method: a proof
+      script that printed its verdict but exited 0 let a `&&` chain
+      commit a row that did not fail; the script now exits on its
+      verdict. And a `git checkout` in the sweep worktree under a running
+      driver tainted one verdict, re-driven clean. The config loader is
+      swept.
 
 654.  DONE (2026-09-23, the 628 method on the telemetry host, the
       telemetry record and the event bus). Ninety-eight gates and field
