@@ -260,15 +260,19 @@ describe('loadProjectConfig', () => {
       // names so an unset wildcard doesn't silently become an empty
       // value in the cache key. Reject at load time with a clear
       // pointer to the workaround (list names individually).
+      // An env name is no path, so the bracket that became a literal in a
+      // task glob (item 667) is still refused here.
       const file = path.join(dir, 'vx.config.mjs')
-      await writeFile(
-        file,
-        `export default { tasks: { build: {
-          exec: { command: 'tsc' },
-          cache: { inputs: { files: ['src/**'], env: ['VERCEL_*'] }, outputs: { files: [] } },
-        } } }`,
-      )
-      await expect(loadProjectConfig(file)).rejects.toThrow(/wildcards.*env names.*not supported/)
+      for (const name of ['VERCEL_*', 'A?', 'A[0]', 'A{B}']) {
+        await writeFile(
+          file,
+          `export default { tasks: { build: {
+            exec: { command: 'tsc' },
+            cache: { inputs: { files: ['src/**'], env: [${JSON.stringify(name)}] }, outputs: { files: [] } },
+          } } }`,
+        )
+        await expect(loadProjectConfig(file)).rejects.toThrow(/wildcards.*env names.*not supported/)
+      }
     })
 
     it('rejects non-string env entries in cache.inputs.env', async () => {

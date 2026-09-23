@@ -16,7 +16,7 @@
 // what or how tasks run. Contrast `cache`/`executor`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
-import type { TaskStatus } from '../graph/index.js'
+import type { TaskOutcome, TaskStatus } from '../graph/index.js'
 import { settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
@@ -75,8 +75,6 @@ const PASSES: Record<TaskStatus, boolean> = {
  */
 export const TASK_STATUSES: readonly TaskStatus[] = Object.keys(PASSES) as TaskStatus[]
 
-const KNOWN_STATUSES: ReadonlySet<string> = new Set(TASK_STATUSES)
-
 /**
  * Did the task pass? A cache hit counts — it produced the same result without
  * spending the time, which is the whole point. `skipped` and `aborted` do NOT:
@@ -97,7 +95,8 @@ export function isPassStatus(status: string): boolean {
  * cannot disagree about what a hit is. Unknown strings read as not-a-hit.
  */
 export function isCacheHit(status: string): boolean {
-  if (!KNOWN_STATUSES.has(status)) return false
+  // No known-status guard: an unknown string falls through the switch to
+  // undefined, which is neither hit source (the guard survived item 654).
   const source = deriveCacheSource(status as TaskStatus)
   return source === 'local' || source === 'remote'
 }
@@ -364,8 +363,9 @@ export function createTelemetrySource(args: {
   // Never silently. The standing rule is that a never-fail path must still
   // WARN — telemetry that vanishes without a word is indistinguishable from
   // telemetry nobody configured.
+  // Every hook call site skips a disabled sink first, so this runs at most
+  // once per sink without a guard of its own (item 654).
   const disable = (sink: TelemetrySink, hook: string, err: unknown): void => {
-    if (disabled.has(sink)) return
     disabled.add(sink)
     warn?.(
       `[vx] telemetry sink '${sink.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
@@ -435,30 +435,13 @@ export function createTelemetrySource(args: {
       case 'task:complete': {
         const { node, outcome } = event
         if (node.config.exec === undefined) return // group task
-        const rec: TelemetryRecord = {
+        deliver({
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.end',
           runId,
           ts,
-          taskId: node.id,
-          project: node.projectName,
-          task: node.taskName,
-          status: outcome.status,
-          cacheSource: deriveCacheSource(outcome.status),
-          exitCode: outcome.exitCode,
-          durationMs: outcome.durationMs,
-        }
-        if (outcome.hash !== undefined) rec.hash = outcome.hash
-        if (outcome.cpuMs !== undefined) rec.cpuMs = outcome.cpuMs
-        if (outcome.peakRssBytes !== undefined) rec.peakRssBytes = outcome.peakRssBytes
-        if (outcome.where !== undefined) rec.where = outcome.where
-        if (outcome.outputs !== undefined) rec.outputs = outcome.outputs
-        if (outcome.attempts !== undefined) rec.attempts = outcome.attempts
-        if (outcome.wallclockStartNs !== undefined)
-          rec.wallclockStartNs = outcome.wallclockStartNs.toString()
-        if (outcome.wallclockEndNs !== undefined)
-          rec.wallclockEndNs = outcome.wallclockEndNs.toString()
-        deliver(rec)
+          ...taskTelemetryOf(outcome),
+        })
         return
       }
       case 'run:status':
@@ -514,4 +497,36 @@ export function createTelemetrySource(args: {
       if (!settled) warn?.(`[vx] telemetry flush timed out after ${ms}ms; buffered records lost`)
     },
   }
+}
+
+/**
+ * The one projection of an outcome into `TaskTelemetry`, for the streaming
+ * `task.end` record and the summary's `tasks[]` alike. Two copies drifted:
+ * `task.end` dropped `blockedBy`, `timedOut`, `sandboxViolations` and
+ * `notReady`, so a streaming sink saw a timed-out or blocked task as a plain
+ * failure or skip (item 660).
+ */
+export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
+  const t: TaskTelemetry = {
+    taskId: o.node.id,
+    project: o.node.projectName,
+    task: o.node.taskName,
+    status: o.status,
+    cacheSource: deriveCacheSource(o.status),
+    exitCode: o.exitCode,
+    durationMs: o.durationMs,
+  }
+  if (o.hash !== undefined) t.hash = o.hash
+  if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
+  if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
+  if (o.where !== undefined) t.where = o.where
+  if (o.outputs !== undefined) t.outputs = o.outputs
+  if (o.attempts !== undefined) t.attempts = o.attempts
+  if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
+  if (o.timedOut === true) t.timedOut = true
+  if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
+  if (o.notReady !== undefined) t.notReady = o.notReady
+  if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
+  if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
+  return t
 }

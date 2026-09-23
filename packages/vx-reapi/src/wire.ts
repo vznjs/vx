@@ -6,7 +6,7 @@
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import path from 'node:path'
-import { canDigest, concat, digestWith, type DigestFunctionName } from './merkle.js'
+import { canDigest, concat, digestWith, hasherFor, type DigestFunctionName } from './merkle.js'
 
 /** Bare varint bytes, for the hand-encoded RequestMetadata header. */
 function varintBytes(n: number): Uint8Array {
@@ -134,14 +134,23 @@ function assertBlobIntegrity(
   digest: Digest,
   digestFunction: DigestFunctionName,
 ): void {
-  if (bytes.length !== Number(digest.size_bytes)) {
+  assertServed(
+    bytes.length,
+    canDigest(digestFunction) ? () => digestWith(digestFunction, bytes).hash : undefined,
+    digest,
+  )
+}
+
+/** The check itself, over a size and a hash however they were computed (whole or streamed). */
+function assertServed(size: number, hash: (() => string) | undefined, digest: Digest): void {
+  if (size !== Number(digest.size_bytes)) {
     throw new Error(
       `@vzn/vx-reapi: blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
-        `size ${bytes.length} != declared ${digest.size_bytes}`,
+        `size ${size} != declared ${digest.size_bytes}`,
     )
   }
-  if (!canDigest(digestFunction)) return
-  const got = digestWith(digestFunction, bytes).hash
+  if (hash === undefined) return
+  const got = hash()
   if (got !== digest.hash) {
     throw new Error(
       `@vzn/vx-reapi: blob integrity failure: bytes hash to ${got.slice(0, 16)}… ` +
@@ -318,6 +327,38 @@ export interface ReapiOptions {
 /** The ceiling a derived control-plane deadline never exceeds, however far
  *  `callTimeoutMs` is raised for a bulk transfer. */
 export const META_TIMEOUT_CAP_MS = 15_000
+
+/**
+ * `body` from `from` as ByteStream messages of `chunkBytes`. A `Blob` is read
+ * from its stream as the caller asks, re-cut to the message size: a file
+ * stream's pieces are its own (256 KiB and up), not the wire's.
+ */
+async function* messagesOf(
+  body: Uint8Array | Blob,
+  from: number,
+  chunkBytes: number,
+): AsyncGenerator<Uint8Array> {
+  if (body instanceof Uint8Array) {
+    for (let at = from; at < body.length; at += chunkBytes) {
+      yield body.subarray(at, Math.min(at + chunkBytes, body.length))
+    }
+    return
+  }
+  let carry: Uint8Array = new Uint8Array(0)
+  let skip = from
+  for await (const whole of body.stream()) {
+    // A resumed write starts past what the server committed.
+    const piece = skip === 0 ? whole : whole.subarray(Math.min(skip, whole.length))
+    skip -= whole.length - piece.length
+    if (piece.length === 0) continue
+    const data = carry.length === 0 ? piece : concat([carry, piece])
+    let at = 0
+    for (; data.length - at >= chunkBytes; at += chunkBytes)
+      yield data.subarray(at, at + chunkBytes)
+    carry = data.slice(at)
+  }
+  if (carry.length > 0) yield carry
+}
 
 export class ReapiClient {
   private readonly svc: ServiceClients
@@ -758,8 +799,18 @@ export class ReapiClient {
    * under a fresh resource name — compressed write offsets count compressed
    * bytes, and mid-stream resumption of a zstd frame is not a thing a server
    * can honour.
+   *
+   * A `Blob` past the batch limit is sent from its own stream and never held
+   * whole: a file-backed one (the vx artifact) is read from disk message by
+   * message as the channel drains. It goes identity-encoded — re-compressing
+   * it would need the bytes in hand, and the one Blob this carries is a
+   * zstd artifact already. A Blob under the limit is small enough to read.
    */
-  async writeBlob(digest: Digest, body: Uint8Array): Promise<void> {
+  async writeBlob(digest: Digest, source: Uint8Array | Blob): Promise<void> {
+    const streamed =
+      source instanceof Blob && source.size > (this.negotiatedBatchBytes || SAFE_BATCH_BYTES)
+    const body = source instanceof Blob && !streamed ? await source.bytes() : source
+    const compressed = this.compression && body instanceof Uint8Array
     // REAPI carries compression in the RESOURCE NAME:
     //   uploads/{uuid}/compressed-blobs/{compressor}/{hash}/{uncompressed_size}
     // The digest and size stay those of the UNCOMPRESSED bytes — the server
@@ -768,13 +819,14 @@ export class ReapiClient {
     // trees are not, and those are the bulk of a remote-execution upload.
     let chunk = this.chunkBytes
     for (let attempt = 0; ; attempt++) {
-      const wire = this.compression ? Bun.zstdCompressSync(body) : body
-      const segment = this.compression
+      const wire = compressed ? Bun.zstdCompressSync(body) : body
+      const wireBytes = wire instanceof Blob ? wire.size : wire.length
+      const segment = compressed
         ? `compressed-blobs/zstd/${digest.hash}/${digest.size_bytes}`
         : `blobs/${digest.hash}/${digest.size_bytes}`
       const resource = `${this.instance ? `${this.instance}/` : ''}uploads/${crypto.randomUUID()}/${segment}`
       try {
-        await this.writeResource(resource, wire, digest, 0, chunk)
+        await this.writeResource(resource, wire, digest, 0, chunk, compressed)
         return
       } catch (err) {
         const code = (err as grpc.ServiceError).code
@@ -791,7 +843,7 @@ export class ReapiClient {
         if (
           code === grpc.status.DEADLINE_EXCEEDED &&
           chunk > SAFE_CHUNK_BYTES &&
-          wire.length > chunk
+          wireBytes > chunk
         ) {
           this.onWarn(
             `vx/reapi: chunked write of ${digest.hash.slice(0, 12)} hit the ${chunk}-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
@@ -801,13 +853,13 @@ export class ReapiClient {
         }
         const delay = RETRY_DELAYS_MS[attempt]
         if (delay === undefined || !isRetryable(code)) throw err
-        if (!this.compression) {
+        if (!compressed) {
           // Identity path: ask how far the server got and resume there.
           const status = await this.queryWriteStatus(resource).catch(() => null)
           if (status?.complete === true) return
-          if (status !== null && status.committedSize > 0 && status.committedSize < wire.length) {
+          if (status !== null && status.committedSize > 0 && status.committedSize < wireBytes) {
             try {
-              await this.writeResource(resource, wire, digest, status.committedSize, chunk)
+              await this.writeResource(resource, wire, digest, status.committedSize, chunk, false)
               return
             } catch {
               // fall through to a fresh attempt
@@ -819,15 +871,29 @@ export class ReapiClient {
     }
   }
 
-  private writeResource(
+  /**
+   * One ByteStream `Write` from `startOffset`. Each message waits for the
+   * channel to drain before the next is read, so a streamed `Blob` holds at
+   * most a few messages in memory however large it is.
+   */
+  private async writeResource(
     resource: string,
-    body: Uint8Array,
+    body: Uint8Array | Blob,
     digest: Digest,
     startOffset: number,
-    chunkBytes: number = this.chunkBytes,
+    chunkBytes: number,
+    compressed: boolean,
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const stream = (this.svc.bs as unknown as Record<string, Function>)['write']!(
+    const total = body instanceof Blob ? body.size : body.length
+    let stream!: {
+      write(m: unknown): boolean
+      end(): void
+      cancel(): void
+      on(e: string, f: (x: unknown) => void): void
+      once(e: string, f: () => void): void
+    }
+    const done = new Promise<void>((resolve, reject) => {
+      stream = (this.svc.bs as unknown as Record<string, Function>)['write']!(
         this.meta(),
         this.bounded(),
         (err: grpc.ServiceError | null, res: { committed_size?: string }) => {
@@ -836,32 +902,52 @@ export class ReapiClient {
           // For a compressed upload the server reports the COMPRESSED byte
           // count it accepted, so the equality only holds on the identity
           // path; on the compressed path a non-zero commit is the signal.
-          const expected = this.compression ? body.length : digest.size_bytes
-          if (committed !== expected && !(this.compression && committed > 0)) {
+          const expected = compressed ? total : digest.size_bytes
+          if (committed !== expected && !(compressed && committed > 0)) {
             return reject(
               new Error(`reapi: short write for ${digest.hash}: ${committed}/${expected}`),
             )
           }
           resolve()
         },
-      ) as { write(m: unknown): boolean; end(): void; on(e: string, f: (x: unknown) => void): void }
+      )
       stream.on('error', reject)
-      // Empty blobs still need one message so the server sees finish_write.
-      let offset = startOffset
-      let first = true
-      do {
-        const end = Math.min(offset + chunkBytes, body.length)
-        stream.write({
+    })
+    // Raced against every drain wait and awaited at the end; a failure that
+    // lands between the two is not an unhandled rejection.
+    done.catch(() => undefined)
+    let offset = startOffset
+    let first = true
+    try {
+      for await (const data of messagesOf(body, startOffset, chunkBytes)) {
+        const end = offset + data.length
+        const flowing = stream.write({
           resource_name: first ? resource : '',
           write_offset: offset,
-          finish_write: end === body.length,
-          data: body.subarray(offset, end),
+          finish_write: end === total,
+          data,
         })
         first = false
         offset = end
-      } while (offset < body.length)
-      stream.end()
-    })
+        if (!flowing) await Promise.race([new Promise<void>((r) => stream.once('drain', r)), done])
+      }
+      // Empty blobs still need one message so the server sees finish_write.
+      if (first) {
+        stream.write({
+          resource_name: resource,
+          write_offset: offset,
+          finish_write: true,
+          data: new Uint8Array(0),
+        })
+      }
+    } catch (err) {
+      // The source failed mid-write (a pruned artifact) or the call did:
+      // either way the half-sent write must not be left open on the channel.
+      stream.cancel()
+      throw err
+    }
+    stream.end()
+    await done
   }
 
   /** Read a blob via ByteStream; `null` on NOT_FOUND. */
@@ -898,6 +984,53 @@ export class ReapiClient {
           reject(err)
         }
       })
+    })
+  }
+
+  /**
+   * `readBlob` as a stream: each ByteStream message is taken from the call
+   * only when the reader asks for the next, so a blob of any size costs the
+   * call's small read-ahead in memory. `null` on NOT_FOUND, known from the
+   * first message before the stream is handed over. The digest is checked as
+   * the bytes pass and a mismatch errors the stream at its end, so no reader
+   * reaches the end of a blob that is not the one asked for.
+   * Identity-encoded, as `writeBlob` streams: the blob this reads is a zstd
+   * artifact already.
+   */
+  async readBlobStream(digest: Digest): Promise<ReadableStream<Uint8Array> | null> {
+    const resource = `${this.instance ? `${this.instance}/` : ''}blobs/${digest.hash}/${digest.size_bytes}`
+    const call = (this.svc.bs as unknown as Record<string, Function>)['read']!(
+      { resource_name: resource, read_offset: 0, read_limit: 0 },
+      this.meta(),
+      this.bounded(),
+    ) as AsyncIterable<{ data: Uint8Array }> & { cancel(): void }
+    const messages = call[Symbol.asyncIterator]()
+    let first: IteratorResult<{ data: Uint8Array }>
+    try {
+      first = await messages.next()
+    } catch (err) {
+      if ((err as grpc.ServiceError).code === NOT_FOUND) return null
+      throw err
+    }
+    const hasher = hasherFor(this.digestFunction)
+    let size = 0
+    let next: IteratorResult<{ data: Uint8Array }> | undefined = first
+    return new ReadableStream<Uint8Array>({
+      pull: async (controller) => {
+        const got = next ?? (await messages.next())
+        next = undefined
+        if (got.done) {
+          assertServed(size, hasher && (() => hasher.digest('hex')), digest)
+          controller.close()
+          return
+        }
+        size += got.value.data.length
+        hasher?.update(got.value.data)
+        controller.enqueue(got.value.data)
+      },
+      cancel: () => {
+        call.cancel()
+      },
     })
   }
 

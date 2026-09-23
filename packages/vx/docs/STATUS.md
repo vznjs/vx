@@ -497,6 +497,59 @@ test is telling the truth.
       executor is told `true` for a cached task and `false` for a plain
       one. Each red on its line alone. Placement is swept.
 
+651.  DONE (2026-09-23, the 628 method on the plugin host). Twenty-six
+      gates in `orchestrator/plugin-host.ts` deleted in turn against the
+      whole core suite, twenty-four held. Twenty-one went red in a row:
+      the cache-layer shape check, the naming of a throwing hook, the
+      project stage's check of each plugin's output, the key material and
+      value refusals, key sorting and namespacing, the affected answer
+      refusals, the schedule Map and finite-weight checks, the admit
+      predicate being off without an answering plugin, the broken-plugin
+      skip and the throwing-admit report, the local cache and executor
+      tails, a wrapping layer subsuming local, the executor name, and the
+      hung and throwing teardowns. The graph stage's two refusals (an
+      edge outside the graph, a cycle) are held by a HANG, not a red:
+      without either the plugin-pipeline suite never finishes, even under
+      a 20 s test timeout, while the unmutated rows run in 218 ms. A hang
+      fails CI, so both count as held. The sweep's first blame mutation
+      awaited an uncalled function and so deleted both checks; the
+      corrected one (an invoked wrapper that names no plugin) is red in
+      both refusal rows. Two survived. A schedule weight for a task
+      outside the run is dropped before it is checked: reachable (a
+      history-backed plugin weighs tasks a filtered run does not hold),
+      so it gets a row in `plugin-pipeline.test.ts`, red with the skip
+      deleted. The admit predicate's unknown-id arm was unreachable: the
+      scheduler asks only about ids in the same map the predicate was
+      built from, so the arm is gone and the lookup is asserted. The
+      plugin host is swept.
+
+<!-- items 652 and 653 land above this line; drop this comment when they do -->
+
+654.  DONE (2026-09-23, the 628 method on the telemetry host, the
+      telemetry record and the event bus). Ninety-eight gates and field
+      copies in `orchestrator/telemetry-host.ts`, `telemetry.ts` and
+      `events.ts` deleted in turn against the whole core suite, seventy-six
+      held. Three warn deletions first ran as `void (…,)`, a syntax error
+      that reddened 164 unrelated rows; re-driven as a no-op call, and one
+      of those needed a leading `;` or it CALLED the line above
+      (`disabled.add(sink)(…)`). A replacement line that opens with `(` is
+      itself a mutation. Nineteen survivors got rows, each red on its line
+      alone: the sink shape refusals' words (a string `wants` was accepted,
+      since `String.includes` is a substring match), a plugin with no
+      telemetry hook and a declining one warning nothing, a sink with no
+      flush hook not flushed, the default kinds beside a `task.log`
+      opt-in, the remote up-to-date word, the stderr wire kind, the bus
+      disposer called twice, and two whole-record rows (`projectOutcome`
+      carried nine unread fields, `task.end` one). The handle's `disposed`
+      flag and the bus disposer's found-guard mask each other; one row
+      goes red only with both deleted. Two survived with no row and wait
+      on the coordinator: `isCacheHit`'s known-status guard and
+      `disable`'s once-guard are implied by what follows or precedes them
+      (deleted in item 663, with the `disposed` flag).
+      One BUG, left as an `it.todo` row: the streaming `task.end` drops
+      `blockedBy`, `timedOut`, `sandboxViolations` and `notReady`, which
+      the summary's copy of the same `TaskTelemetry` carries.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -558,8 +611,7 @@ state of each:
    needs nothing); Linux sandboxing needs `bubblewrap`, `socat` and
    `ripgrep` (the third named 2026-09-16, item 246) and cannot run as
    root inside a container; Windows is WSL; macOS
-   violation reporting is lossy under load (In-flight 5); the remote
-   seam moves whole artifacts in memory (Next 2, fine below ~100 MiB);
+   violation reporting is lossy under load (In-flight 5);
    a task's replayed output is its first and last 8 MiB (229); a project
    inside a submodule is enumerated by its own repository (221). An
    article links it.
@@ -580,24 +632,7 @@ state of each:
    checked in) and filesystem stores (the memory stores evict under a
    `node_modules` install, per the helper notes). An exercise, not a
    gap; do it when a worker-side change needs it.
-2. **The remote seam still moves whole artifacts.** With save, ingest
-   and restore bounded, `RemoteCacheLayer` is the last place a large
-   artifact sits in memory: `put(hash, body: ArrayBuffer | Uint8Array)`
-   gets the on-disk artifact via `Bun.file().bytes()`, and `get` returns
-   an `ArrayBuffer` that ingest writes to its temp. Widening both to a
-   `Blob` (a `BunFile` is one; bytes wrap in one) would let uploads
-   stream from disk and downloads land in the temp directly — but
-   `@vzn/vx-reapi` must digest the whole body before it can upload, so
-   the plugin side needs a streaming digest and a chunked `writeBlob`
-   first. A breaking seam change for plugin authors; do it with the
-   plugins guide, the stub layers in the tests and `vx-reapi` in one
-   commit, and measure a 150 MiB round trip through the stub before
-   and after. Not started. Assessed 2026-09-04: the win is gated by the PLUGIN
-   side — `@vzn/vx-reapi`'s wire zstd-compresses the whole body in
-   memory and retries a wedged upload from it, so a core-side Blob alone
-   measures nothing; streaming needs a two-pass digest and a chunked
-   compressed upload through the adaptive-downgrade path. Do it when a
-   real workspace uploads > 100 MiB artifacts, not before.
+2. DONE 2026-09-23 as item 662 (entry 14bj) — the remote seam streams: `get` resolves `Blob | Response`, `put` takes a file-backed `Blob`, every first-party layer moved in the same commit.
 3. DONE 2026-09-09 as item 88 → `@vzn/vx-turbo` (history) — zero-migration adoption as a plugin on the `project` stage.
 4. DONE 2026-09-10 as item 77 (history) — one core per process; the shipped binary serves its own façade to every `@vzn/vx` import.
 5. DONE 2026-09-11 as item 148 — the watch e2e flake was the arm
@@ -735,6 +770,245 @@ box with `node_modules` (refine's were removed, astro is not cloned);
 the trim next at 652; the executor-backed real tree stays for a box
 with yarn 4 reachable; then the owner's three items. Never end with
 "what next?".
+
+14bc. **Roadmap to 1.0 (item 655, 2026-09-23).** Owner asked when vx is
+feature complete; the answer is `docs/design/roadmap-1.0.md`. Four
+milestones: 0 closes the sweep arc (651–654, then sweeps stop being the
+default loop); 1 makes 0.1.0 installable (publish the seven plugins,
+which npm 404s today, and make the docs match); 2 is FEATURE COMPLETE
+(run-time cache eviction, the streaming remote seam before any freeze,
+the stale parity ledgers closed, the scope list confirmed by the owner,
+the real-repo re-measure); 3 is the 1.0 contract (schema and plugin API
+frozen, cache-version and semver policy, a soak). After milestone 0 the
+loop takes its next item from the roadmap, in its order; strike an item
+there when it lands.
+
+14bd. **Item 656 (roadmap 1.1, 2026-09-23): the plugins publish with the
+release.** Only `@vzn/vx` and its four platform packages reached npm,
+while the docs told users to `bunx @vzn/vx-migrate`. `build-npm.ts`
+gained `emitPluginPackages` (`--only=plugins`): every public workspace
+package other than `@vzn/vx`, discovered rather than listed, copied from
+its own `files` with the root LICENSE, stamped with the release version,
+`@vzn/vx` peer-pinned to `^<version>` (one release train), and a
+`repository.directory` so provenance names the package's path.
+`npm.yml` builds them and publishes them after `@vzn/vx`, in the same
+idempotent loop. `build-npm.unsafe.test.ts` holds the set against a walk
+of the manifests (with a floor of the seven names), the manifest shape,
+every declared file and the executable bins, and the workflow order;
+the set row and the shape row each went red with their line mutated.
+`npm pack --dry-run` on the emitted `vx-migrate` and `vx-reapi` warned
+nothing. OWNER: add the seven trusted publishers before the next
+release (`cli.md` § Releasing names them and the one-time hand publish
+if npm requires the name to exist first). The item is 656, not 652:
+652–654 are the implementer sweeps' numbers in the loop above.
+
+14be. **Item 657 (roadmap 1.3, 2026-09-23): the 0.1.0 notes run through
+item 656.** The plugins reaching npm heads "Plugins and packages"; the
+restore and save syscall trims join "Caching"; "Internals" names the
+633–651 sweep and the three deletions it made. The PR count reads 408
+(counted at 656, `git log v0.0.21..origin/main`); recount at the cut.
+The 652–654 sweeps are named as in flight, not as shipped.
+
+14bf. **Item 658 (roadmap 2.1, 2026-09-23): the cache evicts itself.**
+`defineWorkspace({ cacheRetention: { olderThan: '30d', maxSize: '10G' } })`
+applies the `vx cache prune` policy at the end of every run that writes
+the local cache, after the saves and uploads settle and before plugin
+teardown. `Cache.evictIfDue` flushes the deferred `accessed_at` bumps,
+reads `MIN(accessed_at)` and `SUM(size_bytes)` in one scan, and calls
+`prune()` only when something is due; the run prints one line for what it
+evicted, and a failure is a warning, never a failed run. The parsers moved
+to `util/size.ts` (`parseDuration` beside `parseSize`, and `formatBytes`)
+so the schema and the run share the flags' spellings. Rows
+(`cache-retention.test.ts`): age and LRU eviction, nothing due means no
+`prune` call, a read-only handle evicts nothing, the schema's refusals,
+and a run that evicts what is due and one that declares nothing. Three
+mutations went red in their rows: the run's call, the nothing-due guard
+and the flush — the flush only after its row asked whether a prune ran,
+since `prune()` flushes too and the evicted set is the same either way
+(a masked pair, as 563). Warm no-op at 1,000 projects, min of 9
+interleaved: main 240 ms, unconfigured 238, configured with nothing due 237. No new index: a scan of the entries table is below the noise. The
+comparison page's row 11 is shipped; roadmap 2.1 struck.
+
+14bg. **Item 659 (roadmap 2.3, 2026-09-23): the parity ledgers have a
+status.** The two ledgers (`turbo-nx-parity-2026-07.md`, 44 entries;
+`turbo-nx-test-gaps.md`, 70 non-HAVE rows) were audited against source
+and tests, not their own text: 65 FIXED, 28 DECLINED, 4 OBSOLETE, 17
+OPEN. `docs/design/parity-audit-2026-09.md` holds the totals, the open
+table and the reasoning for Nx H7 (obsolete: the agents it targeted are
+gone; `--frozen` and `vx lock --check` cover live-evaluation drift) and
+Nx L2 (open: a bare name never selects a scoped package, deliberate but
+untested and undocumented). Both ledgers carry a banner pointing there.
+The open rows are the next work of 2.3: fifteen S rows, one S–M (a
+literal output path holding glob characters) and one M (the
+unknown-first scheduling benchmark); `compileNameGlob` memoization is
+closed as not worth doing.
+
+14bh. **Item 660 (2026-09-23): `task.end` carries what the summary
+carries.** Item 654's sweep found two copies of the outcome → `TaskTelemetry`
+projection: the summary's (`run-records.ts`) and `task.end`'s (inline in
+`createTelemetrySource`), and the second dropped `blockedBy`, `timedOut`,
+`sandboxViolations` and `notReady`. A streaming sink (otel) saw a timed-out
+or sandbox-violating failure as a plain `failed`, and a blocked skip with no
+blocker. Now one function, `taskTelemetryOf` in `telemetry.ts`, feeds both.
+654's `it.todo` row is live: red on the old source, green on the new. The
+record's declared type always included the four (`task.end` is `…&
+TaskTelemetry`), so the shape did not change and
+`TELEMETRY_SCHEMA_VERSION` stays 2. PR #749 (item 654) merged with the
+coordinator's decisions on it: the two guards it left unheld
+(`isCacheHit`'s known-status check, `disable`'s once-guard) are implied by
+the neighbouring line and need no row.
+
+14bi. **Item 661 (roadmap 2.3, 2026-09-23): twelve open parity rows
+closed.** A developer agent wrote them in a worktree; each went red with
+the line it holds mutated. Two needed source: `--affected` refuses a range
+base (`HEAD~1..HEAD`) by name before git sees it (`..` is illegal in a ref
+name, so no ref is refused), and an archive entry name past PATH_MAX is an
+`ArchiveSecurityError`, not a raw `ENAMETOOLONG` reported as an internal
+error. The linked-worktree row caught a real hazard under mutation:
+reading git's status prefix from the common dir made an edited run a
+stale hit. Open still, in `parity-audit-2026-09.md`: N-M7 (the
+unknown-first benchmark), L48 (a literal output path with glob
+characters), L232 (credentials in a remote-cache URL), and two new
+findings: `--filter ./packages/[abc]` reads the brackets as a class
+(decision: literal first when the directory exists) and names past
+NAME_MAX still reach the file system.
+
+14bj. **Item 662 (roadmap 2.2, 2026-09-23): the remote cache seam
+streams.** Built by a developer agent in a worktree to the contract in
+`design/streaming-remote-2026-09.md`, reviewed and gated here.
+`RemoteCacheLayer.get` resolves `{ body: Blob | Response }`, which
+`Cache.ingest` writes to its temp with `Bun.write` and validates from
+there; `put` receives `Bun.file(<local artifact>)` (a byte `Blob` only
+under `--cache=local:,remote:rw`). The old byte shapes are refused at the
+boundary, naming the new one. `turboCache()` and `nxCache()` return the
+`fetch` Response and send the Blob; a signed Turbo download goes to a
+temp, is verified before core sees a byte, and is served as a stream
+that removes the temp. `@vzn/vx-reapi` digests in one streamed pass,
+uploads past the batch limit in `CHUNK_BYTES` messages as the write
+drains, and reads back as a stream whose digest is checked as the bytes
+pass (kept on purpose: core's archive check alone would accept a valid
+but different artifact from a lying CAS). One 150 MiB artifact saved,
+uploaded, wiped and pulled through a disk-backed stub
+(`vx-bench/stream-remote-bench.ts`): peak RSS +495 MiB before, +45 after
+(min of 3). Every new row went red with its line mutated; a pre-existing
+crash in REAPI's `durationOf` on an absent `stdout_digest` was fixed on
+the way. The introduction's "whole artifacts in memory" known limit is
+gone. Plugin API: this is the breaking change the 1.0 freeze was waiting
+on.
+
+14bk. **Item 663 (2026-09-23): the three telemetry guards 654 left are
+gone.** `isCacheHit`'s known-status set (an unknown string falls through
+`deriveCacheSource`'s switch to `undefined`, which is neither hit source),
+`disable`'s once-guard (every hook site skips a disabled sink before it
+calls) and the telemetry handle's `disposed` flag (the bus's unsubscribe
+is idempotent, so the handle returns it as is). Each deletion was already
+green against the whole core suite in 654; each site now says why in one
+line. The masked pair's row (disposer called twice) still holds the bus
+side. CLAUDE.md gains 654's lesson: a mutation's replacement text is code.
+
+14bl. **Item 664 (roadmap 2.3, 2026-09-23): a bracketed project directory
+is selectable by its path.** `--filter ./packages/[abc]` compiled as a
+glob and selected the sibling `packages/a` (the FINDING row of item
+661). A path form now matches literally first, as git reads a pathspec,
+and is read as a glob only when it selects no project literally. The
+FINDING row became the fix's row, red without it, with a control that a
+bracket path naming no directory (`./packages/[ab]`) still globs. The
+check is on the project list, not the file system, so `parseFilter`
+stays pure. Parity audit §9 L255 struck; `cli.md` and the filter module
+page say so.
+
+14bm. **Item 665 (roadmap 2.3, 2026-09-23): a remote-cache URL with
+credentials in it is refused.** `turboCache()`'s `apiUrl` (or
+`TURBO_API`) and `nxCache()`'s `server` (or
+`NX_SELF_HOSTED_REMOTE_CACHE_SERVER`) accepted `https://user:pass@host`,
+and both print the URL in every refusal line, so the password reached
+the log. Both resolvers now refuse a URL with a user or a password,
+naming the token option to use instead; each row is red without its
+line, beside a control that the bare host resolves. Parity audit §8
+L232 struck; the vx-migrate README's option tables say so.
+
+14bn. **Item 666 (2026-09-23): a 255-byte file name restores.** Adding
+the NAME_MAX refusal the audit left open, its control row (a component
+of exactly 255 bytes restores) went red: the restore staged every file
+as `<target>.vx-tmp-<pid>-<seq>`, and that suffix pushed any legal name
+of 242–255 bytes past NAME_MAX, so a valid artifact holding one failed
+with ENAMETOOLONG. The temp is now a short sibling, `.vx-tmp-<pid>-<seq>`
+in the target's directory (the rename stays within one directory, so
+nothing about its atomicity changes). A component past NAME_MAX is now
+an `ArchiveSecurityError` by name rather than a raw ENAMETOOLONG. Both
+rows are red without their line. The leftover-temp row in
+`archive-security.test.ts` read `**/*.vx-tmp-*` through `Bun.Glob`,
+whose `*` skips a dotfile, so it would have passed on a leak under the
+new name; it reads the tree with `readdir` now. No `CACHE_VERSION`
+bump: the stored bytes did not change.
+
+14bo. **Item 667 (parity gaps §1 L48, 2026-09-23): a bracket is literal
+in a task glob.** `Bun.Glob` reads `[id]` as a character class, and so did
+every task glob: `inputs.files: ['app/[id]/**']` matched `app/i/…` and
+never the Next.js route directory, so an edit to `app/[id]/page.js` was a
+green `cache-hit` replaying the old output; `outputs.files:
+['app/[id]/page.js']` saved an empty artifact and its pre-run clean
+deleted an unrelated tracked `app/i/page.js`. Both probed through `run()`
+before the fix. Now `[` and `]` are literal in `cache.inputs.files`,
+`cache.outputs.files` and `workspaceFiles` and in everything read from
+them (`--affected`, watch, the overlapping-output refusal, the additive
+hit's set-aside, the subtree short-circuit, stable-key reach, REAPI
+`output_paths`); there are no character classes. `GLOB_WILDCARDS` lost
+the brackets, every task glob compiles through one door (`taskGlob`, which
+escapes them), and `normalizeGlob` turns Turbo's `\[id\]` into `[id]`, so
+both spellings are one literal. Member globs, `--filter` path globs, env
+names and sandbox grants keep `Bun.Glob`'s alphabet
+(`BUN_GLOB_WILDCARDS`, `normalizeBunGlob`, `grantPrefix`), each pinned by a
+row. The façade gains `isLiteralPattern` and `normalizeGlob` for
+`@vzn/vx-reapi`, whose copy of the class collapsed `app/[id]/page.js` to
+the output path `app`, and `@vzn/vx-migrate`'s wild-first-segment check
+reads the same predicate. Differential: every new core row red on the
+unfixed tree except the controls (the escaped spelling already matched
+through `Bun.Glob`, and the member-glob and env rows hold the old
+alphabet both ways); each `taskGlob` call site, the unescape, the
+alphabet, the member and filter alphabets and the subtree regex were
+mutated back one at a time and each reddened a row. **`CACHE_VERSION`
+v27 → v28**, not self-healing: the input half moves the key (the file set
+changes), but an output glob folds as its TEXT, which the fix leaves
+unchanged, so the empty v27 artifact sits under the key the fixed code
+derives — proven: a v27 entry read by the fixed code was a `cache-hit`
+that cleaned the route and restored nothing; under v28 it misses and the
+next hit restores. Warm `run build --all` at 1,000 projects, interleaved,
+min of 7: 240 ms before, 242 ms after (noise; the new work is per
+pattern with an `includes('[')` fast path).
+
+14bp. **Item 668 (roadmap 1.2, 2026-09-23): the docs name only what the
+release publishes.** A row in `build-npm.unsafe.test.ts` walks the root
+and package READMEs, `packages/vx/docs` and the site's pages (design
+notes and the shipped history aside: they quote packages that never
+shipped, like `@vzn/cache`), collects every `@vzn/…` in an install or run
+command (`bunx`, `bun add`, `npm i`, `pnpm add`, `yarn add`, their `dlx`
+and `x` forms) or an `import … from`, and requires each to be in the
+emitter's own publish set plus `@vzn/vx`. It passes today; an install line naming a made-up
+package, appended to a README, turns it red, and a floor
+requires the walk to see `@vzn/vx-migrate` and `@vzn/vx-lockfile`.
+Milestone 1's agent work is done; 1.4 and 1.5 are the owner's.
+
+14bq. **Item 669 (roadmap 2.3, 2026-09-23): a task with no history keeps
+the workspace median.** Parity row N-M7 asked whether vx should run a
+task the history has never seen FIRST, as Nx does, instead of giving it
+the median p50. The benchmark behind the question was deleted on
+2026-09-09; `packages/vx-bench/schedule-policy.ts` is its replacement: a
+discrete-event sim of `runGraph`'s exec tier ranked by the plugin's real
+`criticalPathPriorities` over core's `mergePriorities`, pinned on
+hand-computed schedules (Nx's fixture among them) and against the real
+`runGraph` on a virtual clock, every mirrored rule red when reversed.
+Nine shapes, 30 seeds, 0–100 % unknown: at 5–25 % unknown, unknown-first
+is −0.69 % mean makespan against the median (full history is −0.82 %,
+no plugin +3.51 %), but single graphs regress by up to +6.15 % there
+and +13.03 % at 75 %: an unknown that turns out short starts ahead of
+the known long chain. The adoption bar was a worst regression ≤ 1 % on
+any cell, so the plugin is unchanged; the table and the verdict are in
+`packages/vx-bench/schedule-policy.md`, and the parity audit's N-M7 row
+is struck.
+Coordinator's reading of the bar: "worst" is the worst single graph,
+not the worst cell mean (+0.23 %), because a user lives one run at a
+time and a +6 % run on a new task is the regression they would see.
 
 ## Decisions (this arc)
 

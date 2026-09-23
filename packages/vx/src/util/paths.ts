@@ -37,11 +37,24 @@ export function relPosix(from: string, to: string): string {
  * Every glob reaching here is user-written, so every one takes the rule.
  */
 export function staticPrefix(rawGlob: string): string {
-  const glob = normalizeGlob(rawGlob)
+  return prefixOf(normalizeGlob(rawGlob), GLOB_WILDCARDS)
+}
+
+/**
+ * {@link staticPrefix} under `Bun.Glob`'s own alphabet, for a sandbox GRANT:
+ * the grant is expanded by a `Bun.Glob` scan that reads `[ab]` as a class, so
+ * its prefix must stop there too, or `write: ['g/[ab].txt']` would create a
+ * DIRECTORY named `g/[ab].txt`.
+ */
+export function grantPrefix(rawGlob: string): string {
+  return prefixOf(normalizeBunGlob(rawGlob), BUN_GLOB_WILDCARDS)
+}
+
+function prefixOf(glob: string, wildcards: RegExp): string {
   // A brace set is a wildcard too: `{dist,build}/**` reaches either dir,
   // and reading it as the literal directory `{dist,build}` gave the
   // sandbox baseline a prefix that exists nowhere (2026-09-10).
-  const wildcardIdx = glob.search(GLOB_WILDCARDS)
+  const wildcardIdx = glob.search(wildcards)
   // A LITERAL keeps its trailing slash through `normalizeGlob` on purpose
   // (`asTrees` is what turns `out/` into the tree `out` + `out/**`), but a
   // prefix with a slash on the end compares as a different string: `out/`
@@ -68,7 +81,7 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null 
   if (globs.length === 0) return null
   const out: string[] = []
   for (const g of globs.map(normalizeGlob)) {
-    const m = /^([^*?[\]{}!]+?)\/\*\*$/.exec(g)
+    const m = /^([^*?{}!]+?)\/\*\*$/.exec(g)
     if (m === null) return null
     const dir = m[1]!.replace(/\/+$/, '')
     if (dir === '' || dir === '.' || dir.startsWith('/') || dir.split('/').includes('..'))
@@ -88,44 +101,87 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null 
  * after an optional `!`; a bare `.` is the empty entry the schema refuses.
  */
 export function normalizeGlob(glob: string): string {
+  return normalizeWith(glob, GLOB_WILDCARDS)
+}
+
+/**
+ * {@link normalizeGlob} for a glob in `Bun.Glob`'s own alphabet (a workspace
+ * member glob, a sandbox grant): the same spellings, but `\[` stays escaped,
+ * since there it is what keeps a bracket from opening a class.
+ */
+export function normalizeBunGlob(glob: string): string {
+  return normalizeWith(glob, BUN_GLOB_WILDCARDS)
+}
+
+function normalizeWith(glob: string, wildcards: RegExp): string {
   const neg = glob.startsWith('!')
   let g = neg ? glob.slice(1) : glob
   g = g.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1')
   if (g === '.') g = ''
-  if (!isLiteralPattern(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
+  // Where a bracket is literal, Turbo's escaped spelling `\[id\]` names the
+  // same path as `[id]`; one spelling is what lets every literal fast path
+  // (string compare, `settleLiterals`, `asTrees`) see it as a literal.
+  if (wildcards === GLOB_WILDCARDS && g.includes('\\')) g = g.replace(/\\([[\]])/g, '$1')
+  if (wildcards.test(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
   return neg ? `!${g}` : g
 }
 
 /**
  * True when a pattern carries no wildcard — it names exactly one path.
  *
- * The character SET is the whole content: `*`, `?`, a character class and
- * a brace alternation are all wildcards to `Bun.Glob`, so a pattern
- * holding any of them must be MATCHED, never compared as a string. It
- * lives here, exported, because four places asked the same question and
- * one of them asked it with a smaller set: `graph/task-graph.ts` omitted
- * `{}`, so `dist/{a,b}.txt` counted as a literal and the overlapping-output
- * refusal compared it to `dist/a.txt` as two unequal strings — the two
- * tasks were accepted and then deleted each other's outputs, green, every
- * run (item 495). That is the same divergence `asTrees` was moved here to
- * end in item 442, and the same one that removed `@vzn/vx-migrate`'s copy
- * of `outputsOverlap` in item 445.
+ * The character SET is the whole content: in a task glob `*`, `?` and a
+ * brace alternation are wildcards, so a pattern holding any of them must
+ * be MATCHED, never compared as a string. It lives here, exported, because
+ * four places asked the same question and one of them asked it with a
+ * smaller set: `graph/task-graph.ts` omitted `{}`, so `dist/{a,b}.txt`
+ * counted as a literal and the overlapping-output refusal compared it to
+ * `dist/a.txt` as two unequal strings — the two tasks were accepted and
+ * then deleted each other's outputs, green, every run (item 495). That is
+ * the same divergence `asTrees` was moved here to end in item 442, and the
+ * same one that removed `@vzn/vx-migrate`'s copy of `outputsOverlap` in
+ * item 445.
  */
 export function isLiteralPattern(glob: string): boolean {
   return !GLOB_WILDCARDS.test(glob)
 }
 
 /**
- * The alphabet behind {@link isLiteralPattern}, for the two callers that need
- * the POSITION of the first wildcard rather than a verdict. Every site that
- * asks "must this declaration be matched?" reads this one regex: item 495
- * found the fourth copy with a smaller set, and item 577 found the class
- * written out nine times (five with braces, four without) — a spelling that
- * drifts is how two guards come to answer differently for one pattern.
- * The sandbox asks a DIFFERENT question of a grant (`exec/sandbox-paths.ts`,
- * `MOUNT_WILDCARDS`), and that set is smaller on purpose.
+ * The alphabet of a TASK glob (`cache.inputs.files`, `cache.outputs.files`,
+ * `workspaceFiles`), behind {@link isLiteralPattern}, for the callers that
+ * need the POSITION of the first wildcard rather than a verdict. Every site
+ * that asks "must this declaration be matched?" reads this one regex: item
+ * 495 found the fourth copy with a smaller set, and item 577 found the
+ * class written out nine times — a spelling that drifts is how two guards
+ * come to answer differently for one pattern.
+ *
+ * `[` and `]` are NOT in it: a bracket is a literal character in a task
+ * glob, and there are no character classes (item 667). Route directories
+ * are named `[id]` across Next.js, SvelteKit and Astro, and read as a class
+ * `app/[id]/**` matched `app/i/…` and `app/d/…` and never the route: the
+ * file never entered the key (a stale hit) and the output clean deleted an
+ * unrelated `app/i/page.js`. {@link taskGlob} is how such a glob reaches
+ * `Bun.Glob`, whose own alphabet still reads the class.
  */
-export const GLOB_WILDCARDS = /[*?[\]{}]/
+export const GLOB_WILDCARDS = /[*?{}]/
+
+/**
+ * `Bun.Glob`'s own alphabet, the class included, for the globs vx does not
+ * own: package-manager workspace members and `--filter` path globs follow
+ * npm/pnpm semantics, and a sandbox grant's prefix must stop where the scan
+ * that expands the grant (`Bun.Glob`, `MOUNT_WILDCARDS`) sees a wildcard.
+ */
+export const BUN_GLOB_WILDCARDS = /[*?[\]{}]/
+
+/**
+ * Compile a task glob for `Bun.Glob`, with every bare bracket escaped so it
+ * matches itself (item 667). Every task glob is compiled here and nowhere
+ * else: one site that forgot is a route directory that keys nothing.
+ */
+export function taskGlob(pattern: string): Bun.Glob {
+  // A `]` with no `[` before it is already literal to `Bun.Glob`.
+  if (!pattern.includes('[')) return new Bun.Glob(pattern)
+  return new Bun.Glob(pattern.replace(/(?<!\\)[[\]]/g, '\\$&'))
+}
 
 function stripTrailingSlash(p: string): string {
   return p.replace(/\/+$/, '')

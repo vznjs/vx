@@ -42,6 +42,13 @@ export function digestOf(body: Uint8Array): Digest {
   return { hash: createHash('sha256').update(body).digest('hex'), size_bytes: body.length }
 }
 
+/** `digestOf` in one pass over a Blob's stream, so a file-backed artifact is never held. */
+async function streamedDigestOf(body: Blob): Promise<Digest> {
+  const hash = createHash('sha256')
+  for await (const chunk of body.stream()) hash.update(chunk)
+  return { hash: hash.digest('hex'), size_bytes: body.size }
+}
+
 /**
  * `durationMs` rides the AC entry so a restored hit can report what the task
  * originally cost. REAPI models a build action, not a cache entry, so it has
@@ -91,7 +98,12 @@ export class ReapiRemoteCache {
     return (await this.client.findMissingBlobs([file.digest])).length === 0
   }
 
-  async get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null> {
+  /**
+   * The artifact streams from the ByteStream read into core's ingest. The
+   * duration is read first so the artifact's call is never left paused
+   * behind a second round trip.
+   */
+  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
     const result = await this.client.getActionResult(actionDigestFor(hash))
     if (result === null) return null
     const file = result.output_files?.find((f) => f.path === ARTIFACT_PATH)
@@ -99,12 +111,10 @@ export class ReapiRemoteCache {
     // error: the two stores are pruned independently and a dangling entry is
     // an ordinary state, not a fault.
     if (file === undefined) return null
-    const body = await this.client.readBlob(file.digest)
+    const durationMs = await this.durationOf(result)
+    const body = await this.client.readBlobStream(file.digest)
     if (body === null) return null
-    return {
-      body: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer,
-      durationMs: await this.durationOf(result),
-    }
+    return { body: new Response(body), durationMs }
   }
 
   private async durationOf(result: ActionResult): Promise<number | undefined> {
@@ -112,24 +122,26 @@ export class ReapiRemoteCache {
       return decodeDuration(result.stdout_raw)
     }
     // The server normalised our inline bytes into CAS (bazel-remote does).
-    if (result.stdout_digest !== undefined && result.stdout_digest.size_bytes > 0) {
-      const raw = await this.client.readBlob(result.stdout_digest)
+    // An absent digest arrives as `null` on this path (proto-loader's
+    // message default, as `this_readStream` in executor.ts records).
+    if ((result.stdout_digest?.size_bytes ?? 0) > 0) {
+      const raw = await this.client.readBlob(result.stdout_digest!)
       return decodeDuration(raw ?? undefined)
     }
     return undefined
   }
 
-  async put(
-    hash: string,
-    body: ArrayBuffer | Uint8Array,
-    meta: { durationMs: number },
-  ): Promise<void> {
-    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body)
-    const digest = digestOf(bytes)
+  /**
+   * Two passes over `body`, never one in memory: the digest first (the CAS
+   * address must be known before the server is asked), then the upload from
+   * a second read of the stream.
+   */
+  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
+    const digest = await streamedDigestOf(body)
     // Upload only what the server lacks. The artifact is content-addressed and
     // immutable, so a hit here is a free skip rather than an optimisation.
     const missing = await this.client.findMissingBlobs([digest])
-    if (missing.length > 0) await this.client.writeBlob(digest, bytes)
+    if (missing.length > 0) await this.client.writeBlob(digest, body)
     await this.client.updateActionResult(actionDigestFor(hash), {
       exit_code: 0,
       output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],

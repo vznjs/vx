@@ -9,9 +9,10 @@ name: npm publish
 # over the OIDC exchange, which is why none is set — see the Publish steps).
 # The job requests an OIDC token (`id-token: write`) and npm (>= 11.5.1)
 # exchanges it for a short-lived, package-scoped credential + provenance.
-# Configure a Trusted Publisher on npmjs.com for EACH of the FIVE package
-# names (@vzn/vx and the four @vzn/vx-<target>), linking this repo + this
-# workflow.
+# Configure a Trusted Publisher on npmjs.com for EACH of the TWELVE package
+# names (@vzn/vx, the four @vzn/vx-<target>, and the seven plugins the
+# `plugins` step emits: vx-github, vx-lockfile, vx-mcp, vx-migrate, vx-otel,
+# vx-reapi, vx-schedule-history), linking this repo + this workflow.
 #
 # - release published   → publish the release version
 # - workflow_dispatch   → publish, or dry-run, a chosen version manually.
@@ -273,6 +274,10 @@ jobs:
           bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-x64 --out=dist/npm
           bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-arm64 --out=dist/npm-arm64
           cp -r dist/npm-arm64/@vzn/vx-linux-arm64 dist/npm/@vzn/
+          # Every other public workspace package, at the same version and
+          # peer-pinned to this @vzn/vx. Discovered by the script, so a new
+          # plugin package is published without an edit here.
+          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=plugins --out=dist/npm-plugins
       - name: Publish
         if: ${{ github.event.inputs.dry_run != 'true' }}
         # No NODE_AUTH_TOKEN — see the darwin step: trusted publishing only.
@@ -291,10 +296,12 @@ jobs:
           # instead of aborting on the first already-published one.
           # The darwin platform packages were published by the `darwin` job;
           # @vzn/vx goes last so every optionalDependency it names exists.
+          # The plugins come after @vzn/vx: each peer-depends on it.
           for pkg in \
             dist/npm/@vzn/vx-linux-x64 \
             dist/npm/@vzn/vx-linux-arm64 \
-            dist/npm/vx; do
+            dist/npm/vx \
+            dist/npm-plugins/plugins/*; do
             name="$(node -p "require('$(pwd)/$pkg/package.json').name")"
             echo "::group::npm publish $name@$VERSION ($pkg)"
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then

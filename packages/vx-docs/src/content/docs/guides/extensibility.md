@@ -96,12 +96,12 @@ class AcmeRemote implements RemoteCacheLayer {
     const res = await fetch(`${this.url}/artifacts/${hash}`)
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`)
-    return { body: await res.arrayBuffer(), durationMs: undefined }
+    // The Response itself: core streams its body to disk, never whole in memory.
+    return { body: res, durationMs: undefined }
   }
-  async put(hash: string, body: ArrayBuffer | Uint8Array) {
-    // One view over either shape: fetch's body type takes a typed array,
-    // not the union the seam hands over.
-    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body: new Uint8Array(body) })
+  async put(hash: string, body: Blob) {
+    // A file-backed Blob over the local artifact: fetch uploads it as a stream.
+    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body })
   }
 }
 
@@ -158,12 +158,9 @@ class TurboRemote implements RemoteCacheLayer {
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`)
     const duration = res.headers.get('x-artifact-duration')
-    return {
-      body: await res.arrayBuffer(),
-      durationMs: duration !== null ? Number(duration) : undefined,
-    }
+    return { body: res, durationMs: duration !== null ? Number(duration) : undefined }
   }
-  async put(hash: string, body: ArrayBuffer | Uint8Array, meta: { durationMs: number }) {
+  async put(hash: string, body: Blob, meta: { durationMs: number }) {
     const res = await fetch(`${this.opts.url}/v8/artifacts/${hash}`, {
       method: 'PUT',
       body,
@@ -189,7 +186,9 @@ export function turboCache(opts: { url: string; token: string }): VxPlugin {
 `LayeredCache` owns everything wire-independent — read-through with
 local hydration, at-most-once in-flight deduplication, background
 write-through uploads, and the never-fail contract — so a wire plugin
-stays this small. The artifact bytes carry their own metadata beyond
+stays this small. Bodies stream both ways: `get` resolves a `Response`
+(or a `Blob`) that core writes straight to disk, and `put` receives a
+file-backed `Blob`, so no artifact sits whole in memory. The artifact bytes carry their own metadata beyond
 the wire's `durationMs` (the producing execution's CPU time and peak
 RSS, in the archive's sidecar), so a wire that ships the bytes verbatim
 hands a fresh machine everything a scheduling policy learns from. Embedders that already hold a client can also inject

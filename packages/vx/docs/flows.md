@@ -88,7 +88,7 @@ sequenceDiagram
     LC-->>L: null (local miss)
     L->>RC: get(hash) — e.g. REAPI GetActionResult + CAS read
     RC-->>L: tar.zst bytes + durationMs
-    L->>LC: ingest(hash, bytes, {taskId, command, durationMs})
+    L->>LC: ingest(hash, body, {taskId, command, durationMs})
     Note over LC: same writeArtifactAndIndex path save() uses —<br/>bytes validated, then atomic rename + SQLite row.<br/>The local and remote layers carry identical bytes.
     L-->>X: CacheEntry {source: 'remote'}
     X->>X: restore as in flow 2 — status 'cache-hit-remote'

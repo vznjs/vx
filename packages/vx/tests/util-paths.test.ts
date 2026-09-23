@@ -26,7 +26,16 @@
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { isLiteralPattern, relPosix as relPosixViaBarrel, staticPrefix } from '../src/util/index.js'
+import {
+  BUN_GLOB_WILDCARDS,
+  grantPrefix,
+  isLiteralPattern,
+  normalizeBunGlob,
+  normalizeGlob,
+  relPosix as relPosixViaBarrel,
+  staticPrefix,
+  taskGlob,
+} from '../src/util/index.js'
 import { relPosix, toPosix } from '../src/util/paths.js'
 
 /**
@@ -565,8 +574,6 @@ describe('isLiteralPattern — the wildcard ALPHABET, one member at a time', () 
     ['star', 'dist/*.js'],
     ['globstar', 'dist/**'],
     ['question mark', 'dist/a?.txt'],
-    ['character class open', 'dist/[ab].txt'],
-    ['character class close', 'dist/ab].txt'],
     ['brace open', 'dist/{a,b}.txt'],
     ['brace close', 'dist/a}.txt'],
   ]
@@ -583,5 +590,72 @@ describe('isLiteralPattern — the wildcard ALPHABET, one member at a time', () 
     for (const lit of ['dist', 'dist/', './dist/app.js', 'a.b.c', 'src/nested/deep.ts']) {
       expect([lit, isLiteralPattern(lit)]).toEqual([lit, true])
     }
+  })
+})
+
+describe('a bracket is a literal in a task glob (item 667)', () => {
+  // `app/[id]` is a route directory in Next.js, SvelteKit and Astro. Read as
+  // a class it matched `app/i` and `app/d` and never itself: the route's
+  // files keyed nothing and an output clean deleted the class's sibling.
+  it('a bracket path is a literal, to the classifier and to the prefix', () => {
+    for (const lit of ['app/[id]/page.js', 'app/[id]', 'dist/ab].txt', 'app/[...slug]/x.js']) {
+      expect([lit, isLiteralPattern(lit), staticPrefix(lit)]).toEqual([lit, true, lit])
+    }
+    expect(staticPrefix('app/[id]/**')).toBe('app/[id]')
+    expect(staticPrefix('app/[id]/*.js')).toBe('app/[id]')
+  })
+
+  it("Turbo's escaped spelling normalizes to the bare one, and normalizing is idempotent", () => {
+    const cases: Array<[string, string]> = [
+      ['app/\\[id\\]/page.js', 'app/[id]/page.js'],
+      ['./app/\\[id\\]/**', 'app/[id]/**'],
+      ['!app/\\[id\\]', '!app/[id]'],
+      ['app/[id]/page.js', 'app/[id]/page.js'],
+      // A backslash before anything but a bracket is not ours to read.
+      ['a\\*b', 'a\\*b'],
+    ]
+    for (const [raw, want] of cases) {
+      expect([raw, normalizeGlob(raw), normalizeGlob(normalizeGlob(raw))]).toEqual([
+        raw,
+        want,
+        want,
+      ])
+    }
+    expect(isLiteralPattern(normalizeGlob('app/\\[id\\]/page.js'))).toBe(true)
+    expect(staticPrefix('app/\\[id\\]/**')).toBe('app/[id]')
+  })
+
+  it('taskGlob matches the bracket path itself and never the class', () => {
+    const g = taskGlob('app/[id]/**')
+    expect([g.match('app/[id]/page.js'), g.match('app/i/page.js'), g.match('app/d/x')]).toEqual([
+      true,
+      false,
+      false,
+    ])
+    // An already-escaped bracket is not escaped twice.
+    expect(taskGlob('app/\\[id\\]/*.js').match('app/[id]/x.js')).toBe(true)
+    expect(taskGlob('app/[id]/*.js').match('app/[id]/x.js')).toBe(true)
+    expect(taskGlob('app/[id]/*.js').match('app/i/x.js')).toBe(false)
+    // CONTROL: the rest of the alphabet is untouched.
+    expect([
+      taskGlob('dist/{a,b}.txt').match('dist/b.txt'),
+      taskGlob('d/a?').match('d/ab'),
+    ]).toEqual([true, true])
+  })
+
+  it("the globs vx does not own keep Bun.Glob's own alphabet, the class included", () => {
+    // Workspace members and --filter path globs follow npm/pnpm, and a
+    // sandbox grant is expanded by a scan that reads the class: its prefix
+    // must stop there, or `g/[ab].txt` would be created as a directory.
+    expect(BUN_GLOB_WILDCARDS.test('packages/[ab]')).toBe(true)
+    expect(grantPrefix('g/[ab].txt')).toBe('g')
+    expect(grantPrefix('g/[ab]/**')).toBe('g')
+    expect(normalizeBunGlob('packages/[ab]/')).toBe('packages/[ab]/**')
+    expect(normalizeBunGlob('packages/\\[ab\\]')).toBe('packages/\\[ab\\]')
+    // CONTROL: the task reading of the same strings.
+    expect([staticPrefix('g/[ab].txt'), normalizeGlob('packages/[ab]/')]).toEqual([
+      'g/[ab].txt',
+      'packages/[ab]/',
+    ])
   })
 })

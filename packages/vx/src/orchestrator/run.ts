@@ -19,8 +19,11 @@ import {
   type TaskOutcome,
 } from '../graph/index.js'
 import {
+  formatBytes,
   mark,
   MAX_TIMEOUT_MS,
+  parseDuration,
+  parseSize,
   printTimings,
   ulid,
   nearest,
@@ -36,12 +39,12 @@ import { buildAdmission, resolveExecutors, teardownPlugins } from './plugin-host
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
-import { defaultLogger, resolveOutputView } from './logger.js'
+import { defaultLogger, resolveOutputView, type Logger } from './logger.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
-import { prepareRun } from './prepare.js'
+import { prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import { forwardSignals, terminateChildren } from './signals.js'
 import {
@@ -856,6 +859,7 @@ async function runOnBus(
       )
     }
     mark('output dir snapshots')
+    await applyCacheRetention(prepared, log)
     await teardownPlugins(prepared.plugins, (m) => log.status(m))
     await closeCache()
     mark('close')
@@ -929,6 +933,34 @@ async function runOnBus(
     } catch {
       // teardown must not throw on the way out
     }
+  }
+}
+
+/**
+ * The workspace's `cacheRetention`, after every save and upload of this run
+ * has landed (so nothing this run wrote is mid-flight) and before the cache
+ * closes. Housekeeping, not the run's work: a failure is one warning, never
+ * a failed run. Declared nowhere → one property read.
+ */
+async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<void> {
+  const retention = prepared.workspaceConfig?.cacheRetention
+  if (retention === undefined) return
+  // Validated at load (`validateRetention`), so both parse.
+  const maxAgeMs =
+    retention.olderThan === undefined ? undefined : parseDuration(retention.olderThan)!
+  const maxBytes = retention.maxSize === undefined ? undefined : parseSize(retention.maxSize)!
+  try {
+    const result = await prepared.localCache.evictIfDue({
+      ...(maxAgeMs !== undefined ? { maxAgeMs } : {}),
+      ...(maxBytes !== undefined ? { maxBytes } : {}),
+    })
+    if (result !== null && result.evicted > 0) {
+      log.status(
+        `vx: cache retention evicted ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)})`,
+      )
+    }
+  } catch (err) {
+    log.status(`vx: cache retention skipped: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 

@@ -10,7 +10,10 @@
 // With neither the plugin DECLINES and the run stays local.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac, randomUUID, timingSafeEqual, type Hmac } from 'node:crypto'
+import { unlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import {
   definePlugin,
   LayeredCache,
@@ -55,30 +58,62 @@ export interface TurboCacheConfig {
 const SIGNATURE_MESSAGE_PREFIX = 'artifact-signature:v2'
 export const MIN_SIGNATURE_KEY_LENGTH = 32
 
+function updateLength(mac: Hmac, byteLength: number): void {
+  const len = Buffer.alloc(8)
+  len.writeBigUInt64LE(BigInt(byteLength))
+  mac.update(len)
+}
+
 /**
  * `x-artifact-tag`: base64(HMAC-SHA256(key, fields)) where every field is
  * prefixed with its byte length as a little-endian u64 — prefix, hash,
- * team id, body — exactly as Turbo generates and verifies it.
+ * team id, body — exactly as Turbo generates and verifies it. The body is
+ * read as a stream, so a file-backed Blob is signed without being held.
  */
-export function artifactTag(
+export async function artifactTag(
   key: Uint8Array,
   hash: string,
   teamId: string,
-  body: Uint8Array,
-): string {
+  body: Blob,
+): Promise<string> {
   const mac = createHmac('sha256', key)
   for (const field of [
     Buffer.from(SIGNATURE_MESSAGE_PREFIX),
     Buffer.from(hash),
     Buffer.from(teamId),
-    body,
   ]) {
-    const len = Buffer.alloc(8)
-    len.writeBigUInt64LE(BigInt(field.byteLength))
-    mac.update(len)
+    updateLength(mac, field.byteLength)
     mac.update(field)
   }
+  updateLength(mac, body.size)
+  for await (const chunk of body.stream()) mac.update(chunk)
   return mac.digest('base64')
+}
+
+/** The verified temp as a body that deletes the temp once read to the end or cancelled. */
+function unlinkingStream(file: string): ReadableStream<Uint8Array> {
+  const reader = Bun.file(file).stream().getReader()
+  const remove = () => unlink(file).catch(() => undefined)
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await reader.read()
+        if (next.done) {
+          await remove()
+          controller.close()
+        } else {
+          controller.enqueue(next.value)
+        }
+      } catch (err) {
+        await remove()
+        controller.error(err)
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason)
+      await remove()
+    },
+  })
 }
 
 function tagsEqual(expected: string, actual: string): boolean {
@@ -104,6 +139,15 @@ export function resolveTurboCacheConfig(
     '',
   )
   if (!apiUrl || !token) return undefined
+  // The URL is printed in every refusal line, so a `user:pass@` in it would
+  // leak to the log. Credentials go in the token.
+  if (URL.canParse(apiUrl)) {
+    const u = new URL(apiUrl)
+    if (u.username !== '' || u.password !== '')
+      throw new Error(
+        'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
+      )
+  }
   const teamId = options.teamId ?? env['TURBO_TEAMID']
   const teamSlug = options.teamSlug ?? env['TURBO_TEAM']
   const signatureKey = options.signatureKey ?? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY']
@@ -136,6 +180,11 @@ export function resolveTurboCacheConfig(
  * turns the layer off for the rest of the process, so a bad token costs one
  * line, not one per task — the requests already in flight when it lands
  * degrade in silence rather than repeating it.
+ *
+ * Bodies stream both ways: `put` sends the Blob core hands it, `get`
+ * returns the `fetch` Response. With a signature key the tag must verify
+ * before core sees a byte, so a signed download lands in a temp under
+ * `tempDir` first and is handed over only once it has.
  */
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
@@ -143,6 +192,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   constructor(
     private readonly config: TurboCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly tempDir: string = tmpdir(),
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
   }
@@ -171,7 +221,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private async request(
     method: string,
     pathname: string,
-    init: { body?: Uint8Array; headers?: Record<string, string>; timeoutMs?: number } = {},
+    init: { body?: Blob | string; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<Response | undefined> {
     const res = await this.fetchImpl(this.url(pathname), {
       method,
@@ -202,7 +252,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
     if (this.disabled || hashes.length === 0) return this.disabled ? new Set() : null
     const res = await this.request('POST', '', {
-      body: Buffer.from(JSON.stringify({ hashes })),
+      body: JSON.stringify({ hashes }),
       headers: { 'Content-Type': 'application/json' },
     })
     if (res === undefined) return new Set()
@@ -211,41 +261,55 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     return new Set(hashes.filter((h) => info[h] !== null && info[h] !== undefined))
   }
 
-  async get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null> {
+  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
     if (this.disabled) return null
     const res = await this.request('GET', `/${hash}`)
     if (res === undefined) return null
     if (res.status === 404) return null
     if (res.status !== 200) throw new Error(`GET ${hash} → ${res.status}`)
-    const body = await res.arrayBuffer()
-    if (this.key !== undefined) {
-      const tag = res.headers.get('x-artifact-tag')
-      const expected = artifactTag(this.key, hash, this.config.teamId ?? '', new Uint8Array(body))
-      if (tag === null || !tagsEqual(expected, tag)) {
-        throw new Error(`GET ${hash}: artifact signature did not verify — treated as a miss`)
-      }
-    }
     const duration = Number(res.headers.get('x-artifact-duration'))
-    return { body, durationMs: Number.isFinite(duration) && duration > 0 ? duration : undefined }
+    const durationMs = Number.isFinite(duration) && duration > 0 ? duration : undefined
+    if (this.key === undefined) return { body: res, durationMs }
+    return { body: await this.verified(this.key, hash, res), durationMs }
   }
 
-  async put(
-    hash: string,
-    body: ArrayBuffer | Uint8Array,
-    meta: { durationMs: number },
-  ): Promise<void> {
+  /**
+   * The tag's message carries the body's length BEFORE its bytes, and a
+   * chunked response declares no length, so the body is written to the temp
+   * first and signed from there: two passes over a file, never one in memory.
+   */
+  private async verified(key: Uint8Array, hash: string, res: Response): Promise<Response> {
+    const refused = () =>
+      new Error(`GET ${hash}: artifact signature did not verify — treated as a miss`)
+    const tag = res.headers.get('x-artifact-tag')
+    if (tag === null) {
+      await res.body?.cancel()
+      throw refused()
+    }
+    const temp = path.join(this.tempDir, `vx-turbo-${hash}-${randomUUID()}`)
+    try {
+      await Bun.write(temp, res)
+      const expected = await artifactTag(key, hash, this.config.teamId ?? '', Bun.file(temp))
+      if (!tagsEqual(expected, tag)) throw refused()
+    } catch (err) {
+      await unlink(temp).catch(() => undefined)
+      throw err
+    }
+    return new Response(unlinkingStream(temp))
+  }
+
+  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
     if (this.disabled) return
-    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body)
     const headers: Record<string, string> = {
       'Content-Type': 'application/octet-stream',
-      'Content-Length': String(bytes.byteLength),
+      'Content-Length': String(body.size),
       'x-artifact-duration': String(Math.max(0, Math.round(meta.durationMs))),
     }
     if (this.key !== undefined) {
-      headers['x-artifact-tag'] = artifactTag(this.key, hash, this.config.teamId ?? '', bytes)
+      headers['x-artifact-tag'] = await artifactTag(this.key, hash, this.config.teamId ?? '', body)
     }
     const res = await this.request('PUT', `/${hash}`, {
-      body: bytes,
+      body,
       headers,
       timeoutMs: this.config.uploadTimeoutMs,
     })
