@@ -40,6 +40,7 @@ import {
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
+import * as violations from '../src/exec/sandbox-violations.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
 
 const TIMEOUT = 60_000
@@ -2874,6 +2875,35 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const r = await runSandboxed(args('sleep 10', { timeoutMs: 300 }))
     expect(r.timedOut).toBe(true)
     expect(Date.now() - t0).toBeLessThan(5000)
+    // The tracer dies of the SIGTERM itself, so the exit is the signal's.
+    expect([r.exitCode, r.signal]).toEqual([143, 'SIGTERM'])
+  })
+
+  it('traces openat only, through the seccomp filter', async () => {
+    // The flag is the difference between tracing one syscall and stopping
+    // on every one: without it the cache perf baselines ran 2.5-7x over.
+    const spy = spyOn(Bun, 'spawn')
+    try {
+      await runSandboxed(args('true'))
+      // `strace --version` is the availability probe; the trace carries `-o`.
+      const argv = spy.mock.calls
+        .map((c) => c[0] as unknown as string[])
+        .find((c) => c[0] === 'strace' && c.includes('-o'))
+      expect(argv?.slice(0, 5)).toEqual(['strace', '-f', '--seccomp-bpf', '-e', 'trace=openat'])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a trace that cannot be parsed costs the report, never the task', async () => {
+    const spy = spyOn(violations, 'parseStraceViolations').mockRejectedValue(new Error('garbled'))
+    try {
+      const r = await runSandboxed(args('echo ok'))
+      expect([r.exitCode, r.stdout, r.violations]).toEqual([0, 'ok\n', []])
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('a stream the caller did not ask to capture is streamed but not retained', async () => {
