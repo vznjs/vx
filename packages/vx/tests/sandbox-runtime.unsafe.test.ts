@@ -2798,6 +2798,141 @@ describe.skipIf(!available || process.platform !== 'linux')(
  * tasks work, so what `initSandbox` hands SRT, what a SECOND init leaves
  * alone, and what `resetSandbox` stops had no witness of their own.
  */
+/**
+ * Item 652: `runSandboxed`'s own plumbing, driven directly. Every other
+ * row reaches it through `run()`, which forwards no arguments, captures
+ * everything, never times a task out and tears the whole runtime down at
+ * the end — so what THIS function owes its caller (the arguments, the tag,
+ * the bridge release, the spawn failure, the process group, the live-child
+ * set, the timeout, the capture flags) could each go with the suite green.
+ */
+describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, driven directly', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-runsbx-')))
+    await initSandbox()
+  })
+  afterEach(async () => {
+    await resetSandbox()
+    await rm(dir, { recursive: true, force: true })
+  })
+  const args = (command: string, extra: Record<string, unknown> = {}) => ({
+    command,
+    cwd: dir,
+    env: process.env,
+    baseAllowRead: [dir],
+    baseAllowWrite: [],
+    baseDenyRead: [],
+    reportWithin: dir,
+    config: resolveSandboxConfig({}, dir),
+    ...extra,
+  })
+
+  it('appends forwarded arguments, each shell-quoted', async () => {
+    const r = await runSandboxed(args("printf '%s|'", { forwardArgs: ['a b', "c'd"] }))
+    expect([r.exitCode, r.stdout]).toEqual([0, "a b|c'd|"])
+  })
+
+  it('tags each wrap uniquely and puts the tag first in the command', async () => {
+    // SRT's macOS store keys a record by the command's first 100 bytes, so
+    // two tasks running one command in one directory must still differ.
+    const a = await wrapSandboxedCommand(args('echo hi'))
+    const b = await wrapSandboxedCommand(args('echo hi'))
+    expect(a.tag).not.toBe(b.tag)
+    expect(a.taggedCommand).toBe(`: 'vx-${a.tag}'; echo hi`)
+  })
+
+  it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
+    const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
+    expect([r.exitCode, r.violations]).toEqual([127, []])
+    expect(r.stderr).toContain('[vx] failed to spawn sandboxed task')
+  })
+
+  it('the child leads its own process group, and is a live child only while it runs', async () => {
+    const live = new Set<ReturnType<typeof Bun.spawn>>()
+    const seen: boolean[] = []
+    const r = await runSandboxed(
+      args('echo up; sleep 0.2', {
+        liveChildren: live,
+        onStdout: () => {
+          for (const p of live) {
+            try {
+              process.kill(-p.pid, 0)
+              seen.push(true)
+            } catch {
+              seen.push(false)
+            }
+          }
+        },
+      }),
+    )
+    expect([r.exitCode, seen, live.size]).toEqual([0, [true], 0])
+  })
+
+  it('a timeout ends the task and says so', async () => {
+    const t0 = Date.now()
+    const r = await runSandboxed(args('sleep 10', { timeoutMs: 300 }))
+    expect(r.timedOut).toBe(true)
+    expect(Date.now() - t0).toBeLessThan(5000)
+  })
+
+  it('a stream the caller did not ask to capture is streamed but not retained', async () => {
+    const out: string[] = []
+    const err: string[] = []
+    const r = await runSandboxed(
+      args('echo o; echo e >&2', {
+        capture: { stdout: false, stderr: false },
+        onStdout: (c: string) => out.push(c),
+        onStderr: (c: string) => err.push(c),
+      }),
+    )
+    expect([r.stdout, r.stderr, out.join(''), err.join('')]).toEqual(['', '', 'o\n', 'e\n'])
+  })
+
+  it("releases the task's host-side port bridge when the task ends", async () => {
+    const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+    const port = l.port
+    l.stop(true)
+    const listening = async (): Promise<boolean> =>
+      Bun.connect({ hostname: '127.0.0.1', port, socket: { data() {} } }).then(
+        (s) => (s.end(), true),
+        () => false,
+      )
+    const running = runSandboxed(
+      args('sleep 1', {
+        config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
+      }),
+    )
+    // Positive first: the host side comes up while the task runs.
+    let up = false
+    for (let i = 0; i < 40 && !up; i++) {
+      up = await listening()
+      if (!up) await Bun.sleep(20)
+    }
+    expect(up).toBe(true)
+    await running
+    let down = false
+    for (let i = 0; i < 100 && !down; i++) {
+      down = !(await listening())
+      if (!down) await Bun.sleep(20)
+    }
+    expect(down).toBe(true)
+  })
+
+  // Measured for item 652, and it holds the NAMESPACE, not the drain: with
+  // `drainOrAbort` (or the timeout's abort) deleted this row stays green,
+  // because bwrap's PID namespace kills a backgrounded grandchild the
+  // moment the task's shell exits, and the pipe closes with it. On Linux
+  // the post-exit drain bound is therefore unreachable in a sandbox; it is
+  // the guard on a platform without a PID namespace.
+  it('returns promptly when a backgrounded grandchild holds the pipe open', async () => {
+    const t0 = Date.now()
+    const r = await runSandboxed(args('sleep 10 & echo up'))
+    expect([r.exitCode, r.stdout]).toEqual([0, 'up\n'])
+    expect(Date.now() - t0).toBeLessThan(3000)
+  }, 15_000)
+})
+
 describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecycle', () => {
   afterEach(async () => {
     await resetSandbox()
