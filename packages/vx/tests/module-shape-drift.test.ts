@@ -277,7 +277,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const quoted = [...doc.matchAll(/```\n(\/[^\n]+\/i?)\n```/g)].map((m) => m[1]!)
     expect(quoted).toHaveLength(2)
     const duration = /export function parseDuration[\s\S]*?input\.match\((\/.*\/i?)\)$/m.exec(
-      read('src/cli/cache.ts'),
+      read('src/util/size.ts'),
     )
     const size = /export function parseSize[\s\S]*?input\.match\((\/.*\/i?)\)$/m.exec(
       read('src/util/size.ts'),

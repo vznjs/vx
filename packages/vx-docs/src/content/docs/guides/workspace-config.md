@@ -118,6 +118,28 @@ timeout: 600_000
 - It is a runaway-process guard and nothing more: it is never folded
   into a cache key, and a task it kills fails and is never cached.
 
+## `cacheRetention`
+
+Evict from the local cache at the end of every run, by the same policy
+`vx cache prune` takes as flags.
+
+```ts
+cacheRetention: { olderThan: '30d', maxSize: '10G' }
+```
+
+- **Default:** none. Omitted, the cache grows until you run
+  `vx cache prune`.
+- `olderThan` drops entries no run has used for that long (`30d`,
+  `12h`, `90m`, `45s`); `maxSize` then evicts the least recently used
+  until the cache is under that size (`10G`, `500MB`, a byte count).
+  Either or both.
+- It runs after the run's saves and uploads have landed, and only when
+  something is due: a run with nothing to evict pays one scan of the
+  cache index. An entry the run just used is never due.
+- The run says what it evicted in one line (`vx: cache retention
+  evicted 3 entries (1.2 GB)`). A failure is a warning, never a failed
+  run, and the field is never folded into a cache key.
+
 ## What is *not* here (by design)
 
 Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough` and

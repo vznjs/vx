@@ -1475,6 +1475,36 @@ export class Cache implements CacheLayer {
     }
   }
 
+  /**
+   * The workspace's `cacheRetention`, applied at the end of a run: `prune()`
+   * with the same policy, but only when it would evict something. A run with
+   * nothing due pays the accessed-at flush it owed at close anyway and one
+   * scan of the index — never the orphan sweep's readdir. Null when nothing
+   * was due or this handle does not write.
+   */
+  async evictIfDue(
+    policy: { maxAgeMs?: number; maxBytes?: number },
+    now: number = Date.now(),
+  ): Promise<PruneResult | null> {
+    if (!this.write) return null
+    // First: an entry this run restored still carries its old `accessed_at`
+    // until the deferred bump lands, and would read as due for eviction.
+    this.flushAccessed()
+    const olderThanMs = policy.maxAgeMs === undefined ? undefined : now - policy.maxAgeMs
+    const { oldest, bytes } = this.db
+      .prepare(
+        'SELECT MIN(accessed_at) AS oldest, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries',
+      )
+      .get() as { oldest: number | null; bytes: number }
+    const ageDue = olderThanMs !== undefined && oldest !== null && oldest < olderThanMs
+    const sizeDue = policy.maxBytes !== undefined && bytes > policy.maxBytes
+    if (!ageDue && !sizeDue) return null
+    return this.prune({
+      ...(olderThanMs !== undefined ? { olderThanMs } : {}),
+      ...(policy.maxBytes !== undefined ? { maxBytes: policy.maxBytes } : {}),
+    })
+  }
+
   async prune(options: PruneOptions): Promise<PruneResult> {
     this.flushAccessed()
     // Before any entry is deleted, so a kept entry's pending snapshot is on

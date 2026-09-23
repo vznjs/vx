@@ -1,13 +1,13 @@
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { seeHelp } from './help.js'
-import { nearest, parseDecimalInt, parseSize } from '../util/index.js'
+import { nearest, parseDuration, parseSize } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
 
 // parseSize moved to `util` (the orchestrator's resource resolver needs it
 // and can't import cli); re-exported here so existing callers are unchanged.
-export { parseSize } from '../util/index.js'
+export { parseDuration, parseSize } from '../util/index.js'
 
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
@@ -166,21 +166,4 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     cache.close()
   }
   return 0
-}
-
-/**
- * Parse `<n><unit>` where unit is s/m/h/d, case-insensitively (`parseSize`
- * has always been case-insensitive; this matched only lowercase, so `30D`
- * was rejected while `1GB` and `1gb` both worked).
- */
-export function parseDuration(input: string): number | null {
-  const m = input.match(/^(\d+)([smhd])$/i)
-  if (!m) return null
-  const n = parseDecimalInt(m[1]!)
-  if (n === null) return null
-  // Lowercase before the switch: with the /i flag an uppercase `M` would
-  // otherwise fall through to the days branch.
-  const unit = m[2]!.toLowerCase()
-  const mult = unit === 's' ? 1000 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000
-  return n * mult
 }

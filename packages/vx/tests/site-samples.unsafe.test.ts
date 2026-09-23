@@ -1022,7 +1022,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(4)
+    expect(fields.length).toBe(5)
     const page = readFileSync(path.join(GUIDES, 'workspace-config.md'), 'utf8')
     // `plugins` is the page's subject — it shows it in every config block
     // rather than giving it a `## field` section of its own.

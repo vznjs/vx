@@ -1039,6 +1039,7 @@ export default defineWorkspace({
   concurrency: 8,
   cacheDir: 'build/.vx-cache',
   timeout: 600_000,
+  cacheRetention: { olderThan: '30d', maxSize: '10G' },
   plugins: [otel()],
 })
 ```
@@ -1051,6 +1052,8 @@ interface WorkspaceConfig {
   cacheDir?: string
   /** Default per-task timeout (ms) for tasks without their own exec.timeout. */
   timeout?: number
+  /** Evict from the local cache at the end of each run (the `vx cache prune` policy). */
+  cacheRetention?: { olderThan?: string; maxSize?: string }
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly Plugin[]
 }
@@ -1068,6 +1071,18 @@ interface WorkspaceConfig {
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`).
+- **`cacheRetention`** — the `vx cache prune` policy, applied at the
+  end of every run that writes the local cache: entries unused for
+  `olderThan` (`30d`, `12h`, `90m`, `45s`) go first, then the
+  least-recently-used until the cache is under `maxSize` (`10G`,
+  `500MB`, a byte count). Either or both. It runs after the run's saves
+  and uploads have landed, only when something is due (a run with
+  nothing to evict pays one scan of the index), and says what it
+  evicted in one line (`vx: cache retention evicted 3 entries
+(1.2 GB)`); an entry the run just used is never due. Housekeeping,
+  not the run's work: a failure is a warning, never a failed run. Not
+  folded into any cache key. Omitted → the cache grows until
+  `vx cache prune`.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain
@@ -1406,6 +1421,10 @@ Workspace-config errors:
 | `concurrency must be a positive integer`                                                                                                            | `concurrency` is negative, zero, NaN, ...                                                                         |
 | `timeout must be a positive integer (milliseconds)`                                                                                                 | Workspace `timeout` is ≤ 0, NaN, or not an int.                                                                   |
 | `cacheDir must be a string`                                                                                                                         | Wrong shape.                                                                                                      |
+| `cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }`                                                                                     | Not an object.                                                                                                    |
+| `cacheRetention names neither olderThan nor maxSize`                                                                                                | An empty policy would evict nothing and read as one.                                                              |
+| `cacheRetention.olderThan must be a duration like '30d', '12h', '90m' or '45s'`                                                                     | The `vx cache prune --older-than` spelling, or not a string.                                                      |
+| `cacheRetention.maxSize must be a size like '10G', '500MB' or '1048576'`                                                                            | The `vx cache prune --max-size` spelling (no fractions), or not a string.                                         |
 | `plugins must be an array of plugin objects`                                                                                                        | Wrong shape.                                                                                                      |
 | `plugins[<i>] must be an object`                                                                                                                    | A non-object entry in `plugins`.                                                                                  |
 | `plugins[<i>] must come from definePlugin(import.meta, { … })`                                                                                      | A plain object where a plugin was expected: a plugin's name is its package name, and only `definePlugin` sets it. |
