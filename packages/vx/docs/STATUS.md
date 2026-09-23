@@ -497,6 +497,32 @@ test is telling the truth.
       executor is told `true` for a cached task and `false` for a plain
       one. Each red on its line alone. Placement is swept.
 
+651.  DONE (2026-09-23, the 628 method on the plugin host). Twenty-six
+      gates in `orchestrator/plugin-host.ts` deleted in turn against the
+      whole core suite, twenty-four held. Twenty-one went red in a row:
+      the cache-layer shape check, the naming of a throwing hook, the
+      project stage's check of each plugin's output, the key material and
+      value refusals, key sorting and namespacing, the affected answer
+      refusals, the schedule Map and finite-weight checks, the admit
+      predicate being off without an answering plugin, the broken-plugin
+      skip and the throwing-admit report, the local cache and executor
+      tails, a wrapping layer subsuming local, the executor name, and the
+      hung and throwing teardowns. The graph stage's two refusals (an
+      edge outside the graph, a cycle) are held by a HANG, not a red:
+      without either the plugin-pipeline suite never finishes, even under
+      a 20 s test timeout, while the unmutated rows run in 218 ms. A hang
+      fails CI, so both count as held. The sweep's first blame mutation
+      awaited an uncalled function and so deleted both checks; the
+      corrected one (an invoked wrapper that names no plugin) is red in
+      both refusal rows. Two survived. A schedule weight for a task
+      outside the run is dropped before it is checked: reachable (a
+      history-backed plugin weighs tasks a filtered run does not hold),
+      so it gets a row in `plugin-pipeline.test.ts`, red with the skip
+      deleted. The admit predicate's unknown-id arm was unreachable: the
+      scheduler asks only about ids in the same map the predicate was
+      built from, so the arm is gone and the lookup is asserted. The
+      plugin host is swept.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
