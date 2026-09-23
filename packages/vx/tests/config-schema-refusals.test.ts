@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { WorkspaceConfig } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/config-schema.js'
+import { parseDependencySpec } from '../src/graph/dependency-spec.js'
 import { testPlugin } from './helpers/plugin.js'
 
 const WS = '/ws/vx.workspace.ts'
@@ -103,5 +104,40 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(taskRefusal({ exec: { command: 'x' }, cache: null })).toBe(
       `${CFG}: tasks.t.cache must be an object when present`,
     )
+  })
+})
+
+/** A cached task over `inputs` / `outputs`, as its refusal message or null. */
+function cacheRefusal(inputs: object, outputs: object = { files: [] }, dependsOn?: string[]) {
+  return taskRefusal({ exec: { command: 'x' }, dependsOn, cache: { inputs, outputs } })
+}
+
+describe('glob and filter refusals the sweep found unheld (item 653)', () => {
+  it('"!/" in inputs.files names the project directory — the "/" arm of namesDirItself', () => {
+    // A bare "/" is refused as absolute first, and "./" normalizes to "";
+    // "!/" is the one spelling that reaches the "/" arm.
+    expect(cacheRefusal({ files: ['src/**', '!/'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: "!/" names the project directory itself and selects nothing — use "**" for everything under it`,
+    )
+    expect(cacheRefusal({ files: ['src/**', '!dist/**'] })).toBeNull()
+  })
+
+  it('"." in workspaceFiles names the workspace root and is refused', () => {
+    expect(cacheRefusal({ files: ['src/**'], workspaceFiles: ['.'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.workspaceFiles: "." names the workspace root itself and selects nothing — use "**" for everything under it`,
+    )
+    expect(cacheRefusal({ files: ['src/**'], workspaceFiles: ['tsconfig.json'] })).toBeNull()
+  })
+
+  it('an inputs.tasks entry with an EMPTY task half is left to the syntax check', () => {
+    // `'^'` names no task, but the schema leaves it to `parseDependencySpec`,
+    // whose reason says what is wrong; "names no task in dependsOn" would
+    // send the author looking for a typo in a name that is not there.
+    expect(cacheRefusal({ files: ['src/**'], tasks: ['^'] }, { files: [] }, ['^build'])).toBeNull()
+    expect(() => parseDependencySpec('^')).toThrow('"^" with no task name')
+    // Control: a non-empty name dependsOn lacks is refused here.
+    expect(
+      cacheRefusal({ files: ['src/**'], tasks: ['^buidl'] }, { files: [] }, ['^build']),
+    ).not.toBeNull()
   })
 })
