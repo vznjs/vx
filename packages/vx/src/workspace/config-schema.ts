@@ -682,7 +682,9 @@ function assertFilterNamesDeclaredDeps(
   const named = (task: string): boolean =>
     declared.some((d) => (d.includes('*') ? taskPatternRegExp(d).test(task) : d === task))
   for (const raw of filters) {
-    if (raw.startsWith('!') || raw === '*' || raw === '^*') continue
+    // `*` and `^*` need no arm of their own: their task half is `*`, which
+    // the wildcard skip below takes (item 678).
+    if (raw.startsWith('!')) continue
     const task = taskHalf(raw)
     if (task.length === 0 || task.includes('*') || named(task)) continue
     throw new UserError(

@@ -344,6 +344,20 @@ config blocks are type-checked; then track W in the plan's order (W1, W2, W4, W5
 W7, W9 on the spike's verdict, W10/W11, W12, W8 last). Never end with
 "what next?".
 
+14bz. **Item 678 (2026-09-23): two guards the 653 sweep found implied
+are gone.** The filter-name check skipped `'*'` and `'^*'` by name,
+but their task half is `*`, which the wildcard skip after it takes
+anyway; the arms are deleted, with a comment. And `loadDefaultExport`
+gave `vx lock` a random import bust so a repeat load would not replay
+an evaluation made under earlier env values, but a project config
+reaches that import only on its first load in the process (a repeat
+re-evaluates in a worker, `loadedConfigs`), so nothing is ever cached
+under the URL; the bust, its parameter and its comment are gone, and
+the comment now names the worker route. Both were survivors the
+implementer drove (#772): deleting either reddened nothing, and the
+bust beside the repeat routing reddened the same seven rows the
+routing alone does. Loader, lock and schema suites green (215 rows).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
