@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { run } from '../src/index.js'
 import { run as cli } from '../src/cli/index.js'
+import { CACHE_VERSION } from '../src/cache/index.js'
 
 let root: string
 const origCwd = process.cwd()
@@ -39,7 +40,7 @@ async function runOnce(): Promise<string[]> {
     handleSignals: false,
   })
   expect(summary.ok).toBe(true)
-  return lines.filter((l) => l.includes('cache index reset'))
+  return lines.filter((l) => l.includes('cache index reset') || l.includes('cache format changed'))
 }
 
 function pokeVersion(value: string): void {
@@ -99,5 +100,40 @@ describe('a schema reset says so once', () => {
       process.stderr.write = orig
     }
     expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
+  })
+
+  // Roadmap 3.3 (item 671): a CACHE_VERSION bump keeps the index but moves
+  // every key; the all-miss run it causes is announced like a reset.
+  function pokeFormat(value: string | null): void {
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    if (value === null) db.prepare("DELETE FROM schema_meta WHERE key = 'cache_version'").run()
+    else db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'cache_version'").run(value)
+    db.close()
+  }
+
+  it('a cache-format bump names both versions once; the next run is quiet', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeFormat('vx-cache-v0')
+    expect(await runOnce()).toEqual([
+      `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+    ])
+    expect(await runOnce()).toEqual([])
+  })
+
+  it('a store with entries and no recorded format predates the record, and says so', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeFormat(null)
+    expect(await runOnce()).toEqual([
+      `[vx] cache format changed: an earlier format → ${CACHE_VERSION} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+    ])
+  })
+
+  it('a schema reset and a format bump together say the reset alone', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeVersion('v0')
+    pokeFormat('vx-cache-v0')
+    const notices = await runOnce()
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+/)
   })
 })

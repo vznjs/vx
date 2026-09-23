@@ -2184,7 +2184,8 @@ describe('Cache schema/version recovery', () => {
         (raw.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
       ]),
     )
-    expect(Object.values(before).every((n) => n === 1)).toBe(true)
+    // `schema_meta` holds the schema version and the cache format (item 671).
+    expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, t === 'schema_meta' ? 2 : 1])))
     raw.prepare("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
 
