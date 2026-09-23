@@ -22,6 +22,7 @@ import {
   type SandboxViolation,
   resolveSandboxConfig,
   runSandboxed,
+  wrapSandboxedCommand,
 } from '../src/exec/sandbox-runtime.js'
 import { buildCustomConfig, punchWritePaths } from '../src/exec/sandbox-binds.js'
 import {
@@ -38,6 +39,8 @@ import {
 } from '../src/exec/sandbox-violations.js'
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
+import * as violations from '../src/exec/sandbox-violations.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
 
 const TIMEOUT = 60_000
@@ -1529,6 +1532,54 @@ describe('resolveSandboxConfig', () => {
     },
   )
 
+  // Item 652: the scan behind a glob grant. Every fixture above matches
+  // plain files only and names patterns that either match or warn, so the
+  // scan's `dot` and `onlyFiles` options and the warning's own conditions
+  // (a hit, once per grant) could each go with the suite green.
+  it.skipIf(process.platform !== 'linux')(
+    'a glob grant covers the dotfiles and directories it matches',
+    async () => {
+      const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-scan-')))
+      try {
+        await mkdir(path.join(root, 'g', 'sub'), { recursive: true })
+        await writeFile(path.join(root, 'g', '.env'), '')
+        await writeFile(path.join(root, 'g', 'a.txt'), '')
+        const r = resolveSandboxConfig({ allow: { read: ['g/*'] } }, root)
+        expect([...r.allowRead].sort()).toEqual(
+          ['g/.env', 'g/a.txt', 'g/sub'].map((f) => path.join(root, f)),
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
+  it.skipIf(process.platform !== 'linux')(
+    'a write grant that matched something says nothing; one that matched nothing says so once',
+    async () => {
+      const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-warn-')))
+      try {
+        await mkdir(path.join(root, 'g'))
+        await writeFile(path.join(root, 'g', 'a.txt'), '')
+        const said: string[] = []
+        const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+          said.push(String(chunk))
+          return true
+        })
+        try {
+          resolveSandboxConfig({ allow: { write: ['g/*.txt'] } }, root)
+          resolveSandboxConfig({ allow: { write: ['g/*.bin'] } }, root)
+          resolveSandboxConfig({ allow: { write: ['g/*.bin'] } }, root)
+        } finally {
+          spy.mockRestore()
+        }
+        expect(said.map((l) => l.includes(`${root}/g/*.bin matches nothing yet`))).toEqual([true])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it('collapses a whole-subtree pattern to its directory, and a single-level one NEVER', async () => {
     // The collapse is documented as "not a widening": `<d>/**` already
     // covered every file under `<d>`, so folding it to `<d>` only adds the
@@ -1584,6 +1635,39 @@ describe('resolveSandboxConfig', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+
+  // Item 652: each capability the user wrote is carried to the resolved
+  // config under its own name. Rows that declare these run where the
+  // capability is not observable, so eight of the copies below could be
+  // deleted with the suite green. Written out, not derived.
+  const CARRIED: Array<[string, Record<string, unknown>, string, unknown]> = [
+    ['deny.network', { deny: { network: ['x.test'] } }, 'denyNetwork', ['x.test']],
+    ['allow.systemInfo', { allow: { systemInfo: ['hw.ncpu'] } }, 'systemInfo', ['hw.ncpu']],
+    ['allow.unixSockets', { allow: { unixSockets: true } }, 'unixSockets', true],
+    ['allow.machLookup', { allow: { machLookup: ['com.x'] } }, 'machLookup', ['com.x']],
+    ['allow.pty', { allow: { pty: true } }, 'pty', true],
+    ['allow.gitConfig', { allow: { gitConfig: true } }, 'gitConfig', true],
+    ['weakerWhenNested', { weakerWhenNested: true }, 'weakerWhenNested', true],
+    ['weakerNetworkIsolation', { weakerNetworkIsolation: true }, 'weakerNetworkIsolation', true],
+  ]
+  for (const [what, cfg, key, want] of CARRIED) {
+    it(`carries ${what} to ${key}`, () => {
+      const r = resolveSandboxConfig(cfg as never, '/nowhere/proj') as unknown as Record<
+        string,
+        unknown
+      >
+      expect(r[key]).toEqual(want)
+      // CONTROL: undeclared, it is not invented.
+      expect(key in resolveSandboxConfig({}, '/nowhere/proj')).toBe(false)
+    })
+  }
+
+  // Item 652: no row granted a `~` path, so its expansion could go and
+  // `~/.npmrc` would resolve against the project, a path that is not there.
+  it('expands a leading `~` against the home directory, not the project', () => {
+    const r = resolveSandboxConfig({ allow: { read: ['~/.vx-652-probe'] } }, '/nowhere/proj')
+    expect(r.allowRead).toEqual([path.join(realpathSync(os.homedir()), '.vx-652-probe')])
   })
 })
 
@@ -1742,6 +1826,15 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     ).toEqual([`${ws}/x`, `${ws}/x`])
   })
 
+  // Item 652: the row above holds the KEY; nothing held the dedup itself —
+  // a tool that probes one missing path ten times would report ten lines.
+  it('reports one line for the same syscall on the same path, however often', async () => {
+    const ws = path.join(dir, 'ws')
+    expect(await targets([at(`${ws}/x`), at(`${ws}/x`), at(`${ws}/x`)].join('\n'))).toEqual([
+      `${ws}/x`,
+    ])
+  })
+
   it('marks an openat ignorable by either list, since the trace lacks its flags', async () => {
     const ws = path.join(dir, 'ws')
     const produced = await produce(at(`${ws}/s.txt`))
@@ -1754,6 +1847,66 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
         [],
       ])
     }
+  })
+
+  // Item 652: every row above passes an EMPTY allowRead, so the skip for
+  // an explicitly granted path (`isUnderAny`) could lose its exact-match
+  // arm or its separator with the suite green. A grant covers itself and
+  // its subtree, and not a sibling whose name merely begins with it.
+  it('skips a granted path and its subtree, and reports a sibling sharing its name prefix', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, [at(`${ws}/lib`), at(`${ws}/lib/x.ts`), at(`${ws}/libx/y.ts`)].join('\n'))
+    const produced = await parseStraceViolations(
+      log,
+      { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+      { allowRead: [`${ws}/lib`], denyRead: [ws], cwd: ws },
+    )
+    expect(produced.map((v) => v.target)).toEqual([`${ws}/libx/y.ts`])
+  })
+
+  // Item 652: the fixture root above is canonical, so the three `toRealPath`
+  // calls in the strace pass could each go with the suite green. A traced
+  // path is the one the process ASKED for, through whatever link it held;
+  // the grants and the anchor may arrive through a link too. The comparison
+  // is only right when every side is canonical.
+  it('canonicalizes the traced path: one reached through a link is judged where it lands', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(path.join(ws, 'real'), { recursive: true })
+    await symlink(path.join(ws, 'real'), path.join(ws, 'link'))
+    await symlink(ws, path.join(dir, 'alias'))
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, [at(`${ws}/link/x`), at(`${dir}/alias/y`)].join('\n'))
+    const produced = await parseStraceViolations(
+      log,
+      { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+      { allowRead: [`${ws}/real`], denyRead: [ws], cwd: ws },
+    )
+    // `link/x` lands in the granted `real/`; `alias/y` lands in the project.
+    expect(produced.map((v) => v.target)).toEqual([`${ws}/y`])
+  })
+
+  it('canonicalizes the grant and the anchor it is handed through a link', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(path.join(ws, 'real'), { recursive: true })
+    await symlink(ws, path.join(dir, 'alias'))
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, [at(`${ws}/real/x`), at(`${ws}/z`)].join('\n'))
+    const produced = await parseStraceViolations(
+      log,
+      { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+      { allowRead: [`${dir}/alias/real`], denyRead: [`${dir}/alias`], cwd: ws },
+    )
+    expect(produced.map((v) => v.target)).toEqual([`${ws}/z`])
+  })
+
+  // The kernel never expands `~`: a traced `~cache/x` is `<cwd>/~cache/x`,
+  // and reading it as `<home>/cache/x` dropped an undeclared read of a
+  // project file under a directory named `~cache` (item 652).
+  it('a traced relative path beginning with `~` resolves against the cwd', async () => {
+    const ws = path.join(dir, 'ws')
+    expect(await targets(at('~cache/x'))).toEqual([`${ws}/~cache/x`])
   })
 })
 
@@ -1911,6 +2064,84 @@ describe('reportableViolations', () => {
         config: resolveSandboxConfig({ allow: { localBinding: true } }, PROJ),
       }),
     ).toHaveLength(0)
+  })
+
+  // Item 652: `ignore` was driven for writes only, so the classifier could
+  // lose its read, system-info, sysctl-read and network arms with the suite
+  // green. Each operation is silenced by its own list — and by no other.
+  const LISTS = ['read', 'write', 'systemInfo', 'network'] as const
+  const OPS: Array<[string, string, (typeof LISTS)[number]]> = [
+    ['file-read-data', `${PROJ}/r.ts`, 'read'],
+    ['file-write-create', `${PROJ}/w.ts`, 'write'],
+    ['system-info', 'vfs.a', 'systemInfo'],
+    ['sysctl-read', 'kern.b', 'systemInfo'],
+    ['network-outbound', 'example.com:443', 'network'],
+  ]
+  for (const [op, target, list] of OPS) {
+    it(`a seatbelt ${op} record is silenced by ignore.${list} and by no other list`, () => {
+      const kept = (lists: readonly string[]): number =>
+        reportableViolations([mac(op, target)], {
+          within: PROJ,
+          config: resolveSandboxConfig(
+            { ignore: Object.fromEntries(lists.map((l) => [l, [target]])) },
+            PROJ,
+          ),
+        }).length
+      expect(kept([list])).toBe(0)
+      // CONTROL: every OTHER list naming the same target leaves it reported.
+      expect(kept(LISTS.filter((l) => l !== list))).toBe(1)
+    })
+  }
+
+  // Item 652: a record the classifier names no list for (a `mach-lookup`)
+  // has a target and no `ignorable`; nothing drove one past an `ignore`
+  // block, so the guard that stops the list walk could go — and the walk
+  // then throws on `undefined`, failing the task's whole report.
+  it('keeps a record no ignore list can name, with an ignore block present', () => {
+    const v = mac('mach-lookup', 'com.apple.x')
+    expect(
+      lines(
+        reportableViolations([v], {
+          within: PROJ,
+          config: resolveSandboxConfig({ ignore: { read: ['*'] } }, PROJ),
+        }),
+      ),
+    ).toEqual(['bun(1) deny(1) mach-lookup com.apple.x'])
+  })
+
+  it('drops a sibling whose name merely begins with the project', () => {
+    const cfg = resolveSandboxConfig({}, PROJ)
+    expect(
+      lines(
+        reportableViolations(
+          [mac('file-read-data', `${PROJ}other/x.ts`), mac('file-read-data', `${PROJ}/y.ts`)],
+          { within: PROJ, config: cfg },
+        ),
+      ),
+    ).toEqual([`bun(1) deny(1) file-read-data ${PROJ}/y.ts`])
+  })
+
+  // Item 652: ROOT above is canonical and never exists, so neither
+  // `toRealPath` on the report's side had a witness: the `within` it is
+  // handed, and the path a seatbelt record names (macOS records the path
+  // the process used, which on macOS is `/tmp`, a link to `/private/tmp`).
+  it('judges `within` and a seatbelt path each where it lands through a link', async () => {
+    const d = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-report-link-')))
+    try {
+      await mkdir(path.join(d, 'proj'))
+      await symlink(path.join(d, 'proj'), path.join(d, 'alias'))
+      const cfg = resolveSandboxConfig({}, path.join(d, 'proj'))
+      const via = (within: string, target: string): string[] =>
+        lines(reportableViolations([mac('file-read-data', target)], { within, config: cfg }))
+      expect(via(path.join(d, 'alias'), `${d}/proj/a.ts`)).toEqual([
+        `bun(1) deny(1) file-read-data ${d}/proj/a.ts`,
+      ])
+      expect(via(path.join(d, 'proj'), `${d}/alias/b.ts`)).toEqual([
+        `bun(1) deny(1) file-read-data ${d}/alias/b.ts`,
+      ])
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
   })
 })
 
@@ -2157,6 +2388,63 @@ describe('sandbox probe', () => {
   )
 })
 
+/**
+ * Item 652: the probe's own gates, driven through the runtime's wrapper.
+ * On a host where the secure sandbox works, a probe that ignored the
+ * wrapper's exit, swallowed nothing, forgot the weaker mode or never
+ * memoized answers exactly what the real one does — so the rows below
+ * hand it a wrapper that fails, and count what it asked for.
+ */
+describe.skipIf(!available || process.platform !== 'linux')(
+  'the probe, through its wrapper',
+  () => {
+    afterEach(async () => {
+      await resetSandbox()
+    })
+
+    it('is memoized per mode, and the weaker mode asks for the weaker wrapper', async () => {
+      await resetSandbox()
+      const spy = spyOn(SandboxManager, 'wrapWithSandbox')
+      try {
+        const secure = await probeSandbox()
+        const again = await probeSandbox()
+        const weaker = await probeSandbox({ weakerNested: true })
+        expect(again).toBe(secure)
+        expect(weaker).not.toBe(secure)
+        expect(spy.mock.calls.map((c) => c[2])).toEqual([
+          undefined,
+          { enableWeakerNestedSandbox: true },
+        ])
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
+    it('a wrapper that exits non-zero, or throws, is an unavailable verdict', async () => {
+      await resetSandbox()
+      const spy = spyOn(SandboxManager, 'wrapWithSandbox').mockImplementation(
+        async () => 'echo nope >&2; exit 3',
+      )
+      try {
+        expect(await probeSandbox()).toEqual({
+          available: false,
+          reason: 'a sandboxed `true` failed (exit 3): nope',
+        })
+        await resetSandbox()
+        spy.mockImplementation(async () => {
+          throw new Error('boom')
+        })
+        expect(await probeSandbox()).toEqual({
+          available: false,
+          reason: 'sandbox probe threw: boom',
+        })
+      } finally {
+        spy.mockRestore()
+      }
+    })
+  },
+)
+
 describe.skipIf(process.platform !== 'linux')(
   'punchWritePaths — a read grant is never an ancestor of a write grant (linux)',
   () => {
@@ -2274,12 +2562,110 @@ describe.skipIf(process.platform !== 'linux')(
       expect(notices[0]).toContain('dist')
     })
 
+    // Item 652: the row above has a symlink in every punch it makes, so the
+    // notice could lose its `linked.length > 0` gate — and tell every
+    // punched grant it flattened "0 symlinked entries" — with the suite
+    // green.
+    it('says nothing when the punched directory holds no symlink', async () => {
+      const written: string[] = []
+      const real = process.stderr.write.bind(process.stderr)
+      process.stderr.write = ((chunk: unknown): boolean => {
+        written.push(String(chunk))
+        return true
+      }) as typeof process.stderr.write
+      try {
+        punchWritePaths(dir, [path.join(dir, 'dist')])
+        // CONTROL, on a directory of its own: one symlink there is named.
+        await symlink(path.join(dir, 'src'), path.join(dir, 'nested', 'linked'))
+        punchWritePaths(path.join(dir, 'nested'), [path.join(dir, 'nested', 'deep')])
+      } finally {
+        process.stderr.write = real
+      }
+      const notices = written.filter((w) => w.includes('symlinked'))
+      expect(notices.map((n) => n.includes(`under ${path.join(dir, 'nested')} `))).toEqual([true])
+    })
+
+    // Item 652: two file-shaped grants in one directory both widen to it.
+    // The rows above widen one file at a time, so the dedup after the
+    // widening could go and SRT would be handed the directory twice.
+    it('two file grants in one directory widen to that directory once', () => {
+      const c = buildCustomConfig(
+        { config: { allowRead: [], allowWrite: [] } as never },
+        {
+          allowRead: [],
+          allowWrite: [path.join(dir, 'dist', 'a.bin'), path.join(dir, 'dist', 'b.bin')],
+          denyRead: [],
+        },
+      ) as { filesystem?: { allowWrite?: string[] } }
+      expect(c.filesystem?.allowWrite).toEqual([path.join(dir, 'dist')])
+    })
+
     it('hands over a path it cannot read rather than dropping the grant', () => {
       const missing = path.join(dir, 'does-not-exist')
       expect(punchWritePaths(missing, [path.join(missing, 'out')])).toEqual([missing])
     })
   },
 )
+
+/**
+ * Item 652: every capability the resolved config carries reaches SRT's
+ * per-task config as SRT's own field. No row read this object, so each of
+ * the eleven hand-offs below could be deleted with the whole suite green:
+ * the sandboxed rows that declare a capability either run where it cannot
+ * be observed (no network in CI's sandbox, no macOS rules on Linux) or
+ * declare one SRT reads off `initialize()` instead. Each row names the
+ * field, the value vx was handed and the value SRT must receive — written
+ * out, not derived from `buildCustomConfig`.
+ */
+describe('buildCustomConfig hands each capability to SRT', () => {
+  const custom = (extra: Record<string, unknown>): Record<string, unknown> =>
+    buildCustomConfig(
+      { config: { allowRead: [], allowWrite: [], ...extra } as never },
+      { allowRead: [], allowWrite: [], denyRead: [] },
+    ) as Record<string, unknown>
+  const at = (o: Record<string, unknown>, keys: string[]): unknown =>
+    keys.reduce<unknown>((v, k) => (v as Record<string, unknown> | undefined)?.[k], o)
+
+  const ROWS: Array<[string, Record<string, unknown>, string[], unknown]> = [
+    ['network: true is every domain', { network: true }, ['network', 'allowedDomains'], ['*']],
+    [
+      'a domain list is that list',
+      { network: ['a.test', 'b.test'] },
+      ['network', 'allowedDomains'],
+      ['a.test', 'b.test'],
+    ],
+    ['no network is none', {}, ['network', 'allowedDomains'], []],
+    ['deny.network', { denyNetwork: ['c.test'] }, ['network', 'deniedDomains'], ['c.test']],
+    ['unixSockets: true', { unixSockets: true }, ['network', 'allowAllUnixSockets'], true],
+    [
+      'a unixSockets list',
+      { unixSockets: ['/s.sock'] },
+      ['network', 'allowUnixSockets'],
+      ['/s.sock'],
+    ],
+    ['localBinding', { localBinding: true }, ['network', 'allowLocalBinding'], true],
+    ['machLookup', { machLookup: ['com.x'] }, ['network', 'allowMachLookup'], ['com.x']],
+    ['gitConfig', { gitConfig: true }, ['filesystem', 'allowGitConfig'], true],
+    ['pty', { pty: true }, ['allowPty'], true],
+    ['weakerWhenNested', { weakerWhenNested: true }, ['enableWeakerNestedSandbox'], true],
+    [
+      'weakerNetworkIsolation',
+      { weakerNetworkIsolation: true },
+      ['enableWeakerNetworkIsolation'],
+      true,
+    ],
+  ]
+  for (const [what, extra, keys, want] of ROWS) {
+    it(`${what} → ${keys.join('.')}`, () => {
+      expect(at(custom(extra), keys)).toEqual(want)
+      // CONTROL: undeclared, the field is not invented (the domain lists
+      // are always present, empty, because SRT insists on both).
+      if (keys[0] !== 'network' || !keys[1]!.endsWith('Domains')) {
+        expect(at(custom({}), keys)).toBeUndefined()
+      }
+    })
+  }
+})
 
 describe('localBinding accepts a boolean or a port list', () => {
   const cfg = (localBinding: unknown) => ({
@@ -2301,6 +2687,32 @@ describe('localBinding accepts a boolean or a port list', () => {
 })
 
 describe('localBinding port list — the pure halves', () => {
+  // Item 652: the bridge's socket lives in SRT's temp directory, resolved
+  // exactly as SRT resolves it. No row set the variables, so an EMPTY
+  // `CLAUDE_CODE_TMPDIR` (a socket at `/vx-port-…`, the filesystem root)
+  // and the older `CLAUDE_TMPDIR` spelling were both unheld.
+  it('the socket directory follows SRT: an empty variable is unset, and the older name counts', () => {
+    const saved = [process.env['CLAUDE_CODE_TMPDIR'], process.env['CLAUDE_TMPDIR']]
+    const set = (k: string, v: string | undefined): void => {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    try {
+      set('CLAUDE_CODE_TMPDIR', '')
+      set('CLAUDE_TMPDIR', undefined)
+      expect(portBridgeSocket('t', 1)).toBe('/tmp/claude/vx-port-t-1.sock')
+      set('CLAUDE_CODE_TMPDIR', undefined)
+      set('CLAUDE_TMPDIR', '/legacy')
+      expect(portBridgeSocket('t', 1)).toBe('/legacy/vx-port-t-1.sock')
+      // CONTROL: the current name wins over the older one.
+      set('CLAUDE_CODE_TMPDIR', '/current')
+      expect(portBridgeSocket('t', 1)).toBe('/current/vx-port-t-1.sock')
+    } finally {
+      set('CLAUDE_CODE_TMPDIR', saved[0])
+      set('CLAUDE_TMPDIR', saved[1])
+    }
+  })
+
   it('a list grants loopback like `true`; an empty list and `false` do not', () => {
     expect(localBindingOn({ localBinding: true })).toBe(true)
     expect(localBindingOn({ localBinding: [3000] })).toBe(true)
@@ -2423,6 +2835,418 @@ describe.skipIf(!available || process.platform !== 'linux')(
     )
   },
 )
+
+/**
+ * Item 652: SRT's lifecycle as vx drives it. Every row that starts the
+ * sandbox runs one init against a clean directory and asserts only that
+ * tasks work, so what `initSandbox` hands SRT, what a SECOND init leaves
+ * alone, and what `resetSandbox` stops had no witness of their own.
+ */
+/**
+ * Item 652: `runSandboxed`'s own plumbing, driven directly. Every other
+ * row reaches it through `run()`, which forwards no arguments, captures
+ * everything, never times a task out and tears the whole runtime down at
+ * the end — so what THIS function owes its caller (the arguments, the tag,
+ * the bridge release, the spawn failure, the process group, the live-child
+ * set, the timeout, the capture flags) could each go with the suite green.
+ */
+describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, driven directly', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-runsbx-')))
+    await initSandbox()
+  })
+  afterEach(async () => {
+    await resetSandbox()
+    await rm(dir, { recursive: true, force: true })
+  })
+  const args = (command: string, extra: Record<string, unknown> = {}) => ({
+    command,
+    cwd: dir,
+    env: process.env,
+    baseAllowRead: [dir],
+    baseAllowWrite: [],
+    baseDenyRead: [],
+    reportWithin: dir,
+    config: resolveSandboxConfig({}, dir),
+    ...extra,
+  })
+
+  it('appends forwarded arguments, each shell-quoted', async () => {
+    const r = await runSandboxed(args("printf '%s|'", { forwardArgs: ['a b', "c'd"] }))
+    expect([r.exitCode, r.stdout]).toEqual([0, "a b|c'd|"])
+  })
+
+  it('tags each wrap uniquely and puts the tag first in the command', async () => {
+    // SRT's macOS store keys a record by the command's first 100 bytes, so
+    // two tasks running one command in one directory must still differ.
+    const a = await wrapSandboxedCommand(args('echo hi'))
+    const b = await wrapSandboxedCommand(args('echo hi'))
+    expect(a.tag).not.toBe(b.tag)
+    expect(a.taggedCommand).toBe(`: 'vx-${a.tag}'; echo hi`)
+  })
+
+  it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
+    const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
+    expect([r.exitCode, r.violations]).toEqual([127, []])
+    expect(r.stderr).toContain('[vx] failed to spawn sandboxed task')
+  })
+
+  it('the child leads its own process group, and is a live child only while it runs', async () => {
+    const live = new Set<ReturnType<typeof Bun.spawn>>()
+    const seen: boolean[] = []
+    const r = await runSandboxed(
+      args('echo up; sleep 0.2', {
+        liveChildren: live,
+        onStdout: () => {
+          for (const p of live) {
+            try {
+              process.kill(-p.pid, 0)
+              seen.push(true)
+            } catch {
+              seen.push(false)
+            }
+          }
+        },
+      }),
+    )
+    expect([r.exitCode, seen, live.size]).toEqual([0, [true], 0])
+  })
+
+  it('a timeout ends the task and says so', async () => {
+    const t0 = Date.now()
+    const r = await runSandboxed(args('sleep 10', { timeoutMs: 300 }))
+    expect(r.timedOut).toBe(true)
+    expect(Date.now() - t0).toBeLessThan(5000)
+    // The tracer dies of the SIGTERM itself, so the exit is the signal's.
+    expect([r.exitCode, r.signal]).toEqual([143, 'SIGTERM'])
+  })
+
+  it('traces openat only, through the seccomp filter', async () => {
+    // The flag is the difference between tracing one syscall and stopping
+    // on every one: without it the cache perf baselines ran 2.5-7x over.
+    const spy = spyOn(Bun, 'spawn')
+    try {
+      await runSandboxed(args('true'))
+      // `strace --version` is the availability probe; the trace carries `-o`.
+      const argv = spy.mock.calls
+        .map((c) => c[0] as unknown as string[])
+        .find((c) => c[0] === 'strace' && c.includes('-o'))
+      expect(argv?.slice(0, 5)).toEqual(['strace', '-f', '--seccomp-bpf', '-e', 'trace=openat'])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('removes its trace log, and reports the resources the task used', async () => {
+    // The tmpdir is shared with every process on the box, so the row
+    // follows this task's own log (the path its tracer was handed), not a
+    // listing another suite's sandbox can change mid-run.
+    const spy = spyOn(Bun, 'spawn')
+    const during: boolean[] = []
+    const logOf = (): string | undefined => {
+      const argv = spy.mock.calls
+        .map((c) => c[0] as unknown as string[])
+        .find((c) => c[0] === 'strace' && c.includes('-o'))
+      return argv?.[argv.indexOf('-o') + 1]
+    }
+    try {
+      const r = await runSandboxed(
+        args('echo up; sleep 0.1', { onStdout: () => during.push(existsSync(logOf() ?? '')) }),
+      )
+      const log = logOf() ?? ''
+      // Positive first: the log was there while the task ran.
+      expect([path.basename(log).startsWith('vx-strace-'), during, existsSync(log)]).toEqual([
+        true,
+        [true],
+        false,
+      ])
+      expect([typeof r.cpuMs, typeof r.peakRssBytes]).toEqual(['number', 'number'])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('hands the runtime back its per-command cleanup', async () => {
+    const spy = spyOn(SandboxManager, 'cleanupAfterCommand')
+    try {
+      await runSandboxed(args('true'))
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  // The note macOS needs (it logs nothing when the cwd is not granted) is
+  // added on any platform when a task FAILED, reported nothing, and its
+  // cwd lies outside every read grant. Each of the three is a row here.
+  describe('the ungranted-cwd note', () => {
+    const NOTE = "vx: this sandbox grants no read access to the task's own working directory"
+    const notes = (r: { violations: SandboxViolation[] }): boolean[] =>
+      r.violations.map((v) => v.line.startsWith(NOTE))
+
+    it('is added to a failure with nothing to show, when no grant covers the cwd', async () => {
+      await mkdir(path.join(dir, 'sub'))
+      const r = await runSandboxed(args('exit 3', { baseAllowRead: [path.join(dir, 'sub')] }))
+      expect([r.exitCode, notes(r)]).toEqual([3, [true]])
+    })
+
+    it('is added when the only grant is a sibling whose name prefixes the cwd', async () => {
+      // `<dir>/proj` is a string prefix of `<dir>/proj-x` and covers none
+      // of it; the separator is what keeps it from reading as the grant.
+      await mkdir(path.join(dir, 'proj'))
+      await mkdir(path.join(dir, 'proj-x'))
+      const r = await runSandboxed(
+        args('exit 3', { cwd: path.join(dir, 'proj-x'), baseAllowRead: [path.join(dir, 'proj')] }),
+      )
+      expect([r.exitCode === 0, notes(r)]).toEqual([false, [true]])
+      // CONTROL: a grant that does cover the cwd adds no note.
+      const granted = await runSandboxed(args('exit 3'))
+      expect([granted.exitCode, notes(granted)]).toEqual([3, []])
+    })
+
+    it('is not added when the task already reported a denial', async () => {
+      await mkdir(path.join(dir, 'sub'))
+      const r = await runSandboxed(
+        args(`cat ${dir}/secret.txt; exit 3`, {
+          baseAllowRead: [path.join(dir, 'sub')],
+          baseDenyRead: [dir],
+        }),
+      )
+      expect([r.exitCode, notes(r)]).toEqual([3, [false]])
+    })
+  })
+
+  // Whether to trace is decided once per runtime, from `strace --version`.
+  // CI's strace answers 0 and a modern version, so a detector that ignored
+  // the exit, never memoized, or let a missing binary through unrecorded
+  // answered the same there. These rows put a different strace on PATH —
+  // in a process of its own, since `Bun.spawn` resolves a bare name against
+  // the PATH its process STARTED with, not a later `process.env.PATH`.
+  describe('strace detection', () => {
+    const detecting = (pathDirs: string): unknown => {
+      const src = path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts')
+      const script = [
+        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
+        `const calls = []`,
+        `const spawn = Bun.spawn`,
+        `Bun.spawn = (cmd, ...rest) => { if (Array.isArray(cmd) && cmd[0] === 'strace') calls.push(cmd.includes('-o') ? 'trace' : cmd.join(' ')); return spawn(cmd, ...rest) }`,
+        `await initSandbox()`,
+        `const dir = ${JSON.stringify(dir)}`,
+        `const outs = []`,
+        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseAllowWrite: [], baseDenyRead: [], reportWithin: dir, config: resolveSandboxConfig({}, dir) })).stdout)`,
+        `console.log(JSON.stringify({ outs, calls }))`,
+        `await resetSandbox()`,
+      ].join('\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, '-e', script],
+        env: { ...process.env, PATH: pathDirs },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const out = p.stdout.toString().trim()
+      return out === ''
+        ? { exit: p.exitCode, stderr: p.stderr.toString().slice(0, 400) }
+        : JSON.parse(out)
+    }
+
+    it('a strace whose --version fails is not used, and is asked once', async () => {
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      // Fails `--version`; as a tracer it would just run the command.
+      await writeFile(
+        path.join(bin, 'strace'),
+        '#!/bin/sh\n[ "$1" = --version ] && exit 1\nwhile [ "$1" != -- ]; do shift; done; shift; exec "$@"\n',
+        { mode: 0o755 },
+      )
+      expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
+        outs: ['ok\n', 'ok\n'],
+        calls: ['strace --version'],
+      })
+    })
+
+    it('no strace on PATH is no tracing, and is found out once', async () => {
+      // Every binary the runtime needs, and no strace.
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      for (const name of ['sh', 'bash', 'bwrap', 'socat', 'rg']) {
+        const found = Bun.which(name)
+        if (found !== null) await symlink(found, path.join(bin, name))
+      }
+      expect(detecting(bin)).toEqual({ outs: ['ok\n', 'ok\n'], calls: ['strace --version'] })
+    })
+  })
+
+  it('a trace that cannot be parsed costs the report, never the task', async () => {
+    const spy = spyOn(violations, 'parseStraceViolations').mockRejectedValue(new Error('garbled'))
+    try {
+      const r = await runSandboxed(args('echo ok'))
+      expect([r.exitCode, r.stdout, r.violations]).toEqual([0, 'ok\n', []])
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a stream the caller did not ask to capture is streamed but not retained', async () => {
+    const out: string[] = []
+    const err: string[] = []
+    const r = await runSandboxed(
+      args('echo o; echo e >&2', {
+        capture: { stdout: false, stderr: false },
+        onStdout: (c: string) => out.push(c),
+        onStderr: (c: string) => err.push(c),
+      }),
+    )
+    expect([r.stdout, r.stderr, out.join(''), err.join('')]).toEqual(['', '', 'o\n', 'e\n'])
+  })
+
+  it("releases the task's host-side port bridge when the task ends", async () => {
+    const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+    const port = l.port
+    l.stop(true)
+    const listening = async (): Promise<boolean> =>
+      Bun.connect({ hostname: '127.0.0.1', port, socket: { data() {} } }).then(
+        (s) => (s.end(), true),
+        () => false,
+      )
+    const running = runSandboxed(
+      args('sleep 1', {
+        config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
+      }),
+    )
+    // Positive first: the host side comes up while the task runs.
+    let up = false
+    for (let i = 0; i < 40 && !up; i++) {
+      up = await listening()
+      if (!up) await Bun.sleep(20)
+    }
+    expect(up).toBe(true)
+    await running
+    let down = false
+    for (let i = 0; i < 100 && !down; i++) {
+      down = !(await listening())
+      if (!down) await Bun.sleep(20)
+    }
+    expect(down).toBe(true)
+  })
+
+  // Measured for item 652, and it holds the NAMESPACE, not the drain: with
+  // `drainOrAbort` (or the timeout's abort) deleted this row stays green,
+  // because bwrap's PID namespace kills a backgrounded grandchild the
+  // moment the task's shell exits, and the pipe closes with it. On Linux
+  // the post-exit drain bound is therefore unreachable in a sandbox; it is
+  // the guard on a platform without a PID namespace.
+  it('returns promptly when a backgrounded grandchild holds the pipe open', async () => {
+    const t0 = Date.now()
+    const r = await runSandboxed(args('sleep 10 & echo up'))
+    expect([r.exitCode, r.stdout]).toEqual([0, 'up\n'])
+    expect(Date.now() - t0).toBeLessThan(3000)
+  }, 15_000)
+})
+
+describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecycle', () => {
+  afterEach(async () => {
+    await resetSandbox()
+  })
+
+  it("hands SRT the run's domain union and vx's default ignore list", async () => {
+    await resetSandbox()
+    const spy = spyOn(SandboxManager, 'updateConfig')
+    try {
+      await initSandbox({ allowedDomains: ['a.test'] })
+      const cfg = spy.mock.calls.at(-1)?.[0] as {
+        network?: { allowedDomains?: string[] }
+        ignoreViolations?: unknown
+      }
+      expect(cfg.network?.allowedDomains).toEqual(['a.test'])
+      expect(cfg.ignoreViolations).toEqual({ '*': ['kern.iossupportversion'] })
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a second init leaves the running sockets alone', async () => {
+    // The stale-socket sweep is for a DEAD process's files. Once SRT is up
+    // under this pid, the files are its own live listeners. A process of
+    // its own: SRT's socket sequence keeps counting across resets, so only
+    // a fresh process's first listener sits at the seq the sweep starts on.
+    const script = [
+      `import { initSandbox, resetSandbox } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'))}`,
+      `import { existsSync } from 'node:fs'`,
+      `import path from 'node:path'`,
+      `import os from 'node:os'`,
+      `const live = path.join(os.tmpdir(), 'srt-mux-' + process.pid + '-0.sock')`,
+      `await initSandbox()`,
+      `const first = existsSync(live)`,
+      `await initSandbox()`,
+      `console.log(JSON.stringify([first, existsSync(live)]))`,
+      `await resetSandbox()`,
+    ].join('\n')
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, '-e', script],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([p.exitCode, p.stdout.toString().trim()]).toEqual([0, '[true,true]'])
+  })
+
+  it('a stale path it cannot unlink is an error, not a silent pass', async () => {
+    // A DIRECTORY at the socket path: `unlink` answers EISDIR, which is
+    // not "nothing there", and SRT's listen would fail on it anyway.
+    const stale = path.join(os.tmpdir(), `srt-mux-${process.pid}-0.sock`)
+    await resetSandbox()
+    await mkdir(stale)
+    try {
+      const err = await initSandbox().then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect((err as NodeJS.ErrnoException | undefined)?.code).toBe('EISDIR')
+    } finally {
+      await rm(stale, { recursive: true, force: true })
+    }
+  })
+
+  it("reset stops a task's host-side port bridge", async () => {
+    const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-bridge-reset-')))
+    const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+    const port = l.port
+    l.stop(true)
+    const listening = async (): Promise<boolean> =>
+      Bun.connect({ hostname: '127.0.0.1', port, socket: { data() {} } }).then(
+        (s) => (s.end(), true),
+        () => false,
+      )
+    try {
+      await initSandbox()
+      await wrapSandboxedCommand({
+        command: 'true',
+        cwd: dir,
+        config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
+        baseAllowRead: [],
+        baseAllowWrite: [],
+        baseDenyRead: [],
+      })
+      // The host's socat binds asynchronously: wait for it, bounded.
+      let up = false
+      for (let i = 0; i < 100 && !up; i++) {
+        up = await listening()
+        if (!up) await Bun.sleep(20)
+      }
+      expect(up).toBe(true)
+      await resetSandbox()
+      let down = false
+      for (let i = 0; i < 100 && !down; i++) {
+        down = !(await listening())
+        if (!down) await Bun.sleep(20)
+      }
+      expect(down).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe.skipIf(!available || process.platform !== 'linux')(
   'a stale mux socket under this pid does not stop the runtime',

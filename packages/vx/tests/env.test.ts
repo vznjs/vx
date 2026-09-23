@@ -26,6 +26,17 @@ describe('buildIsolatedEnv', () => {
     expect(env.PATH).toBeUndefined()
   })
 
+  // Item 652: the row above cannot tell an absent PATH from a PATH key
+  // holding `undefined` — and the env is handed to every executor plugin,
+  // where `Object.entries` sees the second. The exact key set can.
+  it('an essential unset in source is no key at all, not one holding undefined', () => {
+    expect(Object.keys(buildIsolatedEnv({ passThrough: [], define: {}, source: {} }))).toEqual([])
+    // CONTROL: one that IS set is the one key there.
+    expect(
+      Object.keys(buildIsolatedEnv({ passThrough: [], define: {}, source: { HOME: '/h' } })),
+    ).toEqual(['HOME'])
+  })
+
   it('forwards passThrough values from source', () => {
     const env = buildIsolatedEnv({
       passThrough: ['AWS_REGION'],
@@ -90,6 +101,19 @@ describe('buildIsolatedEnv', () => {
       binPaths: ['/proj/node_modules/.bin'],
     })
     expect(env.PATH).toBe('/proj/node_modules/.bin')
+  })
+
+  // Item 652: an empty list joins to '', and prepending '' puts an EMPTY
+  // entry first on PATH — which a shell reads as the current directory, so
+  // a `tsc` in the task's cwd would shadow the real one.
+  it('an empty binPaths leaves PATH exactly as it was — no empty first entry', () => {
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: { PATH: '/usr/bin' },
+      binPaths: [],
+    })
+    expect(env.PATH).toBe('/usr/bin')
   })
 
   it('binPaths prepend even after define overrides PATH', () => {
