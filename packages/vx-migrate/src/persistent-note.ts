@@ -5,7 +5,7 @@
 // mappers run this last, over the whole mapping, since a dependent may sit
 // in another package.
 
-export interface NotedTask {
+interface NotedTask {
   readonly name: string
   readonly todos: string[]
   readonly task: Record<string, unknown> | null

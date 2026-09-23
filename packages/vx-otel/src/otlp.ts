@@ -17,7 +17,7 @@ import type { RunContextRecord, RunSummaryRecord, TaskLogEntry, TaskTelemetry } 
 
 // --- OTLP value + attribute primitives ---------------------------------
 
-export type AnyValue =
+type AnyValue =
   | { stringValue: string }
   | { intValue: string }
   | { boolValue: boolean }
@@ -28,19 +28,19 @@ export interface KeyValue {
   value: AnyValue
 }
 
-export function strAttr(key: string, v: string): KeyValue {
+function strAttr(key: string, v: string): KeyValue {
   return { key, value: { stringValue: v } }
 }
-export function intAttr(key: string, v: number): KeyValue {
+function intAttr(key: string, v: number): KeyValue {
   return { key, value: { intValue: String(Math.trunc(v)) } }
 }
-export function boolAttr(key: string, v: boolean): KeyValue {
+function boolAttr(key: string, v: boolean): KeyValue {
   return { key, value: { boolValue: v } }
 }
 /** An int64 that is ALREADY a decimal string — OTLP's own encoding for the
  *  type. Passing it through untouched is the point: routing a nanosecond
  *  count through a JS number would round it. */
-export function int64Attr(key: string, v: string): KeyValue {
+function int64Attr(key: string, v: string): KeyValue {
   return { key, value: { intValue: v } }
 }
 
@@ -127,10 +127,10 @@ export const VX_ATTR = {
 
 // OTLP status codes: 0 UNSET, 1 OK, 2 ERROR. Span kind: 1 INTERNAL.
 export const STATUS_UNSET = 0
-export const STATUS_ERROR = 2
+const STATUS_ERROR = 2
 export const SPAN_KIND_INTERNAL = 1
 // Metric aggregation temporality: 2 = CUMULATIVE.
-export const AGG_CUMULATIVE = 2
+const AGG_CUMULATIVE = 2
 
 export interface OtlpSpan {
   traceId: string
@@ -204,21 +204,8 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
   return attrs
 }
 
-/**
- * Encode a list of output PATHS as JSON, not a joined string.
- *
- * A comma is a legal byte in a filename, and a path silently split in two
- * names a file that does not exist. `vx.requested_tasks` stays comma-joined by contrast: those
- * are config keys read by humans in a trace viewer far more often than they
- * are parsed, and a comma in one is pathological rather than merely rare.
- * That is a stated limit, not a guarantee.
- */
-export function encodePathList(paths: readonly string[]): string {
-  return JSON.stringify(paths)
-}
-
 /** What a task span needs to identify its run without its root span. */
-export interface TaskSpanRunContext {
+interface TaskSpanRunContext {
   runId: string
   workspaceId: string
   /** The run's canonical start (epoch ms) — the storage key's base. */
@@ -348,8 +335,8 @@ export function buildMetricsRequest(
 // --- logs ---------------------------------------------------------------
 
 // OTLP severity numbers: 9 INFO, 17 ERROR.
-export const SEVERITY_INFO = 9
-export const SEVERITY_ERROR = 17
+const SEVERITY_INFO = 9
+const SEVERITY_ERROR = 17
 
 export interface OtlpLogRecord {
   timeUnixNano: string

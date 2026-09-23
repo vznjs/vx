@@ -18,7 +18,7 @@ import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
-export interface TurboTask {
+interface TurboTask {
   dependsOn?: string[]
   inputs?: string[]
   outputs?: string[]

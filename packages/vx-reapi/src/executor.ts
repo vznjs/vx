@@ -134,7 +134,7 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message.split('\n')[0]! : String(err)
 }
 
-export interface DecodedExecuteResponse {
+interface DecodedExecuteResponse {
   result?: ActionResult
   message?: string
   cachedResult?: boolean

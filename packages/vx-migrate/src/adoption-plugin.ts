@@ -9,7 +9,7 @@ import { definePlugin, type ProjectHookContext, type TaskConfig, type VxPlugin }
 import { type Gaps, warnGaps } from './plugin-gaps.js'
 
 /** What a mapping hands the stage: tasks per package name, and the gaps to report once. */
-export interface AdoptionMapping {
+interface AdoptionMapping {
   readonly byName: ReadonlyMap<
     string,
     {

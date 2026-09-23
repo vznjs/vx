@@ -253,7 +253,7 @@ function variants(targetName: string, target: NxTarget): Variant[] {
 }
 
 /** What the mapper reads from nx.json: the named inputs and the legacy cacheable list. */
-export interface NxJsonFacts {
+interface NxJsonFacts {
   readonly namedInputs: Record<string, unknown[]> | null
   readonly cacheable: ReadonlySet<string>
 }
