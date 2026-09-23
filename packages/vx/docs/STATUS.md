@@ -459,6 +459,22 @@ test is telling the truth.
       partition with no snapshot — `snapshotFor` answers undefined for
       such a partition either way, so the guard bounds memory and is
       not a rule; its comment now says so. The enumeration is swept.
+649.  DONE (2026-09-23, the 628 method on the `--filter` and
+      `--affected` selectors). Twenty-three gates in
+      `workspace/filter.ts` and `workspace/affected.ts` deleted in turn
+      against the whole core suite in the worktree, twenty-two held: the
+      `!`, leading `...`, trailing `...` and `^...` forms, the path glob
+      and the nested-path prefix, the scope-crossing name star,
+      all-by-default with no include, the no-match report, `^...`
+      leaving its anchor out, negation removing; the option-like base
+      refusal, the merge base, `--no-renames`, the lockfile exemption,
+      both fingerprint widenings, config-import ownership, the orphan
+      owners, `workspaceGlobsMatch`'s negation, the deepest owner, and a
+      changed directory selecting the projects under it. One survived,
+      no row: the exact-match branch for a `*`-free filter name — the
+      name glob compiles such a name to an exact anchored match anyway,
+      so the branch was a second spelling of the rule and is gone, with
+      that reason as its comment. The selectors are swept.
 
 ## In flight
 

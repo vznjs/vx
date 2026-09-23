@@ -139,12 +139,9 @@ function matchProjects(
     }
     return out
   }
-  if (!filter.matcher.includes('*')) {
-    for (const p of projects) {
-      if (p.name === filter.matcher) out.push(p.name)
-    }
-    return out
-  }
+  // A `*`-free name compiles to an exact anchored match, so a bare name
+  // needs no branch of its own: the one this had was deleted with the
+  // whole core suite green (item 649).
   const re = compileNameGlob(filter.matcher)
   for (const p of projects) {
     if (re.test(p.name)) out.push(p.name)
