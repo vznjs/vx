@@ -163,6 +163,11 @@ export async function loadProjectConfigs(
   const evalCache = opts?.fresh === true ? undefined : opts?.evalCache
   const store = evalCache?.store
   const hashFile = store?.hashFile?.bind(store)
+  const hashBytes = store?.hashBytes?.bind(store)
+  // The slow path keys from the bytes it already holds; `hashFile` there
+  // memoised every closure file one autocommit upsert at a time (item 615).
+  const slowKeyHash =
+    hashBytes !== undefined ? { hashBytes } : hashFile !== undefined ? { hashFile } : {}
   // The warm fast path: a config whose ordered closure the store remembers
   // is keyed from per-file identities (a stat each, no read, no scan); the
   // slow path below reads, gates and scans, and indexes the closure for
@@ -206,7 +211,7 @@ export async function loadProjectConfigs(
               configPath,
               bytes,
               workspaceFingerprint: evalCache.workspaceFingerprint,
-              ...(hashFile !== undefined ? { hashFile } : {}),
+              ...slowKeyHash,
             })
       return {
         configPath,
@@ -232,59 +237,79 @@ export async function loadProjectConfigs(
     }
   }
   const out: ProjectConfig[] = []
-  for (const entry of prepared) {
-    const { configPath, cacheKey } = entry
-    const hit = cacheKey === null ? undefined : hits.get(cacheKey)
-    // Stored AFTER validation, so a hit needs none; the key covers every
-    // byte the evaluation could have read.
-    if (hit !== undefined) {
-      out.push(JSON.parse(hit) as ProjectConfig)
-      continue
-    }
-    // A fast key that missed: the closure is stale or the file changed.
-    // Take the slow path for this one config, which re-indexes it.
-    let bytes = entry.bytes
-    let closure = entry.closure
-    let key = cacheKey
-    if (entry.indexed) {
-      bytes = await Bun.file(configPath).bytes()
-      const keyed = await configEvalKey({
-        configPath,
-        bytes,
-        workspaceFingerprint: evalCache!.workspaceFingerprint,
-        ...(hashFile !== undefined ? { hashFile } : {}),
-      })
-      key = keyed?.key ?? null
-      closure = keyed !== null && keyed.indexable ? keyed.closure : undefined
-      const slowHit = key === null ? null : (store!.getConfigEval(key) ?? null)
-      if (slowHit !== null) {
-        out.push(JSON.parse(slowHit) as ProjectConfig)
-        if (closure !== undefined) store!.putConfigClosure?.(configPath, closure)
+  // What the round learned, written ONCE at the end: one transaction per
+  // table where each evaluation was its own (1,000 configs cold: 100 ms of
+  // autocommit inserts against 5, item 615). Written in `finally`, so a
+  // config that fails validation costs the next attempt only its own
+  // evaluation.
+  const evals: Array<readonly [string, string]> = []
+  const learnedClosures: Array<readonly [string, readonly string[]]> = []
+  try {
+    for (const entry of prepared) {
+      const { configPath, cacheKey } = entry
+      const hit = cacheKey === null ? undefined : hits.get(cacheKey)
+      // Stored AFTER validation, so a hit needs none; the key covers every
+      // byte the evaluation could have read.
+      if (hit !== undefined) {
+        out.push(JSON.parse(hit) as ProjectConfig)
         continue
       }
-    }
-    // A REPEAT load in this process re-evaluates in a worker, because the
-    // bust above cannot reach the config's import closure — see
-    // config-eval.ts. A FIRST load keeps the in-process import, so the
-    // single `vx run` hot path never pays for a worker.
-    const repeat = loadedConfigs.has(configPath)
-    loadedConfigs.add(configPath)
-    if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
-    const mod = repeat
-      ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
-          throw configLoadError(err, configPath, 'Project') ?? err
+      // A fast key that missed: the closure is stale or the file changed.
+      // Take the slow path for this one config, which re-indexes it.
+      let bytes = entry.bytes
+      let closure = entry.closure
+      let key = cacheKey
+      if (entry.indexed) {
+        bytes = await Bun.file(configPath).bytes()
+        const keyed = await configEvalKey({
+          configPath,
+          bytes,
+          workspaceFingerprint: evalCache!.workspaceFingerprint,
+          ...slowKeyHash,
         })
-      : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes!)
-    assertDefaultObject(mod, 'Project', configPath)
-    // Validation runs HERE, on whichever object we ended up with, so a
-    // malformed config reports the identical UserError whether it was
-    // evaluated in-process or in a worker.
-    validateProjectConfig(mod as ProjectConfig, configPath)
-    if (key !== null) {
-      evalCache!.store.putConfigEval(key, JSON.stringify(mod))
-      if (closure !== undefined) evalCache!.store.putConfigClosure?.(configPath, closure)
+        key = keyed?.key ?? null
+        closure = keyed !== null && keyed.indexable ? keyed.closure : undefined
+        const slowHit = key === null ? null : (store!.getConfigEval(key) ?? null)
+        if (slowHit !== null) {
+          out.push(JSON.parse(slowHit) as ProjectConfig)
+          if (closure !== undefined) learnedClosures.push([configPath, closure])
+          continue
+        }
+      }
+      // A REPEAT load in this process re-evaluates in a worker, because the
+      // bust above cannot reach the config's import closure — see
+      // config-eval.ts. A FIRST load keeps the in-process import, so the
+      // single `vx run` hot path never pays for a worker.
+      const repeat = loadedConfigs.has(configPath)
+      loadedConfigs.add(configPath)
+      if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
+      const mod = repeat
+        ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
+            throw configLoadError(err, configPath, 'Project') ?? err
+          })
+        : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes!)
+      assertDefaultObject(mod, 'Project', configPath)
+      // Validation runs HERE, on whichever object we ended up with, so a
+      // malformed config reports the identical UserError whether it was
+      // evaluated in-process or in a worker.
+      validateProjectConfig(mod as ProjectConfig, configPath)
+      if (key !== null) {
+        evals.push([key, JSON.stringify(mod)])
+        if (closure !== undefined) learnedClosures.push([configPath, closure])
+      }
+      out.push(mod as ProjectConfig)
     }
-    out.push(mod as ProjectConfig)
+  } finally {
+    if (store !== undefined) {
+      if (evals.length > 0) {
+        if (store.putConfigEvals !== undefined) store.putConfigEvals(evals)
+        else for (const [k, json] of evals) store.putConfigEval(k, json)
+      }
+      if (learnedClosures.length > 0 && store.putConfigClosure !== undefined) {
+        if (store.putConfigClosures !== undefined) store.putConfigClosures(learnedClosures)
+        else for (const [p, files] of learnedClosures) store.putConfigClosure(p, files)
+      }
+    }
   }
   return out
 }

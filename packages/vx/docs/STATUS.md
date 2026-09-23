@@ -141,6 +141,36 @@ test is telling the truth.
       directions (differential: a ghost row fails it by name). The site
       guide of the same name is a task's `exec.env` model; the section
       title says which side it is.
+615.  DONE (2026-09-23, the cold path measured and its one hot spot
+      cut). A cold run at 1,000 projects (`.vx` removed) profiled 24 %
+      in `spawn` (the tasks) and 18 % in SQLite's `run`; a preload that
+      tallies statements found 14,023 of them, and three tables written
+      once per config in autocommit — `config_evals`, `config_closures`
+      and the `file_hashes` memo the slow path wrote while keying — each
+      insert its own transaction. Microbenchmark: 1,000 such inserts
+      180–240 ms, the same in one transaction 2.5 ms. Now the loader
+      collects what a round learned and writes it once per table at the
+      end, in `finally` (`ConfigEvalStore.putConfigEvals` /
+      `putConfigClosures`, optional, one transaction each; a store
+      without them is given the entries one by one), the slow path keys a
+      closure file from the bytes it already read to scan it
+      (`hashBytes`, no memo row — the first warm load builds the memo in
+      `hashFiles`' one transaction), and the closure upsert is prepared
+      once, not per call. Interleaved A/B on the same workspace, five
+      reps, `.vx` removed before each: `load configs` cold 507–607 ms
+      before, 207–272 after (min 507 → 207); the whole cold run
+      2,938–3,420 → 2,680–2,997 (min −258 ms, 9 %). The warm path does
+      not touch these writes, so it has no arm. Rows: a round lands in
+      one batched call per table with the bytes-keyed slow path (fails
+      on main: 0 batched calls), the batched puts honour the write axis,
+      `hashBytes` is `hashFile` of the same bytes with no row. No
+      `CACHE_VERSION` bump: the stored bytes and the keys are unchanged.
+      Alongside: 614's pin asked `git ls-files` from inside a sandboxed
+      shard, which has no git, and darwin CI failed on the empty set —
+      it walks `src` now (a law that reads the tree reads it; git is for
+      the unsafe suite). And `sandboxReportingReliable`, the darwin gate
+      whose pins went with `--verify`, is gone: oxlint named it once 613
+      un-exported it.
 
 ## In flight
 

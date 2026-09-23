@@ -13,7 +13,13 @@ which reads every file's bytes and key in parallel and asks the store ONCE
 (`ConfigEvalStore.getConfigEvals`, optional; `Cache` answers with one `IN`
 query per 900 keys — 1,000 point lookups measured 3.6 ms against 0.7 for
 the batch), then evaluates only the misses in the order given, so a failure
-names the first broken file as a one-by-one load did.
+names the first broken file as a one-by-one load did, and writes what the
+round learned ONCE at the end (`putConfigEvals` / `putConfigClosures`, one
+transaction each; a per-config put was one autocommit transaction each, and
+1,000 of them cost 180–240 ms against 2.5 — item 615). The slow path keys a
+closure file from the bytes it read to scan it (`hashBytes`), not through
+the stat memo: the memo row it wrote was a third autocommit per file, and
+the first warm load builds the memo in one transaction instead.
 
 ## Public surface
 
@@ -24,11 +30,14 @@ export const CONFIG_EVAL_VERSION = 2
 export interface ConfigEvalStore {
   hashFile?(file: string): Promise<string> // the warm fast path: a file's git blob id behind a stat memo
   hashFiles?(files: readonly string[]): Promise<Map<string, string>> // the same over many paths, one memo query per 500
+  hashBytes?(bytes: Uint8Array, nearPath: string): string // hashFile's identity from the bytes: the slow path's, no memo row
   getConfigClosures?(configPaths: readonly string[]): Map<string, string[]>
   putConfigClosure?(configPath: string, files: readonly string[]): void
+  putConfigClosures?(entries: ReadonlyArray<readonly [string, readonly string[]]>): void // a round's closures, one transaction
   getConfigEval(key: string): string | null
   getConfigEvals?(keys: readonly string[]): Map<string, string> // many keys in one round-trip
   putConfigEval(key: string, json: string): void
+  putConfigEvals?(entries: ReadonlyArray<readonly [string, string]>): void // a round's evaluations, one transaction
 }
 
 /** What `configEvalKey` learned besides the key, for the store's closure index. */
@@ -40,7 +49,8 @@ export interface ConfigEvalKeyResult {
 
 export interface ConfigEvalKeyArgs {
   configPath: string
-  hashFile?: (file: string) => Promise<string> // absent: the blob id is computed from the bytes in-process
+  hashBytes?: (bytes: Uint8Array, nearPath: string) => string // the identity from the bytes in hand; preferred over hashFile
+  hashFile?: (file: string) => Promise<string> // absent too: the blob id is computed from the bytes in-process
   bytes: Uint8Array
   workspaceFingerprint: string
 }
