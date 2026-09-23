@@ -38,6 +38,7 @@ import {
 } from '../src/exec/sandbox-violations.js'
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import { validateProjectConfig } from '../src/workspace/index.js'
 
 const TIMEOUT = 60_000
@@ -1986,6 +1987,84 @@ describe('reportableViolations', () => {
       }),
     ).toHaveLength(0)
   })
+
+  // Item 652: `ignore` was driven for writes only, so the classifier could
+  // lose its read, system-info, sysctl-read and network arms with the suite
+  // green. Each operation is silenced by its own list — and by no other.
+  const LISTS = ['read', 'write', 'systemInfo', 'network'] as const
+  const OPS: Array<[string, string, (typeof LISTS)[number]]> = [
+    ['file-read-data', `${PROJ}/r.ts`, 'read'],
+    ['file-write-create', `${PROJ}/w.ts`, 'write'],
+    ['system-info', 'vfs.a', 'systemInfo'],
+    ['sysctl-read', 'kern.b', 'systemInfo'],
+    ['network-outbound', 'example.com:443', 'network'],
+  ]
+  for (const [op, target, list] of OPS) {
+    it(`a seatbelt ${op} record is silenced by ignore.${list} and by no other list`, () => {
+      const kept = (lists: readonly string[]): number =>
+        reportableViolations([mac(op, target)], {
+          within: PROJ,
+          config: resolveSandboxConfig(
+            { ignore: Object.fromEntries(lists.map((l) => [l, [target]])) },
+            PROJ,
+          ),
+        }).length
+      expect(kept([list])).toBe(0)
+      // CONTROL: every OTHER list naming the same target leaves it reported.
+      expect(kept(LISTS.filter((l) => l !== list))).toBe(1)
+    })
+  }
+
+  // Item 652: a record the classifier names no list for (a `mach-lookup`)
+  // has a target and no `ignorable`; nothing drove one past an `ignore`
+  // block, so the guard that stops the list walk could go — and the walk
+  // then throws on `undefined`, failing the task's whole report.
+  it('keeps a record no ignore list can name, with an ignore block present', () => {
+    const v = mac('mach-lookup', 'com.apple.x')
+    expect(
+      lines(
+        reportableViolations([v], {
+          within: PROJ,
+          config: resolveSandboxConfig({ ignore: { read: ['*'] } }, PROJ),
+        }),
+      ),
+    ).toEqual(['bun(1) deny(1) mach-lookup com.apple.x'])
+  })
+
+  it('drops a sibling whose name merely begins with the project', () => {
+    const cfg = resolveSandboxConfig({}, PROJ)
+    expect(
+      lines(
+        reportableViolations(
+          [mac('file-read-data', `${PROJ}other/x.ts`), mac('file-read-data', `${PROJ}/y.ts`)],
+          { within: PROJ, config: cfg },
+        ),
+      ),
+    ).toEqual([`bun(1) deny(1) file-read-data ${PROJ}/y.ts`])
+  })
+
+  // Item 652: ROOT above is canonical and never exists, so neither
+  // `toRealPath` on the report's side had a witness: the `within` it is
+  // handed, and the path a seatbelt record names (macOS records the path
+  // the process used, which on macOS is `/tmp`, a link to `/private/tmp`).
+  it('judges `within` and a seatbelt path each where it lands through a link', async () => {
+    const d = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-report-link-')))
+    try {
+      await mkdir(path.join(d, 'proj'))
+      await symlink(path.join(d, 'proj'), path.join(d, 'alias'))
+      const cfg = resolveSandboxConfig({}, path.join(d, 'proj'))
+      const via = (within: string, target: string): string[] =>
+        lines(reportableViolations([mac('file-read-data', target)], { within, config: cfg }))
+      expect(via(path.join(d, 'alias'), `${d}/proj/a.ts`)).toEqual([
+        `bun(1) deny(1) file-read-data ${d}/proj/a.ts`,
+      ])
+      expect(via(path.join(d, 'proj'), `${d}/alias/b.ts`)).toEqual([
+        `bun(1) deny(1) file-read-data ${d}/alias/b.ts`,
+      ])
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
+  })
 })
 
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
@@ -2230,6 +2309,63 @@ describe('sandbox probe', () => {
     TIMEOUT,
   )
 })
+
+/**
+ * Item 652: the probe's own gates, driven through the runtime's wrapper.
+ * On a host where the secure sandbox works, a probe that ignored the
+ * wrapper's exit, swallowed nothing, forgot the weaker mode or never
+ * memoized answers exactly what the real one does — so the rows below
+ * hand it a wrapper that fails, and count what it asked for.
+ */
+describe.skipIf(!available || process.platform !== 'linux')(
+  'the probe, through its wrapper',
+  () => {
+    afterEach(async () => {
+      await resetSandbox()
+    })
+
+    it('is memoized per mode, and the weaker mode asks for the weaker wrapper', async () => {
+      await resetSandbox()
+      const spy = spyOn(SandboxManager, 'wrapWithSandbox')
+      try {
+        const secure = await probeSandbox()
+        const again = await probeSandbox()
+        const weaker = await probeSandbox({ weakerNested: true })
+        expect(again).toBe(secure)
+        expect(weaker).not.toBe(secure)
+        expect(spy.mock.calls.map((c) => c[2])).toEqual([
+          undefined,
+          { enableWeakerNestedSandbox: true },
+        ])
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
+    it('a wrapper that exits non-zero, or throws, is an unavailable verdict', async () => {
+      await resetSandbox()
+      const spy = spyOn(SandboxManager, 'wrapWithSandbox').mockImplementation(
+        async () => 'echo nope >&2; exit 3',
+      )
+      try {
+        expect(await probeSandbox()).toEqual({
+          available: false,
+          reason: 'a sandboxed `true` failed (exit 3): nope',
+        })
+        await resetSandbox()
+        spy.mockImplementation(async () => {
+          throw new Error('boom')
+        })
+        expect(await probeSandbox()).toEqual({
+          available: false,
+          reason: 'sandbox probe threw: boom',
+        })
+      } finally {
+        spy.mockRestore()
+      }
+    })
+  },
+)
 
 describe.skipIf(process.platform !== 'linux')(
   'punchWritePaths — a read grant is never an ancestor of a write grant (linux)',
