@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
-import { buildAdmission } from '../src/orchestrator/plugin-host.js'
+import { applyScheduleHooks, buildAdmission } from '../src/orchestrator/plugin-host.js'
 import type { TaskNode } from '../src/graph/index.js'
 
 const TIMEOUT = 20_000
@@ -858,6 +858,23 @@ describe('schedule stage', () => {
     },
     TIMEOUT,
   )
+
+  it('a weight for a task outside this run is dropped before it is checked (item 651)', async () => {
+    // A history-backed policy weighs every task it has ever seen; a run with
+    // a filter holds a few. The stale ids leave the map, and a junk weight on
+    // one of them is not this run's refusal. Without the skip the merged map
+    // carries `gone#build` and the NaN fails the run.
+    const nodes = new Map([['a#build', {} as TaskNode]])
+    const plugin = testPlugin('org/history', {
+      schedule: () =>
+        new Map([
+          ['a#build', 5],
+          ['gone#build', Number.NaN],
+        ]),
+    })
+    const merged = await applyScheduleHooks([plugin], nodes, {} as never)
+    expect([...merged]).toEqual([['a#build', 5]])
+  })
 })
 
 describe('telemetry stage', () => {
