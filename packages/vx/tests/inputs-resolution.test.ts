@@ -694,6 +694,25 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(existsSync(path.join(projectDir, 'dist'))).toBe(true)
   })
 
+  it('a path reached from OUTSIDE the project resolves to nothing even when it really lives inside', async () => {
+    // The lexical half of containment. Every escape above is caught by the
+    // real-path half too (an outside directory resolves outside), so
+    // deleting the lexical check survived the whole core suite (item 647).
+    // What it alone decides: a `..` glob reaching a sibling LINK that points
+    // back INTO the project names a path that is lexically outside while
+    // its directory resolves inside. The resolver's rule is that it never
+    // names a path outside the project by any route, and only the lexical
+    // check knows this one came from outside.
+    await write(path.join(projectDir, 'sub/own.txt'), 'own')
+    await symlink(path.join(projectDir, 'sub'), path.join(root, 'back'))
+
+    expect(
+      await resolveOutputs({ projectDir, outputs: ['../back/**'], nestedProjectDirs: [] }),
+    ).toEqual([])
+    await cleanOutputs({ projectDir, outputs: ['../back/**'], nestedProjectDirs: [] })
+    expect(await readFile(path.join(projectDir, 'sub/own.txt'), 'utf8')).toBe('own')
+  })
+
   it('a REAL output dir holding a symlinked file is still cleaned — containment is per directory', async () => {
     // The control that keeps the fix from over-refusing: containment resolves
     // DIRECTORIES, so a link sitting inside a genuine output dir must not take

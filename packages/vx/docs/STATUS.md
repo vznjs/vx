@@ -419,6 +419,29 @@ test is telling the truth.
       import the graph), so the function moved to `util/task-id.ts`,
       the graph re-exports it, the façade is unchanged, and the copy is
       gone. The task graph is swept end to end (645, 646).
+647.  DONE (2026-09-23, the 628 method on the input and output
+      resolvers). Twenty gates in `cache/inputs.ts` deleted in turn
+      against the whole core suite in the worktree, nineteen held: both
+      negation forms, both own-output exclusions, the project boundary,
+      both memo-identity checks, both invisible-literal refusals and the
+      absent-literal silence, both disk probes, `OUTPUT_NEVER`, the
+      nested-project stop, real-path containment (project and
+      workspace), the scan's file-or-symlink filter, and
+      `settleLiterals`'s tree rule; the unremovable-output `UserError`
+      is held by a row that SKIPS AS ROOT, so the root-driven sweep
+      read two unrelated reds under it and the verdict came from
+      driving the mutation as the `probe` user (red, and green
+      pristine). One survived: the LEXICAL half of output containment
+      — every escape the suite plants is caught by the real-path half
+      too. One row (`inputs-resolution.test.ts`): a `..` glob reaching
+      a sibling link that points back INTO the project names a path
+      that is lexically outside while its directory resolves inside,
+      and only the lexical check refuses it; red on its line alone.
+      Method note: the `rm -rf /tmp/vx-*` that precedes a local row
+      RACED the running sweep's fixture (an `rm: Directory not empty`
+      mid-sweep); it now runs only on an idle box. 643's parity reds
+      were recorded as load flakes and this wipe is a second candidate
+      cause, unproven. The resolvers are swept.
 
 ## In flight
 

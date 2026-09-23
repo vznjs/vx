@@ -343,6 +343,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a
   behaviour absent, grep the word's forms and the constant's name.
+- A sweep's fixtures live under `/tmp/vx-*`: the wipe that precedes a
+  local row (`rm -rf /tmp/bun-node-* /tmp/vx-*`) raced a running
+  sweep's fixture and errored mid-sweep (item 647). Wipe only on an
+  idle box. And a row that `skipIf(skipAsRoot(...))` is not driven by
+  a root-run sweep: a survivor there is re-driven as `probe` before it
+  is called one (647).
 - A row titled for several sites drives each of them, or its title
   is a claim the suite lacks: "pending until a read, a prune, a stat
   or close" drove the read, and the sibling flush's three sites had
