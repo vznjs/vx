@@ -5,7 +5,12 @@
 // offered to a remote executor that enforces no sandbox and reports no
 // violations.
 import { describe, expect, it } from 'bun:test'
-import { UNPLACED_EXECUTOR, locallyPlaced, pinnedLocalSet } from '../src/orchestrator/placement.js'
+import {
+  UNPLACED_EXECUTOR,
+  locallyPlaced,
+  pinnedLocalSet,
+  placeTasks,
+} from '../src/orchestrator/placement.js'
 import type { Placements } from '../src/orchestrator/placement.js'
 import type { TaskExecutor } from '../src/exec/executor.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -57,6 +62,53 @@ describe('pinnedLocalSet', () => {
       graph(node('a#build', { sandbox: {} }), node('b#test', {}, ['a#build']), node('c#lint', {})),
     )
     expect([...set].sort()).toEqual(['a#build', 'b#test'])
+  })
+})
+
+describe('placeTasks (item 650)', () => {
+  // Two gates in the placement loop survived the whole core suite: the
+  // persistent skip (the executor entry it withholds is one nothing
+  // reads at run time) and the `cacheable` hint (only a plugin reads it,
+  // and core has no plugin). Each is a plugin-facing fact, so each gets
+  // its row here.
+  const seen = (): { executor: TaskExecutor; asks: Array<[string, boolean]> } => {
+    const asks: Array<[string, boolean]> = []
+    return {
+      asks,
+      executor: {
+        name: 'recorder',
+        accepts: (t) => {
+          asks.push([t.taskId, t.cacheable])
+          return true
+        },
+        execute: () => {
+          throw new Error('never runs')
+        },
+      },
+    }
+  }
+
+  it('a persistent task is never placed: no executor entry, no ask', () => {
+    const { executor, asks } = seen()
+    const placements = placeTasks(
+      graph(node('a#dev', { persistent: {} }), node('b#build', {}, ['a#dev'])),
+      [executor],
+    )
+    expect([[...placements.executors.keys()], asks.map(([id]) => id)]).toEqual([
+      ['b#build'],
+      ['b#build'],
+    ])
+  })
+
+  it('an executor is told whether the task it is offered is cacheable', () => {
+    const { executor, asks } = seen()
+    const cached = node('a#build', {})
+    ;(cached.config as { cache?: unknown }).cache = { inputs: { files: ['src/**'] } }
+    placeTasks(graph(cached, node('b#lint', {})), [executor])
+    expect(asks.sort((x, y) => x[0].localeCompare(y[0]))).toEqual([
+      ['a#build', true],
+      ['b#lint', false],
+    ])
   })
 })
 

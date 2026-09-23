@@ -290,7 +290,7 @@ async function runOnBus(
   // can admit a remote-pooled task against its pool instead of a local
   // worker slot. Group tasks run nothing; persistent tasks never reach an
   // executor (local by construction) — both stay off the map.
-  const placements = placeTasks(nodes, executors, false)
+  const placements = placeTasks(nodes, executors)
   // A `remote: 'only'` task nobody takes succeeds WITHOUT running. That is
   // deliberate — on a machine with no remote pool the ambient state already
   // is what the task would have produced — but it must not be SILENT: a task

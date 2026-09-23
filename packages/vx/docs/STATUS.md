@@ -475,6 +475,27 @@ test is telling the truth.
       name glob compiles such a name to an exact anchored match anyway,
       so the branch was a second spelling of the rule and is gone, with
       that reason as its comment. The selectors are swept.
+650.  DONE (2026-09-23, the 628 method on placement, the taint tracker
+      and executor selection). Nineteen gates in
+      `orchestrator/placement.ts`, `orchestrator/admission.ts` and
+      `exec/executor.ts` deleted in turn against the whole core suite in
+      the worktree, sixteen held: the four pins (persistent, sandbox,
+      `remote: false`, through deps), the remote-only noop, the
+      `locallyPlaced` predicate, the plan surviving a resolution error,
+      labels needing a choice, the pool naming, the tracker being off
+      outside `--continue=always`, skipped and aborted upstreams
+      tainting, the transitive taint, the restore-tier barrier skip, the
+      pinned task skipping remote executors, and a declining executor
+      being passed over (fifteen rows). Three survived. `pinAllLocal`
+      was a parameter no caller passed true — item 528 had already
+      measured it dead and named it for the owner — so it is gone from
+      `placeTasks`, its one call site and the module page. The
+      persistent skip and the `cacheable` hint are plugin-facing facts
+      nothing in core read (`@vzn/vx-reapi`'s `accepts` is the one
+      reader of `cacheable`), so each gets a row (`placement.test.ts`):
+      a persistent task gets no executor entry and is never offered; an
+      executor is told `true` for a cached task and `false` for a plain
+      one. Each red on its line alone. Placement is swept.
 
 ## In flight
 
