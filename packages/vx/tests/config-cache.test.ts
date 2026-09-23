@@ -345,6 +345,14 @@ describe('stripLiterals', () => {
     expect(out).toContain('process.env.X')
     expect(out).not.toContain('-')
   })
+  it('the expression closes after a nested object literal, and the file reads on (item 653)', () => {
+    // With the object's `}` never counted back down, the expression never
+    // ends and the template's closing backtick opens a new one to EOF: the
+    // file is refused. Conservative, but a pure config that never caches.
+    expect(stripLiterals('const s = `${ {a: 1}.a }`\nconst t = 1\n')).toBe(
+      'const s =   {a: 1}.a  \nconst t = 1\n',
+    )
+  })
   it('bails on an unterminated literal', () => {
     expect(stripLiterals("const s = 'open")).toBeNull()
     expect(stripLiterals('const t = `open ${x}')).toBeNull()
