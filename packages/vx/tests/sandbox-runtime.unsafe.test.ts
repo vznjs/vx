@@ -1773,6 +1773,41 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     expect(produced.map((v) => v.target)).toEqual([`${ws}/libx/y.ts`])
   })
 
+  // Item 652: the fixture root above is canonical, so the three `toRealPath`
+  // calls in the strace pass could each go with the suite green. A traced
+  // path is the one the process ASKED for, through whatever link it held;
+  // the grants and the anchor may arrive through a link too. The comparison
+  // is only right when every side is canonical.
+  it('canonicalizes the traced path: one reached through a link is judged where it lands', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(path.join(ws, 'real'), { recursive: true })
+    await symlink(path.join(ws, 'real'), path.join(ws, 'link'))
+    await symlink(ws, path.join(dir, 'alias'))
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, [at(`${ws}/link/x`), at(`${dir}/alias/y`)].join('\n'))
+    const produced = await parseStraceViolations(
+      log,
+      { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+      { allowRead: [`${ws}/real`], denyRead: [ws], cwd: ws },
+    )
+    // `link/x` lands in the granted `real/`; `alias/y` lands in the project.
+    expect(produced.map((v) => v.target)).toEqual([`${ws}/y`])
+  })
+
+  it('canonicalizes the grant and the anchor it is handed through a link', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(path.join(ws, 'real'), { recursive: true })
+    await symlink(ws, path.join(dir, 'alias'))
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, [at(`${ws}/real/x`), at(`${ws}/z`)].join('\n'))
+    const produced = await parseStraceViolations(
+      log,
+      { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+      { allowRead: [`${dir}/alias/real`], denyRead: [`${dir}/alias`], cwd: ws },
+    )
+    expect(produced.map((v) => v.target)).toEqual([`${ws}/z`])
+  })
+
   // A BUG, recorded not fixed (item 652): `absolutize` expands a leading
   // `~` for the user's grants, but the same helper absolutizes the path a
   // traced syscall named, and the kernel never expands `~` — `~cache/x`
@@ -2348,6 +2383,66 @@ describe.skipIf(process.platform !== 'linux')(
     })
   },
 )
+
+/**
+ * Item 652: every capability the resolved config carries reaches SRT's
+ * per-task config as SRT's own field. No row read this object, so each of
+ * the eleven hand-offs below could be deleted with the whole suite green:
+ * the sandboxed rows that declare a capability either run where it cannot
+ * be observed (no network in CI's sandbox, no macOS rules on Linux) or
+ * declare one SRT reads off `initialize()` instead. Each row names the
+ * field, the value vx was handed and the value SRT must receive — written
+ * out, not derived from `buildCustomConfig`.
+ */
+describe('buildCustomConfig hands each capability to SRT', () => {
+  const custom = (extra: Record<string, unknown>): Record<string, unknown> =>
+    buildCustomConfig(
+      { config: { allowRead: [], allowWrite: [], ...extra } as never },
+      { allowRead: [], allowWrite: [], denyRead: [] },
+    ) as Record<string, unknown>
+  const at = (o: Record<string, unknown>, keys: string[]): unknown =>
+    keys.reduce<unknown>((v, k) => (v as Record<string, unknown> | undefined)?.[k], o)
+
+  const ROWS: Array<[string, Record<string, unknown>, string[], unknown]> = [
+    ['network: true is every domain', { network: true }, ['network', 'allowedDomains'], ['*']],
+    [
+      'a domain list is that list',
+      { network: ['a.test', 'b.test'] },
+      ['network', 'allowedDomains'],
+      ['a.test', 'b.test'],
+    ],
+    ['no network is none', {}, ['network', 'allowedDomains'], []],
+    ['deny.network', { denyNetwork: ['c.test'] }, ['network', 'deniedDomains'], ['c.test']],
+    ['unixSockets: true', { unixSockets: true }, ['network', 'allowAllUnixSockets'], true],
+    [
+      'a unixSockets list',
+      { unixSockets: ['/s.sock'] },
+      ['network', 'allowUnixSockets'],
+      ['/s.sock'],
+    ],
+    ['localBinding', { localBinding: true }, ['network', 'allowLocalBinding'], true],
+    ['machLookup', { machLookup: ['com.x'] }, ['network', 'allowMachLookup'], ['com.x']],
+    ['gitConfig', { gitConfig: true }, ['filesystem', 'allowGitConfig'], true],
+    ['pty', { pty: true }, ['allowPty'], true],
+    ['weakerWhenNested', { weakerWhenNested: true }, ['enableWeakerNestedSandbox'], true],
+    [
+      'weakerNetworkIsolation',
+      { weakerNetworkIsolation: true },
+      ['enableWeakerNetworkIsolation'],
+      true,
+    ],
+  ]
+  for (const [what, extra, keys, want] of ROWS) {
+    it(`${what} → ${keys.join('.')}`, () => {
+      expect(at(custom(extra), keys)).toEqual(want)
+      // CONTROL: undeclared, the field is not invented (the domain lists
+      // are always present, empty, because SRT insists on both).
+      if (keys[0] !== 'network' || !keys[1]!.endsWith('Domains')) {
+        expect(at(custom({}), keys)).toBeUndefined()
+      }
+    })
+  }
+})
 
 describe('localBinding accepts a boolean or a port list', () => {
   const cfg = (localBinding: unknown) => ({
