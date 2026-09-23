@@ -120,6 +120,15 @@ function matchProjects(
   }
   const out: string[] = []
   if (filter.isPath) {
+    const prefix = filter.matcher + path.sep
+    for (const p of projects) {
+      if (p.dir === filter.matcher || p.dir.startsWith(prefix)) out.push(p.name)
+    }
+    // A path that names a project directory literally means that directory,
+    // as git reads a pathspec, even when it holds glob characters
+    // (`./packages/[abc]`); only a path that selects nothing literally is
+    // read as a glob.
+    if (out.length > 0) return out
     if (filter.pathGlob !== undefined) {
       // The glob is matched against the project's own dir, as pnpm and
       // Turbo do: `./packages/*` is the packages directly under `packages`,
@@ -131,11 +140,6 @@ function matchProjects(
           .join('/')
         if (filter.pathGlob.match(rel)) out.push(p.name)
       }
-      return out
-    }
-    const prefix = filter.matcher + path.sep
-    for (const p of projects) {
-      if (p.dir === filter.matcher || p.dir.startsWith(prefix)) out.push(p.name)
     }
     return out
   }

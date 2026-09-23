@@ -906,6 +906,17 @@ green against the whole core suite in 654; each site now says why in one
 line. The masked pair's row (disposer called twice) still holds the bus
 side. CLAUDE.md gains 654's lesson: a mutation's replacement text is code.
 
+14bl. **Item 664 (roadmap 2.3, 2026-09-23): a bracketed project directory
+is selectable by its path.** `--filter ./packages/[abc]` compiled as a
+glob and selected the sibling `packages/a` (the FINDING row of item
+661). A path form now matches literally first, as git reads a pathspec,
+and is read as a glob only when it selects no project literally. The
+FINDING row became the fix's row, red without it, with a control that a
+bracket path naming no directory (`./packages/[ab]`) still globs. The
+check is on the project list, not the file system, so `parseFilter`
+stays pure. Parity audit §9 L255 struck; `cli.md` and the filter module
+page say so.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

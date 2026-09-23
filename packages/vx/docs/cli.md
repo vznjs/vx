@@ -124,17 +124,17 @@ full workspace.
 The full DSL lives in `src/workspace/filter.ts`; this is the user-
 facing summary.
 
-| Form            | Meaning                                                                                             |
-| --------------- | --------------------------------------------------------------------------------------------------- |
-| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.                                   |
-| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root).                       |
-| `{<dir>}`       | Same as `./<dir>`.                                                                                  |
-| `./<glob>`      | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). |
-| `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.                           |
-| `<pattern>...`  | Match + all transitive dependencies (see below what an edge is).                                    |
-| `...<pattern>`  | Match + all transitive dependents.                                                                  |
-| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                             |
-| `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                               |
+| Form            | Meaning                                                                                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.                                                                                                                                               |
+| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root).                                                                                                                                   |
+| `{<dir>}`       | Same as `./<dir>`.                                                                                                                                                                                              |
+| `./<glob>`      | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
+| `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.                                                                                                                                       |
+| `<pattern>...`  | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                |
+| `...<pattern>`  | Match + all transitive dependents.                                                                                                                                                                              |
+| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                         |
+| `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                                                                                                                                           |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
