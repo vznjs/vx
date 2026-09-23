@@ -104,7 +104,7 @@ export interface TreeGraft {
  * the graph self-consistent regardless of who produced it — file digests are
  * untouched (content-addressed, already in the CAS).
  */
-export function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
+function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
   const byOldDigest = new Map<string, Directory>()
   for (const child of graft.children) {
     byOldDigest.set(sha256(encodeDirectory(child)).hash, child)
@@ -473,7 +473,7 @@ export const OUTPUT_DIRECTORY_FORMAT = {
   TREE_AND_DIRECTORY: 2,
 } as const
 
-export interface CommandSpec {
+interface CommandSpec {
   arguments: readonly string[]
   environmentVariables: ReadonlyArray<{ name: string; value: string }>
   outputPaths: readonly string[]
@@ -710,7 +710,7 @@ function decodeSymlinkNode(buf: Uint8Array): SymlinkNode {
   return sl
 }
 
-export function decodeDigestBytes(buf: Uint8Array): Digest {
+function decodeDigestBytes(buf: Uint8Array): Digest {
   const d: Digest = { hash: '', size_bytes: 0 }
   let i = 0
   while (i < buf.length) {
@@ -732,7 +732,7 @@ export function decodeDigestBytes(buf: Uint8Array): Digest {
   return d
 }
 
-export function readVarintAt(buf: Uint8Array, at: number): [number, number] {
+function readVarintAt(buf: Uint8Array, at: number): [number, number] {
   let result = 0
   let shift = 0
   let i = at

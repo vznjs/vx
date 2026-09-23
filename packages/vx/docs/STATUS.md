@@ -319,6 +319,24 @@ test is telling the truth.
       number is refreshed to what 608 and 609 left (about 30 ms over
       evaluated configs). Rule kept: a profile of a scratch tree is a
       profile of the untracked case unless the tree is in git.
+611.  DONE (2026-09-23, the exports nobody imports). A sweep of every
+      `export` in the plugin packages against every other file: 21
+      symbols were used only inside the file that exported them (the
+      `export` keyword goes — `readVarintAt`, `strAttr`, the Nx and
+      Turbo mapper's row types, the adoption skeleton's mapping shape)
+      and one was used nowhere — `encodePathList` in `@vzn/vx-otel`,
+      whose comment promised output paths as JSON when the task
+      attribute has carried only `deferred` since the outputs went
+      deferred (a comment claiming a guarantee the code lacks). Core
+      had none. REFUTED alongside, for the per-task Nx cost: `nx-exec`
+      spends 125 ms of its 218 ms floor loading Nx, and 65 of those are
+      Nx's `analytics` module (208 modules) plus 27 its daemon client,
+      neither used by an executor run — but the executor resolver
+      (`getExecutorInformation`) needs `project-graph/plugins`, 310
+      modules and 81 ms by itself, so a path around `runExecutor` would
+      load the same graph (112 against 128 ms, measured); and Nx's
+      `native` addon rules out a Node startup snapshot. The floor is
+      Nx's own.
 
 ## In flight
 

@@ -5,7 +5,7 @@
 // `externalDependencies`) is a todo saying so. Extracted from `buildTask`
 // in item 606; the rules are unchanged.
 
-export interface NxInputs {
+interface NxInputs {
   readonly files: string[]
   readonly wsFiles: string[]
   readonly envNames: string[]

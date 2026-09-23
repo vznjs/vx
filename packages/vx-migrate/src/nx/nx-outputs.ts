@@ -4,7 +4,7 @@
 
 import path from 'node:path'
 
-export interface NxOutputs {
+interface NxOutputs {
   readonly outFiles: string[]
   readonly wsOutFiles: string[]
 }

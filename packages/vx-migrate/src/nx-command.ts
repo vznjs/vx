@@ -12,7 +12,7 @@
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-export interface NxCommandContext {
+interface NxCommandContext {
   /** Project dir relative to the workspace root, `.` for the root. */
   projectRel: string
   /** The Nx project name, what `{projectName}` expands to. */
