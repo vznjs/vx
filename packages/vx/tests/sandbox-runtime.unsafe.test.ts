@@ -22,6 +22,7 @@ import {
   type SandboxViolation,
   resolveSandboxConfig,
   runSandboxed,
+  wrapSandboxedCommand,
 } from '../src/exec/sandbox-runtime.js'
 import { buildCustomConfig, punchWritePaths } from '../src/exec/sandbox-binds.js'
 import {
@@ -1586,6 +1587,13 @@ describe('resolveSandboxConfig', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // Item 652: no row granted a `~` path, so its expansion could go and
+  // `~/.npmrc` would resolve against the project, a path that is not there.
+  it('expands a leading `~` against the home directory, not the project', () => {
+    const r = resolveSandboxConfig({ allow: { read: ['~/.vx-652-probe'] } }, '/nowhere/proj')
+    expect(r.allowRead).toEqual([path.join(realpathSync(os.homedir()), '.vx-652-probe')])
+  })
 })
 
 // Deterministic pin for the Linux detector's trace parsing. The end-to-end
@@ -2609,6 +2617,32 @@ describe('localBinding accepts a boolean or a port list', () => {
 })
 
 describe('localBinding port list — the pure halves', () => {
+  // Item 652: the bridge's socket lives in SRT's temp directory, resolved
+  // exactly as SRT resolves it. No row set the variables, so an EMPTY
+  // `CLAUDE_CODE_TMPDIR` (a socket at `/vx-port-…`, the filesystem root)
+  // and the older `CLAUDE_TMPDIR` spelling were both unheld.
+  it('the socket directory follows SRT: an empty variable is unset, and the older name counts', () => {
+    const saved = [process.env['CLAUDE_CODE_TMPDIR'], process.env['CLAUDE_TMPDIR']]
+    const set = (k: string, v: string | undefined): void => {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    try {
+      set('CLAUDE_CODE_TMPDIR', '')
+      set('CLAUDE_TMPDIR', undefined)
+      expect(portBridgeSocket('t', 1)).toBe('/tmp/claude/vx-port-t-1.sock')
+      set('CLAUDE_CODE_TMPDIR', undefined)
+      set('CLAUDE_TMPDIR', '/legacy')
+      expect(portBridgeSocket('t', 1)).toBe('/legacy/vx-port-t-1.sock')
+      // CONTROL: the current name wins over the older one.
+      set('CLAUDE_CODE_TMPDIR', '/current')
+      expect(portBridgeSocket('t', 1)).toBe('/current/vx-port-t-1.sock')
+    } finally {
+      set('CLAUDE_CODE_TMPDIR', saved[0])
+      set('CLAUDE_TMPDIR', saved[1])
+    }
+  })
+
   it('a list grants loopback like `true`; an empty list and `false` do not', () => {
     expect(localBindingOn({ localBinding: true })).toBe(true)
     expect(localBindingOn({ localBinding: [3000] })).toBe(true)
@@ -2731,6 +2765,115 @@ describe.skipIf(!available || process.platform !== 'linux')(
     )
   },
 )
+
+/**
+ * Item 652: SRT's lifecycle as vx drives it. Every row that starts the
+ * sandbox runs one init against a clean directory and asserts only that
+ * tasks work, so what `initSandbox` hands SRT, what a SECOND init leaves
+ * alone, and what `resetSandbox` stops had no witness of their own.
+ */
+describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecycle', () => {
+  afterEach(async () => {
+    await resetSandbox()
+  })
+
+  it("hands SRT the run's domain union and vx's default ignore list", async () => {
+    await resetSandbox()
+    const spy = spyOn(SandboxManager, 'updateConfig')
+    try {
+      await initSandbox({ allowedDomains: ['a.test'] })
+      const cfg = spy.mock.calls.at(-1)?.[0] as {
+        network?: { allowedDomains?: string[] }
+        ignoreViolations?: unknown
+      }
+      expect(cfg.network?.allowedDomains).toEqual(['a.test'])
+      expect(cfg.ignoreViolations).toEqual({ '*': ['kern.iossupportversion'] })
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a second init leaves the running sockets alone', async () => {
+    // The stale-socket sweep is for a DEAD process's files. Once SRT is up
+    // under this pid, the files are its own live listeners. A process of
+    // its own: SRT's socket sequence keeps counting across resets, so only
+    // a fresh process's first listener sits at the seq the sweep starts on.
+    const script = [
+      `import { initSandbox, resetSandbox } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'))}`,
+      `import { existsSync } from 'node:fs'`,
+      `import path from 'node:path'`,
+      `import os from 'node:os'`,
+      `const live = path.join(os.tmpdir(), 'srt-mux-' + process.pid + '-0.sock')`,
+      `await initSandbox()`,
+      `const first = existsSync(live)`,
+      `await initSandbox()`,
+      `console.log(JSON.stringify([first, existsSync(live)]))`,
+      `await resetSandbox()`,
+    ].join('\n')
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, '-e', script],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([p.exitCode, p.stdout.toString().trim()]).toEqual([0, '[true,true]'])
+  })
+
+  it('a stale path it cannot unlink is an error, not a silent pass', async () => {
+    // A DIRECTORY at the socket path: `unlink` answers EISDIR, which is
+    // not "nothing there", and SRT's listen would fail on it anyway.
+    const stale = path.join(os.tmpdir(), `srt-mux-${process.pid}-0.sock`)
+    await resetSandbox()
+    await mkdir(stale)
+    try {
+      const err = await initSandbox().then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect((err as NodeJS.ErrnoException | undefined)?.code).toBe('EISDIR')
+    } finally {
+      await rm(stale, { recursive: true, force: true })
+    }
+  })
+
+  it("reset stops a task's host-side port bridge", async () => {
+    const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-bridge-reset-')))
+    const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+    const port = l.port
+    l.stop(true)
+    const listening = async (): Promise<boolean> =>
+      Bun.connect({ hostname: '127.0.0.1', port, socket: { data() {} } }).then(
+        (s) => (s.end(), true),
+        () => false,
+      )
+    try {
+      await initSandbox()
+      await wrapSandboxedCommand({
+        command: 'true',
+        cwd: dir,
+        config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
+        baseAllowRead: [],
+        baseAllowWrite: [],
+        baseDenyRead: [],
+      })
+      // The host's socat binds asynchronously: wait for it, bounded.
+      let up = false
+      for (let i = 0; i < 100 && !up; i++) {
+        up = await listening()
+        if (!up) await Bun.sleep(20)
+      }
+      expect(up).toBe(true)
+      await resetSandbox()
+      let down = false
+      for (let i = 0; i < 100 && !down; i++) {
+        down = !(await listening())
+        if (!down) await Bun.sleep(20)
+      }
+      expect(down).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe.skipIf(!available || process.platform !== 'linux')(
   'a stale mux socket under this pid does not stop the runtime',
