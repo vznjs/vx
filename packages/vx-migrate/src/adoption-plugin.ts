@@ -57,9 +57,12 @@ export function adoptionPlugin(
       for (const t of project.tasks) {
         if (t.task === null) continue
         // The user's own declaration wins — the plugin fills, never overwrites.
-        // A copy per fill: the stage hands core an object it owns and edits
-        // in place, and the mapping outlives one run (the watch shape).
-        config.tasks[t.name] ??= structuredClone(t.task) as unknown as TaskConfig
+        // The mapping's own object, not a copy: the mapping is made per RUN
+        // (above), so nothing outlives the run that fills from it, and core
+        // only reads a stage-given task after validating it. The copy was
+        // the per-process memo's guard and cost 10 ms per run at 1,000
+        // projects, 3,000 clones (item 609).
+        config.tasks[t.name] ??= t.task as unknown as TaskConfig
       }
     },
   })
