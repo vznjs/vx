@@ -110,6 +110,12 @@ export class DeferredOutputs {
 
     // Mirror `restoreHit`'s sequencing so the two paths cannot drift: wipe
     // the declared outputs, write, then tell the git snapshot what moved.
+    // The wipe is a rule (a straggler in the declared tree is gone after
+    // the fetch); the two marks are the mirror's cost, not a rule: no
+    // reader of these outputs can be in the run — `deferralEligibility`
+    // keeps every same-project reader and every workspaceFiles reader
+    // eager — so deleting the post-fetch mark survives the whole core
+    // suite (item 643).
     if (outputs.length > 0) {
       const cleaned = await cleanOutputs(cleanArgs)
       this.args.gitFilesCache?.markOutputsChanged(producer.projectDir, cleaned)
