@@ -1466,8 +1466,10 @@ export class Cache implements CacheLayer {
 
   async prune(options: PruneOptions): Promise<PruneResult> {
     this.flushAccessed()
-    // Before any entry is deleted: a pending snapshot for a pruned hash
-    // would otherwise land after the cascade and orphan its rows.
+    // Before any entry is deleted, so a kept entry's pending snapshot is on
+    // disk whatever the eviction does next. A pruned hash's snapshot cannot
+    // orphan rows in either order: landed first, the cascade takes them;
+    // landed after, the flush's own entry check drops them (item 628).
     this.outputs.flushOutputDirs()
     const { olderThanMs, maxBytes, dryRun = false } = options
     if (olderThanMs === undefined && maxBytes === undefined) {

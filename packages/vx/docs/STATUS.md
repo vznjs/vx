@@ -343,6 +343,21 @@ scope`: an empty scope is refused earlier as "not inside a
       658 → 637 ms, median 859 → 841 (7 reps interleaved) — inside this
       box's noise, as every sub-6 % change here is. The `restore: exists`
       span left `docs/modules/timing.md` with the probe.
+628.  DONE (2026-09-23, the deferred snapshot's flush sites held one by
+      one). 622's row is titled "pending until a read, a prune, a stat
+      or close" and drove the read alone; the other three were each
+      deleted in turn: close's flush was already held by two run-level
+      rows (a restore's snapshot is read by the next run), the flushes
+      in `stats()` and `prune()` were survivors. Three rows now, one per
+      site, each red with its site's flush gone: a snapshot pending at
+      close is what a NEW `Cache` on the directory reads (the `vx watch`
+      cycle 625 closed by reading, now a row); `stats()` lands before
+      it counts; a prune lands the kept entry's rows and leaves none
+      for the evicted one. That last claim was held two ways, and the
+      comment in `prune()` said the flush-first was what kept the table
+      free of orphans — the flush's own entry check (622) does that in
+      either order, so the comment now says which half the order alone
+      holds: the kept entry's rows landing whatever the eviction does.
 
 ## In flight
 
