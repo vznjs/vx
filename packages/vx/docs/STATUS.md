@@ -523,6 +523,32 @@ test is telling the truth.
       built from, so the arm is gone and the lookup is asserted. The
       plugin host is swept.
 
+<!-- items 652 and 653 land above this line; drop this comment when they do -->
+
+654.  DONE (2026-09-23, the 628 method on the telemetry host, the
+      telemetry record and the event bus). Ninety-eight gates and field
+      copies in `orchestrator/telemetry-host.ts`, `telemetry.ts` and
+      `events.ts` deleted in turn against the whole core suite, seventy-six
+      held. Three warn deletions first ran as `void (…,)`, a syntax error
+      that reddened 164 unrelated rows; re-driven as a no-op call, and one
+      of those needed a leading `;` or it CALLED the line above
+      (`disabled.add(sink)(…)`). A replacement line that opens with `(` is
+      itself a mutation. Nineteen survivors got rows, each red on its line
+      alone: the sink shape refusals' words (a string `wants` was accepted,
+      since `String.includes` is a substring match), a plugin with no
+      telemetry hook and a declining one warning nothing, a sink with no
+      flush hook not flushed, the default kinds beside a `task.log`
+      opt-in, the remote up-to-date word, the stderr wire kind, the bus
+      disposer called twice, and two whole-record rows (`projectOutcome`
+      carried nine unread fields, `task.end` one). The handle's `disposed`
+      flag and the bus disposer's found-guard mask each other; one row
+      goes red only with both deleted. Two survived with no row and wait
+      on the coordinator: `isCacheHit`'s known-status guard and
+      `disable`'s once-guard are implied by what follows or precedes them.
+      One BUG, left as an `it.todo` row: the streaming `task.end` drops
+      `blockedBy`, `timedOut`, `sandboxViolations` and `notReady`, which
+      the summary's copy of the same `TaskTelemetry` carries.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

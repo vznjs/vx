@@ -273,6 +273,54 @@ describe('createTelemetrySource — projection', () => {
     }
   })
 
+  it('task.end carries every fact it copies, each under its own name', () => {
+    // A `--download=none` task's deferred `outputs` had no reader on the
+    // streaming record, so dropping its copy left the suite green (654).
+    // The whole record is compared, bar the projection clock.
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, {
+        status: 'success',
+        exitCode: 0,
+        durationMs: 12,
+        hash: 'h',
+        cpuMs: 5,
+        peakRssBytes: 2048,
+        where: 'worker-3',
+        outputs: 'deferred',
+        attempts: 2,
+        wallclockStartNs: 100n,
+        wallclockEndNs: 200n,
+      }),
+    })
+    const { ts, ...rest } = records[0] as TelemetryRecord & { ts: number }
+    expect(typeof ts).toBe('number')
+    expect(rest).toEqual({
+      v: TELEMETRY_SCHEMA_VERSION,
+      kind: 'task.end',
+      runId: 'run-1',
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 12,
+      hash: 'h',
+      cpuMs: 5,
+      peakRssBytes: 2048,
+      where: 'worker-3',
+      outputs: 'deferred',
+      attempts: 2,
+      wallclockStartNs: '100',
+      wallclockEndNs: '200',
+    })
+  })
+
   it("stamps run.start with the RUN's start, not the projection's clock", () => {
     // `startedAt` equals the summary's startedAt on purpose — a sink derives
     // per-task timing from it DURING the run, before any summary exists. `ts`
@@ -308,6 +356,48 @@ describe('createTelemetrySource — projection', () => {
     expect(records.map((r) => (r.kind === 'task.end' ? r.attempts : 'not-task-end'))).toEqual([
       3,
       undefined,
+    ])
+  })
+
+  // BUG (item 654, not fixed: a source change needs the coordinator's
+  // approval). `TaskTelemetry` is "shared by the streaming task.end record
+  // and the per-run summary's tasks[]", and the summary's copy
+  // (`telemetryOf` in run-records.ts) carries blockedBy, timedOut,
+  // sandboxViolations and notReady — but the task.end projection in
+  // `createTelemetrySource` copies none of the four, so a streaming sink
+  // (otel) sees a timed-out, sandbox-violating or never-ready failure as a
+  // plain `failed`, and a blocked skip with no blocker. Repro: this row;
+  // each field reads `undefined`.
+  it.todo('task.end carries the failure and skip reasons the summary row carries', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, {
+        status: 'failed',
+        exitCode: 143,
+        timedOut: true,
+        sandboxViolations: 2,
+        notReady: 'timeout',
+      }),
+    })
+    const skipped = mkNode('b#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node: skipped,
+      outcome: mkOutcome(skipped, { status: 'skipped', blockedBy: 'a#build' }),
+    })
+    expect(
+      records.map((r) =>
+        r.kind === 'task.end'
+          ? [r.timedOut, r.sandboxViolations, r.notReady, r.blockedBy]
+          : 'not-task-end',
+      ),
+    ).toEqual([
+      [true, 2, 'timeout', undefined],
+      [undefined, undefined, undefined, 'a#build'],
     ])
   })
 
@@ -408,6 +498,20 @@ describe('createTelemetrySource — task.log opt-in', () => {
     src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node) })
     expect(records.map((r) => r.kind)).toEqual(['task.end'])
   })
+
+  it('a sink on the defaults gets no task.log while another sink opted in', () => {
+    // Alone, a default sink is shielded by the `wantsLog` gate: no chunk is
+    // projected at all. Only beside an opted-in sink does the default kind
+    // list decide, and a default that held `task.log` passed every row (654).
+    const logs = recorder(['task.log'])
+    const plain = recorder()
+    const src = createTelemetrySource({ sinks: [logs.sink, plain.sink], run: RUN })
+    const node = mkNode('a#build', 'x')
+    src.subscriber({ kind: 'task:start', node })
+    src.subscriber({ kind: 'task:stdout', node, chunk: 'hi' })
+    expect(logs.records.map((r) => r.kind)).toEqual(['task.log'])
+    expect(plain.records.map((r) => r.kind)).toEqual(['task.start'])
+  })
 })
 
 const SUMMARY: RunSummaryRecord = {
@@ -494,6 +598,20 @@ describe('createTelemetrySource — crash isolation', () => {
     expect(warns).toEqual(["[vx] telemetry sink 'flaky-sink' failed to flush: disk full"])
   })
 
+  it('a sink with no flush hook is not asked to flush, and nothing is said', async () => {
+    // `flush` is optional. Calling it anyway throws a TypeError the flush
+    // catch reports as "failed to flush" — a warning on every run for a
+    // sink that buffers nothing (654).
+    const warns: string[] = []
+    const src = createTelemetrySource({
+      sinks: [{ name: 'stream-only', onRecord: () => undefined }],
+      run: RUN,
+      warn: (m) => warns.push(m),
+    })
+    await src.flush()
+    expect(warns).toEqual([])
+  })
+
   it('emitSummary + flush are crash-isolated', async () => {
     const good = recorder()
     const bad: TelemetrySink = {
@@ -533,8 +651,18 @@ describe('subscribeTelemetry — host', () => {
   it('returns undefined when a plugin declines (telemetry → undefined)', async () => {
     const bus = createEventBus()
     const plugins: VxPlugin[] = [testPlugin('org/decline', { telemetry: () => undefined })]
-    const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
+    const warnings: string[] = []
+    const handle = await subscribeTelemetry(
+      plugins,
+      bus,
+      { ...ctx, warn: (m) => warnings.push(m) },
+      RUN,
+    )
     expect(handle).toBeUndefined()
+    // Declining is a plugin's normal answer (otel() with no endpoint), not a
+    // fault: read as a one-sink list, `undefined` was refused as "must be an
+    // object" and every declined run warned (654).
+    expect(warnings).toEqual([])
   })
 
   it('subscribes the source and fans records when a sink is contributed', async () => {
@@ -582,15 +710,67 @@ describe('subscribeTelemetry — host', () => {
     expect(warnings.some((w) => w.includes('org/bad'))).toBe(true)
   })
 
+  it('passes over a plugin with no telemetry hook without a word', async () => {
+    // Calling the missing hook throws a TypeError, which the consultation's
+    // catch turned into "telemetry failed to initialize" for every plugin
+    // that never offered telemetry — a warning on every run of a workspace
+    // with a cache or executor plugin (654).
+    const warnings: string[] = []
+    const handle = await subscribeTelemetry(
+      [testPlugin('org/cache-only', {})],
+      createEventBus(),
+      { ...ctx, warn: (m) => warnings.push(m) },
+      RUN,
+    )
+    expect(handle).toBeUndefined()
+    expect(warnings).toEqual([])
+  })
+
+  it('refuses a sink that is not an object, or whose wants is not an array, by name', async () => {
+    // Without the shape checks a `null` sink is still refused — by the raw
+    // TypeError of reading `.wants` off it — and a number is refused as
+    // "handles nothing"; only the words change, so the row pins the words.
+    // A string `wants` is worse: `'run.start'.includes(kind)` is a
+    // SUBSTRING match, so it was accepted and filtered by accident (654).
+    const bad = (name: string, result: unknown): VxPlugin =>
+      testPlugin(name, { telemetry: () => result as TelemetrySink })
+    const warnings: string[] = []
+    const handle = await subscribeTelemetry(
+      [
+        bad('org/null', null),
+        bad('org/number', 42),
+        bad('org/wants', { wants: 'run.start', onRecord: () => undefined }),
+      ],
+      createEventBus(),
+      { ...ctx, warn: (m) => warnings.push(m) },
+      RUN,
+    )
+    expect(handle).toBeUndefined()
+    const why = (name: string, msg: string) =>
+      `[vx] plugin '${name}' telemetry failed to initialize; disabled for this run: ${msg}`
+    expect(warnings).toEqual([
+      why('org/null', 'telemetry sink must be an object, got null'),
+      why('org/number', 'telemetry sink must be an object, got number'),
+      why('org/wants', "telemetry sink 'wants' must be an array, got string"),
+    ])
+  })
+
   it('dispose() removes the bus subscription (idempotent)', async () => {
     const bus = createEventBus()
     const rec = recorder()
     const plugins: VxPlugin[] = [testPlugin('org/tel', { telemetry: () => rec.sink })]
     const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
+    // Subscribed AFTER the sink, so a second dispose that reached the bus
+    // with the sink already gone would splice(-1, 1) this one away. The
+    // handle's `disposed` flag and the bus disposer's found-guard each
+    // prevent it alone; this row holds the pair (654).
+    const renderer: string[] = []
+    bus.subscribe((e) => renderer.push(e.kind))
     handle!.dispose()
     handle!.dispose() // idempotent — must not throw
     busLogger(bus).runStart?.({ total: 1 })
     expect(rec.records).toHaveLength(0)
+    expect(renderer).toEqual(['run:start'])
   })
 })
 
