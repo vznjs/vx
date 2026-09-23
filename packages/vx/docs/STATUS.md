@@ -442,6 +442,23 @@ test is telling the truth.
       mid-sweep); it now runs only on an idle box. 643's parity reds
       were recorded as load flakes and this wipe is a second candidate
       cause, unproven. The resolvers are swept.
+648.  DONE (2026-09-23, the 628 method on the git enumeration). Twenty
+      gates in `cache/git-inputs.ts` deleted in turn against the whole
+      core suite in the worktree, nineteen held: the project mark's
+      forwarding to the workspace partition and the workspace mark's
+      reach into the project partitions under it, the workspace
+      partition's invalidation, the OID drops on a mark, a dirty path
+      (thirty-six rows), a flagged path and a filtered path, the
+      pending-change re-spawn (thirteen), `set` and `delete` clearing
+      their bookkeeping, the rename source counting as dirty, untracked
+      paths as inputs (twenty-four), the prefix re-keying under a git
+      subdirectory, the no-status trust withdrawal, the dirtiness
+      derivation, the empty slice storing no partition, `setOids` after
+      `set` (twenty-four), and the workspace-wide partition naming its
+      root. One survived, no row: `recordChanged`'s guard against a
+      partition with no snapshot — `snapshotFor` answers undefined for
+      such a partition either way, so the guard bounds memory and is
+      not a rule; its comment now says so. The enumeration is swept.
 
 ## In flight
 

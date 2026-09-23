@@ -106,6 +106,11 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   private recordChanged(partitionDir: string, relPaths: readonly string[]): void {
+    // A partition with no snapshot has nothing for a mark to invalidate
+    // (`snapshotFor` answers undefined either way), so this guard bounds
+    // memory for a project the enumeration left without a partition; it
+    // is not a rule, and deleting it survives the whole core suite (item
+    // 648).
     if (!this.has(partitionDir)) return
     const cur = this.changed.get(partitionDir)
     if (cur) cur.push(...relPaths)
