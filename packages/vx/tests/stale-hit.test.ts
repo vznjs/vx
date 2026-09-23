@@ -264,6 +264,67 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a workspace output written mid-run reaches a consumer whose partition was read before it',
+    async () => {
+      // The ADDITION twin, on the miss path: `early` reads the workspace
+      // partition first (codegen waits on it), codegen then writes gen/b.ts
+      // at the root, and consume resolves `gen/*.ts` against a partition
+      // enumerated before that write. Two lines in miss-save.ts keep it
+      // honest — the root-anchored mark and the partition invalidation —
+      // and they mask each other; with both gone, consume keys from an
+      // EMPTY input set, and a later run whose real input set is empty
+      // (emit.sh emits no .ts) hits run one's artifact and restores
+      // content the inputs no longer hold.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             early: {
+               exec: { command: 'true' },
+               cache: { inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, outputs: { files: [] } },
+             },
+             codegen: {
+               dependsOn: ['early'],
+               exec: { command: 'sh emit.sh' },
+               cache: {
+                 inputs: { files: ['emit.sh'], tasks: [] },
+                 outputs: { files: [], workspaceFiles: ['gen/**'] },
+               },
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               cache: {
+                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
+                 outputs: { files: ['out/**'] },
+               },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf content-of-b > gen/b.ts\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      vx(root, 'run', 'consume', '--concurrency', '1')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
+
+      // The producer stops emitting any .ts: consume's real input set is
+      // empty, so its output must be empty too — not run one's bytes.
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
+      vx(root, 'run', 'consume', '--concurrency', '1')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the ROOT-ANCHORED twin of that wipe is recorded too',
     async () => {
       // `cache.outputs.workspaceFiles` is wiped by `cleanWorkspaceOutputs`

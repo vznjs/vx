@@ -83,12 +83,18 @@ the upstream's output rows, which the save writes.
 3. `cache.save` — entry, output rows and `entry_inputs` rows in one
    transaction; no exit code, because the contract accepts none and the
    caller's `exitCode === 0` gate is the invariant.
-4. `recordOutputDirs` — whole-subtree prefixes for the hit path's
-   directory-mtime check.
+4. A snapshot request (`outputDirSnapshots`) — whole-subtree prefixes
+   for the hit path's directory-mtime check, recorded at run end from
+   the run's list; a caller with no list gets no snapshot (recording
+   here fell inside the racy window and was always refused, item 637).
 5. `markOutputsChanged` / `markWorkspaceOutputsChanged` /
    `invalidateWorkspacePartition` — the git snapshot learns the exact
    paths, not "everything changed"; on a 1,000-package cold run that
-   is one `git ls-files` spawn per project not made.
+   is one `git ls-files` spawn per project not made. The last two mask
+   each other on the workspace partition: a consumer that read it
+   before the producer wrote keys from an empty set with both gone, and
+   a later run whose real set is empty hits that artifact
+   (`stale-hit.test.ts`, "written mid-run", item 637).
 
 Not here: the deferred-download path (`--download=none`), which saves
 no artifact and registers a closure instead (`execute-task.ts`).

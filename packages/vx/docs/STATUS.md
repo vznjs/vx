@@ -188,6 +188,30 @@ test is telling the truth.
       exit-before-ready — its body's every effect is a no-op on an
       exited child and a settled promise, and the pid-reuse hazard it
       closes cannot be forced by a row.
+637.  DONE (2026-09-23, the 628 method on `saveMiss`). Its eight duties
+      deleted in turn against the whole core suite in the worktree:
+      the project-dir git mark (four rows), the run's snapshot push,
+      the tier-3 input components (seven `vx why` rows), the
+      workspace-output spread (four stale-hit rows) and the
+      empty-outputs warning (six) are held; the root-anchored git mark,
+      the workspace-partition invalidation and the no-list snapshot
+      fallback survived. The first two are a masked pair on the
+      workspace partition, and deleting BOTH survives ten files too:
+      a consumer that read the partition before the producer wrote
+      keys from an empty set, and a later run whose real set is empty
+      hits that artifact — a stale hit under a green run, the worst
+      class. Now `stale-hit.test.ts` runs the shape (`early` reads
+      `gen/*.ts` first, codegen writes `gen/b.ts` at the root, consume
+      resolves after; then emit.sh stops emitting `.ts`): red with the
+      pair deleted (`content-of-b` restored where `''` is due), green
+      with either half alone, so the row pins the rule and both copies
+      stay. The fallback went: `recordOutputDirs` refuses a snapshot
+      whose youngest directory is inside `OUTPUT_DIRS_RACY_MS`, and a
+      caller with no list recorded milliseconds after the write, so
+      the fallback was always that refusal; the miss and hit paths now
+      push to the run's list or record nothing (`miss-save.md` step 4).
+      The hit path's third recorder site — the walk that proved the
+      tree current — stays: its directories are old.
 
 ## In flight
 
