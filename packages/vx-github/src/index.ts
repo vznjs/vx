@@ -8,8 +8,8 @@
 // On a GitHub Actions runner (GITHUB_STEP_SUMMARY set) every `vx run`
 // appends a job summary: verdict, stats, failures, and the per-task table.
 // Anywhere else the plugin declines and costs nothing.
-export { github, GithubSummarySink, type GithubPluginOptions } from './plugin.js'
-export { renderJobSummary, clampJobSummary, MAX_JOB_SUMMARY_BYTES } from './summary.js'
+export { github, type GithubPluginOptions } from './plugin.js'
+export { renderJobSummary } from './summary.js'
 export {
   buildCheckRunPayload,
   clampSummary,

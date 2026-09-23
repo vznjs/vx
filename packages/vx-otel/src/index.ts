@@ -9,8 +9,7 @@
 // OTEL_SERVICE_NAME, OTEL_EXPORTER_OTLP_HEADERS). Maps a run to OTLP traces +
 // metrics + per-task logs over HTTP/JSON — no OpenTelemetry SDK dependency.
 
-export { otel, parseOtlpHeaders, resolveOtelConfig, type OtelPluginOptions } from './plugin.js'
-export { OtelSink, type OtelSinkConfig, type PostFn } from './sink.js'
+export { otel, type OtelPluginOptions } from './plugin.js'
 export {
   buildLogsRequest,
   buildMetricsRequest,

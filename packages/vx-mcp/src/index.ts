@@ -19,7 +19,6 @@
 
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 import { serveStdio } from './server.js'
-import { listTools } from './tools.js'
 
 export function mcp(): VxPlugin {
   return definePlugin(import.meta, {
@@ -40,7 +39,3 @@ export function mcp(): VxPlugin {
     },
   })
 }
-
-export { handleToolCall, listTools, type ToolContext, type ToolDef } from './tools.js'
-export { serveStdio, handleMessage, type ServerOptions } from './server.js'
-void listTools
