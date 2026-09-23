@@ -344,6 +344,58 @@ describe('projectOutcome', () => {
     expect(view.durationMs).toBe(6)
     expect(view.storedDurationMs).toBe(2006)
   })
+
+  it('carries every optional fact an outcome holds, each under its own name', () => {
+    // One copy per field, and each copy was its own line to lose: the
+    // stored cpu and peak RSS a `--report` hit row prints had no reader
+    // here, so dropping either left the suite green (654). The whole view
+    // is compared, so a field copied under a wrong name reddens it too.
+    const node = mkNode({ id: 'a#build', command: 'x' })
+    ;(node.config as { cache?: unknown }).cache = { inputs: { files: [] } }
+    const view = projectOutcome(
+      mkOutcome(node, {
+        status: 'failed',
+        exitCode: 143,
+        durationMs: 6,
+        storedDurationMs: 2006,
+        storedCpuMs: 1500,
+        storedPeakRssBytes: 4096,
+        hash: 'h',
+        cpuMs: 5,
+        peakRssBytes: 2048,
+        admissionHeldMs: 7,
+        timedOut: true,
+        notReady: 'timeout',
+        blockedBy: 'z#y',
+        restored: true,
+        sandboxViolations: 2,
+        sandboxViolationLines: ['write /etc'],
+        wallclockStartNs: 10n,
+        wallclockEndNs: 20n,
+      }),
+    )
+    expect(view).toEqual({
+      taskId: 'a#build',
+      status: 'failed',
+      exitCode: 143,
+      durationMs: 6,
+      storedDurationMs: 2006,
+      storedCpuMs: 1500,
+      storedPeakRssBytes: 4096,
+      hash: 'h',
+      cpuMs: 5,
+      peakRssBytes: 2048,
+      admissionHeldMs: 7,
+      timedOut: true,
+      notReady: 'timeout',
+      blockedBy: 'z#y',
+      restored: true,
+      sandboxViolations: 2,
+      sandboxViolationLines: ['write /etc'],
+      wallclockStartNs: '10',
+      wallclockEndNs: '20',
+    })
+  })
 })
 
 describe('the label vocabulary at its edges', () => {
