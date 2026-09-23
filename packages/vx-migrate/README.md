@@ -148,15 +148,15 @@ export default defineWorkspace({
 
 Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. With no token the plugin **declines** and the run stays local.
 
-| Option            | Environment variable               | Meaning                                                                                |
-| ----------------- | ---------------------------------- | -------------------------------------------------------------------------------------- |
-| `apiUrl`          | `TURBO_API`                        | base URL of the cache server; default with a token: `https://vercel.com/api`           |
-| `token`           | `TURBO_TOKEN`                      | Bearer token on every request                                                          |
-| `teamId`          | `TURBO_TEAMID`                     | `teamId` query parameter; required with `signatureKey`                                 |
-| `teamSlug`        | `TURBO_TEAM`                       | `slug` query parameter                                                                 |
-| `signatureKey`    | `TURBO_REMOTE_CACHE_SIGNATURE_KEY` | HMAC-SHA256 key (≥ 32 bytes, used raw); a download whose tag does not verify is a miss |
-| `timeoutMs`       | —                                  | HEAD/GET/POST deadline (default 30 s)                                                  |
-| `uploadTimeoutMs` | —                                  | PUT deadline (default 60 s)                                                            |
+| Option            | Environment variable               | Meaning                                                                                                       |
+| ----------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `apiUrl`          | `TURBO_API`                        | base URL of the cache server; default with a token: `https://vercel.com/api`; a `user:pass@` in it is refused |
+| `token`           | `TURBO_TOKEN`                      | Bearer token on every request                                                                                 |
+| `teamId`          | `TURBO_TEAMID`                     | `teamId` query parameter; required with `signatureKey`                                                        |
+| `teamSlug`        | `TURBO_TEAM`                       | `slug` query parameter                                                                                        |
+| `signatureKey`    | `TURBO_REMOTE_CACHE_SIGNATURE_KEY` | HMAC-SHA256 key (≥ 32 bytes, used raw); a download whose tag does not verify is a miss                        |
+| `timeoutMs`       | —                                  | HEAD/GET/POST deadline (default 30 s)                                                                         |
+| `uploadTimeoutMs` | —                                  | PUT deadline (default 60 s)                                                                                   |
 
 The signature is Turbo's current scheme (`artifact-signature:v2`: prefix, hash, team id and body, each length-prefixed, under HMAC-SHA256, base64 in `x-artifact-tag`).
 
@@ -177,11 +177,11 @@ export default defineWorkspace({
 
 Every option falls back to the tool's own environment variable; with nothing configured the plugin **declines** and the run stays local.
 
-| Option        | Environment variable                       | Meaning                                        |
-| ------------- | ------------------------------------------ | ---------------------------------------------- |
-| `server`      | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server                   |
-| `accessToken` | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token; omit for a server that runs open |
-| `timeoutMs`   | —                                          | per-request deadline (default 30 s)            |
+| Option        | Environment variable                       | Meaning                                                       |
+| ------------- | ------------------------------------------ | ------------------------------------------------------------- |
+| `server`      | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; a `user:pass@` in it is refused |
+| `accessToken` | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token; omit for a server that runs open                |
+| `timeoutMs`   | —                                          | per-request deadline (default 30 s)                           |
 
 The Nx spec has no existence probe, so `has` (the `--dry` prediction and the prefetch pass) is a `GET` whose body the following `get` reuses — one transfer, not two. The wire carries no producing-task duration, so a remote hit reports none.
 

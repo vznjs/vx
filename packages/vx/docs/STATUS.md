@@ -917,6 +917,16 @@ check is on the project list, not the file system, so `parseFilter`
 stays pure. Parity audit §9 L255 struck; `cli.md` and the filter module
 page say so.
 
+14bm. **Item 665 (roadmap 2.3, 2026-09-23): a remote-cache URL with
+credentials in it is refused.** `turboCache()`'s `apiUrl` (or
+`TURBO_API`) and `nxCache()`'s `server` (or
+`NX_SELF_HOSTED_REMOTE_CACHE_SERVER`) accepted `https://user:pass@host`,
+and both print the URL in every refusal line, so the password reached
+the log. Both resolvers now refuse a URL with a user or a password,
+naming the token option to use instead; each row is red without its
+line, beside a control that the bare host resolves. Parity audit §8
+L232 struck; the vx-migrate README's option tables say so.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

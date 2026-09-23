@@ -41,6 +41,15 @@ export function resolveNxCacheConfig(
 ): NxCacheConfig | undefined {
   const server = (options.server ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
   if (!server) return undefined
+  // The URL is printed in every refusal line, so a `user:pass@` in it would
+  // leak to the log. Credentials go in the access token.
+  if (URL.canParse(server)) {
+    const u = new URL(server)
+    if (u.username !== '' || u.password !== '')
+      throw new Error(
+        'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead',
+      )
+  }
   const accessToken = options.accessToken ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
   return {
     server,

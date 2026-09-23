@@ -125,6 +125,30 @@ describe('resolveTurboCacheConfig', () => {
     ).toThrow(/needs teamId/)
     expect(MIN_SIGNATURE_KEY_LENGTH).toBe(32)
   })
+
+  it('refuses an apiUrl carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
+    const refusal = (f: () => unknown): string => {
+      try {
+        f()
+        return 'accepted'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    const MSG =
+      'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead'
+    expect([
+      refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u:p@c.example', token: 't' }, {})),
+      refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u@c.example', token: 't' }, {})),
+      refusal(() =>
+        resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'https://:p@c.example/' }),
+      ),
+    ]).toEqual([MSG, MSG, MSG])
+    // CONTROL: the same host without userinfo resolves.
+    expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example', token: 't' }, {})?.apiUrl).toBe(
+      'https://c.example',
+    )
+  })
 })
 
 describe('artifactTag', () => {
