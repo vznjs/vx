@@ -7,7 +7,7 @@
 // skipping, because a skipped suite reports green and this one covers
 // the isolation boundary. A local host without the deps still skips.
 
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -1901,15 +1901,10 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     expect(produced.map((v) => v.target)).toEqual([`${ws}/z`])
   })
 
-  // A BUG, recorded not fixed (item 652): `absolutize` expands a leading
-  // `~` for the user's grants, but the same helper absolutizes the path a
-  // traced syscall named, and the kernel never expands `~` — `~cache/x`
-  // is `<cwd>/~cache/x`. Today it becomes `<home>/cache/x`, lands outside
-  // the deny anchor and is dropped, so an undeclared read of a project
-  // file under a directory named `~cache` is not reported. The grants
-  // reaching this helper are already absolute (`resolveSandboxConfig`
-  // expands `~`), so the branch serves nothing here.
-  it.todo('a traced relative path beginning with `~` resolves against the cwd', async () => {
+  // The kernel never expands `~`: a traced `~cache/x` is `<cwd>/~cache/x`,
+  // and reading it as `<home>/cache/x` dropped an undeclared read of a
+  // project file under a directory named `~cache` (item 652).
+  it('a traced relative path beginning with `~` resolves against the cwd', async () => {
     const ws = path.join(dir, 'ws')
     expect(await targets(at('~cache/x'))).toEqual([`${ws}/~cache/x`])
   })
@@ -2944,17 +2939,32 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   })
 
   it('removes its trace log, and reports the resources the task used', async () => {
-    const logs = (): string[] =>
-      readdirSync(os.tmpdir()).filter((f) => f.startsWith('vx-strace-') && f.endsWith('.log'))
-    const before = logs()
-    const during: string[][] = []
-    const r = await runSandboxed(
-      args('echo up; sleep 0.1', { onStdout: () => during.push(logs()) }),
-    )
-    // Positive first: the log was there while the task ran.
-    expect(during[0]?.filter((f) => !before.includes(f))).toHaveLength(1)
-    expect(logs()).toEqual(before)
-    expect([typeof r.cpuMs, typeof r.peakRssBytes]).toEqual(['number', 'number'])
+    // The tmpdir is shared with every process on the box, so the row
+    // follows this task's own log (the path its tracer was handed), not a
+    // listing another suite's sandbox can change mid-run.
+    const spy = spyOn(Bun, 'spawn')
+    const during: boolean[] = []
+    const logOf = (): string | undefined => {
+      const argv = spy.mock.calls
+        .map((c) => c[0] as unknown as string[])
+        .find((c) => c[0] === 'strace' && c.includes('-o'))
+      return argv?.[argv.indexOf('-o') + 1]
+    }
+    try {
+      const r = await runSandboxed(
+        args('echo up; sleep 0.1', { onStdout: () => during.push(existsSync(logOf() ?? '')) }),
+      )
+      const log = logOf() ?? ''
+      // Positive first: the log was there while the task ran.
+      expect([path.basename(log).startsWith('vx-strace-'), during, existsSync(log)]).toEqual([
+        true,
+        [true],
+        false,
+      ])
+      expect([typeof r.cpuMs, typeof r.peakRssBytes]).toEqual(['number', 'number'])
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('hands the runtime back its per-command cleanup', async () => {

@@ -523,7 +523,30 @@ test is telling the truth.
       built from, so the arm is gone and the lookup is asserted. The
       plugin host is swept.
 
-<!-- items 652 and 653 land above this line; drop this comment when they do -->
+652.  DONE (2026-09-23, the 628 method on the sandbox). The sandbox's
+      gates in `exec/sandbox-*.ts` and `exec/seatbelt-profile.ts`
+      deleted in turn against the whole core and unsafe suites, by an
+      implementer session (PR #750). Every row reached `runSandboxed`
+      through `run()`, which forwards no arguments, never times out and
+      resets the runtime, so the forwarded arguments and their quoting,
+      the tag's nonce, the host bridge, the spawn-failure catch, the
+      process group, the live-child set, the timeout and both capture
+      flags all survived; a direct block now holds each. Also held: every
+      field `resolveSandboxConfig` copies and `buildCustomConfig` hands
+      SRT, every `macProfileRules` capability and its refusals, the
+      seatbelt classifier's arms, the strace pass's canonical paths,
+      grant skip and dedup, the trace log's removal (followed by the path
+      its tracer was handed, since a listing of the shared tmpdir raced
+      other suites on CI), the ungranted-cwd note's three conditions,
+      strace detection's memo and probe, and the socket-length and
+      stderr-cap edges. One defect, fixed: `absolutize` expanded a
+      leading `~` for the path a traced syscall named, which the kernel
+      never does, so an undeclared read under a project directory named
+      `~cache` was dropped from the report. Grants reach it already
+      absolute, so the arm served nothing and is gone; the row is red
+      with it back. The sandbox is swept.
+
+<!-- item 653 lands above this line; drop this comment when it does -->
 
 654.  DONE (2026-09-23, the 628 method on the telemetry host, the
       telemetry record and the event bus). Ninety-eight gates and field
