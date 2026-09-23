@@ -110,6 +110,12 @@ where 0.0.22 says "another nightly".
 
 ## Plugins and packages
 
+- **Breaking for remote-cache plugin authors:** `RemoteCacheLayer.get`
+  resolves `{ body: Blob | Response }` and `put` takes a `Blob`, so an
+  artifact streams between disk and the wire instead of sitting in
+  memory (a 150 MiB round trip: +495 MiB peak RSS before, +45 after). A
+  layer that still resolves bytes is refused as invalid, naming the new
+  shape. Every first-party layer moved with it.
 - **The seven plugin packages are on npm for the first time**, published
   with every release at the core's version and peer-pinned to it:
   `@vzn/vx-migrate`, `@vzn/vx-lockfile`, `@vzn/vx-reapi`, `@vzn/vx-otel`,

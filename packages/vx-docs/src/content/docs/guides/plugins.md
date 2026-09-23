@@ -548,10 +548,12 @@ class AcmeRemote implements RemoteCacheLayer {
     const res = await fetch(`${this.url}/artifacts/${hash}`)
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`) // throws degrade to a miss
-    return { body: await res.arrayBuffer(), durationMs: undefined }
+    // The Response itself: core streams its body to disk, never whole in memory.
+    return { body: res, durationMs: undefined }
   }
-  async put(hash: string, body: ArrayBuffer | Uint8Array) {
-    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body: new Uint8Array(body) })
+  async put(hash: string, body: Blob) {
+    // A file-backed Blob over the local artifact: fetch uploads it as a stream.
+    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body })
   }
 }
 
@@ -572,6 +574,15 @@ function myCache(): VxPlugin {
 
 export default defineWorkspace({ plugins: [myCache()] })
 ```
+
+Bodies stream both ways, so no artifact sits whole in memory. `get`
+resolves `{ body: Blob | Response, durationMs }`: an HTTP wire returns
+its `fetch` `Response`, a chunked wire `new Response(readableStream)`,
+bytes already in hand `new Blob([bytes])`. `put` receives a `Blob` — a
+file-backed one (`Bun.file`) over the local artifact, so handing it to
+`fetch` uploads it as a stream; a wire that needs a digest before it
+sends reads `body.stream()` twice. Any other `body` (an `ArrayBuffer`
+or `Uint8Array` included) is refused as a plugin bug and read as a miss.
 
 `turboCache()` is exactly this shape with `/v8/artifacts/:hash`
 URLs and `x-artifact-*` headers inside the class, and `nxCache()`

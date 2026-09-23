@@ -824,7 +824,7 @@ describe.if(run)('the remote cache probe does not promise an evicted artifact', 
       // refusal has degenerated into "never hit".
       const live = `vx-live-${n}`
       const body = new TextEncoder().encode(`artifact-${n}`)
-      await cache.put(live, body, { durationMs: 7 })
+      await cache.put(live, new Blob([body]), { durationMs: 7 })
       expect(await cache.has(live)).toBe(true)
       expect((await cache.get(live)) !== null).toBe(true)
 

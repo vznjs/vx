@@ -3,7 +3,7 @@
 // docs/modules/layered-cache.md). The stub throws like a real client would;
 // LayeredCache owns dedup, provenance, and never-fail degradation.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -45,6 +45,10 @@ function invocation(runId: string): InvocationRecord {
 interface StubRemote {
   layer: RemoteCacheLayer
   store: Map<string, Uint8Array>
+  /** What `get` wraps the stored bytes in — the contract takes either. */
+  bodyKind: 'blob' | 'response'
+  /** Every body `put` received, as handed over. */
+  putBodies: Blob[]
   gets: number
   puts: number
   heads: number
@@ -62,6 +66,8 @@ interface StubRemote {
 function stubRemote(): StubRemote {
   const state: StubRemote = {
     store: new Map<string, Uint8Array>(),
+    bodyKind: 'blob',
+    putBodies: [],
     gets: 0,
     puts: 0,
     heads: 0,
@@ -87,14 +93,19 @@ function stubRemote(): StubRemote {
         if (state.getLatencyMs > 0) await Bun.sleep(state.getLatencyMs)
         const body = state.store.get(hash)
         if (!body) return null
-        return { body: body.slice().buffer as ArrayBuffer, durationMs: 42 }
+        const copy = body.slice()
+        return {
+          body: state.bodyKind === 'blob' ? new Blob([copy]) : new Response(copy),
+          durationMs: 42,
+        }
       },
       async put(hash, body) {
         state.puts++
         state.putStarted = true
+        state.putBodies.push(body)
         if (state.failAll) throw new Error('remote down')
         if (state.putGate !== undefined) await state.putGate
-        state.store.set(hash, body instanceof Uint8Array ? body.slice() : new Uint8Array(body))
+        state.store.set(hash, await body.bytes())
         state.putFinished = true
       },
     },
@@ -257,10 +268,78 @@ describe('LayeredCache', () => {
     const layered = new LayeredCache(local, shaped, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.get('h-shape', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
-      'remote cache layer returned an invalid result: get(h-shape) resolved body is string (expected { body: ArrayBuffer | Uint8Array, durationMs } or null) — a plugin bug, degraded to a miss',
+      'remote cache layer returned an invalid result: get(h-shape) resolved body is string (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
     ])
     expect(await local.get('h-shape')).toBeNull()
   })
+
+  it('get() that resolves the pre-stream bytes shape is refused, naming the new one', async () => {
+    // No bytes union (streaming-remote-2026-09): a layer still resolving
+    // `{ body: Uint8Array }` is an unported plugin, refused at the boundary
+    // though Bun.write would happily take the bytes.
+    await saveSample(makeLayered(), 'h-old')
+    await wipeLocal()
+    const errors: Error[] = []
+    const old = {
+      has: async () => true,
+      get: async () => ({ body: remote.store.get('h-old')!.slice(), durationMs: 1 }),
+      put: async () => {},
+    } as unknown as RemoteCacheLayer
+    const layered = new LayeredCache(local, old, { onRemoteError: (e) => errors.push(e) })
+    expect(await layered.get('h-old', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
+    expect(errors.map((e) => e.message)).toEqual([
+      'remote cache layer returned an invalid result: get(h-old) resolved body is a Uint8Array (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
+    ])
+    expect(await local.has('h-old')).toBeNull()
+  })
+
+  for (const kind of ['blob', 'response'] as const) {
+    it(`get() ingests a remote body resolved as a ${kind}`, async () => {
+      await saveSample(makeLayered(), `h-${kind}`)
+      await wipeLocal()
+      remote.bodyKind = kind
+      const errors: Error[] = []
+      const layered = makeLayered({ onRemoteError: (e) => errors.push(e) })
+      const hit = await layered.get(`h-${kind}`, { taskId: 'pkg#build', command: 'echo produced' })
+      expect(errors).toEqual([])
+      expect(hit?.source).toBe('remote')
+      expect(hit?.stdout).toBe('compiling…')
+      expect(hit?.outputFiles).toEqual(['dist/out.txt'])
+    })
+  }
+
+  // A socket that drops mid-body leaves Bun.write's partial file behind it;
+  // the second shape (a body that ends early but cleanly) is validation's
+  // to refuse. Either way nothing may outlive the miss in the cache dir.
+  for (const cut of ['errors', 'ends early'] as const) {
+    it(`get() degrades a Response body that ${cut} mid-artifact to a miss, leaving no temp`, async () => {
+      await saveSample(makeLayered(), 'h-cut')
+      const whole = remote.store.get('h-cut')!
+      await wipeLocal()
+      const errors: Error[] = []
+      const cutting = {
+        has: async () => true,
+        get: async () => ({
+          body: new Response(
+            new ReadableStream<Uint8Array>({
+              start(c) {
+                c.enqueue(whole.slice(0, whole.byteLength >> 1))
+                if (cut === 'errors') c.error(new Error('socket dropped'))
+                else c.close()
+              },
+            }),
+          ),
+          durationMs: 1,
+        }),
+        put: async () => {},
+      } satisfies RemoteCacheLayer
+      const layered = new LayeredCache(local, cutting, { onRemoteError: (e) => errors.push(e) })
+      expect(await layered.get('h-cut', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
+      expect(errors).toHaveLength(1)
+      expect(await local.has('h-cut')).toBeNull()
+      expect((await readdir(cacheDir)).filter((f) => f.startsWith('h-cut'))).toEqual([])
+    })
+  }
 
   it('hasMany() that resolves an array is named and read as no batch info', async () => {
     const errors: Error[] = []
@@ -602,6 +681,15 @@ describe('LayeredCache', () => {
     // And the vanished artifact never failed anything — the never-fail
     // contract covers the deferred read too.
     expect(errors.every((e) => e instanceof Error)).toBe(true)
+  })
+
+  it('the upload job hands put() a file-backed Blob over the local artifact', async () => {
+    // A path, not a buffer: the plugin streams it and never holds it whole.
+    const layered = makeLayered()
+    await saveSample(layered, 'h-file')
+    expect(remote.putBodies.map((b) => (b as { name?: unknown }).name)).toEqual([
+      local.outputsPath('h-file'),
+    ])
   })
 
   it('save() still packs in memory when local writes are disabled', async () => {

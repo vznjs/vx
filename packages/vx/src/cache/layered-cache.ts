@@ -1,7 +1,7 @@
 // LayeredCache — composes the local cache with a remote HTTP cache.
 //
-// Read path:  try local. On miss, try remote; on remote hit, ingest
-// the artifact bytes into local so the next read is a local hit.
+// Read path:  try local. On miss, try remote; on remote hit, stream
+// the artifact body into local so the next read is a local hit.
 //
 // Write path: write to local synchronously. Upload the local artifact
 // to remote as a fire-and-forget background task; failures log a
@@ -58,11 +58,20 @@ export interface RemoteCacheLayer {
    * info; use per-hash".
    */
   hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
-  /** Fetch an artifact's bytes; `null` = miss. `durationMs` is the
-   *  producing task's duration when the wire carries it. */
-  get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null>
-  /** Store an artifact (fire-and-forget from LayeredCache's perspective). */
-  put(hash: string, body: ArrayBuffer | Uint8Array, meta: { durationMs: number }): Promise<void>
+  /**
+   * Fetch an artifact; `null` = miss. `body` is read once, by core,
+   * straight into the local cache — an HTTP wire returns its `fetch`
+   * `Response`, a chunked wire `new Response(stream)`, bytes in hand
+   * `new Blob([bytes])`. `durationMs` is the producing task's duration
+   * when the wire carries it.
+   */
+  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  /**
+   * Store an artifact (fire-and-forget from LayeredCache's perspective).
+   * `body` is file-backed (`Bun.file`) when the local store holds the
+   * artifact, so a plugin that streams it never holds it whole.
+   */
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
 
 /**
@@ -83,13 +92,16 @@ function invalidRemoteResult(what: string): Error {
   )
 }
 
-function isBytes(value: unknown): value is ArrayBuffer | Uint8Array {
-  return value instanceof ArrayBuffer || value instanceof Uint8Array
+function isBody(value: unknown): value is Blob | Response {
+  return value instanceof Blob || value instanceof Response
 }
 
 function describeValue(value: unknown): string {
   if (value === null) return 'null'
   if (Array.isArray(value)) return 'an array'
+  // The pre-stream contract's shape, named so an unported layer reads its fix.
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value))
+    return `a ${value.constructor.name}`
   return typeof value === 'object' ? 'an object' : typeof value
 }
 
@@ -300,21 +312,21 @@ export class LayeredCache implements CacheLayer {
       return false
     }
     if (!remoteResult) return false
-    if (typeof remoteResult !== 'object' || !isBytes((remoteResult as { body?: unknown }).body)) {
+    if (typeof remoteResult !== 'object' || !isBody((remoteResult as { body?: unknown }).body)) {
       const shape =
         typeof remoteResult !== 'object'
           ? describeValue(remoteResult)
           : `body is ${describeValue((remoteResult as { body?: unknown }).body)}`
       this.reportRemoteError(
         invalidRemoteResult(
-          `get(${hash}) resolved ${shape} (expected { body: ArrayBuffer | Uint8Array, durationMs } or null)`,
+          `get(${hash}) resolved ${shape} (expected { body: Blob | Response, durationMs } or null)`,
         ),
       )
       return false
     }
-    const remoteBody = remoteResult as { body: ArrayBuffer | Uint8Array; durationMs?: number }
+    const remoteBody = remoteResult as { body: Blob | Response; durationMs?: number }
 
-    // Ingest the remote bytes into local using the caller-supplied
+    // Ingest the remote body into local using the caller-supplied
     // taskId/command plus the remote-reported durationMs. The remote
     // layer carries durationMs as an HTTP header (x-artifact-duration);
     // taskId + command come from the orchestrator's TaskNode in scope.
@@ -327,7 +339,7 @@ export class LayeredCache implements CacheLayer {
       durationMs: typeof remoteBody.durationMs === 'number' ? remoteBody.durationMs : 0,
     }
     try {
-      await this.local.ingest(hash, new Uint8Array(remoteBody.body), meta)
+      await this.local.ingest(hash, remoteBody.body, meta)
     } catch (err) {
       // The bytes came off the network — a corrupt/truncated remote
       // artifact must degrade to a cache miss (task re-executes), not
@@ -364,16 +376,13 @@ export class LayeredCache implements CacheLayer {
     // cache. Errors are logged, not propagated: the task already
     // succeeded; we don't fail it on cache-server issues.
     //
-    // The artifact bytes are read INSIDE the job, not here.
-    // UPLOAD_CONCURRENCY bounds sockets, not memory: a queued closure
-    // holding its own artifact keeps the WHOLE backlog resident, so peak
-    // RSS scaled with a run's total miss artifact bytes rather than with
-    // the pool — any cold monorepo run whose remote uploads slower than the
-    // build produces artifacts held every pending one at once. Reading in
-    // the job caps resident artifact bytes at UPLOAD_CONCURRENCY. The
+    // The job hands the plugin a file-backed Blob over the local artifact,
+    // opened when the plugin reads it: a queued job holds a path, not a
+    // buffer, and a plugin that streams the Blob never holds it whole. The
     // artifact is content-addressed and immutable, so a deferred read sees
     // the same bytes; if a concurrent `vx cache prune` removed it first the
-    // read throws and this upload is skipped — the never-fail contract.
+    // plugin's read throws and this upload is skipped — the never-fail
+    // contract.
     const hash = args.hash
     const durationMs = args.entry.durationMs
     // Local writes disabled (`--cache=local:,remote:rw`): there is no
@@ -393,8 +402,9 @@ export class LayeredCache implements CacheLayer {
     }
     this.enqueueUpload(async () => {
       try {
-        const bytes = packed ?? (await Bun.file(this.local.outputsPath(hash)).bytes())
-        await this.remote.put(hash, bytes, { durationMs })
+        const body =
+          packed !== undefined ? new Blob([packed]) : Bun.file(this.local.outputsPath(hash))
+        await this.remote.put(hash, body, { durationMs })
       } catch (err) {
         this.reportRemoteError(err)
       }
@@ -433,8 +443,8 @@ export class LayeredCache implements CacheLayer {
     }
   }
 
-  async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
-    await this.local.ingest(hash, compressed, meta)
+  async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
+    await this.local.ingest(hash, body, meta)
   }
 
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {

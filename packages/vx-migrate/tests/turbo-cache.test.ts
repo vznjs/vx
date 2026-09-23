@@ -5,7 +5,7 @@
 // here; the signature is transcribed independently of the implementation.
 
 import { createHmac } from 'node:crypto'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -128,7 +128,7 @@ describe('resolveTurboCacheConfig', () => {
 })
 
 describe('artifactTag', () => {
-  it('is base64(HMAC-SHA256) over length-prefixed prefix, hash, team id, body — transcribed from Turbo', () => {
+  it('is base64(HMAC-SHA256) over length-prefixed prefix, hash, team id, body — transcribed from Turbo', async () => {
     const body = new TextEncoder().encode('artifact-bytes')
     const mac = createHmac('sha256', Buffer.from(KEY))
     for (const f of ['artifact-signature:v2', 'abc123', 'team_1']
@@ -138,11 +138,10 @@ describe('artifactTag', () => {
       len.writeBigUInt64LE(BigInt(f.byteLength))
       mac.update(len).update(f)
     }
-    expect(artifactTag(Buffer.from(KEY), 'abc123', 'team_1', body)).toBe(mac.digest('base64'))
+    const tag = (team: string) => artifactTag(Buffer.from(KEY), 'abc123', team, new Blob([body]))
+    expect(await tag('team_1')).toBe(mac.digest('base64'))
     // The team id is part of the message: a different team is a different tag.
-    expect(artifactTag(Buffer.from(KEY), 'abc123', 'team_2', body)).not.toBe(
-      artifactTag(Buffer.from(KEY), 'abc123', 'team_1', body),
-    )
+    expect(await tag('team_2')).not.toBe(await tag('team_1'))
   })
 })
 
@@ -152,18 +151,23 @@ describe('TurboRemoteCache against the spec server', () => {
     srv = turboServer()
   })
   afterAll(() => srv.stop())
-  const cache = (extra: Partial<Parameters<typeof resolveTurboCacheConfig>[0]> = {}) =>
+  const cache = (
+    extra: Partial<Parameters<typeof resolveTurboCacheConfig>[0]> = {},
+    tempDir?: string,
+  ) =>
     new TurboRemoteCache(
       resolveTurboCacheConfig(
         { apiUrl: srv.url, token: TOKEN, teamId: 'team_1', teamSlug: 'acme', ...extra },
         {},
       )!,
+      fetch,
+      tempDir,
     )
 
   it('put → has / hasMany / get round trip with the spec’s headers and query', async () => {
     const c = cache()
     const body = new TextEncoder().encode('zstd-tar-bytes')
-    await c.put('aa11', body, { durationMs: 1234 })
+    await c.put('aa11', new Blob([body]), { durationMs: 1234 })
     const put = srv.seen.at(-1)!
     expect(put.method).toBe('PUT')
     expect(new URL(put.url).searchParams.get('teamId')).toBe('team_1')
@@ -177,24 +181,89 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.hasMany(['aa11', 'bb22'])).toEqual(new Set(['aa11']))
     const got = await c.get('aa11')
     expect(got?.durationMs).toBe(1234)
-    expect(new Uint8Array(got!.body)).toEqual(body)
+    expect(await got!.body.bytes()).toEqual(body)
     expect(await c.get('bb22')).toBeNull()
   })
 
   it('signs uploads and refuses a download whose tag does not verify', async () => {
     const c = cache({ signatureKey: KEY })
     const body = new TextEncoder().encode('signed-bytes')
-    await c.put('cc33', body, { durationMs: 1 })
-    expect(srv.store.get('cc33')!.tag).toBe(artifactTag(Buffer.from(KEY), 'cc33', 'team_1', body))
-    expect(new Uint8Array((await c.get('cc33'))!.body)).toEqual(body)
+    await c.put('cc33', new Blob([body]), { durationMs: 1 })
+    expect(srv.store.get('cc33')!.tag).toBe(
+      await artifactTag(Buffer.from(KEY), 'cc33', 'team_1', new Blob([body])),
+    )
+    expect(await (await c.get('cc33'))!.body.bytes()).toEqual(body)
     // Tampered on the server: the tag no longer covers the bytes.
     srv.store.get('cc33')!.body = new TextEncoder().encode('tampered')
     await expect(c.get('cc33')).rejects.toThrow(/signature did not verify/)
     // Unsigned on the server (written without a key): also a miss when we verify.
-    await cache().put('dd44', body, { durationMs: 1 })
+    await cache().put('dd44', new Blob([body]), { durationMs: 1 })
     await expect(c.get('dd44')).rejects.toThrow(/signature did not verify/)
     // Without a key configured nothing is verified (control).
     expect(await cache().get('dd44')).not.toBeNull()
+  })
+
+  // A signed download is verified from a temp before core sees a byte; the
+  // temp is the layer's to remove on every path out: a refused tag, a body
+  // read to its end, a body cancelled part-way.
+  describe('the signed download’s temp', () => {
+    let tempDir: string
+    beforeAll(async () => {
+      tempDir = await mkdtemp(path.join(tmpdir(), 'vx-turbo-temp-'))
+    })
+    afterAll(() => rm(tempDir, { recursive: true, force: true }))
+    const body = new Uint8Array(256 * 1024).map((_, i) => i % 251)
+
+    it('a bad tag is refused and leaves no temp', async () => {
+      const c = cache({ signatureKey: KEY }, tempDir)
+      await c.put('ab12', new Blob([body]), { durationMs: 1 })
+      srv.store.get('ab12')!.body = body.slice().reverse()
+      await expect(c.get('ab12')).rejects.toThrow(/signature did not verify/)
+      expect(await readdir(tempDir)).toEqual([])
+    })
+
+    it('a verified body is served from the temp, which goes once it is read to the end', async () => {
+      const c = cache({ signatureKey: KEY }, tempDir)
+      await c.put('ab34', new Blob([body]), { durationMs: 1 })
+      const got = await c.get('ab34')
+      expect((await readdir(tempDir)).length).toBe(1)
+      expect(await got!.body.bytes()).toEqual(body)
+      expect(await readdir(tempDir)).toEqual([])
+    })
+
+    it('a verified body cancelled part-way leaves no temp', async () => {
+      // Past one file-stream chunk (256 KiB), so the cancel lands mid-file.
+      const large = new Uint8Array(4 << 20).map((_, i) => i % 251)
+      const c = cache({ signatureKey: KEY }, tempDir)
+      await c.put('ab56', new Blob([large]), { durationMs: 1 })
+      const got = await c.get('ab56')
+      expect((await readdir(tempDir)).length).toBe(1)
+      const reader = got!.body.body!.getReader()
+      expect((await reader.read()).done).toBe(false)
+      await reader.cancel()
+      expect(await readdir(tempDir)).toEqual([])
+    })
+
+    it('an untagged download is refused unread: its body is cancelled, no temp is written', async () => {
+      let cancelled = false
+      const untagged = (async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull: (c) => c.enqueue(body),
+            cancel: () => {
+              cancelled = true
+            },
+          }),
+        )) as unknown as typeof fetch
+      const config = resolveTurboCacheConfig(
+        { apiUrl: 'http://turbo.invalid', token: TOKEN, teamId: 'team_1', signatureKey: KEY },
+        {},
+      )!
+      const c = new TurboRemoteCache(config, untagged, tempDir)
+      await expect(c.get('ab78')).rejects.toThrow(/signature did not verify/)
+      expect(cancelled).toBe(true)
+      expect(await readdir(tempDir)).toEqual([])
+    })
   })
 
   it('a refused token throws ONCE even when the calls are concurrent', async () => {
@@ -220,7 +289,7 @@ describe('TurboRemoteCache against the spec server', () => {
       c.has('bb22'),
       c.get('aa11'),
       c.hasMany(['aa11', 'bb22']),
-      c.put('ff66', new Uint8Array(1), { durationMs: 1 }),
+      c.put('ff66', new Blob(['x']), { durationMs: 1 }),
     ])
     const rejected = settled.flatMap((r, i) =>
       r.status === 'rejected' ? [{ name: names[i]!, message: String(r.reason.message) }] : [],
@@ -241,7 +310,7 @@ describe('TurboRemoteCache against the spec server', () => {
     const n = srv.seen.length
     expect(await c.has('aa11')).toBe(false)
     expect(await c.get('aa11')).toBeNull()
-    await c.put('ee55', new Uint8Array(1), { durationMs: 1 })
+    await c.put('ee55', new Blob(['x']), { durationMs: 1 })
     expect(await c.hasMany(['aa11'])).toEqual(new Set())
     expect(srv.seen.length).toBe(n) // no further requests
   })

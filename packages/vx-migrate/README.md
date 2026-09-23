@@ -160,6 +160,8 @@ Every option falls back to the tool's own environment variable, so a self-hosted
 
 The signature is Turbo's current scheme (`artifact-signature:v2`: prefix, hash, team id and body, each length-prefixed, under HMAC-SHA256, base64 in `x-artifact-tag`).
 
+Artifacts stream both ways on both wires: an upload sends the local artifact from its file, a download hands vx the response body to write straight to disk. A signed download must verify before vx sees a byte, so it is written to a temp file in the OS temp directory and verified from there (the tag covers the body's length, which a chunked response does not declare up front); a bad tag deletes the temp and reads as a miss, and a good one is handed over as a stream that deletes the temp once it is read or cancelled.
+
 ## `nxCache()` — an Nx self-hosted remote cache
 
 Store vx artifacts in any server implementing Nx's remote cache OpenAPI spec (`GET`/`PUT /v1/cache/{hash}`, Bearer auth, immutable records — a second write of a hash is `409`, which the plugin treats as done). Same rule: the wire is theirs, the bytes are vx's.

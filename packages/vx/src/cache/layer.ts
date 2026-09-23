@@ -567,13 +567,13 @@ export interface CacheLayer {
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
   /**
-   * Adopt an artifact produced elsewhere — the remote-hit path. Writes
-   * the compressed bytes to `<cacheDir>/<hash>.tar.zst`, parses the
+   * Adopt an artifact produced elsewhere — the remote-hit path. Streams
+   * the compressed body to `<cacheDir>/<hash>.tar.zst`, parses the
    * tar headers to populate the `output_files` rows, and inserts the
    * `entries` row using the caller-supplied `meta`. After this returns,
    * the next `get(hash)` resolves locally.
    */
-  ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void>
+  ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   /**
    * The ONE run-history write: a whole `vx run` atomically, the per-task
    * `runs` rows and the one `invocations` header row — in a SINGLE

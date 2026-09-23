@@ -129,7 +129,7 @@ function startArtifactEndpoint(opts?: {
       if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`)
       const durationRaw = res.headers.get('x-duration')
       return {
-        body: await res.arrayBuffer(),
+        body: res,
         durationMs: durationRaw !== null ? Number(durationRaw) : undefined,
       }
     },
@@ -1031,11 +1031,11 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
           state.gets++
           const body = store.get(hash)
           if (!body) return null
-          return { body: body.slice().buffer as ArrayBuffer, durationMs: 7 }
+          return { body: new Blob([body.slice()]), durationMs: 7 }
         },
         async put(hash, body) {
           state.puts++
-          store.set(hash, body instanceof Uint8Array ? body.slice() : new Uint8Array(body))
+          store.set(hash, await body.bytes())
         },
       },
     }

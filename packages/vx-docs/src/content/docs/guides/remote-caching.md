@@ -60,6 +60,18 @@ a background prefetch pass that overlaps remote GETs with execution. Writes
 go to local immediately; the remote upload is a fire-and-forget background
 task drained at end of run — failures are logged but never fail the build.
 
+Artifacts stream both ways, so a large one never sits whole in memory. A
+remote hit's body — the HTTP `Response` itself, or a stream over a
+chunked wire — is written straight to the local cache's temp file and
+validated there; an upload hands the plugin a file-backed `Blob` over the
+local artifact, which `fetch` sends as a stream. Measured on one
+150 MiB artifact saved, uploaded, wiped and pulled back: the process's
+peak RSS rose about 45 MiB over the round trip, against about 500 MiB
+before the seam streamed (`packages/vx-bench/stream-remote-bench.ts`). The
+one exception is
+`--cache=local:,remote:rw`: with no local artifact to read, the upload's
+bytes are packed in memory.
+
 ## The first-party shared cache
 
 `@vzn/vx-reapi` fills the seam with Bazel's Remote Execution API: an
@@ -95,6 +107,9 @@ future change to the mapping miss cleanly instead of misreading.
 **It needs the Bun runtime the vx binary embeds (≥ 1.4)**, and says so rather than misbehaving on an older one.
 Bun's HTTP/2 client hangs on chunked uploads above a version-dependent size;
 the plugin chunks at 128 KB and refuses to start on a Bun where that is unsafe.
+An artifact past the batch limit (about 4 MiB) is uploaded from the file in those
+chunks as the connection drains and read back as a stream, its digest
+checked as the bytes pass.
 
 ## A hosted cache in three commands
 
