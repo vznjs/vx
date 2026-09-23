@@ -11,7 +11,7 @@
 // The consumer decides what a global becomes through `splice`.
 
 import path from 'node:path'
-import { type ProjectMeta, UserError } from '@vzn/vx'
+import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
 import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
@@ -438,7 +438,7 @@ function buildTask(
     // the package root out of a wildcard (medusa: `*/**` minus `!src/**`
     // and `!node_modules/**`) does not — the superset is the sources, and
     // the clean before exec would delete them. That task runs uncached.
-    const wild = outFiles.find((o) => /[*?[{]/.test(o.split('/')[0] ?? ''))
+    const wild = outFiles.find((o) => !isLiteralPattern(o.split('/')[0] ?? ''))
     if (negated.length > 0 && wild !== undefined) {
       todos.push(
         `outputs ${negated.map((n) => JSON.stringify(n)).join(', ')} narrow ${JSON.stringify(wild)}: ` +

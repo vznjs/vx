@@ -38,7 +38,7 @@ import {
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
-import { isTmpdirRefusal, staticPrefix, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
+import { grantPrefix, isTmpdirRefusal, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
 import {
   isMountableLiteral,
@@ -1071,7 +1071,7 @@ const warnedEmptyWriteGrant = new Set<string>()
  * A write grant that mounted nothing, said once, before the task dies on
  * it. The remedy is the directory, which is what the grant would have been
  * widened to anyway had it named a file — and it is named with
- * `staticPrefix`, the shared wildcard-free head, NOT the scan's anchor
+ * `grantPrefix`, the shared wildcard-free head, NOT the scan's anchor
  * above: that anchor is one component higher (`dirname` of the head, so
  * the relative pattern keeps its wildcard component), and printing it
  * would tell the user to grant the PARENT of the directory they meant.
@@ -1083,7 +1083,7 @@ function writeGrantMatchedNothing(grant: string): void {
     `[vx] sandbox: the write grant ${grant} matches nothing yet, so it mounts nothing and ` +
       `a file the task creates under it will fail with "Read-only file system". A bind mount ` +
       `covers what exists when the task starts — grant the directory instead: ` +
-      `${staticPrefix(grant)}/**\n`,
+      `${grantPrefix(grant)}/**\n`,
   )
 }
 

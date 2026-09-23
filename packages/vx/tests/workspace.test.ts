@@ -319,6 +319,32 @@ describe('listProjects', () => {
     }
   })
 
+  it('a member glob keeps npm/pnpm semantics: a bracket is a class there (item 667)', async () => {
+    // Task globs read `[` literally; a package manager's member list does not,
+    // and vx must find the members the package manager installs.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'r',
+        private: true,
+        // …and `\[` is how a member list names a literal bracket.
+        workspaces: ['packages/*', '!packages/[ab]', '!packages/\\[x\\]'],
+      }),
+    )
+    for (const [rel, name] of [
+      ['a', 'a'],
+      ['b', 'b'],
+      ['c', 'c'],
+      ['x', 'x'],
+      ['[x]', 'bracket-x'],
+    ] as const) {
+      await mkdir(path.join(dir, 'packages', rel), { recursive: true })
+      await writeFile(path.join(dir, 'packages', rel, 'package.json'), JSON.stringify({ name }))
+    }
+    const projects = await listProjects(await loadWorkspace(dir))
+    expect(projects.map((p) => p.name)).toEqual(['c', 'x'])
+  })
+
   it('a negation covers everything UNDER it, not just the exact path', async () => {
     // `!packages/fixtures` means the tree, the way every package manager
     // reads it — a fixture nested one level deeper is still excluded.
@@ -569,8 +595,10 @@ describe('memberBaseDirs', () => {
 // to the key and the cache: git's pathspec match tries the literal path
 // first, and outputs are scanned from inside the project dir, so `[abc]` is
 // never read as a character class that also matches the sibling
-// `packages/a`. The path FILTER is the exception: `./packages/[abc]` is a
-// glob there and selects `a`, so the brackets are escaped.
+// `packages/a`. The path FILTER keeps `Bun.Glob`'s alphabet, but a path that
+// names a project directory is that directory first (item 664), so
+// `./packages/[abc]` selects it; only a bracket path naming no directory is
+// read as a glob. (A bracket INSIDE a task glob is literal: item 667.)
 describe('a project directory named packages/[abc]', () => {
   let root: string
   const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }

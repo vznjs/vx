@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v27'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v28'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -156,6 +156,15 @@ over (in order):
     that does not exist. A literal naming a **directory** is judged the
     same way: an ignored one, or an empty one, has no file git lists
     under it, folds nothing, and is refused (item 576).
+
+    A **bracket is literal** in a task glob, and there are no character
+    classes (item 667): `app/[id]/**` folds the route directory
+    `app/[id]`, and `app/\[id\]/**` is the same path. Read as a class
+    — what `Bun.Glob`, Turbo and Nx do — it matched `app/i/…` and never
+    the route, so the route's files keyed nothing (an edit replayed the
+    old output, green) and an output declared under it cleaned an
+    unrelated `app/i/page.js` before every run while the artifact
+    saved nothing.
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so three concurrent probes prune it:
@@ -1135,6 +1144,18 @@ version — the decision log it once named was retired 2026-09-02),
 was not), and the cache tests.
 
 ### History
+
+- **v27 → v28**: stored bytes wrong under a key the fix does not change —
+  the v25/v26 shape (item 667). A bracket in a task glob became a literal
+  character; before, `Bun.Glob` read it as a character class. An INPUT
+  glob over a route directory folded the wrong files, and that fix is
+  self-healing: the file set, and so the key, moves. An OUTPUT glob is
+  not: `outputs: ['app/[id]/page.js']` folds as its text, which the fix
+  leaves unchanged, and the entries under it hold nothing (or the class's
+  namesake `app/i/page.js`). Proven through a real run: an entry written
+  by v27 code, read by the fixed code, was a `cache-hit` that cleaned
+  `app/[id]/page.js` and restored nothing; under v28 it is a miss, and
+  the next hit restores the route.
 
 - **v26 → v27**: the artifact CONTAINER changed, so the stored bytes
   under an unchanged key are no longer readable the same way — the

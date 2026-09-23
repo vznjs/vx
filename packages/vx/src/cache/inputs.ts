@@ -24,6 +24,7 @@ import {
   isExecutableMissing,
   isLiteralPattern,
   normalizeGlob,
+  taskGlob,
   UserError,
 } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
@@ -909,7 +910,7 @@ async function scanUnion(
 const globMemo = new Map<string, Bun.Glob>()
 function globFor(pattern: string): Bun.Glob {
   let g = globMemo.get(pattern)
-  if (g === undefined) globMemo.set(pattern, (g = new Bun.Glob(pattern)))
+  if (g === undefined) globMemo.set(pattern, (g = taskGlob(pattern)))
   return g
 }
 

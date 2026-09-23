@@ -130,7 +130,12 @@ import { RunHistory } from './run-history.js'
 // `LayeredCache` uploads them, so the reach is a whole team's shared cache
 // rather than one developer's disk. Pre-alpha, so one cold rebuild is the
 // cheap side of that trade.
-export const CACHE_VERSION = 'vx-cache-v27'
+// v28: the same shape again (item 667). An output glob over a bracket route
+// directory (`app/[id]/page.js`) was read as a character class, so its
+// entries saved nothing (or the class's namesakes) under a key the fix
+// leaves unchanged: the glob text is what folds. Read literally, the first
+// hit on such an entry cleaned the route and restored nothing, green.
+export const CACHE_VERSION = 'vx-cache-v28'
 
 /**
  * An artifact or temp file without an `entries` row is reaped by

@@ -942,6 +942,41 @@ whose `*` skips a dotfile, so it would have passed on a leak under the
 new name; it reads the tree with `readdir` now. No `CACHE_VERSION`
 bump: the stored bytes did not change.
 
+14bo. **Item 667 (parity gaps §1 L48, 2026-09-23): a bracket is literal
+in a task glob.** `Bun.Glob` reads `[id]` as a character class, and so did
+every task glob: `inputs.files: ['app/[id]/**']` matched `app/i/…` and
+never the Next.js route directory, so an edit to `app/[id]/page.js` was a
+green `cache-hit` replaying the old output; `outputs.files:
+['app/[id]/page.js']` saved an empty artifact and its pre-run clean
+deleted an unrelated tracked `app/i/page.js`. Both probed through `run()`
+before the fix. Now `[` and `]` are literal in `cache.inputs.files`,
+`cache.outputs.files` and `workspaceFiles` and in everything read from
+them (`--affected`, watch, the overlapping-output refusal, the additive
+hit's set-aside, the subtree short-circuit, stable-key reach, REAPI
+`output_paths`); there are no character classes. `GLOB_WILDCARDS` lost
+the brackets, every task glob compiles through one door (`taskGlob`, which
+escapes them), and `normalizeGlob` turns Turbo's `\[id\]` into `[id]`, so
+both spellings are one literal. Member globs, `--filter` path globs, env
+names and sandbox grants keep `Bun.Glob`'s alphabet
+(`BUN_GLOB_WILDCARDS`, `normalizeBunGlob`, `grantPrefix`), each pinned by a
+row. The façade gains `isLiteralPattern` and `normalizeGlob` for
+`@vzn/vx-reapi`, whose copy of the class collapsed `app/[id]/page.js` to
+the output path `app`, and `@vzn/vx-migrate`'s wild-first-segment check
+reads the same predicate. Differential: every new core row red on the
+unfixed tree except the controls (the escaped spelling already matched
+through `Bun.Glob`, and the member-glob and env rows hold the old
+alphabet both ways); each `taskGlob` call site, the unescape, the
+alphabet, the member and filter alphabets and the subtree regex were
+mutated back one at a time and each reddened a row. **`CACHE_VERSION`
+v27 → v28**, not self-healing: the input half moves the key (the file set
+changes), but an output glob folds as its TEXT, which the fix leaves
+unchanged, so the empty v27 artifact sits under the key the fixed code
+derives — proven: a v27 entry read by the fixed code was a `cache-hit`
+that cleaned the route and restored nothing; under v28 it misses and the
+next hit restores. Warm `run build --all` at 1,000 projects, interleaved,
+min of 7: 240 ms before, 242 ms after (noise; the new work is per
+pattern with an `includes('[')` fast path).
+
 14bp. **Item 668 (roadmap 1.2, 2026-09-23): the docs name only what the
 release publishes.** A row in `build-npm.unsafe.test.ts` walks the root
 and package READMEs, `packages/vx/docs` and the site's pages (design
@@ -953,6 +988,27 @@ emitter's own publish set plus `@vzn/vx`. It passes today; an install line namin
 package, appended to a README, turns it red, and a floor
 requires the walk to see `@vzn/vx-migrate` and `@vzn/vx-lockfile`.
 Milestone 1's agent work is done; 1.4 and 1.5 are the owner's.
+
+14bq. **Item 669 (roadmap 2.3, 2026-09-23): a task with no history keeps
+the workspace median.** Parity row N-M7 asked whether vx should run a
+task the history has never seen FIRST, as Nx does, instead of giving it
+the median p50. The benchmark behind the question was deleted on
+2026-09-09; `packages/vx-bench/schedule-policy.ts` is its replacement: a
+discrete-event sim of `runGraph`'s exec tier ranked by the plugin's real
+`criticalPathPriorities` over core's `mergePriorities`, pinned on
+hand-computed schedules (Nx's fixture among them) and against the real
+`runGraph` on a virtual clock, every mirrored rule red when reversed.
+Nine shapes, 30 seeds, 0–100 % unknown: at 5–25 % unknown, unknown-first
+is −0.69 % mean makespan against the median (full history is −0.82 %,
+no plugin +3.51 %), but single graphs regress by up to +6.15 % there
+and +13.03 % at 75 %: an unknown that turns out short starts ahead of
+the known long chain. The adoption bar was a worst regression ≤ 1 % on
+any cell, so the plugin is unchanged; the table and the verdict are in
+`packages/vx-bench/schedule-policy.md`, and the parity audit's N-M7 row
+is struck.
+Coordinator's reading of the bar: "worst" is the worst single graph,
+not the worst cell mean (+0.23 %), because a user lives one run at a
+time and a +6 % run on a new task is the regression they would see.
 
 ## Decisions (this arc)
 

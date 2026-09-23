@@ -535,12 +535,24 @@ a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
 `./` names the project directory itself and is refused at load — write
 `**`.
 
+The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
+**literal character**, not a character class: `app/[id]/**` is the route
+directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
+`app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
+path. This holds for every task glob — `inputs.files`,
+`inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
+for everything read from them (`--affected`, `vx watch`, the
+overlapping-output refusal). Package-manager member globs (`workspaces`,
+`pnpm-workspace.yaml`) and `--filter` path globs keep the package
+manager's grammar, class included.
+
 ```ts
 files: ['**/*'] // all project files
 files: ['src/**', '!**/*.test.ts'] // narrow with exclusion
 files: [] // no file inputs at all
 files: ['src/**', 'tsconfig.json', 'package.json'] // specific paths
 files: ['src', 'package.json'] // a directory literal is its tree
+files: ['app/[id]/**'] // a bracket is literal: the route dir `[id]`
 ```
 
 Empty array is valid — the cache key still incorporates command, env,

@@ -9,16 +9,17 @@ import path from 'node:path'
 /**
  * The wildcard alphabet of a GRANT — what decides whether a declared read or
  * write path is scanned for its matches or mounted as the path it names.
- * Deliberately smaller than `GLOB_WILDCARDS` (util/paths.ts, item 495's
- * shared one), which also counts `{}`: `write: ['g/{a,b}.txt']` is a
+ * Deliberately smaller than `BUN_GLOB_WILDCARDS` (util/paths.ts, `Bun.Glob`'s
+ * own set), which also counts `{}`: `write: ['g/{a,b}.txt']` is a
  * LITERAL to the sandbox, gets a placeholder file, and is widened to its
  * directory like any other file-shaped grant — measured ok, and pinned in
  * `tests/sandbox-runtime.unsafe.test.ts`. Counting the brace here would
  * move that spelling into the scan, which finds nothing before the task has
  * written, and turn a working grant into `Read-only file system`. The two
  * predicates answer different questions: whether a declaration must be
- * MATCHED against other declarations (495), and whether a grant can be
- * mounted (here). Item 577 gave each question one spelling.
+ * MATCHED against other declarations (495; `GLOB_WILDCARDS`, where a bracket
+ * is literal since item 667), and whether a grant can be mounted (here).
+ * Item 577 gave each question one spelling.
  */
 export const MOUNT_WILDCARDS = /[*?[\]]/
 

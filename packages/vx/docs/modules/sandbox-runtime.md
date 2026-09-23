@@ -152,7 +152,7 @@ export function releaseBridges(tag: string): void
 export function thrownReason(err: unknown, what?: string): string
 
 // sandbox-paths.ts: the wildcard alphabet of a GRANT. Smaller than
-// util/paths.ts's GLOB_WILDCARDS on purpose — `{}` is a literal to a
+// util/paths.ts's BUN_GLOB_WILDCARDS on purpose — `{}` is a literal to a
 // grant (a brace grant gets a placeholder and is widened to its
 // directory; scanned, it matches nothing before the task writes). The
 // request builder reads it to decide whether an output grant is a glob.
@@ -281,15 +281,16 @@ task per spelling, each writing the files it declares:
 That is the documented contract rather than a defect, but the failure
 names neither vx nor the grant, so `expandGrants` reports the grant
 itself — once per grant, before the task runs — and names the directory
-to grant instead (`staticPrefix`, the directory the pattern was in, not
+to grant instead (`grantPrefix`, the directory the pattern was in, not
 the scan's anchor one component above it). Read grants are not reported:
 a read matching nothing is ordinary.
 
 `write: ['g/{a,b}.txt']` is ok, because the classifier here counts only
 `*?[]` and a brace-spelled grant is therefore treated as a file — placed,
 then widened to its directory. It deliberately does NOT read
-`isLiteralPattern`, the shared predicate item 495 unified, which also
-counts `{}`: doing so would move that spelling into the scan and turn a
+`BUN_GLOB_WILDCARDS`, `Bun.Glob`'s own set, which also counts `{}`
+(nor `isLiteralPattern`, the task-glob predicate item 495 unified, where
+a bracket is literal since item 667): doing so would move that spelling into the scan and turn a
 working grant into `Read-only file system`. The two predicates answer
 different questions — whether a declaration must be MATCHED against
 other declarations, and whether a grant can be MOUNTED.
