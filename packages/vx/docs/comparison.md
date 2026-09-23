@@ -514,6 +514,11 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   vx always starts from the universe and applies filters as set ops.
   Same observable behavior for every documented case; simpler
   implementation.
+- **A bare name is an exact match; it never reaches into a scope.**
+  Nx resolves `core` to `@acme/core`; vx's `--filter core` selects only
+  a package named exactly `core`. Name the scope (`@acme/core`) or lead
+  with `*` (`*core`) (tests/filter.test.ts > applyFilters > scoped
+  names).
 
 ### Affected detection
 

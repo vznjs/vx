@@ -658,7 +658,19 @@ function assertSafeName(name: string): void {
   if (name.includes('\0')) {
     throw new ArchiveSecurityError(`archive entry name contains a null byte (unsafe): ${name}`)
   }
+  // Only a pax `path` record can carry a name this long. Left to the file
+  // system it is a raw ENAMETOOLONG, which the restore reports as an
+  // internal error rather than a refused artifact. A UTF-16 unit is at most
+  // three UTF-8 bytes, so the common short name never pays for the count.
+  if (name.length * 3 >= PATH_MAX && Buffer.byteLength(name) >= PATH_MAX) {
+    throw new ArchiveSecurityError(
+      `archive entry name is ${Buffer.byteLength(name)} bytes, past PATH_MAX (${PATH_MAX}) (unsafe): ${name.slice(0, 64)}…`,
+    )
+  }
 }
+
+/** Bytes a path may hold, its terminating NUL included (limits.h). */
+const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
 
 function hasParentSegment(p: string): boolean {
   if (p === '..' || p.startsWith('../') || p.endsWith('/..')) return true

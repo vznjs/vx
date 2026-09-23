@@ -180,7 +180,11 @@ failed to spawn 'git' … Install git and re-run` — the same the input
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
-  would be a real `git diff` option.
+  would be a real `git diff` option. A range (`HEAD~1..HEAD`,
+  `main...feature`) is refused there too, naming the base to pass
+  alone — `ranges are not supported — pass the base alone ("HEAD~1")`
+  — because the other end is always the working tree. A ref that does
+  not exist is `git ref "<ref>" did not resolve`.
 - The diff runs from the **merge base** of the ref and `HEAD`, not from
   the ref itself, so a branch whose base has moved on sees only its own
   changes — never the files other people landed on `main` since it
