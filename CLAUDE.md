@@ -309,6 +309,18 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   grep the module for the symptom before writing a row that leans on
   an FS or syscall behaviour, and prefer the claim that holds
   everywhere (564).
+- A new timing `mark('x')` is pinned in SOURCE order (prepare.ts, then
+  run.ts, first occurrence) by `module-shape-drift.test.ts`, in
+  `timing.md`'s mark list AND `benchmarks.md`'s sentence, and the list
+  item must be a bare `` - `x` `` line — a note after the name hides
+  it from the pin (item 601: `planRun` follows `run`, so `plan` sits
+  after `close`).
+- An `nx:run-commands` target runs from the WORKSPACE ROOT, and the
+  mapper's `cd` preserves that: a probe that looks for the command's
+  relative output under the package dir finds nothing (item 599).
+- A bin a package.json declares must be 100755 in the INDEX, not only
+  on disk (`git update-index --chmod=+x`); `tests/bins-executable.unsafe.test.ts`
+  holds the law (item 604).
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a
