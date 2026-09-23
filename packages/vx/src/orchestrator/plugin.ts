@@ -308,7 +308,10 @@ export interface PluginContext {
   readonly workspaceRoot: string
   /** Where vx's cache lives — read-only as far as the plugin is concerned. */
   readonly cacheDir: string
-  /** The run event bus. A plugin can subscribe directly if its needs exceed the hooks. */
+  /**
+   * The run event bus. A plugin can subscribe directly if its needs exceed
+   * the hooks; the subscription ends with the run, as a hook's does.
+   */
   readonly bus: EventBus
   /**
    * Convenience: register a typed handler keyed off `RunEvent.kind`.
@@ -460,7 +463,17 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     const ctx: PluginContext = {
       workspaceRoot,
       cacheDir,
-      bus,
+      // A subscription made past the hooks leaves with the run like a
+      // hook's does: the bus can outlive the run (`RunOptions.bus`), and
+      // one left behind hears every later run on it (item 635).
+      bus: {
+        emit: (event) => bus.emit(event),
+        subscribe(subscriber) {
+          const dispose = bus.subscribe(subscriber)
+          disposers.push(dispose)
+          return dispose
+        },
+      },
       on(hook, handler) {
         const dispose = bus.subscribe((event) => {
           if (disabled.has(plugin.name)) return

@@ -6,6 +6,7 @@
 // because that's exactly where stacking handlers would hurt
 // (watch loop, bun test).
 
+import { getEventListeners } from 'node:events'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -327,6 +328,54 @@ describe('terminateChildren — the second sweep re-reads what is live', () => {
             // already gone
           }
         }
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe("run()'s finally block (in-process)", () => {
+  let fixture: Fixture
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+    await addProject(
+      fixture.root,
+      'app',
+      `
+        export default {
+          tasks: {
+            hello: {
+              exec: { command: 'echo hello' },
+            },
+          },
+        }
+      `,
+    )
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'the abort listener leaves with the run: one signal over many runs never stacks',
+    async () => {
+      // `vx watch` hands one `stop` signal to every cycle. A listener each
+      // cycle left behind is a closure over that cycle's children, kept
+      // for the life of the watch. Deleting the finally's
+      // removeEventListener survived the whole core suite (item 635).
+      const controller = new AbortController()
+      const before = getEventListeners(controller.signal, 'abort').length
+      for (let i = 0; i < 2; i++) {
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['hello'],
+          projects: ['app'],
+          log: silentLogger,
+          handleSignals: false,
+          signal: controller.signal,
+        })
+        expect(r.ok).toBe(true)
+        expect(getEventListeners(controller.signal, 'abort').length).toBe(before)
       }
     },
     TIMEOUT,
