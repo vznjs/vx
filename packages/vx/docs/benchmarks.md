@@ -102,16 +102,21 @@ Two tools, and they answer different questions:
   time by function and by file. Good for finding a hot loop; unreliable
   about where an `await` waited (it attributes the wait to whatever frame
   was on the stack).
-- **`strace -f -c`** around a run, against the same run on a `git worktree`
-  of the base: a syscall count is deterministic where this container's
-  wall time is not, and the restore path's three spare round trips per
-  artifact (item 627) were three rows of that table — `readlink` 1,003 →
-  3, `mkdir` 2,002 → 1,002, `newfstatat` −2,000 — before they were a
-  number. `bun --preload ./packages/vx-bench/sqlite-tally.ts …` is the
-  same idea for SQLite statements, and
-  `bun packages/vx-bench/restore-bench.ts <repo> <workspace>` restores every
-  artifact sequentially, where a per-artifact change shows above the
-  four-worker run's noise.
+- **`strace -f -o <file>`** around a run, then
+  `bun packages/vx-bench/strace-vx.ts <file> [<before-file>]`: the count of
+  vx's OWN syscalls (the tasks' shells are told apart by PID), as a diff
+  against the same run on a `git worktree` of the base. A syscall count
+  is deterministic where this container's wall time is not: the restore
+  path's three spare round trips per artifact (item 627) were three rows
+  of that table — `readlink` 1,003 → 3, `mkdir` 2,002 → 1,002,
+  `newfstatat` −2,000 — and the save's two `mkdir`s of the cache
+  directory (630) one row, before either was a number. A `write` per
+  round trip is the thread pool's wake, so that row counts round trips.
+  `bun --preload ./packages/vx-bench/sqlite-tally.ts …` is the same idea
+  for SQLite statements; `restore-bench.ts` and `save-bench.ts` in the
+  same package restore or save every artifact sequentially, where a
+  per-artifact change of tens of microseconds shows above the
+  four-worker run's noise (and one of a few microseconds does not: 630).
 
 Three measurement lessons from this wave, recorded so they are not
 re-learned. A compiled Bun 1.4.0 binary resolves on-disk packages by
