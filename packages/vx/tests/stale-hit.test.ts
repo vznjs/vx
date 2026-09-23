@@ -325,6 +325,126 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a wiped output stops counting as a consumer input on the cache-HIT path too',
+    async () => {
+      // The hit's restore wipes gen/ before it writes the artifact's files,
+      // and marks BOTH sets — the wiped paths and the restored ones. Only
+      // the restored half had a witness. The snapshot must predate the
+      // wipe for the mark to matter (`early` reads it; codegen waits on
+      // early): a tracked-clean file the wipe removes and the artifact
+      // does not bring back (old.ts here) then keeps its index OID, and
+      // the consumer keys on a file that is gone and misses where it
+      // should hit (item 638). Enumerated after the wipe, git status
+      // reports the deletion itself and the mark is moot; and a restored
+      // file the consumer's globs match re-enumerates on its own, so the
+      // artifact here holds only a .js.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             early: {
+               exec: { command: 'true' },
+               cache: { inputs: { files: ['gen/*.ts'] }, outputs: { files: [] } },
+             },
+             codegen: {
+               dependsOn: ['early'],
+               exec: { command: 'sh emit.sh' },
+               cache: { inputs: { files: ['emit.sh'], tasks: [] }, outputs: { files: ['gen/**'] } },
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               cache: {
+                 inputs: { files: ['gen/*.ts'], tasks: [] },
+                 outputs: { files: ['out/**'] },
+               },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
+      await write(path.join(root, 'gen/b.js'), 'b')
+      await write(path.join(root, 'gen/old.ts'), 'content-of-old')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      // Cold: codegen wipes old.ts and emits b.js; consume's set is empty.
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+
+      // old.ts is back from the index, tracked and clean; codegen's key is
+      // unchanged, so it HITS, and its restore wipes old.ts again. The
+      // restored b.js matches none of consume's globs, so only the WIPED
+      // path can send consume back to git for a fresh listing.
+      git(root, 'checkout', '--', 'gen/old.ts')
+      const out = vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+      // consume's real input set is empty, as in the cold run: a hit.
+      expect(out).toMatch(/consume[^\n]*up-to-date/)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the ROOT-ANCHORED twin of that hit-path wipe is recorded too',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             early: {
+               exec: { command: 'true' },
+               cache: { inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, outputs: { files: [] } },
+             },
+             codegen: {
+               dependsOn: ['early'],
+               exec: { command: 'sh emit.sh' },
+               cache: {
+                 inputs: { files: ['emit.sh'], tasks: [] },
+                 outputs: { files: [], workspaceFiles: ['gen/**'] },
+               },
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               cache: {
+                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
+                 outputs: { files: ['out/**'] },
+               },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
+      await write(path.join(root, 'gen/b.js'), 'b')
+      await write(path.join(root, 'gen/old.ts'), 'content-of-old')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+
+      git(root, 'checkout', '--', 'gen/old.ts')
+      const out = vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+      expect(out).toMatch(/consume[^\n]*up-to-date/)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the ROOT-ANCHORED twin of that wipe is recorded too',
     async () => {
       // `cache.outputs.workspaceFiles` is wiped by `cleanWorkspaceOutputs`

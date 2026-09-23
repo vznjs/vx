@@ -12,7 +12,7 @@
 //     byte-identical artifacts (no CACHE_VERSION bump).
 
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -742,6 +742,56 @@ describe('workspaceFiles e2e', () => {
       expect(await doRun()).toBe('cache-hit')
       await write(path.join(fixture.root, 'packages', 'pkg-b', 'data', 'd.txt'), 'v2')
       expect(await doRun()).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task with workspace outputs skips its restore on a current tree by the walk, never by the directory snapshot',
+    async () => {
+      // The directory snapshot vouches for the PROJECT tree only, so the
+      // shortcut is off when the task also declares workspace outputs
+      // (`wsOutputs.length === 0` in hit-restore.ts). With that gate gone
+      // the snapshot says "set known", the workspace half is taken as
+      // empty, the sets mismatch and every warm hit restores again —
+      // `restored` reads true where the walk had proved the tree current
+      // (item 638).
+      const genCmd =
+        'mkdir -p dist ../../generated && echo root-v1 > ../../generated/api.txt && echo done > dist/out.txt'
+      const dir = await addProject(fixture.root, 'pkg-a', {
+        files: { 'src/in.txt': 'in' },
+        config: `
+          export default {
+            tasks: {
+              gen: {
+                exec: { command: ${JSON.stringify(genCmd)} },
+                cache: {
+                  inputs: { files: ['src/**'] },
+                  outputs: { files: ['dist/**'], workspaceFiles: ['generated/**'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const outcome = async (): Promise<{ status: string; restored: boolean } | undefined> => {
+        const summary = await run({ cwd: fixture.root, tasks: ['gen'], log: silentLogger(fixture) })
+        expect(summary.ok).toBe(true)
+        const o = summary.outcomes.find((o) => o.node.id === 'pkg-a#gen')
+        return o === undefined ? undefined : { status: o.status, restored: o.restored === true }
+      }
+      expect(await outcome()).toEqual({ status: 'success', restored: false })
+      // Wiped and restored.
+      await rm(path.join(dir, 'dist'), { recursive: true, force: true })
+      expect(await outcome()).toEqual({ status: 'cache-hit', restored: true })
+      // A snapshot of a directory younger than the racy window is refused,
+      // so age dist: the next hit's walk proves the tree current and
+      // records the directories, and the hit after that has a snapshot to
+      // lean on — which it must not, with workspace outputs in play.
+      const old = new Date(Date.now() - 60_000)
+      await utimes(path.join(dir, 'dist'), old, old)
+      expect(await outcome()).toEqual({ status: 'cache-hit', restored: false })
+      expect(await outcome()).toEqual({ status: 'cache-hit', restored: false })
     },
     TIMEOUT,
   )
