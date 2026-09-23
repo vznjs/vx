@@ -444,7 +444,8 @@ describe('timing.md lists every mark and span the run path records', () => {
   })
   // benchmarks.md § Profiling a run names the same table in prose, and named
   // nine of the fourteen — as an appositive that reads as the sequence, with
-  // `startup`, `workspace config`, `plugin stages`, `save lane` and
+  // `startup`, `workspace config`, `plugin stages`, `save lane` (a mark
+  // gone since item 634) and
   // `output dir snapshots` missing (item 360, 2026-09-19). One list was
   // pinned, its sibling was not: the class this loop keeps meeting.
   it('benchmarks.md names the same marks, in the same order', () => {

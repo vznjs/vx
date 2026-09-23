@@ -39,7 +39,6 @@ pins this list to `prepare.ts` and `run.ts`, and the spans to every
 - `classify + probe`
 - `run graph`
 - `record history`
-- `save lane`
 - `output dir snapshots`
 - `close`
 - `plan`

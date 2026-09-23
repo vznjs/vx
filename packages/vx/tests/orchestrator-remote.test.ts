@@ -743,6 +743,66 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
   )
 })
 
+describe('orchestrator: a prefetch still in flight at the end of the run', () => {
+  it(
+    'is awaited before the cache closes, so its artifact is local for the next run',
+    async () => {
+      // `startRemotePrefetch` promises that the caller awaits its handle
+      // before closing the cache; nothing held that until item 634. A
+      // run aborted before it dispatches anything leaves every prefetch
+      // in flight with no task to join it: with the await, the slow GETs
+      // land in the local cache and the next run pulls nothing; without
+      // it the cache closes under the ingest and the next run GETs again.
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const warm = startArtifactEndpoint()
+      try {
+        for (const name of ['a', 'b']) {
+          await addProject(fixture.root, name, {
+            files: { 'src/in.txt': name },
+            config: BUILD_CONFIG,
+          })
+        }
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: warm.layer,
+        })
+        expect(first.ok).toBe(true)
+        expect(warm.store.size).toBe(2)
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+
+        const slow = startArtifactEndpoint({ getLatencyMs: 150 })
+        for (const [h, body] of warm.store) slow.store.set(h, body)
+        const controller = new AbortController()
+        controller.abort()
+        const aborted = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: slow.layer,
+          signal: controller.signal,
+        })
+        expect(aborted.outcomes.map((o) => o.status)).toEqual(['aborted', 'aborted'])
+        const pulled = [...slow.getCounts.values()].reduce((x, y) => x + y, 0)
+        expect(pulled).toBe(2)
+
+        const third = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: slow.layer,
+        })
+        expect(third.ok).toBe(true)
+        expect([...slow.getCounts.values()].reduce((x, y) => x + y, 0)).toBe(pulled)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('orchestrator: local-only runs never prefetch', () => {
   it('a run with no remote cache configured invokes no prefetch', async () => {
     const fixture = await makeFixture('vx-remote-e2e-')
