@@ -3,12 +3,16 @@
 // `run` is 18 % of the profile: which statements, how many?"). Item 615
 // found 3,000 autocommit writes per cold config round this way.
 //
-//   bun --preload packages/vx-bench/sqlite-tally.ts packages/vx/src/bin.ts run build --all
+//   bun --preload ./packages/vx-bench/sqlite-tally.ts packages/vx/src/bin.ts run build --all
+//
+// The `./` is load-bearing: Bun resolves a bare `--preload` path as a
+// module specifier, not a file, and reports it not found.
 //
 // Each statement object is wrapped ONCE: `db.query()` returns a cached
 // statement, and a wrapper that re-wrapped it per call counted 500,501
 // executions of one query (the trap CLAUDE.md names).
 import { Database } from 'bun:sqlite'
+import { writeSync } from 'node:fs'
 const tally = new Map<string, { n: number; ms: number }>()
 const wrapped = new WeakSet<object>()
 type Loose = (this: unknown, ...a: unknown[]) => unknown
@@ -69,6 +73,9 @@ proto['exec'] = function (...args: unknown[]) {
     tally.set(k, e)
   }
 }
+// Written with `writeSync`: `bin.ts` exits from its stdout callback, and a
+// buffered stderr write on that path is dropped (item 175) — the summary
+// vanished after `--dry` until it was synchronous.
 process.on('exit', () => {
   const rows = [...tally.entries()].sort((a, b) => b[1].ms - a[1].ms)
   let total = 0,
@@ -77,7 +84,7 @@ process.on('exit', () => {
     total += e.ms
     count += e.n
   }
-  process.stderr.write(`[sqlite] ${count} executions, ${total.toFixed(1)} ms\n`)
+  writeSync(2, `[sqlite] ${count} executions, ${total.toFixed(1)} ms\n`)
   for (const [k, e] of rows.slice(0, 25))
-    process.stderr.write(`  ${e.ms.toFixed(1).padStart(7)} ms ${String(e.n).padStart(6)}x  ${k}\n`)
+    writeSync(2, `  ${e.ms.toFixed(1).padStart(7)} ms ${String(e.n).padStart(6)}x  ${k}\n`)
 })

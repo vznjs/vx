@@ -211,6 +211,20 @@ test is telling the truth.
       source both ways (differential: the sentence removed fails it by
       name). The other plugins read no `VX_*` at all (the GitHub plugin
       reads `GITHUB_STEP_SUMMARY`, named three times in its README).
+619.  DONE (2026-09-23, the `vx mcp` walk and two small finds). The MCP
+      server walked as an agent would, newline-delimited JSON-RPC over
+      stdio from this repo: `initialize` answers with the protocol,
+      the six tools list with their schemas, `getWorkspaceInfo` and
+      `listTasks` answer for all ten projects and 85 tasks, a wrong
+      argument shape and an unknown tool each come back as an
+      `isError` result naming the problem, nothing on stderr. Nothing
+      off. Found alongside: the tally preload's summary is written
+      with `writeSync` (a buffered stderr write on the exit path is
+      what item 175 says Bun drops), and its usage line carries the
+      `./` a bare `--preload` path needs — Bun resolves it as a module
+      specifier and reported the file not found. And the site's
+      environment-variables guide, which is a TASK's env model, now
+      points at the CLI reference's table of what vx itself reads.
 
 ## In flight
 
