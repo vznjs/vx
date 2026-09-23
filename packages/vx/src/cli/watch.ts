@@ -887,6 +887,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // network mount, a container bind — the attempt costs a denied syscall
   // and a two-second wait before the fallback takes over anyway.
   const forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
+  if (forcePoll)
+    process.stderr.write(`vx watch: polling every ${POLL_INTERVAL_MS} ms (VX_WATCH_POLL)\n`)
   // The poller skips exactly what the event filter would drop: the
   // unconditional segments AND this run's declared output containers. Read
   // through `isIgnoredPath` rather than captured, because `rearm` replaces

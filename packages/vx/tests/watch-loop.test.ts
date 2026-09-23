@@ -55,6 +55,26 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
+  it('VX_WATCH_POLL=1 polls from the start, says so, and an edit still re-runs', async () => {
+    // The switch for a host whose OS watcher is known not to deliver (a
+    // sandbox without FSEvents access, a network mount, a container bind):
+    // the loop arms the poller instead of probing the watcher for 2 s. The
+    // notice is the observable — the poller and the watcher deliver the same
+    // edits — and the re-run proves the poller is the one delivering them.
+    f.watch = startWatch(f.root, ['--all'], { VX_WATCH_POLL: '1' })
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+    expect(w.err()).toContain('vx watch: polling every 250 ms (VX_WATCH_POLL)')
+    expect(w.err()).not.toContain('no OS watch events')
+
+    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'polled\n')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after an edit, polled')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(1)
+    expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('polled\n')
+  }, 40_000)
+
   it('a first sighting is a change only when its mtime falls after the arm', async () => {
     // The loop has never judged either path, so each is a FIRST sighting,
     // and the mtime is all it has to say which side of the arm the change

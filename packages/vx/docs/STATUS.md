@@ -122,6 +122,25 @@ test is telling the truth.
       of its laws read every package, the workflows and the root — an
       edit elsewhere left the suite an up-to-date hit in a warm gate. Its
       inputs declare them now (`workspaceFiles`); the key costs 13 ms.
+614.  DONE (2026-09-23, the sweep's second shape: what core reads from
+      the environment against what a user can find). Core reads eight
+      `VX_*` names; two were documented nowhere a user looks
+      (`VX_WATCH_POLL` in two history files, `VX_CONFIG_WORKER_TIMEOUT_MS`
+      in a code comment), `vx watch`'s poll fallback — the 2 s probe, the
+      250 ms poller, the notice — was in no page at all, and the forced
+      poller announced nothing. Now: `docs/cli.md` § "Environment
+      variables vx reads" (one row per name: value, default, effect,
+      the fallback-not-clamp rule each timeout keeps) and § `vx watch` ›
+      "How changes are seen"; `VX_WATCH_POLL=1` prints its one line like
+      the fallback does, and a `watch-loop` row proves the polled loop
+      re-runs on an edit and says so. The pin
+      (`tests/env-doc-drift.test.ts`) reads the `process.env` sites
+      themselves — literal and through the `_ENV` constants, which is
+      how `VX_RUN_WORKSPACE` and `VX_RUN_TASK` were found read back for
+      the nested-run refusal — and holds the table to them in both
+      directions (differential: a ghost row fails it by name). The site
+      guide of the same name is a task's `exec.env` model; the section
+      title says which side it is.
 
 ## In flight
 

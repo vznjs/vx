@@ -62,12 +62,16 @@ export async function initialOnly(w: Watch, log: string): Promise<void> {
 // the run's own ignore filter the two modes report the same tree, the rows
 // assert one number, and nothing needs to ask which watcher is running.
 
-export function startWatch(root: string, select: readonly string[] = ['--all']): Watch {
+export function startWatch(
+  root: string,
+  select: readonly string[] = ['--all'],
+  env: Record<string, string> = {},
+): Watch {
   const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', ...select], {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+    env: { ...process.env, VX_KILL_GRACE_MS: '200', ...env },
   })
   let out = ''
   let err = ''
