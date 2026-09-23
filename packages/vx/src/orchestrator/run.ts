@@ -833,7 +833,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // The miss path's output-directory snapshots, taken now that the
     // directories are old enough for the snapshot's racy window (see
     // miss-save.ts). A few at a time: each is an lstat + readdir per
-    // prefix and one index transaction.
+    // prefix; the rows land together at close, in one transaction.
     for (let i = 0; i < outputDirSnapshots.length; i += 32) {
       await Promise.all(
         outputDirSnapshots

@@ -325,7 +325,10 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    hit, unchanged mtimes on all of them prove the set unchanged, since a
    file added or removed anywhere the glob could see bumps its parent
    directory, and a new directory bumps the recorded directory that
-   contains it. Any other glob shape (`**/*.js`, `dist/*`), a missing
+   contains it. The rows are taken per task and written together — one
+   transaction at the first read, at prune, at stats or at close, since
+   item 622; a thousand commits at run end were the whole snapshot stage
+   before — and a reader in the same process flushes them first. Any other glob shape (`**/*.js`, `dist/*`), a missing
    row set (a remote ingest records none), a moved directory, or more
    than 256 directories keeps the walk — and a walk that proves the tree
    current records the directories so the following hit can skip it.
