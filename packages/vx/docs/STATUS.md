@@ -1010,6 +1010,17 @@ Coordinator's reading of the bar: "worst" is the worst single graph,
 not the worst cell mean (+0.23 %), because a user lives one run at a
 time and a +6 % run on a new task is the regression they would see.
 
+14br. **Item 670 (roadmap 2.3, 2026-09-23): the parity audit has no open
+row.** Its last one: a legal output name under a destination deep enough
+that the two pass PATH_MAX reached the user as a raw `ENAMETOOLONG`,
+which the scheduler printed as an internal error. The restore's catch
+now names it like `EACCES` and `ENOSPC` beside it: a `UserError` that the
+output path under this directory is longer than the file system allows,
+with the remedy (a shorter workspace path); the artifact is fine. The row
+in `cache.test.ts` restores a 200-byte name into a destination 150 bytes
+short of PATH_MAX, red without the branch, with a control that the same
+artifact restores into the shallow directory.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so

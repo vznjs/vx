@@ -76,8 +76,9 @@ Item 661 left four rows open and found three more:
   one component past NAME_MAX (255). Item 666 also found the restore's
   temp name (`<target>.vx-tmp-…`) pushed a legal 242–255-byte component
   past NAME_MAX, so a valid artifact failed to restore; the temp is now a
-  short sibling. Still open: a destination plus name past PATH_MAX
-  reaches the file system as a raw `ENAMETOOLONG`. S.
+  short sibling. A destination plus name past PATH_MAX is the
+  workspace's location, not a bad artifact: since item 670 the restore
+  names it as a user error (move the workspace to a shorter path).
 - **gaps §1 L48, a bracket in a task glob.** Worse than the row said: an
   input glob over a route directory (`app/[id]/**`) keyed nothing and
   replayed a stale hit, and an output under one deleted the class's
