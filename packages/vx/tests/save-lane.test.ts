@@ -1,6 +1,7 @@
 // The save lane: a miss's cache save runs off the execution slot, bounded,
-// drained by the run before the upload drain. Unit-level here; the run-level
-// differential (saves overlap the next execution) is below.
+// and settled per task by the scheduler before the run ends. Unit-level
+// here; the run-level differential (saves overlap the next execution, and
+// the second run still hits) is below.
 
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -19,48 +20,53 @@ describe('createSaveLane', () => {
     let peak = 0
     const done: number[] = []
     const lane = createSaveLane(2, () => undefined)
+    const settled: Promise<void>[] = []
     for (let i = 0; i < 5; i++) {
-      void lane.defer(async () => {
-        peak = Math.max(peak, ++active)
-        await sleep(10)
-        active--
-        done.push(i)
-      })
+      settled.push(
+        lane.defer(async () => {
+          peak = Math.max(peak, ++active)
+          await sleep(10)
+          active--
+          done.push(i)
+        }),
+      )
     }
-    await lane.drain()
+    await Promise.all(settled)
     expect(peak).toBe(2)
     expect(done.sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4])
   })
 
-  it('drain settles saves queued behind running ones, and ones deferred during the drain', async () => {
+  it('a save queued behind a running one settles in order, and one deferred meanwhile after it', async () => {
     const lane = createSaveLane(1, () => undefined)
     const order: string[] = []
-    void lane.defer(async () => {
+    let nested: Promise<void> | undefined
+    const a = lane.defer(async () => {
       await sleep(5)
       order.push('a')
-      void lane.defer(async () => {
+      nested = lane.defer(async () => {
         await sleep(5)
         order.push('c')
       })
     })
-    void lane.defer(async () => {
+    const b = lane.defer(async () => {
       order.push('b')
     })
-    await lane.drain()
+    await Promise.all([a, b])
+    await nested
     expect(order).toEqual(['a', 'b', 'c'])
   })
 
-  it('a failed save reaches onError, frees its slot, and never rejects the drain', async () => {
+  it('a failed save reaches onError, frees its slot, and its defer settles rather than rejects', async () => {
     const errors: string[] = []
     const lane = createSaveLane(1, (e) => errors.push(String(e)))
     let second = false
-    void lane.defer(async () => {
+    const first = lane.defer(async () => {
       throw new Error('disk full')
     })
-    void lane.defer(async () => {
+    const next = lane.defer(async () => {
       second = true
     })
-    await lane.drain()
+    await Promise.all([first, next])
     expect(errors).toEqual(['Error: disk full'])
     expect(second).toBe(true)
   })

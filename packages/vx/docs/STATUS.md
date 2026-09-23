@@ -115,6 +115,26 @@ test is telling the truth.
       one closure past the window and reopens: the aged rows are gone,
       the fresh ones kept — red with the prune, or either half of it,
       deleted.
+634.  DONE (2026-09-23, the 628 method on the run's end sequence). Each
+      await between the graph's end and `close()` deleted in turn
+      against the WHOLE core suite (3,582 rows): `telemetry.flush()` is
+      held by two rows and the snapshot loop by one; `await prefetchDone`
+      and `await saveLane.drain()` survived. The drain was a second copy
+      of the rule, as CLAUDE.md says to suspect first: the scheduler
+      finishes a task only once its `settledOf` promise (the lane's
+      `landed`) has, so `runGraph` resolves with every save in the cache
+      and a drain after it waits for nothing. Gone, with the lane's
+      `drain()` (its three unit rows await the defers now) and the
+      `save lane` mark (a stage that read 0.1 ms; `timing.md` and the
+      benchmarks sentence follow). The gate that IS the rule is held by
+      the run-level slow-save row: with `settledOf`'s wait broken, the
+      row is red. The prefetch await was a comment's promise
+      ("the caller DOES await the returned handle before closing the
+      cache") held by nothing: a run aborted before it dispatches
+      leaves every prefetch in flight with no task to join it, so the
+      new row (`orchestrator-remote.test.ts`) warms a remote, wipes the
+      local cache, runs pre-aborted against a 150 ms remote and asserts
+      the next run pulls nothing — red with the await deleted.
 
 ## In flight
 

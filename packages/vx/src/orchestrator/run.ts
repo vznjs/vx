@@ -824,11 +824,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // write with nothing but a warning. The seam's contract is that a
     // cache layer stays usable until the run's uploads have settled.
     await prefetchDone
-    // Every deferred save settles first: the upload drain below carries
-    // the entries the saves queued, and the snapshot loop after it reads
-    // what the saves pushed.
-    await saveLane.drain()
-    mark('save lane')
+    // Every deferred save has settled by here: the scheduler finishes a
+    // task only once its `settledOf` promise (the lane's `landed`) has,
+    // so `runGraph` resolved with every save in the cache. A second
+    // drain of the lane stood here until item 634; deleting it changed
+    // nothing the suite could see, because this gate is the rule.
     await cache.drainUploads?.()
     // The miss path's output-directory snapshots, taken now that the
     // directories are old enough for the snapshot's racy window (see
