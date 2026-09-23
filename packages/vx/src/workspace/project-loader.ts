@@ -38,19 +38,18 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
 async function loadDefaultExport(
   configPath: string,
   kind: string,
-  fresh = false,
   bytes?: Uint8Array,
 ): Promise<unknown> {
   bytes ??= await Bun.file(configPath).bytes()
   refuseUnprovidedImports(bytes, configPath, kind)
-  // `fresh` opts out of module-cache reuse entirely: `vx lock` and
-  // `vx lock --check` must observe the CURRENT environment, and the
-  // content-hash bust would replay an evaluation made under earlier
-  // env values when the file bytes are unchanged in this process.
-  const bust = fresh ? `${xxh3hex(bytes)}-${Bun.randomUUIDv7()}` : xxh3hex(bytes)
+  // No random bust for `vx lock`: a project config reaches this import
+  // only on its FIRST load in the process, so nothing is cached under the
+  // URL yet, and a repeat load (the one that could replay an evaluation
+  // made under earlier env values) re-evaluates in a worker instead
+  // (`loadedConfigs`, item 678).
   let ns: { default?: unknown }
   try {
-    ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
+    ns = (await import(`${configPath}?vx-bust=${xxh3hex(bytes)}`)) as { default?: unknown }
   } catch (err) {
     throw configLoadError(err, configPath, kind) ?? err
   }
@@ -287,7 +286,7 @@ export async function loadProjectConfigs(
         ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
             throw configLoadError(err, configPath, 'Project') ?? err
           })
-        : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes!)
+        : await loadDefaultExport(configPath, 'Project', bytes!)
       assertDefaultObject(mod, 'Project', configPath)
       // Validation runs HERE, on whichever object we ended up with, so a
       // malformed config reports the identical UserError whether it was
