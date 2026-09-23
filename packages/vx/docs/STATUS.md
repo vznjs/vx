@@ -1060,6 +1060,24 @@ fixes and refusals, the credential-URL refusal, the literal path filter
 and the range-base refusal. The PR count is recounted when the tag is
 cut.
 
+14bv. **Item 674 (2026-09-23): the site-redo track is planned.** The
+owner asked for a site that educates, not only sells: interactive
+examples, diagrams, and vx's strengths beyond speed (architecture,
+correctness, extensibility). `design/site-teaches-2026-09.md` sets out
+the principles (teach first, be honest about costs, link every claim to
+its proof, work without JavaScript, no UI framework without a reason,
+run the real code where it is pure) and nine steps, W0 to W8. Roadmap
+track W and Next item 16 record it.
+
+16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
+    site so it explains task orchestration before it sells vx: a Learn
+    section with one diagram and one interactive element per page
+    (a graph explorer, a key calculator, the scheduler simulator in the
+    browser, a pipeline explorer, worked plugins), and a choosing page
+    that states what each design choice costs. Plan and order:
+    `design/site-teaches-2026-09.md`. Next step: W0, the skeleton and the
+    island pattern.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
