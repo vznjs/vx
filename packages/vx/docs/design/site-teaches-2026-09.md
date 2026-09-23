@@ -26,6 +26,42 @@ STATUS item when it starts.
 - `comparison.md` is a feature table. It says what differs, but not why
   the difference matters or what it costs.
 
+## The bar: monorepo.tools
+
+The owner named monorepo.tools as the page to beat, by "1000×" on
+education. It was read from its source (`nrwl/monorepo.tools`,
+`libs/website/ui-home` and `ui-compare`) on 2026-09-23. Nx wrote it.
+
+**What it does well.** It opens with a crisp definition ("multiple
+distinct projects with well-defined relationships"). It names a real
+misconception ("monorepo ≠ monolith"). The "polyrepo tax" is a
+side-by-side of four pains and their monorepo answers. It has a curated
+list of resources, and it admits that features are not everything
+("you may find Lage more enjoyable to use than Nx or Bazel").
+
+**Where it stops, and where this site starts:**
+
+| monorepo.tools                                                                                                             | This site                                                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Names a capability in one sentence ("store and replay … you never build the same thing twice") with a static illustration. | Explains the mechanism, then hands the reader the controls: build a key, change an input, watch what reruns.                                                                              |
+| Nothing runs. The only interaction is switching tabs.                                                                      | The real planner runs in the browser (W9): the actual task-graph builder, key fold and scheduler over a workspace the reader edits.                                                       |
+| Features are yes/no checkmarks across 9 tools.                                                                             | Every design choice says what it buys, what it costs, and when another tool's choice is better (W7). A checkmark hides the difference between "supported" and "correct by construction".  |
+| Failure is absent. "Hermetic builds" is one line.                                                                          | Failure is taught: stale hits, cache poisoning, undeclared inputs, flaky ordering. The reader breaks a build and watches what catches it (W3, W10).                                       |
+| Written by one vendor, whose tool ticks every box. The claims are unsourced.                                               | Every claim about another tool links to that tool's docs, with the date it was checked. Every claim about vx links to the test that holds it.                                             |
+| One long page and one table. No path from novice to expert.                                                                | A learning path from the problem to the plugin API, with a checkpoint question per page that the reader answers against the live model (W11), and a glossary every page links into (W12). |
+
+"1000×" is measured by what a reader can do after reading, not by page
+length. After monorepo.tools, a reader can name features. After this
+site, a reader should be able to:
+
+- predict what a change reruns;
+- say why a cache hit is safe or stale;
+- read a task graph;
+- choose a tool for stated reasons;
+- write a plugin.
+
+Each Learn page's checkpoint tests one of those.
+
 ## Principles
 
 1. **Teach first, then show vx.** Each concept page explains the idea in
@@ -67,6 +103,15 @@ diagram, and ends with "how vx does it" and "how the others do it".
 | W6  | Extending vx                          | Worked examples: a remote cache as a `CacheLayer`, remote execution through REAPI, a telemetry sink, a CLI verb, adopting Turbo or Nx | Side-by-side code with the pipeline diagram lit up at the stage each example fills                                                                          |
 | W7  | vx, Turbo, Nx, Bazel: choosing        | The design choices behind each tool and what each choice buys and costs, beyond the feature table                                     | A filterable matrix: pick what matters to you and see which choices favour which tool, with the reasons and the "choose another tool if…" rows              |
 
+Four more pieces carry the ambition past a set of pages:
+
+| #   | Piece                                  | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W9  | **vx in the browser (the playground)** | The real planner over a virtual workspace. The task-graph builder and the scheduler are pure TypeScript today. Key derivation needs only xxh3 and file reads. The one Bun call in the graph is `Bun.Glob`, used for output overlap. A browser build with a byte-identical xxh3 (a row proves it against `Bun.hash`) and a virtual file system lets the reader edit `vx.config.ts` and source files, run `vx run build`, and step through what hits, misses and reruns. Every Learn widget becomes a view onto this one model, not a separate mock. |
+| W10 | **Labs: break it on purpose**          | Guided exercises in the playground: remove a declared input and get a stale hit; add a file the config never mentions; make two tasks write one output; order tasks badly and watch the critical path grow. Each lab ends with the vx mechanism that stops it, and whether Turbo, Nx or Bazel would.                                                                                                                                                                                                                                               |
+| W11 | **Checkpoints**                        | One question per Learn page, answered by the reader and then checked against the live model. For example: "you edit `packages/ui/src/button.ts`, which tasks rerun?" No accounts and no tracking; it all runs in the page.                                                                                                                                                                                                                                                                                                                         |
+| W12 | **Glossary**                           | One tool-neutral definition per term (task graph, cache key, affected, hermeticity, remote execution, seam), each with the name every tool uses for it, linked from every page.                                                                                                                                                                                                                                                                                                                                                                    |
+
 Two more pieces change around those pages:
 
 - **The landing page (W8)** leads with the problem and the three ideas
@@ -95,17 +140,32 @@ other change, with the site build and its link and sample laws green.
 6. **W3, the correctness page (S–M).**
 7. **W7, choosing a tool (M).** Written from `comparison.md` and
    `parity.md`. Every competitor claim links to that tool's own docs.
-8. **W8, the landing page (S).** Last, because it summarizes the rest.
+8. **W9 spike, then W9 (S spike, L build).** The spike answers two
+   questions before any widget depends on it:
+   - Can the planner modules be bundled for the browser behind a small
+     platform shim (the file system, the glob matcher, xxh3)?
+   - Do they produce keys byte-identical to the CLI's on the same
+     workspace?
+     If yes, W1, W2 and W4 are rebuilt as views on it. If no, they stay on
+     their own models, each labelled as a model.
+9. **W10, the labs, and W11, the checkpoints (M).** They need W9.
+10. **W12, the glossary (S).** Can start any time.
+11. **W8, the landing page (S).** Last, because it summarizes the rest.
 
-Estimate: about four to six working days of agent work. It does not
+Estimate: about four to six working days of agent work for W0–W8, and
+another four to six for W9–W12, most of it the playground. It does not
 block the 0.1.0 tag. It should land before the release is announced
 publicly, because the announcement sends people to the site. The site's
 address is still the owner's decision (roadmap 1.5).
 
 ## Done means
 
-- Every Learn page has a diagram and an interactive element, and reads
-  correctly with JavaScript off.
+- Every Learn page has a diagram and an interactive element, reads
+  correctly with JavaScript off, and ends with a checkpoint.
+- The playground computes the same task graph and keys as the CLI on the
+  same workspace, proven by a test.
+- Every capability monorepo.tools names as a checkmark has a page here
+  that explains its mechanism, its failure mode and its cost.
 - Every number on the site comes from `benchmarks.md`, and every
   guarantee links to its test.
 - Every comparison states what vx's choice costs and names at least one

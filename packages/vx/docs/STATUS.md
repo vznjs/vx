@@ -1066,7 +1066,9 @@ examples, diagrams, and vx's strengths beyond speed (architecture,
 correctness, extensibility). `design/site-teaches-2026-09.md` sets out
 the principles (teach first, be honest about costs, link every claim to
 its proof, work without JavaScript, no UI framework without a reason,
-run the real code where it is pure) and nine steps, W0 to W8. Roadmap
+run the real code where it is pure) and thirteen steps, W0 to W12,
+with monorepo.tools (read from its source) as the bar to beat on
+education. Roadmap
 track W and Next item 16 record it.
 
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
@@ -1075,8 +1077,11 @@ track W and Next item 16 record it.
     (a graph explorer, a key calculator, the scheduler simulator in the
     browser, a pipeline explorer, worked plugins), and a choosing page
     that states what each design choice costs. Plan and order:
-    `design/site-teaches-2026-09.md`. Next step: W0, the skeleton and the
-    island pattern.
+    `design/site-teaches-2026-09.md`. The bar is monorepo.tools, "1000×"
+    better on education: mechanisms instead of checkmarks, the real
+    planner running in the browser (W9), labs where the reader breaks a
+    build (W10), checkpoints (W11) and a glossary (W12). Next step: W0,
+    the skeleton and the island pattern.
 
 ## Decisions (this arc)
 
