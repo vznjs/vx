@@ -304,6 +304,21 @@ test is telling the truth.
       own, so the object goes in as it is now. The turbo and nx suites
       pass, the watch-shape row (a script edited between two runs in
       one process is the second run's command) included.
+610.  DONE (2026-09-23, the profile that closes the plugin-cost arc).
+      `bun --cpu-prof` on `vx run noop --all --dry` at 1,000 `nx()`
+      projects, warm. The first profile's top frames were `lstat` under
+      `isInputOnDisk` — an artefact: the scratch workspace was not
+      git-tracked, so every file was "untracked" and stat'd. With the
+      tree committed the same run samples 232 ms with no core hot spot:
+      the widest frames are the plugin's mapping, `sort`, `resolveFiles`
+      (cache/inputs.ts) and `JSON.parse`, each a few percent. Stage
+      rows: load configs 55.8–72.6 ms, git enumeration 8.3–14.5 ms, plan
+      54.4–73.1 ms. For scale: the same workspace under `turbo()` reads
+      44.7–56.4 ms at the stage and a plain configless load is
+      0.7–1.3 ms. Nothing here is a warm-path item; the README's stage
+      number is refreshed to what 608 and 609 left (about 30 ms over
+      evaluated configs). Rule kept: a profile of a scratch tree is a
+      profile of the untracked case unless the tree is in git.
 
 ## In flight
 
