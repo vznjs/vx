@@ -313,6 +313,39 @@ test is telling the truth.
       (`localWritesEnabled`), so the row opens a `Cache` with writes
       off and spies its `packArtifactBytes`. Each red on its line
       alone. The layered cache is swept end to end (641, 642).
+643.  DONE (2026-09-23, the 628 method on the remote prefetch, the
+      deferred outputs and the dedup barrier). Fifteen gates deleted in
+      turn against the whole core suite in the worktree. Held: the
+      prefetch handle's never-reject catch, one materialisation per
+      producer, a fetch failure naming the producer, the fetched
+      producer's local entry, and the barrier's three gates (a joiner
+      waits, re-probes, and lifts only when the entry has landed; two
+      rows each). Survived: the pass's `remoteRead` gate, the batch
+      pre-mark, the wipe before a fetch, and the pending-set removal
+      after one; the hit filter is masked by the pre-mark (a comment,
+      as in 640) and the post-fetch git mark has no reader by
+      construction (`deferralEligibility` keeps every reader of a
+      deferred producer's outputs eager — a comment, and the wipe's
+      twin mark with it). Four rows: with remote reads off the pass
+      never starts (no probe, no pull, no key derived for it); the
+      batch probe decides the pulls (a present hash fetched once, an
+      absent one never — `b` depends on `a` so its lazy get cannot race
+      the verdict); a straggler in the producer's declared tree is gone
+      after a materialisation; a materialised producer is missing from
+      the "left outputs remote" line (the failure half already had its
+      row). And the pump's per-hash catch, whose verdict was flakes
+      (`vx show` under a plugin, the key-scaling baseline, the watch
+      loop): `LayeredCache.prefetch` swallows the remote's throws but
+      its local-first probe runs before that catch, so a fifth row
+      (`orchestrator-remote.test.ts`) rejects the first of two pulls
+      under one worker and holds that the second still reaches the
+      layer — red without the catch (one call). Two whole-suite verdicts
+      carried parity rows that do not defer (eleven Turbo rows under the
+      post-fetch mark, eight Nx rows under the local-entry gate); each
+      re-run against its own suites in the checkout gave the true
+      verdict (the mark survives, the gate is caught by the convergence
+      row), and the mark's whole-suite re-run alone reddened nothing.
+      The prefetch, deferral and dedup paths are swept.
 
 ## In flight
 

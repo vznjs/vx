@@ -500,6 +500,164 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
   )
 
   it(
+    'remote reads off: the prefetch pass never starts — no probe, no pull, no key derived for it',
+    async () => {
+      // The layer refuses both calls under this policy (layered-cache.test.ts,
+      // item 641), so the wire is quiet either way; the orchestrator's own
+      // gate is what spares the pass — deriving every stable key to feed a
+      // layer that answers null. Deleting it survived the whole core suite
+      // (item 643); the calls that gate removes are the observable.
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const remote = startArtifactEndpoint()
+      const hasMany = spyOn(LayeredCache.prototype, 'remoteHasMany')
+      const prefetch = spyOn(LayeredCache.prototype, 'prefetch')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(res.ok).toBe(true)
+        expect(hasMany).toHaveBeenCalledTimes(0)
+        expect(prefetch).toHaveBeenCalledTimes(0)
+        expect([...remote.getCounts.values()]).toHaveLength(0)
+      } finally {
+        hasMany.mockRestore()
+        prefetch.mockRestore()
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the batch probe decides the pulls: a present hash is fetched once, an absent one never',
+    async () => {
+      // Two things ride the batch answer and nothing held either (item
+      // 643): the misses are pre-marked absent, so a task's lazy get on a
+      // local miss issues no remote GET; and only the hits enter the pull
+      // pool, so the pass itself GETs nothing that would 404. The pass
+      // races execution, so `b` depends on `a`: it cannot probe before
+      // a's pull has landed, and a's pull follows the batch verdict — the
+      // row above allows the miss one GET for exactly that race.
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const remote = startArtifactEndpoint()
+      try {
+        await addProject(fixture.root, 'a', {
+          files: { 'src/in.txt': 'a' },
+          config: BUILD_CONFIG,
+        })
+        await addProject(fixture.root, 'b', {
+          files: { 'src/in.txt': 'b' },
+          deps: { a: '*' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  dependsOn: ['^build'],
+                  exec: { command: 'echo built > out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+        // Warm the remote with a's artifact only.
+        const warm = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          projects: ['a'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(warm.ok).toBe(true)
+        expect(remote.store.size).toBe(1)
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(res.ok).toBe(true)
+        const byId = new Map(res.outcomes.map((o) => [o.node.id, o]))
+        expect(byId.get('a#build')!.status).toBe('cache-hit-remote')
+        expect(byId.get('b#build')!.status).toBe('success')
+        expect(remote.getCounts.get(byId.get('a#build')!.hash!)).toBe(1)
+        expect(remote.getCounts.get(byId.get('b#build')!.hash!)).toBeUndefined()
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'one prefetch that rejects does not end the pump: the hashes behind it are still warmed',
+    async () => {
+      // `LayeredCache.prefetch` swallows the remote's own throws, but its
+      // local-first probe runs before that catch, so a local-store refusal
+      // can still reject one pull. The pump's per-hash catch is what keeps
+      // that from ending the pass for every hash queued behind it (the
+      // outer catch only spares the handle). One worker, two present
+      // hashes, the first pull rejecting: both must reach the layer.
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const remote = startArtifactEndpoint()
+      const real = LayeredCache.prototype.prefetch
+      let calls = 0
+      const prefetch = spyOn(LayeredCache.prototype, 'prefetch').mockImplementation(function (
+        this: LayeredCache,
+        ...a: Parameters<typeof real>
+      ) {
+        calls++
+        if (calls === 1) return Promise.reject(new Error('local store refused the probe'))
+        return real.apply(this, a)
+      })
+      try {
+        await addProject(fixture.root, 'a', { files: { 'src/in.txt': 'a' }, config: BUILD_CONFIG })
+        await addProject(fixture.root, 'c', { files: { 'src/in.txt': 'c' }, config: BUILD_CONFIG })
+        prefetch.mockClear()
+        calls = 0
+        const warm = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(warm.ok).toBe(true)
+        expect(remote.store.size).toBe(2)
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+
+        calls = 0
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          concurrency: 1,
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(res.ok).toBe(true)
+        expect(calls).toBe(2)
+        expect(res.outcomes.map((o) => o.status).sort()).toEqual([
+          'cache-hit-remote',
+          'cache-hit-remote',
+        ])
+      } finally {
+        prefetch.mockRestore()
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     '--dry reads the same clamped policy the run will use',
     async () => {
       const fixture = await makeFixture('vx-remote-e2e-')

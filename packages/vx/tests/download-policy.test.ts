@@ -4,7 +4,7 @@
 //
 // See docs/design/download-policy-cas-cache-2026-08.md §14.
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -516,6 +516,35 @@ describe('--download end to end', () => {
     }
   })
 
+  it('materialisation wipes the declared outputs first: a straggler in out/ is gone', async () => {
+    // `restoreHit` cleans before it writes; the deferred path mirrors it so
+    // a file the producer no longer emits cannot survive under a fresh
+    // materialisation. The straggler sits beside the real output, in the
+    // declared tree, and only the wipe removes it.
+    const a = await fixture()
+    try {
+      const straggler = path.join(a.root, 'packages', 'pkg-a', 'out', 'stale.txt')
+      await mkdir(path.dirname(straggler), { recursive: true })
+      await writeFile(straggler, 'STALE')
+      const r = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b'],
+        download: 'none',
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(true)
+      expect(fake().materialized).toEqual(['pkg-a#gen'])
+      expect([
+        existsSync(straggler),
+        await readFile(path.join(a.root, 'packages', 'pkg-a', 'out', 'gen.txt'), 'utf8'),
+      ]).toEqual([false, 'GENERATED'])
+    } finally {
+      a.cleanup()
+    }
+  })
+
   it('two consumers share ONE materialisation', async () => {
     const a = await fixture({ consumers: 2 })
     try {
@@ -698,6 +727,35 @@ describe('--download end to end', () => {
       expect(diag).toContain('pkg-a#gen')
       expect(diag).toContain('blob evicted from CAS')
       expect(diag).toContain('--download=all')
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  it('a materialised producer is no longer left-remote', async () => {
+    // The row above holds the failure half; this one holds the success
+    // half. An entry leaves the pending set only when its fetch landed,
+    // so a producer a consumer materialised must be missing from the
+    // "left outputs remote" line — deleting that removal survived the
+    // whole core suite (item 643) because nothing read the line on the
+    // success path.
+    const a = await fixture()
+    try {
+      const lines: string[] = []
+      const r = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b'],
+        download: 'none',
+        log: {
+          status: (l: string) => lines.push(l),
+          error: () => undefined,
+        } as unknown as NonNullable<Parameters<typeof run>[0]['log']>,
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(true)
+      expect(fake().materialized).toEqual(['pkg-a#gen'])
+      expect(lines.filter((l) => l.includes('left outputs remote'))).toEqual([])
     } finally {
       a.cleanup()
     }
