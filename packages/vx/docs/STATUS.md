@@ -171,6 +171,27 @@ test is telling the truth.
       the unsafe suite). And `sandboxReportingReliable`, the darwin gate
       whose pins went with `--verify`, is gone: oxlint named it once 613
       un-exported it.
+616.  REFUTED (2026-09-23, the next cold-path lead measured and put
+      back). After 615 the cold profile's largest per-save span was
+      `save: scan`, 0.67 ms summed per task: a local save decodes the
+      artifact it just packed to read its rows out of the bytes, the way
+      an ingest must. Indexing the save from its pack plan instead (the
+      sidecar is written from the same stats) was built, with a law that
+      a save's rows, a scan of its bytes and an ingest of them agree —
+      and the interleaved cold A/B, five reps, read run graph 2,198–2,503
+      ms before against 2,134–2,460 after (min −64, medians −56), the
+      whole run 2,635 → 2,573 at the minimum: 2–3 %, a tie on a box that
+      resolves nothing under 6 %. The 700 ms the span summed was I/O
+      overlapped under four workers, not cost. So the decode stays — it
+      is the save path's own check that the bytes on disk are an
+      artifact — and the law stays as
+      `tests/save-index-from-plan.test.ts`, holding the agreement the
+      design already promises. Recorded alongside, measured and not
+      taken: the run-end output-dir snapshots are one transaction per
+      task (69 ms at 1,000 on a restore run, 49 cold); batching them is a
+      `CacheLayer` seam change for a stage that small. And
+      `synchronous = NORMAL` is already set, so an autocommit here is a
+      WAL append, not an fsync — 615's win was the count, not the sync.
 
 ## In flight
 
