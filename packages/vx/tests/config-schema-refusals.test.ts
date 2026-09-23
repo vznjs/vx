@@ -141,3 +141,119 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     ).not.toBeNull()
   })
 })
+
+describe('sandbox refusals the sweep found unheld (item 653)', () => {
+  const W = `${CFG}: tasks.t.exec`
+  const sandboxRefusal = (sandbox: unknown) => taskRefusal({ exec: { command: 'x', sandbox } })
+  // A non-null scalar where an object belongs reads as an object with no
+  // fields to the unknown-key check (`Object.keys(true)` is `[]`), so each
+  // shape check below is the only thing between it and a silent baseline.
+  const CASES: Array<[string, unknown, string]> = [
+    [
+      'sandbox itself',
+      true,
+      `${W}.sandbox must be an object (e.g. \`{}\` for the baseline, or \`{ allow: { read: [...] } }\`)`,
+    ],
+    [
+      'weakerWhenNested',
+      { weakerWhenNested: 'yes' },
+      `${W}.sandbox.weakerWhenNested must be a boolean`,
+    ],
+    [
+      'weakerNetworkIsolation',
+      { weakerNetworkIsolation: 1 },
+      `${W}.sandbox.weakerNetworkIsolation must be a boolean`,
+    ],
+    ['allow', { allow: true }, `${W}.sandbox.allow must be an object`],
+    [
+      'allow.read',
+      { allow: { read: 'src' } },
+      `${W}.sandbox.allow.read must be an array of non-empty strings`,
+    ],
+    [
+      'allow.write',
+      { allow: { write: [''] } },
+      `${W}.sandbox.allow.write must be an array of non-empty strings`,
+    ],
+    [
+      'allow.systemInfo',
+      { allow: { systemInfo: 'hw' } },
+      `${W}.sandbox.allow.systemInfo must be an array of non-empty strings`,
+    ],
+    [
+      'allow.machLookup',
+      { allow: { machLookup: [1] } },
+      `${W}.sandbox.allow.machLookup must be an array of non-empty strings`,
+    ],
+    ['allow.pty', { allow: { pty: 'yes' } }, `${W}.sandbox.allow.pty must be a boolean`],
+    [
+      'allow.gitConfig',
+      { allow: { gitConfig: 1 } },
+      `${W}.sandbox.allow.gitConfig must be a boolean`,
+    ],
+    [
+      'allow.network',
+      { allow: { network: 'example.com' } },
+      `${W}.sandbox.allow.network must be an array of non-empty strings`,
+    ],
+    [
+      'allow.unixSockets',
+      { allow: { unixSockets: false } },
+      `${W}.sandbox.allow.unixSockets must be an array of non-empty strings`,
+    ],
+    ['deny', { deny: true }, `${W}.sandbox.deny must be an object`],
+    [
+      'deny.network',
+      { deny: { network: 'example.com' } },
+      `${W}.sandbox.deny.network must be an array of non-empty strings`,
+    ],
+    ['ignore', { ignore: true }, `${W}.sandbox.ignore must be an object`],
+    [
+      'ignore.read',
+      { ignore: { read: 'x' } },
+      `${W}.sandbox.ignore.read must be an array of non-empty strings`,
+    ],
+    [
+      'ignore.machLookup',
+      { ignore: { machLookup: [''] } },
+      `${W}.sandbox.ignore.machLookup must be an array of non-empty strings`,
+    ],
+    [
+      'ignore.network',
+      { ignore: { network: true } },
+      `${W}.sandbox.ignore.network must be an array of non-empty strings`,
+    ],
+    [
+      'ignore.pty',
+      { ignore: { pty: true } },
+      `${W}.sandbox.ignore.pty is a flag, not something to ignore`,
+    ],
+  ]
+  for (const [field, sandbox, message] of CASES) {
+    it(`refuses a malformed ${field}`, () => {
+      expect(sandboxRefusal(sandbox)).toBe(message)
+    })
+  }
+
+  it('accepts every field in a well-formed sandbox (the control past each check)', () => {
+    expect(
+      sandboxRefusal({
+        weakerWhenNested: true,
+        weakerNetworkIsolation: false,
+        allow: {
+          read: ['/opt/**'],
+          write: ['out/**'],
+          systemInfo: ['hw.ncpu'],
+          machLookup: ['com.apple.x'],
+          pty: true,
+          gitConfig: false,
+          network: true,
+          unixSockets: ['/tmp/s.sock'],
+          localBinding: [8080],
+        },
+        deny: { network: ['example.com'] },
+        ignore: { read: ['/proc/**'], write: ['x'], network: ['y'], unixSockets: ['z'] },
+      }),
+    ).toBeNull()
+  })
+})
