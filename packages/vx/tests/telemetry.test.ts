@@ -359,16 +359,11 @@ describe('createTelemetrySource — projection', () => {
     ])
   })
 
-  // BUG (item 654, not fixed: a source change needs the coordinator's
-  // approval). `TaskTelemetry` is "shared by the streaming task.end record
-  // and the per-run summary's tasks[]", and the summary's copy
-  // (`telemetryOf` in run-records.ts) carries blockedBy, timedOut,
-  // sandboxViolations and notReady — but the task.end projection in
-  // `createTelemetrySource` copies none of the four, so a streaming sink
-  // (otel) sees a timed-out, sandbox-violating or never-ready failure as a
-  // plain `failed`, and a blocked skip with no blocker. Repro: this row;
-  // each field reads `undefined`.
-  it.todo('task.end carries the failure and skip reasons the summary row carries', () => {
+  // Item 654 found it, item 660 fixed it: task.end had its own copy of the
+  // projection and dropped these four, so a streaming sink (otel) saw a
+  // timed-out, sandbox-violating or never-ready failure as a plain `failed`
+  // and a blocked skip with no blocker. Both now call `taskTelemetryOf`.
+  it('task.end carries the failure and skip reasons the summary row carries', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })
     const node = mkNode('a#build', 'tsc')

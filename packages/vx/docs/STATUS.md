@@ -860,6 +860,21 @@ literal output path holding glob characters) and one M (the
 unknown-first scheduling benchmark); `compileNameGlob` memoization is
 closed as not worth doing.
 
+14bh. **Item 660 (2026-09-23): `task.end` carries what the summary
+carries.** Item 654's sweep found two copies of the outcome → `TaskTelemetry`
+projection: the summary's (`run-records.ts`) and `task.end`'s (inline in
+`createTelemetrySource`), and the second dropped `blockedBy`, `timedOut`,
+`sandboxViolations` and `notReady`. A streaming sink (otel) saw a timed-out
+or sandbox-violating failure as a plain `failed`, and a blocked skip with no
+blocker. Now one function, `taskTelemetryOf` in `telemetry.ts`, feeds both.
+654's `it.todo` row is live: red on the old source, green on the new. The
+record's declared type always included the four (`task.end` is `…&
+TaskTelemetry`), so the shape did not change and
+`TELEMETRY_SCHEMA_VERSION` stays 2. PR #749 (item 654) merged with the
+coordinator's decisions on it: the two guards it left unheld
+(`isCacheHit`'s known-status check, `disable`'s once-guard) are implied by
+the neighbouring line and need no row.
+
 ## Decisions (this arc)
 
 - **macOS violation reporting is lossy under load, and stays so
