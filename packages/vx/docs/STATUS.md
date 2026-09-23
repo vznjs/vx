@@ -244,6 +244,20 @@ test is telling the truth.
       no reachable false today (the outputs are folded into the key);
       kept and said so, because what it would let through is a skipped
       restore. Each row red on its line alone.
+639.  DONE (2026-09-23, the 628 method on `executeTask`'s miss path).
+      Thirteen duties deleted in turn against the whole core suite in
+      the worktree — the pre-exec clean's project and workspace marks,
+      the placeholder sweep on an executor throw, untouched
+      placeholders becoming violations, a violation failing a green
+      exit, a timeout reading as SIGTERM, the shell verdict, a
+      materialize failure failing the consumer, the taint withholding
+      the save, signal death classified aborted, the retry loop, the
+      additive stamp before the run and the deferred save handed to
+      the scheduler — and every one is held (one to 127 rows each).
+      No survivor, no row, no change: the record that this path was
+      swept, so nobody sweeps it again. The 628 method has now walked
+      `close()`, the run's end and its finally block, the runner's
+      exit, `saveMiss`, `restoreHit` and `executeTask` (633–639).
 
 ## In flight
 
