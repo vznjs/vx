@@ -575,8 +575,18 @@ describe('subscribeTelemetry — host', () => {
   it('returns undefined when a plugin declines (telemetry → undefined)', async () => {
     const bus = createEventBus()
     const plugins: VxPlugin[] = [testPlugin('org/decline', { telemetry: () => undefined })]
-    const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
+    const warnings: string[] = []
+    const handle = await subscribeTelemetry(
+      plugins,
+      bus,
+      { ...ctx, warn: (m) => warnings.push(m) },
+      RUN,
+    )
     expect(handle).toBeUndefined()
+    // Declining is a plugin's normal answer (otel() with no endpoint), not a
+    // fault: read as a one-sink list, `undefined` was refused as "must be an
+    // object" and every declined run warned (654).
+    expect(warnings).toEqual([])
   })
 
   it('subscribes the source and fans records when a sink is contributed', async () => {
