@@ -3,11 +3,12 @@
 // evaluation could have read; anything that can observe the environment
 // evaluates live.
 import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { xxh3 } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import {
   blobOidOf,
@@ -236,6 +237,26 @@ describe('configEvalKey', () => {
       workspaceFingerprint: 'fp',
     })
     expect(fast).toBe(slow!.key)
+  })
+
+  it('the key is seeded by the eval version, vx, Bun and the fingerprint, in that order (item 653)', async () => {
+    // A stored evaluation is served WITHOUT re-validation, so it must not
+    // outlive the vx or the Bun that validated it. Neither can change inside
+    // one process, so the seed is pinned by re-deriving the key here from
+    // the sources of truth (package.json, the runtime), not by varying them.
+    const cfg = await write('packages/seed/vx.config.mjs', 'export default { tasks: {} }\n')
+    const bytes = await Bun.file(cfg).bytes()
+    const vxVersion = (
+      JSON.parse(readFileSync(path.join(import.meta.dir, '..', 'package.json'), 'utf8')) as {
+        version: string
+      }
+    ).version
+    const seed = xxh3(`vx-config-eval-v${CONFIG_EVAL_VERSION}\0${vxVersion}\0${Bun.version}\0fp\0`)
+    const expected = xxh3(`${cfg}\0${blobOidOf(bytes)}`, seed)
+      .toString(16)
+      .padStart(16, '0')
+    expect(await keyOf(cfg, 'fp')).toBe(expected)
+    expect(await keyOf(cfg, 'fp2')).not.toBe(expected)
   })
 
   it.each([
