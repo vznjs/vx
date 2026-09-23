@@ -537,17 +537,25 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
   )
 
   it(
-    'the batch probe decides the pulls: a present hash is fetched once, an absent one never',
+    'the batch probe decides the pulls: the misses are pre-marked, only the hits enter the pool',
     async () => {
       // Two things ride the batch answer and nothing held either (item
       // 643): the misses are pre-marked absent, so a task's lazy get on a
       // local miss issues no remote GET; and only the hits enter the pull
-      // pool, so the pass itself GETs nothing that would 404. The pass
-      // races execution, so `b` depends on `a`: it cannot probe before
-      // a's pull has landed, and a's pull follows the batch verdict — the
-      // row above allows the miss one GET for exactly that race.
+      // pool, so the pass itself GETs nothing that would 404. Both are
+      // pinned on the layer's calls, which do not race: the pass races
+      // execution, and a GET count for the miss is a claim about which
+      // lands first (the gate saw the warm run's own 404 counted against
+      // the cold run's one fetch). The hit's count holds — one pull per
+      // hash is the in-flight map's rule — and the miss's is bounded the
+      // way the row above bounds it. The pre-mark's list is `b` because
+      // the batch is answered in-process on the next turn, before any
+      // child can exit and save: a 150 ms delay in the stub's handler
+      // is what it takes to make the verdict see b's own upload.
       const fixture = await makeFixture('vx-remote-e2e-')
       const remote = startArtifactEndpoint()
+      const absent = spyOn(LayeredCache.prototype, 'markRemoteAbsent')
+      const prefetch = spyOn(LayeredCache.prototype, 'prefetch')
       try {
         await addProject(fixture.root, 'a', {
           files: { 'src/in.txt': 'a' },
@@ -579,6 +587,9 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(warm.ok).toBe(true)
         expect(remote.store.size).toBe(1)
         await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        remote.getCounts.clear()
+        absent.mockClear()
+        prefetch.mockClear()
 
         const res = await run({
           cwd: fixture.root,
@@ -590,9 +601,15 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const byId = new Map(res.outcomes.map((o) => [o.node.id, o]))
         expect(byId.get('a#build')!.status).toBe('cache-hit-remote')
         expect(byId.get('b#build')!.status).toBe('success')
-        expect(remote.getCounts.get(byId.get('a#build')!.hash!)).toBe(1)
-        expect(remote.getCounts.get(byId.get('b#build')!.hash!)).toBeUndefined()
+        const aHash = byId.get('a#build')!.hash!
+        const bHash = byId.get('b#build')!.hash!
+        expect(absent.mock.calls.map((c) => [...c[0]])).toEqual([[bHash]])
+        expect(prefetch.mock.calls.map((c) => c[0])).toEqual([aHash])
+        expect(remote.getCounts.get(aHash)).toBe(1)
+        expect(remote.getCounts.get(bHash) ?? 0).toBeLessThanOrEqual(1)
       } finally {
+        absent.mockRestore()
+        prefetch.mockRestore()
         await rm(fixture.root, { recursive: true, force: true })
       }
     },

@@ -79,9 +79,10 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
     // The pre-mark above already answers a pull for an absent hash from
-    // the in-flight map, so this filter is the pump's economy, not the
-    // rule: deleting it alone reddens nothing, deleting both GETs every
-    // absent key (item 643).
+    // the in-flight map, so on the wire this filter is the pump's
+    // economy: deleting it alone GETs nothing extra, deleting both GETs
+    // every absent key. What it decides is which hashes the pump asks
+    // the layer for, and that is what the row pins (item 643, 645).
     toPrefetch = stableKeys.filter((k) => present.has(k.hash))
     if (toPrefetch.length === 0) return
   }

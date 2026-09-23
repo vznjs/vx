@@ -366,6 +366,36 @@ test is telling the truth.
       comment. No row: there is no state in which the counts disagree
       with the count of outcomes, so nothing can observe them. The
       scheduler is swept.
+645.  DONE (2026-09-23, the 628 method on the task graph builder's
+      `addNode`). Sixteen gates in `graph/task-graph.ts` deleted in turn
+      against the whole core suite in the worktree, fifteen held: the
+      requested promotion, `excludeDependencies: 'all'`, the spec error's
+      task name, the three refusals (bare wildcard, negation, pattern in
+      the `pkg#task` form), the exclusion list on a plain spec, the
+      self-pattern's self-exclusion and its per-name exclusion, both
+      missing-target errors, the deps walk's seed (five rows), its
+      pass-through (six), the pattern holder's stop, and the edge dedup.
+      One survived: the per-name exclusion inside the `^build.*`
+      expansion — the self-pattern twin had its row, this branch did
+      not. One row (`task-graph.test.ts`): one excluded match drops only
+      that edge, and excluding every match leaves no edge and still no
+      pass-through to a deeper holder (holder-ness is declaration, as the
+      comment says). Red on its line alone. The container restarted
+      mid-sweep and left mutation ten applied in the worktree — a killed
+      driver's `finally` never runs — so the worktree was restored by
+      hand and the seven unrun mutations re-driven on the merged main;
+      the nine verdicts before the restart stand. The gate then caught
+      643's batch-probe row: it counted the hit's GETs across BOTH runs,
+      and under the gate's load the warm run's own lazy 404 landed before
+      its batch verdict (a 150 ms delay in the stub's batch handler
+      reproduces it). The row now pins the two claims on the layer's
+      calls — `markRemoteAbsent` sees exactly the miss, `prefetch` exactly
+      the hit — counts the cold run only, and bounds the miss's GET the
+      way its sibling row does; each of the pass's two lines reddens it
+      alone, so the "masked pair" comment in `remote-prefetch.ts` was
+      rewritten. The builder is swept;
+      its detectors and helpers (cycle, collisions, overlap, surfaced
+      deps, request expansion) are 646.
 
 ## In flight
 

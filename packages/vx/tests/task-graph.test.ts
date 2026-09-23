@@ -538,6 +538,33 @@ describe('buildTaskGraph', () => {
       expect(nodes.get('app#lint')?.deps).toEqual(['app#lint.oxlint'])
     })
 
+    it("--exclude-dependencies filters a '^pattern' expansion by concrete name, and a holder still stops the walk", () => {
+      // The self-pattern twin above held; this branch did not (item 645):
+      // the per-name filter in the `^build.*` expansion survived the whole
+      // core suite. One excluded match drops only that edge; excluding
+      // EVERY match leaves no edge and still no pass-through, because
+      // holder-ness is about declaration, not about what survives the
+      // filter.
+      const graph = (exclude: string[]) =>
+        buildTaskGraph({
+          projects: projects(
+            project('app', { test: { ...cmd('test'), dependsOn: ['^build.*'] } }),
+            project('lib', { 'build.js': cmd('js'), 'build.dts': cmd('dts') }),
+            project('deeper', { 'build.js': cmd('deep') }),
+          ),
+          packageGraph: packageGraph({ app: ['lib'], lib: ['deeper'] }),
+          requested: [{ project: 'app', task: 'test' }],
+          excludeDependencies: exclude,
+        })
+      const one = graph(['build.dts'])
+      expect([one.get('app#test')?.deps, one.has('lib#build.dts')]).toEqual([
+        ['lib#build.js'],
+        false,
+      ])
+      const all = graph(['build.js', 'build.dts'])
+      expect([all.get('app#test')?.deps, all.has('deeper#build.js')]).toEqual([[], false])
+    })
+
     it('rejects a pattern in the pkg#task form with a clear error', () => {
       expect(() =>
         buildTaskGraph({
