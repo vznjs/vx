@@ -1,0 +1,25 @@
+---
+title: What is task orchestration?
+description: Tasks, dependencies and the task graph, and why a monorepo needs more than npm run.
+---
+
+import AffectedGraph from '../../../components/demos/AffectedGraph.astro'
+
+:::note
+Status: planned (roadmap W1).
+:::
+
+This page will teach what a task runner has to solve before it shows any
+tool's answer. A task is one command in one package. Tasks depend on each
+other, and together they form a task graph, which says what may run in
+parallel and what a change affects. The page will show why `npm run` in each
+package stops scaling in a monorepo, and how Turbo, Nx, Bazel and vx each
+build the graph. After reading it you should be able to read a task graph
+and predict what a change reruns.
+
+The graph below is the site's first interactive demo, and the pattern every
+Learn page's widget follows. Select a package to see what a change to it
+affects. Without JavaScript, the caption says the same. W1 grows it into the
+graph explorer.
+
+<AffectedGraph />

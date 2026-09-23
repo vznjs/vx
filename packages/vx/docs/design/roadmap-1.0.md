@@ -94,21 +94,21 @@ and how far it can be extended. In the owner's words, "educate not only
 sell". The bar to beat is monorepo.tools, by "1000×" on education.
 The plan is `design/site-teaches-2026-09.md`.
 
-| #   | Item                                                                                                                                     | Size |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| W0  | A Learn section, stub pages, and the interactive-island pattern with a no-JavaScript fallback.                                           | S    |
-| W1  | What task orchestration is, with a graph explorer.                                                                                       | M    |
-| W2  | Caching from first principles, with a key calculator.                                                                                    | M    |
-| W3  | Correctness: trusting the cache, with a stale-hit demo.                                                                                  | S–M  |
-| W4  | Scheduling, with the item 669 simulator running in the browser.                                                                          | M    |
-| W5  | The architecture as a pipeline with seams, with a pipeline explorer.                                                                     | M    |
-| W6  | Extending vx: worked plugins that the site's tests type-check.                                                                           | M    |
-| W7  | Choosing between vx, Turbo, Nx and Bazel: design choices and their costs, not a feature table.                                           | M    |
-| W8  | A landing page that leads with the problem and the ideas, then the numbers.                                                              | S    |
-| W9  | The playground: the real planner (graph, keys, scheduler) running in the browser over a workspace the reader edits. Starts with a spike. | L    |
-| W10 | Labs: break a build on purpose (a stale hit, an undeclared input, an output collision) and see what catches it.                          | M    |
-| W11 | Checkpoints: one question per page, checked against the live model.                                                                      | S    |
-| W12 | A tool-neutral glossary that every page links into.                                                                                      | S    |
+| #   | Item                                                                                                                                                                                                                    | Size |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| W0  | ~~A Learn section, stub pages, and the interactive-island pattern with a no-JavaScript fallback.~~ DONE in item 675: `Demo.astro` and `demos/<name>.ts`, pinned against the built HTML by `tests/demo-islands.test.ts`. | S    |
+| W1  | What task orchestration is, with a graph explorer.                                                                                                                                                                      | M    |
+| W2  | Caching from first principles, with a key calculator.                                                                                                                                                                   | M    |
+| W3  | Correctness: trusting the cache, with a stale-hit demo.                                                                                                                                                                 | S–M  |
+| W4  | Scheduling, with the item 669 simulator running in the browser.                                                                                                                                                         | M    |
+| W5  | The architecture as a pipeline with seams, with a pipeline explorer.                                                                                                                                                    | M    |
+| W6  | Extending vx: worked plugins that the site's tests type-check.                                                                                                                                                          | M    |
+| W7  | Choosing between vx, Turbo, Nx and Bazel: design choices and their costs, not a feature table.                                                                                                                          | M    |
+| W8  | A landing page that leads with the problem and the ideas, then the numbers.                                                                                                                                             | S    |
+| W9  | The playground: the real planner (graph, keys, scheduler) running in the browser over a workspace the reader edits. Starts with a spike.                                                                                | L    |
+| W10 | Labs: break a build on purpose (a stale hit, an undeclared input, an output collision) and see what catches it.                                                                                                         | M    |
+| W11 | Checkpoints: one question per page, checked against the live model.                                                                                                                                                     | S    |
+| W12 | A tool-neutral glossary that every page links into.                                                                                                                                                                     | S    |
 
 **Exit:** every Learn page has a diagram and an interactive element and
 reads with JavaScript off. Every number comes from `benchmarks.md`,

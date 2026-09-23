@@ -1,0 +1,54 @@
+---
+// The island pattern every Learn widget follows (design/site-teaches-2026-09.md,
+// principle 4). The default slot is the no-JavaScript render: a meaningful
+// static state produced at build time. `demos/<name>.ts` is a plain custom
+// element, `<vx-<name>>`, that enhances that markup in place rather than
+// replacing it. No UI framework: the loader below fetches an element's
+// module only on a page that holds one, and a reader without JavaScript
+// keeps the static state.
+interface Props {
+  /** The element module `src/components/demos/<name>.ts`, which defines `<vx-<name>>`. */
+  name: string
+}
+
+const { name } = Astro.props
+// A misspelt name fails the build here instead of a reader's console.
+if (!(`./demos/${name}.ts` in import.meta.glob('./demos/*.ts'))) {
+  throw new Error(`<Demo name="${name}">: no src/components/demos/${name}.ts`)
+}
+const Tag = `vx-${name}`
+---
+
+<figure class="vx-demo">
+  <Tag data-vx-demo={name}><slot /></Tag>
+  {
+    Astro.slots.has('caption') && (
+      <figcaption>
+        <slot name="caption" />
+      </figcaption>
+    )
+  }
+</figure>
+
+<style>
+  .vx-demo {
+    margin-block: 1.5rem;
+    padding: 1rem 1rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+  }
+  figcaption {
+    margin-top: 0.75rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+</style>
+
+<script>
+  const elements = import.meta.glob('./demos/*.ts')
+
+  for (const el of document.querySelectorAll<HTMLElement>('[data-vx-demo]')) {
+    const name = el.dataset['vxDemo']!
+    if (customElements.get(`vx-${name}`) === undefined) void elements[`./demos/${name}.ts`]!()
+  }
+</script>

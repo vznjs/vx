@@ -53,9 +53,15 @@ export default defineProject({
       },
     },
 
+    // `build` because the demo pin (tests/demo-islands.test.ts) reads what
+    // the site shipped: whether a widget's no-JavaScript fallback is there is
+    // a fact about the built HTML, not about any source file.
+    // `dist/` is not an input here; `build`'s key reaches this one through
+    // `dependsOn`, and a hit on `build` restores `dist/` before this runs.
     test: {
-      description: 'bun test — the guide and sidebar pins (needs the imported content)',
-      dependsOn: ['install', 'import'],
+      description:
+        'bun test — the guide, sidebar and demo pins (needs the imported content and dist/)',
+      dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
         sandbox: {

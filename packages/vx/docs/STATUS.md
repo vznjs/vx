@@ -299,6 +299,25 @@ state of each:
     and what not to do; strike an entry through there when its item
     lands here.
 
+14bw. **Item 675 (roadmap W0, 2026-09-23): the site has a Learn section
+and one way to ship a widget.** The sidebar opens with Learn: eight
+pages under `learn/` (W1–W7 and the W12 glossary), each a stub that
+says what it will teach, the reader outcome from the plan's list, and
+"Status: planned". The island pattern is `Demo.astro` plus a plain
+custom element in `src/components/demos/<name>.ts`, loaded only where a
+page holds one, with no UI framework. The default slot is the
+no-JavaScript render and must teach on its own. The first widget is on
+the W1 stub: the toy monorepo's build graph (`ui`, `api`, `app`) as
+inline SVG. Selecting a package lights up the package and everything
+that depends on it, and an `aria-live` region says the same. Without
+JavaScript the same SVG carries a caption that says what depends on
+what and what each change affects. `tests/demo-islands.test.ts` reads
+the built page and fails without the SVG, the caption, or the loader
+(red three ways, green after restore). It needs `dist/`, so the site's
+`test` task now depends on `build`. Pages that hold a widget are
+`.mdx`; the site-wide laws that walk `.md` (the config snippets, the
+doc-class pins, the samples) do not read them yet.
+
 14by. **Handoff after item 677 (2026-09-23, near midnight).** Since 14bb
 the arc turned from sweeping to shipping toward 1.0: the roadmap
 (`design/roadmap-1.0.md`, 655), the plugins published with the release
@@ -314,13 +333,14 @@ cwd's, not HOME's; 653; 654). WHAT STANDS: the loop holds 677 alone;
 14bb–14bv in the next-log file. Roadmap milestones 0 and 1 are done
 but for the owner's steps; 2 waits on the scope confirmation (2.4) and
 a box with `node_modules` for the real-repo re-measure (2.5); 3 has its
-policy written and waits on the soak and the tag. IN FLIGHT: 14bw and
-14bx are items 675 (W0, the Learn skeleton and the island pattern) and
-676 (the W9 spike: the planner in the browser, keys checked against
-the CLI), each from a local implementer. OWNER, unchanged: cut 0.1.0
+policy written and waits on the soak and the tag. W0 landed as item
+675 (14bw, above). IN FLIGHT: 14bx is item 676 (the W9 spike: the
+planner in the browser, keys checked against the CLI), from a local
+implementer. OWNER, unchanged: cut 0.1.0
 (the seven trusted publishers, the tag, then delete `NPM_TOKEN`), the
 site's address, the scope list, the soak length. NEXT, in order: land
-675 and 676; then track W in the plan's order (W1, W2, W4, W5/W6, W3,
+676; widen the site-wide laws that walk `.md` to `.mdx` (14bw), so W1's
+config blocks are type-checked; then track W in the plan's order (W1, W2, W4, W5/W6, W3,
 W7, W9 on the spike's verdict, W10/W11, W12, W8 last). Never end with
 "what next?".
 
@@ -333,8 +353,9 @@ W7, W9 on the spike's verdict, W10/W11, W12, W8 last). Never end with
     `design/site-teaches-2026-09.md`. The bar is monorepo.tools, "1000×"
     better on education: mechanisms instead of checkmarks, the real
     planner running in the browser (W9), labs where the reader breaks a
-    build (W10), checkpoints (W11) and a glossary (W12). Next step: W0,
-    the skeleton and the island pattern.
+    build (W10), checkpoints (W11) and a glossary (W12). W0, the
+    skeleton and the island pattern, is DONE (item 675, entry 14bw).
+    Next step: W1 and the graph explorer.
 
 ## Decisions (this arc)
 

@@ -71,6 +71,21 @@ export default defineConfig({
         baseUrl: 'https://github.com/vznjs/vx/edit/main/packages/vx-docs/',
       },
       sidebar: [
+        // Before the guides: a reader who knows only `npm run build` starts
+        // with the problem (design/site-teaches-2026-09.md, roadmap track W).
+        {
+          label: 'Learn',
+          items: [
+            { label: 'What is task orchestration?', link: '/learn/what-is-task-orchestration/' },
+            { label: 'Caching, from first principles', link: '/learn/caching/' },
+            { label: 'Correctness: can you trust the cache?', link: '/learn/correctness/' },
+            { label: 'Scheduling', link: '/learn/scheduling/' },
+            { label: 'Architecture: a pipeline with seams', link: '/learn/architecture/' },
+            { label: 'Extending vx', link: '/learn/extending/' },
+            { label: 'vx, Turbo, Nx, Bazel: choosing', link: '/learn/choosing/' },
+            { label: 'Glossary', link: '/learn/glossary/' },
+          ],
+        },
         {
           label: 'Get started',
           items: [
