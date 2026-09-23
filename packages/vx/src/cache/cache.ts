@@ -27,7 +27,7 @@
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError, isDiskFull, isFsRefusal, relPosix, span, xxh3, xxh3hex } from '../util/index.js'
 import {
@@ -1118,7 +1118,10 @@ export class Cache implements CacheLayer {
     // the bytes, since there's no local artifact to read off disk.
     if (!this.write) return
     if (args.skipLocalWrite === true) return
-    await mkdir(this.cacheDir, { recursive: true })
+    // The cache directory is the constructor's (`mkdirSync`, with a
+    // refusal recorded for `assertWritable`); re-creating it here and
+    // again in `writeArtifactAndIndex` cost every save two thread-pool
+    // round trips for an EEXIST and a stat (item 630).
     const endPack = span('save: pack')
     const compressed = await this.packArtifactToTemp(this.tempPath(args.hash), args)
     endPack()
@@ -1274,7 +1277,6 @@ export class Cache implements CacheLayer {
     let tmpPath: string
     if (compressed instanceof Uint8Array) {
       tmpPath = this.tempPath(hash)
-      await mkdir(this.cacheDir, { recursive: true })
       // The temp is written BEFORE validation so a large artifact can be
       // scanned from the file as it decodes — a file stream reads in
       // bounded pieces; the bytes in memory would not (see `decodedTar`).

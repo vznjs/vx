@@ -372,6 +372,32 @@ scope`: an empty scope is refused earlier as "not inside a
       entry hit since the last flush (the cutoff between the ancient
       stamp and the hit's, so the pending bump alone keeps it). The
       rule, in CLAUDE.md: a row titled for several sites drives each.
+630.  DONE (2026-09-23, 627's class on the miss side). The cold run at
+      1,000 projects traced with `strace -f`, vx's own threads told from
+      the tasks' shells by PID (the script keeps the root process, whose
+      first line is its own `execve`): 222,150 syscalls, and 1,996 of
+      them `mkdir` of the cache directory — `save()` and
+      `writeArtifactAndIndex()` each re-created, per save, the directory
+      the constructor's `mkdirSync` had made (an EEXIST and a stat, one
+      thread-pool round trip each). Both gone. Counts per cold run:
+      `mkdir` 2,004 → 4, `newfstatat` −2,000, `write` −2,000 (the
+      thread pool's wake per round trip), 222,150 → 216,226 in all. A
+      sequential save bench (1,000 one-file saves, min of 5, three
+      interleaved rounds each way) could NOT resolve it: whichever arm
+      ran first in a pair was faster, in both orders, so the syscall
+      count is the number and the wall time claims nothing. Two leads
+      from the same trace, refuted: (a) the runner spawns `sh` by name
+      and Bun walks PATH for it on every spawn — 14 `stat` per task
+      here, 13 failing — but 300 sequential spawns measured 1,102 µs
+      by name against 1,081 by `/bin/sh`, then 1,089 against 1,125: a
+      tie, and the name is what lets a user's PATH choose the shell;
+      (b) the save index is one transaction per save (the tally: 1,000
+      `INSERT INTO entries` at 34 µs, 94.7 ms of SQLite in a 2.6 s cold
+      run, 3.6 %) — batching the rows to run end would save ~2 % at the
+      cost of every save's crash durability, declined. Checked while
+      here, by the 628 method: the run's `drainUploads` is held by two
+      rows of `orchestrator-remote.test.ts`; every test file a reader
+      page names exists (314 names across the packages, none missing).
 
 ## In flight
 
