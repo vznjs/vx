@@ -450,6 +450,20 @@ describe('createTelemetrySource — task.log opt-in', () => {
     src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node) })
     expect(records.map((r) => r.kind)).toEqual(['task.end'])
   })
+
+  it('a sink on the defaults gets no task.log while another sink opted in', () => {
+    // Alone, a default sink is shielded by the `wantsLog` gate: no chunk is
+    // projected at all. Only beside an opted-in sink does the default kind
+    // list decide, and a default that held `task.log` passed every row (654).
+    const logs = recorder(['task.log'])
+    const plain = recorder()
+    const src = createTelemetrySource({ sinks: [logs.sink, plain.sink], run: RUN })
+    const node = mkNode('a#build', 'x')
+    src.subscriber({ kind: 'task:start', node })
+    src.subscriber({ kind: 'task:stdout', node, chunk: 'hi' })
+    expect(logs.records.map((r) => r.kind)).toEqual(['task.log'])
+    expect(plain.records.map((r) => r.kind)).toEqual(['task.start'])
+  })
 })
 
 const SUMMARY: RunSummaryRecord = {
