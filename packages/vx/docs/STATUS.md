@@ -267,6 +267,15 @@ test is telling the truth.
       `nx-map.ts` 737 → 527). The migrate, nx and shared-outputs suites
       pass unchanged, which is the proof a move needs.
 
+607.  DONE (2026-09-23, three rules the night taught, in CLAUDE.md's
+      "learned the hard way" list so the next session does not relearn
+      them): a new timing mark is pinned in source order and as a bare
+      list item (601 cost two gate runs); an `nx:run-commands` target
+      runs from the workspace root, so a probe looking under the
+      package dir finds nothing (599 cost one); a bin's mode lives in
+      the index, `git update-index --chmod=+x`, and the law of 604
+      holds it.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
