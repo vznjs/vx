@@ -398,6 +398,17 @@ scope`: an empty scope is refused earlier as "not inside a
       here, by the 628 method: the run's `drainUploads` is held by two
       rows of `orchestrator-remote.test.ts`; every test file a reader
       page names exists (314 names across the packages, none missing).
+631.  DONE (2026-09-23, the method of 627 and 630 kept). The syscall
+      counter that told vx's threads from the tasks' shells was a
+      scratchpad script; it is `packages/vx-bench/strace-vx.ts` now
+      (an `strace -f -o` file in, vx-only counts out, a per-syscall diff
+      with a second file), checked against the two cold traces of 630:
+      222,150 → 216,226, `mkdir` 2,004 → 4. `save-bench.ts` sits beside
+      `restore-bench.ts`, its header saying what it resolves (a change
+      to the pack or the index) and what it did not (630's two round
+      trips inside the order effect). `docs/benchmarks.md` § Profiling
+      names the three and reads the `write` row as the thread pool's
+      wake per round trip.
 
 ## In flight
 
