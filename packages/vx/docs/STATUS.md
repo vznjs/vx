@@ -358,6 +358,20 @@ scope`: an empty scope is refused earlier as "not inside a
       free of orphans — the flush's own entry check (622) does that in
       either order, so the comment now says which half the order alone
       holds: the kept entry's rows landing whatever the eviction does.
+629.  DONE (2026-09-23, 628's class grepped: the sibling flush). The
+      deferred `accessed_at` bump (`flushAccessed`) has the same three
+      sites, so each was deleted in turn against `tests/cache.test.ts`:
+      `stats()` was held by two rows, close and prune were survivors.
+      The one that matters: a run reaches neither `stats()` nor
+      `prune()`, so its hits mark an entry used ONLY through close's
+      flush — with that line gone no run ever bumps `accessed_at` and a
+      TTL prune evicts what is hit daily, and nothing in the suite would
+      have said so. Two rows now, each red with its site's flush
+      deleted: a hit's bump survives close and is what a new `Cache` on
+      the directory reads; a prune in the same process does not evict an
+      entry hit since the last flush (the cutoff between the ancient
+      stamp and the hit's, so the pending bump alone keeps it). The
+      rule, in CLAUDE.md: a row titled for several sites drives each.
 
 ## In flight
 

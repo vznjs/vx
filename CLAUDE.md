@@ -343,6 +343,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a
   behaviour absent, grep the word's forms and the constant's name.
+- A row titled for several sites drives each of them, or its title
+  is a claim the suite lacks: "pending until a read, a prune, a stat
+  or close" drove the read, and the sibling flush's three sites had
+  one held (items 628, 629). Delete each site's line in turn; a run
+  that reaches only one of them (close) makes that one the product.
 
 ## Live invariants (verify in source before quoting)
 
