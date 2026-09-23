@@ -113,6 +113,11 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         const endDirs = span('output dirs')
         // Loaded with the entry (batched by getMany, or with the lazy get).
         const dirRows = hit.outputDirRows ?? []
+        // Rows are recorded for these same prefixes under this same key
+        // (the outputs are folded into it), so `covers` cannot be false
+        // today — deleting it reddens nothing (item 638). Kept: a row
+        // set that shrank would otherwise vouch for a tree it never saw,
+        // and the failure it would let through is a skipped restore.
         const covers = dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))
         setKnown = covers && (await args.cache.outputDirsCurrent!(node.projectDir, dirRows))
         endDirs()

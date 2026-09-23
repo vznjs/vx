@@ -212,6 +212,38 @@ test is telling the truth.
       push to the run's list or record nothing (`miss-save.md` step 4).
       The hit path's third recorder site — the walk that proved the
       tree current — stays: its directories are old.
+638.  DONE (2026-09-23, the 628 method on `restoreHit`). Eleven duties
+      deleted in turn against the whole core suite in the worktree: the
+      foreign non-zero exit's `failed` (one row), the project-side
+      addition filter (six), the additive rows-present match (one), the
+      walk-proved snapshot (one), the stored stdout replay (eight) and
+      the `restored` flag (thirteen) are held; five survived. Each got
+      a row, and three of the rows took a second shape before they held
+      — the first shape passed with the line deleted, which is the
+      claim tested, not the line: (1) the hit-path wipe marks, project
+      and root-anchored (`stale-hit.test.ts`): a tracked-clean file the
+      restore wipes and the artifact does not bring back keeps its
+      index OID in a consumer's snapshot, so the consumer keys on a
+      file that is gone and misses where it should hit — but only when
+      the snapshot PREDATES the wipe (an `early` reader; enumerated
+      after it, git status reports the deletion itself) and the artifact
+      restores NOTHING the consumer's globs match (a restored match
+      re-enumerates on its own — `snapshotFor` re-spawns git when any
+      pending path matches), so the artifact holds a `.js` and the
+      consumer reads `*.ts`; (2) the `wsOutputs.length === 0` gate on
+      the directory shortcut (`workspace-files.test.ts`): a run's own
+      snapshot is refused inside the racy window in a fast test, so the
+      row ages `dist` with `utimes` and lets the walk-proved site record
+      it; with the gate gone the snapshot says "set known", the
+      workspace half reads empty and every warm hit restores again
+      (`restored` true where the walk had proved the tree); (3) the
+      root-anchored addition filter (`overlapping-outputs.test.ts`, the
+      shape with `outputs.workspaceFiles`): without it build's walk
+      finds individual's file under `gen/` and restores over it. (4)
+      `covers` — rows recorded for these prefixes under this key — has
+      no reachable false today (the outputs are folded into the key);
+      kept and said so, because what it would let through is a skipped
+      restore. Each row red on its line alone.
 
 ## In flight
 

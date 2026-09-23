@@ -6,7 +6,7 @@
 // sources in a fresh workspace, which is the design note's acceptance:
 // whatever the cache did, the tree is what the two commands produce.
 import { readFile, rm, writeFile } from 'node:fs/promises'
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -205,6 +205,55 @@ describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s',
       } finally {
         prepared.cache.close()
       }
+    },
+    TIMEOUT,
+  )
+})
+
+// The same shape anchored at the WORKSPACE ROOT: `outputs.workspaceFiles`
+// overlap the same way (task-graph.ts `collide` runs per field), and the
+// hit's current-check has a second filter for the root-anchored half
+// (`expectedWsRels.has(rel) || !isAddition(rel)`) that nothing above
+// reached (item 638).
+describe('overlapping outputs, addition shape at the workspace root', () => {
+  const config = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] } },
+        },
+        individual: {
+          dependsOn: ['build'],
+          exec: { command: 'mkdir -p ../../gen/individual && cp srcb/b.txt ../../gen/individual/b.txt' },
+          cache: {
+            inputs: { files: ['srcb/**'], tasks: [] },
+            outputs: { files: [], workspaceFiles: ['gen/individual'] },
+          },
+        },
+      },
+    }
+  `
+  let ws: Ws
+  beforeEach(async () => {
+    ws = await workspace('A1', 'B1', config)
+  })
+  afterEach(async () => {
+    await rm(ws.root, { recursive: true, force: true })
+  })
+
+  it(
+    "both hit up-to-date: build's current-check ignores what individual adds under gen/",
+    async () => {
+      const cold = await run({ cwd: ws.root, tasks: ['build', 'individual'], log: silent })
+      expect(statusOf(cold)).toEqual({ build: 'success', individual: 'success' })
+      const warm = await run({ cwd: ws.root, tasks: ['build', 'individual'], log: silent })
+      // Without the root-anchored addition filter, build's glob walk finds
+      // gen/individual/b.txt, the sets mismatch and build restores — wiping
+      // individual's file until individual restores it again.
+      expect(statusOf(warm)).toEqual({ build: 'cache-hit', individual: 'cache-hit' })
+      expect(readFileSync(path.join(ws.root, 'gen', 'a.txt'), 'utf8')).toBe('A1')
+      expect(readFileSync(path.join(ws.root, 'gen', 'individual', 'b.txt'), 'utf8')).toBe('B1')
     },
     TIMEOUT,
   )
