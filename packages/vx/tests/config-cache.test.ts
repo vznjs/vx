@@ -189,6 +189,19 @@ describe('configEvalKey', () => {
     expect(await keyOf(cfg)).toBeNull()
   })
 
+  it('a closure past 32 files evaluates live; one at 32 is keyed (item 653)', async () => {
+    // A chain: the config imports c1, c1 imports c2, … The config counts.
+    const chain = async (dir: string, files: number) => {
+      for (let i = 1; i <= files; i++) {
+        const next = i < files ? `import './c${i + 1}.mjs'\n` : ''
+        await write(`${dir}/c${i}.mjs`, `${next}export const v = ${i}\n`)
+      }
+      return write(`${dir}/vx.config.mjs`, "import './c1.mjs'\nexport default { tasks: {} }\n")
+    }
+    expect(await keyOf(await chain('packages/at-cap', 31))).not.toBeNull()
+    expect(await keyOf(await chain('packages/past-cap', 32))).toBeNull()
+  })
+
   it.each([
     'process.env.CI',
     'Bun.env.X',
