@@ -178,6 +178,17 @@ describe('configEvalKey', () => {
     ])
   })
 
+  it('refuses a RELATIVE import that lands in node_modules (item 653)', async () => {
+    // Installed bytes are the lockfile's to vouch for, not the closure's:
+    // relative spelling does not make a package file part of the config.
+    await write('node_modules/nm-preset/x.mjs', "export const cmd = 'x'\n")
+    const cfg = await write(
+      'packages/nm/vx.config.mjs',
+      "import { cmd } from '../../node_modules/nm-preset/x.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
+    )
+    expect(await keyOf(cfg)).toBeNull()
+  })
+
   it.each([
     'process.env.CI',
     'Bun.env.X',
