@@ -15,7 +15,7 @@ type Child = ReturnType<typeof Bun.spawn>
  * hang a normal run at completion. Well-behaved servers exit far under
  * this, so the happy path never waits it out.
  */
-export const PERSISTENT_SHUTDOWN_GRACE_MS = 2000
+const PERSISTENT_SHUTDOWN_GRACE_MS = 2000
 
 export interface KeepAlive {
   nodes: TaskNode[]

@@ -174,10 +174,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
  * task's key, which is preliminary, so it cannot restore early either.
  * Cost: one pass over the nodes, no filesystem.
  */
-export function restoreTierExclusions(
-  nodes: Map<string, TaskNode>,
-  workspaceRoot: string,
-): Set<string> {
+function restoreTierExclusions(nodes: Map<string, TaskNode>, workspaceRoot: string): Set<string> {
   const prefixes: string[] = []
   let everything = false
   for (const node of nodes.values()) {

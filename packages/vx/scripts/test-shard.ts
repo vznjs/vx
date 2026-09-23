@@ -59,7 +59,7 @@ export function partition(
  * its test cases: `beforeAll` work is outside every case, and one file's
  * 6,000-package generator was 9.5 s of an 11.5 s file.
  */
-export function weighJunit(dir: string): Record<string, number> {
+function weighJunit(dir: string): Record<string, number> {
   const sums = new Map<string, number>()
   for (const name of readdirSync(dir)) {
     if (!name.endsWith('.xml')) continue

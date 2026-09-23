@@ -119,7 +119,7 @@ export function makeWatchIgnore(
  * container; a pattern's is `staticPrefix` — the same rule the sandbox
  * baseline and the deferral gate read.
  */
-export function outputContainer(raw: string): string {
+function outputContainer(raw: string): string {
   const glob = normalizeGlob(raw)
   if (glob.startsWith('!')) return ''
   if (isLiteralPattern(glob)) return glob.replace(/\/+$/, '')

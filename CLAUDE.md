@@ -143,6 +143,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - Trust internal code; validate only at boundaries (user input, FS, network).
 - Test fixtures use heredoc strings for `vx.config.mjs`.
 - A probe that confirms a thesis becomes a test, not a note.
+- A value `export` only its own file uses is not one; one nothing uses is
+  dead. `tests/exports-referenced.unsafe.test.ts` holds the law (item 613);
+  a type in an exported signature is the module page's surface, not the law's.
 
 ## Architecture principles
 

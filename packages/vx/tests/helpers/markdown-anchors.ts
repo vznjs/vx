@@ -5,7 +5,7 @@
 // `-2`, … Fenced code is skipped — a `# comment` inside a shell block is
 // not a heading, and a `](x.md#anchor)` quoted in one is not a link.
 
-export function slugify(heading: string): string {
+function slugify(heading: string): string {
   return heading
     .toLowerCase()
     .replace(/[^\p{L}\p{N} _-]/gu, '')
