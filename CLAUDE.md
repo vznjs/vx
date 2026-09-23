@@ -324,6 +324,21 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - A bin a package.json declares must be 100755 in the INDEX, not only
   on disk (`git update-index --chmod=+x`); `tests/bins-executable.unsafe.test.ts`
   holds the law (item 604).
+- A stage's SQLite cost is its statement COUNT before its sync mode:
+  `synchronous = NORMAL` makes a commit a WAL append, and 3,000
+  autocommit writes still cost the cold `load configs` stage 300 ms
+  (item 615; 1,000 inserts: 180–240 ms autocommit, 2.5 in one
+  transaction). Tally with a `bun --preload` that wraps `bun:sqlite`'s
+  statements (`packages/vx-bench/sqlite-tally.ts`), and wrap each statement
+  object ONCE — `db.query()` returns a cached statement, and a wrapper
+  that re-wrapped it per call counted 500,501 executions of one query
+  (a WeakSet fixed it).
+- A summed span is not a cost: `save: scan` summed 700 ms per 1,000
+  saves and removing it bought 60 (item 616) — the span waited on I/O
+  the other workers overlapped. A/B the wall, then decide.
+- A sandboxed shard has no git: a pin that asks `git ls-files` there
+  reads an empty set and its floor fails on darwin CI (item 615). A
+  law that reads the tree walks it; git is for the unsafe suite.
 - A negative grep is a claim about every spelling: `retry` missed
   `retries`, and a documented upload retry that exists was struck
   from a guide as gone (item 304, corrected in 311). Before calling a
