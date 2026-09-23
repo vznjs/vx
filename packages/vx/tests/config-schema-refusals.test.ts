@@ -4,14 +4,26 @@
 // probe would be satisfied by a neighbouring refusal's text.
 import { describe, expect, it } from 'bun:test'
 import type { WorkspaceConfig } from '../src/config.js'
-import { validateWorkspace } from '../src/workspace/config-schema.js'
+import { validateProjectConfig, validateWorkspace } from '../src/workspace/config-schema.js'
 import { testPlugin } from './helpers/plugin.js'
 
 const WS = '/ws/vx.workspace.ts'
+const CFG = '/ws/pkg/vx.config.ts'
 
 function refusal(config: unknown): string | null {
   try {
     validateWorkspace(config as WorkspaceConfig, WS)
+    return null
+  } catch (err) {
+    expect((err as Error).name).toBe('UserError')
+    return (err as Error).message
+  }
+}
+
+/** The message a one-task project config `{ tasks: { t: task } }` is refused with, or null. */
+function taskRefusal(task: unknown): string | null {
+  try {
+    validateProjectConfig({ tasks: { t: task } } as never, CFG)
     return null
   } catch (err) {
     expect((err as Error).name).toBe('UserError')
@@ -57,5 +69,39 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
       fingerprint: { files: ['bun.lock'], affected: () => new Set<string>() } as never,
     })
     expect(refusal({ plugins: [ok] })).toBeNull()
+  })
+})
+
+describe('task refusals the sweep found unheld (item 653)', () => {
+  it('a remote that is neither a boolean nor "only" is refused', () => {
+    expect(taskRefusal({ exec: { command: 'x', remote: 'yes' } })).toBe(
+      `${CFG}: tasks.t.exec.remote must be a boolean or 'only' (or omitted)`,
+    )
+    // Controls: each accepted spelling passes.
+    for (const remote of [true, false, 'only']) {
+      expect(taskRefusal({ exec: { command: 'x', remote } })).toBeNull()
+    }
+  })
+
+  it('a non-object env is refused, not read as an env with no fields', () => {
+    // `Object.keys(5)` is `[]`, so the unknown-key check below passes it.
+    expect(taskRefusal({ exec: { command: 'x', env: 5 } })).toBe(
+      `${CFG}: tasks.t.exec.env must be an object (or omitted)`,
+    )
+  })
+
+  it('an ARRAY define is refused — its index would be the variable name', () => {
+    expect(taskRefusal({ exec: { command: 'x', env: { define: ['X=1'] } } })).toBe(
+      `${CFG}: tasks.t.exec.env.define must be an object of name:value string pairs`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', env: { define: { X: '1' } } } })).toBeNull()
+  })
+
+  it('a null cache is refused by name, not by a TypeError from the field scan', () => {
+    // A non-null non-object is refused further down (`cache.inputs is
+    // required`); null alone reaches `Object.keys` and throws a raw TypeError.
+    expect(taskRefusal({ exec: { command: 'x' }, cache: null })).toBe(
+      `${CFG}: tasks.t.cache must be an object when present`,
+    )
   })
 })
