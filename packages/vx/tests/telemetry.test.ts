@@ -274,10 +274,9 @@ describe('createTelemetrySource — projection', () => {
   })
 
   it('task.end carries every fact it copies, each under its own name', () => {
-    // A remote executor's `where` and a `--download=none` task's deferred
-    // `outputs` had no reader on the streaming record, so dropping either
-    // left the suite green (654). The whole record is compared, bar the
-    // projection clock.
+    // A `--download=none` task's deferred `outputs` had no reader on the
+    // streaming record, so dropping its copy left the suite green (654).
+    // The whole record is compared, bar the projection clock.
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })
     const node = mkNode('a#build', 'tsc')
