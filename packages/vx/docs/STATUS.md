@@ -610,8 +610,7 @@ state of each:
    needs nothing); Linux sandboxing needs `bubblewrap`, `socat` and
    `ripgrep` (the third named 2026-09-16, item 246) and cannot run as
    root inside a container; Windows is WSL; macOS
-   violation reporting is lossy under load (In-flight 5); the remote
-   seam moves whole artifacts in memory (Next 2, fine below ~100 MiB);
+   violation reporting is lossy under load (In-flight 5);
    a task's replayed output is its first and last 8 MiB (229); a project
    inside a submodule is enumerated by its own repository (221). An
    article links it.
@@ -632,24 +631,7 @@ state of each:
    checked in) and filesystem stores (the memory stores evict under a
    `node_modules` install, per the helper notes). An exercise, not a
    gap; do it when a worker-side change needs it.
-2. **The remote seam still moves whole artifacts.** With save, ingest
-   and restore bounded, `RemoteCacheLayer` is the last place a large
-   artifact sits in memory: `put(hash, body: ArrayBuffer | Uint8Array)`
-   gets the on-disk artifact via `Bun.file().bytes()`, and `get` returns
-   an `ArrayBuffer` that ingest writes to its temp. Widening both to a
-   `Blob` (a `BunFile` is one; bytes wrap in one) would let uploads
-   stream from disk and downloads land in the temp directly — but
-   `@vzn/vx-reapi` must digest the whole body before it can upload, so
-   the plugin side needs a streaming digest and a chunked `writeBlob`
-   first. A breaking seam change for plugin authors; do it with the
-   plugins guide, the stub layers in the tests and `vx-reapi` in one
-   commit, and measure a 150 MiB round trip through the stub before
-   and after. Not started. Assessed 2026-09-04: the win is gated by the PLUGIN
-   side — `@vzn/vx-reapi`'s wire zstd-compresses the whole body in
-   memory and retries a wedged upload from it, so a core-side Blob alone
-   measures nothing; streaming needs a two-pass digest and a chunked
-   compressed upload through the adaptive-downgrade path. Do it when a
-   real workspace uploads > 100 MiB artifacts, not before.
+2. DONE 2026-09-23 as item 662 (entry 14bj) — the remote seam streams: `get` resolves `Blob | Response`, `put` takes a file-backed `Blob`, every first-party layer moved in the same commit.
 3. DONE 2026-09-09 as item 88 → `@vzn/vx-turbo` (history) — zero-migration adoption as a plugin on the `project` stage.
 4. DONE 2026-09-10 as item 77 (history) — one core per process; the shipped binary serves its own façade to every `@vzn/vx` import.
 5. DONE 2026-09-11 as item 148 — the watch e2e flake was the arm
@@ -889,6 +871,29 @@ characters), L232 (credentials in a remote-cache URL), and two new
 findings: `--filter ./packages/[abc]` reads the brackets as a class
 (decision: literal first when the directory exists) and names past
 NAME_MAX still reach the file system.
+
+14bj. **Item 662 (roadmap 2.2, 2026-09-23): the remote cache seam
+streams.** Built by a developer agent in a worktree to the contract in
+`design/streaming-remote-2026-09.md`, reviewed and gated here.
+`RemoteCacheLayer.get` resolves `{ body: Blob | Response }`, which
+`Cache.ingest` writes to its temp with `Bun.write` and validates from
+there; `put` receives `Bun.file(<local artifact>)` (a byte `Blob` only
+under `--cache=local:,remote:rw`). The old byte shapes are refused at the
+boundary, naming the new one. `turboCache()` and `nxCache()` return the
+`fetch` Response and send the Blob; a signed Turbo download goes to a
+temp, is verified before core sees a byte, and is served as a stream
+that removes the temp. `@vzn/vx-reapi` digests in one streamed pass,
+uploads past the batch limit in `CHUNK_BYTES` messages as the write
+drains, and reads back as a stream whose digest is checked as the bytes
+pass (kept on purpose: core's archive check alone would accept a valid
+but different artifact from a lying CAS). One 150 MiB artifact saved,
+uploaded, wiped and pulled through a disk-backed stub
+(`vx-bench/stream-remote-bench.ts`): peak RSS +495 MiB before, +45 after
+(min of 3). Every new row went red with its line mutated; a pre-existing
+crash in REAPI's `durationOf` on an absent `stdout_digest` was fixed on
+the way. The introduction's "whole artifacts in memory" known limit is
+gone. Plugin API: this is the breaking change the 1.0 freeze was waiting
+on.
 
 ## Decisions (this arc)
 
