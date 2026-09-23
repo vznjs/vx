@@ -198,6 +198,19 @@ test is telling the truth.
       now, beside `profile-summary.ts`) and its one trap; a summed span
       is not a cost until the wall is A/B'd; a sandboxed shard has no
       git). Handoff 14az with it; Next 6 carries the cold-path number.
+618.  DONE (2026-09-23, 614's sweep turned on the plugins, and the
+      spelling it missed). `@vzn/vx-reapi` reads three variables through
+      `Bun.env`, which 614's pin and sweep did not spell — a negative
+      grep is a claim about every spelling — and one of them,
+      `VX_REAPI_EXECUTE=1`, was named nowhere a user looks. Now: the core
+      pin matches both spellings (core reads none through `Bun.env`,
+      `exec/sandbox-runtime.ts` says why, and the plugin reads through
+      `process.env` for the same reason); the README names the execute
+      switch beside the endpoint and instance; and
+      `tests/readme-env.test.ts` in the plugin holds its README to its
+      source both ways (differential: the sentence removed fails it by
+      name). The other plugins read no `VX_*` at all (the GitHub plugin
+      reads `GITHUB_STEP_SUMMARY`, named three times in its README).
 
 ## In flight
 

@@ -34,8 +34,11 @@ function readInSource(): Set<string> {
       constants.set(m[1]!, m[2]!)
   const names = new Set<string>()
   for (const src of sources) {
-    for (const m of src.matchAll(/process\.env(?:\.|\[')(VX_[A-Z0-9_]+)/g)) names.add(m[1]!)
-    for (const m of src.matchAll(/process\.env\[(\w+_ENV)\]/g)) {
+    // `Bun.env` is the other spelling; core reads none through it today
+    // (exec/sandbox-runtime.ts says why), and a negative is a claim about
+    // every spelling (item 618).
+    for (const m of src.matchAll(/(?:process|Bun)\.env(?:\.|\[')(VX_[A-Z0-9_]+)/g)) names.add(m[1]!)
+    for (const m of src.matchAll(/(?:process|Bun)\.env\[(\w+_ENV)\]/g)) {
       const name = constants.get(m[1]!)
       expect({ constant: m[1], resolved: name !== undefined }).toEqual({
         constant: m[1],
