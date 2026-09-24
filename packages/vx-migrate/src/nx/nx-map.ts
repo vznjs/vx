@@ -15,6 +15,7 @@
 
 import path from 'node:path'
 import {
+  buildPackageGraph,
   type GeneratedProject,
   type GeneratedTask,
   PERSISTENT_TASK_NAMES,
@@ -513,18 +514,18 @@ function implicitDeps(
   for (const [source, edges] of Object.entries(dependencies as Record<string, NxEdge[]>)) {
     const sm = metaByNode.get(source)
     if (!sm || !Array.isArray(edges)) continue
-    const manifest = {
-      ...sm.packageJson.dependencies,
-      ...sm.packageJson.devDependencies,
-      ...sm.packageJson.peerDependencies,
-      ...sm.packageJson.optionalDependencies,
-    }
     const seen = new Set<string>()
     for (const edge of edges) {
       const tm = typeof edge?.target === 'string' ? metaByNode.get(edge.target) : undefined
       if (!tm || tm === sm || seen.has(tm.name)) continue
       seen.add(tm.name)
-      if (manifest[tm.name] === undefined) pairs.push(`${sm.name} → ${tm.name}`)
+      // Whether sm's manifest links tm is vx's rule, not a name lookup: a
+      // `"b": "^1.0.0"` beside a local b@2 is a registry dependency and no
+      // edge. A graph of the two alone has the edge iff tm is in sm's
+      // closure, and the rule reads nothing but sm's manifest and tm.
+      if (!buildPackageGraph([sm, tm]).transitiveDeps(sm.name).includes(tm.name)) {
+        pairs.push(`${sm.name} → ${tm.name}`)
+      }
     }
   }
   return pairs
