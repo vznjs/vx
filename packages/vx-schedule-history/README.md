@@ -86,7 +86,7 @@ the job of `exec.timeout` and the OS. Design:
 
 ## What it does and does not do
 
-- It is an ORDERING hint over the scheduler's structural baseline (remaining critical path by edge count), merged as `VxPlugin.schedule` returns it: task id → weight. It never changes what runs, only which ready task runs first.
+- It is an ORDERING hint over the scheduler's structural baseline (how many tasks wait on each one, directly or through others), merged as `VxPlugin.schedule` returns it: task id → weight. It never changes what runs, only which ready task runs first.
 - Cache hits are not modelled as zero-cost: predicting cache state needs the key and a probe, which the scheduler handles at run time (a confirmed hit is backfill, never a critical-path task). The estimate is "what if everything ran", which is exactly the case where order matters.
 - It fails open: a broken history read warns (`[vx] schedule-history: ordering falls back to the baseline`) and leaves the baseline order and only the declared reservations. Observability never breaks a run.
 - Cost: one history read per run, serving both hooks, paid only by workspaces that declare the plugin. Core applies no plugin by default.

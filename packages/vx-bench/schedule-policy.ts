@@ -21,11 +21,17 @@
 //     have STARTED settles and fills the free worker first.
 // No cache, no admission, no restore tier: every task runs, which is the
 // case where order matters.
+//
+// The Learn page's scheduler simulator (packages/vx-docs, item 685) imports
+// this module into the browser, so everything it reaches at run time must
+// stay platform-free: the two ranking files below import only types, and
+// the report at the bottom runs only under `import.meta.main`.
 
-import { criticalPathPriorities } from '@vzn/vx-schedule-history'
 import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
-// Core internals, not the façade: the sim must rank exactly as core ranks.
-import { computeReverseDepCount, mergePriorities } from '../vx/src/graph/scheduler.js'
+// Source files, not the packages' entry points: the sim must rank exactly
+// as core and the plugin rank, and either entry point loads all of core.
+import { computeReverseDepCount, mergePriorities } from '../vx/src/graph/priorities.js'
+import { criticalPathPriorities } from '../vx-schedule-history/src/critical-path.js'
 
 export type Policy = 'count' | 'median' | 'unknown-first' | 'oracle'
 export const POLICIES: readonly Policy[] = ['count', 'median', 'unknown-first', 'oracle']
@@ -37,10 +43,18 @@ export interface SimTask {
   readonly dur: number
 }
 
+export interface SimSpan {
+  readonly id: string
+  readonly start: number
+  readonly end: number
+}
+
 export interface SimResult {
   readonly makespan: number
   /** Task ids in dispatch order. */
   readonly order: readonly string[]
+  /** When each task ran, in dispatch order: what a Gantt chart draws. */
+  readonly spans: readonly SimSpan[]
 }
 
 function taskNode(t: SimTask): TaskNode {
@@ -157,13 +171,16 @@ export function simulate(
 
   const running: Array<{ id: string; end: number; started: number }> = []
   const order: string[] = []
+  const spans: SimSpan[] = []
   let now = 0
   let makespan = 0
   const tick = (): void => {
     while (running.length < workers && ready.length > 0) {
       const id = pop()
-      running.push({ id, end: now + byId.get(id)!.dur, started: order.length })
+      const end = now + byId.get(id)!.dur
+      running.push({ id, end, started: order.length })
       order.push(id)
+      spans.push({ id, start: now, end })
     }
   }
   tick()
@@ -185,7 +202,7 @@ export function simulate(
     tick()
   }
   if (order.length !== tasks.length) throw new Error('simulate: the graph has a cycle')
-  return { makespan, order }
+  return { makespan, order, spans }
 }
 
 // --- Graphs -----------------------------------------------------------------

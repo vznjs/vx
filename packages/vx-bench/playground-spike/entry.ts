@@ -36,7 +36,7 @@ import {
   unresolvedRequests,
   type TaskNode,
 } from '../../vx/src/graph/index.js'
-import { computeReverseDepCount } from '../../vx/src/graph/scheduler.js'
+import { computeReverseDepCount } from '../../vx/src/graph/priorities.js'
 import { loadProjects } from '../../vx/src/orchestrator/projects.js'
 import { plan } from '../../vx/src/orchestrator/plan.js'
 import { createHashCache } from '../../vx/src/orchestrator/task-hash.js'

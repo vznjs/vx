@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test'
-import { computeReverseDepCount, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { computeReverseDepCount } from '../src/graph/priorities.js'
+import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
