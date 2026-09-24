@@ -1,6 +1,7 @@
 import { describe, expect, it, spyOn } from 'bun:test'
 import { computeReverseDepCount } from '../src/graph/priorities.js'
 import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { machineParallelism } from '../src/util/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
@@ -89,6 +90,65 @@ describe('runGraph', () => {
     })
     expect(out.size).toBe(ids.length)
     expect(peak).toBe(2)
+  })
+
+  // turborepo#2887: after failures the limit was lost and every remaining
+  // task started at once.
+  it('failing tasks keep the concurrency cap, under deps-ok and always alike', async () => {
+    for (const continueMode of ['deps-ok', 'always'] as const) {
+      let active = 0
+      let peak = 0
+      const ids = ['a', 'b', 'c', 'd', 'e', 'f'].map((s) => `${s}#run`)
+      const out = await runGraph({
+        nodes: nodes(...ids.map((id) => node(id))),
+        concurrency: 2,
+        continueMode,
+        execute: async (n) => {
+          active++
+          peak = Math.max(peak, active)
+          await new Promise((r) => setTimeout(r, 20))
+          active--
+          return failed(n)
+        },
+      })
+      expect({ continueMode, statuses: [...out.values()].map((o) => o.status), peak }).toEqual({
+        continueMode,
+        statuses: ids.map(() => 'failed'),
+        peak: 2,
+      })
+    }
+  })
+
+  // turborepo#12251: a run deadlocked on a 96-core machine. The worker count
+  // is the one pool sized from the core count.
+  it('a worker count far above the task count, the default on 96 cores included, completes', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, 'hardwareConcurrency')
+    Object.defineProperty(navigator, 'hardwareConcurrency', { value: 96, configurable: true })
+    let fromCores: number
+    try {
+      const none = '/nonexistent-vx-cgroup'
+      fromCores = machineParallelism({ root: none, procSelfCgroup: `${none}/cgroup` })
+    } finally {
+      if (descriptor === undefined)
+        delete (navigator as { hardwareConcurrency?: number }).hardwareConcurrency
+      else Object.defineProperty(navigator, 'hardwareConcurrency', descriptor)
+    }
+    expect(fromCores).toBe(96)
+    for (const concurrency of [96, fromCores, 1024]) {
+      const graph = nodes(
+        node('a#build'),
+        node('b#build', ['a#build']),
+        node('c#build', ['a#build']),
+        node('d#build', ['b#build', 'c#build']),
+      )
+      const out = await runGraph({ nodes: graph, concurrency, execute: async (n) => success(n) })
+      expect([...out.values()].map((o) => o.status)).toEqual([
+        'success',
+        'success',
+        'success',
+        'success',
+      ])
+    }
   })
 
   it('serializes execution with concurrency = 1', async () => {

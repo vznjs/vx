@@ -10,11 +10,12 @@
 // and perturbs whatever runs next. `exec` makes the sleeper the tracked child,
 // so it takes the signal and dies with the task.
 
-import { rm } from 'node:fs/promises'
+import { readdir, rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
+import { parseRunArgs, resolveRunOptions } from '../src/cli/index.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
@@ -571,6 +572,169 @@ describe('exec.persistent (e2e)', () => {
       expect(o?.status).toBe('failed')
       // Should fail fast — not wait for the never-coming Listening line.
       expect(elapsed).toBeLessThan(5_000)
+    },
+    TIMEOUT,
+  )
+
+  // A ready persistent task's pid, for a later task to ask after: `$$`
+  // before `exec` is the pid the sleeper then carries.
+  const SERVER = `echo $$ > pid.txt; echo READY; exec sleep 30`
+  const ALIVE = (...pidFiles: string[]) =>
+    `${pidFiles.map((f) => `kill -0 $(cat ${f})`).join(' && ')} && echo both-alive`
+
+  // turborepo#8484: a persistent task depending on a persistent task was
+  // refused, or started without its upstream.
+  it(
+    'a persistent task over a persistent upstream starts after it, and both stay up for the run',
+    async () => {
+      await addProject(fixture.root, 'lib', {
+        config: `
+          export default {
+            tasks: {
+              dev: { exec: { command: ${JSON.stringify(SERVER)}, persistent: { readyWhen: 'READY' } } },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        config: `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: ${JSON.stringify(`test -f ../lib/pid.txt && ${SERVER}`)},
+                  persistent: { readyWhen: 'READY' },
+                },
+                dependsOn: ['^dev'],
+              },
+              smoke: {
+                exec: { command: ${JSON.stringify(ALIVE('../lib/pid.txt', 'pid.txt'))} },
+                dependsOn: ['dev'],
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['smoke'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      expect(Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))).toEqual({
+        'lib#dev': 'success',
+        'app#dev': 'success',
+        'app#smoke': 'success',
+      })
+      expect(fixture.log).toContain('both-alive')
+    },
+    TIMEOUT,
+  )
+
+  // nx#27986: a continuous task was killed when its dependent started.
+  it(
+    'a ready persistent upstream is alive while its dependent runs',
+    async () => {
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              dev: { exec: { command: ${JSON.stringify(SERVER)}, persistent: { readyWhen: 'READY' } } },
+              smoke: {
+                exec: { command: 'sleep 0.3 && kill -0 $(cat pid.txt) && echo upstream-alive' },
+                dependsOn: ['dev'],
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['smoke'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      expect(r.outcomes.find((o) => o.node.id === 'app#smoke')?.status).toBe('success')
+      expect(fixture.log).toContain('upstream-alive')
+    },
+    TIMEOUT,
+  )
+
+  // nx#31494, nx#34117: `--parallel=1` ran the continuous task's
+  // dependents together once it was up.
+  it(
+    'at concurrency 1 the dependents of a ready persistent task run one at a time',
+    async () => {
+      const step = (name: string) =>
+        `echo start-${name} >> ../../order.log && sleep 0.2 && echo end-${name} >> ../../order.log`
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              dev: { exec: { command: ${JSON.stringify(SERVER)}, persistent: { readyWhen: 'READY' } } },
+              third: { exec: { command: ${JSON.stringify(step('third'))} }, dependsOn: ['dev'] },
+              fourth: { exec: { command: ${JSON.stringify(step('fourth'))} }, dependsOn: ['dev'] },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['third', 'fourth'],
+        projects: ['app'],
+        concurrency: 1,
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      const order = (await Bun.file(`${fixture.root}/order.log`).text()).trim().split('\n')
+      expect([
+        ['start-third', 'end-third', 'start-fourth', 'end-fourth'],
+        ['start-fourth', 'end-fourth', 'start-third', 'end-third'],
+      ]).toContainEqual(order)
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#4107: some of a filter's persistent tasks never started.
+  it(
+    'every one of thirteen persistent tasks a filter selects starts at concurrency 2',
+    async () => {
+      const deps = Array.from({ length: 12 }, (_, i) => `d${String(i + 1).padStart(2, '0')}`)
+      const dev = (name: string) => `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: 'touch ../../started-${name} && echo READY && exec sleep 30',
+                persistent: { readyWhen: 'READY' },
+              },
+              dependsOn: ['^dev'],
+            },
+          },
+        }
+      `
+      for (const d of deps) await addProject(fixture.root, d, { config: dev(d) })
+      await addProject(fixture.root, 'other', { config: dev('other') })
+      await addProject(fixture.root, 'front', {
+        deps: Object.fromEntries(deps.map((d) => [d, 'workspace:*'])),
+        config: dev('front'),
+      })
+      const parsed = parseRunArgs(['dev', '--filter', 'front...', '--concurrency', '2'])
+      expect(parsed.error).toBeUndefined()
+      const resolved = await resolveRunOptions(parsed, fixture.root, parsed.tasks)
+      if ('error' in resolved || 'nothingSelected' in resolved) throw new Error('unreachable')
+      const r = await run({ ...resolved, log: silentLogger(fixture) })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()).toEqual(
+        [...deps, 'front'].map((p) => `${p}#dev success`).sort(),
+      )
+      // Ready means the command reached its READY line, so its marker exists.
+      const started = (await readdir(fixture.root))
+        .filter((f) => f.startsWith('started-'))
+        .map((f) => f.slice('started-'.length))
+        .sort()
+      expect(started).toEqual([...deps, 'front'].sort())
     },
     TIMEOUT,
   )

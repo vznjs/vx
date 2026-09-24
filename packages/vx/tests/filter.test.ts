@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { planned } from './helpers/parity.js'
+import { makeWorkspace } from './helpers/workspace.js'
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
@@ -367,4 +370,64 @@ describe('applyFilters', () => {
     const filters = [parseFilter('lib', ROOT), parseFilter('./packages/ui', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['lib', 'ui'])
   })
+})
+
+// A workspace that lists its root as a project (`packages: ['.', …]`) has
+// one project whose dir contains every other: the case a path test gets
+// backwards first.
+describe('applyFilters with the workspace root as a project', () => {
+  const projects = [
+    mkProject('root', ROOT),
+    mkProject('web', `${ROOT}/apps/web`, ['root']),
+    mkProject('admin', `${ROOT}/apps/admin`),
+    mkProject('docs', `${ROOT}/apps/docs`),
+    mkProject('bar', `${ROOT}/packages/bar`),
+  ]
+  const graph = buildPackageGraph(projects)
+  const sel = (...raw: string[]): string[] =>
+    [...applyFilters({ filters: raw.map((r) => parseFilter(r, ROOT)), projects, graph })].sort()
+
+  // turborepo#8672
+  it('a negated name or path keeps the root project', () => {
+    expect(sel('!docs')).toEqual(['admin', 'bar', 'root', 'web'])
+    expect(sel('!./apps/docs')).toEqual(['admin', 'bar', 'root', 'web'])
+  })
+
+  // turborepo#9578
+  it('the root project is selected by its name, and ...name adds its dependents', () => {
+    expect(sel('root')).toEqual(['root'])
+    expect(sel('...root')).toEqual(['root', 'web'])
+  })
+
+  // turborepo#9043
+  it('a path glob minus one path selects every other app and nothing else', () => {
+    expect(sel('./apps/*', '!./apps/docs')).toEqual(['admin', 'web'])
+  })
+})
+
+// turborepo#8599: a member discovered through a `./`-prefixed package glob
+// was not matched by the path filter naming its directory.
+describe('a path filter over members found through a ./-prefixed glob (e2e)', () => {
+  it('--filter ./apps/web selects the member pnpm-workspace.yaml lists as ./apps/*', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-filter-dotslash-' })
+    try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - './apps/*'\n")
+      for (const name of ['web', 'docs']) {
+        const dir = path.join(root, 'apps', name)
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+        await writeFile(
+          path.join(dir, 'vx.config.mjs'),
+          `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+        )
+      }
+      expect(await planned(root, ['build', '--filter', './apps/web'])).toEqual(['web#build'])
+      expect(await planned(root, ['build', '--filter', './apps/*'])).toEqual([
+        'docs#build',
+        'web#build',
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })

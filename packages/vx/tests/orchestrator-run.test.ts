@@ -18,6 +18,7 @@ import {
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
+import { summarized, vx } from './helpers/parity.js'
 
 describe('orchestrator e2e — restores, groups, streams, plan and records', () => {
   let fixture: Fixture
@@ -671,6 +672,70 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
     TIMEOUT,
   )
 
+  // nx#19796: a directory re-included under an ignored one (`gen/*` then
+  // `!gen/keep/`) was left out of the inputs.
+  it(
+    'gitignore: a directory re-included under an ignored parent is an input, its ignored siblings are not',
+    async () => {
+      const dir = await addProject(fixture.root, 'gi-dir', {
+        files: {
+          '.gitignore': 'gen/*\n!gen/keep/\n',
+          'src/x.txt': 'v1',
+          'gen/keep/k.txt': 'k1',
+          'gen/other.txt': 'o1',
+        },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const status = async () =>
+        (await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })).outcomes[0]
+          ?.status
+      expect(await status()).toBe('success')
+      await writeFile(path.join(dir, 'gen/keep/k.txt'), 'k2')
+      expect(await status()).toBe('success')
+      await writeFile(path.join(dir, 'gen/other.txt'), 'o2')
+      expect(await status()).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#7245: a deleted package stayed in the graph after a warm run.
+  it(
+    'a package deleted after a warm run and a lock leaves the next run and a frozen run without it',
+    async () => {
+      const build = `
+          export default {
+            tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } },
+          }
+        `
+      await addProject(fixture.root, 'keep', { config: build, files: { 'src/a.txt': 'a' } })
+      await addProject(fixture.root, 'gone', { config: build, files: { 'src/a.txt': 'a' } })
+      expect((await vx(fixture.root, ['run', 'build', '--all'])).code).toBe(0)
+      expect((await vx(fixture.root, ['lock'])).code).toBe(0)
+      await rm(path.join(fixture.root, 'packages', 'gone'), { recursive: true })
+
+      const again = await summarized(fixture.root, ['build', '--all'])
+      expect({ code: again.code, ids: [...again.tasks.keys()] }).toEqual({
+        code: 0,
+        ids: ['keep#build'],
+      })
+      const frozen = await summarized(fixture.root, ['build', '--all', '--frozen'])
+      expect({ code: frozen.code, ids: [...frozen.tasks.keys()] }).toEqual({
+        code: 0,
+        ids: ['keep#build'],
+      })
+    },
+    TIMEOUT,
+  )
+
   it(
     'workspace fingerprint: pnpm-workspace.yaml change busts every cached task',
     async () => {
@@ -1103,6 +1168,36 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       // app's key DID change (its hash partitioned by forwardArgs) so
       // its own cache should miss.
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#1744: arguments after `--` reached every task in the graph,
+  // so a dependency's build ran with the app's flags.
+  it(
+    'arguments after -- reach the named task command and never its dependency',
+    async () => {
+      const argsTask = (deps: string) => `
+          export default {
+            tasks: {
+              build: { exec: { command: 'echo ARGS: > args.txt' }, dependsOn: [${deps}] },
+            },
+          }
+        `
+      const lib = await addProject(fixture.root, 'lib', { config: argsTask('') })
+      const app = await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        config: argsTask(`'^build'`),
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['app#build'],
+        forwardArgs: ['--mode', 'dev'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(await readFile(path.join(lib, 'args.txt'), 'utf8')).toBe('ARGS:\n')
+      expect(await readFile(path.join(app, 'args.txt'), 'utf8')).toBe('ARGS: --mode dev\n')
     },
     TIMEOUT,
   )

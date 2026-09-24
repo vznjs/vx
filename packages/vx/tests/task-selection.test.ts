@@ -224,6 +224,57 @@ describe('task selection', () => {
     TIMEOUT,
   )
 
+  // turborepo#9589, #11147: a project that does not declare the requested
+  // task still had the task's dependencies planned in it.
+  it(
+    'a project without the requested task contributes none of its dependencies',
+    async () => {
+      for (const [name, tasks] of [
+        [
+          'web',
+          `build: { exec: { command: 'true' } }, verify: { exec: { command: 'true' }, dependsOn: ['build'] }`,
+        ],
+        ['docs', `build: { exec: { command: 'true' } }`],
+      ]) {
+        const dir = path.join(root, 'packages', name!)
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
+        await writeFile(path.join(dir, 'vx.config.mjs'), `export default { tasks: { ${tasks} } }`)
+      }
+      const parsed = parseRunArgs(['verify', '--all'])
+      const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
+      if ('error' in resolved || 'nothingSelected' in resolved) throw new Error('unreachable')
+      const plan = await planRun({ ...resolved, log: silent() })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['web#build', 'web#verify'])
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#9619: a root task named beside a negated filter was dropped.
+  // vx has no `//#` spelling: the root is a project when the workspace lists it.
+  it(
+    'the workspace root listed as a project keeps its task under a negated filter',
+    async () => {
+      await writeFile(
+        path.join(root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "."\n  - "packages/*"\n',
+      )
+      await writeFile(
+        path.join(root, 'vx.config.mjs'),
+        `export default { tasks: { root: { exec: { command: 'true' } } } }`,
+      )
+      await addProject('a', ['build'])
+      await addProject('b', ['build'])
+      const parsed = parseRunArgs(['build', 'root', '--filter', '!b'])
+      expect(parsed.error).toBeUndefined()
+      const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
+      if ('error' in resolved || 'nothingSelected' in resolved) throw new Error('unreachable')
+      const plan = await planRun({ ...resolved, log: silent() })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['a#build', 'r#root'])
+    },
+    TIMEOUT,
+  )
+
   it(
     'a bare-only invocation whose filter selects nothing still exits clean',
     async () => {
