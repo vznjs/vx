@@ -86,3 +86,10 @@ Every widget takes this look through `demos/widget.css`: the same frame and
 caption, mono for what a reader acts on or reads as data, sans for
 sentences, the 8-unit corner, the two strokes and these tones.
 `tests/diagram-kit.test.ts` holds the widgets to the same tokens.
+
+A widget that draws its own SVG keeps the phone rule too. The scheduler
+simulator's `ganttSvg` draws each chart twice, `data-layout="wide"` with
+time across and `data-layout="narrow"` with time down the page, one
+column per worker, 340 across; its stylesheet swaps them at this kit's
+32rem, and `tests/guide-concurrency.test.ts` holds the phone chart to the
+wide one's bars, lines and words.

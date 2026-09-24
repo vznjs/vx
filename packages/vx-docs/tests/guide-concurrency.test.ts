@@ -11,15 +11,18 @@ import { describe, expect, it } from 'bun:test'
 import {
   DEFAULT_PAIR,
   DEFAULT_WORKERS,
+  MAX_SECONDS,
   POLICIES,
   SIM_TASKS,
   boundsSentence,
   criticalPath,
   describeSchedule,
   finishTable,
+  ganttSvg,
   lowerBound,
   schedule,
   secs,
+  type SimTask,
 } from '../src/components/demos/model/scheduler-sim.js'
 import {
   instance,
@@ -28,6 +31,7 @@ import {
   SHAPES,
   simulate,
 } from '../../vx-bench/schedule-policy.js'
+import { NARROW } from '../src/components/guide/diagram/diagram.js'
 import * as P from '../src/components/guide/concurrency/pictures.js'
 import {
   DIST,
@@ -92,6 +96,40 @@ const NO_HISTORY = [
   ['ui#lint is new', '27 s', '24 s', '26 s', '24 s'],
 ]
 
+/** A built page's CSS rules, from its inline styles and the sheets it
+ *  links, each with the media query around it, Astro's scoping stripped. */
+function cssRules(html: string): { media: string; selector: string; body: string }[] {
+  const sheets = [
+    ...[...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]!),
+    ...[...html.matchAll(/<link rel="stylesheet" href="[^"]*?(_astro\/[^"]+\.css)"/g)].map((m) =>
+      readFileSync(path.join(DIST, m[1]!), 'utf8'),
+    ),
+  ]
+  const media = /@media([^{]+)\{((?:[^{}]*\{[^{}]*\})*)\}/g
+  const rule = /([^{}]+)\{([^{}]*)\}/g
+  const rules: { media: string; selector: string; body: string }[] = []
+  const add = (at: string, block: string): void => {
+    for (const r of block.matchAll(rule)) {
+      for (const selector of r[1]!.split(',')) {
+        rules.push({
+          media: at.trim(),
+          selector: selector
+            .replace(/:where\(\.astro-[\w-]+\)|\[data-astro-cid-[\w-]+\]/g, '')
+            .replace(/['"]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim(),
+          body: r[2]!.trim().replace(/;$/, ''),
+        })
+      }
+    }
+  }
+  for (const css of sheets) {
+    for (const m of css.matchAll(media)) add(m[1]!, m[2]!)
+    add('', css.replace(media, ''))
+  }
+  return rules
+}
+
 const none = new Set<string>()
 /** The eight build and test tasks of chapters 2 and 3: the pictures' graph. */
 const EIGHT = SIM_TASKS.filter((t) => /#(build|test)$/.test(t.id))
@@ -128,6 +166,25 @@ describe('the scheduler simulator model', () => {
         ...POLICIES.map((p) => secs(schedule(SIM_TASKS, new Set(unknown), p, 2).makespan)),
       ]).toEqual(NO_HISTORY.find((r) => r[0] === label)!)
     }
+  })
+
+  // A reader sets the workers and the times; the phone chart still fits a
+  // phone's width, and the longest (every task at its longest, one worker)
+  // is no taller than the default one-worker chart.
+  it('keeps the phone chart a phone wide and a screen or so tall, whatever a reader sets', () => {
+    const narrowBox = (tasks: readonly SimTask[], workers: number): number[] => {
+      const sched = schedule(tasks, none, 'count', workers)
+      const svg = ganttSvg(sched, sched.makespan, lowerBound(tasks, workers), none, none)
+      return only(svg, /<svg data-layout="narrow" viewBox="0 0 ([\d.]+ [\d.]+)"/g)
+        .split(' ')
+        .map(Number)
+    }
+    const longest = SIM_TASKS.map((t) => ({ ...t, dur: MAX_SECONDS * 1000 }))
+    const sizes = [1, 2, 3, 4].flatMap((w) => [narrowBox(SIM_TASKS, w), narrowBox(longest, w)])
+    for (const [width] of sizes) expect(width).toBe(340)
+    const tallest = Math.max(...sizes.map(([, height]) => height!))
+    expect(tallest).toBe(narrowBox(SIM_TASKS, 1)[1]!)
+    expect(tallest).toBeLessThanOrEqual(640)
   })
 
   // The row that keeps the site's simulator and the bench's one code: were
@@ -194,9 +251,15 @@ describe('guide/concurrency', () => {
   const main = content(html)
   const prose = text(main)
   const element = only(main, /<vx-scheduler-sim\b[^>]*>([\s\S]*?)<\/vx-scheduler-sim>/g)
+  // A chart's title, then its drawing twice: time across, then time down the
+  // page for a phone.
   const charts = [
-    ...element.matchAll(/<div class="chart\b[^"]*" data-slot="(\d)">([\s\S]*?<\/svg>)/g),
+    ...element.matchAll(/<div class="chart\b[^"]*" data-slot="(\d)">([\s\S]*?<\/svg>)<\/div>/g),
   ]
+  const drawing = (chart: string, layout: 'wide' | 'narrow'): string =>
+    only(chart, new RegExp(`(<svg data-layout="${layout}"[\\s\\S]*?<\\/svg>)`, 'g'))
+  const wide = charts.map((c) => drawing(c[2]!, 'wide'))
+  const narrow = charts.map((c) => drawing(c[2]!, 'narrow'))
   const bars = (chart: string): string[] =>
     [
       ...chart.matchAll(
@@ -273,17 +336,17 @@ describe('guide/concurrency', () => {
 
   it('draws two Gantt charts of the default graph, with the hand-traced bars', () => {
     expect(charts.map((c) => c[1])).toEqual(['0', '1'])
-    expect(bars(charts[0]![2]!)).toEqual(COUNT_ON_2)
-    expect(bars(charts[1]![2]!)).toEqual(MEDIAN_ON_2)
-    for (const c of charts) expect(critical(c[2]!).sort()).toEqual([...CRITICAL].sort())
-    expect(only(charts[0]![2]!, /<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(
+    expect(bars(wide[0]!)).toEqual(COUNT_ON_2)
+    expect(bars(wide[1]!)).toEqual(MEDIAN_ON_2)
+    for (const svg of wide) expect(critical(svg).sort()).toEqual([...CRITICAL].sort())
+    expect(only(wide[0]!, /<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(
       'Tasks waiting on 2 workers finishes at 27 s: worker 1 runs utils#build 0–6 s, ' +
         'ui#build 6–8 s, app#docs 8–18 s, utils#test 18–21 s, app#test 21–27 s; worker 2 ' +
         'runs utils#lint 0–1 s, ui#lint 1–3 s, api#lint 3–4 s, app#lint 4–6 s, api#build ' +
         '6–12 s, app#build 12–18 s, ui#test 18–19 s, api#test 19–21 s.',
     )
-    expect(charts.map((c) => only(c[2]!, /data-bound="(\d+)"/g))).toEqual(['24000', '24000'])
-    expect(charts.map((c) => only(c[2]!, /data-done="(\d+)"/g))).toEqual(['27000', '24000'])
+    expect(wide.map((svg) => only(svg, /data-bound="(\d+)"/g))).toEqual(['24000', '24000'])
+    expect(wide.map((svg) => only(svg, /data-done="(\d+)"/g))).toEqual(['27000', '24000'])
     expect(
       charts.map((c) => text(only(c[2]!, /<p class="chart-title\b[^"]*">([\s\S]*?)<\/p>/g))),
     ).toEqual(['Tasks waiting (vx): 27 s', 'Learned durations (history plugin): 24 s'])
@@ -299,11 +362,117 @@ describe('guide/concurrency', () => {
   it('renders what the model computes, so the fallback and the element agree', () => {
     for (const [slot, policy] of DEFAULT_PAIR.entries()) {
       const sched = schedule(SIM_TASKS, none, policy, DEFAULT_WORKERS)
-      const svg = only(charts[slot]![2]!, /(<svg\b[\s\S]*<\/svg>)/g)
-      expect(bars(svg)).toEqual(asRows(sched.bars))
-      expect(svg).toMatch(/^<svg\b[^>]*role="img"/)
-      expect(only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(describeSchedule(sched))
+      for (const svg of [wide[slot]!, narrow[slot]!]) {
+        expect(bars(svg)).toEqual(asRows(sched.bars))
+        expect(svg).toMatch(/^<svg\b[^>]*role="img"/)
+        expect(only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(describeSchedule(sched))
+      }
     }
+  })
+
+  // A phone shows the whole chart rather than the first half of one that
+  // scrolls sideways: the chart again, time running down the page, saying
+  // everything the wide one says.
+  it('draws each chart again for a phone, saying what the wide one says', () => {
+    expect(
+      charts.map((c) => [...c[2]!.matchAll(/<svg data-layout="(\w+)"/g)].map((m) => m[1])),
+    ).toEqual([
+      ['wide', 'narrow'],
+      ['wide', 'narrow'],
+    ])
+    const said = (svg: string) => ({
+      name: only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g),
+      bars: [
+        ...svg.matchAll(
+          /<g class="([^"]*)" (data-task="[^"]+" data-lane="\d+" data-start="\d+" data-end="\d+")>/g,
+        ),
+      ].map((m) => `${m[2]} ${m[1]}`),
+      titles: [...svg.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => m[1]),
+      lines: [...svg.matchAll(/<line class="(bound|done)" data-\w+="(\d+)"/g)].map(
+        (m) => `${m[1]} ${m[2]}`,
+      ),
+      // A label is the task's id, on one line or package over task.
+      labels: [
+        ...svg.matchAll(
+          /<g class="bar[^"]*" data-task="([^"]+)"[^>]*><rect\b[^>]*><\/rect>((?:<text\b[^>]*>[^<]*<\/text>)+)<title>/g,
+        ),
+      ].map(
+        (m) => `${m[1]}: ${[...m[2]!.matchAll(/>([^<]*)<\/text>/g)].map((t) => t[1]).join('#')}`,
+      ),
+    })
+    for (const slot of [0, 1]) expect(said(narrow[slot]!)).toEqual(said(wide[slot]!))
+    // Every bar of two seconds or more is labelled, in both.
+    expect(said(narrow[0]!).labels).toEqual(
+      COUNT_ON_2.map((r) => r.split(' '))
+        .filter(([, , start, end]) => Number(end) - Number(start) >= 2)
+        .map(([id]) => `${id}: ${id}`),
+    )
+  })
+
+  it('runs time down the phone chart, one column per worker, both charts at one scale', () => {
+    const box = narrow.map((svg) =>
+      only(svg, /^<svg\b[^>]*viewBox="0 0 ([\d.]+ [\d.]+)"/g)
+        .split(' ')
+        .map(Number),
+    )
+    expect(box[0]![0]).toBeLessThanOrEqual(NARROW)
+    expect(box[1]).toEqual(box[0]!)
+    expect(box[0]![1]).toBeGreaterThanOrEqual(300)
+    expect(box[0]![1]).toBeLessThanOrEqual(420)
+    const tops = narrow.flatMap((svg) =>
+      [
+        ...svg.matchAll(
+          /data-lane="(\d)" data-start="(\d+)" data-end="\d+"><rect x="([\d.]+)" y="([\d.]+)"/g,
+        ),
+      ].map((m) => ({ lane: Number(m[1]), start: Number(m[2]), x: Number(m[3]), y: Number(m[4]) })),
+    )
+    expect(tops).toHaveLength(2 * SIM_TASKS.length)
+    const columns = [1, 2].map((lane) => [
+      ...new Set(tops.filter((t) => t.lane === lane).map((t) => t.x)),
+    ])
+    expect(columns.map((xs) => xs.length)).toEqual([1, 1])
+    expect(columns[1]![0]!).toBeGreaterThan(columns[0]![0]!)
+    const y0 = tops.find((t) => t.start === 0)!.y
+    const perMs = tops.filter((t) => t.start > 0).map((t) => (t.y - y0) / t.start)
+    for (const k of perMs) expect(k).toBeCloseTo(perMs[0]!, 4)
+    expect(perMs[0]!).toBeGreaterThan(0)
+    // The bound and the finish are lines across the columns.
+    for (const svg of narrow) {
+      for (const m of svg.matchAll(
+        /<line class="(?:bound|done)"[^>]*x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)"/g,
+      )) {
+        expect(m[2]).toBe(m[4])
+        expect(Number(m[1])).toBeLessThanOrEqual(columns[0]![0]!)
+        expect(Number(m[3])).toBeGreaterThan(columns[1]![0]!)
+      }
+    }
+  })
+
+  // The page's own CSS, as built: the phone drawing shows where the diagram
+  // kit shows its phone layouts, and nothing holds it wider than the phone.
+  it('shows the phone chart at the kit’s breakpoint, with no width to scroll', () => {
+    const rules = cssRules(html)
+    const gantt = rules.filter((r) => r.selector.startsWith('.gantt'))
+    expect(
+      gantt
+        .filter((r) => /(?:^|;)\s*(?:min|max)-width:/.test(r.body))
+        .map((r) => `${r.media}${r.selector}{${r.body}}`),
+    ).toEqual(['.gantt svg[data-layout=wide]{min-width:34rem}'])
+    const phone = rules.find(
+      (r) => r.selector === '.vx-diagram svg[data-layout=narrow]' && r.body === 'display:block',
+    )!.media
+    // The minifier writes `max-width: 32rem` as a range.
+    expect(phone).toMatch(/32rem/)
+    const display = (layout: string, media: string): string[] =>
+      gantt
+        .filter((r) => r.selector === `.gantt svg[data-layout=${layout}]` && r.media === media)
+        .map((r) => r.body)
+    expect([
+      display('wide', ''),
+      display('narrow', ''),
+      display('wide', phone),
+      display('narrow', phone),
+    ]).toEqual([['min-width:34rem'], ['display:none'], ['display:none'], ['display:block']])
   })
 
   it('states the finish times and the durations in tables', () => {

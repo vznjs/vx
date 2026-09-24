@@ -158,10 +158,68 @@ const escape = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 const GANTT = { width: 600, gutter: 64, right: 10, lane: 38, bar: 32, axis: 22 }
+/** The phone form: time runs down the page at `second` units a second,
+ *  until a chart would pass `tall` units of time, one column per worker. */
+const DOWN = {
+  width: 340,
+  gutter: 30,
+  right: 6,
+  head: 24,
+  inset: 3,
+  foot: 10,
+  second: 12,
+  tall: 576,
+}
+
+/** Whether `text` fits `room` units in the chart's mono at 11px (0.6em a character). */
+const fits = (text: string, room: number): boolean => text.length * 6.6 + 6 <= room
+
+/** The wide form's step (2 s up to a 30 s axis, else 5 s), grown until two
+ *  ticks stand at least 24 units apart, so their numbers never touch. */
+function tickStep(span: number, perMs: number): number {
+  const steps = [2000, 5000, 10_000, 20_000, 50_000]
+  return steps.slice(span <= 30_000 ? 0 : 1).find((step) => step * perMs >= 24)!
+}
+
+function barOpen(b: Bar, unknown: ReadonlySet<string>, critical: ReadonlySet<string>): string {
+  const classes = [
+    'bar',
+    critical.has(b.id) ? 'is-critical' : '',
+    unknown.has(b.id) ? 'is-unknown' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return `<g class="${classes}" data-task="${b.id}" data-lane="${b.lane}" data-start="${b.start}" data-end="${b.end}">`
+}
+
+const barTitle = (b: Bar): string => `<title>${b.id}: ${b.start / 1000}–${b.end / 1000} s</title>`
+
+const svgOpen = (
+  layout: 'wide' | 'narrow',
+  width: number,
+  height: number,
+  sched: Schedule,
+): string =>
+  `<svg data-layout="${layout}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escape(describeSchedule(sched))}">`
+
+const tenth = (n: number): number => Math.round(n * 10) / 10
 
 /** The Gantt chart as SVG markup, on a time axis `span` ms long, so two
- *  charts drawn with one span compare by eye. */
+ *  charts drawn with one span compare by eye. It is drawn twice, from one
+ *  schedule: time across with a row per worker, and for a phone time down
+ *  the page with a column per worker; the page's stylesheet shows the one
+ *  that fits (the diagram kit's `narrow`, at its breakpoint). */
 export function ganttSvg(
+  sched: Schedule,
+  span: number,
+  bound: number,
+  unknown: ReadonlySet<string>,
+  critical: ReadonlySet<string>,
+): string {
+  return across(sched, span, bound, unknown, critical) + down(sched, span, bound, unknown, critical)
+}
+
+function across(
   sched: Schedule,
   span: number,
   bound: number,
@@ -170,12 +228,10 @@ export function ganttSvg(
 ): string {
   const { width, gutter, right, lane, bar, axis } = GANTT
   const px = (width - gutter - right) / span
-  const x = (ms: number): number => Math.round((gutter + ms * px) * 10) / 10
+  const x = (ms: number): number => tenth(gutter + ms * px)
   const height = sched.workers * lane + axis
-  const step = span <= 30_000 ? 2000 : 5000
-  const parts: string[] = [
-    `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escape(describeSchedule(sched))}">`,
-  ]
+  const step = tickStep(span, px)
+  const parts: string[] = [svgOpen('wide', width, height, sched)]
   for (let i = 1; i <= sched.workers; i++) {
     const y = (i - 1) * lane
     parts.push(
@@ -190,33 +246,83 @@ export function ganttSvg(
     )
   }
   for (const b of sched.bars) {
-    const classes = [
-      'bar',
-      critical.has(b.id) ? 'is-critical' : '',
-      unknown.has(b.id) ? 'is-unknown' : '',
-    ]
-      .filter(Boolean)
-      .join(' ')
     const w = x(b.end) - x(b.start)
-    // Package over task, when the longer of the two fits the bar in the
-    // diagram's mono at 11px (0.6em a character).
+    // Package over task, when the longer of the two fits the bar.
     const [pkg, task] = b.id.split('#') as [string, string]
-    const fits = Math.max(pkg.length, task.length) * 6.6 + 6 <= w
     const cx = x(b.start) + w / 2
     const cy = (b.lane - 1) * lane + lane / 2
     parts.push(
-      `<g class="${classes}" data-task="${b.id}" data-lane="${b.lane}" data-start="${b.start}" data-end="${b.end}">`,
+      barOpen(b, unknown, critical),
       `<rect x="${x(b.start) + 1}" y="${(b.lane - 1) * lane + (lane - bar) / 2}" width="${Math.max(w - 2, 1)}" height="${bar}" rx="8"></rect>`,
-      fits
+      fits(pkg.length > task.length ? pkg : task, w)
         ? `<text x="${cx}" y="${cy - 2}">${pkg}</text><text x="${cx}" y="${cy + 11}">${task}</text>`
         : '',
-      `<title>${b.id}: ${b.start / 1000}–${b.end / 1000} s</title>`,
+      barTitle(b),
       '</g>',
     )
   }
   parts.push(
     `<line class="bound" data-bound="${bound}" x1="${x(bound)}" y1="0" x2="${x(bound)}" y2="${sched.workers * lane}"></line>`,
     `<line class="done" data-done="${sched.makespan}" x1="${x(sched.makespan)}" y1="0" x2="${x(sched.makespan)}" y2="${sched.workers * lane}"></line>`,
+    '</svg>',
+  )
+  return parts.join('')
+}
+
+function down(
+  sched: Schedule,
+  span: number,
+  bound: number,
+  unknown: ReadonlySet<string>,
+  critical: ReadonlySet<string>,
+): string {
+  const { width, gutter, right, head, inset, foot, second, tall } = DOWN
+  // One scale for every chart drawn over `span`, as across: a long span
+  // shrinks the scale rather than the page growing past `tall`.
+  const px = Math.min(second / 1000, tall / span)
+  const y = (ms: number): number => tenth(head + ms * px)
+  const col = (width - gutter - right) / sched.workers
+  const left = (lane: number): number => tenth(gutter + (lane - 1) * col)
+  const height = Math.round(head + span * px + foot)
+  const step = tickStep(span, px)
+  const parts: string[] = [svgOpen('narrow', width, height, sched)]
+  for (let i = 1; i <= sched.workers; i++) {
+    parts.push(
+      `<text class="lane-label" x="${tenth(left(i) + col / 2)}" y="14">worker ${i}</text>`,
+      `<line class="lane-rule" x1="${left(i)}" y1="${head}" x2="${left(i)}" y2="${y(span)}"></line>`,
+    )
+  }
+  for (let t = 0; t <= span; t += step) {
+    parts.push(
+      `<text class="tick" x="${gutter - 6}" y="${tenth(y(t) + 4)}">${t / 1000}</text>`,
+      `<line class="tick-rule" x1="${gutter}" y1="${y(t)}" x2="${width - right}" y2="${y(t)}"></line>`,
+    )
+  }
+  for (const b of sched.bars) {
+    const w = col - 2 * inset
+    const h = y(b.end) - y(b.start) - 2
+    const [pkg, task] = b.id.split('#') as [string, string]
+    const cx = tenth(left(b.lane) + col / 2)
+    const cy = tenth(y(b.start) + 1 + h / 2)
+    // One line where the column is wide enough, else package over task, as
+    // across; a bar too short for either prints none and keeps its title.
+    const label =
+      fits(b.id, w) && h >= 16
+        ? `<text x="${cx}" y="${tenth(cy + 4)}">${b.id}</text>`
+        : fits(pkg.length > task.length ? pkg : task, w) && h >= 30
+          ? `<text x="${cx}" y="${tenth(cy - 2)}">${pkg}</text><text x="${cx}" y="${tenth(cy + 11)}">${task}</text>`
+          : ''
+    parts.push(
+      barOpen(b, unknown, critical),
+      `<rect x="${tenth(left(b.lane) + inset)}" y="${tenth(y(b.start) + 1)}" width="${tenth(w)}" height="${tenth(Math.max(h, 1))}" rx="8"></rect>`,
+      label,
+      barTitle(b),
+      '</g>',
+    )
+  }
+  parts.push(
+    `<line class="bound" data-bound="${bound}" x1="${gutter}" y1="${y(bound)}" x2="${width - right}" y2="${y(bound)}"></line>`,
+    `<line class="done" data-done="${sched.makespan}" x1="${gutter}" y1="${y(sched.makespan)}" x2="${width - right}" y2="${y(sched.makespan)}"></line>`,
     '</svg>',
   )
   return parts.join('')

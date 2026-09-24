@@ -133,7 +133,7 @@ const rows = finishTable(SIM_TASKS, none)
     </table>
   </details>
   <Fragment slot="caption">
-    One bar per task, one row per worker. Lime: the longest chain. Dashed line: no order beats it.
+    One bar per task, one lane per worker. Lime: the longest chain. Dashed line: no order beats it.
   </Fragment>
 </Demo>
 
@@ -153,17 +153,32 @@ const rows = finishTable(SIM_TASKS, none)
     color: var(--vx-fg);
     font-weight: 700;
   }
-  /* Below about 34rem the labels would shrink past reading: the chart
-     keeps its width and scrolls sideways instead. */
+  /* Each chart is drawn twice (ganttSvg): time across, and for a phone time
+     down the page. The phone one shows at the diagram kit's breakpoint,
+     where it draws at about full size; above it the wide one keeps a width
+     its labels read at, and scrolls sideways short of it. */
   .gantt {
     overflow-x: auto;
   }
   .gantt :global(svg) {
     display: block;
     width: 100%;
-    min-width: 34rem;
     height: auto;
     font-family: var(--vx-mono);
+  }
+  .gantt :global(svg[data-layout='wide']) {
+    min-width: 34rem;
+  }
+  .gantt :global(svg[data-layout='narrow']) {
+    display: none;
+  }
+  @media (max-width: 32rem) {
+    .gantt :global(svg[data-layout='wide']) {
+      display: none;
+    }
+    .gantt :global(svg[data-layout='narrow']) {
+      display: block;
+    }
   }
   .gantt :global(.lane-label),
   .gantt :global(.tick) {
@@ -172,6 +187,12 @@ const rows = finishTable(SIM_TASKS, none)
   }
   .gantt :global(.tick) {
     text-anchor: middle;
+  }
+  .gantt :global([data-layout='narrow'] .lane-label) {
+    text-anchor: middle;
+  }
+  .gantt :global([data-layout='narrow'] .tick) {
+    text-anchor: end;
   }
   .gantt :global(.lane-rule),
   .gantt :global(.tick-rule) {
