@@ -22,6 +22,8 @@ export function buildPackageGraph(
   projects: ProjectMeta[],
   taskEdges?: ReadonlyMap<string, readonly string[]>, // project → projects its tasks name in a cross-project dependsOn
 ): PackageGraph
+
+export const SEMVER_RANGE: RegExp // the ranges handed to Bun.semver (below)
 ```
 
 `directDeps` is the adjacency `buildTaskGraph` walks for `'^name'`
@@ -30,9 +32,9 @@ frontier expansion; `transitiveDeps` / `transitiveDependents` serve
 
 ## Algorithm
 
-For each project, scan the four dep buckets and keep names that
-resolve to another workspace project (skipping self-references). Two
-adjacencies come out of it:
+For each project, scan the four dep buckets and keep the entries that
+link another workspace project (skipping self-references; which
+entries link is the next section). Two adjacencies come out of it:
 
 - **order** (`directDeps`, what `'^name'` walks): `dependencies`,
   `devDependencies`, `optionalDependencies`, the task edges, and a
@@ -57,6 +59,83 @@ the consumer above provides that peer. Peers are tried in
 (package, peer) name order, so which edge of a mutual peering stays is
 the same on every run. A change in a peer always reaches the package
 that peers on it, ordered or not.
+
+## Which entries are edges
+
+An entry is an edge when the package manager installs the workspace
+package for it, not when its key names one: `"shared": "^1.0.0"` beside
+a local `shared@2.0.0` installs the registry's 1.x (turborepo#4214),
+and `"luigi": "workspace:../waluigi"` links `waluigi`, not the package
+named `luigi` (turborepo#6744). The rule, measured against the registry
+with bun 1.4.2, npm 10.9, yarn 1.22 and pnpm 12 (2026-09-24), one
+install per spec:
+
+- **`workspace:`** — `workspace:*`, `workspace:^`, `workspace:~` and a
+  bare `workspace:` are the package the key names, any version. A
+  range (`workspace:^1.2.0`) must be satisfied by that package's
+  version (bun and pnpm refuse the install when it is not).
+  `workspace:<name>@<range>` is an alias to `<name>`;
+  anything else is a path from the declaring package's directory.
+- **`file:`, `link:`, `portal:` and a bare `./`, `../` or `/` path** —
+  the workspace package whose directory the path names; a tarball or
+  any other directory is no edge.
+- **`npm:<name>@<range>`** — `<name>`, when its version satisfies the
+  range. bun links a satisfied alias; npm and yarn fetch it from the
+  registry, so under them this edge is a spare one.
+- **A range** (`^1.2.0`, `1.x`, `>=1 <2`, `1.0.0 - 2.0.0`, `*`, `""`) —
+  the package the key names when its version satisfies the range,
+  checked with `Bun.semver.satisfies`. `*` and `""` take any version,
+  a prerelease or none; a package with no `version` satisfies nothing
+  else, and a prerelease satisfies a range only as npm's `semver` says
+  (`2.0.0-beta.1` is not `^2.0.0`). Padding is trimmed, as every
+  manager does.
+- **`catalog:`** — the package the key names: the catalog's range lives
+  in `pnpm-workspace.yaml` or bun's root manifest, which the graph does
+  not read (turborepo#10785 keeps this edge).
+- **Anything else** — a dist-tag (`latest` came from the registry in
+  all four), a git or tarball URL, an unmet range — is no edge.
+
+`SEMVER_RANGE` is the range grammar. `Bun.semver.satisfies` answers
+true for text that is no range (`latest`, `github:a/b`), ORs bare
+comparators npm ANDs (`1 2`), and reads `>x` and a leading wildcard
+(`x.3.1`) its own way, so a spec is handed to it only inside the part
+of npm's grammar where the two agree: `||`-joined sets, each a hyphen
+range, one comparator, or two or more `<`/`>` bounds, over versions
+whose wildcards trail. A spec outside it counts as unmet. The site's
+playground bundles this module without Bun; its port
+(`packages/vx-docs/src/playground/shim/semver.ts`) is held to Bun over
+exactly `SEMVER_RANGE` by
+`packages/vx-docs/tests/playground-semver.test.ts`.
+
+**A key in several fields.** The managers disagree which entry they
+install: bun and npm take `devDependencies`, then
+`optionalDependencies`, then `dependencies`; yarn and pnpm take
+`optionalDependencies`, then `dependencies`, then `devDependencies`.
+vx cannot tell which manager installed a checkout, so a key is an edge
+when EITHER order's winner links: every `devDependencies` and
+`optionalDependencies` entry counts, and a `dependencies` entry counts
+unless `optionalDependencies` names the same key. A spare edge costs
+ordering and a rebuild; a missing one is a stale hit.
+
+**Peers.** A `peerDependencies` entry is not installed by the package
+that declares it, so when an installed field names the same key, that
+entry decides alone: a registry `buffer@^6` devDependency beside a
+`workspace:*` peer on the local `buffer@0.0.1` installs the registry
+copy in all four (turborepo#12640). Alone, a peer on a workspace key is
+an edge whatever its spec, since bun and yarn hoist the workspace copy
+and resolve the import to it even for an unmet range or a tag (npm
+refuses to install an unmet peer); a path or alias spec still resolves
+to its target.
+
+**pnpm.** pnpm 9 and later default `link-workspace-packages` to false
+and then link only `workspace:`, `file:` and `link:` specs: with pnpm
+12 a satisfied `^2.0.0`, `*` and `npm:` alias all came from the
+registry. Which pnpm and which setting installed a checkout is not in
+anything the graph reads (the default moved with the major, and the
+setting may sit in `.npmrc`, `pnpm-workspace.yaml` or the user's own
+config), so under pnpm those specs stay edges: spare ones. The
+lockfile knows (`pnpm-lock.yaml` records `link:` for a linked
+importer); the graph is built before any plugin reads it.
 
 `directDeps` reads an adjacency built with the graph. The two
 transitive closures are built on the FIRST query, not with the graph:
@@ -84,7 +163,10 @@ and graph traversal.
 
 - **Doesn't include external (non-workspace) deps.** Those flow into
   the cache key via the workspace fingerprint (lockfile hash) and
-  the project package.json hash.
+  the project package.json hash. An entry naming a workspace package
+  that the manager installs from the registry is one of them.
+- **Doesn't read a lockfile or a catalog.** Which entries link is
+  decided from the manifests alone (the section above).
 - **Doesn't classify dep types beyond peer / not peer.** For the
   task graph `dependencies`, `devDependencies` and
   `optionalDependencies` are equivalent — each says "this package
@@ -113,6 +195,14 @@ and graph traversal.
 - a peer stays reach only when the peer already depends on the package
 - two packages peering on each other keep one order edge, in name order
 - a peer that closes a cycle is no cycle for the build order (medusa, 2026-09-11)
+- a `workspace:` path or alias links the package it points at, not its key (turborepo#6744)
+- a `file:`, `link:`, `portal:` or bare path and a satisfied `npm:` alias link their target
+- a range the local version does not satisfy is a registry dependency (turborepo#4214)
+- an installed entry, not a peer on the same key, decides the edge (turborepo#12640)
+- a key in two installed fields links when either precedence order installs the local copy
+- `*` and `workspace:^` take any version; a tag, a URL or an unmet `workspace:` range do not
+- a `catalog:` entry keeps the edge its key names (turborepo#10785)
+- `vx run --dry=json`, `...pkg` and `--affected` follow the linked package, not the key
 
 The list is the suite's `it` names, pinned in order by
 `tests/module-shape-drift.test.ts`.

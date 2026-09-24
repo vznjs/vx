@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { ProjectMeta } from './workspace.js'
 
 export interface PackageGraph {
@@ -23,7 +24,12 @@ export function buildPackageGraph(
   taskEdges?: ReadonlyMap<string, readonly string[]>,
 ): PackageGraph {
   const byName = new Map<string, ProjectMeta>()
-  for (const p of projects) byName.set(p.name, p)
+  const byDir = new Map<string, ProjectMeta>()
+  for (const p of projects) {
+    byName.set(p.name, p)
+    byDir.set(path.resolve(p.dir), p)
+  }
+  const linked = linkedTarget(byName, byDir)
 
   // Two adjacencies. ORDER (`directDeps`, the `^task` walk) is what the
   // package imports at build time: dependencies, devDependencies,
@@ -63,22 +69,41 @@ export function buildPackageGraph(
     for (const name of taskEdges?.get(p.name) ?? []) {
       if (name !== p.name && byName.has(name)) own.add(name)
     }
-    const add = (
-      field: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies',
-      into: Set<string>,
-    ) => {
-      const obj = p.packageJson[field]
-      if (!obj) return
-      for (const name of Object.keys(obj)) {
-        if (name !== p.name && byName.has(name)) into.add(name)
+    const optional = bucket(p.packageJson.optionalDependencies)
+    const prod = bucket(p.packageJson.dependencies)
+    const dev = bucket(p.packageJson.devDependencies)
+    const add = (key: string, spec: unknown, installed: boolean, into: Set<string>): void => {
+      if (typeof spec !== 'string') return
+      const target = linked(key, spec.trim(), p.dir, installed)
+      if (target !== undefined && target !== p.name) into.add(target)
+    }
+    // Which entry is installed when a key sits in more than one field,
+    // measured with bun 1.4, npm 10, yarn 1 and pnpm 12 (2026-09-24): bun
+    // and npm take devDependencies, then optionalDependencies, then
+    // dependencies; yarn and pnpm take optionalDependencies, then
+    // dependencies, then devDependencies. vx cannot tell which manager
+    // installed the tree, so either winner linking is an edge: a spare
+    // edge costs order, a missing one a stale hit. A dev or optional
+    // entry wins under one order or the other; a prod entry loses to an
+    // optional one under both.
+    for (const key in dev) add(key, dev[key], true, own)
+    for (const key in optional) add(key, optional[key], true, own)
+    for (const key in prod) if (!Object.hasOwn(optional, key)) add(key, prod[key], true, own)
+    order.set(p.name, own)
+    // A peer is not installed by the package that declares it: when an
+    // installed entry names the same key, that entry is what resolves
+    // (turborepo#12640: a registry `buffer@^6` dev dependency beside a
+    // `workspace:*` peer on it installs the registry copy in all four).
+    // Alone, a peer on a sibling resolves to the sibling whatever its
+    // range, since bun and yarn hoist the workspace copy (npm refuses an
+    // unmet one; pnpm 12 fetched it from the registry).
+    const peer = new Set<string>()
+    const peerDeps = bucket(p.packageJson.peerDependencies)
+    for (const key in peerDeps) {
+      if (!Object.hasOwn(optional, key) && !Object.hasOwn(prod, key) && !Object.hasOwn(dev, key)) {
+        add(key, peerDeps[key], false, peer)
       }
     }
-    add('dependencies', own)
-    add('devDependencies', own)
-    add('optionalDependencies', own)
-    order.set(p.name, own)
-    const peer = new Set<string>()
-    add('peerDependencies', peer)
     peers.set(p.name, peer)
   }
   // `to` reaches `from` through the order edges so far ⇒ from → to
@@ -226,5 +251,103 @@ export function buildPackageGraph(
     directDeps: (name) => directDeps.get(name) ?? [],
     transitiveDeps: makeAccessor(reachDeps),
     transitiveDependents: makeAccessor(directDependents),
+  }
+}
+
+function bucket(field: unknown): Readonly<Record<string, unknown>> {
+  return typeof field === 'object' && field !== null ? (field as Record<string, unknown>) : {}
+}
+
+// The ranges a manifest carries, in the part of npm's grammar (node-semver)
+// where `Bun.semver.satisfies` answers as npm does: `||`-joined sets, each
+// a hyphen range, one comparator, or two or more `<`/`>` bounds, over
+// versions whose wildcards trail (`1.x`, `1.2.*`). Bun 1.4.2 answers true
+// for text that is no range at all (`latest`, `npm:foo@1`, `github:a/b`,
+// `../x`), ORs bare comparators npm ANDs (`1 2`), and reads `>x` and a
+// leading wildcard (`x.3.1`) its own way; a spec outside this grammar
+// counts as unmet. The playground's port (packages/vx-docs,
+// src/playground/shim/semver.ts) is held to Bun over this grammar.
+const W = String.raw`[xX*]`
+const PRE = String.raw`(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`
+const NUMERIC = String.raw`[vV]?\d+(?:\.${W}(?:\.${W})?|\.\d+(?:\.${W}|\.\d+${PRE})?)?`
+const SINGLE = String.raw`(?:(?:[<>]=?|~>?|\^)\s*${NUMERIC}|=?\s*(?:${NUMERIC}|${W}(?:\.${W}){0,2}))`
+const BOUND = String.raw`[<>]=?\s*${NUMERIC}`
+const SET = String.raw`(?:${NUMERIC}\s+-\s+${NUMERIC}|${BOUND}(?:\s+${BOUND})+|${SINGLE})`
+export const SEMVER_RANGE = new RegExp(String.raw`^(?:${SET}(?:\s*\|\|\s*${SET})*)?$`)
+/** `<name>[@<range>]` after `npm:` or `workspace:`; the name may be scoped. */
+const ALIAS = /^(@[^@/]+\/[^@/]+|[^@/.][^@/]*)(?:@(.*))?$/
+const PATH_PROTOCOLS = ['file:', 'link:', 'portal:'] as const
+const MAY_POINT_ELSEWHERE = /^(?:workspace:|npm:|file:|link:|portal:|\.\.?\/|\/)/
+
+/**
+ * The workspace package a manifest entry resolves to, or undefined when
+ * the package manager installs it from elsewhere. `installed` is false
+ * for a peer, which the hoisted workspace copy under its key provides
+ * whatever the spec. The rule and its measurements are
+ * docs/modules/package-graph.md § Which entries are edges.
+ */
+function linkedTarget(
+  byName: ReadonlyMap<string, ProjectMeta>,
+  byDir: ReadonlyMap<string, ProjectMeta>,
+): (key: string, spec: string, fromDir: string, installed: boolean) => string | undefined {
+  // A monorepo repeats a few ranges and versions thousands of times, and
+  // the grammar test and `Bun.semver` cost about a microsecond a call:
+  // unmemoised they tripled the graph build at 1000 projects × 30 deps.
+  const isRange = new Map<string, boolean>()
+  const range = (spec: string): boolean => {
+    let ok = isRange.get(spec)
+    if (ok === undefined) isRange.set(spec, (ok = SEMVER_RANGE.test(spec)))
+    return ok
+  }
+  const satisfiedBy = new Map<string, Map<string, boolean>>()
+  // A dist-tag (`latest`) is no range, and bun, npm, yarn and pnpm all
+  // installed it from the registry beside a matching workspace package.
+  const satisfies = (p: ProjectMeta, spec: string): boolean => {
+    if (spec === '*' || spec === '') return true
+    const version = p.packageJson.version
+    if (typeof version !== 'string' || !range(spec)) return false
+    let memo = satisfiedBy.get(version)
+    if (memo === undefined) satisfiedBy.set(version, (memo = new Map()))
+    let ok = memo.get(spec)
+    if (ok === undefined) memo.set(spec, (ok = Bun.semver.satisfies(version, spec)))
+    return ok
+  }
+  const named = (name: string, spec: string): string | undefined => {
+    const p = byName.get(name)
+    return p !== undefined && satisfies(p, spec) ? name : undefined
+  }
+  const atPath = (fromDir: string, rel: string): string | undefined =>
+    byDir.get(path.resolve(fromDir, rel))?.name
+  return (key, spec, fromDir, installed) => {
+    if (spec === 'workspace:*') return named(key, '*')
+    // Only a protocol or a path points a key at another package; every
+    // other spec (a range, a tag, a URL) is decided by the key.
+    if (!MAY_POINT_ELSEWHERE.test(spec)) {
+      const local = byName.get(key)
+      if (local === undefined) return undefined
+      // A catalog entry's range lives where the graph does not read
+      // (`pnpm-workspace.yaml`, bun's root `catalog`): it keeps the edge.
+      if (!installed || spec.startsWith('catalog:')) return key
+      return satisfies(local, spec) ? key : undefined
+    }
+    if (spec.startsWith('workspace:')) {
+      const rest = spec.slice('workspace:'.length)
+      if (rest === '^' || rest === '~') return named(key, '*')
+      if (range(rest)) return named(key, rest)
+      const alias = ALIAS.exec(rest)
+      if (alias !== null) return named(alias[1]!, alias[2] ?? '*')
+      return atPath(fromDir, rest)
+    }
+    if (spec.startsWith('npm:')) {
+      // bun links a satisfied alias; npm and yarn fetch it from the
+      // registry. The edge is the spare one, as above.
+      const alias = ALIAS.exec(spec.slice('npm:'.length))
+      return alias === null ? undefined : named(alias[1]!, alias[2] ?? '*')
+    }
+    for (const protocol of PATH_PROTOCOLS) {
+      if (spec.startsWith(protocol)) return atPath(fromDir, spec.slice(protocol.length))
+    }
+    // A bare `./`, `../` or `/` path is a directory to bun, npm and pnpm.
+    return atPath(fromDir, spec)
   }
 }
