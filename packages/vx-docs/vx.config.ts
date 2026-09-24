@@ -83,12 +83,6 @@ export default defineProject({
             '.gitignore',
             'package.json',
           ],
-          // key-model-core.test.ts runs core over the key calculator's toy
-          // workspace and holds the model to it, so a change to core's key
-          // derivation must rerun it. Core is a devDependency, consumed as
-          // source, and its `build` is an empty group: nothing else here
-          // re-keys on it.
-          workspaceFiles: ['packages/vx/src/**'],
         },
         outputs: { files: [] },
       },

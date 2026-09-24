@@ -578,6 +578,24 @@ and 5 in `key-model-core.test.ts`; the site suite is 43 green. No
 browser on this box: the element was driven in happy-dom from the
 scratchpad (not a dependency), and its layout has not been seen.
 
+14ci. **Item 687 (2026-09-24): a plugin's suite re-keys on core's
+source.** Every package that imports `@vzn/vx` reads core's source,
+since core has no build, but core's `build` was an empty group whose key
+never moved. So a dependant's `test` and `lint.oxlint`, which fold
+`install` and through it `^build`, kept their keys across a core edit,
+and a warm local cache (`vx run ci --all` on a developer box; CI keeps
+no cache between runs) replayed a plugin's pass over a core change that
+broke it. Reproduced: `@vzn/vx-github#test` kept key `c1bee330…` after
+an edit to `src/util/hash.ts`. Core's `build` now depends on a no-op
+`source` task whose inputs are `src/**`, `index.ts` and `tsconfig.json`,
+so every dependant's install folds that key; the same edit moves the
+test's key and restoring the file restores it. Held by
+`core-source-key.unsafe.test.ts`: every dependant's `test` and
+`lint.oxlint` reach `@vzn/vx#source` in the dry-run graph (red with
+`build` back to no deps). Found by the W2 implementer, who had patched
+only the site's test with `workspaceFiles: ['packages/vx/src/**']`; that
+second copy of the rule is removed, the cascade covers it.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
