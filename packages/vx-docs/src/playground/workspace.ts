@@ -3,14 +3,20 @@
 //
 // `utils`; `ui` and `api`, which both use `utils`; `app`, which uses `ui`
 // and `api`; each with `build` and `test`, wired by `^build` and `build`;
-// and `docs`, whose `build` nothing waits on. Every task declares the files
+// and `app#docs`, which nothing waits on and which reads only `app`'s
+// `docs/` (so an edit to `app`'s code leaves it a hit: a key is per task,
+// not per package). Every task declares the files
 // it reads, so which keys an edit moves is what the Learn pages teach:
 // editing `packages/ui/src/button.tsx` moves `ui#build`, `ui#test`,
 // `app#build` and `app#test`, and nothing else. Core's parity row
 // (packages/vx/tests/playground-parity.unsafe.test.ts) holds this plan to
-// `vx run build test --all --dry=json` over the same files, committed.
+// `vx run build test docs --all --dry=json` over the same files, committed.
 
-const configText = (build: string, env = ''): string => `import { defineProject } from '@vzn/vx'
+const configText = (
+  build: string,
+  env = '',
+  more = '',
+): string => `import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {
@@ -29,7 +35,7 @@ export default defineProject({
         inputs: { files: ['src/**', 'test/**'] },
         outputs: { files: [] },
       },
-    },
+    },${more}
   },
 })
 `
@@ -39,21 +45,18 @@ export const CONFIG_TEXTS: Record<string, string> = {
   utils: configText('tsc -b'),
   ui: configText('vite build'),
   api: configText('bun build src/server.ts --outdir dist', ", env: ['API_URL']"),
-  app: configText('vite build'),
-  docs: `import { defineProject } from '@vzn/vx'
-
-export default defineProject({
-  tasks: {
-    build: {
-      exec: { command: 'astro build' },
+  app: configText(
+    'vite build',
+    '',
+    `
+    docs: {
+      exec: { command: 'astro build --root docs' },
       cache: {
-        inputs: { files: ['src/**'] },
-        outputs: { files: ['dist/**'] },
+        inputs: { files: ['docs/src/**'] },
+        outputs: { files: ['docs/dist/**'] },
       },
-    },
-  },
-})
-`,
+    },`,
+  ),
 }
 
 const pkg = (name: string, uses: string[] = []): string =>
@@ -99,14 +102,11 @@ export const FILES: Record<string, string> = {
     "import { greet } from 'api'\nimport { Button } from 'ui'\n\nexport const App = () => <Button label={greet('reader')} />\n",
   'packages/app/test/main.test.tsx':
     "import { expect, test } from 'bun:test'\nimport { App } from '../src/main'\n\ntest('App', () => expect(App()).toBeDefined())\n",
-
-  'packages/docs/package.json': pkg('docs'),
-  'packages/docs/vx.config.mjs': CONFIG_TEXTS['docs']!,
-  'packages/docs/src/index.md': '# The toy monorepo\n',
+  'packages/app/docs/src/index.md': '# The toy monorepo\n',
 }
 
 /** The environment the page opens with: `api#build` declares `API_URL`. */
 export const ENV: Record<string, string> = { API_URL: 'https://api.example.com' }
 
-/** The task specs the page runs, as `vx run build test` takes them. */
-export const TASKS = ['build', 'test']
+/** The task specs the page runs, as `vx run build test docs` takes them. */
+export const TASKS = ['build', 'test', 'docs']

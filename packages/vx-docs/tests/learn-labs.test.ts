@@ -213,9 +213,9 @@ const ADDED_FILES: Record<LabId, string[]> = {
   'shared-output': [],
 }
 const TASK_FIELD: Record<LabId, string> = {
-  'unlisted-file': 'build test',
-  'undeclared-read': 'build test',
-  'shared-output': 'build test bundle',
+  'unlisted-file': 'build test docs',
+  'undeclared-read': 'build test docs',
+  'shared-output': 'build test docs bundle',
 }
 
 // The playground's static table, by hand (as playground-view.test.ts has it).
@@ -228,7 +228,7 @@ const STATIC: [string, string, string][] = [
   ['api#test', 'api#build', 'src/**, test/**'],
   ['app#build', 'ui#build, api#build', 'src/**'],
   ['app#test', 'app#build', 'src/**, test/**'],
-  ['docs#build', 'nothing', 'src/**'],
+  ['app#docs', 'nothing', 'docs/src/**'],
 ]
 const LAB_STATIC: Record<LabId, [string, string, string][]> = {
   'unlisted-file': STATIC,
@@ -278,7 +278,7 @@ describe('the labs on learn/labs', () => {
       for (const edits of [[], ...LAB_STEPS[lab]]) {
         files = applyEdits(files, edits)
         const texts = configTextsOf(files)
-        expect(Object.keys(texts)).toEqual(['utils', 'ui', 'api', 'app', 'docs'])
+        expect(Object.keys(texts)).toEqual(['utils', 'ui', 'api', 'app'])
         for (const [name, t] of Object.entries(texts)) {
           const r = await planner.evaluateConfig(t, 10_000)
           expect({ name, ok: r.ok }).toEqual({ name, ok: true })
@@ -398,8 +398,8 @@ describe('two playgrounds planning at once', () => {
     files: { ...FILES, 'packages/ui/src/icon.tsx': 'export const Icon = () => null\n' },
     env: { API_URL: 'https://staging.example.com' },
   }
-  const noDocs = Object.fromEntries(
-    Object.entries(FILES).filter(([f]) => !f.startsWith('packages/docs/')),
+  const noApi = Object.fromEntries(
+    Object.entries(FILES).filter(([f]) => !f.startsWith('packages/api/')),
   )
   let configs: Record<string, unknown>
 
@@ -434,16 +434,16 @@ describe('two playgrounds planning at once', () => {
 
   it('a discovery and a plan each read their own workspace', async () => {
     const [projects, planned] = await Promise.all([
-      planner.listPlaygroundProjects({ root: PLAYGROUND_ROOT, files: noDocs }),
+      planner.listPlaygroundProjects({ root: PLAYGROUND_ROOT, files: noApi }),
       plan(FILES, ENV),
     ])
-    expect(projects.map((p) => p.name).sort()).toEqual(['api', 'app', 'ui', 'utils'])
+    expect(projects.map((p) => p.name).sort()).toEqual(['app', 'ui', 'utils'])
     expect(planned.tasks.map((t) => t.id).sort()).toEqual([
       'api#build',
       'api#test',
       'app#build',
+      'app#docs',
       'app#test',
-      'docs#build',
       'ui#build',
       'ui#test',
       'utils#build',
@@ -544,7 +544,7 @@ describe('<vx-playground data-lab>', () => {
     const el = mount()
     expect(fileList(el)).toEqual(Object.keys(FILES))
     reset(el)
-    expect(el.querySelector('.tasks').value).toBe('build test')
+    expect(el.querySelector('.tasks').value).toBe('build test docs')
     const tag = only(page('learn/playground'), /<vx-playground\b([^>]*)>/g)
     expect([...tag.matchAll(/\s([\w-]+)=/g)].map((m) => m[1])).toEqual(['data-vx-demo', 'class'])
   })

@@ -45,7 +45,7 @@ const ALL = [
   'api#test',
   'app#build',
   'app#test',
-  'docs#build',
+  'app#docs',
 ]
 const BUTTON = 'packages/ui/src/button.tsx'
 const BUTTON_MOVES = ['ui#build', 'ui#test', 'app#build', 'app#test']
@@ -60,7 +60,7 @@ const STATIC: [string, string, string][] = [
   ['api#test', 'api#build', 'src/**, test/**'],
   ['app#build', 'ui#build, api#build', 'src/**'],
   ['app#test', 'app#build', 'src/**, test/**'],
-  ['docs#build', 'nothing', 'src/**'],
+  ['app#docs', 'nothing', 'docs/src/**'],
 ]
 
 const task = (
@@ -388,15 +388,15 @@ describe("the page's Run, over the planner the site ships", () => {
   })
 
   it("shows core's refusal of a config unchanged", async () => {
-    const text = CONFIG_TEXTS['docs']!.replace("command: 'astro build'", 'command: 42')
-    const r = await run({ ...FILES, 'packages/docs/vx.config.mjs': text }, new Set())
+    const text = CONFIG_TEXTS['app']!.replace("command: 'astro build --root docs'", 'command: 42')
+    const r = await run({ ...FILES, 'packages/app/vx.config.mjs': text }, new Set())
     const evaluated = await planner.evaluateConfig(text, 10_000)
     if (!evaluated.ok) throw new Error(evaluated.error)
     const core = (() => {
       try {
         validateProjectConfig(
           evaluated.config as ProjectConfig,
-          `${PLAYGROUND_ROOT}/packages/docs/vx.config.mjs`,
+          `${PLAYGROUND_ROOT}/packages/app/vx.config.mjs`,
         )
       } catch (e) {
         return (e as Error).message

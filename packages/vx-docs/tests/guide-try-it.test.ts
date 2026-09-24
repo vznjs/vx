@@ -58,14 +58,14 @@ const ALL = [
   'api#test',
   'app#build',
   'app#test',
-  'docs#build',
+  'app#docs',
 ]
 
 /** The chapter's one question, and its answer written out. */
 const CHECK = {
   id: 'playground-env',
   question:
-    'Start from Reset. You run `vx run build test` once. Then you change `API_URL` to another value and run it again. Which tasks rerun?',
+    'Start from Reset. You run `vx run build test docs` once. Then you change `API_URL` to another value and run it again. Which tasks rerun?',
   summary: '4 of the 9 tasks rerun.',
   yes: [
     'api#build reruns (env API_URL changed).',
