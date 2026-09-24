@@ -1,10 +1,95 @@
 ---
-title: 'Only what changed'
-description: 'From a changed file to the packages it touches and their dependents, and what a change cannot be traced to.'
+title: Only what changed
+description: Find the packages a change touches and the packages that use them. Check only those.
 chapter: 7
-problem: 'CI builds all four packages for a README edit.'
+problem: 'CI builds and tests all four packages for a one-line README fix.'
 ---
 
-{/* TODO(R2): the chapter. What it teaches: From a changed file to the packages it touches, then to their dependents; `--affected`; what a change cannot be traced to (a root file no input names). Widget: GraphExplorer (change mode). */}
+import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+import Sketch from '../../../components/guide/Sketch.astro'
+import * as P from '../../../components/guide/affected/pictures.ts'
 
-Someone fixed a typo in a README, and CI built all four packages. This chapter shows how a tool finds the few tasks a change can reach.
+You fix a typo in the README and push. CI builds and tests everything.
+
+<Sketch {...P.everything} />
+
+Eight tasks ran for a file that no task reads. CI starts on a fresh
+machine, so its cache is empty and cannot help.
+
+## Find the package each file belongs to
+
+<Sketch {...P.owners} />
+
+Git lists the files that changed since your branch started. Each file sits
+in one package's folder, so it belongs to that package. The README sits in
+no package folder.
+
+## Add every package that uses it
+
+<Sketch {...P.dependents} />
+
+`app` uses `ui`, so a change to `ui` can break `app`. Add every package
+that uses a changed package, directly or through another one. The result
+is the [affected](../../learn/glossary/#affected) set.
+
+Pick a package below and see which tasks a change to it runs.
+
+<GraphExplorer />
+
+## Affected picks packages, the cache skips work
+
+<Sketch {...P.considerThenRun} />
+
+These are two different filters. The affected set works on whole packages,
+before anything runs. The cache works on single tasks: it skips a task
+when nothing the task reads has changed. Here, no task reads the README,
+so nothing runs.
+
+## A file no task declares is invisible
+
+<Sketch {...P.invisible} />
+
+This file sits in no package, so nothing is affected. No task declares it,
+so no cache sees it either. The builds pass, and they never checked your
+change. The fix is to declare the file as an input of the tasks that read
+it.
+
+A missing entry in `package.json` hides a package the same way: if `app`
+does not list `ui`, a change to `ui` never reaches `app`.
+
+## In vx
+
+`--affected` runs your tasks only in the changed packages and the packages
+that use them:
+
+```sh
+vx run build test --affected=origin/main
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [The `--affected` flag and its base](../../cli/#--affectedbase)
+- [A change selects its package and the ones that use it, never others](https://github.com/vznjs/vx/blob/main/packages/vx/tests/affected-dependents.test.ts)
+- [A README-only change selects nothing and exits 0](https://github.com/vznjs/vx/blob/main/packages/vx/tests/affected-base-notes.test.ts)
+- [A declared root file selects the packages that declare it](https://github.com/vznjs/vx/blob/main/packages/vx/tests/affected-workspace-files.test.ts)
+- [A lockfile change selects every package](https://github.com/vznjs/vx/blob/main/packages/vx/tests/affected.test.ts)
+- [Package links come from `package.json`](https://github.com/vznjs/vx/blob/main/packages/vx/tests/package-graph.test.ts)
+
+</details>
+
+## Check yourself
+
+You edit `packages/ui/README.md`, and no task reads it. Which packages are
+affected, and how many tasks run on a warm cache?
+
+<details>
+<summary>Answer</summary>
+
+`ui` and `app` are affected, but no task runs: nothing any task reads has
+changed.
+
+</details>
+
+The run is now small. But CI still rebuilds `utils` from scratch, even
+though your laptop built the very same thing an hour ago.

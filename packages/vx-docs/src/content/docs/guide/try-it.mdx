@@ -1,10 +1,59 @@
 ---
-title: 'Try it'
-description: 'The planner on the same four packages: edit a file, the env or a config, and read which tasks run and why.'
+title: Try it
+description: Every idea from this book, on the same four packages, in your browser. Then the labs, and your own repository.
 chapter: 10
-problem: 'Reading about a planner is not the same as watching one decide.'
+problem: 'See every idea work on the four packages, in your browser.'
 ---
 
-{/* TODO(R2): the chapter. What it teaches: The playground on the same four packages: edit a file, the env or a config and read which tasks run and why. Then the labs, then the quickstart. Widget: Playground, labs. */}
+import Playground from '../../../components/demos/Playground.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
+import Sketch from '../../../components/guide/Sketch.astro'
+import * as P from '../../../components/guide/try-it/pictures.ts'
 
-Reading about a planner is not the same as watching one decide. This chapter hands you the planner and the same four packages.
+Try every idea from this book yourself, without installing anything.
+
+<Sketch {...P.loop} />
+
+## Edit, run, and read what moved
+
+This is vx's own planner, running in your page on the same four packages.
+
+<Playground />
+
+## One file moves four keys
+
+<Sketch {...P.ripple} />
+
+Run once, edit `packages/ui/src/button.tsx`, and run again. Only these four
+tasks miss.
+
+## Break it on purpose in the labs
+
+<Sketch {...P.labs} />
+
+Each [lab](../../learn/labs/) starts with one thing wrong and shows how vx
+catches it.
+
+## In vx
+
+On your own repository, after the [quickstart](../../quickstart/) (or
+[from Turborepo](../../migrate/from-turborepo/), or
+[from Nx](../../migrate/from-nx/)), the same plan is one command:
+
+```sh
+vx run build test --dry
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [`--dry` prints the plan without running it](../../cli/#planning-mode---dry---graph)
+- [This planner and the `vx` command give every task the same key](https://github.com/vznjs/vx/blob/main/packages/vx/tests/playground-parity.unsafe.test.ts)
+
+</details>
+
+## Check yourself
+
+<Checkpoint id="playground-env" />
+
+That is the whole book. The next problem is your own repository.

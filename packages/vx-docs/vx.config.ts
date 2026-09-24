@@ -46,6 +46,17 @@ const GUIDE_PROOFS = [
   'packages/vx/tests/sandbox-request.test.ts',
   'packages/vx-schedule-history/tests/schedule-history.test.ts',
   'packages/vx-bench/tests/schedule-policy.test.ts',
+  'packages/vx/tests/affected-dependents.test.ts',
+  'packages/vx/tests/affected-base-notes.test.ts',
+  'packages/vx/tests/affected-workspace-files.test.ts',
+  'packages/vx/tests/affected.test.ts',
+  'packages/vx/tests/package-boundaries.unsafe.test.ts',
+  'packages/vx/tests/local-fallbacks.test.ts',
+  'packages/vx/tests/plugin-capabilities.test.ts',
+  'packages/vx/tests/telemetry.test.ts',
+  'packages/vx/tests/telemetry-lifecycle.test.ts',
+  'packages/vx/tests/playground-parity.unsafe.test.ts',
+  'packages/vx-reapi/tests/executor.test.ts',
 ]
 const PROOFS = [...new Set([...CHOOSING_PROOFS, ...GUIDE_PROOFS])]
 
