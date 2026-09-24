@@ -1117,7 +1117,9 @@ only Nx's daemon is outside the CPU column). `comparison.md` said
     task and the parity rows (item 695, entry 14cq): the site builds
     `playground/planner.js` and core's unsafe suite holds it to the CLI.
     Next is config editing (the reader's `vx.config.mjs` evaluated in a
-    Worker, with its parity row), then the island and the UI.
+    Worker, with its parity row), then the island and the UI, designed
+    in `design/playground-ui-2026-09.md` (item 700: one Learn page on
+    the toy monorepo, held to the CLI by its own parity row).
 
 ## Decisions (this arc)
 
