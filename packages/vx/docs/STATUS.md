@@ -119,7 +119,9 @@ test is telling the truth.
       saved before the fix sits under a key that never saw the file, so
       it would hit for as long as only that file changes. Fallout:
       `@vzn/vx#check.bun` passed only through the root `@vzn/vx` link (Bun
-      probes `bunfig.toml`) and now grants it. This repo's seven
+      probes `bunfig.toml`; on macOS seatbelt refuses an ungranted cwd, so
+      the granted script read as "Module not found", caught by darwin CI
+      only) and now grants `.`, safe as the task is uncached. This repo's seven
       root-declared packages are self-linked under a fresh Bun install
       too, so the bug was live on CI for them. Refuted along the way: "this
       box's sandbox does not enforce read denies" — it does; the

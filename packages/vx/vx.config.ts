@@ -57,13 +57,14 @@ export default defineProject({
         command: 'bun scripts/bun-floor.ts',
         sandbox: {
           allow: {
-            // Bun looks for `bunfig.toml` in its cwd at startup. There is
-            // none today, but one added would change how the script runs,
-            // so it is granted, not ignored: an ignore keeps it denied and
-            // Bun would start without it. (The root's `@vzn/vx` link
-            // granted all of packages/vx until core stopped following a
-            // link back to the task's own project.)
-            read: ['scripts/bun-floor.ts', 'src/util/**', 'bunfig.toml'],
+            // The whole project, not the script's files: Bun probes
+            // `bunfig.toml` in its cwd, and on macOS seatbelt refuses a
+            // cwd no grant covers ("Module not found" for a granted
+            // script). Both passed only through the root's `@vzn/vx` link
+            // until core stopped following a link back to the task's own
+            // project (item 720). The task is uncached, so the wide grant
+            // cannot make a stale hit.
+            read: ['.'],
           },
         },
       },
