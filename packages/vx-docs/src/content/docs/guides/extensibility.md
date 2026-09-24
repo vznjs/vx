@@ -32,7 +32,7 @@ what a plugin declines lands back on this machine.
 
 ```mermaid
 flowchart LR
-  cfg["configs"] --> proj["project()"] --> graph["graph()"] --> key["key()"] --> sched["schedule()"] --> admit["admit()"] --> exec["executor()"] --> cache["cache()"] --> obs["telemetry()"]
+  cfg["configs"] --> proj["project()"] --> grph["graph()"] --> key["key()"] --> sched["schedule()"] --> admit["admit()"] --> exec["executor()"] --> cache["cache()"] --> obs["telemetry()"]
   proj -. edit tasks .-> p["plugins in vx.workspace.ts<br/>first-party OR your own"]
   exec -. where it runs .-> p
   cache -. where artifacts live .-> p

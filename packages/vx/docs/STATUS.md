@@ -946,7 +946,7 @@ here: `KeyCalculator.astro` reads `var(--sl-font-mono)`, which Starlight
 never defines, so the caching widget's keys render proportional (fixed
 in item 696); every
 page with a Mermaid diagram logs one uncaught non-Error object in
-Chromium; and `benchmarks.md`'s 2026-09-03 head-to-head credits Turbo's
+Chromium (fixed in item 697); and `benchmarks.md`'s 2026-09-03 head-to-head credits Turbo's
 daemon with answering "what changed", which Turbo 2.10+ no longer uses
 for `turbo run` (check which Turbo version that row measured before
 editing it).
@@ -983,6 +983,29 @@ stylesheets define (read from its `dist/style/`, so the set follows the
 installed version), or carries a fallback. Red with the two fixes
 reverted, naming both files; a control row checks the definitions were
 read (`--sl-font-system-mono` in, `--sl-font-mono` out).
+
+14cs. **Item 697 (2026-09-24): every diagram renders, and none throws.**
+Two defects behind the console error the W3 implementer saw. First, a
+race: `Head.astro` rendered on load and again from its theme observer,
+which Starlight trips as it sets `data-theme` at startup, and two
+`mermaid.run` calls over the same blocks tore each other's DOM down, so
+every page with a diagram threw mermaid's non-Error `{ str, hash }`
+("Cannot read properties of null (reading 'firstChild')") while the
+second render still drew the diagrams. Renders now run one at a time,
+and a failed one is reported as `[vx] a diagram did not render: …`
+instead of thrown. Second, a real break: the extensibility guide's
+pipeline named a node `graph`, a mermaid keyword, so that page showed
+mermaid's error graphic instead of the diagram; the node is `grph` now.
+Driven in Chromium over the built site, all 14 pages with diagrams:
+before, every page threw (the guide twice, the second its parse
+error); after, none, 24 of 24
+diagrams drawn, no error graphic. The race fix has no committed row (the
+site suite runs no browser); the keyword class does:
+`tests/mermaid-ids.test.ts` reads every flowchart the build shipped,
+hand-written and widget-generated, and requires that no node id is one
+of the flowchart grammar's keywords. Red with `graph` restored, naming
+`guides/extensibility`; a control row checks the id reader on a known
+source.
 
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
