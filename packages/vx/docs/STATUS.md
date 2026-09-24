@@ -578,6 +578,65 @@ and 5 in `key-model-core.test.ts`; the site suite is 43 green. No
 browser on this box: the element was driven in happy-dom from the
 scratchpad (not a dependency), and its layout has not been seen.
 
+14cg. **Item 685 (roadmap W4, 2026-09-24): the scheduling page, with vx's
+own scheduling code running in the browser.** `learn/scheduling.mdx`
+teaches workers and why N of them are not N times faster, the critical
+path and the lower bound (the larger of the chain and the work over the
+workers), why the order of ready tasks matters, the four priorities, a
+task with no history (item 669's numbers, from `schedule-policy.md`),
+and the restore tier beside the exec tier. Then how vx does it (a
+`vx.workspace.ts` block the config law type-checks), one sentence each
+for Turborepo, Nx and Bazel from their docs (none documents how a local
+run orders ready tasks; Nx's source does, and is linked as source), a
+Mermaid graph with the critical path marked, and a checkpoint. The graph
+is W1's monorepo plus a lint per package and a 10-second `docs#build`
+that nothing waits on: 48 s of work, a 24 s critical path, and on two
+workers core's order ends at 27 s where learned durations reach 24.
+
+The simulator is not a model. `demos/model/scheduler-sim.ts` hands every
+schedule to `vx-bench/schedule-policy.ts`, which ranks with core's
+`computeReverseDepCount` and `mergePriorities` and the plugin's
+`criticalPathPriorities`. Bundling those needed no shim: they moved,
+unchanged, into files that import only types (`graph/priorities.ts`,
+`vx-schedule-history/src/critical-path.ts`; the scheduler and the plugin
+re-import them), because `scheduler.ts` pulls `util/`, whose modules read
+`Bun` and `process` at load. The site defines `import.meta.main` false,
+so the bench's report drops out. The island is one 9,618 B chunk (4,018
+B gzip) that imports nothing and holds no `Bun`, `process`, `node:` or
+`bun:`. `simulate` now returns `spans`, held to the real `runGraph`'s
+start times by the bench's replay row (red with every start shifted 1
+ms). Without JavaScript: two Gantt charts (core's order and learned
+durations, two workers), the bound, a finish table for one to four
+workers under every policy, the task table, and a static table of the
+no-history cases. With it: workers, a policy per chart, a duration and a
+"no history" box per task, Reset, and a live region. Checked in Chromium
+at 1280 and 390 px (the charts scroll sideways below 34rem), light and
+dark, JavaScript on and off.
+
+`tests/demo-islands.test.ts` gained 11 rows: the model against
+schedules traced by hand, the finish and no-history tables, the model
+against the bench's `simulate` on three bench shapes (the row that keeps
+the two one code), the built charts and their text alternative, render
+against model, the tables, the hidden controls, the Mermaid graph
+against the model's tasks and edges, the ranking the prose walks
+through, the checkpoint, and the loader with no platform in the chunk.
+Twenty mutations, each rebuilt and run: the lane rule, the model
+dropping the history mask, the bench's tie-break, core counting direct
+dependents, the plugin dropping the chain, the static worker count, the
+bound, the critical-path class, the text alternative, the no-history
+table, the task table, two hidden controls, two diagram edits, the
+checkpoint number, the `define`, the element's name, the bench importing
+`scheduler.ts`, and a prose count. Each turned a row red and passed
+after restore. Direct dependents first survived every schedule row (on
+this graph they rank the same way), so the ranking row was added and
+now fails. The site's `build`, `test` and `dev` tasks grant
+`../vx-bench/schedule-policy.ts` and key on the three sim sources; a
+sandboxed `vx run @vzn/vx-docs#test` without the grant fails the build
+with `UNRESOLVED_IMPORT`. Also corrected: the glossary's vx line for
+critical path (core ranks by tasks waiting; the plugin by critical path)
+and its Nx and Bazel dashes (both docs use the term), and the plugin
+README's "remaining critical path by edge count" for core's baseline.
+
 14ch. **Item 686 (roadmap W5, W6, 2026-09-24): the architecture and
 extending pages teach the plugin API.** `learn/architecture.mdx` explains
 a pipeline with seams in general terms, then vx's stages, the local
@@ -668,9 +727,11 @@ the rule is removed, the cascade covers it.
     W1, the first real Learn page and the graph explorer, is DONE (item
     681, entry 14cc), and so is W12, the glossary (item 683, entry 14ce).
     W2, caching and the key calculator, is DONE (item 684, entry 14cf).
-    W5 and W6, the architecture page with its pipeline explorer and the
-    worked plugins, are DONE (item 686, entry 14ch). Next step: W4 and
-    the scheduler sim.
+    W4, the scheduling page and the scheduler simulator on vx's own
+    ranking code, is DONE (item 685, entry 14cg). W5 and W6, the
+    architecture page with its pipeline explorer and the worked plugins,
+    are DONE (item 686, entry 14ch). Next step: W3 (correctness) and W7
+    (choosing).
 
 ## Decisions (this arc)
 

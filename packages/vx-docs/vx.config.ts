@@ -1,5 +1,18 @@
 import { defineProject } from '@vzn/vx'
 
+// The Learn page's scheduler simulator (item 685) runs vx-bench's simulator
+// over vx's own ranking code, so the site's build bundles, and its test
+// imports, three files outside this project. Core and the history plugin are
+// devDependencies, whose directories the sandbox grants by itself; vx-bench
+// is not, so its file is granted by name. All three are inputs: an edit to
+// any of them changes the schedules the page draws.
+const SIM_SOURCES = [
+  'packages/vx-bench/schedule-policy.ts',
+  'packages/vx/src/graph/priorities.ts',
+  'packages/vx-schedule-history/src/critical-path.ts',
+]
+const SIM_READ = '../vx-bench/schedule-policy.ts'
+
 export default defineProject({
   tasks: {
     ci: {
@@ -78,6 +91,7 @@ export default defineProject({
           allow: {
             read: [
               '**/*',
+              SIM_READ,
               '../vx/src/**',
               '../vx-github/src/**',
               '../vx-lockfile/src/**',
@@ -104,6 +118,7 @@ export default defineProject({
             '.gitignore',
             'package.json',
           ],
+          workspaceFiles: SIM_SOURCES,
         },
         outputs: { files: [] },
       },
@@ -133,7 +148,7 @@ export default defineProject({
             // The pipeline explorer shows each hook as core declares it, read
             // from `VxPlugin`'s source at build time (PipelineExplorer.astro);
             // its key arrives through `install` (core's `source`, item 687).
-            read: ['**/*', '../vx/src/orchestrator/plugin.ts'],
+            read: ['**/*', SIM_READ, '../vx/src/orchestrator/plugin.ts'],
             // astro's and vite's caches live under `.astro/` (astro.config.mjs),
             // never under node_modules: a write grant there makes the sandbox
             // punch the read grant into node_modules' children, and bwrap
@@ -156,6 +171,7 @@ export default defineProject({
         // `packages/`, so a docs edit never re-keyed the build.
         inputs: {
           files: ['**/*'],
+          workspaceFiles: SIM_SOURCES,
         },
         outputs: { files: ['dist/**'] },
       },
@@ -171,7 +187,7 @@ export default defineProject({
         timeout: 120000,
         sandbox: {
           allow: {
-            read: ['**/*'],
+            read: ['**/*', SIM_READ],
             write: ['.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
