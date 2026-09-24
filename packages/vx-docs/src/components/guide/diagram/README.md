@@ -90,6 +90,8 @@ sentences, the 8-unit corner, the two strokes and these tones.
 A widget that draws its own SVG keeps the phone rule too. The scheduler
 simulator's `ganttSvg` draws each chart twice, `data-layout="wide"` with
 time across and `data-layout="narrow"` with time down the page, one
-column per worker, 340 across; its stylesheet swaps them at this kit's
-32rem, and `tests/guide-concurrency.test.ts` holds the phone chart to the
-wide one's bars, lines and words.
+column per worker, 340 across. Its stylesheet swaps them by a container
+query at the wide chart's own 34rem minimum, so the chart's box decides
+and no width between phone and desktop scrolls sideways;
+`tests/guide-concurrency.test.ts` holds the phone chart to the wide one's
+bars, lines and words.

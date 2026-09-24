@@ -154,11 +154,13 @@ const rows = finishTable(SIM_TASKS, none)
     font-weight: 700;
   }
   /* Each chart is drawn twice (ganttSvg): time across, and for a phone time
-     down the page. The phone one shows at the diagram kit's breakpoint,
-     where it draws at about full size; above it the wide one keeps a width
-     its labels read at, and scrolls sideways short of it. */
+     down the page. The wide one needs 34rem for its labels to read; the
+     chart's own box decides, so wherever the wide one would not fit, the
+     phone one shows at about full size (and no larger than 25rem, which a
+     box just short of 34rem would stretch it past) and nothing scrolls
+     sideways. */
   .gantt {
-    overflow-x: auto;
+    container-type: inline-size;
   }
   .gantt :global(svg) {
     display: block;
@@ -172,12 +174,14 @@ const rows = finishTable(SIM_TASKS, none)
   .gantt :global(svg[data-layout='narrow']) {
     display: none;
   }
-  @media (max-width: 32rem) {
+  @container (max-width: 34rem) {
     .gantt :global(svg[data-layout='wide']) {
       display: none;
     }
     .gantt :global(svg[data-layout='narrow']) {
       display: block;
+      max-width: 25rem;
+      margin-inline: auto;
     }
   }
   .gantt :global(.lane-label),

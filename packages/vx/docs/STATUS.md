@@ -189,8 +189,8 @@ test is telling the truth.
 724.  DONE (2026-09-24, Next 16). Every Guide picture reads on a phone.
       Read at 390 px, each 600-wide picture shrank to the column and set
       its type at 7-9 px, and the scheduler's charts scrolled sideways
-      with nothing to say more was there (their phone form is Next 16's
-      last piece). A picture now carries a phone
+      with nothing to say more was there (their phone form is item 725).
+      A picture now carries a phone
       layout (`narrow`, at most 360 across): the same boxes, arrows,
       frames and words, laid out tall, shown below 32rem at 13-14 px.
       `diagram-kit.test.ts` holds that every picture wider than a phone
@@ -202,6 +202,16 @@ test is telling the truth.
       above a 410-wide drawing, the graph explorer has a phone layout
       from its model, and code blocks wrap. The site plan's "Done means"
       is rewritten for the Guide, each line naming its test.
+
+725.  DONE (2026-09-24, Next 16). The scheduler simulator's Gantt charts
+      read on a phone: `ganttSvg` draws each chart twice, time across and
+      time down the page (one column per worker, 340 across, one scale for
+      both charts of a pair), and a container query at the wide chart's
+      own 34rem minimum picks one, so the chart's box decides and no width
+      scrolls sideways (a viewport breakpoint had left 513-585 px where the
+      wide one overflowed). `guide-concurrency.test.ts` holds the phone
+      chart to the wide one's bars, classes, titles, lines and label, and
+      the built CSS to the container query.
 
 ## In flight
 
@@ -435,9 +445,8 @@ the architect before it merges; then Next 17. Never end with "what next?".
 16. **The site, redone as one story (owner, 2026-09-24).** R1–R3
     shipped as item 721 (`design/site-redo-2026-09.md`), R4 and the prose
     polish as 722, the widgets as 723, the phone read and the rewritten
-    "Done means" as 724. Left: the scheduler's charts in a phone form
-    (time down the page, one column per worker; they scroll sideways
-    below 34rem today), then the owner's read.
+    "Done means" as 724, the scheduler's charts in a phone form as 725.
+    Left: the owner's read.
 
 17. **A sandboxed task reads a linked sibling package unseen (found by
     the capability audit, 2026-09-24).** `sandbox-request.ts` grants

@@ -97,7 +97,8 @@ const NO_HISTORY = [
 ]
 
 /** A built page's CSS rules, from its inline styles and the sheets it
- *  links, each with the media query around it, Astro's scoping stripped. */
+ *  links, each with the media or container query around it (`media` names
+ *  which, then its condition), Astro's scoping stripped. */
 function cssRules(html: string): { media: string; selector: string; body: string }[] {
   const sheets = [
     ...[...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]!),
@@ -105,7 +106,7 @@ function cssRules(html: string): { media: string; selector: string; body: string
       readFileSync(path.join(DIST, m[1]!), 'utf8'),
     ),
   ]
-  const media = /@media([^{]+)\{((?:[^{}]*\{[^{}]*\})*)\}/g
+  const media = /@(media|container)([^{]+)\{((?:[^{}]*\{[^{}]*\})*)\}/g
   const rule = /([^{}]+)\{([^{}]*)\}/g
   const rules: { media: string; selector: string; body: string }[] = []
   const add = (at: string, block: string): void => {
@@ -118,13 +119,14 @@ function cssRules(html: string): { media: string; selector: string; body: string
             .replace(/['"]/g, '')
             .replace(/\s+/g, ' ')
             .trim(),
-          body: r[2]!.trim().replace(/;$/, ''),
+          // Declarations sorted: the minifier reorders them.
+          body: r[2]!.trim().replace(/;$/, '').split(';').sort().join(';'),
         })
       }
     }
   }
   for (const css of sheets) {
-    for (const m of css.matchAll(media)) add(m[1]!, m[2]!)
+    for (const m of css.matchAll(media)) add(`${m[1]} ${m[2]!.trim()}`, m[3]!)
     add('', css.replace(media, ''))
   }
   return rules
@@ -448,21 +450,37 @@ describe('guide/concurrency', () => {
     }
   })
 
-  // The page's own CSS, as built: the phone drawing shows where the diagram
-  // kit shows its phone layouts, and nothing holds it wider than the phone.
-  it('shows the phone chart at the kit’s breakpoint, with no width to scroll', () => {
+  // The page's own CSS, as built: the chart's own box picks the drawing, at
+  // the width the wide one needs, so the wide one shows only where it fits
+  // and no width in between scrolls sideways (a viewport breakpoint left
+  // 513-585 px of viewport where the wide one overflowed its box).
+  it('shows the phone chart wherever the wide one would not fit, with no width to scroll', () => {
     const rules = cssRules(html)
     const gantt = rules.filter((r) => r.selector.startsWith('.gantt'))
+    const phoneAt = (): string =>
+      gantt.find(
+        (r) =>
+          r.selector === '.gantt svg[data-layout=narrow]' &&
+          r.body.split(';').includes('display:block'),
+      )!.media
     expect(
       gantt
         .filter((r) => /(?:^|;)\s*(?:min|max)-width:/.test(r.body))
-        .map((r) => `${r.media}${r.selector}{${r.body}}`),
-    ).toEqual(['.gantt svg[data-layout=wide]{min-width:34rem}'])
-    const phone = rules.find(
-      (r) => r.selector === '.vx-diagram svg[data-layout=narrow]' && r.body === 'display:block',
-    )!.media
-    // The minifier writes `max-width: 32rem` as a range.
-    expect(phone).toMatch(/32rem/)
+        .map((r) => `${r.media}${r.selector}{${r.body}}`)
+        .sort(),
+    ).toEqual(
+      [
+        '.gantt svg[data-layout=wide]{min-width:34rem}',
+        `${phoneAt()}.gantt svg[data-layout=narrow]{display:block;margin-inline:auto;max-width:25rem}`,
+      ].sort(),
+    )
+    expect(gantt.filter((r) => r.selector === '.gantt').map((r) => r.body)).toContain(
+      'container-type:inline-size',
+    )
+    const phone = phoneAt()
+    // A container query, at the wide drawing's own minimum (the minifier
+    // may write `max-width: 34rem` as a range).
+    expect(phone).toMatch(/^container .*\b34rem\b/)
     const display = (layout: string, media: string): string[] =>
       gantt
         .filter((r) => r.selector === `.gantt svg[data-layout=${layout}]` && r.media === media)
@@ -472,7 +490,12 @@ describe('guide/concurrency', () => {
       display('narrow', ''),
       display('wide', phone),
       display('narrow', phone),
-    ]).toEqual([['min-width:34rem'], ['display:none'], ['display:none'], ['display:block']])
+    ]).toEqual([
+      ['min-width:34rem'],
+      ['display:none'],
+      ['display:none'],
+      ['display:block;margin-inline:auto;max-width:25rem'],
+    ])
   })
 
   it('states the finish times and the durations in tables', () => {
