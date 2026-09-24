@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v31'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v32'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -1195,6 +1195,13 @@ was not), and the cache tests.
 
 ### History
 
+- **v31 → v32**: stored bytes wrong under a key the fix does not change
+  (item 739). A declared output whose name is not UTF-8 (`x\xffy`) came
+  back from `Bun.Glob` decoded lossily as `x�y`, which names no file, so
+  the save packed the tree without it and every hit restored a tree
+  missing that file under an unchanged key. vx now refuses such a name
+  by name; an artifact saved before the fix is the wrong bytes, so v31
+  entries are not trusted.
 - **v30 → v31**: stored bytes wrong under a key the fix does not change
   (item 726), v30's shape for a sibling. A sandboxed task that declared
   `cache` was granted every workspace package linked in its

@@ -418,6 +418,23 @@ false`, the first failure failing the task; `commands: []` a no-op;
       a task could write is not reused across task runs, and a refusal is
       never decided from a memo.
 
+739.  DONE (2026-09-24, upstream survey: three silent stale hits).
+      An UNSET declared `cache.inputs.env` name keyed like one set to `""`
+      (turborepo class `stale-hit:env-unset`): it now folds as the bare
+      name, a NUL in an env name is refused so the two can never meet, and
+      keys for SET values are byte-identical (the key-fold pin held); the
+      REAPI plugin leaves an unset name out of the remote Command. A file
+      whose name is not UTF-8 was decoded lossily from git's `-z` output and
+      from `Bun.Glob`, so an input by that name was never read and an output
+      never saved (turborepo#9345): such a name is now refused by name.
+      The line-ending check missed git's default global and system
+      attributes files: one `git var -l` (git ≥ 2.42) now names them, same
+      spawn count. `CACHE_VERSION` v31 → v32: an artifact saved before the
+      non-UTF-8 fix lacks that output under an unchanged key. The fourth
+      fix of the batch, `--exclude-dependencies` keying on the dependency it
+      skips (nx#35234), conflicts with item 737's graph builder and is being
+      ported.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
