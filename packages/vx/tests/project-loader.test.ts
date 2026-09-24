@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -1015,6 +1015,31 @@ export default { tasks: preset }
     )
     expect(err?.name).toBe('UserError')
     expect(err?.message).toBe(`Project config ${file}: cannot find './missing-preset.mjs'`)
+  })
+  it('a served config reached through a symlinked directory loads (macOS temp roots are one)', async () => {
+    // Bun hands onLoad the RESOLVED path; a held source looked up by the
+    // specifier vx imported came back undefined for every config whose
+    // directory is reached through a link (every macOS mkdtemp root).
+    const real = path.join(dir, 'real')
+    await mkdir(real)
+    await symlink(real, path.join(dir, 'link'))
+    await writeFile(
+      path.join(real, 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'linked' } } } }",
+    )
+    const cfg = await loadProjectConfig(path.join(dir, 'link', 'vx.config.mjs'))
+    expect(cfg.tasks?.build?.exec?.command).toBe('linked')
+  })
+
+  it('two configs with the same bytes load together, each from its own path', async () => {
+    const text = "export default { tasks: { build: { exec: { command: 'same' } } } }"
+    const files = ['a', 'b', 'c'].map((n) => path.join(dir, n, 'vx.config.mjs'))
+    for (const f of files) {
+      await mkdir(path.dirname(f))
+      await writeFile(f, text)
+    }
+    const cfgs = await Promise.all(files.map((f) => loadProjectConfig(f)))
+    expect(cfgs.map((c) => c.tasks?.build?.exec?.command)).toEqual(['same', 'same', 'same'])
   })
 })
 
