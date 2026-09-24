@@ -426,6 +426,45 @@ purpose: `sidebar-coverage.test.ts`'s imported set and the safe
 `doc-references.test.ts` read what `import-docs.ts` generates from
 `packages/vx/docs`, which is Markdown only.
 
+14cc. **Item 681 (roadmap W1, 2026-09-24): the first Learn page teaches.**
+`learn/what-is-task-orchestration.mdx` explains a task, a dependency,
+the task graph and why `npm run` or a shell script stops scaling
+(ordering, parallelism, rerunning only what changed, caching as a
+preview of W2) in tool-neutral terms, then how vx does it (a config
+block, now type-checked by item 680's widened law, with links to the
+schema, CLI, scheduler and caching pages, and the cost of explicit
+inputs), then one sentence each for Turborepo, Nx and Bazel with a link
+to their docs, then a checkpoint whose answer is in a `<details>`. Two
+Mermaid diagrams (the package graph, and `^build` and `build` applied to
+`ui`). The W0 widget grew into the graph explorer and took its place
+(`GraphExplorer.astro` + `graph-explorer.ts`; `AffectedGraph` is gone,
+because one page carries one widget). The toy monorepo is four packages
+(`utils`; `ui` and `api` use it; `app` uses both) with `build` and `test`
+each. The shared model in `demos/model/toy-monorepo.ts` derives the
+eight tasks, the waves, the affected packages, the tasks `--affected`
+selects, the upstream tasks the cache restores, and the order sentence.
+Without JavaScript: the SVG in four wave rows, a caption that states the
+waves, and a table that gives, per changed package, what runs, what is
+needed first from the cache, and the order. With JavaScript: package
+buttons (a node click also works; Escape and Clear reset), lit / dashed /
+faded tasks, the selected table row, and a live region with the run and
+its order. Checked in Chromium at 1440 and 390 px, with JavaScript on and
+off; the table stacks per row under 40rem. `tests/demo-islands.test.ts`
+has 13 rows: the model against hand-written sets (edges, waves, each
+change's affected, rerun and needed sets, the order), the built page
+against those sets and against the model, the caption, the hidden
+controls, the checkpoint answer, and the loader. Twelve mutations (model
+rules, the Astro render, the MDX answer, the element's name) turned
+every row red at least once and green after restore. Two first-draft
+mutations were no-ops and survived for that reason: dropping the first
+task's edges (it has none) and removing a second mention of a task. They
+were replaced with mutations that change what the rows read. The site's
+`test` task declares the model as an input, because the test imports it.
+The competitor links could not be fetched from the implementer's box; the
+coordinator checked each claim and URL against the tools' own docs
+sources (vercel/turborepo, nrwl/nx, bazelbuild/bazel, 2026-09-24) and
+moved three Nx links to its current `/docs/` paths.
+
 14cd. **Item 682 (2026-09-24): the cache key carries 64 bits of state.**
 The W9 spike (item 676) measured that Bun's xxHash3 reads only the low
 32 bits of its seed, and every cache key, the workspace fingerprint,
@@ -465,7 +504,8 @@ guard would be unreachable.
     planner running in the browser (W9), labs where the reader breaks a
     build (W10), checkpoints (W11) and a glossary (W12). W0, the
     skeleton and the island pattern, is DONE (item 675, entry 14bw).
-    Next step: W1 and the graph explorer.
+    W1, the first real Learn page and the graph explorer, is DONE (item
+    681, entry 14cc). Next step: W2 and the key calculator.
 
 ## Decisions (this arc)
 

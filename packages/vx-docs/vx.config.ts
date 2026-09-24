@@ -76,6 +76,9 @@ export default defineProject({
           files: [
             'tests/**',
             'src/content/docs/**',
+            // demo-islands.test.ts imports the widgets' model to hold the
+            // built page to it.
+            'src/components/demos/model/**',
             'astro.config.*',
             '.gitignore',
             'package.json',
