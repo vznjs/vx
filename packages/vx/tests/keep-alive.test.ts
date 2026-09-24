@@ -99,6 +99,7 @@ describe('a persistent task keeps an open stdin', () => {
     // esbuild --watch (Vite's case in turborepo#8915) exits 0 when its
     // stdin ends. Spawned with `stdin: 'ignore'`, it became ready and
     // exited at once, and `vx run dev` ended green. `cat` is that server.
+    // The marker is spelled apart in the command: a CI frame echoes it.
     const dir = await addProject(
       root,
       'app',
@@ -107,7 +108,7 @@ describe('a persistent task keeps an open stdin', () => {
           tasks: {
             dev: {
               exec: {
-                command: 'echo $$ > pid.txt; echo READY; cat; echo STDIN-ENDED',
+                command: "echo $$ > pid.txt; echo READY; cat; printf 'STDIN-%s\\n' ENDED",
                 persistent: { readyWhen: 'READY' },
               },
             },

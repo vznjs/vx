@@ -448,12 +448,17 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
       expect(handle.timedOut()).toBe(true)
       expect(isAlive(gc)).toBe(true)
       await handle.settle()
-      expect(await waitForDead(gc, 500)).toBe(true)
+      // Unsettled, it sleeps 30 s. Settled, it is a zombie until init reaps
+      // it, and under the sandbox's foreign procfs (util/procfs.ts) a zombie
+      // reads as alive: CI's reaper took past 500 ms.
+      expect(await waitForDead(gc, 3_000)).toBe(true)
     } finally {
       if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = prev
       reader.releaseLock()
-      if (isAlive(gc)) process.kill(gc, 'SIGKILL')
+      try {
+        process.kill(gc, 'SIGKILL')
+      } catch {}
     }
   })
 })
