@@ -1449,6 +1449,123 @@ describe.skipIf(!available || process.platform !== 'linux')(
 )
 
 describe.skipIf(!available || process.platform !== 'linux')(
+  'the demo in an npm or Yarn workspace, which links the task its own project',
+  () => {
+    // npm and Yarn classic link EVERY workspace package at the root, the
+    // task's own included, and the link grant used to hand that target
+    // back whole: `web#build`, granted `src/**`, read `banner.txt` with no
+    // violation, and an edit to it was a stale hit — the demo above,
+    // false in any npm or Yarn workspace
+    // (docs/design/linked-sibling-reads-2026-09.md, P3). Linux-only like
+    // the demo, for its strace line.
+    let fixture: Fixture
+
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const config = (files: string[], command: string): string => `
+      export default {
+        tasks: {
+          build: {
+            exec: {
+              command: ${JSON.stringify(command)},
+              sandbox: { allow: { read: ${JSON.stringify(files)}, write: ['dist/'] } },
+            },
+            cache: { inputs: { files: ${JSON.stringify(files)} }, outputs: { files: ['dist/**'] } },
+          },
+        },
+      }
+    `
+    const demo = 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt'
+
+    /** `web` and `ui`, both linked at the root as npm lays them out; returns web's dir. */
+    const npmWorkspace = async (command: string): Promise<string> => {
+      const dir = await addProject(fixture.root, '@x/web', {
+        config: config(['src/**'], command),
+        files: { 'src/index.ts': 'export default 2\n', 'banner.txt': '/*! v2 */\n' },
+      })
+      await addProject(fixture.root, '@x/ui', { files: { 'index.js': 'export const ui = 1\n' } })
+      await mkdir(path.join(fixture.root, 'node_modules', '@x'), { recursive: true })
+      await symlink('../../packages/x-web', path.join(fixture.root, 'node_modules', '@x', 'web'))
+      await symlink('../../packages/x-ui', path.join(fixture.root, 'node_modules', '@x', 'ui'))
+      return dir
+    }
+
+    const deniesBanner = async (cwd: string, dir: string): Promise<void> => {
+      const r = await run({ cwd, tasks: ['build'], log: collectingLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('failed')
+      expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
+        `openat(banner.txt) = -1 ENOENT  [${realpathSync(dir)}/banner.txt]`,
+      ])
+    }
+
+    it(
+      'the self-link grants nothing: the undeclared read fails with one line naming banner.txt',
+      async () => {
+        const dir = await npmWorkspace(demo)
+        await deniesBanner(fixture.root, dir)
+        // The edit that was a stale hit is a run that fails the same way.
+        await writeFile(path.join(dir, 'banner.txt'), '/*! v3 */\n')
+        await deniesBanner(fixture.root, dir)
+
+        await writeFile(path.join(dir, 'vx.config.mjs'), config(['src/**', 'banner.txt'], demo))
+        const declared = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(declared, fixture)
+        expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe(
+          'export default 2\n/*! v3 */\n',
+        )
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'the same through a symlinked workspace root (the macOS `/var` shape)',
+      async () => {
+        // The project directory vx holds is the link path; the self-link's
+        // target is canonical. Compared as given, they differ and the
+        // project is granted back.
+        const link = path.join(path.dirname(fixture.root), `${path.basename(fixture.root)}-link`)
+        await symlink(fixture.root, link, 'dir')
+        try {
+          const dir = await npmWorkspace(demo)
+          await deniesBanner(link, dir)
+        } finally {
+          await rm(link, { force: true })
+        }
+      },
+      TIMEOUT,
+    )
+
+    it(
+      "CONTROL: a sibling's link is still granted",
+      async () => {
+        // Withholding the self-link must not take the dependencies with it.
+        // Narrowing THIS grant to what the key covers is the design's next
+        // step; until then an undeclared sibling read through its link runs.
+        const dir = await npmWorkspace(
+          'mkdir -p dist && cat ../../node_modules/@x/ui/index.js > dist/out.txt',
+        )
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
+        expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe(
+          'export const ui = 1\n',
+        )
+      },
+      TIMEOUT,
+    )
+  },
+)
+
+describe.skipIf(!available || process.platform !== 'linux')(
   'two sandboxed tasks at once each get their OWN violations',
   () => {
     // Linux detects violations by tracing the spawn with strace and parsing

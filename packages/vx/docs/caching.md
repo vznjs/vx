@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v29'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v30'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -1156,6 +1156,15 @@ version — the decision log it once named was retired 2026-09-02),
 was not), and the cache tests.
 
 ### History
+
+- **v29 → v30**: stored bytes wrong under a key the fix does not change
+  (item 720). npm and Yarn link every workspace package at the root, the
+  task's own included, and the sandbox granted every link target whole,
+  so a sandboxed task was handed its own project back whatever its
+  `allow.read` said. An undeclared read of its own file ran unreported
+  and the result was saved under a key that never saw that file. The fix
+  withholds the self-link, so the next miss fails on the read; but an
+  entry saved before it hits for as long as only that file changes.
 
 - **v28 → v29**: every key moves, and the bump is for the notice, not
   for wrong bytes (item 682). The key is a seed-chained xxHash3 fold,

@@ -215,8 +215,9 @@ stateDiagram-v2
 Owner: `exec/sandbox-runtime.ts` (SRT wrapper). Activation is
 per-task (`exec.sandbox`), no workspace inheritance. Baseline policy:
 read and write nothing, deny-read = workspace root; core adds
-`node_modules` and the workspace packages linked there, and the task's
-own `allow` grants add the rest. Reporting is scoped to the project.
+`node_modules` and the workspace packages linked there (never a link to
+the task's own project or above it), and the task's own `allow` grants
+add the rest. Reporting is scoped to the project.
 
 ```mermaid
 flowchart TD

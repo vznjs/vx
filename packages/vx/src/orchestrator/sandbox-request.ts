@@ -163,7 +163,7 @@ export async function sandboxRequestFor(
   // target is outside it. That target is a dependency, not a reach-out:
   // no project config should have to name a sibling to import what its
   // own `package.json` depends on (owner, 2026-09-05).
-  depDirs.push(...(await linkedDeps(depDirs)))
+  depDirs.push(...(await linkedDeps(depDirs, node.projectDir)))
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
   // Pre-create what the task said it will write.
@@ -214,8 +214,17 @@ export interface Placeholder {
  * One level deep, plus one level inside a `@scope/` directory — the shape
  * a package manager writes. Anything already inside a granted directory
  * is dropped; what is left is a sibling project's real path.
+ *
+ * A link to the task's OWN project, or to a directory holding it, is
+ * dropped too: npm and Yarn classic link every workspace package at the
+ * root, the task's own included, and granting that target handed the
+ * project back whole whatever its `allow.read` said — an undeclared read
+ * of its own file ran unreported, and an edit to it was a stale hit.
+ * Both sides are canonical: a target always is, and the project directory
+ * is not under a root reached through a link (macOS's `/var`).
  */
-async function linkedDeps(dirs: readonly string[]): Promise<string[]> {
+async function linkedDeps(dirs: readonly string[], projectDir: string): Promise<string[]> {
+  const self = await realpath(projectDir)
   const out = new Set<string>()
   const scan = async (dir: string, depth: number): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -223,10 +232,7 @@ async function linkedDeps(dirs: readonly string[]): Promise<string[]> {
       const full = path.join(dir, e.name)
       if (e.isSymbolicLink()) {
         const target = await realpath(full).catch(() => undefined)
-        if (
-          target !== undefined &&
-          !dirs.some((d) => target === d || target.startsWith(d + path.sep))
-        ) {
+        if (target !== undefined && !dirs.some((d) => within(target, d)) && !within(self, target)) {
           out.add(target)
         }
       } else if (depth === 0 && e.isDirectory() && e.name.startsWith('@')) {
@@ -236,6 +242,15 @@ async function linkedDeps(dirs: readonly string[]): Promise<string[]> {
   }
   await Promise.all(dirs.map((d) => scan(d, 0)))
   return [...out]
+}
+
+/**
+ * `p` is `dir` or below it — by path, so a sibling sharing `dir`'s name
+ * prefix is not. `/` already ends in the separator, and a link to it
+ * holds every project.
+ */
+function within(p: string, dir: string): boolean {
+  return p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)
 }
 
 /**

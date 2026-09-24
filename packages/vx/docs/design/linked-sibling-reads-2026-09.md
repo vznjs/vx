@@ -1,7 +1,8 @@
 # A sandboxed task reads a linked sibling unseen (2026-09-24)
 
 > **Status:** proposal (architect, 2026-09-24), for STATUS Next 17.
-> Nothing here is implemented. Touches the owner decision of 2026-09-05
+> Step 1 (rule 1, the self-link) is implemented; steps 2 on are not.
+> Touches the owner decision of 2026-09-05
 > ("the sandbox derives nothing from `cache`"). § Open questions asks
 > for a sign-off.
 

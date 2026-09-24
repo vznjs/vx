@@ -985,7 +985,8 @@ export default {
 
 The grants are the task's whole permission surface — nothing is derived
 from `cache`, and the only thing core adds is `node_modules` plus the
-workspace packages linked there. Enforcement anchors at the workspace
+workspace packages linked there, never a link back to the task's own
+project (npm and Yarn link that too). Enforcement anchors at the workspace
 root (a task never leaves its project); only denials inside the project
 are reported.
 
@@ -1553,7 +1554,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v29 · index schema v27
+cache versions:   keys vx-cache-v30 · index schema v27
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)

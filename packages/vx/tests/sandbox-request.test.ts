@@ -289,6 +289,83 @@ describe('a workspace link is granted by its real path, not by a string prefix',
   })
 })
 
+describe("a link to the task's own project, or to a directory holding it, is not granted", () => {
+  // npm and Yarn classic link EVERY workspace package at the root, the
+  // task's own included, so the link grant handed the project back whole
+  // whatever its `allow.read` said: a task granted `src/**` read
+  // `banner.txt` unseen, and an edit there was a stale hit
+  // (docs/design/linked-sibling-reads-2026-09.md, P3). The layout below
+  // holds every kind of target at once, so the rows assert the EXACT set.
+  let outside: string
+
+  beforeEach(async () => {
+    outside = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-request-ext-')))
+  })
+
+  afterEach(async () => {
+    await rm(outside, { recursive: true, force: true })
+  })
+
+  /** An npm-shaped workspace under `ws` (which may be a link path); returns app's dir. */
+  const npmLayout = async (ws: string): Promise<string> => {
+    const app = path.join(ws, 'packages', 'app')
+    await mkdir(path.join(ws, 'packages', 'ui'), { recursive: true })
+    await mkdir(path.join(app, 'node_modules'), { recursive: true })
+    await mkdir(path.join(ws, 'node_modules', '@x'), { recursive: true })
+    await symlink('../../packages/app', path.join(ws, 'node_modules', '@x', 'app'))
+    await symlink('../../packages/ui', path.join(ws, 'node_modules', '@x', 'ui'))
+    await symlink('..', path.join(ws, 'node_modules', 'whole-root'))
+    await symlink('../packages', path.join(ws, 'node_modules', 'all-packages'))
+    await symlink('/', path.join(ws, 'node_modules', 'fs-root'))
+    await symlink('..', path.join(app, 'node_modules', 'self'))
+    await symlink(outside, path.join(ws, 'node_modules', 'ext'))
+    return app
+  }
+
+  const appNode = (app: string): TaskNode => ({ ...node(), id: 'app#build', projectDir: app })
+
+  it('grants the sibling and the target outside the root; withholds self and every ancestor', async () => {
+    const app = await npmLayout(root)
+    const { sandbox } = await sandboxRequestFor(appNode(app), { allow: { read: ['src/**'] } }, root)
+    expect(sandbox.baseAllowRead.slice().sort()).toEqual(
+      [
+        path.join(app, 'node_modules'),
+        path.join(root, 'node_modules'),
+        path.join(root, 'packages', 'ui'),
+        outside,
+      ].sort(),
+    )
+  })
+
+  it('the same set when the root is reached through a symlink (the macOS `/var` shape)', async () => {
+    // macOS's temp dir is `/var/folders/...`, a link to `/private/var/...`,
+    // so the project directory vx holds is not canonical there while a
+    // link's target always is. A comparison that canonicalises one side
+    // and not the other grants the task's own directory back on darwin
+    // only, the platform this gate never runs.
+    const link = `${root}-link`
+    await symlink(root, link, 'dir')
+    try {
+      const app = await npmLayout(link)
+      const { sandbox } = await sandboxRequestFor(
+        appNode(app),
+        { allow: { read: ['src/**'] } },
+        link,
+      )
+      expect(sandbox.baseAllowRead.slice().sort()).toEqual(
+        [
+          path.join(app, 'node_modules'),
+          path.join(link, 'node_modules'),
+          path.join(root, 'packages', 'ui'),
+          outside,
+        ].sort(),
+      )
+    } finally {
+      await rm(link, { force: true })
+    }
+  })
+})
+
 describe('sweepPlaceholders takes back what the task never wrote', () => {
   it('an untouched placeholder is removed and named', async () => {
     const r = await requestFor(['dist/vx'])

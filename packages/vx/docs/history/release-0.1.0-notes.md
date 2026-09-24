@@ -53,6 +53,13 @@ where 0.0.22 says "another nightly".
 
 ## Caching
 
+- **A stale-hit fix, with `CACHE_VERSION` v30:** a sandboxed task no
+  longer reads its own project through a `node_modules` link. npm and
+  Yarn link every workspace package at the root, the task's own included,
+  and the sandbox granted that link whole, so an undeclared read of the
+  task's own file ran unreported and an edit to it was a cache hit. The
+  next miss now fails on that read; the bump drops the entries saved
+  before the fix.
 - **Breaking, and a stale-hit fix:** a bracket is a literal character in
   every task glob (`cache.inputs.files`, `cache.outputs.files`,
   `workspaceFiles`), so a route directory like Next.js's `app/[id]/` is
