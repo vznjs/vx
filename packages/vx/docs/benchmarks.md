@@ -257,7 +257,7 @@ skips the work.
 bun packages/vx-bench/compare.ts                 # 100 layers × 11 (3,270 nodes) — the full shape (slow)
 bun packages/vx-bench/compare.ts 10 5 1          # 46 packages, 10 layers — quick
 BASELINE_ONLY=1 bun packages/vx-bench/compare.ts # recompute only the baseline floors against the committed rows (~9 min)
-bun packages/vx-bench/update-site.ts             # rewrite the landing page and this doc's stress section from results.json (--check to verify)
+bun packages/vx-bench/update-site.ts             # rewrite the landing page and this doc's stress section from results.json, and the landing's n8n panel from this doc (--check to verify)
 BUILD_SLEEP=0 bun packages/vx-bench/compare.ts 20 11 2   # deep graph, pure framework overhead
 ```
 

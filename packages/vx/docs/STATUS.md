@@ -1516,6 +1516,39 @@ exactly that anchor; the old `cleanUrlFor` reddens it with the two
 design links; the checker's id test dropped reddens the fixture row
 only. The file runs in 0.4 s (the scan 0.33–0.39 s).
 
+14di. **Item 712 (2026-09-24): the landing page's figures come from
+their sources.** Every figure on `index.astro` that `update-site.ts`
+did not write was inventoried and given a source. The generator now
+also writes, and `check.site` compares: the graph's size in the
+`#bench` kicker and the first card (3,270 tasks, 1,090 packages, 100
+layers, from `results.json`, whose `layers` it now reads), and the
+n8n panel (`n8nRows`, each bar's value and label from the cell text of
+`benchmarks.md`'s n8n table, the bold cell the best) and the `#real`
+kicker's task count, from that table's heading. `landing.test.ts`
+holds the rest to `benchmarks.md` as imported: the five real Turbo
+repos by their five `###` headings, vx's restore on each (its cell
+bold), the four named besides n8n, and the scaling table's 100, 300
+and 1,000 packages; and core's `package.json` version in the
+terminal. Claims without evidence, rewritten: "84 packages" (REPOS.md's
+workspace members, nowhere in `benchmarks.md`) is "70 build tasks";
+the first card's "Fastest in every row … restore and no-op on five
+real Turbo repos … reads within 3% either way" was refuted by
+`benchmarks.md` (Turbo takes payload's no-op, and astro's cold build
+is 1.21×), so it reads "First in every synthetic row" and "the fastest
+restore on all five"; "2,700+ tests" had no count behind it and went;
+"Six things" went; the terminal's times, "1 affected · 2 total" and
+"10 workers" have no recorded run, so the terminal is labelled a
+sample and its summary is computed from its rows; the unused
+`PACKAGES = 1090` went. Differentials, each reversed: on the page,
+the n8n no-op 842 → 843, the `#real` count 70 → 84, the card's 3,270 →
+3,300, the kicker's 100 layers → 99 and n8n's cold `best` dropped each
+redden `check.site`, as does the n8n no-op 842 → 852 in
+`benchmarks.md`; rebuilt, "all five" → "all four", "1,000" → "3,000"
+and the sample label dropped redden their three rows, and dropping
+medusa from the four reddens the first; in the source, moving
+payload's restore bold, a scaling size 300 → 500 and core's version
+0.0.1 each redden exactly their row.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1557,18 +1590,17 @@ only. The file runs in 0.4 s (the scan 0.33–0.39 s).
     untouched. The track, W0–W12, is DONE. Of the plan's "Done means",
     met: the playground's parity with the CLI (core's parity rows),
     comparisons that state vx's costs and name a better pick (the
-    choosing page, which the landing links), and the site-wide link
-    check (item 711, entry 14dg). Decided (architect, 2026-09-24):
+    choosing page, which the landing links), the site-wide link check
+    (item 711, entry 14dh), and on the landing page every figure from
+    its source (item 712, entry 14di). Decided (architect, 2026-09-24):
     scheduling, choosing, architecture and extending keep their static
     `<details>` checkpoints, because their questions are not planner
     questions; the glossary is a reference, not a lesson, so it carries
     no checkpoint. Not yet met: the glossary has no diagram or
     interactive element; no page per monorepo.tools checkmark was
     checked row by row, and none was found for code generation or
-    project constraints; the landing's hand-typed figures ("84
-    packages", "within 3%") are not in `benchmarks.md` in that form, no
-    row holds its figures to it, and its cards link docs pages, not
-    tests.
+    project constraints; the landing's cards link docs pages, not
+    tests; no row holds the figures on pages other than the landing.
 
 ## Decisions (this arc)
 

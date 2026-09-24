@@ -2,8 +2,10 @@
 // problem first, then the three ideas, then the numbers. These rows read the
 // page as it shipped, `dist/index.html`, which the `build` task writes.
 //
-// The numbers themselves are not checked here: `@vzn/vx-bench#check.site`
-// holds the benchRows block and the stat tiles to results.json.
+// The measurements are not checked here: `@vzn/vx-bench#check.site` holds
+// the benchRows block, the stat tiles and the graph's size to results.json,
+// and the n8n panel and its task count to benchmarks.md. The page's other
+// figures (item 712) are held below, each to its own source.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -72,6 +74,30 @@ const OLD_LINKS = [
 // Links removed on purpose, each with the reason. None so far: the cards the
 // idea sections replaced linked pages the page still links elsewhere.
 const REMOVED: Record<string, string> = {}
+
+// benchmarks.md as the import step copied it; its tables and headings are
+// the source's, byte for byte.
+const BENCHMARKS = path.resolve(import.meta.dir, '../src/content/docs/benchmarks.md')
+const CORE_PACKAGE = path.resolve(import.meta.dir, '../node_modules/@vzn/vx/package.json')
+
+/** A `## ` section of benchmarks.md, up to the next one. */
+function benchSection(heading: string): string {
+  const doc = readFileSync(BENCHMARKS, 'utf8')
+  const at = doc.indexOf(`\n## ${heading}`)
+  expect(at).toBeGreaterThan(-1)
+  const next = doc.indexOf('\n## ', at + 1)
+  return doc.slice(at, next === -1 ? undefined : next)
+}
+
+/** The cells of the row labelled `label` in a Markdown table. */
+function tableRow(md: string, label: string): string[] {
+  const line = md.split('\n').find((l) => l.split('|')[1]?.trim() === label)
+  expect(line).toBeDefined()
+  return line!
+    .split('|')
+    .slice(2, -1)
+    .map((c) => c.trim())
+}
 
 function page(): string {
   const file = path.join(DIST, 'index.html')
@@ -194,5 +220,55 @@ describe('the landing page', () => {
     expect(broken).toEqual([])
     // No link is a literal of the source's expression syntax.
     expect(allHrefs(html).filter((h) => h.includes('{'))).toEqual([])
+  })
+})
+
+// Item 712: every figure on the page that update-site.ts does not write,
+// held to its source. The expected facts are written out here, and each is
+// read from the source AND from the built page, so a change to either
+// fails the row.
+describe("the landing page's figures", () => {
+  const html = page()
+
+  it("says five real Turbo repos and vx's restore on all five, as benchmarks.md does", () => {
+    const five = benchSection('Five real Turbo repos')
+    // One `### owner/name (…)` subsection per repo; the section's last
+    // subsection, the wide graphs, is not a repo.
+    const subsections = five.split(/^### /m).filter((s) => /^[\w.-]+\/[\w.-]+ \(/.test(s))
+    expect(subsections.map((s) => s.slice(0, s.indexOf(' ')))).toEqual([
+      'withastro/astro',
+      'payloadcms/payload',
+      'medusajs/medusa',
+      'n8n-io/n8n',
+      'calcom/cal.com',
+    ])
+    // A bold cell is the faster tool's; vx's is the first.
+    const restore = subsections.map((repo) =>
+      tableRow(repo, 'warm, outputs wiped (restore)')[0]!.startsWith('**'),
+    )
+    expect(restore).toEqual([true, true, true, true, true])
+    expect(text(section(html, 'why'))).toContain(
+      'On five real Turbo repos, the fastest restore on all five;',
+    )
+    // The panel shows n8n and names the other four.
+    expect(text(section(html, 'real'))).toContain(
+      'Astro, payload, medusa and cal.com are in the benchmarks.',
+    )
+  })
+
+  it('names the three sizes the scaling table measures', () => {
+    const sizes = benchSection('How the overhead scales with the workspace')
+      .split('\n')
+      .filter((l) => /^\| [\d,]+ /.test(l))
+      .map((l) => l.split('|')[1]!.trim())
+    expect(sizes).toEqual(['100', '300', '1,000'])
+    expect(text(section(html, 'scale'))).toContain('Benchmarks: 100, 300 and 1,000 packages')
+  })
+
+  it("labels the terminal a sample, and prints core's version in it", () => {
+    const version = (JSON.parse(readFileSync(CORE_PACKAGE, 'utf8')) as { version: string }).version
+    const term = html.slice(html.indexOf('<div class="term">'), html.indexOf('id="inputs"'))
+    expect(text(term)).toContain('zsh — vx · sample output')
+    expect(text(term)).toContain(`─ vx ${version} `)
   })
 })
