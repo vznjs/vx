@@ -99,7 +99,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       cache: {
-        inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
+        // playground-spike/: tests/glob-port.test.ts holds the glob shim.
+        inputs: { files: ['*.ts', 'tests/**', 'playground-spike/**/*.ts', 'package.json'] },
         outputs: { files: [] },
       },
     },
