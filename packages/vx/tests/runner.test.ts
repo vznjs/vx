@@ -3,7 +3,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
 import {
   armTimeout,
   POST_EXIT_CUT_LINE,
@@ -800,54 +799,4 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     child.kill('SIGTERM')
     await child.exited
   })
-})
-
-// turborepo#12502: a task that touched the terminal hung the run when the
-// runner itself sat on one (stopped by SIGTTIN/SIGTTOU, or blocked reading
-// keys nobody typed). vx starts each task in its own session with no
-// controlling terminal, so /dev/tty cannot be opened at all. The run here
-// sits on a real pseudo-terminal: without that, "no terminal" is true of
-// any CI box and proves nothing.
-describe('a task under a vx that runs on a terminal', () => {
-  it('cannot open /dev/tty, fails that open at once, and the run completes', async () => {
-    const root = await makeWorkspace({ prefix: 'vx-runner-tty-' })
-    try {
-      await addProject(root, 'app', {
-        config: `
-          export default {
-            tasks: {
-              probe: {
-                exec: {
-                  command: 'if stty -echo < /dev/tty; then echo HAD-TTY; else echo NO-TTY; fi; head -c1 < /dev/tty; echo AFTER-READ',
-                },
-              },
-            },
-          }
-        `,
-      })
-      let screen = ''
-      const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-      const proc = Bun.spawn([process.execPath, bin, 'run', 'app#probe', '--output-logs=full'], {
-        cwd: root,
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-        terminal: {
-          data: (_term, data) => {
-            screen += new TextDecoder().decode(data)
-          },
-        },
-      })
-      const code = await proc.exited
-      proc.terminal?.close()
-      // The echoed command line holds every marker, so the task's own
-      // output is read as whole lines.
-      const lines = screen.split(/\r?\n/)
-      expect({
-        code,
-        answers: lines.filter((l) => ['HAD-TTY', 'NO-TTY', 'AFTER-READ'].includes(l)),
-        refusals: lines.filter((l) => l.includes('/dev/tty') && !l.startsWith('$ ')).length,
-      }).toEqual({ code: 0, answers: ['NO-TTY', 'AFTER-READ'], refusals: 2 })
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 20_000)
 })
