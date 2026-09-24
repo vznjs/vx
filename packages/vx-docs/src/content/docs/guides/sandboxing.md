@@ -9,7 +9,7 @@ Prove a task reads only what it declares. Why? →
 ## Steps
 
 1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing, not even the package.
-2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. A linked workspace package is too, but for a task with `cache` only when a `dependsOn` edge folds a task of that package into the key; a link back to the package itself never is.
+2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. Another package of yours, linked there, is readable when the task depends on one of that package's tasks.
 3. Grant each output directory in `write`, and each host in `network`. The sandbox does not read `cache`: declare both.
 4. Run the task. An undeclared read or write fails it and names the path.
 5. Declare that path, or silence a noisy tool's path with `ignore`.
@@ -72,9 +72,7 @@ task, and a failed task is never cached.
 ## What can't be sandboxed
 
 - A group task: it has no command.
-- A task that itself sandboxes, on macOS. vx's own sandbox tests are one
-  of exactly two tasks in this repository that do not declare a sandbox;
-  the other, `@vzn/vx-reapi#test`, dials servers on the host.
+- A task that itself sandboxes, on macOS (a sandbox cannot nest).
 
 ## Common problems
 
