@@ -10,6 +10,7 @@
 // state.
 
 import { readFileSync } from 'node:fs'
+import { procfsIsOwn } from '../../src/util/procfs.js'
 
 export function isAlive(pid: number): boolean {
   try {
@@ -17,6 +18,10 @@ export function isAlive(pid: number): boolean {
   } catch {
     return false
   }
+  // A procfs mounted for another pid namespace (the sandbox's) names some
+  // other process at this pid; there signal 0 is the only answer, and a
+  // zombie counts until init reaps it.
+  if (!procfsIsOwn()) return true
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
     // `<pid> (<comm>) <state> …` — comm may hold spaces and parens, so the
