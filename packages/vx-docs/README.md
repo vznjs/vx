@@ -113,6 +113,7 @@ bun packages/vx/src/bin.ts run build.playground --filter @vzn/vx-docs  # the pla
 bun packages/vx/src/bin.ts run dev --filter @vzn/vx-docs      # astro dev server
 bun packages/vx/src/bin.ts run preview --filter @vzn/vx-docs  # serve the built dist/
 bun packages/vx/src/bin.ts run test --filter @vzn/vx-docs     # the guide pins below
+bun packages/vx/src/bin.ts run lint --filter @vzn/vx-docs     # oxlint (type-checked) + oxfmt
 ```
 
 `bun packages/vx/src/bin.ts run check.site --filter @vzn/vx-bench` fails

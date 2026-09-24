@@ -10,6 +10,9 @@
 // The declarations are read from core's source at build time and the
 // examples from `src/examples/stages/`, so neither is a copy.
 import { Code } from '@astrojs/starlight/components'
+// Vite's `?raw` query: the default export is the file's text, which the
+// import plugin cannot see.
+// oxlint-disable-next-line import/default
 import pluginSource from '../../../../vx/src/orchestrator/plugin.ts?raw'
 import Demo from '../Demo.astro'
 import PipelineStrip from './PipelineStrip.astro'

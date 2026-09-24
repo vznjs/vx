@@ -128,10 +128,6 @@ export const TOY_INPUTS: string[] = [
   TOY_ENV,
 ]
 
-/** The inputs the reader may stop declaring. Source files stay declared, so
- *  every key keeps a file of its own. */
-const TOY_OPTIONAL_INPUTS: string[] = TOY_INPUTS.filter((i) => !i.endsWith(TOY_SOURCE))
-
 /** What a task reads, apart from the outputs of the tasks it depends on. This
  *  decides its output, whatever it declares. */
 export function readsOf(taskId: string): string[] {

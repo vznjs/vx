@@ -1179,6 +1179,32 @@ row and the parity file's `undefined` variant; the page's worker without
 it reddens the parity row; the rule applied to `validateWorkspace`
 reddens the workspace and plugin rows.
 
+14cw. **Item 702 (2026-09-24): the site's TypeScript is type-checked.**
+`@vzn/vx-docs` had no `lint.oxlint`, so a type error in the playground,
+a widget's model, a script or a test failed no gate task (`bun test`
+and astro's build only transpile). It has one now, in the shape of
+vx-bench's: sandboxed, after `install`, reading `../vx/src/**` (the
+playground's imports) and vx-bench's `schedule-policy.ts` (the
+simulator's), keyed on the directories it checks plus `SIM_SOURCES`,
+and under a new `lint` group that the site's `ci` depends on. It names
+its directories (`astro.config.mjs scripts src/components src/examples
+src/pages src/playground src/plugins tests`, 77 files, 1.2 s in the
+sandbox), never `.`; `src/content/` is left out, being Markdown and a
+`content.config.ts` whose `astro:content` types exist only after astro
+generates them. The site's `tsconfig.json` gains the four options every
+package's has over astro's `strict` (`noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes`, `noImplicitOverride`,
+`noFallthroughCasesInSwitch`), and the package the shared
+`.oxlintrc.json`. What it surfaced: one error, the import plugin
+reading `PipelineExplorer.astro`'s Vite `?raw` import as a missing
+default export (disabled on that line, with the reason), and one
+warning, `TOY_OPTIONAL_INPUTS` in the toy monorepo's model, dead since
+W2, removed. The stricter options surfaced nothing. Differential: a
+planted `const planted: number = "x"` in `config-eval.ts` turns the
+task red with TS2322; the reverse edit turns it green. Proven in a
+copy of the tree outside `.claude/`, where the sandbox sees the files
+(inside it the task checks 1 file).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
