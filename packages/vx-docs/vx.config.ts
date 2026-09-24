@@ -197,6 +197,9 @@ export default defineProject({
             // demo-islands.test.ts and learn-architecture.test.ts import the
             // widgets' model to hold the built pages to it.
             'src/components/demos/model/**',
+            // learn-playground.test.ts reads the element's source for the
+            // markup it queries.
+            'src/components/demos/playground.ts',
             // The playground rows: its glob and xxh3 against Bun's, and the
             // shipped bundle against a fresh build.
             'src/playground/**',

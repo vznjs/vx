@@ -91,6 +91,7 @@ export default defineConfig({
             { label: 'Architecture: a pipeline with seams', link: '/learn/architecture/' },
             { label: 'Extending vx', link: '/learn/extending/' },
             { label: 'vx, Turbo, Nx, Bazel: choosing', link: '/learn/choosing/' },
+            { label: 'Playground: run the planner', link: '/learn/playground/' },
             { label: 'Glossary', link: '/learn/glossary/' },
           ],
         },

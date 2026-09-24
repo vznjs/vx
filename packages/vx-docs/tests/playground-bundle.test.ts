@@ -55,10 +55,9 @@ describe('the playground bundle', () => {
     expect(text.split('__vxProcess').length - 1).toBeGreaterThan(5)
   })
 
-  it('exports planPlayground and evaluateConfig', async () => {
+  it('exports evaluateConfig, listPlaygroundProjects and planPlayground', async () => {
     const mod = (await import(shipped)) as Record<string, unknown>
-    expect(Object.keys(mod)).toEqual(['evaluateConfig', 'planPlayground'])
-    expect(typeof mod['planPlayground']).toBe('function')
-    expect(typeof mod['evaluateConfig']).toBe('function')
+    expect(Object.keys(mod)).toEqual(['evaluateConfig', 'listPlaygroundProjects', 'planPlayground'])
+    for (const name of Object.keys(mod)) expect(typeof mod[name]).toBe('function')
   })
 })

@@ -516,8 +516,8 @@ describe('the key calculator on learn/caching', () => {
       .filter((f) => f.includes('<vx-key-calculator'))
     expect(figures).toHaveLength(1)
     expect(text(only(figures[0]!, /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g))).toBe(
-      "A model of vx's key fold, not vx itself: the real planner runs in the browser in a later " +
-        'step of this site. The keys are digests the model computes, shortened to seven hex ' +
+      "A model of vx's key fold, not vx itself: the playground page runs the real planner in the " +
+        'browser. The keys are digests the model computes, shortened to seven hex ' +
         "digits; vx's are xxHash3. Which keys move, which tasks hit and which hits are stale is " +
         'what vx does on the same workspace, and a test runs vx to check it. Each table starts ' +
         'from a first run on an empty cache.',

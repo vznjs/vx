@@ -1205,6 +1205,37 @@ task red with TS2322; the reverse edit turns it green. Proven in a
 copy of the tree outside `.claude/`, where the sandbox sees the files
 (inside it the task checks 1 file).
 
+14cx. **Item 700 (roadmap W9, 2026-09-24): the playground page.**
+`learn/playground` runs vx's real planner on the Learn toy monorepo
+(`utils`; `ui` and `api`; `app`; plus `docs#build`, nine tasks, bare
+names so the ids are the Learn pages' `ui#build`), from
+`src/playground/workspace.ts` (config texts, files, `API_URL`). The
+reader edits any file in a `<textarea>`, adds and deletes files, edits
+the env as `NAME=value` lines and the specs (default `build test`), and
+runs: every key (16 hex), hit or miss against a simulated cache that
+saves every planned key, and a "key moved" marker against the last run,
+with an `aria-live` summary ("9 tasks: 5 hit, 4 miss. Keys moved:
+ui#build, ui#test, app#build, app#test."). The planner loads on the first
+Run. Errors (a config that does not evaluate, core's refusal, an
+undeclared spec in the CLI's words) keep the last table, marked stale.
+Without JavaScript the page shows the file list, each config and the
+task table (what each waits for, what it declares). What it computes is
+`demos/model/playground-view.ts`; `runPlayground` is the page's Run,
+and asks the bundle's new `listPlaygroundProjects` export which config
+file core loads. The static table is the texts evaluated at build time
+by the page's own `evaluateConfig`: the step assumed build time could not
+run a Worker, and under `bun --bun astro build` it can. Rows: core's
+parity rows hold the page's Run to `vx run build test --all --dry=json`
+(committed, and an uncommitted `button.tsx` edit moving exactly the
+four); `tests/playground-view.test.ts` and `tests/learn-playground.test.ts`
+in the site. The KeyCalculator caption's "in a later step of this site"
+now names the playground. A differential the step asked for is refuted:
+`ui#test` no longer declaring `src/**` does not change the edit's moved
+set, because `ui#test` folds `ui#build`'s key, so no parity row can see
+it; the site's hand-written table does. Chromium probe, rows and the
+differential table: `design/playground-ui-2026-09.md` § Shipped (item
+700).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1224,19 +1255,18 @@ copy of the tree outside `.claude/`, where the sandbox sees the files
     architecture page with its pipeline explorer and the worked plugins,
     are DONE (item 686, entry 14ch). W3, the correctness page and its
     stale-hit demo, is DONE (item 688, entry 14cj). W7, the choosing page and its
-    matrix, is DONE (item 689, entry 14ck). W9, the playground, has started: its first core
-    change, P1, is DONE (item 691, entry 14cm), and its three open
-    questions are decided in `design/playground-spike-2026-09.md` § W9
-    decisions (parity rows in core's unsafe suite, `vx.config.mjs`
-    evaluated in a Worker, a Bun-built bundle from a vx task). The exact
-    glob port is DONE (item 692, entry 14cn), and so are the bundle, its
-    task and the parity rows (item 695, entry 14cq): the site builds
-    `playground/planner.js` and core's unsafe suite holds it to the CLI.
-    Config editing is DONE (item 699, entry 14cu): the reader's
-    `vx.config.mjs` is evaluated in a Worker and held to the CLI's keys.
-    What remains of W9 is the island and the UI, designed in
-    `design/playground-ui-2026-09.md` (item 700: one Learn page on the
-    toy monorepo, held to the CLI by its own parity row).
+    matrix, is DONE (item 689, entry 14ck). W9, the playground, is
+    DONE: P1 (item 691, entry 14cm), the exact glob port (item 692,
+    entry 14cn), the bundle, its task and the parity rows (item 695,
+    entry 14cq), config editing (item 699, entry 14cu) and the page
+    itself (item 700, entry 14cx): `learn/playground` runs the real
+    planner on the toy monorepo, and core's parity rows hold the page's
+    Run to the CLI. Next are W10, the labs (guided exercises on the
+    playground: an undeclared input and its stale hit, a file no config
+    mentions, two tasks writing one output, a bad order and its critical
+    path), which need the playground to say why a key moved (the next
+    widening of `PlaygroundResult`, noted in
+    `design/playground-ui-2026-09.md`), and W11, the checkpoints.
 
 ## Decisions (this arc)
 

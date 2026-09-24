@@ -105,6 +105,28 @@ function playgroundCache(
   return layer as unknown as CacheLayer
 }
 
+export interface PlaygroundProject {
+  name: string
+  /** Root-relative path of the config file core loads for it, or null. */
+  configFile: string | null
+}
+
+/**
+ * The workspace's projects as core discovers them, so the page evaluates
+ * the config file core would load (its name precedence included) under the
+ * name core gives the project.
+ */
+export async function listPlaygroundProjects(
+  input: Pick<PlaygroundInput, 'root' | 'files'>,
+): Promise<PlaygroundProject[]> {
+  useVfs(new Vfs(input.root, input.files))
+  const metas = await listProjects(await loadWorkspace(input.root))
+  return metas.map((m) => ({
+    name: m.name,
+    configFile: m.configPath === null ? null : m.configPath.slice(input.root.length + 1),
+  }))
+}
+
 export async function planPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
   platformCalls.clear()
   const vfs = new Vfs(input.root, input.files)
