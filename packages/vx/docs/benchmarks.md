@@ -133,9 +133,11 @@ repairs it, which the release workflow now does on a macOS runner.
 ## Head-to-head, 2026-09-03 (46 packages, `packages/vx-bench/compare.ts 10 5 1`)
 
 Same workspace, identical commands, every runner pinned to concurrency
-10, Nx's daemon on (Turbo uses none for `turbo run` since 2.9), vx as
+10, Turbo with no daemon (it uses none for `turbo run` since 2.9), vx as
 its compiled binary. Median of 1,
-this machine (macOS arm64, Bun 1.4.0):
+this machine (macOS arm64, Bun 1.4.0). The harness then gave Nx npm
+where Turbo had bun (§ Why Nx is slower), so the Nx row is slower than a
+fair one. Every runner runs as in CI (`CI=1`), so Nx's daemon is off:
 
 | Runner      | Version | Fresh (cold) | Warm (no restore) | Warm (restore) |
 | ----------- | ------- | ------------ | ----------------- | -------------- |
@@ -151,25 +153,25 @@ say so from 2.9), so both work out what changed on every invocation. vx wins
 the restore case and ties the cold one; Nx is 7× off. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
-The same 46-package run on the four-core Linux container (2026-09-23,
-after items 615 and 622; a different machine, so only the ratios compare
-with the table above). Turbo 2.11.3 (no daemon for `turbo run`) and Nx 23.2.1 (daemon on), vx as
-its compiled binary, median of 1. The CPU column is user + system of
-the invocation and every child it waited for; a daemon that outlives
-the invocation is not counted, so Turbo's and Nx's are floors:
+The same 46-package run on the four-core Linux container (2026-09-24,
+item 732, the fixed harness: Nx runs its scripts with bun as Turbo does;
+`CI=1`, so Nx's daemon is off; a different machine, so only the ratios compare
+with the table above). Turbo 2.11.3 (no daemon for `turbo run`) and Nx
+23.2.1, vx as its compiled binary, median of 3. The CPU column is user +
+system of the invocation and every child it waited for; a daemon that
+outlives the invocation would not be counted, and none runs here:
 
 | Runner      | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold |
 | ----------- | ------- | ------------ | ----------------- | -------------- | --------- |
-| vx          | 0.0.0   | 10.29 s      | **78 ms**         | **98 ms**      | 755 ms    |
-| vx (frozen) | 0.0.0   | 10.27 s      | 80 ms             | 103 ms         | 754 ms    |
-| turbo       | 2.11.3  | 10.44 s      | 112 ms (1.4×)     | 150 ms (1.5×)  | 1.38 s    |
-| nx          | 23.2.1  | 27.21 s      | 754 ms (9.6×)     | 711 ms (7.3×)  | 1m 2s     |
+| vx          | 0.0.0   | 10.29 s      | 79 ms             | 104 ms         | 846 ms    |
+| vx (frozen) | 0.0.0   | 10.27 s      | **74 ms**         | **95 ms**      | 826 ms    |
+| turbo       | 2.11.3  | 10.43 s      | 86 ms (1.1×)      | 136 ms (1.3×)  | 1.33 s    |
+| nx          | 23.2.1  | 22.08 s      | 844 ms (10.7×)    | 862 ms (8.3×)  | 43.79 s   |
 
-On this box the warm tie of 2026-09-03 is a 1.4× lead: Turbo 2.11's
-warm run costs 112 ms where its 2.10 cost 71 on the macOS machine, and
-vx's 78 ms is within the spread of its 76 there. The cold column is
-within 2 % of Turbo's again (the tasks are `sleep 1`, so both sit on
-the critical path), and Nx's cold run is 2.6× off where it was 1.9×.
+The ideal schedule is 10.00 s, so vx and Turbo both sit on the critical
+path cold, and warm they are within a few milliseconds at this size (the
+2026-09-23 run of the old harness read Turbo at 112 ms). The same box
+under the old harness read Nx at 27.21 s cold and 1m 2s of CPU.
 
 The same harness at **476 packages / 1,428 graph nodes**
 (`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
@@ -182,10 +184,88 @@ point — the committed `packages/vx-bench/RESULTS.md` is the 3,270-task run bel
 | turbo       | 1m 40s       | 342 ms (1.2×)     | 612 ms (1.5×)  |
 | nx          | 3m 23s       | 1.38 s (4.7×)     | 1.33 s (3.2×)  |
 
-This is the shape vx is built for: the gap opens with the graph, and
-opens fastest on the restore path, where vx's per-hit work (one batched
-probe, a stat check, no extraction when the tree is already current) is
-what the others do not do.
+The same size on the four-core Linux container (2026-09-24, item 732,
+the fixed harness, median of 1; ideal schedule 1m 36s):
+
+| Runner      | Fresh (cold) | Warm (no restore) | Warm (restore)    | CPU, cold |
+| ----------- | ------------ | ----------------- | ----------------- | --------- |
+| vx          | 1m 37s       | 376 ms            | 478 ms            | 7.98 s    |
+| vx (frozen) | 1m 37s       | 321 ms            | 543 ms            | 8.06 s    |
+| turbo       | 1m 39s       | **303 ms** (0.8×) | **446 ms** (0.9×) | 13.92 s   |
+| nx          | 2m 47s       | 2.59 s (6.9×)     | 2.51 s (5.2×)     | 8m 38s    |
+
+Read it honestly: on this box Turbo 2.11 wins both warm columns at 476
+packages (two runs of one rep each: 255 and 303 ms against vx's 334 and
+376), where vx won them on the macOS machine against Turbo 2.10. It is
+Next 17 to measure and explain before the site says "the gap opens with
+the graph" again.
+
+### Why Nx is slower
+
+Two things, both per task, and both measured on the 46-package workspace
+(cold, 138 tasks, min of 3 interleaved arms, 2026-09-24, item 732):
+
+| Arm                                             | Wall    | CPU     |
+| ----------------------------------------------- | ------- | ------- |
+| the old harness: `nx:run-script`, Nx picked npm | 28.82 s | 69.80 s |
+| `nx:run-script` with bun (the fixed harness)    | 21.37 s | 41.18 s |
+| `nx:run-commands`: the same commands, no fork   | 11.65 s | 3.05 s  |
+
+1. **A Node process per task.** `nx:run-script` runs every task in a
+   freshly forked Node process (`nx/bin/run-executor.js`: 138 of them in
+   one cold run, counted with `strace -f -e execve`) that loads Nx before
+   it runs the script. That is ~270 ms of CPU per task. On four cores at
+   concurrency 10 it saturates the CPU, so every task on the 20-task
+   critical path waits for a core: 9.7 s of wall and 38 s of CPU, the
+   gap between the last two rows. `nx:run-commands` runs its command
+   from the Nx process itself (`NX_RUN_COMMANDS_DIRECTLY`), and with it
+   Nx lands at 11.65 s against an ideal of 10.00. A package-based Nx repo
+   gets `nx:run-script` for every inferred `package.json` script.
+2. **npm, which the harness chose by accident.** `nx:run-script` runs
+   the script through the package manager Nx detects from a lockfile.
+   The generated workspace had none, so Nx fell back to npm, while Turbo
+   read `packageManager` and ran `bun run`. `npm run` costs 202 ms of
+   CPU per task against `bun run`'s 4 ms (min of 10, one task alone):
+   7.5 s of wall and 29 s of CPU, the gap between the first two rows.
+   This one was the harness's fault, not Nx's. `nx.json` now says
+   `cli.packageManager: 'bun'`.
+
+Warm is spread thin, with no single cause. With no daemon (CI), each
+invocation starts three plugin workers to build the project graph
+(~280 ms each, in parallel; `nx show projects` alone is 0.56 s), then
+hashes and replays the cached tasks. Turning the daemon on moves the
+graph into it and saves 40–160 ms (0.81 s against 0.85, min of 5, in a
+probe; 682 ms against 844, median of 3, in the harness), a fifth of the
+warm gap at most.
+
+The npm share grows with the graph. At 1,090 packages (3,270 tasks,
+`compare.ts 100 11`, same box, one cold run each) Nx took 20m 39s and
+76 min of CPU with npm, and 7m 22s and 23 min of CPU with bun: npm was
+two thirds of the old harness's Nx number there, which is the run the
+site quoted. The site's Nx column (34m 44s cold, § A real monorepo, the
+macOS machine) paid npm per task and is not a fair one; its vx and Turbo
+columns are unaffected. Next 18 re-runs it. The whole 3,270-task shape
+on this box with the fixed harness (2026-09-24, median of 1; ideal
+schedule 3m 38s):
+
+| Runner      | Fresh (cold)  | Warm (no restore) | Warm (restore)    | CPU, cold       |
+| ----------- | ------------- | ----------------- | ----------------- | --------------- |
+| vx          | **3m 40s**    | 678 ms            | 971 ms            | **17.53 s**     |
+| vx (frozen) | 3m 40s        | 674 ms            | 1.05 s            | 18.15 s         |
+| turbo       | 5m 2s (1.4×)  | **496 ms** (0.7×) | **856 ms** (0.9×) | 29.87 s (1.7×)  |
+| nx          | 7m 18s (2.0×) | 6.19 s (9.1×)     | 6.11 s (6.3×)     | 22m 59s (78.7×) |
+
+Here too Turbo 2.11 wins the warm columns (Next 17).
+
+Refuted, each within ±0.3 s of the fixed harness's 21.2 s cold: the
+per-task pseudo-terminal (`NX_NATIVE_COMMAND_RUNNER=false`) and the
+output style (`NX_TUI=false`, `--outputStyle=stream`). So is the daemon:
+the fixed harness read Nx cold at 22.25 s with `NX_DAEMON=true` and
+22.08 s without. Parallelism is honoured: with cheap tasks, the
+`nx:run-commands` arm sits 1.65 s over the ideal schedule. The ~4 git
+probes each forked task runs cost ~8 ms of it. These tables used to say
+Nx's daemon was on; `CI=1` had always turned it off, and the harness
+keeps it off on purpose: it simulates CI.
 
 ## A real monorepo: 3,270 tasks, 100 layers (2026-09-03)
 

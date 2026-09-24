@@ -30,7 +30,8 @@
  *   warm-no-restore — second run, cache hit, outputs intact (skip path)
  *   warm-restore — outputs deleted, cache hit, outputs restored
  *
- * Turbo and Nx run as a user would (daemons on, telemetry/cloud disabled);
+ * Every runner runs as it would in CI (`CI=1`, so Nx's daemon is off;
+ * Turbo uses none for `turbo run`), telemetry/cloud disabled;
  * vx runs as its compiled binary (the artifact users install), plus a
  * `vx (frozen)` variant from a `vx lock` snapshot (zero config eval).
  */
@@ -161,6 +162,11 @@ async function generate(dir: string): Promise<void> {
   await json('nx.json', {
     $schema: './node_modules/nx/schemas/nx-schema.json',
     parallel: CONCURRENCY,
+    // `nx:run-script` runs each script through the package manager Nx
+    // detects from a lockfile; this workspace has none, so Nx fell back to
+    // npm (~200 ms of CPU per task) while Turbo read `packageManager` and
+    // ran `bun run` (~4 ms). Same package manager for both.
+    cli: { packageManager: 'bun' },
     namedInputs: { default: ['{projectRoot}/**/*'], production: ['default'] },
     analytics: false,
   })

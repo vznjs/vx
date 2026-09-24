@@ -162,7 +162,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
    required; no inferred inputs (the sandbox, `exec.sandbox`, is how a
    task proves what it touches; `--verify` was removed 2026-09-04).
 3. **One command per task; shell is the API.** A plugin changes WHERE a
-   command runs, never what it is.
+   command runs, never what it is. Nothing boots between the scheduler
+   and the shell: Nx's Node fork per task is ~270 ms of CPU (item 732).
 4. **Resolved-config hashing.** The key sees the evaluated config object.
 5. **Cascade through deps** by folding upstream INPUT keys, never outputs.
 6. **Project boundaries are hard.** Globs never cross into another project.
