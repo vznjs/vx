@@ -19,7 +19,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { buildTaskGraph, type TaskNode } from '../src/graph/index.js'
+import { buildTaskGraph, outputsOverlap, type TaskNode } from '../src/graph/index.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
 import type { PackageGraph } from '../src/workspace/index.js'
 import type { ProjectConfig, TaskConfig } from '../src/config.js'
@@ -505,7 +505,274 @@ describe('the check must not cost the graph its linearity', () => {
     }
     expect(best).toBeLessThan(600)
   }, 120_000)
+
+  it('stays near-linear in ONE project: 4,000 tasks with outputs', () => {
+    // Indexing by project left each project's own tasks all-pairs, so one
+    // project of 4,000 tasks with outputs spent 10.7 s here (item 741). The
+    // old loop's best of three on this box: 10.0 s for distinct literals,
+    // 2.65 s for distinct globs; indexed by path (item 745), 5 ms warm and
+    // about 10 ms on a first build. The bound fails the old loop ten times
+    // over at its cheapest shape and leaves the index 25 times its cost.
+    const TASKS = 4_000
+    const literals: Record<string, TaskConfig> = {}
+    const globs: Record<string, TaskConfig> = {}
+    for (let t = 0; t < TASKS; t++) {
+      literals[`t${t}`] = task([`dist/t${t}.js`])
+      globs[`t${t}`] = task([`out/t${t}/**`])
+    }
+    for (const tasks of [literals, globs]) {
+      let best = Infinity
+      for (let r = 0; r < 3; r++) {
+        const t0 = performance.now()
+        graph({ app: tasks })
+        best = Math.min(best, performance.now() - t0)
+      }
+      expect(best).toBeLessThan(250)
+    }
+  }, 120_000)
 })
+
+// The pairs compared inside one domain come from a path index
+// (`overlapCandidates`, item 745), which must find every pair the rule
+// refuses: a pair it misses is two tasks deleting each other's outputs,
+// green. Each row is a way an index by path could miss one.
+describe('the path index finds every pair the rule refuses', () => {
+  const found: Array<[string, string, string]> = [
+    ['a literal deep under a glob’s head', 'dist/a/**', 'dist/a/b/c/d.js'],
+    ['a wildcard in the first segment', '*/app.js', 'dist/app.js'],
+    ['a brace in the first segment', '{dist,lib}/app.js', 'lib/app.js'],
+    ['a wildcard at the root', '*.js', 'app.js'],
+    ['a globstar at the root', '**/app.js', 'dist/sub/app.js'],
+    ['an escape in the head (`\\s` is `s`)', 'di\\st/*.js', 'dist/app.js'],
+    ['a literal directory over a deep literal', 'dist', 'dist/a/b/c.js'],
+    ['a glob over the directory its head names', 'dist/**', 'dist'],
+    ['a trailing wildcard in the last segment', 'dist/app*', 'dist/app.js'],
+  ]
+  for (const [what, glob, literal] of found) {
+    it(`${what}: ${glob} against ${literal}`, () => {
+      expect([outputsOverlap(glob, literal), outputsOverlap(literal, glob)]).toEqual([true, true])
+      expect(() => graph({ app: { a: task([glob]), b: task([literal]) } })).toThrow(
+        /both declare the output/,
+      )
+      expect(() => graph({ app: { b: task([literal]), a: task([glob]) } })).toThrow(
+        /both declare the output/,
+      )
+      expect(() => graph({ p: { a: task([], [glob]) }, q: { b: task([], [literal]) } })).toThrow(
+        /cache\.outputs\.workspaceFiles/,
+      )
+    })
+  }
+
+  it('CONTROL: a literal beside a glob’s head, not under it, is not compared into a refusal', () => {
+    expect(() =>
+      graph({ app: { a: task(['dist/a/**']), b: task(['dist/ab/c.js', 'dist/b.js']) } }),
+    ).not.toThrow()
+  })
+
+  it('names the first colliding pair in declaration order, as all pairs did', () => {
+    let msg = ''
+    try {
+      graph({
+        app: {
+          w: task(['x/1.js']),
+          v: task(['gen/**']),
+          u: task(['y/2.js', 'gen/a.js']),
+          t: task(['x/1.js']),
+        },
+      })
+    } catch (e) {
+      msg = (e as Error).message
+    }
+    expect(msg.slice(0, msg.indexOf(' in cache.'))).toBe(
+      'app#w and app#t both declare the output "x/1.js"',
+    )
+  })
+
+  it('pushes the addition marks in all-pairs order', () => {
+    const on = (outputs: string[], deps: string[]): TaskConfig => ({
+      ...task(outputs),
+      dependsOn: deps,
+    })
+    const nodes = graphNodes({
+      app: {
+        top: on(['dist/top/a.js', 'dist/top/b.js'], ['mid', 'base']),
+        mid: on(['dist/top/**'], ['base']),
+        base: task(['dist']),
+      },
+    })
+    expect(
+      ['top', 'mid', 'base'].map((t) => {
+        const n = nodes.get(`app#${t}`)!
+        return [n.id, n.addsToOutputsOf, n.outputsAddedToBy]
+      }),
+    ).toEqual(reference(nodes).map((n) => [n.id, n.addsToOutputsOf, n.outputsAddedToBy]))
+  })
+
+  // The differential: random configs, the index against the all-pairs loop
+  // it replaced, over the same exported rule. Each config runs twice: with
+  // no edges (a refusal, naming the first pair) and as a chain (every pair
+  // ordered, so the addition marks, in order).
+  const SEGMENTS = [
+    'dist',
+    'lib',
+    'a',
+    'b',
+    '*',
+    '**',
+    '{a,b}',
+    '{dist,lib}',
+    'a?',
+    'di\\st',
+    '*.js',
+    // A leading `!` negates in `Bun.Glob`; the schema refuses it in an
+    // output, but the rule answers for it, so the index must too.
+    '!a',
+  ]
+  it('matches all pairs on 3,000 random configs, both namespaces', () => {
+    let seed = 745
+    const rnd = (n: number): number => {
+      // mulberry32: an LCG's low bits cycle in a few steps, and `% n` reads
+      // them, so some segment sequences never came up.
+      seed = (seed + 0x6d2b79f5) | 0
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) % n
+    }
+    const glob = (): string => {
+      const parts: string[] = []
+      for (let d = 0, depth = 1 + rnd(3); d < depth; d++)
+        parts.push(SEGMENTS[rnd(SEGMENTS.length)]!)
+      const g = parts.join('/')
+      return rnd(8) === 0 ? `./${g}` : rnd(8) === 0 ? `${g}/` : g
+    }
+    let refusals = 0
+    let marks = 0
+    for (let c = 0; c < 1_500; c++) {
+      const outputs = Array.from({ length: 2 + rnd(6) }, () =>
+        Array.from({ length: 1 + rnd(2) }, glob),
+      )
+      for (const ws of [false, true]) {
+        const at = (i: number, deps?: string[]): TaskConfig => ({
+          ...(ws ? task([], outputs[i]) : task(outputs[i]!)),
+          ...(deps === undefined ? {} : { dependsOn: deps }),
+        })
+        const loose: Record<string, Record<string, TaskConfig>> = {}
+        const chain: Record<string, TaskConfig> = {}
+        outputs.forEach((_, i) => {
+          if (ws) loose[`p${i}`] = { t: at(i) }
+          else (loose['app'] ??= {})[`t${i}`] = at(i)
+          chain[`t${i}`] = at(i, i + 1 < outputs.length ? [`t${i + 1}`] : [])
+        })
+        const unordered = graphNodesOrError(loose)
+        const expected = firstRefusal(unordered.order, ws)
+        if (expected !== null) refusals++
+        expect(unordered.error).toBe(expected)
+
+        const nodes = graphNodes({ app: chain })
+        const want = reference(nodes, ws)
+        marks += want.filter((n) => n.addsToOutputsOf !== undefined).length
+        expect(
+          [...nodes.values()].map((n) => [n.id, n.addsToOutputsOf, n.outputsAddedToBy]),
+        ).toEqual(want.map((n) => [n.id, n.addsToOutputsOf, n.outputsAddedToBy]))
+      }
+    }
+    // The configs exercise both outcomes, or the comparison holds nothing.
+    expect(refusals).toBeGreaterThan(500)
+    expect(marks).toBeGreaterThan(500)
+  }, 60_000)
+})
+
+const outputsOf = (n: TaskNode, ws: boolean): readonly string[] =>
+  (ws ? n.config.cache?.outputs.workspaceFiles : n.config.cache?.outputs.files) ?? []
+
+/** Build unordered: the node order (for the reference) and the refusal's head, if any. */
+function graphNodesOrError(projects: Record<string, Record<string, TaskConfig>>): {
+  order: TaskNode[]
+  error: string | null
+} {
+  // The graph is refused whole, so its node order is read from a build
+  // with outputs stripped: collisions are the last step of the build.
+  const bare: Record<string, Record<string, TaskConfig>> = {}
+  for (const [p, tasks] of Object.entries(projects)) {
+    bare[p] = Object.fromEntries(
+      Object.entries(tasks).map(([t, c]): [string, TaskConfig] => [t, { exec: c.exec! }]),
+    )
+  }
+  const order = [...graphNodes(bare).values()].map((n) => ({
+    ...n,
+    config: projects[n.projectName]![n.taskName]!,
+  }))
+  try {
+    graph(projects)
+    return { order, error: null }
+  } catch (e) {
+    const msg = (e as Error).message
+    return { order, error: msg.slice(0, msg.indexOf(' — vx cleans')) }
+  }
+}
+
+/** The all-pairs refusal's head: the first overlapping pair and globs, in node order. */
+function firstRefusal(order: readonly TaskNode[], ws: boolean): string | null {
+  for (let i = 0; i < order.length; i++) {
+    for (let j = i + 1; j < order.length; j++) {
+      const a = order[i]!
+      const b = order[j]!
+      if (!ws && a.projectName !== b.projectName) continue
+      for (const ga of outputsOf(a, ws)) {
+        for (const gb of outputsOf(b, ws)) {
+          if (!outputsOverlap(ga, gb)) continue
+          return (
+            `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
+            (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
+            ` in cache.outputs.${ws ? 'workspaceFiles' : 'files'}`
+          )
+        }
+      }
+    }
+  }
+  return null
+}
+
+/** The all-pairs addition marks over a built graph whose every overlap is ordered. */
+function reference(
+  nodes: Map<string, TaskNode>,
+  ws = false,
+): Array<{ id: string; addsToOutputsOf?: string[]; outputsAddedToBy?: string[] }> {
+  const below = (from: string, to: string): boolean => {
+    const stack = [...nodes.get(from)!.deps]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      if (id === to) return true
+      if (seen.has(id)) continue
+      seen.add(id)
+      stack.push(...nodes.get(id)!.deps)
+    }
+    return false
+  }
+  const out = new Map(
+    [...nodes.keys()].map((id) => [
+      id,
+      { id } as { id: string; addsToOutputsOf?: string[]; outputsAddedToBy?: string[] },
+    ]),
+  )
+  const order = [...nodes.values()].filter((n) => outputsOf(n, ws).length > 0)
+  for (let i = 0; i < order.length; i++) {
+    for (let j = i + 1; j < order.length; j++) {
+      const a = order[i]!
+      const b = order[j]!
+      if (!ws && a.projectName !== b.projectName) continue
+      const hit = outputsOf(a, ws).some((ga) =>
+        outputsOf(b, ws).some((gb) => outputsOverlap(ga, gb)),
+      )
+      if (!hit) continue
+      const [up, down] = below(b.id, a.id) ? [a, b] : [b, a]
+      ;(out.get(down.id)!.addsToOutputsOf ??= []).push(up.id)
+      ;(out.get(up.id)!.outputsAddedToBy ??= []).push(...outputsOf(down, ws))
+    }
+  }
+  return [...out.values()]
+}
 
 describe('the data loss itself, end to end', () => {
   it('a second task really does delete the first task’s output', async () => {

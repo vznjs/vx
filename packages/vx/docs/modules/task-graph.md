@@ -141,6 +141,24 @@ Cycle detected in task graph: a#build -> b#build -> a#build
 Both cross-project cycles and self-cycles (a task listing itself) are
 detected. Throws as `UserError` so the CLI prints cleanly.
 
+## Overlapping outputs
+
+Last, `detectOutputCollisions` refuses two tasks whose declared outputs
+overlap (`outputsOverlap`) with no edge between them, and marks the
+pair that has one as the addition shape. It never compares all pairs:
+`outputs.files` is compared only within a project and
+`outputs.workspaceFiles` only among its declarers, and within each
+domain a path index (`overlapCandidates`) names the pairs that can
+overlap. Two equal globs are one lookup (equal literals too, through
+their `/**` twins), and a literal meets the globs whose literal head
+names one of its ancestor directories. The head ends at the first
+character `Bun.Glob` may read as other than itself, `*?{}` plus `\`
+and a leading `!`, so a wildcard in the first segment files the glob
+at the root. The pairs are compared in the order all pairs met them,
+so the refusal names the same pair and the marks land in the same
+order. One project of 4,000 tasks with outputs built its graph in
+10.0 s (distinct literals) and now in 10 ms (item 745).
+
 ## What this does NOT do
 
 - It doesn't enforce that `cache.inputs.tasks` references resolve to
@@ -189,7 +207,12 @@ what is refused, the spellings that name one path (`./dist/**` against
 `dist/app.js`) with the clean that proves it, the limit where the tree
 rule meets the undecided glob-vs-glob case, and the false-positive
 controls — the refusal aborts the run, so a widening breaks a build that
-works today.
+works today. It also holds the path index: a row per way an index could
+miss a pair (a literal deep under a glob's head, a wildcard or brace in
+the first segment, an escape in the head), the first refusal and the
+marks in all-pairs order, 3,000 random configs against the all-pairs
+loop, and a time bound at 4,000 tasks in one project that the old loop
+misses tenfold.
 
 ## Replacing this module
 
