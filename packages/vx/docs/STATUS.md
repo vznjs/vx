@@ -507,7 +507,11 @@ false`, the first failure failing the task; `commands: []` a no-op;
       as "internal error … ArchiveSecurityError" (nx#37061's shape): it
       is now a user error naming the link and its target, and the link
       is kept — never written through (containment unchanged) and never
-      replaced, which is the bug nx#37061 reports.
+      replaced, which is the bug nx#37061 reports. Documented, no code: a
+      task's outputs are what exists when its command exits; a descendant
+      it detached (`setsid … &`) that writes later is saved as nothing
+      and wiped by the next hit's restore (turborepo#12786;
+      caching.md § Cache write, execution.md).
 
 ## In flight
 

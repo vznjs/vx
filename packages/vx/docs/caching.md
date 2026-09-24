@@ -479,6 +479,21 @@ it applies, a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk. `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
+**The outputs are what exists when the task's command exits.** The run
+waits for the command's own process, not for everything it started — a
+backgrounded grandchild that still holds the output pipe does not hold
+the run (`tests/runner.test.ts`) — and the save resolves the output
+globs at once. A descendant the command detached (`setsid … &`, a
+daemon) that writes after that is not in the artifact: the entry saves
+what was there, often nothing (with the `cache.outputs matched no
+files` line), and the next hit's clean-before-restore removes what the
+descendant wrote and restores the saved entry in its place (upstream
+survey, turborepo#12786). vx does not wait for it and cannot see it: a
+process that left the task's session is outside the process group vx
+tracks and signals ([kill-tree](./modules/kill-tree.md)). So a command
+finishes writing its outputs before it exits — `wait` for what it
+backgrounds, or do not detach it.
+
 If the task exits non-zero, **nothing is cached.** This is deliberate:
 
 - Caching a failure prevents retry flows. The next run gets the same

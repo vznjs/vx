@@ -306,6 +306,12 @@ Per-task caching is the right granularity for invalidation. Splitting
 gives you per-step caching naturally; combining with `&&` gives you
 one cache slot for the whole chain.
 
+A task is over when its command's own process exits. What a descendant
+writes after that — one the command detached with `setsid … &`, or
+daemonized — is not the task's output: the save has already run, and a
+later hit's restore removes it ([caching](./caching.md#cache-write)).
+`wait` for what the command backgrounds.
+
 ## Env isolation
 
 The child process gets, in priority order (lowest first):
