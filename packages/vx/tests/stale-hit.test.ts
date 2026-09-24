@@ -862,6 +862,106 @@ describe('stale cache hits', () => {
   )
 })
 
+// turborepo#9345: a name holding a byte that is not UTF-8 (`x\xffy`) came
+// back from git's `-z` output, and from `Bun.Glob`, decoded lossily as
+// `x�y`, which names no file. An input by that name was never read
+// (every edit a hit), an output never saved (every hit a tree without it).
+// vx cannot open such a name, so it refuses it by name. macOS refuses to
+// create one at all (APFS and HFS+ require UTF-8 names), so there is
+// nothing to hold there.
+describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () => {
+  const BAD = Buffer.from([0x78, 0xff, 0x79]) // x, 0xFF, y
+
+  function vxExit(cwd: string, ...args: string[]): { code: number; out: string } {
+    const p = Bun.spawnSync({
+      cmd: ['bun', CLI, ...args],
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+    })
+    return {
+      code: p.exitCode,
+      out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
+    }
+  }
+
+  async function project(command: string): Promise<string> {
+    await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+    await writeLocalWorkspace(root)
+    await write(
+      path.join(root, 'vx.config.mjs'),
+      `export default { tasks: { build: {
+         exec: { command: ${JSON.stringify(command)} },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+       } } }\n`,
+    )
+    await write(path.join(root, 'src', 'a'), 'v1')
+    await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+    return path.join(root, 'src')
+  }
+  const badIn = (dir: string): Buffer => Buffer.concat([Buffer.from(`${dir}/`), BAD])
+
+  for (const tracked of [false, true]) {
+    it(
+      `${tracked ? 'a tracked' : 'an untracked'} input by that name is refused, not dropped`,
+      async () => {
+        const src = await project('mkdir -p dist && cat src/* > dist/all')
+        await writeFile(badIn(src), 'bad1')
+        git(root, 'init', '-q')
+        if (tracked) {
+          git(root, 'add', '-A')
+          git(root, 'commit', '-q', '-m', 'init')
+        }
+        const first = vxExit(root, 'run', 'build')
+        expect([first.code, first.out]).toEqual([1, expect.stringContaining('src/x�y')])
+        expect(first.out).toContain('not valid UTF-8')
+        // CONTROL: the same file under a UTF-8 name is an input like any other.
+        await rm(badIn(src))
+        await write(path.join(src, 'xy'), 'bad1')
+        expect(vxExit(root, 'run', 'build').code).toBe(0)
+        expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('v1bad1')
+      },
+      TIMEOUT,
+    )
+  }
+
+  // CONTROL past the gate: a name that really holds U+FFFD is valid UTF-8,
+  // reads like any other, and must not be taken for a lossy one.
+  it(
+    'a name that holds U+FFFD as a character is an input like any other',
+    async () => {
+      const src = await project('mkdir -p dist && cat src/* > dist/all')
+      await write(path.join(src, 'x\ufffdy'), 'fine1')
+      git(root, 'init', '-q')
+      expect(vxExit(root, 'run', 'build').code).toBe(0)
+      expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('v1fine1')
+      await write(path.join(src, 'x\ufffdy'), 'fine2')
+      expect(vxExit(root, 'run', 'build').code).toBe(0)
+      expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('v1fine2')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an output by that name fails the save by name, so no hit restores a tree without it',
+    async () => {
+      await project(`mkdir -p dist && printf a > dist/ok && printf b > "dist/$(printf 'x\\377y')"`)
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      const first = vxExit(root, 'run', 'build')
+      expect(first.out).toContain('dist/x�y')
+      expect(first.out).toContain('not valid UTF-8')
+      await rm(path.join(root, 'dist'), { recursive: true, force: true })
+      const second = vxExit(root, 'run', 'build')
+      expect(second.out).not.toContain('restored')
+      expect(second.out).not.toContain('up-to-date')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('parseCheckAttrOutput', () => {
   const triples = (...t: string[][]): string => t.flat().join('\0') + '\0'
 
