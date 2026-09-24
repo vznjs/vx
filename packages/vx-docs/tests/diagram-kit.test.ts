@@ -260,14 +260,23 @@ function content(p: Picture): Record<'boxes' | 'arrows' | 'frames' | 'notes', st
   const words = new Map<string, string[]>()
   for (const n of p.notes ?? []) {
     const tone = n.tone ?? 'muted'
-    words.set(tone, [...(words.get(tone) ?? []), ...n.text.split(/\s+/).filter((w) => w !== '' && !/^[←↑→↓]$/.test(w))])
+    words.set(tone, [
+      ...(words.get(tone) ?? []),
+      ...n.text.split(/\s+/).filter((w) => w !== '' && !/^[←↑→↓]$/.test(w)),
+    ])
   }
   return {
     boxes: p.boxes
-      .map((b) => `${b.id} ${b.tone ?? 'default'}: ${b.label}${b.sub === undefined ? '' : ` / ${b.sub}`}${b.title === undefined ? '' : ` (${b.title})`}`)
+      .map(
+        (b) =>
+          `${b.id} ${b.tone ?? 'default'}: ${b.label}${b.sub === undefined ? '' : ` / ${b.sub}`}${b.title === undefined ? '' : ` (${b.title})`}`,
+      )
       .sort(),
     arrows: (p.arrows ?? [])
-      .map((a) => `${a.from} → ${a.to} ${a.tone ?? 'default'}${a.dashed === true ? ' dashed' : ''}${a.label === undefined ? '' : `: ${a.label}`}`)
+      .map(
+        (a) =>
+          `${a.from} → ${a.to} ${a.tone ?? 'default'}${a.dashed === true ? ' dashed' : ''}${a.label === undefined ? '' : `: ${a.label}`}`,
+      )
       .sort(),
     frames: (p.frames ?? []).map((f) => `${f.tone ?? 'default'}: ${f.label}`).sort(),
     notes: [...words].map(([tone, w]) => `${tone}: ${w.join(' ')}`).sort(),

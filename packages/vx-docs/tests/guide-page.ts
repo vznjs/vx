@@ -467,7 +467,9 @@ export function chapterShape(c: Chapter): void {
     it('draws at least three pictures, each named, captioned and as its data says', () => {
       expect(c.pictures.length).toBeGreaterThanOrEqual(3)
       expect(pictures(chapter)).toEqual(
-        c.pictures.flatMap((p) => [p, ...(p.narrow === undefined ? [] : [narrowOf(p)!])].map(expected)),
+        c.pictures.flatMap((p) =>
+          [p, ...(p.narrow === undefined ? [] : [narrowOf(p)!])].map(expected),
+        ),
       )
     })
 

@@ -8,7 +8,7 @@
 // `.status` and `.static`, so they are its contract with this markup.
 import Demo from '../Demo.astro'
 import DiagramSvg from '../guide/diagram/DiagramSvg.astro'
-import type { Picture } from '../guide/diagram/diagram.js'
+import { narrowOf, type Picture } from '../guide/diagram/diagram.js'
 import {
   TOY_PACKAGES,
   TOY_TASKS,
@@ -25,6 +25,11 @@ const rowY = (wave: number): number => 16 + (wave - 1) * ROW
 // Three columns, each `test` under its `build`, so that no arrow crosses a
 // box; the wave (the row) comes from the model.
 const column: Record<string, number> = { ui: 200, utils: 340, app: 340, api: 480 }
+// On a phone: the same three columns, narrower, with each wave's name
+// above its row rather than beside it, so the drawing fits 340 across.
+const PHONE = { w: 100, row: 90 }
+const phoneColumn: Record<string, number> = { ui: 70, utils: 180, app: 180, api: 290 }
+const phoneRowY = (wave: number): number => 34 + (wave - 1) * PHONE.row
 const allWaves = waves()
 const wavesSentence = allWaves.map((w, i) => `wave ${i + 1} is ${joinNames(w)}`).join('; ')
 
@@ -49,7 +54,28 @@ const picture: Picture = {
     text: `wave ${i + 1}`,
     anchor: 'start' as const,
   })),
+  narrow: {
+    width: 340,
+    height: phoneRowY(allWaves.length) + BOX.h + 16,
+    boxes: TOY_TASKS.map((t) => ({
+      id: t.id,
+      x: phoneColumn[t.pkg]! - PHONE.w / 2,
+      y: phoneRowY(waveOf(t.id)),
+      w: PHONE.w,
+      label: t.pkg,
+      sub: t.name,
+      data: { task: t.id, pkg: t.pkg, wave: String(waveOf(t.id)) },
+    })),
+    arrows: TOY_TASKS.flatMap((t) => t.dependsOn.map((d) => ({ from: d, to: t.id }))),
+    notes: allWaves.map((_, i) => ({
+      x: 10,
+      y: phoneRowY(i + 1) - 8,
+      text: `wave ${i + 1}`,
+      anchor: 'start' as const,
+    })),
+  },
 }
+const phone = narrowOf(picture)!
 const rows = TOY_PACKAGES.map((p) => ({
   pkg: p.id,
   affected: affectedBy(p.id),
@@ -68,7 +94,9 @@ const rows = TOY_PACKAGES.map((p) => ({
       ))
     }
   </div>
-  <div class="vx-diagram inset not-content"><DiagramSvg {...picture} live /></div>
+  <div class="vx-diagram inset not-content">
+    <DiagramSvg {...picture} live layout="wide" /><DiagramSvg {...phone} live layout="narrow" />
+  </div>
   <p class="status vx-say" aria-live="polite" hidden></p>
   <table class="static">
     <thead>

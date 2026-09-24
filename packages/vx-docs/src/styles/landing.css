@@ -1018,21 +1018,27 @@ body:has(.vx-landing) {
   margin: 0;
   min-width: 0;
 }
+/* The drawing is 410 wide so a phone's column draws it near full size; the
+   command sits above it as text, which wraps, rather than as a 560-wide
+   line that shrank the whole picture to eight-pixel type. */
 .loop-fig svg {
   display: block;
   width: 100%;
+  max-width: 460px;
   height: auto;
+  margin: 18px auto 0;
 }
-.loop-fig .code rect {
-  fill: var(--vx-surface);
-  stroke: var(--vx-border);
+.loop-fig .loop-code {
+  display: block;
+  padding: 12px 16px;
+  border: 1px solid var(--vx-border);
+  border-radius: 8px;
+  background: var(--vx-surface);
+  color: var(--vx-fg);
+  font: 500 14px / 1.5 var(--vx-mono);
 }
-.loop-fig .code text {
-  font: 500 15px var(--vx-mono);
-  fill: var(--vx-fg);
-}
-.loop-fig .code .prompt {
-  fill: var(--vx-accent);
+.loop-fig .loop-code .prompt {
+  color: var(--vx-accent);
 }
 .loop-fig .lane {
   font: 500 16px var(--vx-mono);
