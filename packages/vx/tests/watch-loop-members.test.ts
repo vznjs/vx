@@ -164,4 +164,44 @@ describe('vx watch loop (e2e): the watched set', () => {
     expect(w.cycles()).toBe(1)
     expect(await lines()).toEqual(['lib', 'run', 'lib', 'run'])
   }, 40_000)
+
+  // nx#36446: `nx watch --projects='lib-*'` watched nothing a glob named.
+  it('a --filter glob runs and watches exactly the projects it names', async () => {
+    const lib = (name: string) =>
+      addProject(f.root, name, {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo ${name} >> ${f.log}' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+        files: { 'src/x.txt': `${name}1\n` },
+      })
+    const libA = await lib('lib-a')
+    await lib('lib-b')
+    f.watch = startWatch(f.root, ['--filter', 'lib-*'])
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'the two libs watched')
+    const lines = async () =>
+      (await readFile(f.log, 'utf8'))
+        .split('\n')
+        .filter((l) => l !== '')
+        .sort()
+    expect(await lines()).toEqual(['lib-a', 'lib-b'])
+
+    // `app` is outside the glob: its edit is no cycle.
+    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(0)
+
+    await writeFile(path.join(libA, 'src', 'x.txt'), 'lib-a2\n')
+    await until(async () => (await lines()).length === 3, 'the cycle after a lib edit')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(1)
+    expect(await lines()).toEqual(['lib-a', 'lib-a', 'lib-b'])
+  }, 40_000)
 })

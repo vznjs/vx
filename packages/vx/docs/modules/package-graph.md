@@ -197,6 +197,7 @@ and graph traversal.
 - a peer that closes a cycle is no cycle for the build order (medusa, 2026-09-11)
 - a `workspace:` path or alias links the package it points at, not its key (turborepo#6744)
 - a `file:`, `link:`, `portal:` or bare path and a satisfied `npm:` alias link their target
+- the workspace root as a project links a member by `file:`, `link:` and `workspace:*`
 - a range the local version does not satisfy is a registry dependency (turborepo#4214)
 - an installed entry, not a peer on the same key, decides the edge (turborepo#12640)
 - a key in two installed fields links when either precedence order installs the local copy

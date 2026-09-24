@@ -934,6 +934,41 @@ describe('affectedProjects', () => {
     // overshot by 63ms — and the work it does is genuinely several seconds.
     // The bound still catches a real hang, which is what it is for.
   }, 30_000)
+
+  // nx#16975: a diff naming thousands of files overflowed a fixed buffer
+  // (Node's `execSync` default is 1 MiB of stdout).
+  it('six thousand changed files, over a megabyte of paths, select their project and no other', async () => {
+    await mkdir(path.join(root, 'packages/b/gen'), { recursive: true })
+    const long = 'x'.repeat(160)
+    await Promise.all(
+      Array.from({ length: 6000 }, (_, i) =>
+        writeFile(path.join(root, `packages/b/gen/${long}-${i}.txt`), `${i}`),
+      ),
+    )
+    const listed = Bun.spawnSync({ cmd: ['git', 'ls-files', '-o', '-z'], cwd: root })
+    expect(listed.stdout.length).toBeGreaterThan(1024 * 1024)
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'generated')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
+    expect([...out]).toEqual(['b'])
+  }, 30_000)
+
+  // nx#18112, nx#20691: deleting a whole project marked every project
+  // affected (or failed on the missing one).
+  it('a deleted project directory selects no remaining project', async () => {
+    await git(root, 'rm', '-r', '-q', 'packages/a')
+    await git(root, 'commit', '-q', '-m', 'drop a')
+    const remaining = projects.filter((p) => p.name !== 'a')
+    const out = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD~1',
+      projects: remaining,
+    })
+    expect([...out]).toEqual([])
+    // CONTROL: the same diff, while `a` is still listed, names it.
+    const listed = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
+    expect([...listed]).toEqual(['a'])
+  })
 })
 
 describe('defaultAffectedBase', () => {

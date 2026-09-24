@@ -16,6 +16,8 @@ import {
 import { decodedTar } from '../src/cache/zstd.js'
 import { UserError, xxh3hex } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { run } from '../src/orchestrator/index.js'
 
 describe('zstdContentSize (frame-header parse)', () => {
   const MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
@@ -2820,5 +2822,67 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     const recordedMode = rowsOf('ms5')[0]!.mode & 0o777
     await chmod(outFile, recordedMode ^ 0o111)
     expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms5'))).toBe(false)
+  })
+})
+
+// nx#35403: artifacts copied into a cache directory without the index that
+// named them failed the run. The index is authoritative (caching.md): an
+// artifact with no row is never a hit, and the save that follows replaces
+// it and indexes it.
+describe('an artifact on disk with no index row, through a run', () => {
+  it('is a silent miss; the task runs, the save takes the file over, and the next run hits', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-rowless-' })
+    try {
+      await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+        files: { 'src/a.txt': 'a1\n' },
+      })
+      const lines: string[] = []
+      const log = {
+        status: (l: string) => lines.push(l),
+        taskStdout() {},
+        taskStderr() {},
+        taskComplete() {},
+      }
+      const once = async () => {
+        const r = await run({ cwd: root, tasks: ['build'], log })
+        return { ok: r.ok, statuses: r.outcomes.map((o) => o.status) }
+      }
+      const cacheDir = path.join(root, '.vx', 'cache')
+      const artifacts = async () => (await readdir(cacheDir)).filter((f) => f.endsWith('.tar.zst'))
+
+      expect(await once()).toEqual({ ok: true, statuses: ['success'] })
+      const [artifact] = await artifacts()
+      expect(artifact).toBeDefined()
+      for (const f of await readdir(cacheDir)) {
+        if (f.startsWith('cache.db')) await rm(path.join(cacheDir, f))
+      }
+      await rm(path.join(root, 'packages', 'app', 'dist'), { recursive: true })
+
+      lines.length = 0
+      expect(await once()).toEqual({ ok: true, statuses: ['success'] })
+      // Notices, not the summary block every run prints.
+      expect(lines.filter((l) => /^\[?vx[\]:]/.test(l))).toEqual([])
+      expect(await artifacts()).toEqual([artifact!])
+      expect(await once()).toEqual({ ok: true, statuses: ['cache-hit'] })
+      const { Database: Db } = await import('bun:sqlite')
+      const db = new Db(path.join(cacheDir, 'cache.db'), { readonly: true })
+      try {
+        expect(db.query('SELECT count(*) AS n FROM entries').get()).toEqual({ n: 1 })
+      } finally {
+        db.close()
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })
