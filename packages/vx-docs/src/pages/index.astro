@@ -281,8 +281,9 @@ const footCols = {
             </div>
           </div>
           <figure class="loop-fig">
+            <code class="loop-code"><span class="prompt">$</span> for p in packages/*; do (cd $p &amp;&amp; npm run build); done</code>
             <svg
-              viewBox="0 0 560 262"
+              viewBox="0 -6 410 212"
               role="img"
               aria-label="The loop for p in packages/* builds api, app, ui and utils one after another, in name order. api, app and ui fail, because the package each one needs builds later; only utils builds. All four rebuild on every change, and only one builds at a time."
             >
@@ -291,24 +292,20 @@ const footCols = {
                   <path class="axis-head" d="M0 0 L10 5 L0 10 z"></path>
                 </marker>
               </defs>
-              <g class="code">
-                <rect x="1" y="1" width="558" height="44" rx="8"></rect>
-                <text x="16" y="29"><tspan class="prompt">$</tspan> for p in packages/*; do (cd $p &amp;&amp; npm run build); done</text>
-              </g>
-              <text class="lane" x="62" y="91">api</text>
-              <text class="lane" x="62" y="133">app</text>
-              <text class="lane" x="62" y="175">ui</text>
-              <text class="lane" x="62" y="217">utils</text>
-              <g class="bar fail"><rect x="72" y="70" width="110" height="30" rx="6"></rect><text x="127" y="90">✗ fails</text></g>
-              <g class="bar fail"><rect x="182" y="112" width="110" height="30" rx="6"></rect><text x="237" y="132">✗ fails</text></g>
-              <g class="bar fail"><rect x="292" y="154" width="110" height="30" rx="6"></rect><text x="347" y="174">✗ fails</text></g>
-              <g class="bar ok"><rect x="402" y="196" width="110" height="30" rx="6"></rect><text x="457" y="216">builds</text></g>
-              <path class="brace" d="M522 70 H530 V226 H522"></path>
-              <line class="axis" x1="72" y1="246" x2="508" y2="246" marker-end="url(#vx-loop-arrow)"></line>
-              <text class="axis-label" x="516" y="251">time</text>
-              <g class="badge b1"><circle cx="182" cy="70" r="12"></circle><text x="182" y="75">1</text></g>
-              <g class="badge b2"><circle cx="544" cy="148" r="12"></circle><text x="544" y="153">2</text></g>
-              <g class="badge b3"><circle cx="290" cy="246" r="12"></circle><text x="290" y="251">3</text></g>
+              <text class="lane" x="54" y="31">api</text>
+              <text class="lane" x="54" y="73">app</text>
+              <text class="lane" x="54" y="115">ui</text>
+              <text class="lane" x="54" y="157">utils</text>
+              <g class="bar fail"><rect x="62" y="10" width="78" height="30" rx="6"></rect><text x="101" y="30">✗ fails</text></g>
+              <g class="bar fail"><rect x="140" y="52" width="78" height="30" rx="6"></rect><text x="179" y="72">✗ fails</text></g>
+              <g class="bar fail"><rect x="218" y="94" width="78" height="30" rx="6"></rect><text x="257" y="114">✗ fails</text></g>
+              <g class="bar ok"><rect x="296" y="136" width="78" height="30" rx="6"></rect><text x="335" y="156">builds</text></g>
+              <path class="brace" d="M376 10 H384 V166 H376"></path>
+              <line class="axis" x1="62" y1="186" x2="326" y2="186" marker-end="url(#vx-loop-arrow)"></line>
+              <text class="axis-label" x="334" y="191">time</text>
+              <g class="badge b1"><circle cx="140" cy="10" r="12"></circle><text x="140" y="15">1</text></g>
+              <g class="badge b2"><circle cx="396" cy="88" r="12"></circle><text x="396" y="93">2</text></g>
+              <g class="badge b3"><circle cx="200" cy="186" r="12"></circle><text x="200" y="191">3</text></g>
             </svg>
             <ol class="loop-legend">
               <li style="--c:var(--vx-danger)"><span class="n">1</span><span><strong>Wrong order.</strong> Three of four builds fail.</span></li>

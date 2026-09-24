@@ -16,7 +16,7 @@ import {
   rerunBy,
   waves,
 } from '../src/components/demos/model/toy-monorepo.js'
-import type { Picture } from '../src/components/guide/diagram/diagram.js'
+import { NARROW, type Picture } from '../src/components/guide/diagram/diagram.js'
 import * as P from '../src/components/guide/dependencies/pictures.js'
 import {
   TOY_USES,
@@ -80,44 +80,57 @@ function shape(tasks: { node: { id: string; deps: readonly string[] } }[]): {
 
 describe('the graph explorer on guide/dependencies', () => {
   const element = only(main, /<vx-graph-explorer\b[^>]*>([\s\S]*?)<\/vx-graph-explorer>/g)
-  const svg = only(element, /(<svg\b[\s\S]*<\/svg>)/g)
+  // The wide drawing, then the phone one (the diagram kit's `narrow`): the
+  // rows below hold each of them.
+  const drawings = [...element.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0])
+  const svg = drawings[0]!
   const table = only(element, /(<table\b[\s\S]*?<\/table>)/g)
 
-  it('ships the task graph as static SVG inside the element, one row per wave', () => {
-    const nodes = [
-      ...svg.matchAll(/<g\b[^>]*data-task="([^"]+)" data-pkg="([^"]+)" data-wave="(\d+)"/g),
-    ].map((m) => `${m[1]} ${m[2]} ${m[3]}`)
-    expect(nodes.sort()).toEqual(
-      WAVES.flatMap((w, i) => w.map((id) => `${id} ${id.split('#')[0]} ${i + 1}`)).sort(),
-    )
-    expect(
-      [...svg.matchAll(/data-from="([^"]+)" data-to="([^"]+)"/g)]
-        .map((m) => `${m[1]}→${m[2]}`)
-        .sort(),
-    ).toEqual(EDGES)
-    expect([...svg.matchAll(/<text class="note\b[^"]*"[^>]*>([^<]*)</g)].map((m) => m[1])).toEqual([
-      'wave 1',
-      'wave 2',
-      'wave 3',
-      'wave 4',
+  it('draws it twice, wide and for a phone, the phone one at most NARROW across', () => {
+    expect(drawings.map((d) => /^<svg\b[^>]*data-layout="(\w+)"/.exec(d)?.[1])).toEqual([
+      'wide',
+      'narrow',
     ])
-    // A wave is a row: every box of a wave at one height, each wave lower.
-    const rowOf = new Map<number, Set<string>>()
-    for (const m of svg.matchAll(/data-wave="(\d+)"[^>]*>\s*<rect\b[^>]*\sy="([\d.]+)"/g)) {
-      rowOf.set(Number(m[1]), (rowOf.get(Number(m[1])) ?? new Set()).add(m[2]!))
-    }
-    const ys = [1, 2, 3, 4].map((w) => [...rowOf.get(w)!])
-    expect(ys.map((y) => y.length)).toEqual([1, 1, 1, 1])
-    expect(ys.map((y) => Number(y[0])).every((y, i, all) => i === 0 || y > all[i - 1]!)).toBe(true)
-    // Without JavaScript the SVG is one image with a name, not dead buttons.
-    expect(svg).toMatch(/^<svg\b[^>]*role="img"/)
-    expect(only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(
-      'Task graph of the toy monorepo in 4 waves: wave 1 is utils#build; wave 2 is ' +
-        'utils#test, ui#build and api#build; wave 3 is ui#test, api#test and app#build; ' +
-        'wave 4 is app#test.',
-    )
-    expect(svg).not.toContain('role="button"')
+    expect(
+      Number(/^<svg\b[^>]*viewBox="0 [\d.]+ ([\d.]+) /.exec(drawings[1]!)![1]),
+    ).toBeLessThanOrEqual(NARROW)
   })
+
+  for (const [layout, svg] of drawings.map((d, i) => [i === 0 ? 'wide' : 'phone', d] as const))
+    it(`ships the task graph as static SVG inside the element, one row per wave (${layout})`, () => {
+      const nodes = [
+        ...svg.matchAll(/<g\b[^>]*data-task="([^"]+)" data-pkg="([^"]+)" data-wave="(\d+)"/g),
+      ].map((m) => `${m[1]} ${m[2]} ${m[3]}`)
+      expect(nodes.sort()).toEqual(
+        WAVES.flatMap((w, i) => w.map((id) => `${id} ${id.split('#')[0]} ${i + 1}`)).sort(),
+      )
+      expect(
+        [...svg.matchAll(/data-from="([^"]+)" data-to="([^"]+)"/g)]
+          .map((m) => `${m[1]}→${m[2]}`)
+          .sort(),
+      ).toEqual(EDGES)
+      expect(
+        [...svg.matchAll(/<text class="note\b[^"]*"[^>]*>([^<]*)</g)].map((m) => m[1]),
+      ).toEqual(['wave 1', 'wave 2', 'wave 3', 'wave 4'])
+      // A wave is a row: every box of a wave at one height, each wave lower.
+      const rowOf = new Map<number, Set<string>>()
+      for (const m of svg.matchAll(/data-wave="(\d+)"[^>]*>\s*<rect\b[^>]*\sy="([\d.]+)"/g)) {
+        rowOf.set(Number(m[1]), (rowOf.get(Number(m[1])) ?? new Set()).add(m[2]!))
+      }
+      const ys = [1, 2, 3, 4].map((w) => [...rowOf.get(w)!])
+      expect(ys.map((y) => y.length)).toEqual([1, 1, 1, 1])
+      expect(ys.map((y) => Number(y[0])).every((y, i, all) => i === 0 || y > all[i - 1]!)).toBe(
+        true,
+      )
+      // Without JavaScript the SVG is one image with a name, not dead buttons.
+      expect(svg).toMatch(/^<svg\b[^>]*role="img"/)
+      expect(only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(
+        'Task graph of the toy monorepo in 4 waves: wave 1 is utils#build; wave 2 is ' +
+          'utils#test, ui#build and api#build; wave 3 is ui#test, api#test and app#build; ' +
+          'wave 4 is app#test.',
+      )
+      expect(svg).not.toContain('role="button"')
+    })
 
   // The explorer is one of the Guide's pictures: the kit draws it, in the
   // kit's own frame and classes, so it takes the pictures' look.

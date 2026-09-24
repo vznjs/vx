@@ -174,7 +174,10 @@ describe('the landing page', () => {
     expect(svgs).toHaveLength(1)
     const [, attrs, body] = svgs[0]!
     expect(attrs).toMatch(/\saria-label="[^"]{80,}"/)
-    expect(body).toContain('for p in packages/*')
+    // The command is text above the drawing, so it wraps on a phone.
+    expect(/<code class="loop-code">([\s\S]*?)<\/code>/.exec(hero)?.[1]).toContain(
+      'for p in packages/*',
+    )
     // One lane per package, in the loop's order; the three that need a
     // package built later fail, and the one that needs nothing builds.
     const lanes = [...body!.matchAll(/<text class="lane"[^>]*>([^<]*)</g)].map((m) => m[1])

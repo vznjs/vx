@@ -8,9 +8,19 @@
 import './diagram.css'
 import { TONES, boxSize, extent, route, type Picture, type Tone } from './diagram.js'
 
-type Props = Picture & { live?: boolean }
+type Props = Picture & { live?: boolean; layout?: 'wide' | 'narrow' }
 
-const { name, label, width = 600, boxes, arrows = [], notes = [], frames = [], live } = Astro.props
+const {
+  name,
+  label,
+  width = 600,
+  boxes,
+  arrows = [],
+  notes = [],
+  frames = [],
+  live,
+  layout,
+} = Astro.props
 
 const lines = arrows.map((a) => ({ ...a, tone: a.tone ?? 'default', ...route(Astro.props, a) }))
 const tones: readonly Tone[] = live === true ? TONES : [...new Set(lines.map((l) => l.tone))]
@@ -19,7 +29,13 @@ const dataOf = (data: Record<string, string> = {}): Record<string, string> =>
   Object.fromEntries(Object.entries(data).map(([k, v]) => [`data-${k}`, v]))
 ---
 
-<svg viewBox={`0 ${top} ${width} ${height}`} role="img" aria-label={label} style={`max-width: ${width}px`}>
+<svg
+  viewBox={`0 ${top} ${width} ${height}`}
+  role="img"
+  aria-label={label}
+  style={`max-width: ${width}px`}
+  data-layout={layout}
+>
   {
     tones.length > 0 && (
       <defs>

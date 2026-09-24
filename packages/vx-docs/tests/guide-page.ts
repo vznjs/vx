@@ -18,7 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { planRun, type Logger, type RunPlan } from '@vzn/vx'
-import type { Picture } from '../src/components/guide/diagram/diagram.js'
+import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
 
 export const SITE = path.resolve(import.meta.dir, '..')
 export const DIST = path.join(SITE, 'dist')
@@ -129,15 +129,16 @@ function packagesNamed(s: string): string[] {
 }
 
 /** Each code block in `html` in the given language, as its text. Expressive
- *  Code puts one `ec-line` per source line. */
+ *  Code puts one `ec-line` per source line, and marks a block that wraps
+ *  (every block, `astro.config.mjs`) on its `<pre>`. */
 export function codeBlocks(html: string, lang: string): string[] {
   return [
     ...html.matchAll(
-      new RegExp(`<pre data-language="${lang}"><code>([\\s\\S]*?)</code></pre>`, 'g'),
+      new RegExp(`<pre data-language="${lang}"[^>]*><code>([\\s\\S]*?)</code></pre>`, 'g'),
     ),
   ].map((m) =>
     m[1]!
-      .split(/<div class="ec-line[^"]*">/)
+      .split(/<div class="ec-line[^"]*"[^>]*>/)
       .slice(1)
       .map((line) => decode(line.replace(/<[^>]+>/g, '')).replace(/\n$/, ''))
       .join('\n'),
@@ -366,45 +367,54 @@ interface Rendered {
   frames: string[]
 }
 
+/** Each figure's drawings, in page order: the wide one, then its phone
+ *  layout when it has one (named `<name>-narrow`, as `narrowOf` names it). */
 function pictures(chapter: string): Rendered[] {
   return [
     ...chapter.matchAll(
       /<figure class="vx-diagram\b[^"]*" data-picture="([^"]+)"[^>]*>([\s\S]*?)<\/figure>/g,
     ),
-  ].map((m) => {
+  ].flatMap((m) => {
     const body = m[2]!
-    const svg = only(body, /(<svg\b[\s\S]*<\/svg>)/g)
-    expect(svg).toMatch(/^<svg\b[^>]*role="img"/)
-    return {
-      name: m[1]!,
-      label: decode(only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g)),
-      caption: text(only(body, /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g)),
-      boxes: [
-        ...svg.matchAll(
-          /<g class="box (\w+)" data-box="([^"]+)">[\s\S]*?<text class="label"[^>]*>([^<]*)<\/text>(?:\s*<text class="sub"[^>]*>([^<]*)<\/text>)?/g,
-        ),
-      ].map(
-        (b) =>
-          `${decode(b[2]!)} ${b[1]}: ${decode(b[3]!).trim()}${b[4] === undefined ? '' : ` / ${decode(b[4]).trim()}`}`,
-      ),
-      arrows: [
-        ...svg.matchAll(
-          /<g class="arrow (\w+)" data-from="([^"]+)" data-to="([^"]+)">\s*<path\b[^>]*>(?:<\/path>)?\s*(?:<text\b[^>]*>([^<]*)<\/text>)?/g,
-        ),
-      ].map(
-        (a) =>
-          `${decode(a[2]!)} → ${decode(a[3]!)} ${a[1]}${a[4] === undefined ? '' : `: ${decode(a[4]).trim()}`}`,
-      ),
-      notes: [...svg.matchAll(/<text class="note\b[^"]*"[^>]*>([^<]*)<\/text>/g)].map((n) =>
-        decode(n[1]!).trim(),
-      ),
-      frames: [
-        ...svg.matchAll(
-          /<g class="frame (\w+)">\s*<rect\b[^>]*>(?:<\/rect>)?\s*<text\b[^>]*>([^<]*)<\/text>/g,
-        ),
-      ].map((f) => `${f[1]}: ${decode(f[2]!).trim()}`),
-    }
+    const caption = text(only(body, /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g))
+    const svgs = [...body.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((s) => s[0])
+    const layouts = svgs.map((svg) => /^<svg\b[^>]*data-layout="(\w+)"/.exec(svg)?.[1])
+    expect(layouts).toEqual(svgs.length === 1 ? [undefined] : ['wide', 'narrow'])
+    return svgs.map((svg, i) => drawn(i === 0 ? m[1]! : `${m[1]!}-narrow`, svg, caption))
   })
+}
+
+function drawn(name: string, svg: string, caption: string): Rendered {
+  expect(svg).toMatch(/^<svg\b[^>]*role="img"/)
+  return {
+    name,
+    label: decode(only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g)),
+    caption,
+    boxes: [
+      ...svg.matchAll(
+        /<g class="box (\w+)" data-box="([^"]+)">[\s\S]*?<text class="label"[^>]*>([^<]*)<\/text>(?:\s*<text class="sub"[^>]*>([^<]*)<\/text>)?/g,
+      ),
+    ].map(
+      (b) =>
+        `${decode(b[2]!)} ${b[1]}: ${decode(b[3]!).trim()}${b[4] === undefined ? '' : ` / ${decode(b[4]).trim()}`}`,
+    ),
+    arrows: [
+      ...svg.matchAll(
+        /<g class="arrow (\w+)" data-from="([^"]+)" data-to="([^"]+)">\s*<path\b[^>]*>(?:<\/path>)?\s*(?:<text\b[^>]*>([^<]*)<\/text>)?/g,
+      ),
+    ].map(
+      (a) =>
+        `${decode(a[2]!)} → ${decode(a[3]!)} ${a[1]}${a[4] === undefined ? '' : `: ${decode(a[4]).trim()}`}`,
+    ),
+    notes: [...svg.matchAll(/<text class="note\b[^"]*"[^>]*>([^<]*)<\/text>/g)].map((n) =>
+      decode(n[1]!).trim(),
+    ),
+    frames: [
+      ...svg.matchAll(
+        /<g class="frame (\w+)">\s*<rect\b[^>]*>(?:<\/rect>)?\s*<text\b[^>]*>([^<]*)<\/text>/g,
+      ),
+    ].map((f) => `${f[1]}: ${decode(f[2]!).trim()}`),
+  }
 }
 
 /** What `pictures()` should read back for a picture's data. */
@@ -457,7 +467,11 @@ export function chapterShape(c: Chapter): void {
 
     it('draws at least three pictures, each named, captioned and as its data says', () => {
       expect(c.pictures.length).toBeGreaterThanOrEqual(3)
-      expect(pictures(chapter)).toEqual(c.pictures.map(expected))
+      expect(pictures(chapter)).toEqual(
+        c.pictures.flatMap((p) =>
+          [p, ...(p.narrow === undefined ? [] : [narrowOf(p)!])].map(expected),
+        ),
+      )
     })
 
     it('keeps its prose within the budget', () => {

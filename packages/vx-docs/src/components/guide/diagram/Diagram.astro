@@ -2,14 +2,18 @@
 // Draws one Guide picture (`diagram.ts`) as build-time SVG (`DiagramSvg.astro`)
 // with its caption under it. It ships no script. Every picture on the site
 // is this component, and its look is `diagram.css` alone, so they read as
-// one hand drew them.
+// one hand drew them. A picture with a phone layout draws both, and the
+// stylesheet shows the one that fits the width.
 import DiagramSvg from './DiagramSvg.astro'
-import type { Picture } from './diagram.js'
+import { narrowOf, type Picture } from './diagram.js'
 
 type Props = Picture
+
+const narrow = narrowOf(Astro.props)
 ---
 
 <figure class="vx-diagram not-content" data-picture={Astro.props.name}>
-  <DiagramSvg {...Astro.props} />
+  <DiagramSvg {...Astro.props} layout={narrow === undefined ? undefined : 'wide'} />
+  {narrow !== undefined && <DiagramSvg {...narrow} layout="narrow" />}
   <figcaption>{Astro.props.caption}</figcaption>
 </figure>

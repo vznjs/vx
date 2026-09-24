@@ -17,45 +17,59 @@ export const RUN_STAGES = [
   'telemetry',
 ] as const
 
-// Four stages a row, snaking down: wide enough gaps for the arrows to read.
-const PER_ROW = 4
-const PITCH = 156
 const W = 126
 const H = 44
-const place = (i: number): { x: number; y: number } => ({
-  x: 6 + (i % PER_ROW) * PITCH,
-  y: 44 + Math.floor(i / PER_ROW) * 80,
-})
-const stageBoxes: Box[] = RUN_STAGES.map((id, i) => ({ id, ...place(i), w: W, h: H, label: id }))
-const stageArrows: Arrow[] = RUN_STAGES.slice(1).map((to, i) => {
-  const from = place(i)
-  const next = place(i + 1)
-  const turn = from.y + H + 18
+
+/** The stages `perRow` a row, `pitch` apart from `x`, snaking down: each
+ *  row's last stage turns down and back to the next row's first. */
+function snake(perRow: number, pitch: number, x: number): { boxes: Box[]; arrows: Arrow[] } {
+  const place = (i: number): { x: number; y: number } => ({
+    x: x + (i % perRow) * pitch,
+    y: 44 + Math.floor(i / perRow) * 80,
+  })
   return {
-    from: RUN_STAGES[i]!,
-    to,
-    ...(next.y === from.y
-      ? {}
-      : {
-          via: [
-            [from.x + W / 2, turn],
-            [next.x + W / 2, turn],
-          ] as Point[],
-        }),
+    boxes: RUN_STAGES.map((id, i) => ({ id, ...place(i), w: W, h: H, label: id })),
+    arrows: RUN_STAGES.slice(1).map((to, i) => {
+      const from = place(i)
+      const next = place(i + 1)
+      const turn = from.y + H + 18
+      return {
+        from: RUN_STAGES[i]!,
+        to,
+        ...(next.y === from.y
+          ? {}
+          : {
+              via: [
+                [from.x + W / 2, turn],
+                [next.x + W / 2, turn],
+              ] as Point[],
+            }),
+      }
+    }),
   }
-})
+}
 
 export const pipeline: Picture = {
   name: 'pipeline',
   label: `Every run passes the same ten stages in order: ${RUN_STAGES.join(', ')}. Setup runs before them, teardown after, and commands adds command-line verbs.`,
   caption: 'Every run passes the same stages, in the same order.',
   height: 300,
-  boxes: stageBoxes,
-  arrows: stageArrows,
+  // Four stages a row: wide enough gaps for the arrows to read.
+  ...snake(4, 156, 6),
   notes: [
     { x: 6, y: 26, text: 'setup runs first', anchor: 'start' },
     { x: 300, y: 288, text: 'then teardown · commands adds new vx verbs' },
   ],
+  narrow: {
+    width: 340,
+    height: 470,
+    ...snake(2, 166, 24),
+    notes: [
+      { x: 24, y: 26, text: 'setup runs first', anchor: 'start' },
+      { x: 24, y: 432, text: 'then teardown ·', anchor: 'start' },
+      { x: 24, y: 452, text: 'commands adds new vx verbs', anchor: 'start' },
+    ],
+  },
 }
 
 const filled = [
@@ -84,6 +98,28 @@ export const plugins: Picture = {
   ],
   arrows: filled.map((f) => ({ from: `plugin-${f.stage}`, to: f.stage, tone: 'accent' as const })),
   notes: [{ x: 300, y: 138, text: 'plugs into', tone: 'accent' }],
+  narrow: {
+    width: 340,
+    height: 360,
+    boxes: [
+      ...filled.map((f, i) => ({
+        id: `plugin-${f.stage}`,
+        x: 12,
+        y: 50 + i * 76,
+        w: 135,
+        label: f.plugin,
+        sub: f.does,
+        tone: 'accent' as const,
+      })),
+      ...filled.map((f, i) => ({ id: f.stage, x: 216, y: 54 + i * 76, w: 112, label: f.stage })),
+    ],
+    arrows: filled.map((f) => ({
+      from: `plugin-${f.stage}`,
+      to: f.stage,
+      tone: 'accent' as const,
+    })),
+    notes: [{ x: 182, y: 34, text: 'plugs into', tone: 'accent' }],
+  },
 }
 
 export const floor: Picture = {
@@ -102,4 +138,35 @@ export const floor: Picture = {
     { from: 'shared', to: 'local', label: 'no server? still here', tone: 'ok' },
   ],
   notes: [{ x: 300, y: 138, text: 'the floor: under every plugin', tone: 'ok' }],
+  narrow: {
+    width: 340,
+    height: 434,
+    boxes: [
+      { id: 'workers', x: 60, y: 20, w: 170, label: 'Worker plugin', sub: 'may say no' },
+      {
+        id: 'here',
+        x: 60,
+        y: 128,
+        w: 170,
+        label: 'This machine',
+        sub: 'always runs it',
+        tone: 'ok',
+      },
+      { id: 'shared', x: 60, y: 246, w: 170, label: 'Shared cache', sub: 'may be missing' },
+      {
+        id: 'local',
+        x: 60,
+        y: 354,
+        w: 170,
+        label: 'Local cache',
+        sub: 'always there',
+        tone: 'ok',
+      },
+    ],
+    arrows: [
+      { from: 'workers', to: 'here', label: 'declines? here', tone: 'ok' },
+      { from: 'shared', to: 'local', label: 'no server? still here', tone: 'ok' },
+    ],
+    notes: [{ x: 145, y: 222, text: 'the floor: under every plugin', tone: 'ok' }],
+  },
 }

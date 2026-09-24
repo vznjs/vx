@@ -20,6 +20,22 @@ export const script: Picture = {
     { from: 'script', to: 'vite' },
     { from: 'script', to: 'copy' },
   ],
+  // A tree: the script on top, its jobs hung off one trunk below it.
+  narrow: {
+    width: 340,
+    height: 346,
+    boxes: [
+      { id: 'script', x: 16, y: 16, w: 150, label: 'npm run build', sub: 'in ui' },
+      { id: 'tsc', x: 126, y: 106, w: 200, label: 'tsc', sub: 'check types' },
+      { id: 'vite', x: 126, y: 186, w: 200, label: 'vite build', sub: 'bundle the code' },
+      { id: 'copy', x: 126, y: 266, w: 200, label: 'cp -r assets dist/', sub: 'copy images' },
+    ],
+    arrows: [
+      { from: 'script', to: 'tsc', via: [[91, 136]] },
+      { from: 'script', to: 'vite', via: [[91, 216]] },
+      { from: 'script', to: 'copy', via: [[91, 296]] },
+    ],
+  },
 }
 
 export const taskName: Picture = {
@@ -43,6 +59,27 @@ export const taskName: Picture = {
     { from: 'pkg', to: 'task' },
     { from: 'cmd', to: 'task' },
   ],
+  narrow: {
+    width: 340,
+    height: 220,
+    boxes: [
+      { id: 'pkg', x: 16, y: 16, w: 145, label: 'api', sub: 'the package' },
+      { id: 'cmd', x: 179, y: 16, w: 145, label: 'build', sub: 'the command' },
+      {
+        id: 'task',
+        x: 15,
+        y: 136,
+        w: 310,
+        label: 'api#build',
+        sub: 'bun build src/server.ts --outdir dist',
+        tone: 'accent',
+      },
+    ],
+    arrows: [
+      { from: 'pkg', to: 'task' },
+      { from: 'cmd', to: 'task' },
+    ],
+  },
 }
 
 export const INPUTS: string[] = ['src/**', 'package.json', 'API_URL']
@@ -65,6 +102,23 @@ export const readsWrites: Picture = {
     { x: 85, y: 20, text: 'inputs' },
     { x: 520, y: 96, text: 'outputs' },
   ],
+  narrow: {
+    width: 340,
+    height: 330,
+    boxes: [
+      ...INPUTS.map((input, i) => ({ id: input, x: 12, y: 40 + i * 76, w: 130, label: input })),
+      { id: 'api#build', x: 198, y: 116, w: 130, label: 'api#build', tone: 'accent' as const },
+      { id: 'dist/**', x: 198, y: 236, w: 130, label: 'dist/**', tone: 'ok' as const },
+    ],
+    arrows: [
+      ...INPUTS.map((input) => ({ from: input, to: 'api#build' })),
+      { from: 'api#build', to: 'dist/**', tone: 'ok' as const },
+    ],
+    notes: [
+      { x: 77, y: 26, text: 'inputs' },
+      { x: 263, y: 310, text: 'outputs' },
+    ],
+  },
 }
 
 export const split: Picture = {
@@ -90,4 +144,28 @@ export const split: Picture = {
     { x: 300, y: 26, text: 'you change one image in assets/', tone: 'accent' },
     { x: 300, y: 150, text: 'three tasks: only the copy runs' },
   ],
+  // The one task's command is 39 characters of 15-unit type: 357 units, so
+  // this layout is the kit's widest and the box nearly all of it.
+  narrow: {
+    width: 360,
+    height: 236,
+    boxes: [
+      {
+        id: 'one',
+        x: 1,
+        y: 36,
+        w: 358,
+        label: 'tsc && vite build && cp -r assets dist/',
+        sub: 'one task: all three run again',
+        tone: 'danger',
+      },
+      { id: 'tsc', x: 12, y: 156, w: 104, label: 'tsc', sub: 'skipped', tone: 'muted' },
+      { id: 'vite', x: 128, y: 156, w: 104, label: 'vite build', sub: 'skipped', tone: 'muted' },
+      { id: 'copy', x: 244, y: 156, w: 104, label: 'cp', sub: 'runs again', tone: 'ok' },
+    ],
+    notes: [
+      { x: 180, y: 24, text: 'you change one image in assets/', tone: 'accent' },
+      { x: 180, y: 140, text: 'three tasks: only the copy runs' },
+    ],
+  },
 }

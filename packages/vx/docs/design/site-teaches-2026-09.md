@@ -160,15 +160,26 @@ address is still the owner's decision (roadmap 1.5).
 
 ## Done means
 
-- Every Learn page has a diagram and an interactive element, reads
-  correctly with JavaScript off, and ends with a checkpoint.
-- The playground computes the same task graph and keys as the CLI on the
-  same workspace, proven by a test.
-- Every capability monorepo.tools names as a checkmark has a page here
-  that explains its mechanism, its failure mode and its cost.
-- Every number on the site comes from `benchmarks.md`, and every
-  guarantee links to its test.
-- Every comparison states what vx's choice costs and names at least one
-  case where another tool is the better pick.
-- The site build, its tests and its link checks are green in `vx run ci
---all`.
+Rewritten for the Guide (2026-09-24): the structure above is superseded
+by `site-redo-2026-09.md`, and so is the old list, which asked each Learn
+page for things the Guide now does once, in order. Each line names what
+holds it.
+
+- The Guide is ten chapters in one order, on the same four packages, each
+  opening with the last one's problem and ending in a Next card
+  (`guide.test.ts`).
+- A chapter is pictures first: at least three build-time pictures, at
+  most 350 words of prose, one question, "In vx" as one sentence and one
+  block, and its evidence in one collapsed list (`chapterShape` in
+  `tests/guide-page.ts`).
+- Every picture reads on a phone: a picture wider than a phone's column
+  carries a phone layout that says the same thing at about full size
+  (`diagram-kit.test.ts`), and no widget scrolls sideways.
+- Every widget reads with JavaScript off and computes what the CLI does on
+  the same workspace (the widget rows, `playground-parity.unsafe.test.ts`).
+- Every number on the site comes from `benchmarks.md` or `results.json`
+  (`check.site`, `landing.test.ts`), and every guarantee links its test.
+- The comparison page states what vx's choice costs and names a case
+  where another tool is the better pick (`compare.test.ts`).
+- Every link lands and every old URL resolves (`site-links.test.ts`,
+  `redirects.test.ts`), all in `vx run ci --all`.

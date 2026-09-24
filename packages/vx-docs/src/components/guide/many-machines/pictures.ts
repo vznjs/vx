@@ -22,6 +22,23 @@ export const threeBuilds: Picture = {
     })),
   ],
   arrows: machines.map((_, i) => ({ from: `m${i}`, to: `b${i}`, tone: 'danger' as const })),
+  narrow: {
+    width: 340,
+    height: 280,
+    boxes: [
+      ...machines.map((m, i) => ({ id: `m${i}`, x: 14, y: 24 + i * 90, w: 130, label: m })),
+      ...machines.map((_, i) => ({
+        id: `b${i}`,
+        x: 196,
+        y: 20 + i * 90,
+        w: 130,
+        label: 'build utils',
+        sub: 'from scratch',
+        tone: 'danger' as const,
+      })),
+    ],
+    arrows: machines.map((_, i) => ({ from: `m${i}`, to: `b${i}`, tone: 'danger' as const })),
+  },
 }
 
 export const sameKey: Picture = {
@@ -46,6 +63,27 @@ export const sameKey: Picture = {
     ...machines.map((_, i) => ({ from: `m${i}`, to: 'key' })),
     { from: 'key', to: 'cache', tone: 'accent' },
   ],
+  narrow: {
+    width: 340,
+    height: 276,
+    boxes: [
+      ...machines.map((m, i) => ({ id: `m${i}`, x: 14, y: 20 + i * 84, w: 130, label: m })),
+      { id: 'key', x: 193, y: 96, w: 130, label: 'key a41f…', sub: 'same everywhere' },
+      {
+        id: 'cache',
+        x: 188,
+        y: 196,
+        w: 140,
+        label: 'Shared cache',
+        sub: 'a41f… → result',
+        tone: 'accent',
+      },
+    ],
+    arrows: [
+      ...machines.map((_, i) => ({ from: `m${i}`, to: 'key' })),
+      { from: 'key', to: 'cache', tone: 'accent' },
+    ],
+  },
 }
 
 export const whoWrites: Picture = {
@@ -73,6 +111,30 @@ export const whoWrites: Picture = {
       ],
     },
   ],
+  narrow: {
+    width: 340,
+    height: 316,
+    boxes: [
+      { id: 'ci', x: 16, y: 20, w: 144, label: 'CI', sub: 'clean checkout' },
+      { id: 'cache', x: 16, y: 130, w: 144, label: 'Shared cache', tone: 'accent' },
+      { id: 'laptop', x: 16, y: 232, w: 144, label: 'Your laptop', sub: 'reads only' },
+    ],
+    arrows: [
+      { from: 'ci', to: 'cache', label: 'writes', tone: 'accent' },
+      { from: 'cache', to: 'laptop', label: 'reads', tone: 'link' },
+      {
+        from: 'laptop',
+        to: 'cache',
+        label: 'never writes',
+        tone: 'danger',
+        dashed: true,
+        via: [
+          [222, 262],
+          [222, 156],
+        ],
+      },
+    ],
+  },
 }
 
 export const worker: Picture = {
@@ -107,6 +169,37 @@ export const worker: Picture = {
     { from: 'worker', to: 'result', tone: 'danger' },
   ],
   notes: [{ x: 100, y: 240, text: 'stays behind', tone: 'danger' }],
+  narrow: {
+    width: 340,
+    height: 324,
+    boxes: [
+      { id: 'src', x: 14, y: 20, w: 150, label: 'src/**', sub: 'declared', tone: 'ok' },
+      {
+        id: 'tsconfig',
+        x: 176,
+        y: 20,
+        w: 150,
+        label: 'tsconfig.json',
+        sub: 'not declared',
+        tone: 'muted',
+      },
+      { id: 'worker', x: 19, y: 132, w: 140, label: 'Worker', sub: 'runs api#build' },
+      {
+        id: 'result',
+        x: 19,
+        y: 244,
+        w: 140,
+        label: 'Fails',
+        sub: 'no tsconfig.json',
+        tone: 'danger',
+      },
+    ],
+    arrows: [
+      { from: 'src', to: 'worker', label: 'sent', tone: 'ok' },
+      { from: 'worker', to: 'result', tone: 'danger' },
+    ],
+    notes: [{ x: 251, y: 104, text: 'stays behind', tone: 'danger' }],
+  },
 }
 
 /** What a shared cache and remote workers cost, one box each. */
@@ -132,4 +225,17 @@ export const costs: Picture = {
     sub,
     tone: 'warn' as const,
   })),
+  narrow: {
+    width: 340,
+    height: 180,
+    boxes: COSTS.map(([label, sub], i) => ({
+      id: `cost-${i + 1}`,
+      x: 14 + (i % 2) * 166,
+      y: 20 + Math.floor(i / 2) * 80,
+      w: 146,
+      label,
+      sub,
+      tone: 'warn' as const,
+    })),
+  },
 }

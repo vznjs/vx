@@ -11,7 +11,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   FONT,
+  NARROW,
   boxSize,
+  narrowOf,
   route,
   textWidth,
   type Picture,
@@ -153,42 +155,50 @@ describe("every chapter's pictures", () => {
   })
 
   it('keep every label inside its box or along its arrow, and everything inside the drawing', () => {
-    const wrong: string[] = []
-    for (const { at, p } of all) {
-      const width = p.width ?? 600
-      const height = p.height ?? 260
-      for (const b of p.boxes) {
-        const { w, h } = boxSize(b)
-        if (textWidth(b.label, FONT.label) + 6 > w) wrong.push(`${at} ${b.id}: "${b.label}" > ${w}`)
-        if (b.sub !== undefined && textWidth(b.sub, FONT.sub) + 6 > w) {
-          wrong.push(`${at} ${b.id}: "${b.sub}" > ${w}`)
-        }
-        if (b.x < 0 || b.y < 0 || b.x + w > width || b.y + h > height) {
-          wrong.push(`${at} ${b.id}: outside ${width}×${height}`)
-        }
-      }
-      for (const n of p.notes ?? []) {
-        const tw = textWidth(n.text, FONT.note)
-        const left = n.anchor === 'start' ? n.x : n.anchor === 'end' ? n.x - tw : n.x - tw / 2
-        if (left < 0 || left + tw > width || n.y - FONT.note < 0 || n.y > height) {
-          wrong.push(`${at} note "${n.text}": outside ${width}×${height}`)
-        }
-      }
-      for (const a of p.arrows ?? []) {
-        if (a.label === undefined) continue
-        const r = route(p, a)
-        const tw = textWidth(a.label, FONT.arrow)
-        if (r.across ? tw + 12 > r.span : r.lx + tw > width) {
-          wrong.push(`${at} ${a.from}→${a.to}: "${a.label}" does not fit its arrow`)
-        }
-      }
-      for (const f of p.frames ?? []) {
-        if (f.x < 0 || f.y < 0 || f.x + f.w > width || f.y + f.h > height) {
-          wrong.push(`${at} frame ${f.label}: outside ${width}×${height}`)
-        }
-      }
-    }
+    const wrong = all.flatMap(({ at, p }) => {
+      const narrow = narrowOf(p)
+      return [...misfits(at, p), ...(narrow === undefined ? [] : misfits(`${at} (phone)`, narrow))]
+    })
     expect(wrong).toEqual([])
+  })
+
+  // The wide drawing in a 360-pixel phone's column draws a 15-unit label at
+  // about 8.5 pixels (measured at 390 across, 2026-09-24): a phone reader
+  // gets the layout made for it, and it says what the wide one says.
+  it('each have a phone layout at most NARROW across, unless they are that narrow already', () => {
+    const wrong = all.flatMap(({ at, p }) => {
+      if (p.narrow === undefined) return (p.width ?? 600) > NARROW ? [`${at}: no phone layout`] : []
+      return p.narrow.width > NARROW ? [`${at}: phone layout ${p.narrow.width} across`] : []
+    })
+    expect(wrong).toEqual([])
+  })
+
+  it('say on a phone exactly what they say wide: the same boxes, arrows, frames and words', () => {
+    const wrong = all.flatMap(({ at, p }) => {
+      const narrow = narrowOf(p)
+      if (narrow === undefined) return []
+      const a = content(p)
+      const b = content(narrow)
+      return Object.keys(a).flatMap((k) => {
+        const [x, y] = [a[k as keyof typeof a], b[k as keyof typeof b]]
+        return JSON.stringify(x) === JSON.stringify(y)
+          ? []
+          : [`${at} ${k}:\n  wide  ${x.join(' | ')}\n  phone ${y.join(' | ')}`]
+      })
+    })
+    expect(wrong).toEqual([])
+  })
+
+  it('draw a phone layout of their own: not the wide one, and named apart', () => {
+    const narrow = all.flatMap(({ p }) => (p.narrow === undefined ? [] : [p]))
+    expect(narrow.length).toBeGreaterThan(0)
+    for (const p of narrow) {
+      const n = narrowOf(p)!
+      expect(n.name).toBe(`${p.name}-narrow`)
+      expect(n.width).toBe(p.narrow!.width)
+      expect(n.boxes).toBe(p.narrow!.boxes)
+      expect([n.label, n.caption]).toEqual([p.label, p.caption])
+    }
   })
 
   it('join only boxes that exist', () => {
@@ -201,6 +211,77 @@ describe("every chapter's pictures", () => {
     expect(wrong).toEqual([])
   })
 })
+
+/** Why a picture's text or shapes fall outside their room, one line each. */
+function misfits(at: string, p: Picture): string[] {
+  const wrong: string[] = []
+  const width = p.width ?? 600
+  const height = p.height ?? 260
+  for (const b of p.boxes) {
+    const { w, h } = boxSize(b)
+    if (textWidth(b.label, FONT.label) + 6 > w) wrong.push(`${at} ${b.id}: "${b.label}" > ${w}`)
+    if (b.sub !== undefined && textWidth(b.sub, FONT.sub) + 6 > w) {
+      wrong.push(`${at} ${b.id}: "${b.sub}" > ${w}`)
+    }
+    if (b.x < 0 || b.y < 0 || b.x + w > width || b.y + h > height) {
+      wrong.push(`${at} ${b.id}: outside ${width}×${height}`)
+    }
+  }
+  for (const n of p.notes ?? []) {
+    const tw = textWidth(n.text, FONT.note)
+    const left = n.anchor === 'start' ? n.x : n.anchor === 'end' ? n.x - tw : n.x - tw / 2
+    if (left < 0 || left + tw > width || n.y - FONT.note < 0 || n.y > height) {
+      wrong.push(`${at} note "${n.text}": outside ${width}×${height}`)
+    }
+  }
+  for (const a of p.arrows ?? []) {
+    if (a.label === undefined) continue
+    const r = route(p, a)
+    const tw = textWidth(a.label, FONT.arrow)
+    if (r.across ? tw + 12 > r.span : r.lx + tw > width) {
+      wrong.push(`${at} ${a.from}→${a.to}: "${a.label}" does not fit its arrow`)
+    }
+  }
+  for (const f of p.frames ?? []) {
+    if (f.x < 0 || f.y < 0 || f.x + f.w > width || f.y + f.h > height) {
+      wrong.push(`${at} frame ${f.label}: outside ${width}×${height}`)
+    }
+  }
+  return wrong
+}
+
+/** What a picture says, apart from where it says it: boxes, arrows and
+ *  frames as sorted lines, and the notes' words in order, per tone (a phone
+ *  layout may break a note across lines, never reword or reorder it). A
+ *  lone arrow glyph is a pointer, and points the way its layout runs: a
+ *  timeline that runs down a phone points sideways where the wide one
+ *  points up. */
+function content(p: Picture): Record<'boxes' | 'arrows' | 'frames' | 'notes', string[]> {
+  const words = new Map<string, string[]>()
+  for (const n of p.notes ?? []) {
+    const tone = n.tone ?? 'muted'
+    words.set(tone, [
+      ...(words.get(tone) ?? []),
+      ...n.text.split(/\s+/).filter((w) => w !== '' && !/^[←↑→↓]$/.test(w)),
+    ])
+  }
+  return {
+    boxes: p.boxes
+      .map(
+        (b) =>
+          `${b.id} ${b.tone ?? 'default'}: ${b.label}${b.sub === undefined ? '' : ` / ${b.sub}`}${b.title === undefined ? '' : ` (${b.title})`}`,
+      )
+      .sort(),
+    arrows: (p.arrows ?? [])
+      .map(
+        (a) =>
+          `${a.from} → ${a.to} ${a.tone ?? 'default'}${a.dashed === true ? ' dashed' : ''}${a.label === undefined ? '' : `: ${a.label}`}`,
+      )
+      .sort(),
+    frames: (p.frames ?? []).map((f) => `${f.tone ?? 'default'}: ${f.label}`).sort(),
+    notes: [...words].map(([tone, w]) => `${tone}: ${w.join(' ')}`).sort(),
+  }
+}
 
 describe("the kit's colours and faces", () => {
   it('are the theme’s tokens, and nothing else, in the kit and every chapter', () => {

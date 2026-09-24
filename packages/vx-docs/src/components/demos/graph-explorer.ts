@@ -59,8 +59,13 @@ class GraphExplorer extends HTMLElement {
       const on = rerun.includes(arrow.dataset['to']!) && inRun(arrow.dataset['from']!)
       const tone: Tone = pkg === undefined ? 'default' : on ? 'accent' : 'muted'
       arrow.setAttribute('class', `arrow ${tone}`)
+      // Each drawing (wide, phone) names its own heads; a head in the hidden
+      // one does not draw.
       const path = arrow.querySelector('path')!
-      path.setAttribute('marker-end', `url(#vx-dg-graph-explorer-${tone})`)
+      path.setAttribute(
+        'marker-end',
+        path.getAttribute('marker-end')!.replace(/-\w+\)$/, `-${tone})`),
+      )
     }
     for (const button of this.querySelectorAll<HTMLButtonElement>('button[data-pkg]')) {
       button.setAttribute('aria-pressed', String(button.dataset['pkg'] === pkg))
