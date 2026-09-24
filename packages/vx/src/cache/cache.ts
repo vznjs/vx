@@ -40,6 +40,7 @@ import {
   planArtifact,
 } from './archive.js'
 import {
+  ArtifactVanishedError,
   type CacheEntry,
   type CacheGetContext,
   type CacheKeyInput,
@@ -869,19 +870,19 @@ export class Cache implements CacheLayer {
     // outputs, so a restore that did not fail here would report a green cache
     // hit over an emptied output tree. The artifact existed when `get()`
     // probed it, so its absence now means something removed it underneath us
-    // (a concurrent `vx cache prune` is the documented way) — fail loud; the
-    // task re-runs.
+    // (a `vx cache prune` in another shell, or another workspace's retention
+    // on a shared `--cache-dir`) — `ArtifactVanishedError`, which the caller
+    // turns into a miss: the task runs.
     //
     // The FAILING is held twice: the decode below reaches the missing file
     // and throws `CorruptArtifactError` from the extract catch either way.
-    // What the `ENOENT` mapping in that catch carries alone is the MESSAGE,
-    // and the two point at opposite remedies — a prune raced this run
-    // (re-run) versus the cache holds bad bytes (a reason to throw the
-    // cache dir away). That is what the roundtrip row asserts (item 481); a
-    // test that only asserts "corrupt artifact" passes with the mapping
-    // deleted. It was a separate `exists()` probe until item 627: one
-    // thread-pool round trip per restore, spent to learn what the read
-    // reports itself.
+    // What the `ENOENT` mapping in that catch carries alone is the CLASS,
+    // and the two ask for opposite answers — a prune raced this run (run
+    // the task) versus the cache holds bad bytes (fail, and say so). The
+    // roundtrip row asserts the class (item 481); a row that only asserts
+    // "the restore fails" passes with the mapping deleted. It was a
+    // separate `exists()` probe until item 627: one thread-pool round trip
+    // per restore, spent to learn what the read reports itself.
     const endRows = span('restore: rows')
     // The index says exactly which files this entry materializes. If the
     // archive cannot produce one of them, restoring "successfully" leaves a
@@ -958,7 +959,7 @@ export class Cache implements CacheLayer {
       // The artifact itself is gone: the read names its path (`bytes()`
       // opens it; a staged file's ENOENT names the temp below).
       if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
-        throw new CorruptArtifactError(hash, 'artifact file vanished before restore')
+        throw new ArtifactVanishedError(hash)
       }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs

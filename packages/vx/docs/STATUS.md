@@ -480,7 +480,20 @@ false`, the first failure failing the task; `commands: []` a no-op;
       opening one NEW cache both read no `schema_meta` version row and the
       second insert died on the primary key (nx#28608, 2 in 100 paired
       runs): the write half now re-reads under `BEGIN IMMEDIATE`, and a
-      warm open takes no lock.
+      warm open takes no lock. An artifact removed between a hit's probe
+      and its restore (a `vx cache prune` in another shell, nx#36688; the
+      retention of another workspace sharing `--cache-dir`, nx#34032)
+      failed the task as an internal error: it is now a miss
+      (`ArtifactVanishedError`) and the task runs. A restore-tier hit may
+      be running ahead of its deps, so it throws `RestoreDemoted` and the
+      scheduler runs it once they are done — run in the restore's slot,
+      it would build from their unwritten outputs and save that under the
+      healthy key (`tests/vanished-artifact.test.ts`, at one and four
+      workers). Warm-path cost: the hit path gains one awaited wrapper and
+      one `.catch` per task, 60–70 µs per 1,000 in isolation; the
+      1,000-project warm no-op and restore A/B (interleaved, before arm
+      from a worktree) sat inside the box's noise (no-op min 221 → 237,
+      then 301 → 300 ms; restore min 574 → 549, 871 → 743).
 
 ## In flight
 

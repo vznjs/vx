@@ -410,6 +410,22 @@ export class CorruptArtifactError extends Error {
   }
 }
 
+/**
+ * `restoreOutputs` found no artifact where the probe found one: it was
+ * removed in between — a `vx cache prune` in another shell, or the
+ * `cacheRetention` of another workspace sharing the cache directory. The
+ * bytes are not wrong, they are gone, so the entry is a MISS and the task
+ * runs (execute-task.ts); nothing about the cache needs throwing away.
+ */
+export class ArtifactVanishedError extends Error {
+  constructor(public readonly hash: string) {
+    super(
+      `its cache artifact ${hash} vanished before the restore (a prune or another run's retention)`,
+    )
+    this.name = 'ArtifactVanishedError'
+  }
+}
+
 export interface CacheLayer {
   /**
    * The local handle this layer wraps, when it wraps one (`LayeredCache`).

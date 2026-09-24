@@ -2,6 +2,21 @@ import { fsRefusalHint, isFsRefusal, isUserError } from '../util/index.js'
 import { computeReverseDepCount, mergePriorities } from './priorities.js'
 import type { TaskNode } from './task-graph.js'
 
+/**
+ * Thrown by `execute` for a restore-tier task that turned out to have
+ * nothing to restore (its artifact vanished after the up-front probe). It
+ * may be running ahead of its deps, so it cannot run its command in that
+ * slot: the scheduler releases the slot and dispatches it again as an
+ * exec-tier task once its deps are done. It records no outcome, and its
+ * dependents wait for the second dispatch.
+ */
+export class RestoreDemoted extends Error {
+  constructor(readonly taskId: string) {
+    super(`${taskId}: restore demoted to a run`)
+    this.name = 'RestoreDemoted'
+  }
+}
+
 export type TaskStatus =
   | 'success'
   | 'cache-hit'
@@ -184,7 +199,9 @@ export interface ScheduleOptions {
    *     it);
    *   - bypasses the `failedDep`→`skipped` check (its key is independent
    *     of dep success — pure-input transitive hashing — so a valid cached
-   *     output is reported `cache-hit` regardless of a dep failing).
+   *     output is reported `cache-hit` regardless of a dep failing);
+   *   - leaves the tier when `execute` throws `RestoreDemoted`, and is
+   *     dispatched again once its deps are done, with the dep check.
    * It still runs through `execute()` (so the logger frame is unchanged);
    * the orchestrator's execute reuses the up-front probe, so there is no
    * second cache.get. When undefined/empty, behavior is byte-identical.
@@ -347,6 +364,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // idle capacity (or run when an exec is blocked on a restorable dep and
   // nothing else is runnable).
   const restoreTier = options.restoreTier
+  // Restore-tier tasks whose execute threw `RestoreDemoted`: from then on
+  // they are exec-tier tasks, gated on their deps like any other.
+  const demoted = new Set<string>()
+  const inRestoreTier = (id: string): boolean => restoreTier?.has(id) === true && !demoted.has(id)
   const execReady = new ReadyHeap(priority)
   const restoreReady = new ReadyHeap(priority)
   // A restore-tier task is dep-independent (a stable hit's restore needs
@@ -392,16 +413,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const hasRoom = (id: string): boolean => {
     const pool = poolOf?.(id)
     if (pool === undefined) {
-      return options.restoreTier?.has(id)
-        ? activeRestore < restoreConcurrency
-        : active < concurrency
+      return inRestoreTier(id) ? activeRestore < restoreConcurrency : active < concurrency
     }
     return (poolActive.get(pool.name) ?? 0) < pool.capacity
   }
   const admit = (id: string): (() => void) => {
     const pool = poolOf?.(id)
     if (pool === undefined) {
-      if (options.restoreTier?.has(id)) {
+      if (inRestoreTier(id)) {
         activeRestore++
         return () => {
           activeRestore--
@@ -419,7 +438,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   }
   // The policy sees exec-tier local tasks only; a restore is a tar
   // extract and a pooled task runs on someone else's capacity.
-  const local = (id: string): boolean => !options.restoreTier?.has(id) && poolOf?.(id) === undefined
+  const local = (id: string): boolean => !inRestoreTier(id) && poolOf?.(id) === undefined
   const admits = (id: string): boolean => !local(id) || admitPolicy!(id, running)
   // With no policy nothing reads `running`, so nothing is tracked: the
   // count-only dispatch allocates no closure and touches no set per task.
@@ -455,7 +474,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         pending.set(d, rem)
         // Restore-tier dependents were already enqueued at startup (they
         // don't wait on deps); only re-enqueue an exec-tier dependent.
-        if (rem === 0 && !restoreTier?.has(d)) execReady.push(d)
+        if (rem === 0 && !inRestoreTier(d)) execReady.push(d)
       }
     }
 
@@ -474,7 +493,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const aborted = (): boolean => options.signal?.aborted === true
     const willSkip = (id: string): boolean => {
       if (failFastTripped || aborted()) return true
-      if (restoreTier?.has(id)) return false
+      if (inRestoreTier(id)) return false
       if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
       return node.deps.some((d) => {
@@ -574,11 +593,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           heldMs > 0 ? { ...o, admissionHeldMs: heldMs } : o
         // Crash-isolated observer hook — a throwing onStart must not abort
         // the dispatch loop (it would strand the tick with the slot held).
-        try {
-          onStart?.(node)
-        } catch (err) {
-          const m = err instanceof Error ? err.message : String(err)
-          process.stderr.write(`[vx] onStart observer threw for ${id}: ${m}\n`)
+        // A demoted task's second dispatch is the same task, already started.
+        if (!demoted.has(id)) {
+          try {
+            onStart?.(node)
+          } catch (err) {
+            const m = err instanceof Error ? err.message : String(err)
+            process.stderr.write(`[vx] onStart observer threw for ${id}: ${m}\n`)
+          }
         }
 
         // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
@@ -614,6 +636,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             void settled.then(done, done)
           },
           (err: unknown) => {
+            if (err instanceof RestoreDemoted) {
+              leave()
+              untrack()
+              demoted.add(id)
+              if (pending.get(id) === 0) execReady.push(id)
+              tick()
+              return
+            }
             const message = err instanceof Error ? err.message : String(err)
             const outcome: TaskOutcome = withHold({
               node,

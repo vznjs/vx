@@ -70,7 +70,21 @@ export interface ScheduleOptions {
 }
 
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
+
+// Thrown by `execute` for a restore-tier task with nothing to restore.
+export class RestoreDemoted extends Error {
+  constructor(readonly taskId: string)
+}
 ```
+
+A restore-tier task whose `execute` rejects with `RestoreDemoted` (its
+artifact vanished after the up-front probe) records no outcome: the
+scheduler releases its restore slot and dispatches it again as an
+exec-tier task — at once if its deps are done, else when the last one
+finishes, with the failed-dep skip applied like any other. It may have
+been running ahead of those deps, so running its command in the
+restore slot would build from outputs they have not written.
+`onStart` fires once; its dependents wait for the second dispatch.
 
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the

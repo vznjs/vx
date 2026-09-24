@@ -20,7 +20,7 @@
 // Split from `run.ts` on 2026-09-10 (pure motion).
 
 import type { CachePolicy } from '../cache/index.js'
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { executeTask, type ExecuteArgs } from './execute-task.js'
 import type { ShortCircuit } from './local-shortcircuit.js'
 import { computeTaskHash, type ComputeHashArgs } from './task-hash.js'
@@ -76,6 +76,15 @@ export function admitTasks(
   args: AdmissionArgs,
 ): (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome> {
   const { inflight, policy, shortCircuit, hashArgs, buildExecuteArgs } = args
+  // A probed hit whose artifact vanished before its restore is thrown back
+  // to the scheduler (`RestoreDemoted`, execute-task.ts), which dispatches
+  // the task again once its deps are done. That dispatch probes for itself:
+  // the up-front probe answered for an artifact that is gone. The task
+  // stays in the restore-tier SET, so it still skips dedup below.
+  const dropProbe = (err: unknown): never => {
+    if (err instanceof RestoreDemoted) shortCircuit.preProbed.delete(err.taskId)
+    throw err
+  }
   return async (node, upstream) => {
     // Dedup only helps when the sibling will WRITE the artifact and this
     // task can READ it back — i.e. both axes effectively on.
@@ -101,7 +110,7 @@ export function admitTasks(
     // the set/delete, and the wait a joiner would spend before running the
     // task anyway — there is no artifact for it to hit.
     if (inflight === undefined || !cacheable || restorable) {
-      return executeTask(buildExecuteArgs(node, upstream))
+      return executeTask(buildExecuteArgs(node, upstream)).catch(dropProbe)
     }
     const { nestedDirsByProject, ...rest } = hashArgs
     const hash = await computeTaskHash({
@@ -132,6 +141,8 @@ export function admitTasks(
       // `return await`, deliberately: the finally must run after the task
       // settles, not when its promise is handed back.
       return await executeTask(execArgs)
+    } catch (err) {
+      return dropProbe(err)
     } finally {
       // The barrier lifts when the ENTRY is there, not when the task is:
       // the save runs off the slot (save-lane.ts), and a sibling released
