@@ -17,6 +17,8 @@ const SIM_READ = '../vx-bench/schedule-policy.ts'
 // holds it, and learn-choosing.test.ts reads each file for that row's title,
 // so a renamed row or a moved file fails the site's test instead of leaving
 // a dead link. Granted by name and keyed as inputs, like the sim sources.
+// The landing page's one guarantee (item 709) cites the sandbox file, and
+// landing.test.ts reads it the same way.
 const CHOOSING_PROOFS = [
   'packages/vx/tests/config.test.ts',
   'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
