@@ -54,9 +54,6 @@ so no cache sees it either. The builds pass, and they never checked your
 change. The fix is to declare the file as an input of the tasks that read
 it.
 
-A missing entry in `package.json` hides a package the same way: if `app`
-does not list `ui`, a change to `ui` never reaches `app`.
-
 ## In vx
 
 `--affected` runs your tasks only in the changed packages and the packages

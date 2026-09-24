@@ -2,7 +2,7 @@
 title: How vx is built
 description: One pipeline of stages. A plugin can fill any stage. This machine is always the last stop. A whole plugin in 20 lines.
 chapter: 9
-problem: 'How does one tool hold every idea without a special case for each vendor?'
+problem: 'How does one tool fit every team''s setup without special code for each?'
 ---
 
 import { Code } from '@astrojs/starlight/components'
@@ -39,7 +39,8 @@ Pick a stage below to see the code a plugin writes there.
 <Diagram {...P.floor} />
 
 Running on this machine and caching on this machine are built in. They sit
-under every plugin. A plugin that says no hands the task back.
+under every plugin. A plugin that says no to a task hands it back to this
+machine.
 
 ## A whole plugin fits in 20 lines
 

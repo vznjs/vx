@@ -496,6 +496,13 @@ export function chapterShape(c: Chapter): void {
       for (const q of questions) expect(text(q[1]!)).toMatch(/\?$/)
     })
 
+    // A reader with no context reads one chapter at a time: "comes back in
+    // chapter 7" asks them to hold a promise for four chapters. The Next
+    // card, which is the layout's and outside `chapter`, names what follows.
+    it('sends the reader to no other chapter by its number', () => {
+      expect(text(prose(chapter)).match(/\bchapters? \d+\b/gi) ?? []).toEqual([])
+    })
+
     it('names only the four toy packages', () => {
       // Tags become spaces: an SVG's texts sit side by side with none.
       const spaced = decode(prose(chapter).replace(/<[^>]+>/g, ' '))

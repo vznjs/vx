@@ -28,8 +28,8 @@ reach it, and you have a [shared cache](../../glossary/#remote-cache).
 
 <Diagram {...P.whoWrites} />
 
-A shared cache shares mistakes too. A laptop has leftovers: a file no
-commit holds, a tool you patched by hand. A wrong result from it would be
+A shared cache shares mistakes too. A laptop has leftovers: a file you
+never committed, a tool you patched by hand. A wrong result from it would be
 replayed on every machine. CI builds from a clean checkout every time, so
 let CI write and laptops read.
 
