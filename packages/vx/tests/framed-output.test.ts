@@ -9,6 +9,7 @@ import {
   formatTaskExecutedLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
+  paintIdParts,
 } from '../src/orchestrator/framed-output.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -87,6 +88,38 @@ describe('identity hues never read as an outcome', () => {
     const palette = projectPalette()
     expect(palette.length).toBeGreaterThanOrEqual(6)
     expect(palette).not.toContain(hue('TASK'))
+  })
+})
+
+// turborepo#2564: a package's prefix colour changed between runs — handed
+// out in the order packages happened to start. docs/cli.md promises "same
+// project = same color in every run".
+describe('a project hue is a function of its name', () => {
+  const on = { enabled: true }
+  const names = ['web', 'docs', '@scope/ui', 'api', 'lib']
+  const painted = (order: readonly string[]): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const n of order) out[n] = paintIdParts(n, n, 'build', on)
+    return out
+  }
+
+  it('is the same escape in another process and in any discovery order', () => {
+    const here = painted(names)
+    expect(Object.values(here).every((s) => s.startsWith('\x1b[38;2;'))).toBe(true)
+    expect(painted([...names].reverse())).toEqual(here)
+
+    const module = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'framed-output.ts')
+    const script = `
+      const { paintIdParts } = await import(${JSON.stringify(module)})
+      const out = {}
+      for (const n of ${JSON.stringify(['zzz', ...[...names].reverse()])}) out[n] = paintIdParts(n, n, 'build', { enabled: true })
+      console.log(JSON.stringify(out))
+    `
+    const p = Bun.spawnSync([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' })
+    expect(p.exitCode).toBe(0)
+    const there = JSON.parse(p.stdout.toString()) as Record<string, string>
+    delete there['zzz']
+    expect(there).toEqual(here)
   })
 })
 

@@ -531,6 +531,48 @@ describe('listProjects', () => {
     const projects = await listProjects(ws)
     expect(projects).toEqual([])
   })
+
+  // nx#19981: a workspace whose globs are all negations threw.
+  it('globs that are only negations list no project and do not throw', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "!schematics"\n')
+    await mkdir(path.join(dir, 'schematics'), { recursive: true })
+    await writeFile(path.join(dir, 'schematics', 'package.json'), '{"name":"schematics"}')
+    expect(await listProjects(await loadWorkspace(dir))).toEqual([])
+  })
+
+  // nx#15625: a project directory named with underscores (`__generated__`)
+  // was skipped by the project scan.
+  it('a directory named __generated__ or _generated is a project like any other', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "libs/*"\n')
+    for (const d of ['__generated__', '_generated', 'plain']) {
+      await mkdir(path.join(dir, 'libs', d), { recursive: true })
+      await writeFile(path.join(dir, 'libs', d, 'package.json'), JSON.stringify({ name: `n${d}` }))
+    }
+    const listed = (await listProjects(await loadWorkspace(dir))).map((p) => [
+      p.name,
+      path.relative(dir, p.dir),
+    ])
+    expect(listed).toEqual([
+      ['n__generated__', 'libs/__generated__'],
+      ['n_generated', 'libs/_generated'],
+      ['nplain', 'libs/plain'],
+    ])
+  })
+
+  // turborepo#2517: a package directory that is a symlink (a submodule
+  // checked out elsewhere) was not discovered.
+  it('a member directory that is a symlink to a package outside the glob is discovered', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "widgets/*"\n')
+    await mkdir(path.join(dir, 'submodules', 'widget-a'), { recursive: true })
+    await writeFile(path.join(dir, 'submodules', 'widget-a', 'package.json'), '{"name":"widget-a"}')
+    await mkdir(path.join(dir, 'widgets'), { recursive: true })
+    await symlink('../submodules/widget-a', path.join(dir, 'widgets', 'widget-a'))
+    const listed = (await listProjects(await loadWorkspace(dir))).map((p) => [
+      p.name,
+      path.relative(dir, p.dir),
+    ])
+    expect(listed).toEqual([['widget-a', 'widgets/widget-a']])
+  })
 })
 
 // A workspace manifest is user input. Malformed ones used to surface as

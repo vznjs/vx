@@ -84,6 +84,33 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       )
     }, 20_000)
   }
+
+  // turborepo#12920: Ctrl-C during the foreground wait after the summary
+  // did not end the run.
+  it('SIGINT after the summary exits 130 and takes the server down', async () => {
+    const dir = await addProject(root, 'app', config(0))
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+    })
+    let out = ''
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const deadline = Date.now() + 10_000
+    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    expect(out).toContain('─ vx ')
+    expect(isAlive(pid)).toBe(true)
+
+    proc.kill('SIGINT')
+    const code = await proc.exited
+    await reading
+    expect(code).toBe(130)
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
 })
 
 describe('a persistent task keeps an open stdin', () => {

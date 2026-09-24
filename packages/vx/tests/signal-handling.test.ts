@@ -376,6 +376,111 @@ describe('signal handling during vx run (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  // turborepo#14043: the runner exited while its tasks were still shutting
+  // down, and their output landed on the terminal after the prompt. The
+  // rows above wait for the children AFTER vx exits, so a vx that left
+  // early would pass them; this one asks at the moment of exit.
+  it(
+    'at the moment vx exits on a signal every task process is gone and its pipes are closed',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: 'echo $$ > dev.pid; echo READY; exec sleep 30',
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+              slow: {
+                exec: {
+                  command: "trap 'sleep 0.5; echo LATE-OUTPUT; exit 0' TERM; sleep 30 & echo $! > child.pid; echo $$ > slow.pid; wait",
+                },
+              },
+            },
+          }
+        `,
+      )
+      for (const [signal, expected] of [
+        ['SIGTERM', 143],
+        ['SIGINT', 130],
+      ] as const) {
+        for (const f of ['dev.pid', 'slow.pid', 'child.pid']) {
+          await rm(path.join(dir, f), { force: true })
+        }
+        const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', 'slow', '--all'], {
+          cwd: fixture.root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const streams = Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ])
+        const pids = await Promise.all(
+          ['dev.pid', 'slow.pid', 'child.pid'].map((f) => waitForPid(path.join(dir, f), 10_000)),
+        )
+        proc.kill(signal)
+        const code = await proc.exited
+        const alive = pids.filter((p) => isAlive(p))
+        const closed = await Promise.race([streams, Bun.sleep(1_000).then(() => null)])
+        expect({ signal, code, alive, closed: closed !== null }).toEqual({
+          signal,
+          code: expected,
+          alive: [],
+          closed: true,
+        })
+        expect(closed!.join('')).not.toContain('LATE-OUTPUT')
+      }
+    },
+    TIMEOUT,
+  )
+
+  // nx#33460, nx#32438: a continuous task's own child, trapping every
+  // signal it could get, outlived Ctrl-C.
+  it(
+    'the child of a persistent task that traps TERM, INT and HUP is dead after SIGINT or SIGTERM to vx',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              frontend: {
+                exec: {
+                  command: "sh -c 'trap \\"\\" TERM INT HUP; echo $$ > server.pid; exec sleep 30' & echo READY; wait",
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+              hold: { exec: { command: 'sleep 30' }, dependsOn: ['frontend'] },
+            },
+          }
+        `,
+      )
+      for (const [signal, expected] of [
+        ['SIGINT', 130],
+        ['SIGTERM', 143],
+      ] as const) {
+        await rm(path.join(dir, 'server.pid'), { force: true })
+        const proc = Bun.spawn([process.execPath, BIN, 'run', 'hold', '--all'], {
+          cwd: fixture.root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const server = await waitForPid(path.join(dir, 'server.pid'), 10_000)
+        expect(isAlive(server)).toBe(true)
+        proc.kill(signal)
+        expect({ signal, code: await proc.exited }).toEqual({ signal, code: expected })
+        expect(await waitForDead(server, 3_000)).toBe(true)
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('terminateChildren — the second sweep re-reads what is live', () => {

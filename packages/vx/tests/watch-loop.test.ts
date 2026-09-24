@@ -7,13 +7,13 @@
 // `watch-loop-uncached.test.ts`: one file was a 24 s serial chain of
 // settle windows, a shard on its own (2026-09-16).
 
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive } from './helpers/alive.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
-import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { addProject, gitIn, gitInit, makeWorkspace } from './helpers/workspace.js'
 import {
   BIN,
   SETTLE_MS,
@@ -139,6 +139,24 @@ describe('vx watch loop (e2e)', () => {
     expect(await executions(f.log)).toBe(1)
   }, 40_000)
 
+  // turborepo#9463: an editor's atomic save (write a temp file, rename it
+  // over the original) was missed.
+  it('an atomic save by rename is one cycle with the new content, three saves in a row', async () => {
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+    for (let i = 2; i <= 4; i++) {
+      const tmp = path.join(f.dir, 'src', 'a.txt~')
+      await writeFile(tmp, `a${i}\n`)
+      await rename(tmp, path.join(f.dir, 'src', 'a.txt'))
+      await until(async () => (await executions(f.log)) === i, `the re-run after save ${i}`)
+      await Bun.sleep(SETTLE_MS)
+      expect(w.cycles()).toBe(i - 1)
+      expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe(`a${i}\n`)
+    }
+  }, 40_000)
+
   it('a git checkout that rewrites twenty inputs is one cycle with the new content (L5)', async () => {
     const git = gitIn(f.root)
     const names = Array.from({ length: 20 }, (_, i) => `f${String(i).padStart(2, '0')}.txt`)
@@ -248,5 +266,49 @@ describe('vx watch with a persistent task (e2e)', () => {
     w.proc.kill('SIGTERM')
     expect(await w.proc.exited).toBe(0)
     expect(isAlive(all[1]!)).toBe(false)
+  }, 40_000)
+})
+
+// turborepo#9531: `turbo watch` refused a single-package repository. vx
+// reads a root package.json with no workspaces as one project.
+describe('vx watch in a single-project repository (e2e)', () => {
+  it('runs, watches, and re-runs once on an edit', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-single-'))
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-single-count-'))
+    const log = path.join(outside, 'runs.log')
+    const w = { current: undefined as ReturnType<typeof startWatch> | undefined }
+    try {
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'solo' }))
+      await writeFile(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }`,
+      )
+      await mkdir(path.join(root, 'src'))
+      await writeFile(path.join(root, 'src', 'a.txt'), 'a1\n')
+      gitInit(root)
+      w.current = startWatch(root, [])
+      const watch = w.current
+      await until(() => watch.out().includes('vx watch: watching'), 'the watching marker')
+      await initialOnly(watch, log)
+      await writeFile(path.join(root, 'src', 'a.txt'), 'a2\n')
+      await until(async () => (await executions(log)) === 2, 'the re-run after an edit')
+      await Bun.sleep(SETTLE_MS)
+      expect(watch.cycles()).toBe(1)
+      expect(await readFile(path.join(root, 'dist', 'out.txt'), 'utf8')).toBe('a2\n')
+    } finally {
+      if (w.current !== undefined) {
+        w.current.proc.kill('SIGTERM')
+        await w.current.proc.exited
+      }
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
   }, 40_000)
 })

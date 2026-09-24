@@ -4,6 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { describe, expect, it } from 'bun:test'
 import { buildIsolatedEnv } from '../src/exec/env.js'
 import { resolveInputs } from '../src/cache/index.js'
+import { run } from '../src/orchestrator/index.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 describe('buildIsolatedEnv', () => {
   it('passes essential allowlist values from source', () => {
@@ -219,5 +221,50 @@ describe('essential env vars are forwarded but NEVER hashed', () => {
     expect(env.PS1).toBeUndefined()
     expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined()
     expect(env.PATH).toBe('/usr/bin')
+  })
+})
+
+// turborepo#8802, #10353: strict env mode dropped TMPDIR / TMP / TEMP, so a
+// task's temp files landed somewhere the host never pointed it, and a
+// variable the task set for its own children was filtered too.
+describe('what a task sees of the temp directory, end to end', () => {
+  it('TMPDIR, TMP and TEMP reach the task unchanged, and what the task exports reaches its children', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-env-tmp-' })
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-env-tmp-host-'))
+    const saved = { TMPDIR: process.env.TMPDIR, TMP: process.env.TMP, TEMP: process.env.TEMP }
+    try {
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              probe: {
+                exec: {
+                  command: "node -e 'const os = require(\\"os\\"); process.stdout.write(JSON.stringify([os.tmpdir(), process.env.TMP, process.env.TEMP]))' > seen.json && export INNER=set-by-task && sh -c 'printf %s \\"$INNER\\"' > inner.txt",
+                },
+              },
+            },
+          }
+        `,
+      })
+      process.env.TMPDIR = tmp
+      process.env.TMP = `${tmp}/tmp`
+      process.env.TEMP = `${tmp}/temp`
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const r = await run({ cwd: root, tasks: ['probe'], log: quiet })
+      expect(r.ok).toBe(true)
+      expect(JSON.parse(await Bun.file(path.join(dir, 'seen.json')).text())).toEqual([
+        tmp,
+        `${tmp}/tmp`,
+        `${tmp}/temp`,
+      ])
+      expect(await Bun.file(path.join(dir, 'inner.txt')).text()).toBe('set-by-task')
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      await rm(root, { recursive: true, force: true })
+      await rm(tmp, { recursive: true, force: true })
+    }
   })
 })

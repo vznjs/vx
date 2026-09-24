@@ -10,6 +10,10 @@ import {
   run,
 } from '../src/cli/index.js'
 import { formatRunReportMarkdown } from '../src/orchestrator/index.js'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { planned } from './helpers/parity.js'
+import { makeWorkspace } from './helpers/workspace.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -2092,4 +2096,37 @@ describe('unknown-flag hints reach three edits', () => {
     // budget hinted `--all` for `--zzz`.
     expect(parseRunArgs(['build', '--zzz']).error).not.toContain('did you mean')
   })
+})
+
+// turborepo#9277, #11428: run from a directory inside a project nested in
+// another, the runner picked either project from one run to the next.
+describe('the project a bare task runs in, from a nested subdirectory (e2e)', () => {
+  it('is the deepest project containing the cwd, the same on every run', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-cwd-nested-' })
+    try {
+      await writeFile(
+        path.join(root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "apps/*"\n  - "apps/*/api"\n',
+      )
+      for (const [name, rel] of [
+        ['app1', 'apps/app1'],
+        ['app1-api', 'apps/app1/api'],
+      ] as const) {
+        const dir = path.join(root, rel)
+        await mkdir(path.join(dir, 'src'), { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+        await writeFile(
+          path.join(dir, 'vx.config.mjs'),
+          `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+        )
+      }
+      const cwd = path.join(root, 'apps', 'app1', 'api', 'src')
+      const answers = new Set<string>()
+      for (let i = 0; i < 3; i++) answers.add((await planned(cwd, ['build'])).join())
+      expect([...answers]).toEqual(['app1-api#build'])
+      expect(await planned(path.join(root, 'apps', 'app1'), ['build'])).toEqual(['app1#build'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
