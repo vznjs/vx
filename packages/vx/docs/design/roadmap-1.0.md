@@ -55,7 +55,7 @@ install.
 | 1.2 | ~~Make the docs match.~~ DONE in item 668: `build-npm.unsafe.test.ts` holds every `@vzn/…` a page tells a user to install, run or import to the emitter's publish set. Every "published" or `bunx @vzn/…` line is true on the day of the release, pinned by a test that reads the publish list.                                                                                             | agent     | S    |
 | 1.3 | ~~Refresh the 0.1.0 notes with items 624–654.~~ DONE through 710 (items 657, 673, 713), 652–654 included; the PR count is recounted at the cut.                                                                                                                                                                                                                                             | agent     | S    |
 | 1.4 | Cut 0.1.0 (tag and workflow run).                                                                                                                                                                                                                                                                                                                                                           | **owner** | —    |
-| 1.5 | Delete the `NPM_TOKEN` secret, since publishing uses OIDC. Decide the site's address. Optionally enable private vulnerability reporting.                                                                                                                                                                                                                                                    | **owner** | —    |
+| 1.5 | Delete the `NPM_TOKEN` secret, since publishing uses OIDC. ~~Decide the site's address.~~ Settled 2026-09-24: GitHub Pages (`vznjs.github.io/vx`). Optionally enable private vulnerability reporting.                                                                                                                                                                                       | **owner** | —    |
 
 **Exit:** `bunx @vzn/vx-migrate` and `bun add -d @vzn/vx @vzn/vx-lockfile`
 work from the public registry, and a fresh workspace follows the README
@@ -93,6 +93,13 @@ its performance, and also its architecture, its correctness guarantees
 and how far it can be extended. In the owner's words, "educate not only
 sell". The bar to beat is monorepo.tools, by "1000×" on education.
 The plan is `design/site-teaches-2026-09.md`.
+
+**Superseded 2026-09-24** by `design/site-short-2026-09.md` (item 729).
+The owner asked for a short site: one diagram, one benchmark, six Docs
+pages. The Learn pages, the labs, the checkpoints and the widgets no page
+hosts went. The playground (W9) stays as the Docs' "Try it", and the
+comparison (W7) and glossary (W12) stay in the Reference. The table
+below is the record of what shipped before that.
 
 | #   | Item                                                                                                                                                                                                                                                                            | Size |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
@@ -138,13 +145,13 @@ a good day, with this session coordinating and up to three implementer
 sessions. They are working-day estimates for agent work only. Owner
 actions and the soak are on the owner's clock.
 
-| Milestone           | Agent work                     | Blocked on                                          |
-| ------------------- | ------------------------------ | --------------------------------------------------- |
-| 0 hardening arc     | ≈ ½ day (in flight)            | nothing                                             |
-| 1 installable 0.1.0 | ≈ 1 day                        | owner cuts the release and decides the site address |
-| 2 feature complete  | ≈ 3–5 days (2.2 is most of it) | owner confirms scope (2.4); a box for 2.5           |
-| W the site teaches  | ≈ 8–12 days                    | nothing (the site address is 1.5)                   |
-| 3 1.0 contract      | ≈ 2–3 days, plus the soak      | owner sets the soak length and tags                 |
+| Milestone           | Agent work                     | Blocked on                                           |
+| ------------------- | ------------------------------ | ---------------------------------------------------- |
+| 0 hardening arc     | ≈ ½ day (in flight)            | nothing                                              |
+| 1 installable 0.1.0 | ≈ 1 day                        | owner cuts the release (the site address is settled) |
+| 2 feature complete  | ≈ 3–5 days (2.2 is most of it) | owner confirms scope (2.4); a box for 2.5            |
+| W the site teaches  | ≈ 8–12 days                    | nothing (superseded by the short site, item 729)     |
+| 3 1.0 contract      | ≈ 2–3 days, plus the soak      | owner sets the soak length and tags                  |
 
 So **feature complete is milestone 2**. It is about a week of agent work
 after 0.1.0 ships, provided the owner answers 2.4 and a box with
