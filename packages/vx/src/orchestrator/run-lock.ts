@@ -13,7 +13,13 @@
 // make two runs strangers), and kept under the temp directory so a
 // read-only checkout can take it. An atomic `mkdir` is the lock; a `pid`
 // file inside names the holder, so a lock a killed run left behind is
-// reclaimed when its pid is gone. Where the directory cannot be made for
+// reclaimed when its pid is gone. A pid can come back: the temp directory
+// outlives a container restart, and the restarted container's vx got the
+// dead run's pid (1) and waited for itself forever (nx#36473 reproduced
+// on vx, 2026-09-24). So a lock naming OUR pid is stale — a run of this
+// process would be in `heldHere` — and on Linux the file also carries the
+// holder's start time, so a pid another process now wears is stale too.
+// Where the directory cannot be made for
 // any reason but "exists" (another user's stale lock, a temp directory
 // this user cannot write), the run says so once and proceeds unlocked:
 // the lock is a courtesy between cooperating runs, and refusing to run
@@ -26,6 +32,7 @@
 // serialize what it chose to overlap. The directory is taken by the first
 // of them and removed by the last to release.
 
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -53,13 +60,60 @@ export function runLockPath(workspaceRoot: string, dir = os.tmpdir()): string {
   return path.join(dir, `vx-run-${xxh3hex(path.resolve(workspaceRoot))}`)
 }
 
-async function holderPid(lockDir: string): Promise<number | null> {
+interface Holder {
+  pid: number
+  /** The holder's start time as `startTime` read it; null where the file names none. */
+  start: string | null
+}
+
+async function holder(lockDir: string): Promise<Holder | null> {
   try {
-    const n = Number.parseInt(await readFile(path.join(lockDir, 'pid'), 'utf8'), 10)
-    return Number.isInteger(n) && n > 0 ? n : null
+    const [pidText, start] = (await readFile(path.join(lockDir, 'pid'), 'utf8')).trim().split(' ')
+    const pid = Number.parseInt(pidText ?? '', 10)
+    return Number.isInteger(pid) && pid > 0 ? { pid, start: start ?? null } : null
   } catch {
     return null
   }
+}
+
+/**
+ * When a process started, in clock ticks since boot: field 22 of
+ * `/proc/<pid>/stat`. Two processes that wore one pid differ here. Null
+ * off Linux, where the answer costs a `ps` spawn per run, and for a pid
+ * procfs does not show.
+ */
+function startTime(pid: number | 'self'): string | null {
+  if (process.platform !== 'linux') return null
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    // Fields after the LAST ')' start at field 3; comm may hold spaces.
+    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] ?? null
+  } catch {
+    return null
+  }
+}
+
+/** This process's own line for the pid file, read once per process. */
+let ownLine: string | undefined
+function ownPidLine(): string {
+  if (ownLine === undefined) {
+    const start = startTime('self')
+    ownLine = start === null ? `${process.pid}\n` : `${process.pid} ${start}\n`
+  }
+  return ownLine
+}
+
+/**
+ * Is the lock's holder a live run of another process? `sameAsLast`: this
+ * holder's start time already matched on an earlier poll, so a wait reads
+ * procfs once per holder, not once per poll.
+ */
+function holderLive(h: Holder, sameAsLast: boolean): boolean {
+  if (h.pid === process.pid) return false
+  if (!alive(h.pid)) return false
+  if (h.start === null || sameAsLast) return true
+  const now = startTime(h.pid)
+  return now === null || now === h.start
 }
 
 function alive(pid: number): boolean {
@@ -86,6 +140,7 @@ export async function acquireRunLock(
   const pidFile = path.join(lockDir, 'pid')
   const started = Date.now()
   let said = false
+  let lastLive: Holder | undefined
   const release = async (): Promise<void> => {
     const left = (heldHere.get(lockDir) ?? 1) - 1
     if (left > 0) {
@@ -99,7 +154,7 @@ export async function acquireRunLock(
     // What this run made holds the pid file and nothing else, so it goes
     // as two calls where `rm -r` spent an unlink that fails EISDIR, an
     // open and a listing first.
-    if ((await holderPid(lockDir)) === process.pid) {
+    if ((await holder(lockDir))?.pid === process.pid) {
       await unlink(pidFile)
       await rmdir(lockDir)
     }
@@ -113,7 +168,7 @@ export async function acquireRunLock(
     }
     try {
       await mkdir(lockDir)
-      await writeFile(pidFile, `${process.pid}\n`)
+      await writeFile(pidFile, ownPidLine())
       heldHere.set(lockDir, 1)
       return release
     } catch (err) {
@@ -128,17 +183,21 @@ export async function acquireRunLock(
         return async () => {}
       }
     }
-    const pid = await holderPid(lockDir)
-    if (pid === null || !alive(pid)) {
+    const h = await holder(lockDir)
+    const sameAsLast = h !== null && lastLive?.pid === h.pid && lastLive.start === h.start
+    if (h === null || !holderLive(h, sameAsLast)) {
       // A killed run's lock (or a directory with no pid yet: give the
       // holder one poll to write it, then treat it as abandoned).
-      if (pid !== null || Date.now() - started >= POLL_MS) {
+      if (h !== null || Date.now() - started >= POLL_MS) {
         await rm(lockDir, { recursive: true, force: true })
         continue
       }
-    } else if (!said && Date.now() - started >= SAY_AFTER_MS) {
-      said = true
-      opts.log(`[vx] waiting for another vx run (pid ${pid}) on this workspace to finish…`)
+    } else {
+      lastLive = h
+      if (!said && Date.now() - started >= SAY_AFTER_MS) {
+        said = true
+        opts.log(`[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`)
+      }
     }
     await new Promise((r) => setTimeout(r, POLL_MS))
   }

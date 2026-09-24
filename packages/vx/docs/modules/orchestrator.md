@@ -209,7 +209,17 @@ directory, keyed by the resolved workspace root (`--cache-dir` does not
 make two runs strangers; a read-only checkout can take it), holding the
 holder's pid: a second process polls every 50 ms, after a second says
 `[vx] waiting for another vx run (pid N) on this workspace to finish…`,
-and reclaims a lock whose pid is gone. A directory that cannot be made
+and reclaims a lock whose pid is gone. A pid comes back, too: the temp
+directory outlives a container restart, and the restarted container's
+vx got the dead run's pid (1) and waited for itself forever (nx#36473,
+reproduced on vx 2026-09-24). So a lock naming this process's OWN pid
+is stale (a run of this process shares the lock and never meets its
+file), and on Linux the pid file also carries the holder's start time
+(field 22 of `/proc/<pid>/stat`), so a live pid another process now
+wears is stale as well. The start time is read once per process for
+the pid file and once per holder while waiting; elsewhere, where it
+would cost a `ps` spawn per run, the lock trusts the pid
+(`tests/run-lock.test.ts`). A directory that cannot be made
 for any reason but "exists" is a one-line warning and an unlocked run;
 when the reason is the temp directory itself (missing, a file, not
 writable), the warning adds `point TMPDIR at a writable directory`.
