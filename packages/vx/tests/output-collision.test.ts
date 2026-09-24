@@ -510,7 +510,7 @@ describe('the check must not cost the graph its linearity', () => {
     // Indexing by project left each project's own tasks all-pairs, so one
     // project of 4,000 tasks with outputs spent 10.7 s here (item 741). The
     // old loop's best of three on this box: 10.0 s for distinct literals,
-    // 2.65 s for distinct globs; indexed by path (item 745), 5 ms warm and
+    // 2.65 s for distinct globs; indexed by path (item 746), 5 ms warm and
     // about 10 ms on a first build. The bound fails the old loop ten times
     // over at its cheapest shape and leaves the index 25 times its cost.
     const TASKS = 4_000
@@ -533,7 +533,7 @@ describe('the check must not cost the graph its linearity', () => {
 })
 
 // The pairs compared inside one domain come from a path index
-// (`overlapCandidates`, item 745), which must find every pair the rule
+// (`overlapCandidates`, item 746), which must find every pair the rule
 // refuses: a pair it misses is two tasks deleting each other's outputs,
 // green. Each row is a way an index by path could miss one.
 describe('the path index finds every pair the rule refuses', () => {

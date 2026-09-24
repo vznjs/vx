@@ -157,7 +157,7 @@ and a leading `!`, so a wildcard in the first segment files the glob
 at the root. The pairs are compared in the order all pairs met them,
 so the refusal names the same pair and the marks land in the same
 order. One project of 4,000 tasks with outputs built its graph in
-10.0 s (distinct literals) and now in 10 ms (item 745).
+10.0 s (distinct literals) and now in 10 ms (item 746).
 
 ## What this does NOT do
 
