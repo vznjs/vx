@@ -451,7 +451,7 @@ const NX_JSON = {
   },
 }
 
-async function makeNxWorkspace(): Promise<string> {
+async function makeNxWorkspace(aDeps?: Record<string, string>): Promise<string> {
   const root = await makeRoot('vx-migrate-nx-')
   await writeFile(path.join(root, 'nx.json'), JSON.stringify(NX_JSON, null, 2))
   await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })
@@ -459,7 +459,7 @@ async function makeNxWorkspace(): Promise<string> {
     path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
     JSON.stringify(NX_GRAPH, null, 2),
   )
-  await addPackage(root, 'pkg-a', { test: 'jest', empty: '' })
+  await addPackage(root, 'pkg-a', { test: 'jest', empty: '' }, aDeps)
   await addPackage(root, 'pkg-b', {})
   return root
 }
@@ -630,6 +630,33 @@ describe('vx migrate (nx)', () => {
       const r = await vx(root, ['--force'])
       expect(r.code).toBe(1)
       expect(r.err).toContain('project-graph.json')
+    },
+    TIMEOUT,
+  )
+})
+
+describe('vx migrate (nx) — the implicit-dep note reads the package graph', () => {
+  it(
+    'an Nx edge the manifest names by a range pkg-b does not satisfy is still implicit',
+    async () => {
+      // `^9.0.0` on the version-less pkg-b is a registry dependency: vx's
+      // graph has no pkg-a → pkg-b edge, so the Nx edge is one vx cannot
+      // see. `workspace:*` is the edge, and nothing is reported.
+      const notes = new Map<string, string>()
+      for (const spec of ['^9.0.0', 'workspace:*']) {
+        const root = await makeNxWorkspace({ 'pkg-b': spec })
+        try {
+          const r = await vx(root, [])
+          expect(r.code).toBe(0)
+          notes.set(spec, r.out.split('\n').find((l) => l.includes('implicit Nx dep')) ?? '')
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
+      }
+      expect(Object.fromEntries(notes)).toEqual({
+        '^9.0.0': '1 implicit Nx dep not representable (pkg-a → pkg-b); review dependsOn',
+        'workspace:*': '',
+      })
     },
     TIMEOUT,
   )
