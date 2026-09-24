@@ -474,17 +474,18 @@ linked sibling its key does not cover (726, v31, the Decisions entry on
 narrowing core's grant), and a task downstream of a persistent task has
 one key on both paths (727). WHAT STANDS: 14dj is in the next-log file
 (§ Handoff 14dj); the loop holds 719–728. OWNER, unchanged: the site's read
-(Next 16), cut 0.1.0 (the tag, then delete `NPM_TOKEN`), the site's
-address, the scope list (roadmap 2.4), the soak length. NEXT: the trim when the loop
-reaches twenty items; the warm-path A/B on the next run-path change
-(Next 6); otherwise the owner's read of the site. Never end with "what
+(Next 16), cut 0.1.0 (the tag, then delete `NPM_TOKEN`), the scope list (roadmap 2.4), the soak length. NEXT: the short site (Next 16, `design/site-short-2026-09.md`); the trim when the loop reaches twenty items; the warm-path A/B on the next run-path change (Next 6). Never end with "what
 next?".
 
-16. **The site, redone as one story (owner, 2026-09-24).** R1–R3
-    shipped as item 721 (`design/site-redo-2026-09.md`), R4 and the prose
-    polish as 722, the widgets as 723, the phone read and the rewritten
-    "Done means" as 724, the scheduler's charts in a phone form as 725.
-    Left: the owner's read.
+16. **The site, short (owner, 2026-09-24, after 728).** "Still
+    terrible. It should be short but visualizing. Maybe one diagram that
+    has all the examples. We don't need 2 benches. Leave first. Focus on
+    extensibility, no paywall, freedom, performance, sandbox,
+    correctness" — for the whole site. Design: `design/site-short-2026-09.md`
+    (the landing is the story: one diagram with six callouts, the first
+    bench, four pillars; the Guide collapses into it; the Docs become six
+    pages; every law moves with its text). The site's address is GitHub
+    Pages, settled by the owner.
 
 ## Decisions (this arc)
 
