@@ -1424,9 +1424,13 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
           `openat(banner.txt) = -1 ENOENT  [${realpathSync(dir)}/banner.txt]`,
         ])
-        // The logger trims each stderr chunk, and cat's message can arrive
-        // split after `cat:` (seen once in the gate), so the join is loose.
-        expect(fixture.log.join('\n')).toMatch(/cat:\s*banner\.txt: No such file or directory/)
+        // The logger trims each stderr chunk, and cat's message arrives split
+        // wherever its writes land (after `cat:` in one gate, and as
+        // `cat:` / `banner.txt` / `: No such…` on CI), so the comparison drops
+        // whitespace, which no split can move.
+        expect(fixture.log.join('').replace(/\s/g, '')).toContain(
+          'cat:banner.txt:Nosuchfileordirectory',
+        )
 
         await writeFile(path.join(dir, 'vx.config.mjs'), config(['src/**', 'banner.txt']))
         const declared = await run({
