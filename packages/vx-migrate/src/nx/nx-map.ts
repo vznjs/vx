@@ -27,6 +27,13 @@ import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { mapNxDeps, type TaskNameFor } from './nx-deps.js'
+import {
+  dotenvCandidates,
+  type DotenvListing,
+  existingDotenv,
+  listDotenv,
+  nonAtomizedTargetOf,
+} from './nx-dotenv.js'
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { mapNxOutputs } from './nx-outputs.js'
 
@@ -43,11 +50,16 @@ interface NxTarget {
   dependsOn?: unknown[]
   cache?: boolean
   continuous?: boolean
+  metadata?: { nonAtomizedTarget?: unknown }
 }
 
 interface NxNode {
   name?: string
-  data?: { root?: string; targets?: Record<string, NxTarget> }
+  data?: {
+    root?: string
+    targets?: Record<string, NxTarget>
+    metadata?: { targetGroups?: unknown }
+  }
 }
 
 type NxEdge = { source?: string; target?: string }
@@ -161,6 +173,19 @@ export async function mapNxWorkspace(
     return v === undefined ? null : v.name
   }
 
+  // Once per project, not per task and variant: `path.relative` was a
+  // fifth of the mapping at 1,000 projects (item 608).
+  const relOf = new Map<ProjectMeta, string>()
+  for (const meta of allMetas) {
+    if (nodeByMeta.get(meta)?.data?.targets) relOf.set(meta, normRel(relPosix(root, meta.dir)))
+  }
+  // Nx loads a task's `.env` files unless NX_LOAD_DOT_ENV_FILES is `false`;
+  // one listing per project dir decides which exist (~4 ms at 1,000).
+  const listing: DotenvListing | null =
+    process.env['NX_LOAD_DOT_ENV_FILES'] === 'false'
+      ? null
+      : await listDotenv(root, [...relOf.values()])
+
   const projects: GeneratedProject[] = []
   for (const meta of allMetas) {
     const node = nodeByMeta.get(meta)
@@ -168,10 +193,23 @@ export async function mapNxWorkspace(
     if (!targets) continue
     const tasks: GeneratedTask[] = []
     const projectName = node?.name ?? meta.name
-    // Once per project, not per task and variant: `path.relative` was a
-    // fifth of the mapping at 1,000 projects (item 608).
-    const projectRel = normRel(relPosix(root, meta.dir))
+    const projectRel = relOf.get(meta)!
     const scripts = packageScripts(meta)
+    // Relative to the project dir, where vx runs the task.
+    const dotenvFor = (
+      l: DotenvListing,
+      targetName: string,
+      configuration: string | undefined,
+    ): string[] =>
+      existingDotenv(
+        dotenvCandidates(
+          projectRel,
+          targetName,
+          configuration,
+          nonAtomizedTargetOf(targetName, targets, node?.data?.metadata?.targetGroups),
+        ),
+        l,
+      ).map((f) => relPosix(projectRel, f))
     for (const [targetName, target] of Object.entries(targets)) {
       for (const v of variants(targetName, target)) {
         tasks.push(
@@ -187,6 +225,7 @@ export async function mapNxWorkspace(
             metaByNode,
             taskNameFor,
             mapOpts,
+            listing === null ? null : dotenvFor(listing, targetName, v.configuration),
           ),
         )
       }
@@ -295,6 +334,7 @@ function buildTask(
   metaByNode: ReadonlyMap<string, ProjectMeta>,
   taskNameFor: TaskNameFor,
   opts: MapNxOptions,
+  dotenv: readonly string[] | null,
 ): GeneratedTask {
   const todos: string[] = []
   const options = variant.options
@@ -308,6 +348,7 @@ function buildTask(
     variant.configuration,
     scripts,
     todos,
+    dotenv,
   )
 
   const inputs = emptyNxInputs()
@@ -373,6 +414,9 @@ function buildTask(
     const cacheInputs: Record<string, unknown> = { files: inputs.files }
     if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
     if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
+    // The `.env` files the task loads are inputs, and gitignored ones
+    // (`.env.local`) are invisible to a glob: their bytes, read per run.
+    if (mapped.envInputs.length > 0) inputs.runtimeCmds.push(envProbe(mapped.envInputs))
     if (inputs.runtimeCmds.length > 0) cacheInputs.runtime = inputs.runtimeCmds
     const outputs: Record<string, unknown> = { files: outFiles }
     if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
@@ -387,8 +431,16 @@ interface MappedCommand {
   readonly command: string
   readonly env: Readonly<Record<string, string>>
   readonly readyWhen: string | undefined
+  /** The `.env` files the command loads, relative to the project dir: key inputs. */
+  readonly envInputs: readonly string[]
 }
 
+/**
+ * `dotenv` is the task's existing `.env` files relative to the project dir,
+ * or null when Nx would load none (NX_LOAD_DOT_ENV_FILES=false). A shell
+ * line that has any, or a run-commands `envFile`, runs under `nx-env`; an
+ * executor line hands them to `nx-exec`.
+ */
 function mapCommand(
   targetName: string,
   target: NxTarget,
@@ -398,6 +450,7 @@ function mapCommand(
   configuration: string | undefined,
   scripts: Record<string, unknown>,
   todos: string[],
+  dotenv: readonly string[] | null,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -405,7 +458,27 @@ function mapCommand(
     // (handled by the caller; nothing to map here).
     return null
   }
-  const line = (command: string): MappedCommand => ({ command, env: {}, readyWhen: undefined })
+  const files = dotenv ?? []
+  const line = (command: string): MappedCommand => ({
+    command,
+    env: {},
+    readyWhen: undefined,
+    envInputs: [],
+  })
+  const shell = (
+    command: string,
+    envFile: string | undefined,
+    rest: Pick<MappedCommand, 'env' | 'readyWhen'> = { env: {}, readyWhen: undefined },
+  ): MappedCommand => {
+    if (files.length === 0 && envFile === undefined) return { ...rest, command, envInputs: [] }
+    const flags = files.flatMap((f) => ['--dotenv', shellQuote(f)])
+    if (envFile !== undefined) flags.push('--envFile', shellQuote(envFile))
+    return {
+      ...rest,
+      command: `nx-env ${flags.join(' ')} -- ${shellQuote(command)}`,
+      envInputs: envFile === undefined ? files : [...files, envFile],
+    }
+  }
   // run-commands, and a plain `command` (its shorthand, over the same
   // options) — see nx-command.ts.
   const plain =
@@ -416,7 +489,16 @@ function mapCommand(
       { projectRel, projectName },
       todos,
     )
-    return rc ?? line(PLACEHOLDER)
+    if (rc === null) return line(PLACEHOLDER)
+    // Nx loads `envFile` from its own working directory, the workspace
+    // root, and not at all under NX_LOAD_DOT_ENV_FILES=false.
+    const envFile =
+      rc.envFile === undefined || dotenv === null
+        ? undefined
+        : path.posix.isAbsolute(rc.envFile)
+          ? rc.envFile
+          : relPosix(projectRel, path.posix.normalize(rc.envFile))
+    return shell(rc.command, envFile, { env: rc.env, readyWhen: rc.readyWhen })
   }
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName
@@ -428,7 +510,9 @@ function mapCommand(
     // An empty script is a target Nx lists and `pnpm run` runs as nothing
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
-    if (body !== undefined && body.length > 0) return line(scriptCommand(script, body, scripts))
+    if (body !== undefined && body.length > 0) {
+      return shell(scriptCommand(script, body, scripts), undefined)
+    }
     todos.push(
       body === undefined
         ? `nx:run-script: package.json has no ${JSON.stringify(script)} script`
@@ -448,7 +532,19 @@ function mapCommand(
       '`{args.*}` in the options: params forwarding is not supported — put the value in the option',
     )
   }
-  return line(nxExecCommand(executor, projectName, targetName, configuration, options))
+  return {
+    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
+    envInputs: files,
+  }
+}
+
+/**
+ * Prints each file's name and bytes, for `cache.inputs.runtime`: the name
+ * keeps a line moved from one file to the next (a different precedence) a
+ * different key.
+ */
+function envProbe(files: readonly string[]): string {
+  return `for f in ${files.map(shellQuote).join(' ')}; do echo "$f"; cat -- "$f" 2>/dev/null; echo; done`
 }
 
 /** The `nx-exec` line for one target, shell-quoted; `--options` only when there are any. */
@@ -458,11 +554,13 @@ export function nxExecCommand(
   target: string,
   configuration: string | undefined,
   options: Record<string, unknown>,
+  dotenv: readonly string[] = [],
 ): string {
   const parts = ['nx-exec', executor, '--project', project, '--target', target]
   if (configuration !== undefined) parts.push('--configuration', configuration)
   // JSON's own escapes keep a newline out of the line.
   if (Object.keys(options).length > 0) parts.push('--options', JSON.stringify(options))
+  for (const f of dotenv) parts.push('--dotenv', f)
   return parts.map(shellQuote).join(' ')
 }
 

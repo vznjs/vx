@@ -8,8 +8,10 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mapRunCommands } from '../src/nx-command.js'
+import { mapNxWorkspace } from '../src/nx/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'nx-exec.cjs')
+const NX_ENV = path.resolve(import.meta.dir, '..', 'src', 'nx-env.cjs')
 const MODULES = process.env['VX_NX_MODULES']
 const REQUIRED = process.env['VX_REQUIRE_NX'] === '1'
 const TIMEOUT = 120_000
@@ -19,6 +21,15 @@ if (REQUIRED && !MODULES) {
 }
 
 let root: string
+
+/** A target that prints what its environment holds, with an `envFile` (the dotenv row). */
+const SHOWENV = {
+  executor: 'nx:run-commands',
+  options: {
+    command: `printf '%s|' "$A" "$B" "$C" "$D" "$E" > envout.txt`,
+    envFile: '.env.custom',
+  },
+}
 
 async function nxExec(cwd: string, args: string[]) {
   const p = Bun.spawn(['node', BIN, ...args], {
@@ -82,6 +93,7 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
             },
           },
           here: { executor: 'nx:run-commands', options: { command: 'pwd', cwd: '{projectRoot}' } },
+          showenv: SHOWENV,
         },
       }),
     )
@@ -279,6 +291,87 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
       )
     }
   })
+
+  it(
+    'a task’s `.env` files and `envFile` give the line what `nx run` gives the task',
+    async () => {
+      const files: Record<string, string> = {
+        '.env': 'A=root\nB=root\nC=root\nD=${A}-x\n',
+        '.env.local': 'C=local\n',
+        '.env.custom': 'B=custom\nE=custom\n',
+        'packages/lib/.env': 'A=project\n',
+        'packages/lib/.env.showenv': 'B=target\n',
+      }
+      for (const [f, text] of Object.entries(files)) await writeFile(path.join(root, f), text)
+      const bare = {
+        PATH: process.env['PATH']!,
+        HOME: process.env['HOME']!,
+        NX_DAEMON: 'false',
+        NX_TUI: 'false',
+        NX_NO_CLOUD: 'true',
+      }
+      const out = path.join(root, 'envout.txt')
+      try {
+        await rm(out, { force: true })
+        const nx = Bun.spawn(
+          [path.join(root, 'node_modules', '.bin', 'nx'), 'run', 'lib:showenv', '--skip-nx-cache'],
+          { cwd: root, env: bare, stdout: 'pipe', stderr: 'pipe' },
+        )
+        const [nxOut, nxErr, nxCode] = await Promise.all([
+          new Response(nx.stdout).text(),
+          new Response(nx.stderr).text(),
+          nx.exited,
+        ])
+        expect({ code: nxCode, tail: nxCode === 0 ? '' : nxOut + nxErr }).toEqual({
+          code: 0,
+          tail: '',
+        })
+        const byNx = await Bun.file(out).text()
+        // The same target through the mapper, run as vx runs it.
+        await rm(out, { force: true })
+        const mapped = await mapNxWorkspace(
+          root,
+          [
+            {
+              name: '@live/lib',
+              dir: path.join(root, 'packages', 'lib'),
+              packageJson: { name: '@live/lib' },
+              configPath: null,
+            },
+          ],
+          {
+            nodes: {
+              lib: { name: 'lib', data: { root: 'packages/lib', targets: { showenv: SHOWENV } } },
+            },
+            dependencies: {},
+          },
+          { persistentTodo: 'n/a', cacheable: new Set() },
+        )
+        const exec = mapped.projects[0]!.tasks.find((t) => t.name === 'showenv')!.task!['exec'] as {
+          command: string
+        }
+        const bin = path.join(root, 'live-bin')
+        await mkdir(bin, { recursive: true })
+        await symlink(NX_ENV, path.join(bin, 'nx-env')).catch(() => {})
+        const vx = Bun.spawn(['sh', '-c', exec.command], {
+          cwd: path.join(root, 'packages', 'lib'),
+          env: { ...bare, PATH: `${bin}:${bare.PATH}` },
+          stdout: 'pipe',
+          stderr: 'pipe',
+          detached: true,
+        })
+        const [vxErr, vxCode] = await Promise.all([new Response(vx.stderr).text(), vx.exited])
+        expect({ code: vxCode, err: vxErr }).toEqual({ code: 0, err: '' })
+        expect({ vx: await Bun.file(out).text(), nx: byNx }).toEqual({
+          vx: 'project|target|local|project-x|custom|',
+          nx: 'project|target|local|project-x|custom|',
+        })
+      } finally {
+        for (const f of Object.keys(files)) await rm(path.join(root, f), { force: true })
+      }
+    },
+    TIMEOUT,
+  )
 
   it(
     'an executor the workspace does not have is exit 1 with Nx’s own message',

@@ -102,6 +102,7 @@
       "bin": {
         "vx-migrate": "./src/bin.ts",
         "nx-exec": "./src/nx-exec.cjs",
+        "nx-env": "./src/nx-env.cjs",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",

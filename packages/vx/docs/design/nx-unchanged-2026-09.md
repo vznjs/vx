@@ -219,9 +219,41 @@ run through `nx-exec` on the same options and arguments.
   one pattern, so several are an alternation and a todo. Nx also fails a
   run whose `readyWhen` matched on stderr; vx does not.
 - `commands: []` is `true`: Nx completes it at once (nx#31345).
-- Reported and not reproduced: `envFile`, per-command `prefix` / `color`,
+- Reported and not reproduced: per-command `prefix` / `color`,
   `streamOutput: false`, `__unparsed__` in a graph. `usePty`, `tty` and
   `verbose` are display-only here: vx runs no task under a pty.
+
+## `.env` files at run time (2026-09-24)
+
+Nx gives every task the `.env` files `getEnvPathsForTask` names (the
+project's, then the root's, most specific first; the first definition
+wins, the environment over all), and run-commands loads `envFile` after
+them. Two ways to reproduce that were open:
+
+- **Read them at map time into `exec.env.define`.** The key would see the
+  values. But the values would be in the config: a `.env.local` secret in
+  `vx show`, in `vx-lock.json`, and in every `vx.config.ts` the migrator
+  writes — and the migrator could not write them, so the plugin and the
+  migrator would stop producing the same task.
+- **Load them when the task runs** (chosen). The mapper lists which exist
+  (one `readdir` per project dir per run, ~4 ms at 1,000 projects,
+  measured with 1,000 dirs of five files each) and the command names
+  them: `nx-env --dotenv <f>… [--envFile <f>] -- '<line>'` for a shell
+  line, `--dotenv <f>` on an `nx-exec` line. Both bins load through Nx's
+  own `loadAndExpandDotEnvFile`, so parsing, `${VAR}` expansion and
+  precedence are the workspace's Nx version's. A cached task keys on the
+  files' bytes with a `cache.inputs.runtime` probe that prints each name
+  and its bytes: a glob cannot see a gitignored `.env.local`, and the
+  name keeps a line moved between files (a different precedence) a
+  different key. A file added or removed changes the command.
+
+Nx unloads the root files it loaded into its own process at start-up
+before loading a task's; nothing loaded them under vx, so the bins do not
+unload, and the target's `env` (exec.env.define, present before the
+files load) stays on top, as in Nx. `NX_LOAD_DOT_ENV_FILES=false` in vx's
+environment at map time drops the files and `envFile`, as Nx does.
+`nx-env` takes `--envFile`, not `--env-file`: Node 22 reads `--env-file`
+from anywhere on its command line and exits 9 when the file is missing.
 
 ## What it does not do
 

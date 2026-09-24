@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// `nx-exec <executor> --project <p> --target <t> [--configuration <c>] --options '<json>' [overrides…]`
+// `nx-exec <executor> --project <p> --target <t> [--configuration <c>] --options '<json>'
+//   [--dotenv <file>]... [overrides…]`
 //
 // One Nx executor as one process, through Nx's own public `runExecutor`
 // (design: docs/design/nx-unchanged-2026-09.md). The command line carries
@@ -20,6 +21,7 @@
 
 const { createRequire, enableCompileCache } = require('node:module')
 const path = require('node:path')
+const { loadTaskEnv } = require('./nx-dotenv.cjs')
 
 // Nx's module graph is ~150 ms of every executed task; Node's on-disk
 // compile cache (22.1+, a no-op below) takes ~30 of them back on the
@@ -33,10 +35,10 @@ if (typeof enableCompileCache === 'function') {
 }
 
 const USAGE =
-  "usage: nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>'] [overrides…]"
+  "usage: nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>'] [--dotenv <file>]... [overrides…]"
 
-/** The flags that are nx-exec's own, each taken once; everything else is Nx's. */
-const OWN = new Set(['project', 'target', 'configuration', 'options'])
+/** The flags that are nx-exec's own, each taken once but `--dotenv`; everything else is Nx's. */
+const OWN = new Set(['project', 'target', 'configuration', 'options', 'dotenv'])
 
 /**
  * Parsed argv, or `{ error }` — a usage error is exit 2, before Nx is loaded.
@@ -52,6 +54,7 @@ function parseArgs(argv) {
     target: undefined,
     configuration: undefined,
     options: {},
+    dotenv: [],
     overrides: [],
   }
   const seen = new Set()
@@ -69,10 +72,11 @@ function parseArgs(argv) {
       out.overrides.push(a)
       continue
     }
-    seen.add(name)
+    if (name !== 'dotenv') seen.add(name)
     const value = eq === -1 ? argv[++i] : a.slice(eq + 1)
     if (value === undefined) return { error: `--${name} needs a value\n${USAGE}` }
-    if (name === 'options') {
+    if (name === 'dotenv') out.dotenv.push(value)
+    else if (name === 'options') {
       try {
         out.options = JSON.parse(value)
       } catch (err) {
@@ -151,6 +155,9 @@ async function main(argv) {
     )
     return 1
   }
+  // Before anything reads the environment: the executor runs in this
+  // process, so the task's `.env` files (nx-dotenv.cjs) are its env.
+  loadTaskEnv(nx, process.env, args.dotenv, undefined)
 
   const { graph, pg } = await loadGraph(nx)
   const node = graph.nodes[args.project]

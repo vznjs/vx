@@ -1,5 +1,5 @@
-// A FAKE `nx` for the suites that must not install the real one: the four
-// `nx/src` modules `nx-exec` requires, recording what the bin hands
+// A FAKE `nx` for the suites that must not install the real one: the
+// `nx/src` modules `nx-exec` and `nx-env` require, recording what the bin hands
 // `runExecutor` into `<root>/record.json` and yielding the results the
 // injected options ask for; and a `node_modules/.bin/nx` whose only verb
 // is `graph --file=<path>` (it copies `<root>/graph.json` there and into
@@ -9,6 +9,7 @@ import { chmod, mkdir, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const NX_EXEC_BIN = path.resolve(import.meta.dir, '..', '..', 'src', 'nx-exec.cjs')
+const NX_ENV_BIN = path.resolve(import.meta.dir, '..', '..', 'src', 'nx-env.cjs')
 
 export async function fakeNx(root: string): Promise<void> {
   const nx = path.join(root, 'node_modules', 'nx')
@@ -17,6 +18,41 @@ export async function fakeNx(root: string): Promise<void> {
   await mkdir(path.join(src, 'config'), { recursive: true })
   await mkdir(path.join(src, 'command-line', 'run'), { recursive: true })
   await mkdir(path.join(src, 'utils'), { recursive: true })
+  await mkdir(path.join(src, 'tasks-runner'), { recursive: true })
+  // Nx's is dotenv + dotenv-expand; the fake knows `NAME=value` lines, the
+  // first file to define a name winning and the environment over all.
+  await writeFile(
+    path.join(src, 'tasks-runner', 'task-env.js'),
+    `const fs = require('node:fs')
+function parse(text) {
+  const out = {}
+  for (const line of text.split('\\n')) {
+    const m = /^\\s*([\\w.-]+)\\s*=\\s*(.*)$/.exec(line)
+    if (m && !(m[1] in out)) out[m[1]] = m[2].trim()
+  }
+  return out
+}
+exports.loadAndExpandDotEnvFile = (file, env) => {
+  const all = {}
+  let error
+  for (const f of Array.isArray(file) ? file : [file]) {
+    try {
+      const p = parse(fs.readFileSync(f, 'utf8'))
+      for (const k in p) if (!(k in all)) all[k] = p[k]
+    } catch (e) {
+      error = e
+    }
+  }
+  for (const k in all) if (!Object.prototype.hasOwnProperty.call(env, k)) env[k] = all[k]
+  return error ? { parsed: all, error } : { parsed: all }
+}
+exports.unloadDotEnvFile = (file, env) => {
+  const p = {}
+  exports.loadAndExpandDotEnvFile(file, p)
+  for (const k in p) if (env[k] === p[k]) delete env[k]
+}
+`,
+  )
   await writeFile(
     path.join(nx, 'package.json'),
     JSON.stringify({ name: 'nx', version: '0.0.0-fake', main: 'index.js' }),
@@ -83,7 +119,7 @@ exports.runExecutor = async (description, overrides, context) => {
       projects: Object.keys(context.projectsConfigurations.projects),
       taskGraph: context.taskGraph === undefined ? 'absent' : 'present',
     },
-    env: { NX_DAEMON: process.env.NX_DAEMON },
+    env: { NX_DAEMON: process.env.NX_DAEMON, FROM_DOTENV: process.env.FROM_DOTENV },
   }))
   if (typeof target.options.writeFile === 'string') {
     const file = path.resolve(context.cwd, target.options.writeFile)
@@ -97,7 +133,7 @@ exports.runExecutor = async (description, overrides, context) => {
   )
 }
 
-/** `node_modules/.bin/nx` (graph export only) and `node_modules/.bin/nx-exec` (the real bin). */
+/** `node_modules/.bin/nx` (graph export only), and the real `nx-exec` and `nx-env` bins. */
 export async function fakeNxCli(root: string): Promise<void> {
   const bin = path.join(root, 'node_modules', '.bin')
   await mkdir(bin, { recursive: true })
@@ -117,6 +153,7 @@ esac
   )
   await chmod(nx, 0o755)
   await symlink(NX_EXEC_BIN, path.join(bin, 'nx-exec'))
+  await symlink(NX_ENV_BIN, path.join(bin, 'nx-env'))
 }
 
 /** How many times the fake `nx` ran. */

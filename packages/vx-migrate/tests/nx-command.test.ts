@@ -32,6 +32,7 @@ describe('where Nx ran it, with its placeholders expanded', () => {
         command: 'cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli',
         env: {},
         readyWhen: undefined,
+        envFile: undefined,
       },
       todos: [],
     })
@@ -202,7 +203,7 @@ describe('what the line does under sh', () => {
 describe('an empty command list is a no-op, as Nx completes it (nx#31345)', () => {
   it('maps to `true`, no todo', () => {
     expect(line({ commands: [] })).toEqual({
-      out: { command: 'true', env: {}, readyWhen: undefined },
+      out: { command: 'true', env: {}, readyWhen: undefined, envFile: undefined },
       todos: [],
     })
   })
@@ -279,6 +280,7 @@ describe('env, color and readyWhen (nx#20465)', () => {
         command: 'cd ../.. && echo $OUTPUT_PATH',
         env: { OUTPUT_PATH: 'abc', N: '3', FORCE_COLOR: 'true' },
         readyWhen: undefined,
+        envFile: undefined,
       },
       todos: [],
     })
@@ -295,15 +297,25 @@ describe('env, color and readyWhen (nx#20465)', () => {
     ])
   })
 
+  it('`envFile` is handed on as declared, `{projectRoot}` expanded (nx#23581)', () => {
+    expect(line({ command: 'x', envFile: '{projectRoot}/.env.custom' })).toEqual({
+      out: {
+        command: 'cd ../.. && x',
+        env: {},
+        readyWhen: undefined,
+        envFile: 'packages/a/.env.custom',
+      },
+      todos: [],
+    })
+  })
+
   it('what it does not reproduce is reported, never dropped', () => {
     expect(
       line({
         commands: [{ command: 'a', prefix: 'A' }, 'b'],
-        envFile: 'packages/a/.env.custom',
         streamOutput: false,
       }).todos,
     ).toEqual([
-      'nx:run-commands: `envFile` "packages/a/.env.custom" is not loaded — put its variables in `env`, or in exec.env in a vx.config',
       'nx:run-commands: `streamOutput: false` — vx shows the output per its own modes',
       'nx:run-commands: per-command `prefix` / `color` output decoration is not reproduced',
     ])
