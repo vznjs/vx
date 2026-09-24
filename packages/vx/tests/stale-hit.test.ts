@@ -8,7 +8,17 @@
 // bytes built from inputs that have since changed. Every case here was
 // reproduced against the pre-fix tree before the fix landed.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile, utimes, stat } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+  utimes,
+  stat,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -934,6 +944,103 @@ describe('stale cache hits', () => {
       for (const v of ['vA', 'vB', 'vC', 'vA', 'vB', 'vC', 'vA', 'vB', 'vC']) {
         await cycle(v)
       }
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#1103: git printing a warning while the inputs were enumerated
+  // changed the hash. vx reads only `-z` stdout and the exit code.
+  it(
+    'git warning on stderr during the attribute check leaves the key where a quiet git puts it',
+    async () => {
+      const keyWith = async (attributes: string): Promise<{ hash: string; warned: boolean }> => {
+        const ws = await mkdtemp(path.join(root, 'ws-'))
+        await write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(ws)
+        await write(
+          path.join(ws, 'vx.config.mjs'),
+          `export default {
+             tasks: {
+               build: {
+                 exec: { command: 'cat src/a.txt' },
+                 cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+               },
+             },
+           }`,
+        )
+        await write(path.join(ws, '.gitattributes'), attributes)
+        await write(path.join(ws, 'src/a.txt'), 'a\r\n')
+        await write(path.join(ws, 'src/b.txt'), 'b\n')
+        git(ws, 'init', '-q')
+        git(ws, 'add', '-A')
+        git(ws, 'commit', '-q', '-m', 'initial')
+        // The index holds a.txt as LF, the tree as CRLF: the key is right
+        // only if the attribute check ran to the end and untrusted the OID.
+        await write(path.join(ws, 'src/a.txt'), 'a\r\n')
+        const attr = Bun.spawnSync({
+          cmd: ['git', 'check-attr', 'text', '--', 'src/a.txt'],
+          cwd: ws,
+          stderr: 'pipe',
+        })
+        const dry = JSON.parse(vx(ws, 'run', 'build', '--dry=json')) as {
+          tasks: Array<{ hash: string }>
+        }
+        return { hash: dry.tasks[0]!.hash, warned: attr.stderr.toString().length > 0 }
+      }
+      // The same rule both times; the negated line is one git ignores
+      // aloud, so it changes what git prints and nothing it decides.
+      const quiet = await keyWith('*.txt text\n')
+      const noisy = await keyWith('*.txt text\n!nothing text\n')
+      expect(quiet.warned).toBe(false)
+      expect(noisy.warned).toBe(true)
+      expect(noisy.hash).toBe(quiet.hash)
+    },
+    TIMEOUT,
+  )
+
+  // nx#23106: the key held the input's content but not its name, so a
+  // rename replayed the entry built under the old name.
+  it(
+    'renaming an input misses and back again restores only the outputs of that name',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && for f in src/*.ts; do cp "$f" "dist/$(basename "$f" .ts).js"; done' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, 'src/a.ts'), 'same bytes\n')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      const dist = async () => (await readdir(path.join(root, 'dist'))).sort()
+      const renameTo = async (from: string, to: string) => {
+        await rename(path.join(root, 'src', from), path.join(root, 'src', to))
+      }
+      const status = () => {
+        const out = vx(root, 'run', 'build')
+        return /up-to-date|restored/.test(out) ? 'hit' : 'miss'
+      }
+
+      expect(status()).toBe('miss')
+      expect(await dist()).toEqual(['a.js'])
+      await renameTo('a.ts', 'b.ts')
+      expect(status()).toBe('miss')
+      expect(await dist()).toEqual(['b.js'])
+      await renameTo('b.ts', 'a.ts')
+      expect(status()).toBe('hit')
+      expect(await dist()).toEqual(['a.js'])
+      await renameTo('a.ts', 'b.ts')
+      expect(status()).toBe('hit')
+      expect(await dist()).toEqual(['b.js'])
     },
     TIMEOUT,
   )

@@ -325,6 +325,72 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
     TIMEOUT,
   )
 
+  // turborepo#1010: flipping a cached task to `cache: false` replayed the
+  // entry it had saved while it was cached.
+  it(
+    'a task that loses its `cache` block moves its key and executes instead of replaying the old entry',
+    async () => {
+      const own = await makeParityWorkspace('vx-parity-turbo-uncache-')
+      try {
+        const config = path.join(own, 'packages', 'lib', 'vx.config.mjs')
+        await vx(own, ['run', 'lib#lint'])
+        const [cached] = await dry(own, ['lib#lint'])
+        expect(cached?.cacheStatus).toBe('hit-local')
+
+        const cfg = await readFile(config, 'utf8')
+        const lint =
+          "lint: {\n        exec: { command: 'echo lint-lib' },\n        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },\n      },"
+        expect(cfg).toContain(lint)
+        await writeFile(config, cfg.replace(lint, "lint: { exec: { command: 'echo lint-lib' } },"))
+        const [uncached] = await dry(own, ['lib#lint'])
+        expect(uncached?.cacheStatus).toBe('no-cache')
+        expect(uncached?.hash).not.toBe(cached?.hash)
+
+        const r = await summarized(own, ['lib#lint'])
+        expect(r.code).toBe(0)
+        expect(r.tasks.get('lib#lint')?.['status']).toBe('success')
+        expect(r.tasks.get('lib#lint')?.['noCache']).toBe(true)
+      } finally {
+        await rm(own, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#6749: an uncached task asked for by name skipped restoring its
+  // cached dependency's deleted outputs, and read nothing.
+  it(
+    'an uncached task over a cached dependency restores the deleted outputs of the dependency first',
+    async () => {
+      const own = await makeParityWorkspace('vx-parity-turbo-deploy-')
+      try {
+        const config = path.join(own, 'packages', 'app', 'vx.config.mjs')
+        const cfg = await readFile(config, 'utf8')
+        await writeFile(
+          config,
+          cfg.replace(
+            'lint: {',
+            "deploy: { exec: { command: 'cat dist/out.txt' }, dependsOn: ['build'] },\n      lint: {",
+          ),
+        )
+        expect((await summarized(own, ['app#deploy'])).code).toBe(0)
+        await rm(path.join(own, 'packages', 'app', 'dist'), { recursive: true })
+
+        const r = await summarized(own, ['app#deploy', '--output-logs=full'])
+        expect(r.code).toBe(0)
+        expect(r.tasks.get('app#build')?.['status']).toBe('cache-hit')
+        expect(r.tasks.get('app#deploy')?.['status']).toBe('success')
+        expect(await readFile(path.join(own, 'packages', 'app', 'dist', 'out.txt'), 'utf8')).toBe(
+          'built-app\n',
+        )
+        expect(r.text).toContain('built-app')
+      } finally {
+        await rm(own, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     '`--force` re-executes past the cache and refreshes it; `--no-cache` neither reads nor writes',
     async () => {

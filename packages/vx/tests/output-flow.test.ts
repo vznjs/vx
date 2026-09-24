@@ -846,6 +846,14 @@ describe('flow e2e against a real fixture workspace', () => {
           depbad: {
             exec: { command: "echo DEPBAD-NOISE && exit 3" },
           },
+          build: {
+            exec: { command: "echo BUILD-LINE-1 && echo BUILD-LINE-2 && echo BUILD-LINE-3" },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+          },
+          deploy: {
+            exec: { command: "echo DEPLOY-LINE" },
+            dependsOn: ['build'],
+          },
         },
       }`,
     )
@@ -933,6 +941,34 @@ describe('flow e2e against a real fixture workspace', () => {
     // Requested task never ran; its skip is framed.
     expect(text()).toContain('skipped          one#consumebad')
     expect(text()).not.toContain('NEVER-RUNS')
+  })
+
+  // turborepo#939: a cached dependency's replayed log interleaved with the
+  // live output of the task that depends on it.
+  it('a replayed dependency frame closes before its live dependent frame opens', async () => {
+    {
+      const silence = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const silenceErr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      expect(await cliRun(['run', '--all', 'build'])).toBe(0)
+      silence.mockRestore()
+      silenceErr.mockRestore()
+    }
+    const text = captureStdout()
+    expect(await cliRun(['run', '--all', 'deploy', '--output-logs', 'full'])).toBe(0)
+    const t = text()
+    const marks = [
+      '┌─ one#build > up-to-date',
+      'BUILD-LINE-1',
+      'BUILD-LINE-2',
+      'BUILD-LINE-3',
+      '└─ one#build ──',
+      '┌─ one#deploy',
+      'DEPLOY-LINE',
+      '└─ one#deploy ──',
+    ]
+    const at = marks.map((m) => t.indexOf(m))
+    expect(at.every((i) => i >= 0)).toBe(true)
+    expect(at).toEqual([...at].sort((a, b) => a - b))
   })
 
   it('--output-logs full restores full grouped output in a broad run', async () => {
