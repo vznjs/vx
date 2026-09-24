@@ -77,6 +77,13 @@ workspace package linked into it — a project never has to name a sibling
 to import what its own `package.json` already depends on. Everything else
 is yours to declare.
 
+The one link vx does not follow leads back to the task's own project, or
+to a directory that holds it. npm and Yarn link every workspace package
+at the root, the task's own included, so following that link would grant
+the whole project whatever `allow.read` says, and a read of a file the
+inputs leave out would pass unreported. The task's own project is
+governed by its grants alone.
+
 ## Capabilities
 
 `allow`, `deny` and `ignore` share one shape, so the vocabulary that

@@ -985,7 +985,8 @@ export default {
 
 The grants are the task's whole permission surface — nothing is derived
 from `cache`, and the only thing core adds is `node_modules` plus the
-workspace packages linked there. Enforcement anchors at the workspace
+workspace packages linked there, never a link back to the task's own
+project (npm and Yarn link that too). Enforcement anchors at the workspace
 root (a task never leaves its project); only denials inside the project
 are reported.
 
