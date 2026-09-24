@@ -27,7 +27,7 @@ import { mapNxWorkspace, type NxGraph, parseNxGraph } from './nx-map.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
-  'a server executor (or a serve-like target name) — vx runs it as a persistent task that is ' +
+  'a continuous target (or a server executor) — vx runs it as a persistent task that is ' +
   'ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on its output'
 
 /** The snapshot's name under vx's cache dir — local to the machine, like the cache. */

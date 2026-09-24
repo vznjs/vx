@@ -1042,8 +1042,8 @@ describe('vx migrate (nx) — executors', () => {
                     outputs: ['{options.outputPath}', 'dist/reports/app.json'],
                     cache: true,
                   },
-                  // Outputs and a serve-like name: persistent, so never cached,
-                  // whatever nx.json's list says (item 591).
+                  // A serve-like NAME is no lifetime: cached by nx.json's list
+                  // like any other target (nx#32610).
                   dev: {
                     executor: 'nx:run-commands',
                     options: { command: 'vite' },
@@ -1091,8 +1091,11 @@ describe('vx migrate (nx) — executors', () => {
         outputs: { files: [] },
       })
       expect(tasks['test']!.cache).toBeUndefined()
-      expect(tasks['dev']!.cache).toBeUndefined()
-      expect(tasks['dev']!.exec?.persistent).toEqual({})
+      expect(tasks['dev']!.cache).toEqual({
+        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+        outputs: { files: ['dist/**'] },
+      })
+      expect(tasks['dev']!.exec?.persistent).toBeUndefined()
       expect(tasks['test']!.exec?.command).toBe(
         'nx-exec @nx/vitest:test --project app --target test',
       )
@@ -1121,10 +1124,10 @@ describe('vx migrate (nx) — executors', () => {
 describe('vx migrate (nx) — a server target is persistent', () => {
   // A dev/preview server never exits. Until 2026-09-04 the Nx path mapped
   // `@nx/vite:dev-server` to `vite` as an ORDINARY task, so `vx run serve`
-  // waited forever for an exit that never comes — while the turbo path
-  // (`persistent: true`) and the scripts path (the task NAME) both got it
-  // right. One rule now, in `migrate-persistent.ts`.
-  it('a server executor wins over the name; a shell wrapper falls back to the name', async () => {
+  // waited forever for an exit that never comes. Nx's own signal is the
+  // target's `continuous`; a graph from an Nx older than that field still
+  // names the executor. The target NAME never decides (nx#32610).
+  it('`continuous` or a server executor is persistent; a target name never is', async () => {
     const root = await makeRoot('vx-migrate-nx-persistent-')
     try {
       await addPackage(root, 'app', {})
@@ -1141,17 +1144,22 @@ describe('vx migrate (nx) — a server target is persistent', () => {
                 targets: {
                   // The executor says server, whatever the target is called.
                   ui: { executor: '@nx/vite:dev-server', options: {} },
-                  // Depends on serve: the readiness note is serve's alone (602).
+                  // Depends on tail: the readiness note is tail's alone (602).
                   e2e: {
                     executor: 'nx:run-commands',
                     options: { command: 'cypress' },
-                    dependsOn: ['serve'],
+                    dependsOn: ['tail'],
                   },
                   preview: { executor: '@nx/vite:preview-server', options: {} },
-                  // A shell wrapper says nothing about lifetime → the name does.
+                  // Nx's own word on a shell wrapper.
+                  tail: {
+                    executor: 'nx:run-commands',
+                    options: { command: 'tail -f log' },
+                    continuous: true,
+                  },
+                  // A serve-like name on a shell wrapper says nothing.
                   serve: { executor: 'nx:run-commands', options: { commands: ['node server.js'] } },
-                  // …and the name alone must not override an executor that
-                  // IS known and is not a server (the control).
+                  // …nor on an executor that IS known and is not a server.
                   watch: { executor: '@nx/vite:build', options: {} },
                   build: { executor: '@nx/js:tsc', options: {} },
                 },
@@ -1168,9 +1176,10 @@ describe('vx migrate (nx) — a server target is persistent', () => {
       const persistent = Object.keys(tasks)
         .filter((t) => tasks[t]!.exec?.persistent !== undefined)
         .sort()
-      expect(persistent).toEqual(['preview', 'serve', 'ui'])
+      expect(persistent).toEqual(['preview', 'tail', 'ui'])
       expect(tasks['ui']!.exec?.persistent).toEqual({})
-      expect(r.out).toContain('app#serve: persistent task')
+      expect(r.out).toContain('app#tail: persistent task')
+      expect(r.out).not.toContain('app#serve: persistent task')
       expect(r.out).not.toContain('app#ui: persistent task')
       expect(r.out).not.toContain('app#preview: persistent task')
     } finally {
