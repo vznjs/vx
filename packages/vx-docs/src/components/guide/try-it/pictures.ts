@@ -34,6 +34,36 @@ export const loop: Picture = {
       ],
     },
   ],
+  narrow: {
+    width: 340,
+    height: 292,
+    boxes: [
+      { id: 'edit', x: 50, y: 20, w: 160, label: 'Edit', sub: 'a file, env, config' },
+      { id: 'run', x: 50, y: 116, w: 160, label: 'Run', sub: 'plan every task' },
+      {
+        id: 'read',
+        x: 50,
+        y: 212,
+        w: 160,
+        label: 'Read',
+        sub: 'what moved, and why',
+        tone: 'accent',
+      },
+    ],
+    arrows: [
+      { from: 'edit', to: 'run' },
+      { from: 'run', to: 'read' },
+      {
+        from: 'read',
+        to: 'edit',
+        tone: 'muted',
+        via: [
+          [290, 242],
+          [290, 50],
+        ],
+      },
+    ],
+  },
 }
 
 /** The tasks an edit to packages/ui/src/button.tsx reruns, in the order
@@ -58,6 +88,23 @@ export const ripple: Picture = {
     { from: 'ui#build', to: 'app#build', tone: 'accent' },
     { from: 'app#build', to: 'app#test', tone: 'accent' },
   ],
+  narrow: {
+    width: 340,
+    height: 364,
+    boxes: [
+      { id: 'file', x: 95, y: 20, w: 150, label: 'button.tsx', sub: 'packages/ui/src' },
+      { id: 'ui#build', x: 115, y: 116, w: 110, label: 'ui#build', tone: 'accent' },
+      { id: 'ui#test', x: 30, y: 204, w: 110, label: 'ui#test', tone: 'accent' },
+      { id: 'app#build', x: 200, y: 204, w: 110, label: 'app#build', tone: 'accent' },
+      { id: 'app#test', x: 200, y: 292, w: 110, label: 'app#test', tone: 'accent' },
+    ],
+    arrows: [
+      { from: 'file', to: 'ui#build', tone: 'accent' },
+      { from: 'ui#build', to: 'ui#test', tone: 'accent' },
+      { from: 'ui#build', to: 'app#build', tone: 'accent' },
+      { from: 'app#build', to: 'app#test', tone: 'accent' },
+    ],
+  },
 }
 
 const LABS = [
@@ -80,4 +127,17 @@ export const labs: Picture = {
     label: lab,
     sub: `Lab ${i + 1}`,
   })),
+  narrow: {
+    width: 340,
+    height: 344,
+    boxes: LABS.map((lab, i) => ({
+      id: `lab-${i + 1}`,
+      x: 35,
+      y: 20 + i * 80,
+      w: 270,
+      h: 64,
+      label: lab,
+      sub: `Lab ${i + 1}`,
+    })),
+  },
 }
