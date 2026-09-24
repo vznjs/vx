@@ -58,15 +58,35 @@ export default defineProject({
     // a fact about the built HTML, not about any source file.
     // `dist/` is not an input here; `build`'s key reaches this one through
     // `dependsOn`, and a hit on `build` restores `dist/` before this runs.
+    //
+    // learn-architecture.test.ts reads across project boundaries, and says
+    // so here: it type-checks src/examples/ against core's types, reads
+    // `VxPlugin`'s source for the hook declarations the explorer shows, and
+    // calls every first-party plugin factory to hold the explorer's
+    // first-party column to the hooks each one fills. The reads go through
+    // the packages this one links (package.json), and their keys arrive
+    // through `install` (`^build` folds each linked package's `source`,
+    // item 687), so a change to a hook, a type or a plugin's hooks re-keys
+    // this task.
     test: {
       description:
-        'bun test — the guide, sidebar and demo pins (needs the imported content and dist/)',
+        'bun test — the guide, sidebar, demo and Learn pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
         sandbox: {
           allow: {
-            read: ['**/*'],
+            read: [
+              '**/*',
+              '../vx/src/**',
+              '../vx-github/src/**',
+              '../vx-lockfile/src/**',
+              '../vx-mcp/src/**',
+              '../vx-migrate/src/**',
+              '../vx-otel/src/**',
+              '../vx-reapi/src/**',
+              '../vx-schedule-history/src/**',
+            ],
             systemInfo: ['vfs.disk-space'],
           },
         },
@@ -76,9 +96,10 @@ export default defineProject({
           files: [
             'tests/**',
             'src/content/docs/**',
-            // demo-islands.test.ts imports the widgets' model to hold the
-            // built page to it.
+            // demo-islands.test.ts and learn-architecture.test.ts import the
+            // widgets' model to hold the built pages to it.
             'src/components/demos/model/**',
+            'src/examples/**',
             'astro.config.*',
             '.gitignore',
             'package.json',
@@ -109,7 +130,10 @@ export default defineProject({
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         sandbox: {
           allow: {
-            read: ['**/*'],
+            // The pipeline explorer shows each hook as core declares it, read
+            // from `VxPlugin`'s source at build time (PipelineExplorer.astro);
+            // its key arrives through `install` (core's `source`, item 687).
+            read: ['**/*', '../vx/src/orchestrator/plugin.ts'],
             // astro's and vite's caches live under `.astro/` (astro.config.mjs),
             // never under node_modules: a write grant there makes the sandbox
             // punch the read grant into node_modules' children, and bwrap

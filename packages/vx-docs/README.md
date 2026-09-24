@@ -131,6 +131,27 @@ when the landing page or `benchmarks.md` drifts from
   the model's, and the page's scripts reach the module that defines its
   element. It also holds the toy monorepo model to sets written out by
   hand. It needs `dist/`, so the `test` task depends on `build`.
+- `tests/learn-architecture.test.ts` — the architecture and extending
+  pages. The pipeline model (`src/components/demos/model/pipeline.ts`)
+  names every hook in core's `PLUGIN_HOOKS`, in order, and no other; the
+  hook declarations the explorer shows are read from `VxPlugin`'s source,
+  and the reader is held to declarations written out by hand; the
+  first-party column is what each first-party factory returns when
+  called; every file under `src/examples/` type-checks against
+  `@vzn/vx` and fills the stage its page lights up; and the built pages
+  render the model. Calling the factories is why the site lists
+  `@vzn/vx-lockfile`, `-mcp`, `-migrate`, `-otel` and `-reapi` as
+  devDependencies: a package the site links is one its sandboxed test
+  may read.
+
+## Worked examples
+
+`src/examples/` holds real plugin files. A page shows one with
+`PluginExample.astro` (the extending page) or through the pipeline
+explorer (`stages/<hook>.ts`, one per hook), reading the file at build
+time, so the page cannot show code the test did not type-check. A new
+hook in core needs a `stages/<hook>.ts` and an entry in the model, or
+the test fails.
 
 ## Interactive demos
 

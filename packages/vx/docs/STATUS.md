@@ -578,6 +578,57 @@ and 5 in `key-model-core.test.ts`; the site suite is 43 green. No
 browser on this box: the element was driven in happy-dom from the
 scratchpad (not a dependency), and its layout has not been seen.
 
+14ch. **Item 686 (roadmap W5, W6, 2026-09-24): the architecture and
+extending pages teach the plugin API.** `learn/architecture.mdx` explains
+a pipeline with seams in general terms, then vx's stages, the local
+floor, "no defaults", "seam over special case", what the design buys
+(remote execution, Turbo's and Nx's cache wires, telemetry, verbs,
+adoption, all without forking core) and what it costs, then one verified
+sentence each for Turborepo, Nx and Bazel, then a checkpoint. Its widget
+is the pipeline explorer (`PipelineExplorer.astro` + `pipeline-explorer.ts`):
+a strip of the thirteen hooks, a section per hook with its declaration
+READ FROM `VxPlugin`'s source at build time, its first-party plugins and
+an example plugin from `src/examples/stages/<hook>.ts`, a table of what
+core does and what a plugin decides, and a Mermaid flowchart generated
+from the same model. Without JavaScript: the strip is anchor links, all
+thirteen sections show, the table and the strip carry the pipeline (the
+Mermaid source is text until its script runs). With it: the links become
+toggle buttons (`aria-pressed`, Space and Enter, Escape shows all), one
+section at a time, the row marked, a live region; it opens on `config`.
+`learn/extending.mdx` has five worked plugins, each a real file under
+`packages/vx-docs/src/examples/` shown from the file beside the strip
+with its stage lit (`PluginExample.astro`, the explorer's strip in
+static mode, so a hook added to core reaches every example's diagram): a
+one-line telemetry summary, a remote cache over a toy HTTP store, a
+`cache-size` verb, a schedule weight for one task, and `turbo()` in two
+lines. One model, `demos/model/pipeline.ts`, drives all of it.
+`tests/learn-architecture.test.ts` (36 rows): the model equals
+`PLUGIN_HOOKS` both ways and in order; the declaration reader against
+all thirteen declarations written out by hand; the first-party column
+against what every first-party factory returns when called (both ways,
+so a plugin that starts filling a stage turns it red); every example
+and the model type-check with oxlint in a temp dir; each stage example
+fills its stage and each worked example exactly its stages; the built
+pages against the model (strip, sections, links, table, hidden controls,
+Mermaid, caption, checkpoints, loader). 26 product mutations plus one
+per parameterized row (13 stage rows, 5 worked rows) each turned a row
+red and every row was red at least once; green after restore. Among
+them: a hook added to core's `PLUGIN_HOOKS`, a hook dropped from or
+added to the model, a planted type error in an example, in the model
+and in the `turbo()` call. To call the factories the site now links
+`@vzn/vx-lockfile`, `-mcp`, `-migrate`, `-otel` and `-reapi` as
+devDependencies (the README says why), and its `test` task declares the
+reads and makes core's and the plugins' `src/**` inputs; `build` reads
+`plugin.ts` and keys on it. Checked in Chromium at 1440 and 390 px with
+JavaScript on and off: no horizontal overflow. The competitor sentences
+were checked against shallow clones of vercel/turborepo, nrwl/nx and
+bazelbuild/bazel on 2026-09-24. Found on the way: `setup` runs after
+the planning stages (and after `cache` is resolved), not before `config`
+as a first draft of the diagram said, and `VxPlugin.setup`'s own comment
+("before any capability is consulted") overstates it for `cache`; left
+for core. Both Mermaid pages log a `pageerror Object` in Chromium, W1's
+too; not from this item.
+
 14ci. **Item 687 (2026-09-24): a plugin's suite re-keys on core's
 source.** Every package that imports `@vzn/vx` reads core's source,
 since core has no build, but core's `build` was an empty group whose key
@@ -617,7 +668,9 @@ the rule is removed, the cascade covers it.
     W1, the first real Learn page and the graph explorer, is DONE (item
     681, entry 14cc), and so is W12, the glossary (item 683, entry 14ce).
     W2, caching and the key calculator, is DONE (item 684, entry 14cf).
-    Next step: W4 and the scheduler sim.
+    W5 and W6, the architecture page with its pipeline explorer and the
+    worked plugins, are DONE (item 686, entry 14ch). Next step: W4 and
+    the scheduler sim.
 
 ## Decisions (this arc)
 

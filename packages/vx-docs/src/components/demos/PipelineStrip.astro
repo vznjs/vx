@@ -1,0 +1,125 @@
+---
+// The pipeline as a strip: the run's stages in order, then the hooks around
+// and beside the run. Plain HTML, so it is a diagram without JavaScript. The
+// explorer draws it with `links` (each stage jumps to its section, and
+// `pipeline-explorer.ts` turns the links into toggle buttons); the extending
+// page draws it with `lit`, the stages one example fills.
+import type { PluginHook } from '@vzn/vx'
+import { STAGES, RUN_STAGES } from './model/pipeline.js'
+
+interface Props {
+  /** Names the strip for assistive technology. */
+  label: string
+  /** The stages to light up. */
+  lit?: readonly PluginHook[]
+  /** Link each stage to `#vx-stage-<hook>`. */
+  links?: boolean
+}
+
+const { label, lit = [], links = false } = Astro.props
+const around = STAGES.filter((s) => s.group !== 'run')
+---
+
+<div class="vx-pipeline" role="group" aria-label={label}>
+  <ol class="run">
+    {
+      RUN_STAGES.map((s) => (
+        <li data-hook={s.hook} class:list={{ lit: lit.includes(s.hook) }}>
+          {links ? (
+            <a href={`#vx-stage-${s.hook}`} data-hook={s.hook}>
+              <code>{s.hook}</code>
+            </a>
+          ) : (
+            <code>{s.hook}</code>
+          )}
+          {lit.includes(s.hook) && <span class="sr-only">(this example)</span>}
+        </li>
+      ))
+    }
+  </ol>
+  <div class="around">
+    <span class="label">Around the run and beside it:</span>
+    <ul>
+      {
+        around.map((s) => (
+          <li data-hook={s.hook} class:list={{ lit: lit.includes(s.hook) }}>
+            {links ? (
+              <a href={`#vx-stage-${s.hook}`} data-hook={s.hook}>
+                <code>{s.hook}</code>
+              </a>
+            ) : (
+              <code>{s.hook}</code>
+            )}
+            {lit.includes(s.hook) && <span class="sr-only">(this example)</span>}
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</div>
+
+<style>
+  .vx-pipeline {
+    margin-block: 0.5rem 1rem;
+  }
+  ol,
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    display: flex;
+    align-items: center;
+    margin: 0;
+  }
+  ol li + li::before {
+    content: '→' / '';
+    padding-inline: 0.3rem;
+    color: var(--sl-color-gray-3);
+  }
+  ul li + li::before {
+    content: '·' / '';
+    padding-inline: 0.4rem;
+    color: var(--sl-color-gray-3);
+  }
+  code,
+  a {
+    border-radius: 999px;
+  }
+  code {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border: 1px solid var(--sl-color-gray-4);
+    background: transparent;
+    font-size: var(--sl-text-sm);
+  }
+  a {
+    text-decoration: none;
+  }
+  a:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  .lit code,
+  a[aria-pressed='true'] code {
+    border-color: var(--sl-color-accent);
+    background: var(--sl-color-accent-low);
+    font-weight: 700;
+  }
+  .around {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    margin-top: 0.6rem;
+  }
+  .label {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+</style>
