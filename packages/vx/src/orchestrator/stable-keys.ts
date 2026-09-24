@@ -58,11 +58,15 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   //   - outputProjects: the project names of every upstream task declaring
   //     cache.outputs.files (project-relative outputs land in the producer's
   //     own dir), and of every upstream with no cache block that may write
-  //     in its own project (`undeclaredWriteReach`, item 743).
+  //     in its own project (`undeclaredWriteReach`, item 743). A bitset over
+  //     project indexes: a union per dep was a string Set copied tasks ×
+  //     deps × projects times, 101 ms of a 513 ms warm run at 476 packages
+  //     (item 744).
   //   - wsOutputUpstream: any upstream declares cache.outputs.workspaceFiles
   //     (root-anchored, boundary-ignoring outputs), or has no cache block
   //     and a sandbox write grant elsewhere in the workspace.
-  const outputProjectsById = new Map<string, ReadonlySet<string>>()
+  const projects = new ProjectIndex(args.nodes)
+  const outputProjectsById = new Map<string, ProjectSet>()
   const wsOutputUpstreamById = new Map<string, boolean>()
   const stableKeys: StableKey[] = []
   // Workspace-relative project dirs, for the reach test of a
@@ -80,12 +84,13 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 
     // Fold every dep's accumulated producers + the dep's own declared
     // outputs into this node's transitive-upstream producer sets.
-    const outputProjects = new Set<string>()
+    const outputProjects = projects.empty()
     let wsOutputUpstream = false
     for (const dep of node.deps) {
       const depNode = args.nodes.get(dep)
       if (!depNode) continue
-      for (const p of outputProjectsById.get(dep) ?? []) outputProjects.add(p)
+      const upstreamOfDep = outputProjectsById.get(dep)
+      if (upstreamOfDep !== undefined) outputProjects.addAll(upstreamOfDep)
       if (wsOutputUpstreamById.get(dep) === true) wsOutputUpstream = true
       const depOut = depNode.config.cache?.outputs
       if ((depOut?.files?.length ?? 0) > 0) outputProjects.add(depNode.projectName)
@@ -193,7 +198,7 @@ function synthUpstream(
  */
 export function dependsOnSiblingOutputs(
   node: TaskNode,
-  upstreamOutputProjects: ReadonlySet<string>,
+  upstreamOutputProjects: ProjectNames,
   hasWsOutputUpstream: boolean,
   dirByProject?: ReadonlyMap<string, string>,
 ): boolean {
@@ -261,6 +266,71 @@ export function workspaceInputsReach(
     }
   }
   return false
+}
+
+/** What the stability gate reads of a set of project names. */
+interface ProjectNames extends Iterable<string> {
+  has(name: string): boolean
+  readonly size: number
+}
+
+/** Every project of the graph, numbered, so a set of them is a bitset. */
+class ProjectIndex {
+  readonly names: string[] = []
+  readonly indexOf = new Map<string, number>()
+  readonly words: number
+
+  constructor(nodes: Map<string, TaskNode>) {
+    for (const node of nodes.values()) {
+      if (this.indexOf.has(node.projectName)) continue
+      this.indexOf.set(node.projectName, this.names.length)
+      this.names.push(node.projectName)
+    }
+    this.words = (this.names.length + 31) >>> 5
+  }
+
+  empty(): ProjectSet {
+    return new ProjectSet(this, new Uint32Array(this.words))
+  }
+}
+
+class ProjectSet implements ProjectNames {
+  constructor(
+    private readonly index: ProjectIndex,
+    private readonly bits: Uint32Array,
+  ) {}
+
+  add(name: string): void {
+    const i = this.index.indexOf.get(name)!
+    this.bits[i >>> 5]! |= 1 << (i & 31)
+  }
+
+  addAll(other: ProjectSet): void {
+    for (let w = 0; w < this.bits.length; w++) this.bits[w]! |= other.bits[w]!
+  }
+
+  has(name: string): boolean {
+    const i = this.index.indexOf.get(name)
+    return i !== undefined && (this.bits[i >>> 5]! & (1 << (i & 31))) !== 0
+  }
+
+  get size(): number {
+    let n = 0
+    for (const word of this.bits) {
+      let v = word
+      while (v !== 0) {
+        v &= v - 1
+        n++
+      }
+    }
+    return n
+  }
+
+  *[Symbol.iterator](): Iterator<string> {
+    for (let i = 0; i < this.index.names.length; i++) {
+      if ((this.bits[i >>> 5]! & (1 << (i & 31))) !== 0) yield this.index.names[i]!
+    }
+  }
 }
 
 function topoOrder(nodes: Map<string, TaskNode>): string[] {

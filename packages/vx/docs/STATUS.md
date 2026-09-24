@@ -553,6 +553,19 @@ false`, the first failure failing the task; `commands: []` a no-op;
       state (probed: the fixed code under v32 replayed a formatter's
       poisoned entry as up-to-date), so it is not self-healing.
 
+744.  DONE (2026-09-24, Next 17: why Turbo won warm at size). Not the
+      cache: `deriveStableKeys` built each task's transitive set of
+      upstream output producers by copying every dep's string `Set`,
+      tasks × deps × projects inserts — 101 ms of CPU self time in a
+      513 ms warm profile at 476 packages, growing with the graph. The
+      set is now a bitset over project indexes (`ProjectSet` in
+      `stable-keys.ts`), so a union is a word-wise OR; the gate reads
+      it unchanged. Warm, compiled, interleaved against a `git worktree`
+      "before" (main after item 742): 476 packages 0.45 → 0.35 s (Turbo
+      0.35, min of 9); 3,270 tasks 0.89 → 0.56 s (Turbo 0.71, min of 7). The existing
+      rows hold the union, the direct add, the iteration and the size
+      (each neutralised in turn, each red).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -770,7 +783,7 @@ next?".
 
 16. **The site, short (owner, 2026-09-24, after 728).** Shipped as item
     729 (`design/site-short-2026-09.md`). Left: the owner's read.
-17. **Turbo 2.11 wins warm at 476 packages on the Linux box (item 735).**
+17. DONE as item 744 — **Turbo 2.11 won warm at 476 packages on the Linux box (item 735).**
     Two one-rep runs read Turbo at 255 and 303 ms against vx's 334 and
     376 (restore: 436 and 446 against 524 and 478). Measure it min-of-N
     with interleaved arms, find where vx's warm path spends it at that
