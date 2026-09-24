@@ -81,7 +81,10 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
                         task on its project's own dependency closure; --affected follows. Parsers over core's
                         `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff).
                         This repo declares bun()
-packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
+packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts;
+                        src/playground/ is core's own planner bundled for the browser behind a shim
+                        (build.playground → public/playground/planner.js), held to the CLI by core's
+                        tests/playground-parity.unsafe.test.ts
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
                         history/ holds the shipped record STATUS moved out (read it only when an item's why matters)

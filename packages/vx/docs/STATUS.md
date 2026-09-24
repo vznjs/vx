@@ -971,58 +971,6 @@ round reuses the registry, 1 for 2). A repeat round of 50 configs, min of
 The module page's claim that `prepareRun` loads with `Promise.all` was
 wrong and is corrected.
 
-14cr. **Item 696 (2026-09-24): the site's monospace falls back to
-Starlight's.** `--sl-font-mono` is a property a site may set; Starlight
-defines only `--sl-font-system-mono` and reads the other through a
-fallback. `KeyCalculator.astro` and `Head.astro` read it bare, so the
-caching widget's keys (and the head's code) rendered in the inherited
-proportional font. Both now carry the fallback the stale-hit widget
-already used. `tests/starlight-vars.test.ts` holds the class: every
-`var(--sl-…)` in the site's source names a property Starlight's own
-stylesheets define (read from its `dist/style/`, so the set follows the
-installed version), or carries a fallback. Red with the two fixes
-reverted, naming both files; a control row checks the definitions were
-read (`--sl-font-system-mono` in, `--sl-font-mono` out).
-
-14cs. **Item 697 (2026-09-24): every diagram renders, and none throws.**
-Two defects behind the console error the W3 implementer saw. First, a
-race: `Head.astro` rendered on load and again from its theme observer,
-which Starlight trips as it sets `data-theme` at startup, and two
-`mermaid.run` calls over the same blocks tore each other's DOM down, so
-every page with a diagram threw mermaid's non-Error `{ str, hash }`
-("Cannot read properties of null (reading 'firstChild')") while the
-second render still drew the diagrams. Renders now run one at a time,
-and a failed one is reported as `[vx] a diagram did not render: …`
-instead of thrown. Second, a real break: the extensibility guide's
-pipeline named a node `graph`, a mermaid keyword, so that page showed
-mermaid's error graphic instead of the diagram; the node is `grph` now.
-Driven in Chromium over the built site, all 14 pages with diagrams:
-before, every page threw (the guide twice, the second its parse
-error); after, none, 24 of 24
-diagrams drawn, no error graphic. The race fix has no committed row (the
-site suite runs no browser); the keyword class does:
-`tests/mermaid-ids.test.ts` reads every flowchart the build shipped,
-hand-written and widget-generated, and requires that no node id is one
-of the flowchart grammar's keywords. Red with `graph` restored, naming
-`guides/extensibility`; a control row checks the id reader on a known
-source.
-
-14ct. **Item 698 (2026-09-24): the benchmarks stop crediting Turbo's
-daemon.** `benchmarks.md` said Turbo's daemon answered "what changed"
-without a walk in the 2026-09-03 head-to-head (Turbo 2.10.12), that
-Turbo "with its daemon on would close part of the no-op gap" in the
-solidjs rows (Turbo 2.10.10, run with `--no-daemon`), and counted
-"Turbo's" daemon out of the CPU column; the honest-benchmarks post
-repeated two of those. Checked against Turbo's own docs at each tag:
-`reference/run.mdx` at v2.8.0 still documents the daemon for
-`turbo run`, and from v2.9.0 (and at v2.10.0, v2.10.10, v2.10.12) says
-it "is no longer used for `turbo run`" and the flags "are ignored". So
-every Turbo row here ran daemonless whatever the flags; the numbers
-stand, the explanations are corrected (both tools work out what changed
-per invocation; the `--no-daemon` the solidjs script passes is a no-op;
-only Nx's daemon is outside the CPU column). `comparison.md` said
-"since 2.10" (from W7's reading) and now says 2.9.
-
 14cq. **Item 695 (roadmap W9, 2026-09-24): the playground bundle is the
 site's, built by a vx task and held to the CLI.** The spike's entry, shim
 and fixture moved (`git mv`) to `packages/vx-docs/src/playground/`;
@@ -1088,6 +1036,58 @@ Chromium (Playwright, the built site's `astro preview`),
 keys equal to the CLI's and no page error. Not done: no page loads the
 bundle yet (the island comes with the UI), and CLAUDE.md's layout does
 not yet name `src/playground/`.
+
+14cr. **Item 696 (2026-09-24): the site's monospace falls back to
+Starlight's.** `--sl-font-mono` is a property a site may set; Starlight
+defines only `--sl-font-system-mono` and reads the other through a
+fallback. `KeyCalculator.astro` and `Head.astro` read it bare, so the
+caching widget's keys (and the head's code) rendered in the inherited
+proportional font. Both now carry the fallback the stale-hit widget
+already used. `tests/starlight-vars.test.ts` holds the class: every
+`var(--sl-…)` in the site's source names a property Starlight's own
+stylesheets define (read from its `dist/style/`, so the set follows the
+installed version), or carries a fallback. Red with the two fixes
+reverted, naming both files; a control row checks the definitions were
+read (`--sl-font-system-mono` in, `--sl-font-mono` out).
+
+14cs. **Item 697 (2026-09-24): every diagram renders, and none throws.**
+Two defects behind the console error the W3 implementer saw. First, a
+race: `Head.astro` rendered on load and again from its theme observer,
+which Starlight trips as it sets `data-theme` at startup, and two
+`mermaid.run` calls over the same blocks tore each other's DOM down, so
+every page with a diagram threw mermaid's non-Error `{ str, hash }`
+("Cannot read properties of null (reading 'firstChild')") while the
+second render still drew the diagrams. Renders now run one at a time,
+and a failed one is reported as `[vx] a diagram did not render: …`
+instead of thrown. Second, a real break: the extensibility guide's
+pipeline named a node `graph`, a mermaid keyword, so that page showed
+mermaid's error graphic instead of the diagram; the node is `grph` now.
+Driven in Chromium over the built site, all 14 pages with diagrams:
+before, every page threw (the guide twice, the second its parse
+error); after, none, 24 of 24
+diagrams drawn, no error graphic. The race fix has no committed row (the
+site suite runs no browser); the keyword class does:
+`tests/mermaid-ids.test.ts` reads every flowchart the build shipped,
+hand-written and widget-generated, and requires that no node id is one
+of the flowchart grammar's keywords. Red with `graph` restored, naming
+`guides/extensibility`; a control row checks the id reader on a known
+source.
+
+14ct. **Item 698 (2026-09-24): the benchmarks stop crediting Turbo's
+daemon.** `benchmarks.md` said Turbo's daemon answered "what changed"
+without a walk in the 2026-09-03 head-to-head (Turbo 2.10.12), that
+Turbo "with its daemon on would close part of the no-op gap" in the
+solidjs rows (Turbo 2.10.10, run with `--no-daemon`), and counted
+"Turbo's" daemon out of the CPU column; the honest-benchmarks post
+repeated two of those. Checked against Turbo's own docs at each tag:
+`reference/run.mdx` at v2.8.0 still documents the daemon for
+`turbo run`, and from v2.9.0 (and at v2.10.0, v2.10.10, v2.10.12) says
+it "is no longer used for `turbo run`" and the flags "are ignored". So
+every Turbo row here ran daemonless whatever the flags; the numbers
+stand, the explanations are corrected (both tools work out what changed
+per invocation; the `--no-daemon` the solidjs script passes is a no-op;
+only Nx's daemon is outside the CPU column). `comparison.md` said
+"since 2.10" (from W7's reading) and now says 2.9.
 
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
