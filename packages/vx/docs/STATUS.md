@@ -476,6 +476,12 @@ false`, the first failure failing the task; `commands: []` a no-op;
       executions under the cache key (`@vzn/vx-reapi`) is not told a task
       is tainted, for this taint or `--continue=always`'s.
 
+740.  DONE (2026-09-24, upstream survey: cache robustness). Two processes
+      opening one NEW cache both read no `schema_meta` version row and the
+      second insert died on the primary key (nx#28608, 2 in 100 paired
+      runs): the write half now re-reads under `BEGIN IMMEDIATE`, and a
+      warm open takes no lock.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -56,4 +56,39 @@ describe('opening the cache under another process’s lock', () => {
     },
     TIMEOUT,
   )
+
+  // Two processes opening one NEW cache: both read no version row, both
+  // insert one, and the second died with `UNIQUE constraint failed:
+  // schema_meta.key` (2 in 100 paired runs on a fresh `.vx`, upstream survey
+  // nx#28608). The holder plays the first opener, stopped between its insert
+  // and its commit, so this open reads no row and writes after it.
+  it(
+    'a version row another opener is committing is read, not inserted twice',
+    async () => {
+      const cacheDir = path.join(dir, 'cache')
+      await Bun.write(path.join(cacheDir, '.keep'), '')
+      const script = `
+        import { Database } from 'bun:sqlite'
+        import { SCHEMA_VERSION } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/cache/cache.ts'))}
+        const db = new Database(${JSON.stringify(path.join(cacheDir, 'cache.db'))}, { create: true })
+        db.exec('PRAGMA journal_mode = WAL')
+        db.exec('CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        db.exec('BEGIN IMMEDIATE')
+        db.prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)").run(SCHEMA_VERSION)
+        console.log('held')
+        await Bun.sleep(1000)
+        db.exec('COMMIT')
+        db.close()
+      `
+      const proc = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' })
+      const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader()
+      const first = await reader.read()
+      expect(new TextDecoder().decode(first.value)).toContain('held')
+      const cache = new Cache(cacheDir)
+      expect(cache.schemaReset).toBeNull()
+      cache.close()
+      expect(await proc.exited).toBe(0)
+    },
+    TIMEOUT,
+  )
 })

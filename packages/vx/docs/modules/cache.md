@@ -311,7 +311,11 @@ SQLite stores metadata only:
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
-  tables and recreate (pre-alpha; no migration code).
+  tables and recreate (pre-alpha; no migration code). An open that does
+  not read the current version re-reads it under `BEGIN IMMEDIATE`
+  before it writes, so two processes opening one new cache at once
+  insert one row, not two (the second died on the primary key,
+  nx#28608); a warm open reads and takes no lock.
 
 WAL mode is on (`PRAGMA journal_mode = WAL`) for non-blocking readers
 during writes.
