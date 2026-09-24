@@ -598,6 +598,32 @@ describe('cacheKeyDiff', () => {
     })
   })
 
+  it('orders entries of one kind by name, in the same collation', () => {
+    // The row above holds the kind order; this one the name order within a
+    // kind, which it never reaches (its kinds are distinct). Mixed case for
+    // the same reason: the scan's BINARY order is [Z.ts, a.ts, b.ts].
+    withCache((cache) => {
+      cache.recordRun(
+        mkRun({ hash: 'hO3', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
+      )
+      cache.recordRun(
+        mkRun({ hash: 'hN3', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
+      )
+      seedEntryInputs(cache, 'hO3', [
+        { kind: 'file', name: 'b.ts', hash: 'b-old' },
+        { kind: 'file', name: 'Z.ts', hash: 'z-old' },
+        { kind: 'file', name: 'a.ts', hash: 'a-old' },
+      ])
+      seedEntryInputs(cache, 'hN3', [
+        { kind: 'file', name: 'b.ts', hash: 'b-new' },
+        { kind: 'file', name: 'Z.ts', hash: 'z-new' },
+        { kind: 'file', name: 'a.ts', hash: 'a-new' },
+      ])
+      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      expect(diff.entries.map((e) => e.name)).toEqual(['a.ts', 'b.ts', 'Z.ts'])
+    })
+  })
+
   it('says so when the key changed but no component did', () => {
     // Both sides have fingerprints and every component matches, yet the
     // task hash differs — the key folds things `entry_inputs` does not

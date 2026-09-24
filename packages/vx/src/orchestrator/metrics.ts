@@ -15,6 +15,7 @@ import type { Database } from 'bun:sqlite'
 import { KEYED_RUNS_SQL } from '../cache/index.js'
 import { splitTaskId } from '../graph/index.js'
 import { clampInt } from '../util/index.js'
+import type { TaskInputComponent } from './task-hash.js'
 
 // ---------------------------------------------------------------------------
 // Run listing + detail
@@ -508,17 +509,50 @@ export interface CacheKeyDiff {
   note: string
 }
 
-interface EntryInputRow {
-  kind: string
-  name: string
-  hash: string
+function loadEntryInputs(db: Database, entryHash: string): TaskInputComponent[] {
+  return db
+    .query('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ?')
+    .all(entryHash) as TaskInputComponent[]
 }
 
-function loadEntryInputs(db: Database, entryHash: string): Map<string, EntryInputRow> {
-  const rows = db
-    .query('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ?')
-    .all(entryHash) as EntryInputRow[]
-  return new Map(rows.map((r) => [`${r.kind}\0${r.name}`, r]))
+/**
+ * The rule `vx why` and the site's playground both name a moved key by: join
+ * two keys' components over `(kind, name)`. A component in both with a
+ * different hash is `changed`, one only in `after` is `added`, one only in
+ * `before` is `removed`, and an equal one is counted. Entries are ordered by
+ * kind, then name.
+ */
+export function diffKeyComponents(
+  before: readonly TaskInputComponent[],
+  after: readonly TaskInputComponent[],
+): { entries: InputDiffEntry[]; unchangedCount: number } {
+  const id = (c: TaskInputComponent): string => `${c.kind}\0${c.name}`
+  const cur = new Map(after.map((c) => [id(c), c]))
+  const old = new Map(before.map((c) => [id(c), c]))
+  const entries: InputDiffEntry[] = []
+  let unchangedCount = 0
+  const keys = new Set<string>([...cur.keys(), ...old.keys()])
+  for (const key of keys) {
+    const a = cur.get(key)
+    const b = old.get(key)
+    if (a && b) {
+      if (a.hash === b.hash) unchangedCount++
+      else
+        entries.push({
+          kind: a.kind,
+          name: a.name,
+          change: 'changed',
+          before: b.hash,
+          after: a.hash,
+        })
+    } else if (a) {
+      entries.push({ kind: a.kind, name: a.name, change: 'added', before: null, after: a.hash })
+    } else if (b) {
+      entries.push({ kind: b.kind, name: b.name, change: 'removed', before: b.hash, after: null })
+    }
+  }
+  entries.sort((x, y) => x.kind.localeCompare(y.kind) || x.name.localeCompare(y.name))
+  return { entries, unchangedCount }
 }
 
 /**
@@ -533,7 +567,8 @@ function loadEntryInputs(db: Database, entryHash: string): Map<string, EntryInpu
  * - only in the previous run → `removed`
  * - equal → counted as unchanged
  *
- * Pure SQL + an app-side set join — no config re-evaluation, no re-hash.
+ * Pure SQL + an app-side set join (`diffKeyComponents`) — no config
+ * re-evaluation, no re-hash.
  * Always returns a value (never throws); `found:false` when the run/task pair
  * has no row, `entries:[]` for the first run of a task.
  */
@@ -611,7 +646,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   // Input fingerprints are pruned with their entry (ON DELETE CASCADE); if
   // either side's rows are gone, we can name the hash change but not the
   // component-level diff.
-  if (cur.size === 0 || old.size === 0) {
+  if (cur.length === 0 || old.length === 0) {
     return {
       runId,
       taskId,
@@ -628,29 +663,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
     }
   }
 
-  const entries: InputDiffEntry[] = []
-  let unchangedCount = 0
-  const keys = new Set<string>([...cur.keys(), ...old.keys()])
-  for (const key of keys) {
-    const a = cur.get(key)
-    const b = old.get(key)
-    if (a && b) {
-      if (a.hash === b.hash) unchangedCount++
-      else
-        entries.push({
-          kind: a.kind,
-          name: a.name,
-          change: 'changed',
-          before: b.hash,
-          after: a.hash,
-        })
-    } else if (a) {
-      entries.push({ kind: a.kind, name: a.name, change: 'added', before: null, after: a.hash })
-    } else if (b) {
-      entries.push({ kind: b.kind, name: b.name, change: 'removed', before: b.hash, after: null })
-    }
-  }
-  entries.sort((x, y) => x.kind.localeCompare(y.kind) || x.name.localeCompare(y.name))
+  const { entries, unchangedCount } = diffKeyComponents(old, cur)
 
   return {
     runId,

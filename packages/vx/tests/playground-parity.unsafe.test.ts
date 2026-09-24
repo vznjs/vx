@@ -90,7 +90,18 @@ const PAGE = (await import(path.join(DOCS, 'src/playground/workspace.ts'))) as {
 type RunOutcome =
   | { ok: true; tasks: PlanTask[]; cached: Set<string> }
   | { ok: false; errors: string[] }
-const { runPlayground } = (await import(
+interface DiffEntry {
+  kind: string
+  name: string
+  change: string
+  before: string | null
+  after: string | null
+}
+type DiffKeyComponents = (
+  before: readonly unknown[],
+  after: readonly unknown[],
+) => { entries: DiffEntry[]; unchangedCount: number }
+const { diffRuns, runPlayground } = (await import(
   path.join(DOCS, 'src/components/demos/model/playground-view.ts')
 )) as {
   runPlayground: (
@@ -102,6 +113,11 @@ const { runPlayground } = (await import(
       cached: ReadonlySet<string>
     },
   ) => Promise<RunOutcome>
+  diffRuns: (
+    prev: readonly PlanTask[],
+    next: readonly PlanTask[],
+    diff: DiffKeyComponents,
+  ) => Array<{ id: string; change: string; why: DiffEntry[] }>
 }
 
 const ONLY_VX = 'the playground evaluates a config on its own: it can import only @vzn/vx'
@@ -382,9 +398,18 @@ async function nativeSchedule(
   return { priorities: Object.fromEntries(priorities), dispatchOrder }
 }
 
+// The plan's fields `--dry=json` prints: the bundle's tasks also carry the
+// key's components, which `vx why` answers for (item 703's rows).
 const comparable = (tasks: PlanTask[]) =>
   tasks
-    .map((t) => ({ ...t, deps: [...t.deps].sort() }))
+    .map(({ id, project, task, hash, cacheStatus, deps }) => ({
+      id,
+      project,
+      task,
+      hash,
+      cacheStatus,
+      deps: [...deps].sort(),
+    }))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
 const movedFrom = (base: PlanTask[], tasks: PlanTask[]): string[] =>
@@ -737,4 +762,153 @@ describe("the playground page's workspace plans what the CLI plans (item 700)", 
     expect(movedFrom(base.cli, edit.cli)).toEqual(MOVED)
     expect(movedFrom(base.page, edit.page)).toEqual(MOVED)
   })
+})
+
+describe('the page names what moved a key as `vx why` does (item 703)', () => {
+  // The CLI half RUNS here: `vx run build test --all` saves each miss and
+  // records its key's components in `entry_inputs`, and `vx why` diffs them
+  // with `diffKeyComponents`. The page's half is the view's `diffRuns` over
+  // successive Runs of the bundle, with the bundle's copy of the same
+  // function. The page's commands (`vite build`, `tsc -b`, …) are not on
+  // this box, so both halves read the page's texts with every command made
+  // `true`: a command folds into its task's key, and no step moves a config.
+  // Three steps, one per verdict the join gives: the page's `button.tsx`
+  // edit (changed), then a new file (added), then that file gone (removed).
+  const EDIT = 'packages/ui/src/button.tsx'
+  const NEW = 'packages/ui/src/icon.tsx'
+  const MOVED = ['app#build', 'app#test', 'ui#build', 'ui#test']
+  const whyWs = path.join(scratch, 'why')
+  const whyCache = path.join(scratch, 'why-cache')
+  const harmless = (files: Record<string, string>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(files).map(([f, text]) => [
+        f,
+        f.endsWith('vx.config.mjs') ? text.replace(/command: '[^']*'/g, "command: 'true'") : text,
+      ]),
+    )
+  const committed = harmless(PAGE.FILES)
+  const edited = { ...committed, [EDIT]: `${committed[EDIT]}// edited\n` }
+  const withNew = { ...edited, [NEW]: 'export const Icon = () => null\n' }
+  const expected = (file: string, change: string): Record<string, string[][]> => ({
+    'app#build': [['upstream', 'ui#build', 'changed']],
+    'app#test': [['upstream', 'app#build', 'changed']],
+    'ui#build': [['file', file, change]],
+    'ui#test': [
+      ['file', file, change],
+      ['upstream', 'ui#build', 'changed'],
+    ],
+  })
+  const STEPS = [
+    { name: `${EDIT} edited`, files: edited, expected: expected(EDIT, 'changed') },
+    { name: `${NEW} added`, files: withNew, expected: expected(NEW, 'added') },
+    { name: `${NEW} removed`, files: edited, expected: expected(NEW, 'removed') },
+  ]
+  const cli = new Map<string, Map<string, DiffEntry[]>>()
+  const page = new Map<string, Map<string, DiffEntry[]>>()
+
+  function whyWrite(files: Record<string, string>): void {
+    rmSync(path.join(whyWs, NEW), { force: true })
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(whyWs, rel)), { recursive: true })
+      writeFileSync(path.join(whyWs, rel), body)
+    }
+  }
+
+  function whyGit(...args: string[]): void {
+    const r = Bun.spawnSync(['git', ...args], { cwd: whyWs, stdout: 'pipe', stderr: 'pipe' })
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`)
+  }
+
+  function vx(...args: string[]): string {
+    const r = Bun.spawnSync([process.execPath, BIN, ...args, `--cache-dir=${whyCache}`], {
+      cwd: whyWs,
+      env: { ...baseEnv, ...PAGE.ENV, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (r.exitCode !== 0) {
+      throw new Error(`vx ${args.join(' ')} exited ${r.exitCode}: ${r.stderr.toString()}`)
+    }
+    return r.stdout.toString()
+  }
+
+  async function pageRun(
+    files: Record<string, string>,
+    cached: ReadonlySet<string>,
+  ): Promise<{ tasks: PlanTask[]; cached: Set<string> }> {
+    arm()
+    let r: RunOutcome
+    try {
+      r = await runPlayground(bundle, { files, env: PAGE.ENV, tasks: PAGE.TASKS, cached })
+    } finally {
+      disarm()
+    }
+    if (!r.ok) throw new Error(r.errors.join('\n'))
+    return r
+  }
+
+  beforeAll(async () => {
+    whyWrite(committed)
+    whyGit('init', '-q')
+    whyGit('add', '-A')
+    whyGit(
+      '-c',
+      'user.email=parity@vx',
+      '-c',
+      'user.name=parity',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'why',
+    )
+    vx('run', ...PAGE.TASKS, '--all')
+    const diff = (bundle as { diffKeyComponents: DiffKeyComponents }).diffKeyComponents
+    let last = await pageRun(committed, new Set())
+    for (const step of STEPS) {
+      whyWrite(step.files)
+      vx('run', ...PAGE.TASKS, '--all')
+      const said = new Map<string, DiffEntry[]>()
+      for (const id of MOVED) {
+        const out = JSON.parse(vx('why', id, '--format', 'json')) as {
+          diff: { entries: DiffEntry[] }
+        }
+        said.set(id, out.diff.entries)
+      }
+      cli.set(step.name, said)
+
+      const next = await pageRun(step.files, last.cached)
+      page.set(
+        step.name,
+        new Map(
+          diffRuns(last.tasks, next.tasks, diff)
+            .filter((r) => r.change === 'moved')
+            .map((r) => [r.id, r.why]),
+        ),
+      )
+      last = next
+    }
+  }, 60_000)
+
+  const byText = (a: string[], b: string[]): number =>
+    a.join('\0') < b.join('\0') ? -1 : a.join('\0') > b.join('\0') ? 1 : 0
+  const named = (entries: readonly DiffEntry[]): string[][] =>
+    entries.map((e) => [e.kind, e.name, e.change]).sort(byText)
+
+  for (const step of STEPS) {
+    it(`${step.name}: the page moves exactly ${MOVED.join(', ')}`, () => {
+      expect([...page.get(step.name)!.keys()].sort()).toEqual(MOVED)
+    })
+
+    it(`${step.name}: \`vx why\`'s diff.entries are the page's named changes, for each`, () => {
+      const said = cli.get(step.name)!
+      const shown = page.get(step.name)!
+      for (const id of MOVED) {
+        expect({ id, cli: named(said.get(id)!) }).toEqual({ id, cli: step.expected[id]! })
+        expect({ id, page: named(shown.get(id)!) }).toEqual({ id, page: step.expected[id]! })
+        // The hashes too: a file's OIDs, an upstream's keys.
+        expect({ id, page: shown.get(id) }).toEqual({ id, page: said.get(id) })
+      }
+    })
+  }
 })

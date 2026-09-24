@@ -20,13 +20,15 @@ explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
 latestRunId(db, taskId): string | null              // the run a caller without one means
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
+diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 ```
 
-Every function takes an open `bun:sqlite` `Database` (the caller owns
-the `Cache` lifecycle — `cache.dbHandle()`), returns JSON-safe shapes
-(bigint spans as decimal strings, like `WireEvent.timeUnixNano`), and
-never throws on a missing row: `found: false`, `null`, or an empty
-list, with a `note` that says which case it is.
+Every function but `diffKeyComponents` takes an open `bun:sqlite`
+`Database` (the caller owns the `Cache` lifecycle — `cache.dbHandle()`),
+returns JSON-safe shapes (bigint spans as decimal strings, like
+`WireEvent.timeUnixNano`), and never throws on a missing row:
+`found: false`, `null`, or an empty list, with a `note` that says which
+case it is.
 
 ## The two explanations
 
@@ -41,6 +43,14 @@ list, with a `note` that says which case it is.
   counted — with no config re-evaluation and no re-hash. Values are
   digests, never the material (an env value can be a secret); STATUS
   § Next 8(g) records why a plugin part's raw value is not stored.
+- `diffKeyComponents` is that join with no store under it: two keys'
+  `{ kind, name, hash }` sets in, the entries (ordered by kind, then
+  name, `localeCompare`) and the unchanged count out. `cacheKeyDiff`
+  calls it on the two `entry_inputs` sets, and the site's playground
+  calls the bundled copy on the components its key fold captured
+  (`captureInto`), so the page names what moved a key by the rule
+  `vx why` does (item 703; `tests/playground-parity.unsafe.test.ts`
+  holds the two to one answer).
 
 Keyed-run filtering (`KEYED_RUNS_SQL`, the cache module's) is
 imported, not restated, so a rule written once cannot drift between
@@ -56,12 +66,13 @@ readers.
 ## Tests
 
 `tests/metrics.test.ts` (every query, the three unchanged-key notes,
-the diff's four verdicts, degraded rows whose fingerprints were
-pruned); `tests/run-record-completeness.test.ts` (a run writes what
-these read); `tests/status-vocabulary.test.ts` (no hand-typed status
-lists).
+the diff's four verdicts and its order by kind and by name, degraded
+rows whose fingerprints were pruned);
+`tests/run-record-completeness.test.ts` (a run writes what these read);
+`tests/status-vocabulary.test.ts` (no hand-typed status lists).
 
 ## Replacing this module
 
-A reader over another store implements the same eight signatures; the
+A reader over another store implements the same eight signatures (the
+join, `diffKeyComponents`, needs no store and is reused as it is); the
 CLI verbs and the MCP tools format, they do not query.

@@ -9,16 +9,20 @@
 // passed in: the element imports it from the site on the first Run, the
 // tests from a fresh build of the same bundle, and core's parity row
 // (packages/vx/tests/playground-parity.unsafe.test.ts) holds what this
-// returns for the page's workspace to `vx run --dry=json`.
+// returns for the page's workspace to `vx run --dry=json`, and what it
+// names a moved key by to `vx why --format json` (item 703).
 
 import type {
+  InputDiffEntry,
   PlaygroundInput,
   PlaygroundProject,
   PlaygroundResult,
   PlaygroundTask,
 } from '../../../playground/entry.js'
 
-export type { PlaygroundTask }
+export type { InputDiffEntry, PlaygroundTask }
+
+type KeyComponent = PlaygroundTask['components'][number]
 
 /** The bundle's exports the page calls (`playground/planner.js`). */
 export interface Planner {
@@ -30,6 +34,11 @@ export interface Planner {
     input: Pick<PlaygroundInput, 'root' | 'files'>,
   ): Promise<PlaygroundProject[]>
   planPlayground(input: PlaygroundInput): Promise<PlaygroundResult>
+  /** Core's join of two keys' components, the rule `vx why` diffs by. */
+  diffKeyComponents(
+    before: readonly KeyComponent[],
+    after: readonly KeyComponent[],
+  ): { entries: InputDiffEntry[]; unchangedCount: number }
 }
 
 /** Where the workspace sits in the planner's virtual file system. */
@@ -126,6 +135,8 @@ export interface RunRow {
   key: string
   status: string
   change: KeyChange
+  /** What moved the key, by `vx why`'s rule; empty unless it moved. */
+  why: InputDiffEntry[]
 }
 
 /** The words the results table uses for a plan's cache status. */
@@ -136,28 +147,61 @@ function statusOf(cacheStatus: string): string {
 }
 
 /** Each task of `next` against the run before it: a key it had is the same
- *  or moved, and a task that run did not plan (or the first run's) is new. */
+ *  or moved, and a task that run did not plan (or the first run's) is new.
+ *  A moved key's components are joined by `diff`, the planner's
+ *  `diffKeyComponents`, so the page names what moved it as `vx why` does. */
 export function diffRuns(
   prev: readonly PlaygroundTask[] | undefined,
   next: readonly PlaygroundTask[],
+  diff: Planner['diffKeyComponents'],
 ): RunRow[] {
-  const before = new Map(prev?.map((t) => [t.id, t.hash]))
-  return next.map((t) => {
+  const before = new Map(prev?.map((t) => [t.id, t]))
+  return next.map((t): RunRow => {
     const was = before.get(t.id)
-    return {
-      id: t.id,
-      key: t.hash.slice(0, 16),
-      status: statusOf(t.cacheStatus),
-      change: was === undefined ? 'new' : was === t.hash ? 'same' : 'moved',
-    }
+    const row = { id: t.id, key: t.hash.slice(0, 16), status: statusOf(t.cacheStatus) }
+    if (was === undefined) return { ...row, change: 'new', why: [] }
+    if (was.hash === t.hash) return { ...row, change: 'same', why: [] }
+    return { ...row, change: 'moved', why: diff(was.components, t.components).entries }
   })
 }
 
-/** The words the results table's "key moved" column uses. */
-export function changeCell(change: KeyChange): string {
-  if (change === 'moved') return 'moved'
-  if (change === 'new') return 'new'
-  return ''
+// What each component kind the key fold records (cache/key-fold.ts) is
+// called. `config`, `package`, `workspace` and `forward` are one per key,
+// so their names ("config", "package.json", "fingerprint", "argv") say
+// nothing the kind does not.
+const SUBJECT: Record<string, (name: string) => string> = {
+  file: (n) => n,
+  upstream: (n) => `upstream ${n}`,
+  env: (n) => `env ${n}`,
+  config: () => 'config',
+  package: () => 'package.json',
+  workspace: () => 'workspace fingerprint',
+  forward: () => 'args after --',
+  runtime: (n) => `output of ${n}`,
+  'ws-runtime': (n) => `workspace output of ${n}`,
+  plugin: (n) => `plugin part ${n}`,
+}
+
+/** One moved component in the reader's words: "packages/ui/src/button.tsx
+ *  changed", "upstream ui#build moved", "file added: packages/ui/src/x.ts". */
+export function describeChange(e: InputDiffEntry): string {
+  const subject = SUBJECT[e.kind]?.(e.name) ?? `${e.kind} ${e.name}`
+  if (e.change === 'changed') return `${subject} ${e.kind === 'upstream' ? 'moved' : 'changed'}`
+  return e.kind === 'file' ? `file ${e.change}: ${e.name}` : `${subject} ${e.change}`
+}
+
+/** How many changes a cell names before "and N more". */
+const NAMED_CHANGES = 2
+
+/** The words the results table's "key moved" column uses: what moved the
+ *  key, or `moved` for one whose components name nothing (a group's). */
+export function changeCell(row: Pick<RunRow, 'change' | 'why'>): string {
+  if (row.change === 'new') return 'new'
+  if (row.change === 'same') return ''
+  if (row.why.length === 0) return 'moved'
+  const named = row.why.slice(0, NAMED_CHANGES).map(describeChange).join(', ')
+  const more = row.why.length - NAMED_CHANGES
+  return more > 0 ? `${named} and ${more} more` : named
 }
 
 const STATUS_ORDER = ['hit', 'miss', 'no cache', 'group']

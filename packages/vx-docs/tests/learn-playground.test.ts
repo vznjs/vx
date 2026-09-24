@@ -203,8 +203,9 @@ describe('the playground on learn/playground', () => {
 
   describe('the checkpoint', () => {
     let runs: PlaygroundTask[][]
+    let planner: Planner
     beforeAll(async () => {
-      const planner = (await import(path.join(DIST, PLANNER_FILE))) as Planner
+      planner = (await import(path.join(DIST, PLANNER_FILE))) as Planner
       const testFile = 'packages/utils/test/index.test.ts'
       const edited = { ...FILES, [testFile]: `${FILES[testFile]}// edited\n` }
       const states = [
@@ -228,7 +229,7 @@ describe('the playground on learn/playground', () => {
       expect(paragraphs).toHaveLength(2)
       const named = (p: string): string[] => [...new Set(p.match(/\b\w+#\w+\b/g))].sort()
       const moved = (i: number): string[] =>
-        diffRuns(runs[i - 1], runs[i]!)
+        diffRuns(runs[i - 1], runs[i]!, planner.diffKeyComponents)
           .filter((r) => r.change === 'moved')
           .map((r) => r.id)
           .sort()

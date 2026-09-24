@@ -68,11 +68,6 @@ evaluation (item 699) are the model. This note decides the view.
 
 ## Not in this step
 
-- **Why a key moved**, as in "`src/button.tsx` changed". The page shows
-  that it moved. Naming the input needs the key's components, and the
-  bundle does not return them yet. W10's labs will need them. They are
-  the next widening of `PlaygroundResult`: `plan()` already has the
-  parts, so this is a view change, not a model change.
 - Execution, outputs and restores. The page says so: it plans, it does
   not run commands.
 - A Gantt chart of the dispatch order. The scheduling page has one.
@@ -203,3 +198,88 @@ Deleting the last `}` of `packages/api/vx.config.mjs` gave the error
 kept the last good table with `data-stale="true"` and a stale caption,
 and the live region said so. Reset hid the table, and the next Run
 missed all nine again. There was no page error and no console error.
+
+## Shipped (item 703): why a key moved
+
+The "Key moved" cell names what moved the key, by the rule `vx why`
+uses. Design: `design/labs-checkpoints-2026-09.md` § First.
+
+- **One join.** `cacheKeyDiff`'s join over two runs' `entry_inputs` is
+  its own pure function, `diffKeyComponents(before, after)` in
+  `orchestrator/metrics.ts`: two `{ kind, name, hash }` sets in, the
+  `changed` / `added` / `removed` entries (ordered by kind, then name)
+  and the unchanged count out. `cacheKeyDiff` keeps its SQL and calls
+  it. The move is behaviour-neutral: `cacheKeyDiff`'s rows cover the
+  three verdicts and the kind order, and the one case they did not, the
+  name order within a kind, got a row first (mixed case, since the
+  scan's BINARY order and `localeCompare` differ there), green on the old
+  code.
+- **The components.** The playground's cache layer passes a fresh
+  `captureInto` array to `foldKey` for every key and keeps it under the
+  key, so each `PlaygroundTask` carries `components`, the rows a real
+  miss writes to `entry_inputs`. Core's `foldKey` and its run path are
+  unchanged: only the bundle's layer asks for the capture.
+- **The page uses the bundle's copy of the function.** The bundle
+  re-exports `diffKeyComponents`, the `Planner` interface names it, and
+  the element passes `planner.diffKeyComponents` to
+  `diffRuns(prev, next, diff)`. The other route, importing core's source
+  into the view module, was not taken: `package-boundaries.unsafe`
+  exempts only `src/playground/`, it would put core into the element's
+  chunk (which the built-page row keeps free of the planner), and the
+  planner is loaded before any key can move, since the first Run loads
+  it. The bundle is the file the parity rows build, so the function the
+  page calls is the one they test.
+- **The words.** `describeChange(entry)` per kind the fold records:
+  `packages/ui/src/button.tsx changed`, `file added: …`,
+  `upstream ui#build moved`, `env API_URL changed`, `config changed`,
+  `package.json changed`, `workspace fingerprint changed`,
+  `args after -- changed`, `output of <command> changed`,
+  `plugin part <name> changed`. `changeCell` names at most two, then
+  "and N more". A group's key has no components, so its cell still
+  says "moved". The `aria-live` summary is unchanged.
+- **Sizes.** The bundle is 86,312 B (30,373 B gzip), +729 B (+252 B
+  gzip) on the tree before this change. The element's chunk is 9,795 B
+  (3,832 B gzip), against item 700's recorded 9,056 B.
+
+The rows:
+
+| Row                                                                                                                                                                                                                                      | Where                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `cacheKeyDiff` names changed / added / removed, orders by kind, and (new) orders one kind by name                                                                                                                                        | `packages/vx/tests/metrics.test.ts`                  |
+| A real `vx run build test --all`, then the `button.tsx` edit, a new file, and that file gone: per step, `vx why <id> --format json`'s entries for the four moved tasks are the exact expected set, and equal the page's, hashes included | `packages/vx/tests/playground-parity.unsafe.test.ts` |
+| `diffRuns` diffs only a moved key's components, through the bundle's function                                                                                                                                                            | `packages/vx-docs/tests/playground-view.test.ts`     |
+| `describeChange` for each kind and verdict; the cell's "and N more" cut                                                                                                                                                                  | same                                                 |
+| The page's Run over the shipped planner names the `button.tsx` edit for all four moved tasks (exact set and cells)                                                                                                                       | same                                                 |
+| The bundle exports exactly `diffKeyComponents`, `evaluateConfig`, `listPlaygroundProjects` and `planPlayground`                                                                                                                          | `packages/vx-docs/tests/playground-bundle.test.ts`   |
+
+The parity row's workspace is the page's with every command made
+`true`: the page's commands (`vite build`, `tsc -b`, `astro build`)
+are not on the gate's box, and a command folds into its own task's key
+only, which none of the steps moves.
+
+Differentials, each restored by reverse edit:
+
+| Mutation                                                          | Red                                                                                                                          |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `diffKeyComponents` swaps `added` and `removed`                   | `cacheKeyDiff`'s three-verdict row, the parity row's added and removed steps, and (bundle rebuilt) the site's `diffRuns` row |
+| The bundle's layer stops passing `captureInto` (components empty) | the parity row's three steps and the site's `button.tsx` naming row                                                          |
+| `describeChange` names an upstream by its hash, not its task id   | the site's per-kind row and its `button.tsx` naming row                                                                      |
+| `changeCell` names three before "and N more"                      | the site's cut row                                                                                                           |
+| `cacheKeyDiff`'s sort drops the name tiebreak (before the move)   | the new name-order row                                                                                                       |
+
+**What a probe refuted.** The step's parity row compared the
+`button.tsx` edit alone, and the swap of `added` and `removed` was to
+turn it red. It cannot: an edit to a tracked file gives only `changed`,
+and the row as first written stayed green under the swap: its file's 34
+rows passed, and `cacheKeyDiff`'s three-verdict row was the only red. The row now also adds a file and
+then removes it, and those two steps go red.
+
+In Chromium (Playwright's, headless, over the built site's
+`astro preview`), the first Run gave all nine keys new. Appending a
+line to `packages/ui/src/button.tsx` and running again gave "9 tasks: 5
+hit, 4 miss. Keys moved: ui#build, ui#test, app#build, app#test.", and
+the four rows' "Key moved" cells read `packages/ui/src/button.tsx
+changed` (`ui#build`), `packages/ui/src/button.tsx changed, upstream
+ui#build moved` (`ui#test`), `upstream ui#build moved` (`app#build`)
+and `upstream app#build moved` (`app#test`); the other five were empty.
+There was no page error and no console error.

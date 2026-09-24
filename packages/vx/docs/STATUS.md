@@ -1244,6 +1244,35 @@ it; the site's hand-written table does. Chromium probe, rows and the
 differential table: `design/playground-ui-2026-09.md` § Shipped (item
 700).
 
+14cy. **Item 703 (2026-09-24): the playground names why a key moved, by
+`vx why`'s rule.** The join `cacheKeyDiff` did over two runs'
+`entry_inputs` is its own pure function now, `diffKeyComponents(before,
+after)` in `orchestrator/metrics.ts` (two `{ kind, name, hash }` sets in,
+the changed / added / removed entries and the unchanged count out, same
+order), and `cacheKeyDiff` calls it; behaviour-neutral, held by its
+existing rows plus one recorded BEFORE the move (name order within one
+kind, mixed case, green on the old code and red with the name tiebreak
+deleted). The playground's cache layer passes a fresh `captureInto` to
+`foldKey` for every key, so each `PlaygroundTask` carries its
+`components`; core's `foldKey` and run path are untouched. The bundle
+re-exports `diffKeyComponents`, and the page diffs the previous Run's
+components with that copy: the view module cannot import core
+(`package-boundaries.unsafe`'s exemption is `src/playground/` alone),
+the element's chunk stays free of core, and the planner is loaded by the
+time a key can move. The "Key moved" cell names at most two changes
+(`describeChange`: "packages/ui/src/button.tsx changed", "upstream
+ui#build moved", "file added: …", "env API_URL changed"), then "and N
+more"; the live summary is unchanged. Parity: a real `vx run build test
+--all` in a temp repo (the page's texts with every command `true`), then
+the `button.tsx` edit, a new file, and that file gone; for each step,
+`vx why <id> --format json`'s `diff.entries` equal the page's for all
+four moved tasks, hashes included. The architect's differential that
+swaps `added` and `removed` needed the second and third step: the edit
+alone yields only `changed`, and the first version of the row stayed
+green under the swap. Bundle +729 B (+252 B gzip). Rows, differentials
+and the Chromium probe: `design/playground-ui-2026-09.md` § Shipped
+(item 703).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1269,12 +1298,12 @@ differential table: `design/playground-ui-2026-09.md` § Shipped (item
     entry 14cq), config editing (item 699, entry 14cu) and the page
     itself (item 700, entry 14cx): `learn/playground` runs the real
     planner on the toy monorepo, and core's parity rows hold the page's
-    Run to the CLI. Next are W10, the labs (guided exercises on the
-    playground: an undeclared input and its stale hit, a file no config
-    mentions, two tasks writing one output, a bad order and its critical
-    path), which need the playground to say why a key moved (the next
-    widening of `PlaygroundResult`, noted in
-    `design/playground-ui-2026-09.md`), and W11, the checkpoints.
+    Run to the CLI. The playground names why a key moved, by `vx why`'s
+    rule (item 703, entry 14cy). Next are W10, the labs (guided
+    exercises on the playground: an undeclared input and its stale hit,
+    a file no config mentions, two tasks writing one output, a bad
+    order and its critical path), and W11, the checkpoints, per
+    `design/labs-checkpoints-2026-09.md`.
 
 ## Decisions (this arc)
 

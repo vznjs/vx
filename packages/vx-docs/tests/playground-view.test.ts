@@ -18,6 +18,7 @@ import { CONFIG_TEXTS, ENV, FILES, TASKS } from '../src/playground/workspace.js'
 import {
   PLAYGROUND_ROOT,
   changeCell,
+  describeChange,
   diffRuns,
   envText,
   failureSummary,
@@ -29,6 +30,7 @@ import {
   staticProjects,
   staticTable,
   summarize,
+  type InputDiffEntry,
   type Planner,
   type PlaygroundTask,
   type RunOutcome,
@@ -61,13 +63,31 @@ const STATIC: [string, string, string][] = [
   ['docs#build', 'nothing', 'src/**'],
 ]
 
-const task = (id: string, hash: string, cacheStatus = 'miss'): PlaygroundTask => ({
+const task = (
+  id: string,
+  hash: string,
+  cacheStatus = 'miss',
+  components: PlaygroundTask['components'] = [],
+): PlaygroundTask => ({
   id,
   project: id.split('#')[0]!,
   task: id.split('#')[1]!,
   hash,
   cacheStatus,
   deps: [],
+  components,
+})
+
+const entry = (
+  kind: string,
+  name: string,
+  change: InputDiffEntry['change'] = 'changed',
+): InputDiffEntry => ({
+  kind,
+  name,
+  change,
+  before: change === 'added' ? null : 'b',
+  after: change === 'removed' ? null : 'a',
 })
 
 let planner: Planner
@@ -85,24 +105,101 @@ beforeAll(async () => {
 
 describe('the playground view', () => {
   it('diffs a run against the one before: new, same or moved, by task id', () => {
-    const before = [task('a#build', '1111'), task('a#test', '2222')]
-    const after = [task('a#build', '1111', 'hit-local'), task('a#test', '3333'), task('b#x', '4')]
-    expect(diffRuns(undefined, before)).toEqual([
-      { id: 'a#build', key: '1111', status: 'miss', change: 'new' },
-      { id: 'a#test', key: '2222', status: 'miss', change: 'new' },
+    const diff = planner.diffKeyComponents
+    const was = [
+      { kind: 'file', name: 'a/x.ts', hash: '1' },
+      { kind: 'env', name: 'GONE', hash: '2' },
+    ]
+    const now = [
+      { kind: 'file', name: 'a/x.ts', hash: '3' },
+      { kind: 'file', name: 'a/new.ts', hash: '4' },
+    ]
+    const before = [task('a#build', '1111', 'miss', was), task('a#test', '2222', 'miss', was)]
+    const after = [
+      task('a#build', '1111', 'hit-local', now),
+      task('a#test', '3333', 'miss', now),
+      task('b#x', '4'),
+    ]
+    expect(diffRuns(undefined, before, diff)).toEqual([
+      { id: 'a#build', key: '1111', status: 'miss', change: 'new', why: [] },
+      { id: 'a#test', key: '2222', status: 'miss', change: 'new', why: [] },
     ])
-    expect(diffRuns(before, after)).toEqual([
-      { id: 'a#build', key: '1111', status: 'hit', change: 'same' },
-      { id: 'a#test', key: '3333', status: 'miss', change: 'moved' },
-      { id: 'b#x', key: '4', status: 'miss', change: 'new' },
+    // Only a moved key is diffed: `a#build`'s components differ too, but its
+    // key did not move.
+    expect(diffRuns(before, after, diff)).toEqual([
+      { id: 'a#build', key: '1111', status: 'hit', change: 'same', why: [] },
+      {
+        id: 'a#test',
+        key: '3333',
+        status: 'miss',
+        change: 'moved',
+        why: [
+          { kind: 'env', name: 'GONE', change: 'removed', before: '2', after: null },
+          { kind: 'file', name: 'a/new.ts', change: 'added', before: null, after: '4' },
+          { kind: 'file', name: 'a/x.ts', change: 'changed', before: '1', after: '3' },
+        ],
+      },
+      { id: 'b#x', key: '4', status: 'miss', change: 'new', why: [] },
     ])
-    expect(diffRuns(undefined, [task('a#b', `${'f'.repeat(16)}0123`, 'no-cache')])).toEqual([
-      { id: 'a#b', key: 'f'.repeat(16), status: 'no cache', change: 'new' },
+    expect(diffRuns(undefined, [task('a#b', `${'f'.repeat(16)}0123`, 'no-cache')], diff)).toEqual([
+      { id: 'a#b', key: 'f'.repeat(16), status: 'no cache', change: 'new', why: [] },
     ])
-    expect(['new', 'moved', 'same'].map((c) => changeCell(c as 'new'))).toEqual([
-      'new',
-      'moved',
-      '',
+  })
+
+  it('names a moved component in the words of its kind', () => {
+    expect(
+      [
+        entry('file', 'packages/ui/src/button.tsx'),
+        entry('file', 'packages/ui/src/new.tsx', 'added'),
+        entry('file', 'packages/ui/src/old.tsx', 'removed'),
+        entry('upstream', 'ui#build'),
+        entry('upstream', 'api#build', 'added'),
+        entry('upstream', 'api#build', 'removed'),
+        entry('env', 'API_URL'),
+        entry('env', 'API_URL', 'added'),
+        entry('env', 'API_URL', 'removed'),
+        entry('config', 'config'),
+        entry('package', 'package.json'),
+        entry('workspace', 'fingerprint'),
+        entry('forward', 'argv'),
+        entry('forward', 'argv', 'added'),
+        entry('runtime', 'node --version'),
+        entry('ws-runtime', 'git rev-parse HEAD'),
+        entry('plugin', 'lockfile'),
+        entry('someday', 'x'),
+      ].map(describeChange),
+    ).toEqual([
+      'packages/ui/src/button.tsx changed',
+      'file added: packages/ui/src/new.tsx',
+      'file removed: packages/ui/src/old.tsx',
+      'upstream ui#build moved',
+      'upstream api#build added',
+      'upstream api#build removed',
+      'env API_URL changed',
+      'env API_URL added',
+      'env API_URL removed',
+      'config changed',
+      'package.json changed',
+      'workspace fingerprint changed',
+      'args after -- changed',
+      'args after -- added',
+      'output of node --version changed',
+      'workspace output of git rev-parse HEAD changed',
+      'plugin part lockfile changed',
+      'someday x changed',
+    ])
+  })
+
+  it('names at most two changes in the cell, then how many more', () => {
+    const files = ['a.ts', 'b.ts', 'c.ts', 'd.ts'].map((f) => entry('file', f))
+    const cell = (change: 'new' | 'moved' | 'same', n: number) =>
+      changeCell({ change, why: files.slice(0, n) })
+    expect([cell('new', 0), cell('same', 0), cell('moved', 0)]).toEqual(['new', '', 'moved'])
+    expect([1, 2, 3, 4].map((n) => cell('moved', n))).toEqual([
+      'a.ts changed',
+      'a.ts changed, b.ts changed',
+      'a.ts changed, b.ts changed and 1 more',
+      'a.ts changed, b.ts changed and 2 more',
     ])
   })
 
@@ -112,6 +209,7 @@ describe('the playground view', () => {
       key: '0',
       status,
       change,
+      why: [],
     })
     expect(summarize([row('a#x', 'miss', 'new'), row('b#x', 'miss', 'new')])).toBe(
       '2 tasks: 0 hit, 2 miss. Every key is new.',
@@ -183,7 +281,7 @@ describe("the page's Run, over the planner the site ships", () => {
   const statuses = (o: { tasks: PlaygroundTask[] }) =>
     Object.fromEntries(o.tasks.map((t) => [t.id, t.cacheStatus]))
   const moved = (before: PlaygroundTask[], after: PlaygroundTask[]) =>
-    diffRuns(before, after)
+    diffRuns(before, after, planner.diffKeyComponents)
       .filter((r) => r.change === 'moved')
       .map((r) => r.id)
   const each = (status: string, ids = ALL) => Object.fromEntries(ids.map((id) => [id, status]))
@@ -199,7 +297,7 @@ describe("the page's Run, over the planner the site ships", () => {
     const second = ok(await run(FILES, first.cached))
     expect(statuses(second)).toEqual(each('hit-local'))
     expect(moved(first.tasks, second.tasks)).toEqual([])
-    expect(summarize(diffRuns(first.tasks, second.tasks))).toBe(
+    expect(summarize(diffRuns(first.tasks, second.tasks, planner.diffKeyComponents))).toBe(
       '9 tasks: 9 hit, 0 miss. No key moved.',
     )
   })
@@ -213,12 +311,46 @@ describe("the page's Run, over the planner the site ships", () => {
       ...each('hit-local'),
       ...each('miss', BUTTON_MOVES),
     })
-    expect(summarize(diffRuns(first.tasks, afterEdit.tasks))).toBe(
+    expect(summarize(diffRuns(first.tasks, afterEdit.tasks, planner.diffKeyComponents))).toBe(
       '9 tasks: 5 hit, 4 miss. Keys moved: ui#build, ui#test, app#build, app#test.',
     )
     const added = ok(await run({ ...edited, 'packages/ui/README.md': '# ui\n' }, afterEdit.cached))
     expect(moved(afterEdit.tasks, added.tasks)).toEqual([])
     expect(statuses(added)).toEqual(each('hit-local'))
+  })
+
+  it(`names what the ${BUTTON} edit moved in each key, as vx why does`, async () => {
+    const first = ok(await run(FILES, new Set()))
+    const edited = { ...FILES, [BUTTON]: `${FILES[BUTTON]}// edited\n` }
+    const afterEdit = ok(await run(edited, first.cached))
+    const named = diffRuns(first.tasks, afterEdit.tasks, planner.diffKeyComponents)
+      .filter((r) => r.change === 'moved')
+      .map((r) => ({
+        id: r.id,
+        why: r.why.map((e) => [e.kind, e.name, e.change]),
+        cell: changeCell(r),
+      }))
+    expect(named).toEqual([
+      { id: 'ui#build', why: [['file', BUTTON, 'changed']], cell: `${BUTTON} changed` },
+      {
+        id: 'ui#test',
+        why: [
+          ['file', BUTTON, 'changed'],
+          ['upstream', 'ui#build', 'changed'],
+        ],
+        cell: `${BUTTON} changed, upstream ui#build moved`,
+      },
+      {
+        id: 'app#build',
+        why: [['upstream', 'ui#build', 'changed']],
+        cell: 'upstream ui#build moved',
+      },
+      {
+        id: 'app#test',
+        why: [['upstream', 'app#build', 'changed']],
+        cell: 'upstream app#build moved',
+      },
+    ])
   })
 
   it('answers the checkpoint: a test file moves its test alone, API_URL the four above api', async () => {

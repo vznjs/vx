@@ -137,7 +137,7 @@ class Playground extends HTMLElement {
         cached: this.#cached,
       })
       if (!outcome.ok) return this.#fail(outcome.errors)
-      const rows = diffRuns(this.#last, outcome.tasks)
+      const rows = diffRuns(this.#last, outcome.tasks, planner.diffKeyComponents)
       this.#last = outcome.tasks
       this.#cached = outcome.cached
       const table = this.#el<HTMLTableElement>('.results')
@@ -149,7 +149,7 @@ class Playground extends HTMLElement {
           th.scope = 'row'
           th.textContent = r.id
           tr.append(th)
-          for (const text of [r.key, r.status, changeCell(r.change)]) {
+          for (const text of [r.key, r.status, changeCell(r)]) {
             const td = document.createElement('td')
             td.textContent = text
             tr.append(td)
