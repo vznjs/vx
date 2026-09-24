@@ -7,7 +7,7 @@
 // evicts nothing.
 
 import { Database } from 'bun:sqlite'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -80,13 +80,26 @@ describe('Cache.evictIfDue', () => {
     }
   })
 
+  /** Plant a row-less artifact of `bytes`, last written `agoMs` ago. */
+  async function orphan(name: string, bytes: number, agoMs: number): Promise<string> {
+    const file = path.join(cacheDir, `${name}.tar.zst`)
+    await writeFile(file, new Uint8Array(bytes))
+    const when = new Date(Date.now() - agoMs)
+    await utimes(file, when, when)
+    return file
+  }
+
   it('does nothing — not even the orphan sweep — when nothing is due', async () => {
     const cache = new Cache(cacheDir)
     try {
       await seed(cache, ['aa', 'bb'])
+      // A new cache has never been swept: the first call sweeps (below).
+      await cache.evictIfDue({ maxAgeMs: 30 * DAY })
       const prune = spyOn(cache, 'prune')
+      const scan = spyOn(cache as unknown as { scanOrphans: () => unknown }, 'scanOrphans')
       expect(await cache.evictIfDue({ maxAgeMs: 30 * DAY, maxBytes: 1024 ** 3 })).toBeNull()
       expect(prune).not.toHaveBeenCalled()
+      expect(scan).not.toHaveBeenCalled()
       expect(hashes(cache)).toEqual(['aa', 'bb'])
       // CONTROL: the same handle, a policy that is due, reaches prune.
       expect(await cache.evictIfDue({ maxBytes: 1 })).not.toBeNull()
@@ -105,6 +118,7 @@ describe('Cache.evictIfDue', () => {
     const cache = new Cache(cacheDir)
     try {
       await seed(cache, ['aa', 'bb'])
+      await cache.evictIfDue({ maxAgeMs: 1000 * DAY })
       const now = Date.now()
       age('aa', now - 40 * DAY)
       expect(await cache.get('aa')).not.toBeNull()
@@ -137,6 +151,49 @@ describe('Cache.evictIfDue', () => {
       const result = await cache.evictIfDue({ maxBytes: 2 * one }, now)
       expect(result?.evicted).toBe(1)
       expect(hashes(cache)).toEqual(['bb', 'cc'])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('reaps row-less artifacts on its own hourly clock, whatever the index says', async () => {
+    // What a SCHEMA_VERSION reset, a deleted cache.db or a crashed save
+    // leaves: bytes no entry row counts. `maxSize` summed the rows only, so
+    // 9 MiB of these sat under a 1 MB limit through every run (upstream
+    // survey, nx#35483).
+    const MiB = 1024 * 1024
+    const cache = new Cache(cacheDir)
+    try {
+      await seed(cache, ['aa'])
+      const first = await orphan('00000000000000a1', 3 * MiB, 3 * 3_600_000)
+      // Younger than the in-flight grace: a save may still be landing it.
+      const young = await orphan('00000000000000a2', 3 * MiB, 60_000)
+      expect(await cache.evictIfDue({ maxBytes: MiB })).toEqual({
+        evicted: 0,
+        bytesFreed: 0,
+        orphans: 1,
+        orphanBytes: 3 * MiB,
+      })
+      expect(existsSync(first)).toBe(false)
+      expect(existsSync(young)).toBe(true)
+      expect(hashes(cache)).toEqual(['aa'])
+
+      // Swept within the hour: not due, and nothing lists the directory.
+      const later = await orphan('00000000000000a3', 3 * MiB, 3 * 3_600_000)
+      const now = Date.now()
+      expect(await cache.evictIfDue({ maxBytes: MiB }, now + 3_590_000)).toBeNull()
+      expect(existsSync(later)).toBe(true)
+      // An hour on, it is due again: from a fresh handle, so the clock is
+      // the index's, not this process's.
+      const reopened = new Cache(cacheDir)
+      try {
+        expect((await reopened.evictIfDue({ maxBytes: MiB }, now + 3_700_000))?.orphans).toBe(1)
+      } finally {
+        reopened.close()
+      }
+      expect(existsSync(later)).toBe(false)
+      // CONTROL: the entry row was never over the limit, so nothing was evicted.
+      expect(hashes(cache)).toEqual(['aa'])
     } finally {
       cache.close()
     }
@@ -258,6 +315,31 @@ describe('a run applies the workspace retention at its end', () => {
     expect(projects(cacheDir)).toEqual(['b'])
     expect(log.lines.filter((l) => l.includes('cache retention'))).toEqual([
       expect.stringMatching(/^vx: cache retention evicted 1 entry \(\d/),
+    ])
+  })
+
+  it('reaps row-less artifacts a deleted index left, and says so', async () => {
+    const cacheDir = await setup("cacheRetention: { maxSize: '1MB' }")
+    // The index goes (deleted by hand, or dropped by a schema reset); its
+    // artifacts stay behind, and they are old.
+    await rm(path.join(cacheDir, 'cache.db'))
+    await rm(path.join(cacheDir, 'cache.db-wal'), { force: true })
+    await rm(path.join(cacheDir, 'cache.db-shm'), { force: true })
+    const MiB = 1024 * 1024
+    const left: string[] = []
+    for (const name of ['00000000000000a1', '00000000000000a2', '00000000000000a3']) {
+      const file = path.join(cacheDir, `${name}.tar.zst`)
+      await writeFile(file, new Uint8Array(3 * MiB))
+      const when = new Date(Date.now() - 3 * 3_600_000)
+      await utimes(file, when, when)
+      left.push(file)
+    }
+    const log = logger()
+    const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
+    expect(summary.ok).toBe(true)
+    expect(left.filter((f) => existsSync(f))).toEqual([])
+    expect(log.lines.filter((l) => l.includes('cache retention'))).toEqual([
+      'vx: cache retention reaped 3 orphaned artifacts (9.0 MB)',
     ])
   })
 

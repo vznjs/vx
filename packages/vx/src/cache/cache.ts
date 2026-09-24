@@ -74,6 +74,9 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
  */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
+/** The `schema_meta` key holding when the orphan sweep last ran (ms epoch). */
+const SWEPT_AT = 'orphans_swept_at'
+
 export interface SchemaReset {
   from: string
   to: string
@@ -1393,10 +1396,11 @@ export class Cache implements CacheLayer {
 
   /**
    * The workspace's `cacheRetention`, applied at the end of a run: `prune()`
-   * with the same policy, but only when it would evict something. A run with
-   * nothing due pays the accessed-at flush it owed at close anyway and one
-   * scan of the index — never the orphan sweep's readdir. Null when nothing
-   * was due or this handle does not write.
+   * with the same policy, but only when it would evict something, else the
+   * orphan sweep alone when an hour has passed since the last one. A run
+   * with nothing due pays the accessed-at flush it owed at close anyway, one
+   * scan of the index and one read of the sweep's clock — never the
+   * sweep's readdir. Null when nothing was due or this handle does not write.
    */
   async evictIfDue(
     policy: { maxAgeMs?: number; maxBytes?: number },
@@ -1414,11 +1418,24 @@ export class Cache implements CacheLayer {
       .get() as { oldest: number | null; bytes: number }
     const ageDue = olderThanMs !== undefined && oldest !== null && oldest < olderThanMs
     const sizeDue = policy.maxBytes !== undefined && bytes > policy.maxBytes
-    if (!ageDue && !sizeDue) return null
-    return this.prune({
-      ...(olderThanMs !== undefined ? { olderThanMs } : {}),
-      ...(policy.maxBytes !== undefined ? { maxBytes: policy.maxBytes } : {}),
-    })
+    if (ageDue || sizeDue) {
+      return this.prune({
+        ...(olderThanMs !== undefined ? { olderThanMs } : {}),
+        ...(policy.maxBytes !== undefined ? { maxBytes: policy.maxBytes } : {}),
+      })
+    }
+    // Row-less artifacts are bytes the index cannot count, so the policy
+    // above never sees them (upstream survey, nx#35483: 9 MiB of them sat
+    // under a 1 MB limit). Listing the directory to find them costs 0.5 ms
+    // per 1,000 entries (4.9 ms at 10,000), every run; the sweep's own
+    // clock in `schema_meta` costs one indexed read. An orphan is reapable
+    // only an hour after its last write anyway, so an hourly sweep reaps
+    // it within two.
+    const swept = this.db.prepare('SELECT value FROM schema_meta WHERE key = ?').get(SWEPT_AT) as {
+      value: string
+    } | null
+    if (swept !== null && now - Number(swept.value) < ORPHAN_GRACE_MS) return null
+    return { evicted: 0, bytesFreed: 0, ...(await this.reapOrphans(now)) }
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {
@@ -1512,7 +1529,12 @@ export class Cache implements CacheLayer {
    * exists while the bytes are still being written, so a fresh file
    * without a row is a save in flight, not an orphan.
    */
-  private async reapOrphans(): Promise<{ orphans: number; orphanBytes: number }> {
+  private async reapOrphans(
+    now: number = Date.now(),
+  ): Promise<{ orphans: number; orphanBytes: number }> {
+    this.db
+      .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
+      .run(SWEPT_AT, String(now))
     let orphans = 0
     let orphanBytes = 0
     await Promise.all(

@@ -1214,7 +1214,10 @@ the row, so an orphan is never a hit, and only a save of the same key
 overwrites it. Files younger than one hour are left alone: a save
 renames its artifact into place before the row commits, so a fresh
 row-less file is a save in flight. The sweep runs on every prune, under
-either flag, and reports separately from the policy's evictions.
+either flag, and reports separately from the policy's evictions. A
+workspace's `cacheRetention` runs it too, at the end of a run, at most
+once an hour even when nothing the index holds is due (the policy sums
+index rows, so orphans alone never make it due).
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
