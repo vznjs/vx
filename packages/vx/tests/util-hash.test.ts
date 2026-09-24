@@ -169,9 +169,11 @@ describe('xxh3hex — fixed 16-char rendering', () => {
   it('a seeded digest is padded too (chained folds land here)', () => {
     // Cache.key's final `h` is a SEEDED digest — the padding path that
     // actually ships is the seeded one.
+    // Bun's seeded digest XOR the seed (the feed-forward, item 682).
     const hex = xxh3hex('p2340', 7n)
-    expect(xxh3('p2340', 7n).toString(16)).toBe('6b21cda30698d')
-    expect(hex).toBe('0006b21cda30698d')
+    expect(Bun.hash.xxHash3('p2340', 7n).toString(16)).toBe('6b21cda30698d')
+    expect(xxh3('p2340', 7n).toString(16)).toBe('6b21cda30698a')
+    expect(hex).toBe('0006b21cda30698a')
   })
 })
 

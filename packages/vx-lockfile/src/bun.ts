@@ -168,9 +168,11 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   }
   const digests = reachDigests({ material, edges })
   const out = new Map<string, string>()
-  const seed = Bun.hash.xxHash3(lock.global)
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
+  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
   for (const [dir, i] of importers) {
-    out.set(dir, Bun.hash.xxHash3(digests[i]!, seed).toString(16).padStart(16, '0'))
+    out.set(dir, Bun.hash.xxHash3(`${global}\0${digests[i]!}`).toString(16).padStart(16, '0'))
   }
   return out
 }

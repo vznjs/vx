@@ -369,6 +369,34 @@ negation is its control. Found by the 653 implementer, not a sweep
 survivor. A config that carried one now fails to load, where before
 it ran with the line ignored.
 
+14cd. **Item 682 (2026-09-24): the cache key carries 64 bits of state.**
+The W9 spike (item 676) measured that Bun's xxHash3 reads only the low
+32 bits of its seed, and every cache key, the workspace fingerprint,
+the config-eval key and the lockfile digests are seed-chained folds. A
+bare chain therefore carried 32 bits of state: two input sets whose
+running digests share their low halves merge at the next step, a stale
+hit at about 2^-32 per step. Reproduced before the fix: 2^17 real
+`Cache.key` calls varying one env value held a collision, found in 0.08
+s by a birthday search. `xxh3` now feeds the seed forward
+(`xxHash3(part, seed) ^ seed`): states that share a low half keep their
+high-half difference through every later step, and a seed of 0 changes
+nothing, so single-shot digests (file OIDs aside, every content hash)
+keep their values. `lockfile-claim.ts` folds through it, and the four
+vx-lockfile parsers pass the global digest as data rather than as a
+seed. Rows (`tests/hash-chain.test.ts`, one per parser in vx-lockfile):
+the platform's 32-bit seed read is pinned, so an upgrade that changes
+it goes red; a birthday-found pair of states sharing a low half stays
+apart after a common tail; 2^17 keys over one env value are all
+distinct; and two lockfile globals sharing a low half part the digests.
+Every collision row is red without the fix (2 core, 4 plugin).
+`CACHE_VERSION` v29: the old keys were wrong, not their bytes, so the
+fix alone self-heals, but every entry misses once and the bump makes
+the first run say so. Cost: `Cache.key` over 3,000 parts 405.8 → 412.2
+µs (min of 9, interleaved), about 2 ns a step. Also refused on reading:
+making `assertKnownFields` refuse non-objects itself (653's proposal):
+every caller already checks its own level and 653 holds each, so the
+guard would be unreachable.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

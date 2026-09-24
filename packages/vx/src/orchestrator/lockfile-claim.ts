@@ -15,7 +15,7 @@
 
 import path from 'node:path'
 import { rename, stat } from 'node:fs/promises'
-import { xxh3hex } from '../util/index.js'
+import { xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
   FingerprintChange,
@@ -281,10 +281,10 @@ export function reachDigests(g: ReachGraph): string[] {
       for (const m of members) {
         for (const w of g.edges[m]!) if (comp[w] !== id) children.add(compHash[comp[w]!]!)
       }
-      let h = Bun.hash.xxHash3(`members:${members.length}`)
-      for (const m of members.map((m) => g.material[m]!).sort()) h = Bun.hash.xxHash3(`${m}\n`, h)
-      h = Bun.hash.xxHash3(`children:${children.size}`, h)
-      for (const c of [...children].sort()) h = Bun.hash.xxHash3(`${c}\n`, h)
+      let h = xxh3(`members:${members.length}`)
+      for (const m of members.map((m) => g.material[m]!).sort()) h = xxh3(`${m}\n`, h)
+      h = xxh3(`children:${children.size}`, h)
+      for (const c of [...children].sort()) h = xxh3(`${c}\n`, h)
       compHash.push(h.toString(16).padStart(16, '0'))
     }
   }

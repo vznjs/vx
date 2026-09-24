@@ -9,6 +9,7 @@ import { planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { bun } from '../src/index.js'
 import { importerDigests, parseLockfile } from '../src/bun.js'
+import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
@@ -83,6 +84,16 @@ ${opts.override === undefined ? '' : `  "overrides": { "zod": "${opts.override}"
 const digests = (text: string) => importerDigests(parseLockfile(text))
 
 describe('workspace digests', () => {
+  it('two lockfile globals whose digests share a low half still part the digests (item 682)', () => {
+    // Folded as a seed, Bun's xxHash3 would read only the low half of the
+    // global's digest and the two would agree.
+    const parsed = parseLockfile(lock())
+    const [g1, g2] = lowHalfGlobals()
+    const a = importerDigests({ ...parsed, global: g1 })
+    const b = importerDigests({ ...parsed, global: g2 })
+    expect(a.get('packages/a')).not.toBe(b.get('packages/a'))
+  })
+
   it('a hoisted bump moves the workspaces that reach it and no other', () => {
     const before = digests(lock())
     const after = digests(lock({ bar: '2.0.1' }))

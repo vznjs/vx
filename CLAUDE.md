@@ -361,11 +361,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v28`, core `SCHEMA_VERSION` `v27`,
+- `CACHE_VERSION` `vx-cache-v29`, core `SCHEMA_VERSION` `v27`,
   `TELEMETRY_SCHEMA_VERSION` 2. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.
-- Key derivation: xxh3 seed-chained parts, `\0` delimiters, git blob OIDs
+- Key derivation: xxh3 seed-chained parts (seed fed forward: Bun reads 32
+  bits of a seed, item 682), `\0` delimiters, git blob OIDs
   for tracked-clean files, pure-input transitive hashing, the project's
   `package.json` bytes and the workspace fingerprint. `exec.remote` is
   stripped (placement only; `exec.resources` went with the reservations

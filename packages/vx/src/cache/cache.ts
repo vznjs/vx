@@ -135,7 +135,12 @@ import { RunHistory } from './run-history.js'
 // entries saved nothing (or the class's namesakes) under a key the fix
 // leaves unchanged: the glob text is what folds. Read literally, the first
 // hit on such an entry cleaned the route and restored nothing, green.
-export const CACHE_VERSION = 'vx-cache-v28'
+// v29: every key moves (item 682). The seed-chained fold carried only 32
+// bits of state (Bun's xxHash3 reads the low half of its seed), so two
+// input sets could share a key; `xxh3` now feeds the seed forward. The
+// old keys were wrong, not their bytes, so this is self-healing; the bump
+// is for the first run's notice, since every entry misses once.
+export const CACHE_VERSION = 'vx-cache-v29'
 
 /**
  * An artifact or temp file without an `entries` row is reaped by

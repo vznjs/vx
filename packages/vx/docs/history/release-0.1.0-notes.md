@@ -58,6 +58,12 @@ where 0.0.22 says "another nightly".
   under one deleted its namesake (`app/i/page.js`) while saving nothing.
   `\[id\]` still works. `CACHE_VERSION` moves to v28, and the first run
   after the upgrade says `cache format changed` (every bump will).
+- **A stale-hit fix that moves every key:** Bun's xxHash3 reads only 32
+  bits of a seed, so the seed-chained key fold carried 32 bits of state
+  and two input sets could share a key (a birthday search found one in
+  under a second). The fold feeds the seed forward; the lockfile plugins
+  fold the global digest as data. `CACHE_VERSION` moves to v29: every
+  entry misses once, with the notice.
 - `cacheRetention: { olderThan, maxSize }` in `vx.workspace.ts` evicts at
   the end of a run, by the policy `vx cache prune` takes as flags, and
   only when something is due.
