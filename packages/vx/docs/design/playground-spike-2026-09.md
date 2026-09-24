@@ -361,8 +361,9 @@ work that follows.
   (`src/workspace/config-eval.ts`), and the key folds `JSON.stringify` of
   the task config, so JSON drops exactly what the key never sees, where
   clone keeps an `undefined` property and refuses a function that path
-  drops. `vx run`'s first load differs from both on a function: see
-  [Shipped (item 699)](#shipped-item-699). A parity row evaluates the
+  drops. `vx run`'s first load differed from both on a function (see
+  [Shipped (item 699)](#shipped-item-699)) until item 701 made every
+  path, the page's included, refuse a value JSON cannot carry. A parity row evaluates the
   same text both ways (the CLI's loader and the page's rewrite) and
   requires the same keys.
 - **The bundle is built by a vx task with Bun, not by the site's
@@ -505,20 +506,36 @@ inside core too, since `vx watch` accepts a config that `vx run`
 refuses. How to close it is open: the page could refuse what JSON would
 drop, core's worker path could validate before its round-trip, or both.
 
+Closed by item 701: a config is JSON data on every path. One function,
+`nonJsonPaths` in core's `src/workspace/json-data.ts`, names each value
+JSON cannot carry (a function, a symbol, a bigint, `NaN` / `±Infinity`,
+`undefined` inside an array, a cycle, an object that is not plain).
+`vx run`'s first load runs it on the live object before the schema, and
+core's worker and the page's worker run the same function, embedded by
+its source text, before their `JSON.stringify`. All three refuse with
+one message: "vx.config.mjs: tasks.build.description is a function — a
+config must be JSON data, because the cache key folds its JSON" (the
+page uses its own file name, as it does for a non-object export). An
+`undefined` property is still allowed on every path. The row below that
+held the page to the worker path on a function now holds only the
+`undefined` property; a new parity row holds `vx run --dry=json`, the
+CLI's worker and the page to the one refusal.
+
 The rows:
 
-| Row                                                                                                                                               | Where                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| The fixture's five texts, evaluated by the page, plan what the CLI plans (item 695's scenario rows, now fed by `evaluateConfig`)                  | `packages/vx/tests/playground-parity.unsafe.test.ts` (`test.bun.unsafe`: git, no sandbox) |
-| Per variant of `@pg/core` (a loop and spreads, `undefined` properties, `dependsOn` from a constant): keys, statuses and deps equal the CLI's      | same                                                                                      |
-| Per variant: exactly 0, 0 and 3 keys move, in both planners                                                                                       | same                                                                                      |
-| Negative control: the page's config against the CLI's one-field variant (`@pg/core#test`'s command) differs on exactly the three tasks it reaches | same                                                                                      |
-| A default export that is a number, or none: the CLI exits 1 with its message, and the page's is the same with its file name                       | same                                                                                      |
-| A function-valued or `undefined` property: the page's object is strictly the CLI worker path's (`evaluateConfigFresh`)                            | same                                                                                      |
-| `node:fs` and a relative import are refused by name; `while (true) {}` is terminated at a 200 ms deadline                                         | same                                                                                      |
-| The evaluations run with the host traps armed, and none fires                                                                                     | same                                                                                      |
-| The rewrite: 8 accepted forms rewritten exactly, 11 look-alikes left byte for byte, 13 refusals by name (one the pinned misreading)               | `packages/vx-docs/tests/playground-config-eval.test.ts` (sandboxed)                       |
-| The bundle exports exactly `evaluateConfig` and `planPlayground`                                                                                  | `packages/vx-docs/tests/playground-bundle.test.ts`                                        |
+| Row                                                                                                                                                 | Where                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| The fixture's five texts, evaluated by the page, plan what the CLI plans (item 695's scenario rows, now fed by `evaluateConfig`)                    | `packages/vx/tests/playground-parity.unsafe.test.ts` (`test.bun.unsafe`: git, no sandbox) |
+| Per variant of `@pg/core` (a loop and spreads, `undefined` properties, `dependsOn` from a constant): keys, statuses and deps equal the CLI's        | same                                                                                      |
+| Per variant: exactly 0, 0 and 3 keys move, in both planners                                                                                         | same                                                                                      |
+| Negative control: the page's config against the CLI's one-field variant (`@pg/core#test`'s command) differs on exactly the three tasks it reaches   | same                                                                                      |
+| A default export that is a number, or none: the CLI exits 1 with its message, and the page's is the same with its file name                         | same                                                                                      |
+| An `undefined` property: the page's object is strictly the CLI worker path's (`evaluateConfigFresh`); a function-valued one was here until item 701 | same                                                                                      |
+| A function-valued `description`: `vx run --dry=json`, `evaluateConfigFresh` and the page give one refusal (item 701)                                | same                                                                                      |
+| `node:fs` and a relative import are refused by name; `while (true) {}` is terminated at a 200 ms deadline                                           | same                                                                                      |
+| The evaluations run with the host traps armed, and none fires                                                                                       | same                                                                                      |
+| The rewrite: 8 accepted forms rewritten exactly, 11 look-alikes left byte for byte, 13 refusals by name (one the pinned misreading)                 | `packages/vx-docs/tests/playground-config-eval.test.ts` (sandboxed)                       |
+| The bundle exports exactly `evaluateConfig` and `planPlayground`                                                                                    | `packages/vx-docs/tests/playground-bundle.test.ts`                                        |
 
 The bundle row's import check read the rewrite's own comparisons with
 the strings "from" and "import" in the minified text as two specifiers.
@@ -543,7 +560,8 @@ path, then `planPlayground`, gave all eight keys equal to
 page under a wrong `API_URL` differed on exactly the five tasks it
 reaches. `while (true) {}` came back after 203 ms with the deadline
 error. `node:fs` was refused by name. `process.env` gave "ReferenceError:
-process is not defined". A function-valued property came back dropped.
+process is not defined". A function-valued property came back dropped
+(before item 701, which refuses it).
 A number default export gave the CLI's message, and a syntax error gave
 "SyntaxError: Unexpected end of input". There was no page error.
 

@@ -10,16 +10,21 @@
 // reader's code never touches the page, and a deadline terminates a runaway.
 //
 // The default export crosses back as JSON, stringified in the worker and
-// parsed here: the CLI's worker path (packages/vx/src/workspace/config-eval.ts,
-// a repeat load) does the same, and the key folds `JSON.stringify` of the
-// task config, so a value JSON drops (`undefined`, a function) is one the
-// key never saw. A FIRST load in the CLI validates the live object instead,
-// so a function where the schema wants a string is refused there and
-// dropped here (design/playground-spike-2026-09.md § Shipped (item 699)).
+// parsed here, as the CLI's worker path (packages/vx/src/workspace/config-eval.ts,
+// a repeat load) does. First the worker runs core's `nonJsonPaths`, embedded
+// by its source as core's worker embeds it, and the page refuses what it
+// names with the CLI's message: a config is JSON data on every path, the
+// page's included (item 701, core's json-data.ts).
 //
 // The refusal exists for its message, not as a boundary: from a Blob URL a
 // browser resolves no other specifier anyway (a relative one has no base, a
 // bare one no map), and says so less clearly.
+
+import {
+  nonJsonMessage,
+  nonJsonPaths,
+  type NonJsonValue,
+} from '../../../vx/src/workspace/json-data.js'
 
 const ONLY_VX = 'the playground evaluates a config on its own: it can import only @vzn/vx'
 
@@ -28,19 +33,25 @@ const VX_MODULE =
 
 // Core's worker (config-eval.ts's WORKER_SRC), fed a URL instead of a path.
 const WORKER = `
+const nonJsonPaths = ${nonJsonPaths.toString()}
 self.onmessage = async (e) => {
   try {
     const ns = await import(e.data)
     const mod = ns?.default
-    postMessage({ ok: true, json: mod !== null && typeof mod === 'object' ? JSON.stringify(mod) : null })
+    const isObject = mod !== null && typeof mod === 'object'
+    const nonJson = isObject ? nonJsonPaths(mod) : []
+    postMessage({ ok: true, nonJson, json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null })
   } catch (err) {
     postMessage({ ok: false, error: \`\${err?.name ?? 'Error'}: \${err?.message ?? String(err)}\` })
   }
 }
 `
 
+/** The file name the page's messages give the reader's config. */
+const CONFIG_FILE = 'vx.config.mjs'
+
 /** What the CLI says of a config whose default export is not an object (project-loader.ts). */
-export const NOT_AN_OBJECT = 'Project config at vx.config.mjs did not export a default object'
+export const NOT_AN_OBJECT = `Project config at ${CONFIG_FILE} did not export a default object`
 
 interface Token {
   kind: 'word' | 'string' | 'punct' | 'template' | 'regex'
@@ -235,7 +246,9 @@ export function rewriteConfigImports(
   return { ok: true, text: out + text.slice(from) }
 }
 
-type Reply = { ok: true; json: string | null } | { ok: false; error: string }
+type Reply =
+  | { ok: true; json: string | null; nonJson: NonJsonValue[] }
+  | { ok: false; error: string }
 
 const moduleUrl = (source: string): string =>
   URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
@@ -281,6 +294,8 @@ export async function evaluateConfig(
     })
     worker.terminate()
     if (!reply.ok) return reply
+    const [nonJson] = reply.nonJson
+    if (nonJson !== undefined) return { ok: false, error: nonJsonMessage(CONFIG_FILE, nonJson) }
     if (reply.json === null) return { ok: false, error: NOT_AN_OBJECT }
     return { ok: true, config: JSON.parse(reply.json) as unknown }
   } finally {

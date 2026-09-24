@@ -30,20 +30,29 @@
 // locks or runs. `JSON.stringify(JSON.parse(s)) === s`, so a config
 // re-read through a worker derives the SAME cache key as the
 // in-process first load — which is why this needs no CACHE_VERSION bump.
+// What JSON would drop or rewrite never makes the trip: the worker runs
+// `nonJsonPaths` (json-data.ts) on the live object first, embedded by its
+// source so the rule has one copy, and the parent refuses what it names
+// with the message the first load gives (item 701).
 
 import path from 'node:path'
-import { MAX_TIMEOUT_MS } from '../util/index.js'
+import { MAX_TIMEOUT_MS, UserError } from '../util/index.js'
+import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 
 const WORKER_SRC = `
+const nonJsonPaths = ${nonJsonPaths.toString()}
 self.onmessage = async (e) => {
   const { id, path } = e.data
   try {
     const ns = await import(path)
     const mod = ns?.default
+    const isObject = mod !== null && typeof mod === 'object'
+    const nonJson = isObject ? nonJsonPaths(mod) : []
     postMessage({
       id,
       ok: true,
-      json: mod !== null && typeof mod === 'object' ? JSON.stringify(mod) : null,
+      nonJson,
+      json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null,
     })
   } catch (err) {
     postMessage({
@@ -67,6 +76,7 @@ interface WorkerReply {
   id: number
   ok: boolean
   json: string | null
+  nonJson: NonJsonValue[]
   name: string
   message: string
   stack: string | null
@@ -75,7 +85,7 @@ interface WorkerReply {
 }
 
 interface Pending {
-  resolve: (json: string | null) => void
+  resolve: (reply: WorkerReply) => void
   reject: (err: Error) => void
 }
 
@@ -139,7 +149,7 @@ function acquireWorker(): Worker {
     if (p === undefined) return
     pending.delete(msg.id)
     if (msg.ok) {
-      p.resolve(msg.json)
+      p.resolve(msg)
       return
     }
     // Rebuild the error the config actually threw. Name, message, stack
@@ -195,7 +205,9 @@ function retireIfIdle(): void {
  * Evaluate `configPath` against a fresh module registry and return its
  * default export, JSON round-tripped. `null` means the module had no
  * object default export — the caller owns that error message so it
- * reads identically whichever path produced it.
+ * reads identically whichever path produced it. A default export holding
+ * a value JSON cannot carry is refused here, with `validateProjectConfig`'s
+ * message, since the round trip would have dropped the evidence.
  */
 export async function evaluateConfigFresh(configPath: string): Promise<unknown> {
   const abs = path.resolve(configPath)
@@ -213,7 +225,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     // run-level timeout. The budget is enormous next to the ~10 ms a real
     // evaluation costs, so it can only fire on a genuine wedge.
     const budget = workerTimeoutMs()
-    const json = await new Promise<string | null>((resolve, reject) => {
+    const reply = await new Promise<WorkerReply>((resolve, reject) => {
       pending.set(id, { resolve, reject })
       timer = setTimeout(() => {
         rejectAll(new Error(`config worker did not answer within ${budget}ms`))
@@ -225,7 +237,9 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
       timer.unref?.()
       w.postMessage({ id, path: abs })
     })
-    return json === null ? null : (JSON.parse(json) as unknown)
+    const [nonJson] = reply.nonJson
+    if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
+    return reply.json === null ? null : (JSON.parse(reply.json) as unknown)
   } finally {
     // In the `finally`, not after the await: a REJECTED evaluation — a config
     // with a typo, the common case while editing — would otherwise skip the

@@ -62,6 +62,14 @@ readers that reach it here.
   the same check on both paths.
 - Validation runs on whichever object the two paths produced, so a
   malformed config reports the identical `UserError` either way.
+- A value JSON cannot carry (a function, `NaN`, a `Map`, …) is refused
+  by both paths with one message (item 701, config-schema.md): the first
+  load's `validateProjectConfig` sees the live object, and the Worker
+  runs the same `nonJsonPaths`, embedded in its inline source by
+  `toString()`, BEFORE its `JSON.stringify` would drop the evidence. It
+  replies with the paths instead of the JSON, and `evaluateConfigFresh`
+  throws the `UserError`. The compiled binary's Worker is held to it by
+  `scripts/check-binary.ts` (`check.binary`).
 
 ## Why a Worker on a repeat load
 

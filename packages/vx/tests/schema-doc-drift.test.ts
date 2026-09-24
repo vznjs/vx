@@ -99,6 +99,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     },
   ],
   ['tasks must be an object keyed by task name', () => validated({ tasks: [ok] })],
+  [
+    '<path> is <what> — a config must be JSON data, because the cache key folds its JSON',
+    () => validated({ tasks: { b: { ...ok, description: () => 'b' } } }),
+  ],
   ['<level> has unknown field "<key>"', () => validated({ tasks: { b: { ...ok, caches: {} } } })],
   [
     '<level> must be an object (fields: <fields>), not an array',
