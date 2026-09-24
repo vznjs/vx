@@ -50,7 +50,11 @@ export const UNPLACED_EXECUTOR: TaskExecutor
   executor;
   `selectExecutor` is told so and a remote executor declines. A
   persistent task itself, like a group, is not placed at all — it runs
-  on this machine outside the executor list.
+  on this machine outside the executor list. The pin flows up the
+  dependant edges from the tasks that pin themselves, one walk on an
+  explicit stack (a recursion per edge threw `RangeError` from
+  `vx run --dry` on a 50,000-deep chain); a graph where nothing pins
+  itself builds no edge index at all.
 - Everything else asks the executors in declaration order
   (`selectExecutor`); the local floor takes what nothing claimed.
 - `exec.remote: 'only'` with a remote executor that accepts it runs
@@ -68,7 +72,8 @@ export const UNPLACED_EXECUTOR: TaskExecutor
 
 ## Tests
 
-`tests/plugin-capabilities.test.ts` (placement end to end: pins,
+`tests/placement.test.ts` (the pin rules, a 50,000-deep chain pinned
+at its bottom, `placeTasks`' gates); `tests/plugin-capabilities.test.ts` (placement end to end: pins,
 decline-and-fall-through, `'only'` taken / no-op / said, pools, `--dry`
 labels and the failure notice); `tests/download-policy.test.ts` (the
 download modes placement feeds); `tests/plan-predict.test.ts`.

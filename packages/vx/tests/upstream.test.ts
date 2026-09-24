@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { filterUpstreamHashes } from '../src/orchestrator/upstream.js'
+import { expandGroupUpstream, filterUpstreamHashes } from '../src/orchestrator/upstream.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
 
@@ -184,5 +184,53 @@ describe('filterUpstreamHashes', () => {
         ['@acme/core#build', 'h-core'],
       ])
     })
+  })
+})
+
+describe('expandGroupUpstream', () => {
+  const group = (id: string, members: TaskOutcome[]): TaskOutcome => ({
+    ...outcome(id, `h-${id}`),
+    groupUpstream: members,
+  })
+  const ids = (list: readonly TaskOutcome[]): string[] => list.map((u) => u.node.id)
+
+  it('expands nested groups depth-first, in order, each task once', () => {
+    const a = outcome('p#a', 'h-a')
+    const up = [
+      group('p#g1', [a, group('p#g2', [outcome('p#b', 'h-b'), a])]),
+      outcome('p#c', 'h-c'),
+    ]
+    expect(ids(expandGroupUpstream(up))).toEqual(['p#a', 'p#b', 'p#c'])
+  })
+
+  // A chain of groups nests one outcome per group, and a recursion per
+  // level threw `RangeError` into the consumer at 50,000 (its run failed as
+  // an internal error), where the builder takes that depth (item 737).
+  it('a 50,000-deep chain of groups expands to the task at its bottom', () => {
+    let up = [outcome('p#leaf', 'h-leaf')]
+    for (let i = 0; i < 50_000; i++) up = [group(`p#g${i}`, up)]
+    expect(ids(expandGroupUpstream(up))).toEqual(['p#leaf'])
+  })
+
+  // Groups over a shared group (`build` as a group whose `^build` meets a
+  // package diamond) reach it once per path; each group's members are read
+  // once, or the walk doubles per layer (2^16 paths here).
+  it('a group reached twice is walked once: 16 diamonds read 49 groups once each', () => {
+    let reads = 0
+    const counted = (id: string, members: TaskOutcome[]): TaskOutcome => {
+      const o = outcome(id, `h-${id}`)
+      Object.defineProperty(o, 'groupUpstream', {
+        get: () => {
+          reads++
+          return members
+        },
+      })
+      return o
+    }
+    let bottom = counted('p#g0', [outcome('p#leaf', 'h-leaf')])
+    for (let i = 1; i <= 16; i++) {
+      bottom = counted(`p#g${i}`, [counted(`p#l${i}`, [bottom]), counted(`p#r${i}`, [bottom])])
+    }
+    expect([ids(expandGroupUpstream([bottom])), reads]).toEqual([['p#leaf'], 49])
   })
 })

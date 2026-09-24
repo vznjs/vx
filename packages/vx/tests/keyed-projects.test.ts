@@ -151,6 +151,22 @@ describe('the walk (R3)', () => {
     expect([...keyed(nodes.get('app#test')!)].sort()).toEqual(['/ws/app', '/ws/ui'])
     expect([...keyed(nodes.get('ui#source')!)]).toEqual([])
   })
+
+  // Asked by a sandboxed task that executes, over its whole fold: a
+  // recursion per edge threw `RangeError` at the 50,000 the builder takes
+  // (item 737).
+  it('a 50,000-deep chain keys the project at its bottom', () => {
+    const DEPTH = 50_000
+    const spec: Record<string, [TaskConfig, string[]]> = {}
+    for (let i = 0; i < DEPTH - 1; i++) {
+      spec[`app#t${i}`] = [
+        i % 2 === 0 ? CACHED : GROUP,
+        [i + 2 < DEPTH ? `app#t${i + 1}` : 'lib#source'],
+      ]
+    }
+    spec['lib#source'] = [CACHED, []]
+    expect(keyedOf(graph(spec), 'app#t0')).toEqual(['/ws/app', '/ws/lib'])
+  })
 })
 
 // The source of truth is the key: for each shape, `run()` computes

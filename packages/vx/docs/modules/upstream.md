@@ -75,7 +75,12 @@ containing none of what `install` chains.
 
 `expandGroupUpstream` walks a group's `TaskOutcome.groupUpstream`
 (set by the group's own execution, the only place that knows what it
-chained), recursing for nested groups and de-duplicating by task id.
+chained), descending into nested groups on an explicit stack (a chain
+of groups is as deep as the graph, and the builder takes 50,000; a
+recursion per level threw `RangeError` into the consumer), expanding a
+group reached along two paths once (a group `build` whose `^build`
+meets a package diamond read its members once per path, doubling per
+layer), and de-duplicating by task id.
 The expansion is never folded: it reaches the executor as
 `CacheKeyInput.upstreamGraft` → `TaskInputs.upstream`, while the key
 still folds only the group's roll-up hash, so no existing entry moves.
@@ -139,7 +144,9 @@ The pattern parser itself is tested in
 `tests/execute-task.test.ts` pins group expansion end to end — a
 dependent of a group receives the tasks beneath it WITH their output
 lists, and a CONTROL asserts the dependent's cache key does not move
-when the group carries members.
+when the group carries members. `tests/upstream.test.ts` §
+"expandGroupUpstream" holds the order, a 50,000-deep chain of groups,
+and sixteen stacked diamonds reading each group's members once.
 
 ## What this does NOT do
 

@@ -63,6 +63,24 @@ describe('pinnedLocalSet', () => {
     )
     expect([...set].sort()).toEqual(['a#build', 'b#test'])
   })
+
+  // `vx run app#t0 --dry` on this chain threw `RangeError` here once the
+  // builder (item 737) and the excluded-key walk (741) stopped recursing:
+  // the set recursed once per edge.
+  it('a 50,000-deep chain pinned at its bottom pins every task above it', () => {
+    const DEPTH = 50_000
+    const nodes: TaskNode[] = []
+    for (let i = 0; i < DEPTH; i++) {
+      nodes.push(
+        i + 1 < DEPTH
+          ? node(`app#t${i}`, {}, [`app#t${i + 1}`])
+          : node(`app#t${i}`, { persistent: {} }),
+      )
+    }
+    nodes.push(node('app#aside', {}, ['app#t0']), node('app#other', {}))
+    const set = pinnedLocalSet(graph(...nodes))
+    expect([set.size, set.has('app#aside'), set.has('app#other')]).toEqual([DEPTH + 1, true, false])
+  })
 })
 
 describe('placeTasks (item 650)', () => {

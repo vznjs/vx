@@ -142,25 +142,31 @@ export function selectFoldedDeps(
  * IS the input root: `dependsOn: ['install']` shipped a worker an action with
  * none of what `install` chains.
  *
- * Groups may nest, so the walk recurses. Only what the FILTER already
- * selected is passed in, so a group excluded from a task's
+ * Groups may nest, as deep as the graph (the builder takes a 50,000-deep
+ * chain, item 737), so the walk keeps its own stack; and a group reached
+ * along two paths (a group `build` whose `^build` meets a package diamond)
+ * is expanded once, or the walk doubles per layer. Only what the FILTER
+ * already selected is passed in, so a group excluded from a task's
  * `cache.inputs.tasks` brings no members with it.
  */
 export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[] {
   const out: TaskOutcome[] = []
   const seen = new Set<string>()
-  const walk = (list: readonly TaskOutcome[]): void => {
-    for (const u of list) {
-      if (u.groupUpstream !== undefined) {
-        walk(u.groupUpstream)
-        continue
-      }
-      if (seen.has(u.node.id)) continue
-      seen.add(u.node.id)
-      out.push(u)
+  const expanded = new Set<TaskOutcome>()
+  const stack = upstream.toReversed()
+  while (stack.length > 0) {
+    const u = stack.pop()!
+    if (expanded.has(u)) continue
+    const members = u.groupUpstream
+    if (members !== undefined) {
+      expanded.add(u)
+      for (let i = members.length - 1; i >= 0; i--) stack.push(members[i]!)
+      continue
     }
+    if (seen.has(u.node.id)) continue
+    seen.add(u.node.id)
+    out.push(u)
   }
-  walk(upstream)
   return out
 }
 

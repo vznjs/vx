@@ -77,15 +77,24 @@ export class DeferredOutputs {
   async materializeFor(node: TaskNode): Promise<void> {
     const needed: string[] = []
     const seen = new Set<string>()
-    const walk = (id: string): void => {
-      for (const dep of this.args.nodes.get(id)?.deps ?? []) {
-        if (seen.has(dep)) continue
-        seen.add(dep)
-        if (this.entries.has(dep)) needed.push(dep)
-        walk(dep)
+    // Pre-order on an explicit stack of dependency lists: a closure is as
+    // deep as the graph, and a recursion per edge threw `RangeError` at the
+    // 50,000 the builder takes (item 737).
+    const stack: Array<[deps: readonly string[], next: number]> = [
+      [this.args.nodes.get(node.id)?.deps ?? [], 0],
+    ]
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!
+      if (frame[1] === frame[0].length) {
+        stack.pop()
+        continue
       }
+      const dep = frame[0][frame[1]++]!
+      if (seen.has(dep)) continue
+      seen.add(dep)
+      if (this.entries.has(dep)) needed.push(dep)
+      stack.push([this.args.nodes.get(dep)?.deps ?? [], 0])
     }
-    walk(node.id)
     if (needed.length === 0) return
     await Promise.all(needed.map((id) => this.materializeOne(id)))
   }
