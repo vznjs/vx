@@ -1357,6 +1357,24 @@ new ones. The 703 implementer's second note, that sibling packages'
 outside their keys, did not reproduce here: `vx-otel`'s check reads 8
 files, `node_modules` is ignored, and no sibling imports a core test.
 
+14db. **Item 708 (2026-09-24): the site's prerender runs under Bun.**
+Item 700's CI failure showed the prerender had no global `Worker`. The
+cause: `bun --bun astro build` runs astro on Bun, but astro prerenders
+in a child it spawns as `node`, and `bun --bun` redirects that child
+only through a shim under `/tmp/bun-node-*`, which a sandboxed task
+cannot write; CI's prerender ran the PATH's Node, while this box, whose
+root had created the shim outside any sandbox, ran Bun everywhere and
+never saw it. Probed here with the host shim moved aside: a
+`typeof Bun` printed from `Playground.astro` read `undefined` under the
+old command. The build command now links `.astro/bin/node` to `bun`
+(`.astro/**` is already a write grant) and puts it first on PATH; the
+same probe reads `object function`. Min of three interleaved sandboxed
+builds without the host shim: 17.2 s before, 14.5 s after, so the
+2026-09-09 "half the time" figure no longer describes this site (the
+prerender is not most of the build). Build-time code stays
+runtime-agnostic (item 700's `evaluateConfigInProcess`). CLAUDE.md
+gains the rule.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

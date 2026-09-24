@@ -143,7 +143,7 @@ the caching and correctness pages link to it in one sentence each.
   refusals, and pins the import. A percent-encoded `data:` URL was
   refuted on the way: Bun picked the text loader for the api config,
   whose command holds `src/server.ts`, and returned the source as a
-  string.) The other option, importing
+  string. Item 708 later gave the prerender Bun as well; the build path stays runtime-agnostic.) The other option, importing
   config objects, needs a second copy of each config, or texts printed
   from objects, which would carry no comments. "Waits for" is resolved by
   the view (`^task`, `task`, `pkg#task`), which is a small copy of core's

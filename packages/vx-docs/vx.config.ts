@@ -252,16 +252,20 @@ export default defineProject({
       description: 'astro build → dist/',
       dependsOn: ['install', 'import', 'build.playground'],
       exec: {
-        // Meant to run under Bun: `bun --bun` runs astro's bin on Bun's
-        // runtime, which builds the same 133 pages in half the time (18.5 s
-        // against 37 s under Node 22, 2026-09-09). NOT what Linux CI gets:
-        // there the prerender ran under Node (no global `Worker`, item 700),
-        // most likely because `bun --bun` needs a `node` shim under
-        // `/tmp/bun-node-*` that this sandbox cannot write, and falls back
-        // to the PATH's Node. So nothing the build runs may assume Bun, and
-        // astro 6 refuses a Node below 22.12 (the Linux gate's docs build
-        // once exited 1 in 61 ms with no output at all).
-        command: 'bun --bun astro build',
+        // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
+        // but astro prerenders in a CHILD process it starts as `node`, and
+        // `bun --bun` redirects that only through a shim it writes under
+        // `/tmp/bun-node-*`, which this sandbox cannot write: on Linux CI the
+        // prerender ran under the PATH's Node (no global `Worker`, item 700),
+        // and a box whose shim already existed ran Bun and saw nothing. So the
+        // command gives the build its own `node` → `bun` link in `.astro/bin`
+        // (already a write grant) ahead of PATH. Probed without a host shim:
+        // the prerender reports `typeof Bun` `undefined` before, `object`
+        // after; min of three interleaved sandboxed builds, 17.2 s before and
+        // 14.5 s after (item 708). Build-time code still must not assume Bun:
+        // astro 6 refuses a Node below 22.12 wherever it does run on Node.
+        command:
+          'mkdir -p .astro/bin && ln -sf "$(command -v bun)" .astro/bin/node && PATH="$PWD/.astro/bin:$PATH" bun --bun astro build',
         // astro's telemetry does `mkdir ~/.config` before anything else; a
         // sandboxed task may read HOME but not write it, so it is told to
         // stay home.
