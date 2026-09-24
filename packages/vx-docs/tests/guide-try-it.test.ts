@@ -2,8 +2,8 @@
 // and the way out to a real repository. It hosts the playground, so the
 // playground page's rows moved here from learn-playground.test.ts (and the
 // untagged-element row from learn-labs.test.ts): without JavaScript the
-// static render holds the workspace's file list, each config's text and the
-// task table; the controls are hidden; the page's scripts reach the element
+// static render holds each config's text and the table of the tasks its
+// run plans; the controls are hidden; the page's scripts reach the element
 // without the planner; and the element finds every piece of markup it
 // reads. Its checkpoint is held to its answer, written out here, and its
 // pictures to the toy model and the labs page.
@@ -47,8 +47,8 @@ import {
 const SLUG = 'try-it'
 const ELEMENT = path.join(SITE, 'src/components/demos/playground.ts')
 
-/** The playground's tasks, in its order: the toy's eight and one more build
- *  nothing waits on. */
+/** The tasks the playground runs, in its order: the toy's eight. `app`
+ *  also declares `app#docs`, which the default run leaves out. */
 const ALL = [
   'utils#build',
   'utils#test',
@@ -58,15 +58,13 @@ const ALL = [
   'api#test',
   'app#build',
   'app#test',
-  'app#docs',
 ]
 
 /** The chapter's one question, and its answer written out. */
 const CHECK = {
   id: 'playground-env',
-  question:
-    'Start from Reset. You run `vx run build test docs` once. Then you change `API_URL` to another value and run it again. Which tasks rerun?',
-  summary: '4 of the 9 tasks rerun.',
+  question: 'Which tasks rerun when you change `API_URL`?',
+  summary: '4 of the 8 tasks rerun.',
   yes: [
     'api#build reruns (env API_URL changed).',
     'api#test reruns (upstream api#build moved).',
@@ -106,7 +104,7 @@ describe('the playground on guide/try-it', () => {
       configs[name] = ((await planner.evaluateConfig(t, 10_000)) as { config: unknown }).config
     }
     const rows = tableRows(only(staticPart, /(<table class="graph\b[\s\S]*?<\/table>)/g))
-    expect(rows).toEqual(staticTable(staticProjects(FILES, configs)).map(staticCells))
+    expect(rows).toEqual(staticTable(staticProjects(FILES, configs), TASKS).map(staticCells))
     const plan = await planner.planPlayground({
       root: PLAYGROUND_ROOT,
       files: FILES,
@@ -118,11 +116,7 @@ describe('the playground on guide/try-it', () => {
     expect(rows.map((r) => r[0]!).sort()).toEqual([...ALL].sort())
   })
 
-  it("ships the workspace's files and each config's text", () => {
-    const list = only(staticPart, /<ul class="file-list\b[^"]*"[^>]*>([\s\S]*?)<\/ul>/g)
-    expect([...list.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))).toEqual(
-      Object.keys(FILES),
-    )
+  it("ships each config's text, folded", () => {
     const configs = [
       ...staticPart.matchAll(
         /<summary>\s*<code>([^<]+)<\/code>\s*<\/summary>\s*<pre class="config\b[^"]*"[^>]*>([\s\S]*?)<\/pre>/g,
@@ -157,7 +151,7 @@ describe('the playground on guide/try-it', () => {
 
   it('opens on the workspace, not a lab: the element carries no lab attribute', () => {
     const tag = only(html, /<vx-playground\b([^>]*)>/g)
-    expect([...tag.matchAll(/\s([\w-]+)=/g)].map((m) => m[1])).toEqual(['data-vx-demo', 'class'])
+    expect([...tag.matchAll(/\s([\w-]+)=/g)].map((m) => m[1])).toEqual(['data-vx-demo'])
   })
 
   it('holds every piece of markup the element reads, once', () => {
@@ -274,5 +268,19 @@ describe("the chapter's pictures and exits", () => {
     }
     expect(runFlags().has('--dry')).toBe(true)
     expect(codeBlocks(inVx, 'sh')).toEqual(['vx run build test --dry'])
+  })
+
+  // Item 721's app#docs made the page run `build test docs`, so the page and
+  // the chapter's one command named different runs. The page runs what the
+  // chapter says; app#docs stays declared, for a reader who types it.
+  it("runs the task specs the chapter's command names, and leaves app#docs out of them", () => {
+    const [command] = codeBlocks(inVx, 'sh')
+    const specs = command!
+      .split(' ')
+      .slice(2)
+      .filter((w) => !w.startsWith('--'))
+    expect(specs).toEqual(TASKS)
+    expect(CONFIG_TEXTS['app']).toContain('    docs: {')
+    expect(TASKS).not.toContain('docs')
   })
 })
