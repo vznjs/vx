@@ -52,7 +52,12 @@ through `cliCacheDir` — or a prune silently no-ops against the wrong
 path. A cache this user cannot write is refused up front with the
 directory named, as a run refuses it (a dry run only reads, and reads
 a read-only cache fine), and an upgrade that reset the index is
-announced once.
+announced once. A prune that deletes takes the workspace's run lock
+first (`acquireRunLock`, orchestrator.md), so it waits for a run on the
+workspace — `[vx] waiting for another vx run (pid N) on this workspace
+to finish…` after a second — instead of evicting the hits that run has
+just probed; the age cutoff is taken before the wait, so what the run
+touched survives it. A dry run takes no lock.
 
 ## Parsers
 

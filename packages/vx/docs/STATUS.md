@@ -493,7 +493,10 @@ false`, the first failure failing the task; `commands: []` a no-op;
       one `.catch` per task, 60–70 µs per 1,000 in isolation; the
       1,000-project warm no-op and restore A/B (interleaved, before arm
       from a worktree) sat inside the box's noise (no-op min 221 → 237,
-      then 301 → 300 ms; restore min 574 → 549, 871 → 743).
+      then 301 → 300 ms; restore min 574 → 549, 871 → 743). A deleting
+      `vx cache prune` also takes the workspace's run lock now, so beside
+      a run on the same workspace it waits instead of making that run
+      re-run its hits (a dry run takes none).
 
 ## In flight
 
