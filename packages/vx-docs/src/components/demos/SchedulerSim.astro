@@ -1,0 +1,319 @@
+---
+// The scheduler simulator. Without JavaScript it is two Gantt charts of the
+// default graph on two workers (vx with no plugin, and with the history
+// plugin), the bound no order can beat, the tasks with their durations, and
+// the finish time for one to four workers under every policy.
+// `scheduler-sim.ts` unhides the controls and redraws all of it through the
+// same model functions. It reads the `.controls`, `[data-slot]`, `.gantt`,
+// `.policy`, `.note`, `.done`, `.bounds`, `.status`, `[data-task-row]`,
+// `.js-only` and `[data-workers]` hooks below, so they are its contract
+// with this markup.
+import Demo from '../Demo.astro'
+import {
+  DEFAULT_PAIR,
+  DEFAULT_WORKERS,
+  MAX_SECONDS,
+  MAX_WORKERS,
+  POLICIES,
+  POLICY_NAME,
+  POLICY_NOTE,
+  SIM_TASKS,
+  boundsSentence,
+  criticalPath,
+  finishTable,
+  ganttSvg,
+  lowerBound,
+  schedule,
+  secs,
+} from './model/scheduler-sim.js'
+
+const none = new Set<string>()
+const critical = new Set(criticalPath(SIM_TASKS).chain)
+const charts = DEFAULT_PAIR.map((p) => schedule(SIM_TASKS, none, p, DEFAULT_WORKERS))
+const span = Math.max(...charts.map((c) => c.makespan))
+const bound = lowerBound(SIM_TASKS, DEFAULT_WORKERS)
+const rows = finishTable(SIM_TASKS, none)
+---
+
+<Demo name="scheduler-sim">
+  <div class="controls" hidden>
+    <label>
+      Workers
+      <select name="workers">
+        {
+          Array.from({ length: MAX_WORKERS }, (_, i) => (
+            <option value={i + 1} selected={i + 1 === DEFAULT_WORKERS}>
+              {i + 1}
+            </option>
+          ))
+        }
+      </select>
+    </label>
+    {
+      DEFAULT_PAIR.map((chosen, slot) => (
+        <label>
+          {slot === 0 ? 'First chart' : 'Second chart'}
+          <select name="policy" data-slot={slot}>
+            {POLICIES.map((p) => (
+              <option value={p} selected={p === chosen}>
+                {POLICY_NAME[p]}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))
+    }
+    <button type="button" class="reset">Reset</button>
+  </div>
+  {
+    charts.map((c, slot) => (
+      <div class="chart" data-slot={slot}>
+        <p class="chart-title"><strong class="policy">{POLICY_NAME[c.policy]}</strong> (<span class="note">{POLICY_NOTE[c.policy]}</span>): done at <span class="done">{secs(c.makespan)}</span></p>
+        <div class="gantt" tabindex="0" set:html={ganttSvg(c, span, bound, none, critical)} />
+      </div>
+    ))
+  }
+  <p class="bounds">{boundsSentence(SIM_TASKS, DEFAULT_WORKERS)}</p>
+  <p class="status" aria-live="polite" hidden></p>
+  <table class="finish">
+    <caption>When the run finishes, by workers and policy</caption>
+    <thead>
+      <tr>
+        <th scope="col">Workers</th>
+        <th scope="col">No order beats</th>
+        {POLICIES.map((p) => <th scope="col">{POLICY_NAME[p]}</th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {
+        rows.map((r) => (
+          <tr data-workers={r.workers} class={r.workers === DEFAULT_WORKERS ? 'is-selected' : ''}>
+            <th scope="row">{r.workers}</th>
+            <td data-label="No order beats">{secs(r.bound)}</td>
+            {POLICIES.map((p) => (
+              <td data-label={POLICY_NAME[p]} data-policy={p}>
+                {secs(r.makespans[p])}
+              </td>
+            ))}
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+  <table class="tasks">
+    <thead>
+      <tr>
+        <th scope="col">Task</th>
+        <th scope="col">Waits for</th>
+        <th scope="col">Takes</th>
+        <th scope="col" class="js-only" hidden>No history</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        SIM_TASKS.map((t) => (
+          <tr data-task-row={t.id}>
+            <th scope="row">{t.id}</th>
+            <td data-label="Waits for">{t.deps.length === 0 ? 'nothing' : t.deps.join(', ')}</td>
+            <td data-label="Takes">
+              <span class="dur">{secs(t.dur)}</span>
+              <input
+                class="js-only"
+                type="number"
+                min="1"
+                max={MAX_SECONDS}
+                step="1"
+                value={t.dur / 1000}
+                aria-label={`${t.id} takes, in seconds`}
+                hidden
+              />
+            </td>
+            <td class="js-only" data-label="No history" hidden>
+              <input type="checkbox" aria-label={`${t.id} has no history`} />
+            </td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+  <Fragment slot="caption">
+    The same {SIM_TASKS.length} tasks run twice on {DEFAULT_WORKERS} workers: first ordered by how many
+    tasks wait on each one, then by the longest chain of work still ahead of each one. One bar per task,
+    one row per worker, time in seconds along the bottom. Bars with a heavy outline are the critical
+    path. The dashed line is the lower bound; the solid line is where the run finishes. The second
+    table gives the finish time for one to {MAX_WORKERS} workers under every policy.
+  </Fragment>
+</Demo>
+
+<style>
+  .chart {
+    margin-bottom: 0.75rem;
+  }
+  .chart-title {
+    margin: 0 0 0.25rem;
+    font-size: var(--sl-text-sm);
+  }
+  .note {
+    color: var(--sl-color-gray-2);
+  }
+  /* Below about 34rem the labels would shrink past reading: the chart
+     keeps its width and scrolls sideways instead. */
+  .gantt {
+    overflow-x: auto;
+  }
+  .gantt :global(svg) {
+    display: block;
+    width: 100%;
+    min-width: 34rem;
+    height: auto;
+  }
+  .gantt:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  .gantt :global(.lane-label),
+  .gantt :global(.tick) {
+    font-size: 12px;
+    fill: var(--sl-color-gray-3);
+  }
+  .gantt :global(.tick) {
+    text-anchor: middle;
+  }
+  .gantt :global(.lane-rule),
+  .gantt :global(.tick-rule) {
+    stroke: var(--sl-color-gray-5);
+    stroke-width: 1;
+  }
+  .gantt :global(.bar rect) {
+    fill: var(--sl-color-gray-6);
+    stroke: var(--sl-color-gray-3);
+    stroke-width: 1;
+  }
+  .gantt :global(.bar.is-critical rect) {
+    fill: var(--sl-color-accent-low);
+    stroke: var(--sl-color-accent);
+    stroke-width: 2.5;
+  }
+  .gantt :global(.bar.is-unknown rect) {
+    stroke-dasharray: 4 3;
+  }
+  .gantt :global(.bar text) {
+    font-size: 11px;
+    text-anchor: middle;
+    fill: var(--sl-color-white);
+  }
+  .gantt :global(.bound) {
+    stroke: var(--sl-color-text-accent);
+    stroke-width: 2;
+    stroke-dasharray: 5 4;
+  }
+  .gantt :global(.done) {
+    stroke: var(--sl-color-white);
+    stroke-width: 2;
+  }
+  .bounds,
+  .status {
+    margin: 0.5rem 0 0;
+    font-size: var(--sl-text-sm);
+  }
+  .status {
+    min-height: 1.5em;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+    font-size: var(--sl-text-sm);
+  }
+  .controls[hidden] {
+    display: none;
+  }
+  .controls label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .controls select,
+  .controls button,
+  .tasks input[type='number'] {
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 0.35rem;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    font-size: var(--sl-text-sm);
+  }
+  .controls select option {
+    background: var(--sl-color-black);
+  }
+  .controls button {
+    border-radius: 999px;
+    padding-inline: 0.75rem;
+    cursor: pointer;
+  }
+  .tasks input[type='number'] {
+    width: 3.75rem;
+  }
+  .tasks :is(th, td) {
+    padding-block: 0.2rem;
+  }
+  .controls :is(select, button):focus-visible,
+  .tasks input:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  table {
+    margin-top: 1rem;
+    font-size: var(--sl-text-sm);
+  }
+  caption {
+    text-align: start;
+    font-weight: 600;
+    padding-bottom: 0.25rem;
+  }
+  tr.is-selected {
+    background: var(--sl-color-accent-low);
+  }
+  [hidden] {
+    display: none !important;
+  }
+  /* Six columns of times do not fit a phone: one block per row. */
+  @media (max-width: 40rem) {
+    .tasks :is(th, td) {
+      padding-inline: 0.3rem;
+    }
+    .finish caption {
+      display: block;
+    }
+    .finish,
+    .finish tbody,
+    .finish tr,
+    .finish th,
+    .finish td {
+      display: block;
+    }
+    .finish thead {
+      display: none;
+    }
+    .finish tr {
+      padding-block: 0.5rem;
+      border-bottom: 1px solid var(--sl-color-gray-5);
+    }
+    .finish th,
+    .finish td {
+      border: none;
+      padding-block: 0.1rem;
+    }
+    .finish th[scope='row']::before {
+      content: 'Workers: ';
+      font-weight: 400;
+    }
+    .finish td::before {
+      content: attr(data-label) ': ';
+      font-weight: 600;
+    }
+  }
+</style>

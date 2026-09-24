@@ -6,7 +6,14 @@ The generator is back (item 669): `schedule-policy.ts` simulates
 `computeReverseDepCount` by core's `mergePriorities`.
 `tests/schedule-policy.test.ts` pins it on hand-computed schedules and
 replays its fixtures through the real `runGraph` on a virtual clock (the
-same dispatch order and makespan, every policy).
+same dispatch order, start times and makespan, every policy).
+
+The site's Learn page on scheduling (item 685) runs this module in the
+browser: its Gantt charts are `simulate`'s `spans`. So everything the
+module reaches at run time stays platform-free. The ranking comes from
+`packages/vx/src/graph/priorities.ts` and
+`packages/vx-schedule-history/src/critical-path.ts`, which import only
+types, and the report below runs only under `import.meta.main`.
 
 ```
 bun packages/vx-bench/schedule-policy.ts --md [--seeds N]

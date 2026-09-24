@@ -24,7 +24,17 @@ export default defineConfig({
   // nowhere to resolve from in Bun's isolated install layout. Kept external
   // — and declared here so it resolves from this package — it loads from
   // its real path in the store, where its platform package is linked.
-  vite: { cacheDir: './.astro/vite', ssr: { external: ['satteri'] } },
+  //
+  // `import.meta.main` is Bun's "this file is the entry point", and no module
+  // the site bundles ever is. The scheduler simulator imports
+  // packages/vx-bench/schedule-policy.ts, whose report runs only under it:
+  // defined false, the report and its `process` calls are dropped from the
+  // browser bundle instead of shipped as dead code.
+  vite: {
+    cacheDir: './.astro/vite',
+    ssr: { external: ['satteri'] },
+    define: { 'import.meta.main': 'false' },
+  },
   site,
   base,
   trailingSlash: 'always',

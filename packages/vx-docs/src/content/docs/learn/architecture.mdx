@@ -1,0 +1,219 @@
+---
+title: 'Architecture: a pipeline with seams'
+description: The stages from config to telemetry, the local floor under every plugin, and why core names no plugin.
+---
+
+import PipelineExplorer from '../../../components/demos/PipelineExplorer.astro'
+import PipelineFlow from '../../../components/demos/PipelineFlow.astro'
+
+The earlier pages were about what a task runner does. This one is about how
+vx is built, and why that decides what you can build on top of it. It
+explains the idea in general terms first, then the stages vx has, then what
+the design buys and what it costs.
+
+After reading it you should know which stage a plugin you want to write
+fills. That is the first step to writing one, which
+[Extending vx](../extending/) walks through.
+
+## The same steps, every run
+
+Every task runner does the same steps on every run. It reads the
+configuration, finds the tasks, builds the task graph, derives a cache key
+per task, picks an order, runs the tasks, stores their results, and reports
+what happened.
+
+A runner can be written as one program that makes every choice itself:
+tasks run on this machine, results go to one cache directory, the report
+goes to the terminal. That is simple, and it is fast to write. The cost
+comes later. A team that wants its cache on a shared server, or its tasks
+on a bigger machine, or its runs in a tracing system, has to wait for the
+tool to add a flag for it, or fork the tool.
+
+A **pipeline** names those steps and fixes their order. A **seam** is a
+point in a step where code from outside the tool may decide
+([the glossary's entry](../glossary/#seam-and-plugin)). A **plugin** is
+that outside code: an object that fills one or more seams. The core keeps
+the steps, their order and their rules. Plugins decide at the seams.
+
+There are three reasons to build a task runner this way:
+
+- **Teams want different things.** One team wants a remote cache on
+  Bazel's protocol, another on the protocol its old tool used, and a third
+  wants none. With a seam, each of these is a plugin, and the core carries
+  none of them.
+- **A special case costs every user; a seam costs only its users.** A
+  branch in the core runs, or at least is checked, on every run. A stage
+  no plugin fills is skipped.
+- **A small core is easier to keep fast and correct.** The cache key and
+  the scheduler are the parts where a bug replays wrong results or wastes
+  minutes. Keeping integrations out of that code keeps it small.
+
+## The stages
+
+These are the stages in the order core's own list gives them: the order a
+task meets them, from the config that declares it to the record that
+reports it. `setup` runs once per run before any task starts, and
+`teardown` once when the run ends. `commands` sits beside the run: vx asks
+it only when you type a verb it does not know.
+
+<PipelineFlow />
+
+The explorer below takes the stages one at a time. For each one it shows
+the hook a plugin writes, as core's own source declares it, the
+first-party plugins that fill it, and a short example plugin. The table
+under it says what core does at each stage when no plugin fills it. The
+source of these hooks is `VxPlugin` in `src/orchestrator/plugin.ts`, and
+the list of them is `PLUGIN_HOOKS` in `src/config.ts`.
+
+<PipelineExplorer />
+
+A few rules hold at every stage:
+
+- **Declaration order is the order.** With `plugins: [a, b]` in
+  `vx.workspace.ts`, `a`'s `project` hook runs before `b`'s, and `a`'s
+  executor is asked before `b`'s. There are no priorities to set.
+- **What a stage changes reaches the cache key.** The key is computed from
+  the task config after the `project` stage ran, so a task a plugin added
+  or edited is keyed like one you wrote. `key` material is folded in as
+  one more part, and `vx why` names it.
+- **Core checks what a plugin made.** It validates a project's config
+  again after each `project` hook, and refuses a graph with a cycle or an
+  edge to a missing task, naming the plugin.
+- **Observing cannot change the run.** A telemetry sink receives records
+  and holds no handle to the run. A sink that throws or hangs is cut off,
+  and the run goes on.
+
+## The local floor
+
+Running a task on this machine and caching its result on this machine are
+not plugins. They are the core's **floor**. The local executor is always
+the last entry in the list of executors, and the local store is always the
+last layer of the cache.
+
+That has three consequences:
+
+- A workspace with no `vx.workspace.ts`, and so no plugins, runs its tasks
+  and caches them.
+- A plugin can decline. An executor that does not accept a task, or a
+  cache plugin that returns nothing, hands the task back to this machine.
+  `reapi()` without an endpoint declines this way, so it is safe to leave
+  declared on a laptop.
+- A remote cache that fails does not fail the run. Its errors become
+  misses, and the local store still works.
+
+The [local-floor post](../../blog/the-local-floor/) tells how vx came to
+this shape.
+
+## Core names no plugin
+
+vx applies no plugin you did not declare. There is no built-in remote
+cache that switches on with an environment variable, and no telemetry that
+turns on by itself. If a capability needs a plugin, such as a remote cache
+or a wire protocol, it is declared in `vx.workspace.ts` or it does not
+exist.
+
+This is the "no defaults" principle. It buys three things. Everything that
+can change a run is listed in one file. A plain `vx run` opens no socket.
+And a plugin you did not declare cannot change your cache keys.
+
+The rule that keeps the core small is **seam over special case**: when the
+core grows a branch for one consumer, the seam is too narrow, and the fix
+is to widen the seam. Turborepo's remote-cache protocol is not in core; it
+is `turboCache()`, a `cache` plugin. Keying each project on its own part of
+the lockfile is not a pnpm branch in core; it is the `fingerprint` stage,
+which `@vzn/vx-lockfile` fills for four package managers. The MCP server
+for AI agents is not a core verb; it is `vx mcp`, a `commands` plugin.
+
+## What this buys
+
+Each of these is a plugin, and none of them required changing the core:
+
+- **Remote execution.** `reapi({ execute: true })` from `@vzn/vx-reapi`
+  runs tasks on any server that speaks Bazel's Remote Execution API, through
+  the `executor` and `cache` stages
+  ([remote execution](../../guides/remote-execution/)).
+- **Remote caches.** `reapi()` stores results in a Bazel remote cache.
+  `turboCache()` and `nxCache()` from `@vzn/vx-migrate` speak Turborepo's
+  and Nx's own cache protocols, so a team keeps the server it already runs
+  ([remote caching](../../guides/remote-caching/)).
+- **Telemetry.** `otel()` sends each run to an OpenTelemetry collector,
+  and `github()` writes a GitHub Actions job summary.
+- **New CLI verbs.** `mcp()` adds `vx mcp`, and `scheduleHistoryPlugin()`
+  adds `vx history`.
+- **Running another tool's repo.** `turbo()` and `nx()` fill the `project`
+  stage, so a Turborepo or Nx repository runs under vx before you write a
+  single `vx.config.ts`.
+
+Core does not import any of these packages, and depends on none of them.
+`tests/package-boundaries.unsafe.test.ts` fails if it starts to. A plugin
+you write uses the same seams and has the same power as these.
+
+## What it costs
+
+- **An explicit config.** Nothing arrives by default. A remote cache is a
+  plugin you install and a line you add to `vx.workspace.ts`, not a login
+  command.
+- **Plugins you must choose.** You pick each plugin and put them in order,
+  and the order matters. That is a decision other tools make for you.
+- **An API to keep up with.** A plugin depends on the hooks' signatures.
+  vx is before 1.0, so a release may still change them; each change is
+  listed in the release notes.
+- **Checks at every seam.** Core must validate what each plugin hands back
+  and bound how long a sink may take. That is code in the core, and it has
+  to be tested like the rest.
+
+If you want a hosted remote cache with the least setup, and you are happy
+to use one vendor's service for it, Turborepo with Vercel's Remote Cache or
+Nx with Nx Cloud is less work than choosing a plugin and a server.
+
+## How the others do it
+
+- **Turborepo** documents no plugin API for its task runner; the parts
+  you can replace are the remote cache, which any HTTP server implementing
+  its
+  [Remote Cache API](https://turborepo.com/docs/core-concepts/remote-caching#remote-cache-api)
+  can serve, and, as an experiment, where it sends run summaries over
+  [OpenTelemetry](https://turborepo.com/docs/reference/configuration#experimental-observability).
+- **Nx** plugins add projects and tasks to the graph by reading your files
+  ([`createNodes`](https://nx.dev/docs/kb/add-language-support)), can run
+  code before and after the tasks since Nx 20.4
+  ([task running lifecycle](https://nx.dev/docs/kb/task-running-lifecycle)),
+  and a remote cache is any server that implements Nx's
+  [OpenAPI specification](https://nx.dev/docs/kb/self-hosted-caching).
+- **Bazel** is extended in its build language, with rules and macros
+  written in Starlark
+  ([extension overview](https://bazel.build/extending/concepts)), and it
+  sends remote execution and caching over an
+  [open gRPC protocol](https://bazel.build/remote/rbe) and run data over
+  the [Build Event Protocol](https://bazel.build/remote/bep).
+
+The internals pages go further: [the plugin capability
+seam](../../architecture/#the-plugin-capability-seam), [the execution
+flows](../../flows/), and the [pipeline design
+note](../../design/pipeline-2026-09/).
+
+## Checkpoint
+
+Your team wants three things. The `e2e` tasks should run on a machine with
+a GPU. A chat message should go out when a run on `main` fails. And on a
+laptop, at most one `e2e` suite should run at a time. Which stage does each
+one fill? And what happens to an `e2e` task when the GPU machine cannot be
+reached?
+
+<details>
+<summary>Answer</summary>
+
+The GPU machine is an `executor`: its `accepts` takes the `e2e` tasks. The
+chat message is `telemetry`: a sink reads the run summary, and sends the
+message in `flush`, which the run awaits but which cannot fail it. The
+laptop limit is `admit`: it holds an `e2e` task back while another one runs
+here.
+
+When the GPU machine cannot be reached, it depends on the plugin. If its
+executor declines, by returning nothing or by not accepting the task, the
+task falls to the local floor and runs on this machine. If the executor
+throws while it is being set up, the run stops with an error that names the
+plugin, because an executor decides where work runs and a silent fallback
+would hide that.
+
+</details>

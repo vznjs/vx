@@ -1,0 +1,154 @@
+---
+// The pipeline explorer. Without JavaScript it is the strip (each stage a
+// link to its section), one section per stage with the hook's declaration,
+// its first-party plugins and an example plugin, and a table of what core
+// does and what a plugin decides at each stage. `pipeline-explorer.ts`
+// turns the strip's links into toggle buttons and shows one section at a
+// time. The `a[data-hook]`, `section[data-hook]`, `tr[data-hook]` and
+// `.status` hooks below are the element's contract with this markup.
+//
+// The declarations are read from core's source at build time and the
+// examples from `src/examples/stages/`, so neither is a copy.
+import { Code } from '@astrojs/starlight/components'
+import pluginSource from '../../../../vx/src/orchestrator/plugin.ts?raw'
+import Demo from '../Demo.astro'
+import PipelineStrip from './PipelineStrip.astro'
+import { STAGES, filledBy, hookSignatures, stageExample } from './model/pipeline.js'
+
+const examples = import.meta.glob<string>('../../examples/stages/*.ts', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+})
+const signatures = hookSignatures(pluginSource)
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/')
+const stages = STAGES.map((s, i) => {
+  const signature = signatures.get(s.hook)
+  if (signature === undefined) throw new Error(`VxPlugin in plugin.ts declares no ${s.hook}`)
+  const file = stageExample(s.hook)
+  const example = examples[`../../examples/${file}`]
+  if (example === undefined) throw new Error(`no src/examples/${file}`)
+  return { ...s, n: i + 1, signature, file, example }
+})
+---
+
+<Demo name="pipeline-explorer">
+  <PipelineStrip
+    links
+    label="The pipeline's stages. Each one leads to its hook, its first-party plugins and an example."
+  />
+  <p class="status" aria-live="polite" hidden></p>
+  {
+    stages.map((s) => (
+      <section
+        class="stage"
+        id={`vx-stage-${s.hook}`}
+        data-hook={s.hook}
+        aria-labelledby={`vx-stage-${s.hook}-title`}
+      >
+        <h3 id={`vx-stage-${s.hook}-title`}>
+          Stage {s.n} of {stages.length}: <code>{s.hook}</code>
+        </h3>
+        <p>The hook, as <code>VxPlugin</code> in core declares it:</p>
+        <Code code={s.signature} lang="ts" />
+        <p class="first-party">
+          First-party:{' '}
+          {s.firstParty.length === 0
+            ? 'none yet. The stage is open to your own plugin.'
+            : s.firstParty.map((p, i) => (
+                <>
+                  {i > 0 && (i === s.firstParty.length - 1 ? ' and ' : ', ')}
+                  <a href={`${base}${p.href}`}>
+                    <code>{p.call}</code> from <code>{p.pkg}</code>
+                  </a>
+                </>
+              ))}
+        </p>
+        <Code code={s.example} lang="ts" title={`packages/vx-docs/src/examples/${s.file}`} />
+      </section>
+    ))
+  }
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Stage</th>
+        <th scope="col">What core does</th>
+        <th scope="col">What a plugin decides</th>
+        <th scope="col">First-party plugins</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        stages.map((s) => (
+          <tr data-hook={s.hook}>
+            <th scope="row">
+              <code>{s.hook}</code>
+            </th>
+            <td data-label="Core">{s.core}</td>
+            <td data-label="A plugin">{s.plugin}</td>
+            <td data-label="First-party">{filledBy(s)}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+  <Fragment slot="caption">
+    The {stages.length} hooks a plugin can fill, in the order of core's own list. Each section shows the
+    hook's declaration from core's source, the first-party plugins that fill it, and a short example
+    plugin. The table says what core does at each stage when no plugin fills it, and what a plugin
+    can decide there.
+  </Fragment>
+</Demo>
+
+<style>
+  .stage {
+    margin-top: 1.25rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+  .stage[hidden] {
+    display: none;
+  }
+  h3 {
+    margin: 0 0 0.5rem;
+    font-size: var(--sl-text-h4);
+  }
+  .status {
+    min-height: 1.5em;
+    margin: 0.5rem 0 0;
+    font-size: var(--sl-text-sm);
+  }
+  table {
+    margin-top: 1.5rem;
+    font-size: var(--sl-text-sm);
+  }
+  tr.is-selected {
+    background: var(--sl-color-accent-low);
+  }
+  /* Four columns of sentences do not fit a phone: one block per stage. */
+  @media (max-width: 40rem) {
+    table,
+    tbody,
+    tr,
+    th,
+    td {
+      display: block;
+    }
+    thead {
+      display: none;
+    }
+    tr {
+      padding-block: 0.5rem;
+      border-bottom: 1px solid var(--sl-color-gray-5);
+    }
+    th,
+    td {
+      border: none;
+      padding-block: 0.1rem;
+    }
+    td::before {
+      content: attr(data-label) ': ';
+      font-weight: 600;
+    }
+  }
+</style>

@@ -69,8 +69,17 @@ export interface ScheduleOptions {
   admit?: (id: string, running: ReadonlySet<string>) => boolean
 }
 
-export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number>
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
+```
+
+The ranking lives in `src/graph/priorities.ts`, a file with no runtime
+import at all. The Learn page's scheduler simulator bundles it for the
+browser (through `packages/vx-bench/schedule-policy.ts`), and
+`scheduler.ts` imports `util/`, whose modules read `Bun` and `process`
+when they load:
+
+```ts
+export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number>
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,

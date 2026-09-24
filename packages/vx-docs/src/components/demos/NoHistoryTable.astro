@@ -1,0 +1,49 @@
+---
+// A static table beside the scheduler simulator: the default graph on the
+// default worker count, with one task new to the history. The numbers come
+// from the same model and simulator the widget runs.
+import {
+  DEFAULT_WORKERS,
+  NO_HISTORY_CASES,
+  POLICIES,
+  POLICY_NAME,
+  SIM_TASKS,
+  schedule,
+  secs,
+} from './model/scheduler-sim.js'
+
+const rows = NO_HISTORY_CASES.map((c) => ({
+  label: c.label,
+  makespans: POLICIES.map((p) => schedule(SIM_TASKS, new Set(c.unknown), p, DEFAULT_WORKERS).makespan),
+}))
+---
+
+<table class="no-history">
+  <caption>When the run finishes on {DEFAULT_WORKERS} workers</caption>
+  <thead>
+    <tr>
+      <th scope="col">History</th>
+      {POLICIES.map((p) => <th scope="col">{POLICY_NAME[p]}</th>)}
+    </tr>
+  </thead>
+  <tbody>
+    {
+      rows.map((r) => (
+        <tr>
+          <th scope="row">{r.label}</th>
+          {r.makespans.map((ms) => (
+            <td>{secs(ms)}</td>
+          ))}
+        </tr>
+      ))
+    }
+  </tbody>
+</table>
+
+<style>
+  caption {
+    text-align: start;
+    font-weight: 600;
+    padding-bottom: 0.25rem;
+  }
+</style>

@@ -119,11 +119,12 @@ group.
 
 ## Graph + scheduler
 
-| File                                         | Topic                                                                 |
-| -------------------------------------------- | --------------------------------------------------------------------- |
-| [`task-graph.md`](./task-graph.md)           | `src/graph/task-graph.ts` — TaskNode DAG builder + cycle detection.   |
-| [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.             |
-| [`dependency-spec.md`](./dependency-spec.md) | `src/graph/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser. |
+| File                                         | Topic                                                                   |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| [`task-graph.md`](./task-graph.md)           | `src/graph/task-graph.ts` — TaskNode DAG builder + cycle detection.     |
+| [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.               |
+|                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md). |
+| [`dependency-spec.md`](./dependency-spec.md) | `src/graph/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.   |
 
 ## Cache cluster
 

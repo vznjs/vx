@@ -16,6 +16,7 @@ import {
   SHAPES,
   simulate,
   type Policy,
+  type SimSpan,
   type SimTask,
 } from '../schedule-policy.js'
 
@@ -66,10 +67,11 @@ async function realRun(
   tasks: readonly SimTask[],
   plugin: ReadonlyMap<string, number> | undefined,
   workers: number,
-): Promise<{ makespan: number; order: string[] }> {
+): Promise<{ makespan: number; order: string[]; spans: SimSpan[] }> {
   const dur = new Map(tasks.map((t) => [t.id, t.dur]))
   const running: Array<{ end: number; started: number; settle: () => void }> = []
   const order: string[] = []
+  const spans: SimSpan[] = []
   let now = 0
   const done = runGraph({
     nodes: nodeMap(tasks),
@@ -84,6 +86,7 @@ async function realRun(
           settle: () => resolve({ node, status: 'success', exitCode: 0, durationMs: ms }),
         })
         order.push(node.id)
+        spans.push({ id: node.id, start: now, end: now + ms })
       }),
   })
   const drain = () => new Promise<void>((r) => setImmediate(r))
@@ -96,11 +99,13 @@ async function realRun(
     await drain()
   }
   await done
-  return { makespan: now, order }
+  return { makespan: now, order, spans }
 }
 
 describe('the simulator against runGraph', () => {
-  it('reproduces the real dispatch order and makespan', async () => {
+  // The spans are what the Learn page's Gantt chart draws (item 685), so
+  // they are held to the real scheduler's start times too.
+  it('reproduces the real dispatch order, start times and makespan', async () => {
     const cases: Array<[string, SimTask[], ReadonlySet<string>, number]> = [
       ['nx/1w', nx, nxUnknown, 1],
       ['nx/2w', nx, nxUnknown, 2],
@@ -126,6 +131,7 @@ describe('the simulator against runGraph', () => {
           case: `${name} ${policy}`,
           makespan: sim.makespan,
           order: [...sim.order],
+          spans: [...sim.spans],
         })
       }
     }

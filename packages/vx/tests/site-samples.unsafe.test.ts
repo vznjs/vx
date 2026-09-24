@@ -469,9 +469,13 @@ describe('the bitsets post states what the scheduler source measured', () => {
     // The post carried "roughly 50 ms" where the source (and
     // optimizations.md 9b) say single-digit (item 341, 2026-09-19) —
     // the same fault items 334, 336 and 340 fixed on four other pages.
-    const note = src.slice(
-      src.indexOf('export function computeReverseDepCount'),
-      src.indexOf('const ids = '),
+    const ranking = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'graph', 'priorities.ts'),
+      'utf8',
+    )
+    const note = ranking.slice(
+      ranking.indexOf('export function computeReverseDepCount'),
+      ranking.indexOf('const ids = '),
     )
     for (const [inSource, inPage] of [
       ['8.5s', '8.5 seconds'],

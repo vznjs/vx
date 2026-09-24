@@ -19,9 +19,10 @@ const ROOT = path.resolve(SITE, '../..')
 const OXLINT = path.join(ROOT, 'node_modules/.bin/oxlint')
 
 /** The plugin packages a page may import for illustration. The pin is about
- *  core's config types, and the site depends on none of these, so under the
- *  sandbox they do not resolve: ambient-typed as `any`, like the Sentry SDK
- *  in the plugins guide's pin. */
+ *  core's config types, so they are ambient-typed as `any`, like the Sentry
+ *  SDK in the plugins guide's pin. (The site links most of them for
+ *  learn-architecture.test.ts, which holds their hooks; this pin does not
+ *  depend on that.) */
 const AMBIENT = [
   '@vzn/vx-reapi',
   '@vzn/vx-otel',

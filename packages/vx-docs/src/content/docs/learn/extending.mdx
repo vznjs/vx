@@ -1,0 +1,160 @@
+---
+title: Extending vx
+description: Five worked plugins, each a real file the site type-checks against @vzn/vx - a telemetry sink, a remote cache layer, a CLI verb, a schedule policy, and a Turborepo repo adopted in two lines.
+---
+
+import PluginExample from '../../../components/demos/PluginExample.astro'
+
+[The architecture page](../architecture/) named the stages a plugin can
+fill. This page writes five plugins, one stage each. Every example is a
+real file in this repository, under `packages/vx-docs/src/examples/`. The
+site's tests type-check each one against `@vzn/vx` and check that it fills
+the stage its strip lights up. What you see below is read from those files,
+so it cannot drift from the types.
+
+After reading it you should be able to write a plugin.
+
+## The shape of every plugin
+
+A plugin is a function that returns `definePlugin(import.meta, hooks)`.
+`hooks` is an object with the hooks you fill. `definePlugin` names the plugin after the package its file belongs to, so a
+plugin never names itself. You declare it in `vx.workspace.ts` at the root
+of the workspace:
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { summaryLine } from './plugins/summary-line.ts'
+
+export default defineWorkspace({ plugins: [summaryLine()] })
+```
+
+Each strip below shows the pipeline, with the stage the example fills lit.
+A stage no declared plugin fills costs nothing, and a plugin that declines
+leaves the task to the local floor.
+
+## A telemetry sink
+
+The smallest useful plugin prints one line at the end of every run.
+
+<PluginExample file="summary-line.ts" stages={['telemetry']} />
+
+The `telemetry` hook returns a sink. `wants: []` asks for no per-task
+records; the summary arrives once, at the end of the run, either way. A
+sink's methods must return quickly. Network work goes in `flush`, which the
+run awaits for a bounded time. A sink holds no handle to the run, so it
+cannot change what runs, and a sink that throws is cut off without failing
+the run.
+
+The real ones are `otel()` from `@vzn/vx-otel`, which sends traces and
+metrics to an OpenTelemetry collector, and `github()` from
+`@vzn/vx-github`, which writes a GitHub Actions job summary.
+[Writing a vx plugin](../../guides/plugins/#the-telemetry-sink) has the
+full record shapes.
+
+## A remote cache layer
+
+A remote cache needs a wire: how to ask a server whether it has a result,
+fetch it and store it. This one is a toy HTTP store with a `HEAD`, `GET`
+and `PUT` per key.
+
+<PluginExample file="http-cache.ts" stages={['cache']} />
+
+The plugin writes only the wire. `LayeredCache` from `@vzn/vx` does the
+rest: it reads the local store first and the remote second, copies a
+remote hit into the local store, uploads new results in the background,
+and turns every remote error into a miss. The local store stays the last
+layer, and without `CACHE_URL` the plugin declines, which leaves the local
+store alone. A store may also answer `hasMany`, many keys in one round
+trip; this one does not.
+
+The real wires are `reapi()` from `@vzn/vx-reapi`, for Bazel's remote
+cache protocol, and `turboCache()` and `nxCache()` from `@vzn/vx-migrate`,
+for the protocols Turborepo's and Nx's own remote caches speak. Read
+[artifact integrity](../../guides/remote-caching/#artifact-integrity)
+before you point a layer at a shared server. The same `@vzn/vx-reapi` also
+fills `executor` when you pass `execute: true`, and runs tasks on a remote
+worker ([remote execution](../../guides/remote-execution/)).
+
+## A CLI verb
+
+`commands` adds verbs to `vx`. This one prints the size of the cache
+directory.
+
+<PluginExample file="cache-size.ts" stages={['commands']} />
+
+Core's own verbs always win, so no plugin can change what `vx run` does.
+vx asks a plugin about a verb only when core does not know it, and only
+inside a workspace that declares the plugin. `vx help` lists the verb. The
+number `run` returns is the exit code, and a thrown `UserError` prints its
+message without a stack trace.
+
+The real ones are `vx mcp` from `mcp()` in `@vzn/vx-mcp`, a server for AI
+agents, and `vx history` from `scheduleHistoryPlugin()` in
+`@vzn/vx-schedule-history`.
+
+## A schedule plugin
+
+When more tasks are ready than there are workers, core starts first the
+one that the most other tasks wait on. A task that nothing waits on starts
+last, even when it is the longest task in the run. This plugin gives one
+task a weight, so it starts as soon as it is ready.
+
+<PluginExample file="start-first.ts" stages={['schedule']} />
+
+You declare it with the task's id: `startFirst('@acme/docs#build')`. The
+hook runs once per run, after the graph is final. Any weight of 1 or more
+sorts a task above every task without a weight, and core's own order still
+breaks ties.
+
+This repository had exactly this problem: its docs build is a 30-second
+task that only one other task waits on, so core's order started it last. The real policy,
+`scheduleHistoryPlugin()` from `@vzn/vx-schedule-history`, learns each
+task's duration from past runs and weights tasks by the longest chain of
+work still ahead of them. Its `assume` option names durations for a first
+run with no history, and the repository's own `vx.workspace.ts` uses it
+for the docs build.
+
+## Adopting a Turborepo repo
+
+A plugin can also give tasks to packages. `turbo()` fills the `project`
+stage from your `turbo.json` and each package's scripts, so a Turborepo
+repository runs under vx without a `vx.config.ts`. It is two lines of
+`vx.workspace.ts`.
+
+<PluginExample file="turbo-workspace.ts" stages={['project']} />
+
+It uses the same mapping that `bunx @vzn/vx-migrate` writes config files
+from. A package that has its own `vx.config.ts` keeps it, because the
+plugin fills and never overwrites, so you can move one package at a time.
+What the mapping cannot express is a warning on every run. `nx()` from the
+same package does the same for an Nx workspace.
+[Migrate from Turborepo](../../migrate/from-turborepo/) has the details.
+
+## Where to go next
+
+- [Writing a vx plugin](../../guides/plugins/) is the full contract, with
+  more examples, testing a plugin, publishing it, and what core refuses.
+- [Core is provider-neutral](../../guides/extensibility/) says why every
+  integration is a plugin.
+- The [pipeline explorer](../architecture/#the-stages) has a short example
+  for every stage, including the ones this page skips.
+
+## Checkpoint
+
+Your CI should upload the log of every failed task to a storage bucket.
+Which stage do you fill? Why can a slow or broken upload not fail the run?
+And where in the plugin does the upload go?
+
+<details>
+<summary>Answer</summary>
+
+`telemetry`. A sink has no handle to the run, so it cannot change it, and
+vx cuts off a sink that throws or takes too long instead of failing the run.
+
+Logs are not sent by default, so the sink asks for them with
+`wants: ['task.log', 'task.end']`. It keeps the lines it receives in
+`onRecord`, which must return quickly, and uploads the failed tasks' logs
+in `flush`, which the run awaits for a bounded time.
+
+</details>
