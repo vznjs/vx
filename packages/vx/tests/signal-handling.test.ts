@@ -299,46 +299,49 @@ describe('signal handling during vx run (e2e)', () => {
   // control that passes either way.
   const TRAPS =
     "trap 'echo SIGINT > got.txt; exit 0' INT; trap 'echo SIGTERM > got.txt; exit 0' TERM"
-  for (const [signal, code] of [
-    ['SIGINT', 130],
-    ['SIGTERM', 143],
-  ] as const) {
-    for (const persistent of [false, true]) {
-      const kind = persistent ? 'a ready persistent task' : 'a one-shot task'
-      it(
-        `${signal} to vx reaches ${kind} as ${signal}`,
-        async () => {
-          const dir = await addProject(
-            fixture.root,
-            'app',
-            `
-              export default {
-                tasks: {
-                  t: {
-                    exec: {
-                      command: "${TRAPS}; echo $$ > pid.txt; echo READY; while :; do sleep 0.05; done",
-                      ${persistent ? "persistent: { readyWhen: 'READY' }," : ''}
-                    },
-                  },
+  // One row per signal and task kind, each title a literal: the
+  // upstream ledger (docs/upstream-ledger.md) cites them by their text.
+  const reaches = (signal: 'SIGINT' | 'SIGTERM', code: number, persistent: boolean) => async () => {
+    const dir = await addProject(
+      fixture.root,
+      'app',
+      `
+          export default {
+            tasks: {
+              t: {
+                exec: {
+                  command: "${TRAPS}; echo $$ > pid.txt; echo READY; while :; do sleep 0.05; done",
+                  ${persistent ? "persistent: { readyWhen: 'READY' }," : ''}
                 },
-              }
-            `,
-          )
-          const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
-            cwd: fixture.root,
-            stdout: 'pipe',
-            stderr: 'pipe',
-          })
-          const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
-          proc.kill(signal)
-          expect(await proc.exited).toBe(code)
-          expect((await Bun.file(path.join(dir, 'got.txt')).text()).trim()).toBe(signal)
-          expect(await waitForDead(pid, 3_000)).toBe(true)
-        },
-        TIMEOUT,
-      )
-    }
+              },
+            },
+          }
+        `,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+      cwd: fixture.root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    proc.kill(signal)
+    expect(await proc.exited).toBe(code)
+    expect((await Bun.file(path.join(dir, 'got.txt')).text()).trim()).toBe(signal)
+    expect(await waitForDead(pid, 3_000)).toBe(true)
   }
+
+  it('SIGINT to vx reaches a one-shot task as SIGINT', reaches('SIGINT', 130, false), TIMEOUT)
+  it(
+    'SIGINT to vx reaches a ready persistent task as SIGINT',
+    reaches('SIGINT', 130, true),
+    TIMEOUT,
+  )
+  it('SIGTERM to vx reaches a one-shot task as SIGTERM', reaches('SIGTERM', 143, false), TIMEOUT)
+  it(
+    'SIGTERM to vx reaches a ready persistent task as SIGTERM',
+    reaches('SIGTERM', 143, true),
+    TIMEOUT,
+  )
 
   it.skipIf(process.platform !== 'linux')(
     'a task runs in its own session, so a Ctrl-C from the terminal reaches vx alone',
