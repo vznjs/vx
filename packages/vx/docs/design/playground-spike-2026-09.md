@@ -21,8 +21,8 @@ identical to `vx run --dry=json`.
 Four things stand between the spike and W9:
 
 - a small core refactor that takes the local store out of the bundle (P1);
-- an exact port of Bun's glob matcher (the spike's matcher agrees on every
-  realistic glob, but not yet on every adversarial one);
+- an exact port of Bun's glob matcher (the spike's matcher agreed on every
+  realistic glob, but not on every adversarial one; done as item 692);
 - a way to evaluate a config the reader types;
 - a decision about one finding in core: Bun's `xxHash3` ignores the high
   32 bits of its seed, so the key chain carries 32 bits between steps.
@@ -42,6 +42,7 @@ aliasing plugin.
 | As spiked (borrows `Cache.prototype.key`)      | 126,846 | 43,085 |
 | Borrow removed (measured), the size P1 reaches | 76,519  | 27,408 |
 | After P1 (item 691), `foldKey` imported        | 78,465  | 27,972 |
+| After the exact glob port (item 692)           | 81,370  | 28,666 |
 
 About 50 KB of the spiked bundle is the local store. That is
 `src/cache/cache.ts` (26 KB) with the archive, tar, zstd, output-index,
@@ -81,7 +82,7 @@ imports and no free `Bun` or `process` reference: 42 `__vxBun` and 17
 | Need                    | Core's call                                                    | Shim                                                                                             |
 | ----------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | (a) xxh3                | `Bun.hash.xxHash3(input, seed)`                                | `shim/xxh3.ts`: a pure-TS port over BigInt, with Bun's 32-bit seed (3.5 KB)                      |
-| (b) glob matching       | `new Bun.Glob(p).match(path)` through `taskGlob`               | `shim/glob.ts`: the pattern compiled to one RegExp, by Bun's measured rules (2.6 KB)             |
+| (b) glob matching       | `new Bun.Glob(p).match(path)` through `taskGlob`               | `shim/glob.ts`: a port of Bun's `src/glob/matcher.rs` (5.5 KB; the spike's RegExp rules: 2.6 KB) |
 | (c) file reads, listing | `Bun.file(p).exists/text/bytes`, `node:fs`, `node:fs/promises` | `shim/vfs.ts` plus two fs modules over it                                                        |
 | (d) module-load clock   | `Bun.nanoseconds()` in `src/util/timing.ts`, at load           | `performance.now()`                                                                              |
 | (d) environment         | `process.env` (`cache.inputs.env`, and `VX_TIMING` at load)    | a map the reader edits                                                                           |
@@ -193,12 +194,17 @@ own `taskGlob`, so the escaping under test is core's. "Git paths" are
 what the planner matches: non-empty segments with no leading or trailing
 `/`.
 
-| Domain                            | Pairs   | Shim differs | picomatch 4.0.3 differs |
-| --------------------------------- | ------- | ------------ | ----------------------- |
-| realistic globs × realistic paths | 315     | 0            | 0                       |
-| task globs × git paths            | 500,000 | 219          | 1,503                   |
-| task globs × any string           | 500,000 | 154          | 6,099                   |
-| Bun's whole alphabet × git paths  | 500,000 | 1,469        | 3,219                   |
+Differences from Bun, per domain (realistic: 315 pairs; each fuzz
+domain: 500,000):
+
+| Matcher                    | Realistic | Task × git | Task × any | Bun alphabet × git | Bun alphabet × any |
+| -------------------------- | --------- | ---------- | ---------- | ------------------ | ------------------ |
+| rule-based shim (item 676) | 0         | 219        | 154        | 1,469              | 3,090              |
+| exact port (item 692)      | 0         | 0          | 0          | 0                  | 0                  |
+| picomatch 4.0.3            | 0         | 1,503      | 6,099      | 3,219              | 8,897              |
+
+At five times the size (`GLOB_FUZZ_N=100000`, 2,500,000 pairs per
+domain) the port still differs nowhere.
 
 No library matches Bun's semantics. picomatch was run with
 `{ dot: true, noextglob: true }`; micromatch shares its engine; minimatch
@@ -211,15 +217,22 @@ path in Bun and not in glob-match. A TS port of glob-match 0.2.1 scored
 6,058 differences on task globs over any string, against the rule-based
 shim's 154.
 
-The shim's residual cases are all adversarial:
+The rule-based shim's residual cases were all adversarial:
 
 - several `**` runs abutting braces or stars (`**/**/**x`, `{a,}**/**\[`);
 - a `**` followed by `?`.
 
-The exact route is to port Bun's own matcher (its Zig source, MIT) to
-TS, then hold it at zero differences with this fuzz. Bun's source was
-not reachable from this session (no GitHub access), so the port is W9
-work.
+Item 692 replaced it with a line-for-line port of Bun's own matcher.
+In Bun 1.4.2 that is Rust, not Zig: `bun_glob::r#match` in
+`src/glob/matcher.rs` (tag `bun-v1.4.2`, commit `744846f8`), which
+`Glob::r#match` in `src/runtime/api/glob.rs` calls. Its MIT header
+credits Devon Govett, glob-match's author, so the shared quirks are
+inheritance. The port walks UTF-8 bytes as the Rust does, and keeps the
+depth-10 brace stack and the 10,000-branch budget, which the rule-based
+shim lacked. It is 5.5 KB of the bundle, against the rules' 2.6 KB.
+`tests/glob-port.test.ts` holds it at zero in all four domains at this
+seed and size, and pins hand rows for the shapes above. It needs no
+repository, so it runs in `@vzn/vx-bench#test` under the sandbox.
 
 ## Proposed core changes (none made)
 
@@ -279,8 +292,8 @@ work.
     the scenarios, the negative control and an exact expected set of
     platform calls;
   - `xxh3-equiv.ts` becomes a test;
-  - `glob-equiv.ts` becomes a test, at zero differences on task globs
-    over git paths once the matcher is ported.
+  - `glob-equiv.ts` becomes a test: done as item 692,
+    `tests/glob-port.test.ts`, at zero differences in every domain.
 
   The CLI half needs git, and a sandboxed shard has none, so these rows
   live in a task without `exec.sandbox`. Such a task is the third
@@ -339,9 +352,10 @@ W10 and W11 build on the finished playground.
 1. **The oracle is Bun's behaviour, not a spec.** The 32-bit seed and
    the glob quirks are Bun's, and a Bun upgrade can change either. The
    parity rows turn that into a red build instead of a wrong page.
-2. **Glob residuals.** Until the matcher is an exact port, a reader who
-   types an adversarial glob can get a plan the CLI would not make. The
-   page can refuse globs outside the fuzz-proven shapes until then.
+2. **Glob residuals.** Closed by item 692: the matcher is a port of
+   Bun's, at zero differences on the fuzz. A Bun release that changes its
+   matcher reopens this, and `tests/glob-port.test.ts` goes red when it
+   does.
 3. **Config evaluation** runs the reader's code in the page. Run it in a
    Worker. Its object must also serialise the way Bun's evaluation does.
 4. **Drift of the copied prepare path** (P2), until core exposes it.
@@ -390,6 +404,6 @@ bun playground-spike/glob-equiv.ts   # the glob fuzz (DUMP=n prints n difference
 bun playground-spike/glob-probe.ts '<pattern>' '<path>'   # one Bun.Glob answer
 ```
 
-Each script exits 1 when its claim fails. The exceptions are
-`glob-equiv.ts`, which fails only on the realistic table (the fuzz
-domains are a scoreboard), and the two probes, which only print.
+Each script exits 1 when its claim fails, `glob-equiv.ts` on any
+difference in any domain (`GLOB_FUZZ_N=n` sets its size). The two
+probes only print.

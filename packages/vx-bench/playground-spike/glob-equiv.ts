@@ -1,108 +1,22 @@
-// W9 spike (item 676): does a pure-TS matcher answer `Bun.Glob.match` exactly?
+// W9 (items 676, 692): does the pure-TS matcher answer `Bun.Glob.match` exactly?
 //
-//   bun packages/vx-bench/playground-spike/glob-equiv.ts        (DUMP=n prints n diffs)
+//   bun packages/vx-bench/playground-spike/glob-equiv.ts
+//     DUMP=n          prints n differences
+//     GLOB_FUZZ_N=n   patterns per domain (default 20000, × 25 paths each)
 //
-// Differential fuzz, the oracle being Bun itself. Patterns:
-//   task — vx's task-glob alphabet (`*`, `**`, `?`, braces, `\`, and LITERAL
-//          brackets since item 667), compiled by core's own `taskGlob` so the
-//          escaping under test is core's, not a copy;
-//   bun  — Bun's whole alphabet (classes, negation, dangling escapes and
-//          braces), the globs vx does not own.
-// Paths:
-//   git  — what the planner matches: a git-reported relative path, every
-//          segment non-empty, no leading or trailing `/`;
-//   any  — any string over the alphabet, empty segments included.
-// Each (pattern, path) pair scores the shim (shim/glob.ts) and picomatch, the
-// usual library answer. Exits 1 when the shim differs on a realistic glob;
-// the fuzz domains are a scoreboard (spike result: not yet zero — see
-// docs/design/playground-spike-2026-09.md for what zero needs).
+// Differential fuzz, the oracle being Bun itself, over the domains
+// `glob-fuzz.ts` describes. Each (pattern, path) pair scores the shim
+// (shim/glob.ts, a port of Bun's matcher) and picomatch, the usual library
+// answer. Exits 1 when the shim differs anywhere: since item 692 every
+// domain is at zero, and `tests/glob-port.test.ts` holds that at a smaller
+// size. Numbers: docs/design/playground-spike-2026-09.md § Glob.
 
 import picomatch from 'picomatch'
-import { taskGlob } from '../../vx/src/util/paths.js'
+import { compiledByTaskGlob, globCases, mulberry32 } from './glob-fuzz.js'
 import { Glob as ShimGlob } from './shim/glob.js'
 
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 const rand = mulberry32(667)
-const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!
-
-const TASK_TOKENS = [
-  'a',
-  'b',
-  '.',
-  '/',
-  '/',
-  '*',
-  '**',
-  '**/',
-  '/**',
-  '?',
-  '{a,b}',
-  '{a,}',
-  '{*,*/*}',
-  '[',
-  ']',
-  '[a]',
-  'x',
-  '\\*',
-  ',',
-  '-',
-  '!',
-]
-const BUN_TOKENS = [...TASK_TOKENS, '[!a]', '[^b]', '[a-c]', '{', '}', '\\', '[]]', '{a,{b,.}}']
-const SEGMENT_CHARS = ['a', 'b', 'x', '.', '[', ']', '*', '{', '}', ',', '!', 'é']
-
-function patternOf(tokens: readonly string[]): string {
-  const n = 1 + Math.floor(rand() * 6)
-  let p = ''
-  for (let i = 0; i < n; i++) p += pick(tokens)
-  return p
-}
-
-function segment(): string {
-  const n = 1 + Math.floor(rand() * 3)
-  let s = ''
-  for (let i = 0; i < n; i++) s += pick(SEGMENT_CHARS)
-  return s
-}
-
-function gitPath(): string {
-  const n = 1 + Math.floor(rand() * 3)
-  return Array.from({ length: n }, segment).join('/')
-}
-
-function anyPath(): string {
-  const n = Math.floor(rand() * 7)
-  let s = ''
-  for (let i = 0; i < n; i++) s += pick([...SEGMENT_CHARS, '/', '/'])
-  return s
-}
-
-// The string `taskGlob` hands to `new Bun.Glob`, captured by swapping the
-// constructor for one call: the shim must see exactly what Bun sees.
-function compiledByTaskGlob(pattern: string): string {
-  const real = Bun.Glob
-  let seen = ''
-  ;(Bun as { Glob: unknown }).Glob = class {
-    constructor(p: string) {
-      seen = p
-    }
-  }
-  try {
-    taskGlob(pattern)
-  } finally {
-    ;(Bun as { Glob: unknown }).Glob = real
-  }
-  return seen
-}
+const N = Number(process.env.GLOB_FUZZ_N ?? 20_000)
 
 interface Score {
   pairs: number
@@ -114,21 +28,16 @@ interface Score {
 function run(patterns: 'task' | 'bun', paths: 'git' | 'any', n: number, per: number): Score {
   const score: Score = { pairs: 0, bunMatches: 0, shimDiffers: 0, picomatchDiffers: 0 }
   let dumped = 0
-  for (let i = 0; i < n; i++) {
-    let raw = patternOf(patterns === 'task' ? TASK_TOKENS : BUN_TOKENS)
-    // vx strips one leading `!` (the negation) before a task glob is compiled.
-    if (patterns === 'task' && raw.startsWith('!')) raw = raw.slice(1)
-    const compiled = patterns === 'task' ? compiledByTaskGlob(raw) : raw
-    const bun = new Bun.Glob(compiled)
-    const shim = new ShimGlob(compiled)
+  for (const c of globCases(patterns, paths, n, per, rand)) {
+    const bun = new Bun.Glob(c.pattern)
+    const shim = new ShimGlob(c.pattern)
     let pm: ((s: string) => boolean) | null
     try {
-      pm = picomatch(compiled, { dot: true, noextglob: true, strictSlashes: true })
+      pm = picomatch(c.pattern, { dot: true, noextglob: true, strictSlashes: true })
     } catch {
       pm = null
     }
-    for (let k = 0; k < per; k++) {
-      const s = paths === 'git' ? gitPath() : anyPath()
+    for (const s of c.paths) {
       const want = bun.match(s)
       score.pairs++
       if (want) score.bunMatches++
@@ -136,7 +45,7 @@ function run(patterns: 'task' | 'bun', paths: 'git' | 'any', n: number, per: num
         score.shimDiffers++
         if (dumped++ < Number(process.env.DUMP ?? 0)) {
           console.error(
-            `${patterns}/${paths} ${JSON.stringify(compiled)} ${JSON.stringify(s)} bun=${want}`,
+            `${patterns}/${paths} ${JSON.stringify(c.pattern)} ${JSON.stringify(s)} bun=${want}`,
           )
         }
       }
@@ -207,10 +116,16 @@ const result = {
     shimDiffers: realShim,
     picomatchDiffers: realPicomatch,
   },
-  taskGit: run('task', 'git', 20_000, 25),
-  taskAny: run('task', 'any', 20_000, 25),
-  bunGit: run('bun', 'git', 20_000, 25),
-  bunAny: run('bun', 'any', 20_000, 25),
+  taskGit: run('task', 'git', N, 25),
+  taskAny: run('task', 'any', N, 25),
+  bunGit: run('bun', 'git', N, 25),
+  bunAny: run('bun', 'any', N, 25),
 }
 console.log(JSON.stringify(result, null, 2))
-if (realShim > 0) process.exit(1)
+const differs =
+  realShim +
+  result.taskGit.shimDiffers +
+  result.taskAny.shimDiffers +
+  result.bunGit.shimDiffers +
+  result.bunAny.shimDiffers
+if (differs > 0) process.exit(1)

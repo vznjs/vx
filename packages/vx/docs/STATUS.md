@@ -758,6 +758,34 @@ it. Warm path: `Cache.key` over 3,000 mapped files, min of 5 runs of
 15×100, 0.708 ms per key before and 0.674 after (interleaved, before
 arm from a worktree). No `CACHE_VERSION` bump: no key moved.
 
+14cn. **Item 692 (roadmap W9, 2026-09-24): the playground's glob matcher
+is Bun's.** `playground-spike/shim/glob.ts` was RegExp rules measured
+against Bun; it is now a line-for-line TS port of the matcher
+`Bun.Glob.prototype.match` calls. In Bun 1.4.2 that is Rust, not the
+Zig the spike expected: `bun_glob::r#match` in `src/glob/matcher.rs`
+(tag `bun-v1.4.2`, commit `744846f8`, MIT; its header credits
+glob-match's author, the source of the shared quirks). The port walks
+UTF-8 bytes as the Rust does, with the same backtracking, brace stack
+(depth 10), 10,000-branch budget and escape table (`\b` is a
+backspace). The fuzz, 500,000 pairs per domain, before → after: task
+globs × git paths 219 → 0, task × any string 154 → 0, Bun's alphabet ×
+git paths 1,469 → 0, Bun's alphabet × any string 3,090 → 0; at five
+times the size, 0 in all four. The bundle grew from 78,465 to 81,370
+bytes raw (27,972 to 28,666 gzip), measured on top of P1 (item 691). The generator moved to
+`glob-fuzz.ts`, shared by `glob-equiv.ts` (now exit 1 on any
+difference, sized by `GLOB_FUZZ_N`) and `tests/glob-port.test.ts`,
+which runs the four domains at the table's seed and size in about 1.5 s
+(each domain row carries a 60 s budget: the first one pays for all four,
+and CI's loaded runner took 6.9 s against bun's 5 s default, reproduced
+here with four copies on one core)
+and pins hand rows for the adversarial shapes, the brace limits and
+escapes. Differential: the old shim reddens the four domains with the
+table's exact counts and 14 hand rows; in the port, the backtrack bound
+`<=` made `<` differs 9,324–14,071 per domain, the upstream "FIXME"
+special case removed reddens two domains and two rows, and the trailing
+`/**` collapse removed reddens all four. `@vzn/vx-bench#test` now keys
+on `playground-spike/**/*.ts`, which it imports.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
