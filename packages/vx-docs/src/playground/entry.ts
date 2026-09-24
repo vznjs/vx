@@ -216,7 +216,7 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
     ),
   )
   applyGitEnumeration(
-    { all: [...trusted.keys()], trusted, dirty: false, undecodable: [] },
+    { all: [...trusted.keys()], trusted, dirty: false, undecodable: [], startedAtMs: Date.now() },
     root,
     [...projects.values()].map((p) => p.dir),
     gitFilesCache,
