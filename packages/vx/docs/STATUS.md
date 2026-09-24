@@ -1481,6 +1481,17 @@ differentials (bench first, a broken guarantee path, a dropped link)
 and the Chromium check at 390 px: `design/landing-2026-09.md` § Shipped
 (item 709).
 
+14dg. **Item 713 (roadmap 1.3, 2026-09-24): the 0.1.0 notes run through
+item 710.** `history/release-0.1.0-notes.md` gains a section, "The site
+teaches" (the Learn pages, the playground, the labs, the checkpoints and
+the landing), and names two breaking changes plainly: a config is JSON
+data on every path (701) and a negated absolute input (`!/x`) is
+refused (679). The `Failed:` recap (706), the sandbox's `~` path (652),
+`setup`'s real place in the run (690) and `vx why`'s locale-free order
+(707) join their sections; the internal items share one closing line.
+The count is 455 PRs since v0.0.21, the first-parent commits through
+#798; it is recounted at the cut. Roadmap 1.3 reads DONE through 710.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
