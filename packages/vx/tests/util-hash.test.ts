@@ -78,7 +78,7 @@ describe('xxh3 — known answers', () => {
   })
 
   it('the default seed is exactly 0n (Cache.key seeds its chain from it)', () => {
-    // `let h = xxh3(CACHE_VERSION)` in cache.ts relies on the implicit
+    // `let h = xxh3(CACHE_VERSION)` in key-fold.ts relies on the implicit
     // seed. If the default drifted, the CACHE_VERSION namespace would
     // move without a version bump.
     for (const s of ['', 'abc', 'vx-cache-v24', 'pkg#build']) {

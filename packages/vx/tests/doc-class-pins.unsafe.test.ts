@@ -760,7 +760,7 @@ describe('every page stating the task-config hash states the projection', () => 
 describe('every page numbering the key parts folds plugin before inputs', () => {
   it('the order is the one key() uses, on each page that numbers them', () => {
     const src = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'cache', 'cache.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
       'utf8',
     )
     const body = src.slice(

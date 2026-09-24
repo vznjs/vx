@@ -57,7 +57,7 @@ describe('the docs quote the current CACHE_VERSION and SCHEMA_VERSION', () => {
   )
 
   it('caching.md names the current key-derivation sentinel', () => {
-    expect(doc).toContain(`(currently \`'${CACHE_VERSION}'\`, in \`src/cache/cache.ts\`)`)
+    expect(doc).toContain(`(currently \`'${CACHE_VERSION}'\`, in \`src/cache/key-fold.ts\`)`)
   })
 
   it('caching.md heads its schema block with the current SCHEMA_VERSION', () => {
@@ -110,7 +110,10 @@ describe('caching.md § SQLite tables follows the schema cache.ts creates', () =
 // material lands, a refactor — would have produced a different one.
 describe('caching.md lists the key parts in the order key() folds them', () => {
   it('each numbered step is the next labelled fold in cache.ts', () => {
-    const src = readFileSync(path.join(import.meta.dir, '..', 'src', 'cache', 'cache.ts'), 'utf8')
+    const src = readFileSync(
+      path.join(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
+      'utf8',
+    )
     const body = src.slice(
       src.indexOf('let h = xxh3(CACHE_VERSION)'),
       src.indexOf('return h.toString(16)'),

@@ -12,6 +12,11 @@ and key derivation logic live here.
   it: `CacheKeyInput`, `CacheEntry`, `RunRecord`, `InvocationRecord`,
   output fingerprint rows, stats and prune options, `CorruptArtifactError`.
   No implementation.
+- `key-fold.ts` — `foldKey`, the whole key derivation as a function of
+  `CacheKeyInput`, a file hasher and a relativizer, and `CACHE_VERSION`,
+  its first part. It touches no store, so the site's playground bundles
+  it to derive the keys the CLI would; `Cache.key` delegates to it
+  (item 691).
 - `policy.ts` — `CachePolicy` (local/remote × read/write) and the
   `--cache=<spec>` grammar.
 - `zstd.ts` — artifact framing: the declared-size gate against a
@@ -200,7 +205,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v29'
+export const CACHE_VERSION = 'vx-cache-v29' // key-fold.ts
 export const SCHEMA_VERSION = 'v27'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 

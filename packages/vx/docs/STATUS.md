@@ -735,6 +735,29 @@ and skipped the middle key. All three say it now, and the bench's
 Third, CLAUDE.md gains the rule item 682 taught: measure what a
 platform primitive consumes, not only what it returns.
 
+14cm. **Item 691 (roadmap W9, P1, 2026-09-24): the key fold leaves
+`Cache`.** `src/cache/key-fold.ts` holds `foldKey(input, hashFile,
+relOf)`, the whole of what `Cache.key` computed, and `CACHE_VERSION`,
+its first part; `Cache.key` delegates, passing its hasher and its
+`relFor` memo. The file imports only `util/` and a type, so the
+playground bundles the fold without the local store: the spike's
+`entry.ts` drops its `Object.create(Cache.prototype)` borrow for
+`foldKey`, its bundle is 78,465 B raw and 27,972 B gzip (126,846 and
+43,085 as spiked), and `compare.ts` still finds keys, priorities and
+dispatch order equal to `vx run --dry=json` on every scenario.
+Behaviour-neutral by a golden row recorded BEFORE the move
+(`tests/key-fold.test.ts`): every `CacheKeyInput` field set, lists out
+of order, one file from the caller's map and one from disk; the digest
+and the thirteen captured components stay exactly those, and `foldKey`
+called with no `Cache` gives the same digest while asking its hasher
+only for the unmapped file. Three source-reading pins (the caching
+page's fold order, the plugin-before-inputs class pin, the blog's
+twelve parts and ten kinds) now read `key-fold.ts`; the module page,
+`caching.md`, `optimizations.md`, `flows.md` and the bump skill name
+it. Warm path: `Cache.key` over 3,000 mapped files, min of 5 runs of
+15×100, 0.708 ms per key before and 0.674 after (interleaved, before
+arm from a worktree). No `CACHE_VERSION` bump: no key moved.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

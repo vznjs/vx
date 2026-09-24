@@ -24,9 +24,9 @@ export {
   OUTPUT_DIRS_RACY_MS,
   noteSchemaReset,
   type SchemaReset,
-  CACHE_VERSION,
   SCHEMA_VERSION,
 } from './cache.js'
+export { CACHE_VERSION } from './key-fold.js'
 export {
   cleanOutputs,
   cleanWorkspaceOutputs,

@@ -5,7 +5,7 @@
 // discovery (`loadWorkspace`, `listProjects`), the package graph, the
 // staged-config load (`loadProjects`), config validation, the task graph,
 // the workspace fingerprint, the git-enumeration partition, `plan()` with
-// the real key fold (`Cache.prototype.key`) and the scheduler. What this
+// the real key fold (`foldKey`) and the scheduler. What this
 // file supplies is what `prepareRun` gets from the machine: the git
 // enumeration (every VFS file tracked and clean, its OID a git blob SHA-1),
 // the evaluated configs (plain objects, as a `vx.config.mjs` default export
@@ -14,12 +14,9 @@
 import { platformCalls, setEnv } from './shim/platform.js'
 import { useVfs, Vfs } from './shim/vfs.js'
 import type { ProjectConfig } from '../../vx/src/config.js'
-import {
-  Cache,
-  GitFilesCache,
-  applyGitEnumeration,
-  type CacheLayer,
-} from '../../vx/src/cache/index.js'
+import { GitFilesCache, applyGitEnumeration, type CacheLayer } from '../../vx/src/cache/index.js'
+import { foldKey } from '../../vx/src/cache/key-fold.js'
+import { relPosix } from '../../vx/src/util/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
@@ -88,22 +85,19 @@ async function blobOid(bytes: Uint8Array): Promise<string> {
 }
 
 /**
- * A `CacheLayer` over a set of keys, whose `key()` is core's own fold:
- * `Cache.prototype.key` borrowed onto an object that is not a SQLite store
- * (the fold reads only `hashFile` and the `relFor` memo). The borrow is the
- * spike's one hack; the design note proposes lifting the fold out of the
- * class so a platform-free caller need not reach into it.
+ * A `CacheLayer` over a set of keys, whose `key()` is core's own fold
+ * (`foldKey`, which `Cache.key` delegates to; item 691).
  */
 function playgroundCache(
   held: ReadonlySet<string>,
   oidOf: (abs: string) => Promise<string>,
 ): CacheLayer {
-  const layer = Object.create(Cache.prototype) as Record<string, unknown>
-  layer.relMemo = new Map<string, string>()
-  layer.relMemoRoot = undefined
-  layer.hashFile = oidOf
-  layer.has = async (hash: string) => (held.has(hash) ? 'local' : null)
-  layer.close = () => {}
+  const layer = {
+    key: (input: Parameters<CacheLayer['key']>[0]) =>
+      foldKey(input, oidOf, (f) => relPosix(input.workspaceRoot, f)),
+    has: async (hash: string) => (held.has(hash) ? 'local' : null),
+    close: () => {},
+  }
   return layer as unknown as CacheLayer
 }
 
