@@ -830,6 +830,7 @@ describe('every page naming the Linux sandbox binaries names all three', () => {
       return bins.filter((bin) => names(text, bin)).length >= 2
     })
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
+      'correctness.mdx',
       'introduction.md',
       'sandboxing.md',
       'the-sandbox.md',

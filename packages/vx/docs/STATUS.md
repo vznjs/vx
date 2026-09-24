@@ -713,6 +713,93 @@ removed). Found by the W2 implementer, who had patched only the site's
 test with `workspaceFiles: ['packages/vx/src/**']`; that second copy of
 the rule is removed, the cascade covers it.
 
+14cj. **Item 688 (roadmap W3, 2026-09-24): the correctness page, and a
+stale-hit demo held to vx.** `learn/correctness.mdx` replaces the stub
+under the same slug. It teaches the stale hit as the worst failure (a
+green run, wrong bytes); declared inputs against the two ways of
+inferring them (a broad default, a trace), with a table of what each can
+miss, whether the key is known before the run, and what reruns; why vx
+refuses inference; the sandbox as the check that turns a declared list
+into a proof, as a Mermaid diagram; what vx does when the sandbox cannot
+start (the run stops with `sandbox not available:`, the task never runs
+unsandboxed); the costs and blind spots (two lists to write, a grant
+wider than the inputs, environment variables, `node_modules`, Linux and
+macOS only, a lossy macOS log, no report for a persistent task); how vx
+does it, with a type-checked config; one paragraph each for Turborepo,
+Nx and Bazel; and a checkpoint. Competitor claims come from the doc
+clones of 2026-09-24: Turborepo's default inputs and `globalDependencies`
+(`reference/configuration.mdx`, `crafting-your-repository/caching.mdx`;
+no page mentions a sandbox or hermeticity), Nx's default inputs, inferred
+tasks and Cloud-only task sandboxing with Warning and Strict modes
+(`concepts/how-caching-works.mdoc`, `concepts/mental-model.mdoc`,
+`features/CI Features/sandboxing.mdoc`), Bazel's sandboxing and its
+macOS cost (`reference/glossary.mdx`) and "enable strict sandboxing"
+(`basics/hermeticity.mdx`). The clone does not say whether Bazel
+sandboxes by default, so the page does not either.
+
+The widget is `StaleHit.astro` and `stale-hit.ts` over
+`demos/model/stale-hit.ts` (it reuses the toy model's digest, now
+exported). `web#build` runs `mkdir -p dist && cat src/index.ts
+banner.txt > dist/out.txt` and declares `src/**`. Five steps: first run
+(miss), edit `src/index.ts` (key moves, miss), edit `banner.txt` (key
+stays, stale hit), turn on `exec.sandbox` with the same list as its
+grant (the sandbox block is config, so the key moves and the run fails
+with the report), declare `banner.txt` (key moves, miss, right output).
+Four toggles let the reader go on from any step, which the checkpoint
+uses: sandbox off (miss), then undeclare (the key is step 3's again, and
+the entry step 2 stored is replayed stale). Without JavaScript: a table
+of the five runs (key, verdict, `dist/out.txt`, what a run with no cache
+writes), a sentence per run, and the frame vx prints at step 4. The
+first draft's command had no `mkdir -p dist`; the real-vx row failed on
+it, because only the sandbox's write grant creates `dist/`.
+
+Proof, in `packages/vx-docs/tests/learn-correctness.test.ts` (19 rows):
+the model against a hand-written truth per step and for the checkpoint;
+the page's config snippet evaluates to the config the model keys on;
+the model against vx, one workspace written from the model and run with
+the cache and a second without (moved keys, hits, stale bytes), where
+the two sandboxed steps are asked of `planRun` (key and cache status),
+because the site's `test` task is itself sandboxed and a sandbox cannot
+start inside one; the step 4 frame equals `formatTaskBlock` over the line
+`parseStraceViolations` writes for a synthetic strace line (imported from
+core's source, as vx-bench does); and the built page (the table, the
+sentences, both copies of the report, hidden controls, the caption that
+calls keys and path illustrative, the checkpoint, and the element's chunk
+reached from the page's scripts with no `Bun.`, `process.` or `node:` in
+it). The half the site cannot run is a new core row,
+`sandbox-runtime.unsafe.test.ts` "learn/correctness's stale-hit demo, run
+for real": a live sandboxed run fails with exactly the one line
+`openat(banner.txt) = -1 ENOENT  [<project>/banner.txt]` and cat's
+stderr (matched loosely: the logger trims each chunk, and the gate once
+saw the message split after `cat:`), and declaring the file makes the
+same task pass. The page now names the three sandbox binaries, so
+`site-samples.unsafe.test.ts` lists it among the pages held to naming
+all three.
+
+Mutations, each red then green after the reverse edit. Model: the key
+ignores config (5 rows: step 4, checkpoint, vx parity, page render, page
+checkpoint); the key folds the undeclared file (5); the cache forgets
+old entries (5); the sandbox never denies (3; the vx row stays green by
+design, since vx is only planned there, and the core row holds it); the
+config drops its sandbox block (6); the printed snippet names other
+inputs (1). Core, with the model untouched: the key strips `exec.sandbox`
+(the vx parity row); the violation line loses a space (the report row,
+and the live core row); the frame's section rule is one dash longer (the
+report row). The live row's control with `banner.txt` left out of the
+grant (red: the run fails). Page, each with a rebuild: a table row
+dropped (2), the controls not hidden, the caption without "A model", the
+checkpoint answer saying "hits", the element renamed, the element calling
+`process.cwd()` and `Bun.hash`, the static report's duration changed,
+the stale sentence softened: each reddened its own row. One mutation
+was a no-op and is recorded as such: `typeof process ... process.env`
+survived because Vite rewrites `process.env` to `{}`, so the built chunk
+never held `process.`; `process.cwd()` replaced it. Checked in Chromium
+at 1280 and 390 px, JavaScript on and off: no horizontal page overflow,
+the table stacks per step under 40rem, the report scrolls inside its own
+box. Every page with a Mermaid diagram (this one, `learn/caching`, the
+sandboxing guide) logs one uncaught non-Error `Object` on load; it
+predates this item and is not chased here.
+
 14cl. **Item 690 (2026-09-24): three claims corrected, one held by a
 row.** `VxPlugin.setup` said it runs "before any capability is
 consulted". It does not: `prepareRun` has already run the config,
@@ -803,8 +890,9 @@ on `playground-spike/**/*.ts`, which it imports.
     W4, the scheduling page and the scheduler simulator on vx's own
     ranking code, is DONE (item 685, entry 14cg). W5 and W6, the
     architecture page with its pipeline explorer and the worked plugins,
-    are DONE (item 686, entry 14ch). W3 (correctness) and W7 (choosing)
-    are in flight. W9, the playground, has started: its first core
+    are DONE (item 686, entry 14ch). W3, the correctness page and its
+    stale-hit demo, is DONE (item 688, entry 14cj). W7 (choosing) is in
+    flight. W9, the playground, has started: its first core
     change, P1, is DONE (item 691, entry 14cm), and its three open
     questions are decided in `design/playground-spike-2026-09.md` § W9
     decisions (parity rows in core's unsafe suite, `vx.config.mjs`
