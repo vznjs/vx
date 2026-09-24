@@ -38,7 +38,7 @@ class Playground extends HTMLElement {
   connectedCallback() {
     this.#start = startState(this.dataset['lab'])
     this.#files = { ...this.#start.files }
-    this.#selected = firstFile(this.#files)
+    this.#selected = this.#start.open ?? firstFile(this.#files)
     this.#el('.controls').hidden = false
     this.#el('.status').hidden = false
     this.#el('.static').hidden = true
@@ -81,14 +81,14 @@ class Playground extends HTMLElement {
   #add() {
     const input = this.#el<HTMLInputElement>('.new-path')
     const path = input.value.trim().replace(/^(\.?\/)+/, '')
-    if (path === '') return this.#say('Name the new file first, for example packages/ui/README.md.')
+    if (path === '') return this.#say('Name the file first.')
     if (path in this.#files) return this.#say(`${path} already exists.`)
     this.#files[path] = ''
     this.#selected = path
     input.value = ''
     this.#showFiles()
     this.#el('.editor').focus()
-    this.#say(`Added ${path}, empty. Run to see what it moves.`)
+    this.#say(`Added ${path}. Now Run.`)
   }
 
   #delete() {
@@ -97,12 +97,12 @@ class Playground extends HTMLElement {
     delete this.#files[path]
     this.#selected = firstFile(this.#files)
     this.#showFiles()
-    this.#say(`Deleted ${path}. Run to see what it moves.`)
+    this.#say(`Deleted ${path}. Now Run.`)
   }
 
   #reset() {
     this.#files = { ...this.#start.files }
-    this.#selected = firstFile(this.#files)
+    this.#selected = this.#start.open ?? firstFile(this.#files)
     this.#cached = new Set()
     this.#last = undefined
     this.#el<HTMLTextAreaElement>('.env').value = envText(this.#start.env)
@@ -111,7 +111,7 @@ class Playground extends HTMLElement {
     this.#el('.order').hidden = true
     this.#el('.errors').hidden = true
     this.#showFiles()
-    this.#say('Reset: the workspace as it opened, and an empty cache.')
+    this.#say('Reset, with an empty cache.')
   }
 
   async #run() {
@@ -162,8 +162,7 @@ class Playground extends HTMLElement {
           return tr
         }),
       )
-      table.querySelector('caption')!.textContent =
-        `vx run ${tasks.tasks.join(' ')} --all: each task's key, and what the simulated cache says.`
+      table.querySelector('caption')!.textContent = `vx run ${tasks.tasks.join(' ')} --all`
       table.dataset['stale'] = 'false'
       table.hidden = false
       const order = this.#el('.order')
@@ -196,8 +195,7 @@ class Playground extends HTMLElement {
     const kept = !table.hidden
     if (kept) {
       table.dataset['stale'] = 'true'
-      table.querySelector('caption')!.textContent =
-        'Stale: the last good run. The run after it failed, with the errors above.'
+      table.querySelector('caption')!.textContent = 'The last good run. The next one failed.'
     }
     this.#say(failureSummary(errors, kept))
   }

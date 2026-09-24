@@ -171,6 +171,21 @@ test is telling the truth.
       the unsafe doc laws pass with the generated pages hidden (darwin's
       shape).
 
+723.  DONE (2026-09-24, Next 16 b, c). The widgets take the pictures' look
+      through one stylesheet (`demos/widget.css`: the picture's frame and
+      caption, mono data, one corner, two strokes, `--vx-*` tones), held by
+      `diagram-kit.test.ts`; the graph explorer is drawn by the diagram kit
+      itself. Visible text is cut 45–85% per widget: the key calculator is
+      one table (task, key, runs or hit) plus five edit buttons; each
+      checkpoint is one sentence of at most twelve words (chapter 6 asks
+      about app's `banner.txt`; chapter 3's `app#build` question is a
+      planner-checked checkpoint). The playground runs `build test` again
+      with `app#docs` declared outside it, and chapter 10's command is
+      `vx run build test --all --dry` (a bare task at a workspace root
+      refuses), both held by rows. Three unused components and two
+      unplaced checkpoints went. Every widget row that ties a model to
+      real vx is kept.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -402,12 +417,9 @@ the architect before it merges; then Next 17. Never end with "what next?".
 
 16. **The site, redone as one story (owner, 2026-09-24).** R1–R3
     shipped as item 721 (`design/site-redo-2026-09.md`), R4 and the prose
-    polish as item 722. Left: the widgets (graph explorer, key
-    calculator, scheduler simulator, stale-hit demo, checkpoints) take
-    the pictures' look and lose their dense tables and jargon setup
-    sentences, and the playground runs `build test` again with `app#docs`
-    outside the default (in flight); then the site plan's "Done means" is
-    rewritten for the Guide.
+    polish as 722, the widgets as 723. Left: rewrite the site plan's
+    "Done means" (`design/site-teaches-2026-09.md`) for the Guide, and
+    read the whole site once more as a newcomer, on a phone.
 
 17. **A sandboxed task reads a linked sibling package unseen (found by
     the capability audit, 2026-09-24).** `sandbox-request.ts` grants

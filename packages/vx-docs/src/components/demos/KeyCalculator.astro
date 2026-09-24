@@ -1,281 +1,118 @@
 ---
-// The toy monorepo's cache keys. Without JavaScript it is four tables, one
-// per change worth knowing, each the run after that change: every task's key
-// before and after, whether it moved, and whether the run hits, runs or
-// replays a stale output. `key-calculator.ts` unhides the input controls and
-// a live table, and hides the four tables, which one button each replays.
-// The element reads the `data-edit` / `data-declare` / `data-scenario`
-// buttons, `.reset`, `.controls`, `.env-value`, `.status`, `.live` and
-// `.scenarios`, so they are its contract with this markup.
+// The toy monorepo's cache keys. Without JavaScript it is one small table:
+// each task, and whether it runs or hits after each of four changes.
+// `key-calculator.ts` swaps it for the edit buttons and a live table of the
+// next run (task, key, runs or hit). The element reads the `data-edit`
+// buttons, `.reset`, `.controls`, `.status`, `.live` and `.static`, so they
+// are its contract with this markup.
 import Demo from '../Demo.astro'
 import {
   TOY_ENV,
-  TOY_ENV_VALUES,
   TOY_PACKAGES,
   TOY_SCENARIOS,
   TOY_SOURCE,
   TOY_START,
-  TOY_TSCONFIG,
-  describeRun,
-  readerOf,
+  TOY_TASKS,
   rowMarks,
   rowOf,
   toyRun,
   toyRuns,
 } from './model/toy-monorepo.js'
 
-const HEAD = ['Task', 'Key before', 'Key after', 'Key', 'This run']
-const scenarios = TOY_SCENARIOS.map((s) => {
-  const last = toyRuns(s.changes).at(-1)!
-  return { ...s, tasks: last.tasks, sentence: describeRun(last) }
-})
+const columns = TOY_SCENARIOS.map((s) => ({ ...s, run: toyRuns(s.changes).at(-1)! }))
 const first = toyRun(TOY_START).tasks
 ---
 
 <Demo name="key-calculator">
-  <div class="controls" hidden>
-    <table class="inputs">
-      <caption>
-        Every task has run once. Change an input, and the table below shows the next run.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Package</th>
-          <th scope="col"><code>{TOY_SOURCE}</code></th>
-          <th scope="col"><code>{TOY_TSCONFIG}</code></th>
-          <th scope="col">Its build declares <code>{TOY_TSCONFIG}</code></th>
-        </tr>
-      </thead>
-      <tbody>
-        {
-          TOY_PACKAGES.map((p) => (
-            <tr>
-              <th scope="row">{p.id}</th>
-              <td>
-                <button
-                  type="button"
-                  data-edit={`${p.id}/${TOY_SOURCE}`}
-                  aria-pressed="false"
-                  aria-label={`edit ${p.id}/${TOY_SOURCE}`}
-                >
-                  edit
-                </button>
-              </td>
-              <td>
-                <button
-                  type="button"
-                  data-edit={`${p.id}/${TOY_TSCONFIG}`}
-                  aria-pressed="false"
-                  aria-label={`edit ${p.id}/${TOY_TSCONFIG}`}
-                >
-                  edit
-                </button>
-              </td>
-              <td>
-                <button
-                  type="button"
-                  data-declare={`${p.id}/${TOY_TSCONFIG}`}
-                  aria-pressed="true"
-                  aria-label={`declared: ${p.id}/${TOY_TSCONFIG} in ${readerOf(`${p.id}/${TOY_TSCONFIG}`)}`}
-                >
-                  declared
-                </button>
-              </td>
-            </tr>
-          ))
-        }
-      </tbody>
-    </table>
-    <p class="env">
-      <span
-        ><code>{TOY_ENV}</code>, which {readerOf(TOY_ENV)} reads, is{' '}<code class="env-value"
-          >{TOY_ENV_VALUES[0]}</code
-        >.</span
-      >
-      <button
-        type="button"
-        data-edit={TOY_ENV}
-        aria-pressed="false"
-        aria-label={`staging ${TOY_ENV}: ${TOY_ENV_VALUES[1]}`}
-      >
-        staging
-      </button>
-      <button
-        type="button"
-        data-declare={TOY_ENV}
-        aria-pressed="true"
-        aria-label={`declared: ${TOY_ENV} in ${readerOf(TOY_ENV)}`}
-      >
-        declared
-      </button>
-    </p>
-    <p class="replay">
-      <span class="label">Start over and replay:</span>
-      {
-        TOY_SCENARIOS.map((s) => (
-          <button type="button" data-scenario={s.id}>
-            {s.title}
-          </button>
-        ))
-      }
-      <button type="button" class="reset">Start over</button>
-    </p>
+  <div class="controls vx-row" hidden>
+    <span class="vx-label">Edit</span>
+    {
+      TOY_PACKAGES.map((p) => (
+        <button
+          type="button"
+          data-edit={`${p.id}/${TOY_SOURCE}`}
+          aria-pressed="false"
+          aria-label={`edit ${p.id}/${TOY_SOURCE}`}
+        >
+          {p.id}
+        </button>
+      ))
+    }
+    <button type="button" data-edit={TOY_ENV} aria-pressed="false" aria-label={`change ${TOY_ENV}`}>
+      {TOY_ENV}
+    </button>
+    <button type="button" class="reset">Reset</button>
   </div>
-  <p class="status" aria-live="polite" hidden></p>
   <table class="live" hidden>
     <thead>
-      <tr>{HEAD.map((h) => <th scope="col">{h}</th>)}</tr>
+      <tr><th scope="col">Task</th><th scope="col">Key</th><th scope="col">This run</th></tr>
     </thead>
     <tbody>
       {
         first.map((t) => (
           <tr data-moved={rowMarks(t).moved} data-outcome={rowMarks(t).outcome}>
-            {rowOf(t).map((cell, i) =>
-              i === 0 ? <th scope="row">{cell}</th> : <td data-label={HEAD[i]}>{cell}</td>,
-            )}
+            {rowOf(t).map((cell, i) => (i === 0 ? <th scope="row">{cell}</th> : <td>{cell}</td>))}
           </tr>
         ))
       }
     </tbody>
   </table>
-  <div class="scenarios">
-    {
-      scenarios.map((s) => (
-        <table data-scenario={s.id}>
-          <caption>
-            <strong>{s.title}.</strong> {s.sentence}
-          </caption>
-          <thead>
-            <tr>
-              {HEAD.map((h) => (
-                <th scope="col">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {s.tasks.map((t) => (
-              <tr data-moved={rowMarks(t).moved} data-outcome={rowMarks(t).outcome}>
-                {rowOf(t).map((cell, i) =>
-                  i === 0 ? <th scope="row">{cell}</th> : <td data-label={HEAD[i]}>{cell}</td>,
-                )}
-              </tr>
+  <p class="status vx-say" aria-live="polite" hidden></p>
+  <table class="static">
+    <thead>
+      <tr>
+        <th scope="col">Task</th>
+        {columns.map((c) => <th scope="col">{c.title}</th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {
+        TOY_TASKS.map((t, i) => (
+          <tr>
+            <th scope="row">{t.id}</th>
+            {columns.map((c) => (
+              <td data-scenario={c.id} data-outcome={rowMarks(c.run.tasks[i]!).outcome}>
+                {rowOf(c.run.tasks[i]!)[2]}
+              </td>
             ))}
-          </tbody>
-        </table>
-      ))
-    }
-  </div>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
   <Fragment slot="caption">
-    A model of vx's key fold, not vx itself: the playground page runs the real planner in the
-    browser. The keys are digests the model computes, shortened to seven hex digits; vx's are
-    xxHash3. Which keys move, which tasks hit and which hits are stale is what vx does on the same
-    workspace, and a test runs vx to check it. Each table starts from a first run on an empty cache.
+    The keys come from a model of vx. A test checks it against real vx.
   </Fragment>
 </Demo>
 
 <!--
   Global, under the element's tag: the element builds the live table's rows
   itself, and Astro's scoping attribute is only on the markup it rendered.
+  The tones are the pictures': a miss runs (warn), a hit is restored (ok), a
+  stale result is wrong (danger), a key that moved is what changed (accent).
 -->
 <style is:global>
-  vx-key-calculator table {
-    font-size: var(--sl-text-sm);
+  vx-key-calculator {
+    display: block;
   }
-  vx-key-calculator caption {
-    text-align: start;
-    padding-block: 0.5rem;
-  }
-  vx-key-calculator .scenarios table + table {
-    margin-top: 1.5rem;
-  }
-  vx-key-calculator tr[data-moved='input'] {
-    background: var(--sl-color-accent-low);
-  }
-  vx-key-calculator tr[data-moved='upstream'] {
-    background: color-mix(in srgb, var(--sl-color-accent-low) 45%, transparent);
-  }
-  vx-key-calculator tr[data-outcome^='stale'] td:last-child {
-    color: var(--sl-color-red-high);
-    font-weight: 700;
-  }
-  vx-key-calculator tr[data-outcome='hit'] td:last-child {
-    color: var(--sl-color-gray-2);
-  }
-  vx-key-calculator td:nth-child(2),
-  vx-key-calculator td:nth-child(3) {
-    font-family: var(--sl-font-mono, var(--sl-font-system-mono));
-  }
-  vx-key-calculator .controls[hidden],
-  vx-key-calculator .live[hidden],
-  vx-key-calculator .scenarios[hidden] {
+  vx-key-calculator :is(.live, .static)[hidden] {
     display: none;
   }
-  vx-key-calculator .controls button {
-    padding: 0.1rem 0.6rem;
-    border: 1px solid var(--sl-color-gray-4);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--sl-color-white);
-    font: inherit;
-    font-size: var(--sl-text-sm);
-    cursor: pointer;
+  vx-key-calculator :is(tr[data-outcome='run'] td:last-child, td[data-outcome='run']) {
+    color: var(--vx-warn);
   }
-  vx-key-calculator .controls button[aria-pressed='true'] {
-    background: var(--sl-color-accent-low);
-    border-color: var(--sl-color-accent);
+  vx-key-calculator :is(tr[data-outcome='hit'] td:last-child, td[data-outcome='hit']) {
+    color: var(--vx-ok);
   }
-  vx-key-calculator .controls button:focus-visible {
-    outline: 2px solid var(--sl-color-text-accent);
-    outline-offset: 2px;
+  vx-key-calculator :is(tr[data-outcome^='stale'] td:last-child, td[data-outcome^='stale']) {
+    color: var(--vx-danger);
+    font-weight: 700;
   }
-  vx-key-calculator .env,
-  vx-key-calculator .replay {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: var(--sl-text-sm);
+  vx-key-calculator tr:is([data-moved='input'], [data-moved='upstream']) td:nth-child(2) {
+    color: var(--vx-accent);
+    font-weight: 700;
   }
-  vx-key-calculator .label {
-    color: var(--sl-color-gray-2);
-  }
-  vx-key-calculator .status {
-    min-height: 1.5em;
-    margin: 0.75rem 0 0;
-    font-size: var(--sl-text-sm);
-  }
-  /* Five columns of keys do not fit a phone: one block per task. */
-  @media (max-width: 40rem) {
-    vx-key-calculator .live,
-    vx-key-calculator .scenarios table,
-    vx-key-calculator .live tbody,
-    vx-key-calculator .scenarios tbody,
-    vx-key-calculator .live tr,
-    vx-key-calculator .scenarios tr,
-    vx-key-calculator .live th,
-    vx-key-calculator .scenarios th,
-    vx-key-calculator .live td,
-    vx-key-calculator .scenarios td {
-      display: block;
-    }
-    vx-key-calculator .live thead,
-    vx-key-calculator .scenarios thead {
-      display: none;
-    }
-    vx-key-calculator .live tr,
-    vx-key-calculator .scenarios tr {
-      padding-block: 0.5rem;
-      border-bottom: 1px solid var(--sl-color-gray-5);
-    }
-    vx-key-calculator .live td,
-    vx-key-calculator .scenarios td {
-      border: none;
-      padding-block: 0.1rem;
-    }
-    vx-key-calculator .live td::before,
-    vx-key-calculator .scenarios td::before {
-      content: attr(data-label) ': ';
-      font-weight: 600;
-    }
+  vx-key-calculator .static thead th {
+    vertical-align: bottom;
   }
 </style>

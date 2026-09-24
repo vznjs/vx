@@ -1,0 +1,96 @@
+---
+// One picture's drawing (`diagram.ts`) as build-time SVG: frames, arrows,
+// boxes and notes, in that order, so a box sits on the arrows that reach it.
+// `Diagram.astro` frames it with its caption; a widget that draws with the
+// kit (the graph explorer) places it inside a `.vx-diagram` of its own and
+// passes `live`, which defines an arrowhead for every tone, so its element
+// can change a shape's tone without a head that is not there.
+import './diagram.css'
+import { TONES, boxSize, extent, route, type Picture, type Tone } from './diagram.js'
+
+type Props = Picture & { live?: boolean }
+
+const { name, label, width = 600, boxes, arrows = [], notes = [], frames = [], live } = Astro.props
+
+const lines = arrows.map((a) => ({ ...a, tone: a.tone ?? 'default', ...route(Astro.props, a) }))
+const tones: readonly Tone[] = live === true ? TONES : [...new Set(lines.map((l) => l.tone))]
+const { top, height } = extent(Astro.props)
+const dataOf = (data: Record<string, string> = {}): Record<string, string> =>
+  Object.fromEntries(Object.entries(data).map(([k, v]) => [`data-${k}`, v]))
+---
+
+<svg viewBox={`0 ${top} ${width} ${height}`} role="img" aria-label={label} style={`max-width: ${width}px`}>
+  {
+    tones.length > 0 && (
+      <defs>
+        {tones.map((t) => (
+          <marker
+            id={`vx-dg-${name}-${t}`}
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path class={`head ${t}`} d="M0 0 L10 5 L0 10 z" />
+          </marker>
+        ))}
+      </defs>
+    )
+  }
+  {
+    frames.map((f) => (
+      <g class={`frame ${f.tone ?? 'default'}`}>
+        <rect x={f.x} y={f.y} width={f.w} height={f.h} rx="12" />
+        <text x={f.x + 12} y={f.y + 20}>
+          {f.label}
+        </text>
+      </g>
+    ))
+  }
+  {
+    lines.map((l) => (
+      <g class={`arrow ${l.tone}`} data-from={l.from} data-to={l.to}>
+        <path
+          d={l.d}
+          class:list={{ dashed: l.dashed === true }}
+          marker-end={`url(#vx-dg-${name}-${l.tone})`}
+        />
+        {l.label !== undefined && (
+          <text x={l.lx} y={l.ly} text-anchor={l.anchor}>
+            {l.label}
+          </text>
+        )}
+      </g>
+    ))
+  }
+  {
+    boxes.map((b) => {
+      const { w, h } = boxSize(b)
+      const cx = b.x + w / 2
+      const cy = b.y + h / 2
+      return (
+        <g class={`box ${b.tone ?? 'default'}`} data-box={b.id} {...dataOf(b.data)}>
+          {b.title !== undefined && <title>{b.title}</title>}
+          <rect x={b.x} y={b.y} width={w} height={h} rx="8" />
+          <text class="label" x={cx} y={b.sub === undefined ? cy : cy - 9}>
+            {b.label}
+          </text>
+          {b.sub !== undefined && (
+            <text class="sub" x={cx} y={cy + 11}>
+              {b.sub}
+            </text>
+          )}
+        </g>
+      )
+    })
+  }
+  {
+    notes.map((n) => (
+      <text class={`note ${n.tone ?? 'muted'}`} x={n.x} y={n.y} text-anchor={n.anchor ?? 'middle'}>
+        {n.text}
+      </text>
+    ))
+  }
+</svg>

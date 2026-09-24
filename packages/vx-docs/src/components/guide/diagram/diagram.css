@@ -38,6 +38,17 @@
   }
 }
 
+/* A widget that draws with the kit (DiagramSvg.astro; the graph explorer)
+   already sits in the same frame (demos/widget.css), so its drawing takes
+   none of its own. */
+.vx-diagram.inset,
+.sl-markdown-content .vx-diagram.inset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
 .vx-diagram text {
   fill: var(--vx-fg);
 }

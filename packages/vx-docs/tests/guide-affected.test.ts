@@ -15,7 +15,6 @@ import {
   affectedBy,
   joinNames,
   neededBy,
-  orderSentence,
   rerunBy,
   waves,
 } from '../src/components/demos/model/toy-monorepo.js'
@@ -105,11 +104,8 @@ describe('a change in the toy monorepo model', () => {
     },
   )
 
-  it('orders a run by wave, and says so', () => {
+  it('orders a run by wave', () => {
     expect(waves(rerunBy('api'))).toEqual([['api#build'], ['api#test', 'app#build'], ['app#test']])
-    expect(orderSentence(rerunBy('ui'))).toBe(
-      'ui#build, then ui#test and app#build together, then app#test',
-    )
   })
 })
 
@@ -142,40 +138,19 @@ describe('the graph explorer, changing a package, on guide/affected', () => {
   const element = only(html, /<vx-graph-explorer\b[^>]*>([\s\S]*?)<\/vx-graph-explorer>/g)
   const table = only(element, /(<table\b[\s\S]*?<\/table>)/g)
 
-  it("states each change's run, what it needs first and the order, in a table", () => {
-    expect(tableRows(table)).toEqual([
-      [
-        'utils',
-        'utils#build, utils#test, ui#build, ui#test, api#build, api#test, app#build and app#test',
-        'nothing',
-        'utils#build, then utils#test, ui#build and api#build together, ' +
-          'then ui#test, api#test and app#build together, then app#test',
-      ],
-      [
-        'ui',
-        'ui#build, ui#test, app#build and app#test',
-        'utils#build and api#build',
-        'ui#build, then ui#test and app#build together, then app#test',
-      ],
-      [
-        'api',
-        'api#build, api#test, app#build and app#test',
-        'utils#build and ui#build',
-        'api#build, then api#test and app#build together, then app#test',
-      ],
-      [
-        'app',
-        'app#build and app#test',
-        'utils#build, ui#build and api#build',
-        'app#build, then app#test',
-      ],
-    ])
+  it("states each change's affected packages and what it needs first, in a table", () => {
     expect(tableRows(table)).toEqual(
       TOY_PACKAGES.map((p) => [
         p.id,
-        joinNames(rerunBy(p.id)),
+        joinNames(CHANGE[p.id]!.affected),
+        CHANGE[p.id]!.needed.length === 0 ? 'nothing' : joinNames(CHANGE[p.id]!.needed),
+      ]),
+    )
+    expect(tableRows(table)).toEqual(
+      TOY_PACKAGES.map((p) => [
+        p.id,
+        joinNames(affectedBy(p.id)),
         neededBy(p.id).length === 0 ? 'nothing' : joinNames(neededBy(p.id)),
-        orderSentence(rerunBy(p.id)),
       ]),
     )
   })

@@ -6,6 +6,7 @@ problem: '`app#build` ran before `ui#build` and failed.'
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
 import * as P from '../../../components/guide/dependencies/pictures.js'
 
@@ -74,11 +75,6 @@ export default defineProject({
 
 ## Check yourself
 
-<details>
-<summary>You run <code>vx run app#build</code> on an empty cache. Which tasks run?</summary>
-
-`utils#build`, `ui#build`, `api#build` and `app#build`. No tests.
-
-</details>
+<Checkpoint id="dependencies" />
 
 The order is right now. But one task at a time is still as slow as the loop.

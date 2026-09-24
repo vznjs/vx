@@ -1,4 +1,4 @@
-// The labs' starting states and the edits their steps ask for (learn/labs,
+// The labs' starting states and the edits their steps ask for (guide/labs,
 // item 704; design/labs-checkpoints-2026-09.md § W10). Each state is the
 // playground's workspace (workspace.ts) plus one change, and
 // `<vx-playground data-lab="<id>">` opens on it. The steps are here so the
@@ -6,13 +6,15 @@
 // apply the edits the page tells the reader to make; what each step moves is
 // written out by hand in those rows, never computed from this file.
 
-import { CONFIG_TEXTS, ENV, FILES, TASKS } from './workspace.js'
+import { CONFIG_TEXTS, ENV, FILES, OPEN, TASKS } from './workspace.js'
 
 /** What a playground opens with, and what its Reset restores. */
 export interface PlaygroundState {
   files: Record<string, string>
   env: Record<string, string>
   tasks: string[]
+  /** The file the editor opens on; the first file when unset. */
+  open?: string
 }
 
 /** One edit a step asks for: replace a text once, or append to the file. */
@@ -169,7 +171,7 @@ export function applyEdits(
 
 /** The state a playground opens with: its lab's, or the workspace's. */
 export function startState(lab: string | undefined): PlaygroundState {
-  if (lab === undefined) return { files: FILES, env: ENV, tasks: TASKS }
+  if (lab === undefined) return { files: FILES, env: ENV, tasks: TASKS, open: OPEN }
   if (!(LAB_IDS as readonly string[]).includes(lab)) throw new Error(`no playground lab '${lab}'`)
   return LABS[lab as LabId]
 }

@@ -94,13 +94,6 @@ export function waves(ids: string[] = TOY_TASKS.map((t) => t.id)): string[][] {
   return [...byWave.keys()].sort((a, b) => a - b).map((w) => byWave.get(w)!)
 }
 
-/** `a, then b and c together, then d`: one valid order for the given tasks. */
-export function orderSentence(ids: string[]): string {
-  return waves(ids)
-    .map((w) => (w.length === 1 ? w[0]! : `${joinNames(w)} together`))
-    .join(', then ')
-}
-
 /** `a`, `a and b`, `a, b and c`. */
 export function joinNames(names: string[]): string {
   return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
@@ -117,10 +110,10 @@ export function joinNames(names: string[]): string {
 export const TOY_SOURCE = 'src/index.ts'
 /** Every build reads this file too. It is declared at first, and the reader
  *  can stop declaring it. */
-export const TOY_TSCONFIG = 'tsconfig.json'
+const TOY_TSCONFIG = 'tsconfig.json'
 /** The env var `api#build` bakes into its output, and the two values it takes. */
 export const TOY_ENV = 'API_URL'
-export const TOY_ENV_VALUES = ['https://api.example.com', 'https://staging.example.com'] as const
+const TOY_ENV_VALUES = ['https://api.example.com', 'https://staging.example.com'] as const
 
 /** Every input the reader can change: `<package>/<file>`, or the env var's name. */
 export const TOY_INPUTS: string[] = [
@@ -141,7 +134,7 @@ export function readsOf(taskId: string): string[] {
 }
 
 /** The one task that reads an input the reader may stop declaring. */
-export function readerOf(input: string): string {
+function readerOf(input: string): string {
   return TOY_TASKS.find((t) => t.name === 'build' && readsOf(t.id).includes(input))!.id
 }
 
@@ -279,30 +272,16 @@ export function shortKey(key: string): string {
   return key.slice(0, 7)
 }
 
-/** How the run treats a task, in the words the tables use. */
+/** How the run treats a task, in the words the table uses. */
 function outcomeOf(t: ToyTaskRun): string {
   if (t.hit) return t.stale ? 'stale hit' : 'hit'
-  return t.stale ? 'runs, on a stale input' : 'runs'
+  return t.stale ? 'runs, stale input' : 'runs'
 }
 
-/** What happened to a task's key, in the words the tables use. */
-function movedOf(t: ToyTaskRun): string {
-  if (t.before === undefined) return 'new'
-  if (t.moved === 'input') return 'moved: own input'
-  if (t.moved === 'upstream') return 'moved: upstream key'
-  return 'same'
-}
-
-/** One table row: the task, its key before and after, whether it moved, and
- *  how the run treats it. The static tables and the element both use it. */
-export function rowOf(t: ToyTaskRun): string[] {
-  return [
-    t.id,
-    t.before === undefined ? '—' : shortKey(t.before),
-    shortKey(t.key),
-    movedOf(t),
-    outcomeOf(t),
-  ]
+/** One row of the calculator's table: the task, its key and how the run
+ *  treats it. The static render and the element both use it. */
+export function rowOf(t: ToyTaskRun): [string, string, string] {
+  return [t.id, shortKey(t.key), outcomeOf(t)]
 }
 
 /** The same row as two words a stylesheet can select on. */
@@ -326,69 +305,34 @@ export function describeChange(change: ToyChange, state: ToyState): string {
   return undo ? `You undo your edit to ${change.input}.` : `You edit ${change.input}.`
 }
 
-/** What a run does, in a few sentences. */
-export function describeRun(run: ToyRun): string {
-  const ids = (pick: (t: ToyTaskRun) => boolean): string[] =>
-    run.tasks.filter(pick).map((t) => t.id)
-  const all = (n: number): string => (n === run.tasks.length ? `all ${n}` : String(n))
-  const moved = ids((t) => t.moved !== undefined)
-  const hits = ids((t) => t.hit)
-  const misses = ids((t) => !t.hit)
-  const out = [
-    moved.length === 0
-      ? 'No key moved.'
-      : moved.length === run.tasks.length
-        ? `All ${moved.length} keys moved.`
-        : `${moved.length} ${moved.length === 1 ? 'key' : 'keys'} moved: ${joinNames(moved)}.`,
-    misses.length === 0
-      ? `The run hits ${all(hits.length)} tasks.`
-      : hits.length === 0
-        ? `The run hits nothing and runs ${all(misses.length)} tasks.`
-        : `The run hits ${joinNames(hits)}, and runs ${joinNames(misses)}.`,
-  ]
-  const back = ids((t) => t.moved !== undefined && t.hit)
-  if (back.length > 0) {
-    const which = back.length === run.tasks.length ? 'every task' : joinNames(back)
-    out.push(
-      `The cache still holds an entry from an earlier run for ${which}, so ${back.length === 1 ? 'it hits' : 'they hit'}.`,
-    )
-  }
-  const staleHits = ids((t) => t.hit && t.stale)
-  if (staleHits.length > 0) {
-    out.push(
-      `${joinNames(staleHits)} ${staleHits.length === 1 ? 'is a stale hit' : 'are stale hits'}: no key saw the change, so the cache replays outputs built before it.`,
-    )
-  }
-  const staleRuns = ids((t) => !t.hit && t.stale)
-  if (staleRuns.length > 0) {
-    out.push(
-      `${joinNames(staleRuns)} ${staleRuns.length === 1 ? 'runs' : 'run'}, but on a stale upstream output, so ${staleRuns.length === 1 ? 'its' : 'their'} output is wrong too.`,
-    )
-  }
-  return out.join(' ')
+/** What a run does, in counts: "4 run, 4 hit." */
+export function runSummary(run: ToyRun): string {
+  const n = (pick: (t: ToyTaskRun) => boolean): number => run.tasks.filter(pick).length
+  const stale = n((t) => t.stale)
+  return `${n((t) => !t.hit)} run, ${n((t) => t.hit)} hit.${stale === 0 ? '' : ` ${stale} stale.`}`
 }
 
-/** The four changes the page shows without JavaScript. Each starts from a
- *  first run on an empty cache. */
+/** The four changes the page shows without JavaScript, one column each.
+ *  Each starts from a first run on an empty cache. */
 export const TOY_SCENARIOS: { id: string; title: string; changes: ToyChange[] }[] = [
   {
     id: 'utils',
-    title: `Edit utils/${TOY_SOURCE}`,
+    title: 'Edit utils',
     changes: [{ kind: 'edit', input: `utils/${TOY_SOURCE}` }],
   },
   {
     id: 'app',
-    title: `Edit app/${TOY_SOURCE}`,
+    title: 'Edit app',
     changes: [{ kind: 'edit', input: `app/${TOY_SOURCE}` }],
   },
   {
     id: 'env',
-    title: `Change ${TOY_ENV}, which api#build declares`,
+    title: `Change ${TOY_ENV}`,
     changes: [{ kind: 'edit', input: TOY_ENV }],
   },
   {
     id: 'stale',
-    title: `Stop declaring utils/${TOY_TSCONFIG}, run, then edit it`,
+    title: 'Edit a file utils does not list',
     changes: [
       { kind: 'declare', input: `utils/${TOY_TSCONFIG}` },
       { kind: 'edit', input: `utils/${TOY_TSCONFIG}` },

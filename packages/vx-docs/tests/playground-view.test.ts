@@ -45,7 +45,6 @@ const ALL = [
   'api#test',
   'app#build',
   'app#test',
-  'app#docs',
 ]
 const BUTTON = 'packages/ui/src/button.tsx'
 const BUTTON_MOVES = ['ui#build', 'ui#test', 'app#build', 'app#test']
@@ -60,8 +59,9 @@ const STATIC: [string, string, string][] = [
   ['api#test', 'api#build', 'src/**, test/**'],
   ['app#build', 'ui#build, api#build', 'src/**'],
   ['app#test', 'app#build', 'src/**, test/**'],
-  ['app#docs', 'nothing', 'docs/src/**'],
 ]
+/** `app#docs`, which `app` declares and the page's run leaves out. */
+const DOCS_ROW: [string, string, string] = ['app#docs', 'nothing', 'docs/src/**']
 
 const task = (
   id: string,
@@ -228,9 +228,7 @@ describe('the playground view', () => {
     expect(failureSummary(['x', 'y'], true)).toBe(
       "The run failed with 2 errors. The table is the last good run's, marked stale.",
     )
-    expect(orderLine(['a#x', 'b#x'])).toBe(
-      "On 2 workers, vx's scheduler dispatches them in this order: a#x, b#x.",
-    )
+    expect(orderLine(['a#x', 'b#x'])).toBe('Start order on 2 workers: a#x, b#x.')
   })
 
   it('parses NAME=value lines and the task specs', () => {
@@ -252,8 +250,11 @@ describe('the playground view', () => {
     expect(parseTasks(' ')).toEqual({ ok: false, error: 'name at least one task' })
   })
 
-  it('tabulates the workspace from its config texts', () => {
-    expect(staticTable(staticProjects(FILES, configs)).map(staticCells)).toEqual(STATIC)
+  it('tabulates the tasks a run plans, from the config texts', () => {
+    const table = (tasks: string[]) =>
+      staticTable(staticProjects(FILES, configs), tasks).map(staticCells)
+    expect(table(TASKS)).toEqual(STATIC)
+    expect(table([...TASKS, 'docs'])).toEqual([...STATIC, DOCS_ROW])
   })
 
   it("resolves what each task waits for as the planner does, for the page's workspace", async () => {
@@ -266,10 +267,27 @@ describe('the playground view', () => {
     })
     const planned = Object.fromEntries(r.tasks.map((t) => [t.id, [...t.deps].sort()]))
     const table = Object.fromEntries(
-      staticTable(staticProjects(FILES, configs)).map((row) => [row.id, [...row.waitsFor].sort()]),
+      staticTable(staticProjects(FILES, configs), TASKS).map((row) => [
+        row.id,
+        [...row.waitsFor].sort(),
+      ]),
     )
     expect(Object.keys(table).sort()).toEqual([...ALL].sort())
     expect(table).toEqual(planned)
+    // One task asked for by id: the table follows its waits as the plan does.
+    const one = await planner.planPlayground({
+      root: PLAYGROUND_ROOT,
+      files: FILES,
+      configs,
+      env: ENV,
+      tasks: ['app#build'],
+    })
+    expect(
+      staticTable(staticProjects(FILES, configs), ['app#build'])
+        .map((row) => row.id)
+        .sort(),
+    ).toEqual(one.tasks.map((t) => t.id).sort())
+    expect(one.tasks).toHaveLength(4)
   })
 })
 
@@ -293,12 +311,12 @@ describe("the page's Run, over the planner the site ships", () => {
     expect(first.tasks.map((t) => t.id)).toEqual(ALL)
     expect(statuses(first)).toEqual(each('miss'))
     expect([...first.cached].sort()).toEqual(first.tasks.map((t) => t.hash).sort())
-    expect(first.cached.size).toBe(9)
+    expect(first.cached.size).toBe(8)
     const second = ok(await run(FILES, first.cached))
     expect(statuses(second)).toEqual(each('hit-local'))
     expect(moved(first.tasks, second.tasks)).toEqual([])
     expect(summarize(diffRuns(first.tasks, second.tasks, planner.diffKeyComponents))).toBe(
-      '9 tasks: 9 hit, 0 miss. No key moved.',
+      '8 tasks: 8 hit, 0 miss. No key moved.',
     )
   })
 
@@ -312,7 +330,7 @@ describe("the page's Run, over the planner the site ships", () => {
       ...each('miss', BUTTON_MOVES),
     })
     expect(summarize(diffRuns(first.tasks, afterEdit.tasks, planner.diffKeyComponents))).toBe(
-      '9 tasks: 5 hit, 4 miss. Keys moved: ui#build, ui#test, app#build, app#test.',
+      '8 tasks: 4 hit, 4 miss. Keys moved: ui#build, ui#test, app#build, app#test.',
     )
     const added = ok(await run({ ...edited, 'packages/ui/README.md': '# ui\n' }, afterEdit.cached))
     expect(moved(afterEdit.tasks, added.tasks)).toEqual([])

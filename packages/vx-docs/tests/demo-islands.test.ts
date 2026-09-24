@@ -10,8 +10,8 @@ import {
   TOY_SCENARIOS,
   affectedBy,
   neededBy,
-  orderSentence,
   rerunBy,
+  runSummary,
   toyRuns,
   waves,
   type ToyChange,
@@ -94,11 +94,8 @@ describe('the toy monorepo model', () => {
     },
   )
 
-  it('orders a run by wave, and says so', () => {
+  it('orders a run by wave', () => {
     expect(waves(rerunBy('api'))).toEqual([['api#build'], ['api#test', 'app#build'], ['app#test']])
-    expect(orderSentence(rerunBy('ui'))).toBe(
-      'ui#build, then ui#test and app#build together, then app#test',
-    )
   })
 })
 
@@ -203,6 +200,15 @@ describe('the key model', () => {
       hit: ['utils#build', 'utils#test', 'api#build', 'api#test'],
       stale: ALL,
     })
+  })
+
+  it("counts each change's run in one line, for the live region", () => {
+    expect(TOY_SCENARIOS.map((s) => [s.id, runSummary(toyRuns(s.changes).at(-1)!)])).toEqual([
+      ['utils', '8 run, 0 hit.'],
+      ['app', '2 run, 6 hit.'],
+      ['env', '4 run, 4 hit.'],
+      ['stale', '0 run, 8 hit. 8 stale.'],
+    ])
   })
 
   it('hits the old entries when an edit is undone', () => {

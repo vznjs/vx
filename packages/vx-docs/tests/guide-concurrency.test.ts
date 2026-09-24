@@ -13,6 +13,7 @@ import {
   DEFAULT_WORKERS,
   POLICIES,
   SIM_TASKS,
+  boundsSentence,
   criticalPath,
   describeSchedule,
   finishTable,
@@ -285,13 +286,13 @@ describe('guide/concurrency', () => {
     expect(charts.map((c) => only(c[2]!, /data-done="(\d+)"/g))).toEqual(['27000', '24000'])
     expect(
       charts.map((c) => text(only(c[2]!, /<p class="chart-title\b[^"]*">([\s\S]*?)<\/p>/g))),
-    ).toEqual([
-      'Tasks waiting (vx with no plugin): done at 27 s',
-      'Learned durations (vx with @vzn/vx-schedule-history): done at 24 s',
-    ])
+    ).toEqual(['Tasks waiting (vx): 27 s', 'Learned durations (history plugin): 24 s'])
     expect(text(only(element, /<p class="bounds\b[^"]*">([\s\S]*?)<\/p>/g))).toBe(
-      'No order can finish before 24 s. The critical path, utils#build → api#build → ' +
-        'app#build → app#test, takes 24 s, and 48 s of work spread over 2 workers takes 24 s.',
+      'No order beats 24 s: the longest chain takes 24 s.',
+    )
+    // The bound names what sets it: the chain here, all the work on one worker.
+    expect(boundsSentence(SIM_TASKS, 1)).toBe(
+      'No order beats 48 s: all the work on 1 worker takes 48 s.',
     )
   })
 
@@ -307,7 +308,8 @@ describe('guide/concurrency', () => {
 
   it('states the finish times and the durations in tables', () => {
     const finish = only(element, /(<table class="finish\b[\s\S]*?<\/table>)/g)
-    expect(tableRows(finish)).toEqual(FINISH)
+    // Workers, the bound, then the two policies the charts draw.
+    expect(tableRows(finish)).toEqual(FINISH.map((r) => [r[0]!, r[1]!, r[2]!, r[3]!]))
     expect(only(finish, /<tr data-workers="2" class="([^"]*)"/g)).toContain('is-selected')
     const tasks = tableRows(only(element, /(<table class="tasks\b[\s\S]*?<\/table>)/g))
     expect(tasks.map((r) => r.slice(0, 3))).toEqual(

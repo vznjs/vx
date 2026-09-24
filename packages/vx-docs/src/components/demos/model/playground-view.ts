@@ -1,4 +1,4 @@
-// What the playground page computes (learn/playground, item 700;
+// What the playground page computes (guide/try-it, item 700;
 // design/playground-ui-2026-09.md). `<vx-playground>` only wires these to
 // the DOM, and `Playground.astro` renders the static table from them at
 // build time, so the rows in tests/playground-view.test.ts hold both.
@@ -292,11 +292,28 @@ export interface StaticRow {
 }
 
 /**
- * The task graph as the page opens: one row per task, in project order and
- * each config's task order. The static render shows it without JavaScript,
- * and a row holds `waitsFor` to the deps the planner resolves.
+ * The task graph as the page opens: one row per task `vx run <tasks> --all`
+ * plans (each task a spec names, and every task those wait for), in
+ * project order and each config's task order. The static render shows it
+ * without JavaScript, and a row holds `waitsFor` to the deps the planner
+ * resolves.
  */
-export function staticTable(projects: readonly StaticProject[]): StaticRow[] {
+export function staticTable(
+  projects: readonly StaticProject[],
+  tasks: readonly string[],
+): StaticRow[] {
+  const all = allRows(projects)
+  const planned = new Set(
+    all.filter((r) => tasks.some((t) => t === r.id || t === r.id.split('#')[1])).map((r) => r.id),
+  )
+  // A Set visits what is added during iteration, so this walks the closure.
+  for (const id of planned) {
+    for (const d of all.find((r) => r.id === id)?.waitsFor ?? []) planned.add(d)
+  }
+  return all.filter((r) => planned.has(r.id))
+}
+
+function allRows(projects: readonly StaticProject[]): StaticRow[] {
   const has = (project: string, task: string): boolean =>
     task in taskConfigs(projects.find((p) => p.name === project)?.config)
   return projects.flatMap((p) =>
@@ -325,7 +342,7 @@ export function staticCells(r: StaticRow): [string, string, string] {
 
 /** The dispatch order in one line. */
 export function orderLine(dispatchOrder: readonly string[]): string {
-  return `On 2 workers, vx's scheduler dispatches them in this order: ${dispatchOrder.join(', ')}.`
+  return `Start order on 2 workers: ${dispatchOrder.join(', ')}.`
 }
 
 /** Each package's `vx.config.mjs` text, under the name its

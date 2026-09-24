@@ -1,21 +1,20 @@
 // `<vx-scheduler-sim>`: enhances the static charts `SchedulerSim.astro`
 // renders. It unhides the controls (the worker count, the policy of each
-// chart, a duration and a "no history" box per task) and, on every change,
-// reruns the schedules and redraws both charts, the bound and the finish
-// table through the same model functions the static page was built with.
+// chart, a duration and a "no history" box per task), hides the finish
+// table the worker count replaces, and on every change reruns the schedules
+// and redraws both charts and the bound through the same model functions
+// the static page was built with.
 // The schedules come from vx-bench's simulator over vx's own ranking code;
 // nothing here orders a task.
 import {
   DEFAULT_PAIR,
   DEFAULT_WORKERS,
   MAX_SECONDS,
-  POLICIES,
   POLICY_NAME,
   POLICY_NOTE,
   SIM_TASKS,
   boundsSentence,
   criticalPath,
-  finishTable,
   ganttSvg,
   lowerBound,
   schedule,
@@ -24,8 +23,7 @@ import {
   type SimTask,
 } from './model/scheduler-sim.js'
 
-const HINT =
-  'Change the workers, the policy of either chart, or a task: how long it takes, or whether it has any history. Both charts redraw.'
+const HINT = 'Change the workers, a chart, or a task time.'
 
 class SchedulerSim extends HTMLElement {
   #workers = DEFAULT_WORKERS
@@ -46,7 +44,7 @@ class SchedulerSim extends HTMLElement {
     for (const el of this.querySelectorAll<HTMLElement>('.controls, .status, .js-only')) {
       el.hidden = false
     }
-    for (const el of this.querySelectorAll<HTMLElement>('.dur')) el.hidden = true
+    for (const el of this.querySelectorAll<HTMLElement>('.dur, .finish')) el.hidden = true
     this.#render(HINT)
   }
 
@@ -110,19 +108,11 @@ class SchedulerSim extends HTMLElement {
       chart.querySelector('.gantt')!.innerHTML = ganttSvg(c, span, bound, unknown, critical)
     }
     this.querySelector('.bounds')!.textContent = boundsSentence(tasks, this.#workers)
-    for (const r of finishTable(tasks, unknown)) {
-      const row = this.querySelector<HTMLElement>(`tr[data-workers="${r.workers}"]`)!
-      row.classList.toggle('is-selected', r.workers === this.#workers)
-      row.querySelector('td')!.textContent = secs(r.bound)
-      for (const p of POLICIES) {
-        row.querySelector(`td[data-policy="${p}"]`)!.textContent = secs(r.makespans[p])
-      }
-    }
     const [a, b] = charts as [(typeof charts)[0], (typeof charts)[0]]
-    const on = this.#workers === 1 ? 'On 1 worker' : `On ${this.#workers} workers`
+    const on = this.#workers === 1 ? '1 worker' : `${this.#workers} workers`
     this.querySelector('.status')!.textContent =
       status ??
-      `${on}, ${POLICY_NAME[a.policy]} finishes at ${secs(a.makespan)} and ${POLICY_NAME[b.policy]} at ${secs(b.makespan)}. No order can finish before ${secs(bound)}.`
+      `${on}: ${POLICY_NAME[a.policy]} ${secs(a.makespan)}, ${POLICY_NAME[b.policy]} ${secs(b.makespan)}.`
   }
 }
 

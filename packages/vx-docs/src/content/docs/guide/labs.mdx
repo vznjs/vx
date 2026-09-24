@@ -27,9 +27,9 @@ This workspace has one file more than the playground's:
 
 <Playground lab="unlisted-file" />
 
-1. **Run.** The cache is empty, so all nine tasks miss.
+1. **Run.** The cache is empty, so all eight tasks miss.
 2. **Edit `packages/ui/notes.md`** (add a line) and run. No key moves, and
-   all nine tasks hit. No task declares the file, so no key reads it.
+   all eight tasks hit. No task declares the file, so no key reads it.
 3. **Declare it.** In `packages/ui/vx.config.mjs`, change the inputs of
    `build` to `files: ['src/**', 'notes.md']`, and run. Four keys move.
    The cell for `ui#build` says
@@ -73,9 +73,9 @@ In this workspace `api#build` runs
 
 <Playground lab="undeclared-read" />
 
-1. **Run.** All nine tasks miss.
+1. **Run.** All eight tasks miss.
 2. **Edit `packages/api/config.json`:** change `"hello"` to `"hi"`, and
-   run. No key moves, and all nine tasks hit. In a real run `api#build`
+   run. No key moves, and all eight tasks hit. In a real run `api#build`
    would hit too, and restore the `dist/` it stored in step 1, whose
    `config.json` still says `"hello"`. That is a stale hit: the run is
    green and the output is wrong. The playground cannot show you the wrong
@@ -128,7 +128,7 @@ same shape ([Can you trust a hit?](../trust/)).
 
 Here `ui` has a third task, `bundle`, which writes `dist/**` as
 `ui#build` does. Nothing orders the two. The task field asks for
-`build test docs bundle`.
+`build test bundle`.
 
 <Playground lab="shared-output" />
 
@@ -140,9 +140,9 @@ Here `ui` has a third task, `bundle`, which writes `dist/**` as
    ```
 
 2. **Order them.** In `packages/ui/vx.config.mjs`, give `bundle`
-   `dependsOn: ['build']`, and run. Ten tasks plan, and all ten miss.
+   `dependsOn: ['build']`, and run. Nine tasks plan, and all nine miss.
    `ui#bundle` now waits for `ui#build`.
-3. **Run again.** All ten tasks hit.
+3. **Run again.** All nine tasks hit.
 4. **Edit `packages/ui/src/button.tsx`** and run. Five keys move:
    `ui#build`, `ui#test`, `ui#bundle`, `app#build` and `app#test`. The
    cell for `ui#bundle` says

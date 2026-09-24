@@ -17,7 +17,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { PLANNER_FILE } from '../scripts/build-playground.js'
 import { evaluateConfigInProcess } from '../src/playground/config-eval.js'
-import { ENV, FILES, TASKS } from '../src/playground/workspace.js'
+import { ENV, FILES, OPEN, TASKS } from '../src/playground/workspace.js'
 import { LABS, LAB_IDS, LAB_STEPS, applyEdits, type LabId } from '../src/playground/labs.js'
 import {
   PLAYGROUND_ROOT,
@@ -121,17 +121,17 @@ const upstream = (first: string, cell: string): Record<string, string> => ({
 const TRUTH: Record<LabId, Truth[]> = {
   'unlisted-file': [
     {
-      said: '9 tasks: 0 hit, 9 miss. Every key is new.',
+      said: '8 tasks: 0 hit, 8 miss. Every key is new.',
       moved: {},
-      prose: ['all nine tasks miss'],
+      prose: ['all eight tasks miss'],
     },
     {
-      said: '9 tasks: 9 hit, 0 miss. No key moved.',
+      said: '8 tasks: 8 hit, 0 miss. No key moved.',
       moved: {},
-      prose: ['No key moves', 'all nine tasks hit'],
+      prose: ['No key moves', 'all eight tasks hit'],
     },
     {
-      said: `9 tasks: 5 hit, 4 miss. Keys moved: ${UI_CHAIN.join(', ')}.`,
+      said: `8 tasks: 4 hit, 4 miss. Keys moved: ${UI_CHAIN.join(', ')}.`,
       moved: upstream('ui#build', 'config changed, file added: packages/ui/notes.md'),
       prose: [
         'Four keys move',
@@ -141,29 +141,29 @@ const TRUTH: Record<LabId, Truth[]> = {
       ],
     },
     {
-      said: `9 tasks: 5 hit, 4 miss. Keys moved: ${UI_CHAIN.join(', ')}.`,
+      said: `8 tasks: 4 hit, 4 miss. Keys moved: ${UI_CHAIN.join(', ')}.`,
       moved: upstream('ui#build', 'packages/ui/notes.md changed'),
       prose: ['The same four keys move', 'ui#build now says packages/ui/notes.md changed'],
     },
   ],
   'undeclared-read': [
     {
-      said: '9 tasks: 0 hit, 9 miss. Every key is new.',
+      said: '8 tasks: 0 hit, 8 miss. Every key is new.',
       moved: {},
-      prose: ['All nine tasks miss'],
+      prose: ['All eight tasks miss'],
     },
     {
-      said: '9 tasks: 9 hit, 0 miss. No key moved.',
+      said: '8 tasks: 8 hit, 0 miss. No key moved.',
       moved: {},
-      prose: ['No key moves', 'all nine tasks hit', 'That is a stale hit'],
+      prose: ['No key moves', 'all eight tasks hit', 'That is a stale hit'],
     },
     {
-      said: `9 tasks: 5 hit, 4 miss. Keys moved: ${API_CHAIN.join(', ')}.`,
+      said: `8 tasks: 4 hit, 4 miss. Keys moved: ${API_CHAIN.join(', ')}.`,
       moved: upstream('api#build', 'config changed'),
       prose: ['Four keys move', 'api#build says config changed', 'denies the read of config.json'],
     },
     {
-      said: `9 tasks: 5 hit, 4 miss. Keys moved: ${API_CHAIN.join(', ')}.`,
+      said: `8 tasks: 4 hit, 4 miss. Keys moved: ${API_CHAIN.join(', ')}.`,
       moved: upstream('api#build', 'config changed, file added: packages/api/config.json'),
       prose: [
         'The same four keys move',
@@ -171,7 +171,7 @@ const TRUTH: Record<LabId, Truth[]> = {
       ],
     },
     {
-      said: `9 tasks: 5 hit, 4 miss. Keys moved: ${API_CHAIN.join(', ')}.`,
+      said: `8 tasks: 4 hit, 4 miss. Keys moved: ${API_CHAIN.join(', ')}.`,
       moved: upstream('api#build', 'packages/api/config.json changed'),
       prose: ['The four keys move', 'api#build says packages/api/config.json changed'],
     },
@@ -179,13 +179,13 @@ const TRUTH: Record<LabId, Truth[]> = {
   'shared-output': [
     { said: REFUSAL, moved: {}, prose: ['There is no table', REFUSAL] },
     {
-      said: '10 tasks: 0 hit, 10 miss. Every key is new.',
+      said: '9 tasks: 0 hit, 9 miss. Every key is new.',
       moved: {},
-      prose: ['Ten tasks plan, and all ten miss', 'ui#bundle now waits for ui#build'],
+      prose: ['Nine tasks plan, and all nine miss', 'ui#bundle now waits for ui#build'],
     },
-    { said: '10 tasks: 10 hit, 0 miss. No key moved.', moved: {}, prose: ['All ten tasks hit'] },
+    { said: '9 tasks: 9 hit, 0 miss. No key moved.', moved: {}, prose: ['All nine tasks hit'] },
     {
-      said: '10 tasks: 5 hit, 5 miss. Keys moved: ui#build, ui#test, ui#bundle, app#build, app#test.',
+      said: '9 tasks: 4 hit, 5 miss. Keys moved: ui#build, ui#test, ui#bundle, app#build, app#test.',
       moved: {
         'ui#build': 'packages/ui/src/button.tsx changed',
         'ui#test': 'packages/ui/src/button.tsx changed, upstream ui#build moved',
@@ -214,9 +214,9 @@ const ADDED_FILES: Record<LabId, string[]> = {
   'shared-output': [],
 }
 const TASK_FIELD: Record<LabId, string> = {
-  'unlisted-file': 'build test docs',
-  'undeclared-read': 'build test docs',
-  'shared-output': 'build test docs bundle',
+  'unlisted-file': 'build test',
+  'undeclared-read': 'build test',
+  'shared-output': 'build test bundle',
 }
 
 // The playground's static table, by hand (as playground-view.test.ts has it).
@@ -229,7 +229,6 @@ const STATIC: [string, string, string][] = [
   ['api#test', 'api#build', 'src/**, test/**'],
   ['app#build', 'ui#build, api#build', 'src/**'],
   ['app#test', 'app#build', 'src/**, test/**'],
-  ['app#docs', 'nothing', 'docs/src/**'],
 ]
 const LAB_STATIC: Record<LabId, [string, string, string][]> = {
   'unlisted-file': STATIC,
@@ -316,8 +315,7 @@ describe('the labs on guide/labs', () => {
         ),
       )
       const staticPart = only(element, /<div class="static\b[^"]*"[^>]*>([\s\S]*)<\/div>\s*$/g)
-      const list = only(staticPart, /<ul class="file-list\b[^"]*"[^>]*>([\s\S]*?)<\/ul>/g)
-      const files = [...list.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
+      const files = [...element.matchAll(/<option value="([^"]+)">/g)].map((m) => decode(m[1]!))
       expect(files).toEqual(Object.keys(LABS[lab].files))
       expect(files.filter((f) => !(f in FILES))).toEqual(ADDED_FILES[lab])
       const configs = [
@@ -334,7 +332,9 @@ describe('the labs on guide/labs', () => {
       for (const [name, t] of Object.entries(configTextsOf(LABS[lab].files))) {
         evaluated[name] = ((await planner.evaluateConfig(t, 10_000)) as { config: unknown }).config
       }
-      expect(rows).toEqual(staticTable(staticProjects(LABS[lab].files, evaluated)).map(staticCells))
+      expect(rows).toEqual(
+        staticTable(staticProjects(LABS[lab].files, evaluated), LABS[lab].tasks).map(staticCells),
+      )
       expect(only(element, /<input class="tasks\b[^>]*value="([^"]*)"/g)).toBe(TASK_FIELD[lab])
       expect(decode(only(element, /<textarea class="env\b[^>]*>([\s\S]*?)<\/textarea>/g))).toBe(
         envText(ENV),
@@ -443,7 +443,6 @@ describe('two playgrounds planning at once', () => {
       'api#build',
       'api#test',
       'app#build',
-      'app#docs',
       'app#test',
       'ui#build',
       'ui#test',
@@ -545,9 +544,10 @@ describe('<vx-playground data-lab>', () => {
     const el = mount()
     expect(fileList(el)).toEqual(Object.keys(FILES))
     reset(el)
-    expect(el.querySelector('.tasks').value).toBe('build test docs')
+    expect(el.querySelector('.editor').value).toBe(FILES[OPEN]!)
+    expect(el.querySelector('.tasks').value).toBe('build test')
     const tag = only(page('guide/try-it'), /<vx-playground\b([^>]*)>/g)
-    expect([...tag.matchAll(/\s([\w-]+)=/g)].map((m) => m[1])).toEqual(['data-vx-demo', 'class'])
+    expect([...tag.matchAll(/\s([\w-]+)=/g)].map((m) => m[1])).toEqual(['data-vx-demo'])
   })
 
   it('refuses a lab it does not know', () => {

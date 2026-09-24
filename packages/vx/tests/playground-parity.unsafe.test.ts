@@ -789,7 +789,7 @@ describe("the playground page's workspace plans what the CLI plans (item 700)", 
   for (const name of ['committed', 'edited']) {
     it(`${name}: every task's key, cache status and deps`, () => {
       const { cli, page } = runs.get(name)!
-      expect(cli.length).toBe(9)
+      expect(cli.length).toBe(8)
       expect(comparable(page)).toEqual(comparable(cli))
     })
   }
@@ -970,23 +970,23 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
   // against the state before (null after a refused state, or for the first).
   const TRUTH: Record<string, Array<{ plans: number | string; moved: string[] | null }>> = {
     'unlisted-file': [
-      { plans: 9, moved: null },
-      { plans: 9, moved: [] },
-      { plans: 9, moved: UI },
-      { plans: 9, moved: UI },
+      { plans: 8, moved: null },
+      { plans: 8, moved: [] },
+      { plans: 8, moved: UI },
+      { plans: 8, moved: UI },
     ],
     'undeclared-read': [
-      { plans: 9, moved: null },
-      { plans: 9, moved: [] },
-      { plans: 9, moved: API },
-      { plans: 9, moved: API },
-      { plans: 9, moved: API },
+      { plans: 8, moved: null },
+      { plans: 8, moved: [] },
+      { plans: 8, moved: API },
+      { plans: 8, moved: API },
+      { plans: 8, moved: API },
     ],
     'shared-output': [
       { plans: REFUSAL, moved: null },
-      { plans: 10, moved: null },
-      { plans: 10, moved: [] },
-      { plans: 10, moved: ['app#build', 'app#test', 'ui#build', 'ui#bundle', 'ui#test'] },
+      { plans: 9, moved: null },
+      { plans: 9, moved: [] },
+      { plans: 9, moved: ['app#build', 'app#test', 'ui#build', 'ui#bundle', 'ui#test'] },
     ],
   }
   type Side = { ok: true; tasks: PlanTask[] } | { ok: false; error: string }

@@ -1,8 +1,8 @@
-// What a Learn page's checkpoint asks and how it marks an answer (roadmap
-// W11, item 705; design/labs-checkpoints-2026-09.md § W11). A checkpoint is
-// one question about the playground's toy workspace, in one of two forms:
-// an edit ("you edit X: which tasks rerun?") or a run ("`vx run T`: which
-// tasks run?"). Its answer is never written by hand: `answerCheckpoint`
+// What a page's checkpoint asks and how it marks an answer (roadmap W11,
+// item 705; design/labs-checkpoints-2026-09.md § W11). A checkpoint is one
+// short question about the playground's toy workspace, in one of two forms:
+// an edit ("which tasks rerun when you edit X?") or a run ("which tasks
+// does `vx run T` run?"). Its answer is never written by hand: `answerCheckpoint`
 // runs vx's planner over the question's files, at build time for the
 // no-JavaScript answer (`Checkpoint.astro`) and in the reader's browser on
 // Check (`checkpoint.ts`). tests/learn-checkpoints.test.ts holds every
@@ -23,16 +23,11 @@ export type CheckpointChange =
       file: string
       /** The file's contents after the edit. */
       text: string
-      /** What the edit does, when the file's name does not say it. */
-      how?: string
     }
   | { env: string; value: string }
 
 interface Common {
-  /** Context the question needs first, with `code` in backticks. It names
-   *  no task of the answer: the answer is the planner's. */
-  intro?: string
-  /** A sentence the answer ends with, shown after Check and without
+  /** One short sentence the answer ends with, shown after Check and without
    *  JavaScript: what the answer means, not what it is. */
   note?: string
 }
@@ -47,69 +42,32 @@ export type Checkpoint =
     })
   | (Common & { form: 'run'; tasks: string[] })
 
-/** `text` with `from` replaced by `to`, where `from` occurs exactly once: a
- *  variant that silently changed nothing would ask one question and answer
- *  another. */
-function replaceOnce(text: string, from: string, to: string): string {
-  const at = text.indexOf(from)
-  if (at === -1 || text.indexOf(from, at + 1) !== -1) {
-    throw new Error(`checkpoint variant: '${from}' is not in the text exactly once`)
-  }
-  return text.slice(0, at) + to + text.slice(at + from.length)
-}
-
-const UI_CONFIG = 'packages/ui/vx.config.mjs'
-const UI_TSCONFIG = 'packages/ui/tsconfig.json'
-const TSCONFIG = '{ "compilerOptions": { "strict": true } }\n'
-// `ui#build`'s inputs, the first `files` in its config; `ui#test`'s differ.
-const UI_BUILD_INPUTS = "inputs: { files: ['src/**'] },"
-const UI_DECLARES_TSCONFIG = replaceOnce(
-  FILES[UI_CONFIG]!,
-  UI_BUILD_INPUTS,
-  "inputs: { files: ['src/**', 'tsconfig.json'] },",
-)
 const edited = (file: string): string => `${FILES[file]}// edited\n`
+const BANNER = 'packages/app/banner.txt'
 
-/** Each page's checkpoints, by id. The page places one by its id. */
+/** Each chapter's checkpoint, by id. The chapter places it by its id. */
 const DEFINED = {
-  'what-is-edit': {
-    form: 'edit',
-    change: {
-      file: 'packages/utils/src/index.ts',
-      text: edited('packages/utils/src/index.ts'),
-    },
-  },
-  'what-is-run': {
+  // Chapter 3: `^build` pulls in every build `app` uses, and no test.
+  dependencies: {
     form: 'run',
     tasks: ['app#build'],
   },
+  // Chapter 5: a change in api moves api's keys and the keys above it.
   caching: {
     form: 'edit',
-    intro:
-      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, and its inputs declare the file: `files: ['src/**', 'tsconfig.json']`.",
-    setup: { [UI_TSCONFIG]: TSCONFIG, [UI_CONFIG]: UI_DECLARES_TSCONFIG },
-    change: { file: UI_CONFIG, text: FILES[UI_CONFIG]!, how: 'to stop declaring it' },
-    note: 'The list of inputs is part of the task’s config, so the config change moves its key, and every key that folds it moves with it. Edit `packages/ui/tsconfig.json` after that, and nothing moves: the Correctness checkpoint asks what that run replays.',
+    change: { file: 'packages/api/src/server.ts', text: edited('packages/api/src/server.ts') },
+    note: '`app` uses `api`, so the keys of `app` move too.',
   },
+  // Chapter 6's banner: `app`'s build reads it, and its inputs list only `src/**`.
   correctness: {
     form: 'edit',
-    intro:
-      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, but its inputs declare only `files: ['src/**']`.",
-    setup: { [UI_TSCONFIG]: TSCONFIG },
-    change: { file: UI_TSCONFIG, text: TSCONFIG.replace('true', 'false') },
-    note: 'No key reads the file, so no key moves, and every task hits. A task that read the file, itself or through the output of a task it waits for, replays an output built from the old file: the run is green and the output is stale. With `exec.sandbox` on, the undeclared read fails the run instead.',
+    setup: { [BANNER]: '/*! v1 */\n' },
+    change: { file: BANNER, text: '/*! v2 */\n' },
+    note: 'No input lists `banner.txt`, so no key moves, and the build hands back the old file.',
   },
-  'playground-edit': {
-    form: 'edit',
-    intro: 'Start from Reset.',
-    change: {
-      file: 'packages/utils/test/index.test.ts',
-      text: edited('packages/utils/test/index.test.ts'),
-    },
-  },
+  // Chapter 10: the env the playground opens with.
   'playground-env': {
     form: 'edit',
-    intro: 'Start from Reset.',
     change: { env: 'API_URL', value: 'https://staging.example.com' },
   },
 } satisfies Record<string, Checkpoint>
@@ -119,19 +77,19 @@ export const CHECKPOINTS: Record<CheckpointId, Checkpoint> = DEFINED
 
 const code = (s: string): string => `\`${s}\``
 
-/** The question, with `code` in backticks: the intro, then a sentence made
- *  from the change or the task specs, so it cannot name one file while the
- *  answer is computed for another. */
+/** The question in one sentence, with `code` in backticks, made from the
+ *  change or the task specs, so it cannot name one file while the answer is
+ *  computed for another. A path drops its `packages/`, as the book writes
+ *  a package's files. */
 export function questionOf(c: Checkpoint): string {
-  const intro = c.intro === undefined ? '' : `${c.intro} `
   if (c.form === 'run') {
-    return `${intro}You run ${code(`vx run ${c.tasks.join(' ')}`)} on an empty cache. Which tasks run?`
+    return `Which tasks does ${code(`vx run ${c.tasks.join(' ')}`)} run on an empty cache?`
   }
   const what =
     'file' in c.change
-      ? `edit ${code(c.change.file)}${c.change.how === undefined ? '' : ` ${c.change.how}`}`
-      : `change ${code(c.change.env)} to another value`
-  return `${intro}You run ${code(`vx run ${TASKS.join(' ')}`)} once. Then you ${what} and run it again. Which tasks rerun?`
+      ? `edit ${code(c.change.file.replace(/^packages\//, ''))}`
+      : `change ${code(c.change.env)}`
+  return `Which tasks rerun when you ${what}?`
 }
 
 /** One task of the workspace, and whether the question's answer holds it. */
@@ -294,7 +252,9 @@ export function answerText(answer: CheckpointAnswer): {
   const summary =
     yes.length === 0
       ? `No task ${v.one}.`
-      : `${yes.length} of the ${answer.rows.length} tasks ${yes.length === 1 ? v.one : v.many}.`
+      : yes.length === answer.rows.length
+        ? `All ${yes.length} tasks ${v.many}.`
+        : `${yes.length} of the ${answer.rows.length} tasks ${yes.length === 1 ? v.one : v.many}.`
   const reasons = [...new Set(no.map((r) => r.reason))]
   return {
     summary,

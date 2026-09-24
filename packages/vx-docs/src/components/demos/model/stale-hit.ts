@@ -157,8 +157,8 @@ export const STALE_STEPS: StaleStep[] = [
   { id: 'first', title: 'First run', change: undefined },
   { id: 'source', title: `Edit ${STALE_SOURCE}`, change: 'edit-source' },
   { id: 'banner', title: `Edit ${STALE_BANNER}`, change: 'edit-banner' },
-  { id: 'sandbox', title: 'Turn on exec.sandbox', change: 'sandbox' },
-  { id: 'declare', title: `Declare ${STALE_BANNER}`, change: 'declare' },
+  { id: 'sandbox', title: 'Turn on the sandbox', change: 'sandbox' },
+  { id: 'declare', title: `List ${STALE_BANNER}`, change: 'declare' },
 ]
 
 /** Every step's run, the first on an empty cache. */
@@ -172,40 +172,16 @@ export function staleRuns(steps: readonly StaleStep[] = STALE_STEPS): StaleRun[]
   return runs
 }
 
-/** The toggles the demo offers after the five steps, in the order it shows them. */
-export const STALE_TOGGLES: { change: StaleChange; label: string }[] = [
-  { change: 'edit-source', label: `edit ${STALE_SOURCE}` },
-  { change: 'edit-banner', label: `edit ${STALE_BANNER}` },
-  { change: 'sandbox', label: 'exec.sandbox' },
-  { change: 'declare', label: `declare ${STALE_BANNER}` },
-]
-
-/** Whether a toggle is on in `state`. */
-export function toggleOn(state: StaleState, change: StaleChange): boolean {
-  return state[FIELD[change]]
-}
-
-/** What a change does, in one sentence. `state` is the state it is made in. */
-export function describeStaleChange(change: StaleChange, state: StaleState): string {
-  const undo = toggleOn(state, change)
-  if (change === 'sandbox') return `You turn ${undo ? 'off' : 'on'} exec.sandbox.`
-  if (change === 'declare') {
-    return undo ? `You stop declaring ${STALE_BANNER}.` : `You declare ${STALE_BANNER}.`
-  }
-  const file = change === 'edit-source' ? STALE_SOURCE : STALE_BANNER
-  return undo ? `You undo your edit to ${file}.` : `You edit ${file}.`
-}
-
 /** The words the table and the live panel use for a run. */
 export function verdictOf(r: StaleRun): string {
-  if (r.verdict === 'failed') return 'fails: sandbox violation'
-  if (r.verdict === 'miss') return 'miss: runs'
+  if (r.verdict === 'failed') return 'fails'
+  if (r.verdict === 'miss') return 'runs'
   return r.stale ? 'stale hit' : 'hit'
 }
 
 /** What `dist/out.txt` holds after the run, as the table and the panel say it. */
 export function outputOf(r: StaleRun): string {
-  return r.output ?? 'none: it failed'
+  return r.output ?? 'nothing'
 }
 
 export function keyCellOf(r: StaleRun): string {
@@ -213,25 +189,17 @@ export function keyCellOf(r: StaleRun): string {
   return r.moved ? `${shortKey(r.before)} → ${shortKey(r.key)}` : `${shortKey(r.key)} (same)`
 }
 
-/** A run in a few sentences, for the static list and the live region. */
+/** A run in two short sentences, for the live region. */
 export function describeStaleRun(r: StaleRun): string {
-  const key =
-    r.before === undefined
-      ? 'The cache is empty.'
-      : !r.moved
-        ? 'The key did not move.'
-        : r.verdict === 'hit'
-          ? 'The key moved, to one an earlier run stored.'
-          : 'The key moved.'
+  if (r.before === undefined) return 'The cache is empty, so the task runs and vx saves its output.'
   if (r.verdict === 'failed') {
-    return `${key} The run misses, and the sandbox denies the read of ${r.denied.join(', ')}, so the task fails and nothing is stored.`
+    return `The key changed. The sandbox hides ${r.denied.join(', ')}, so the task fails and vx saves nothing.`
   }
-  if (r.verdict === 'miss')
-    return `${key} The run misses, runs the command and stores what it wrote.`
-  if (r.stale) {
-    return `${key} The run hits and replays an output built before the edit: a stale hit, on a green run.`
-  }
-  return `${key} The run hits and replays the stored output, which is correct.`
+  if (r.verdict === 'miss') return 'The key changed, so the task runs and vx saves its output.'
+  const key = r.moved ? 'The key matches an earlier run' : 'The key did not change'
+  return r.stale
+    ? `${key}, so vx hands back the old file. It is wrong, and the run passes.`
+    : `${key}, so vx hands back the saved file. It is right.`
 }
 
 /** A workspace root for the report's path; illustrative, like the keys. */

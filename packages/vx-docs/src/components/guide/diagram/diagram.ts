@@ -12,6 +12,8 @@ export type Point = [x: number, y: number]
  *  (muted), a read (link), a warning (warn). */
 export type Tone = 'default' | 'accent' | 'link' | 'danger' | 'ok' | 'warn' | 'muted'
 
+export const TONES: readonly Tone[] = ['default', 'accent', 'link', 'danger', 'ok', 'warn', 'muted']
+
 export interface Box {
   id: string
   /** Top-left corner. */
@@ -26,6 +28,9 @@ export interface Box {
   tone?: Tone
   /** Read on hover, for a box too narrow to print its label. */
   title?: string
+  /** `data-*` attributes, by name without the prefix: what a widget that
+   *  draws with the kit (`DiagramSvg.astro`) finds its boxes by. */
+  data?: Record<string, string>
 }
 
 export interface Arrow {

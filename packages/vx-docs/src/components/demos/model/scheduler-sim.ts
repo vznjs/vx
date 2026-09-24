@@ -58,10 +58,10 @@ export const POLICY_NAME: Record<Policy, string> = {
 }
 
 export const POLICY_NOTE: Record<Policy, string> = {
-  count: 'vx with no plugin',
-  median: 'vx with @vzn/vx-schedule-history',
-  'unknown-first': 'the rule vx measured and did not adopt',
-  oracle: 'an oracle that knows every duration',
+  count: 'vx',
+  median: 'history plugin',
+  'unknown-first': 'measured, not adopted',
+  oracle: 'knows every time',
 }
 
 export interface Bar {
@@ -129,14 +129,16 @@ export function secs(ms: number): string {
   return `${Math.round(ms / 100) / 10} s`
 }
 
+/** The bound in one line, with what sets it: the longest chain, or all
+ *  the work shared by the workers. */
 export function boundsSentence(tasks: readonly SimTask[], workers: number): string {
-  const cp = criticalPath(tasks)
-  const per = workers === 1 ? 'on 1 worker' : `spread over ${workers} workers`
-  return (
-    `No order can finish before ${secs(lowerBound(tasks, workers))}. ` +
-    `The critical path, ${cp.chain.join(' → ')}, takes ${secs(cp.length)}, ` +
-    `and ${secs(totalWork(tasks))} of work ${per} takes ${secs(totalWork(tasks) / workers)}.`
-  )
+  const chain = criticalPath(tasks).length
+  const shared = totalWork(tasks) / workers
+  const why =
+    chain >= shared
+      ? `the longest chain takes ${secs(chain)}`
+      : `all the work on ${workers === 1 ? '1 worker' : `${workers} workers`} takes ${secs(shared)}`
+  return `No order beats ${secs(lowerBound(tasks, workers))}: ${why}.`
 }
 
 /** What the chart shows, in words: its text alternative. */
@@ -196,14 +198,15 @@ export function ganttSvg(
       .filter(Boolean)
       .join(' ')
     const w = x(b.end) - x(b.start)
-    // Package over task, when the longer of the two fits the bar.
+    // Package over task, when the longer of the two fits the bar in the
+    // diagram's mono at 11px (0.6em a character).
     const [pkg, task] = b.id.split('#') as [string, string]
-    const fits = Math.max(pkg.length, task.length) * 6.1 + 6 <= w
+    const fits = Math.max(pkg.length, task.length) * 6.6 + 6 <= w
     const cx = x(b.start) + w / 2
     const cy = (b.lane - 1) * lane + lane / 2
     parts.push(
       `<g class="${classes}" data-task="${b.id}" data-lane="${b.lane}" data-start="${b.start}" data-end="${b.end}">`,
-      `<rect x="${x(b.start) + 1}" y="${(b.lane - 1) * lane + (lane - bar) / 2}" width="${Math.max(w - 2, 1)}" height="${bar}" rx="4"></rect>`,
+      `<rect x="${x(b.start) + 1}" y="${(b.lane - 1) * lane + (lane - bar) / 2}" width="${Math.max(w - 2, 1)}" height="${bar}" rx="8"></rect>`,
       fits
         ? `<text x="${cx}" y="${cy - 2}">${pkg}</text><text x="${cx}" y="${cy + 11}">${task}</text>`
         : '',
@@ -231,11 +234,3 @@ export function finishTable(
     return { workers, bound: lowerBound(tasks, workers), makespans }
   })
 }
-
-/** The page's worked cases for a task the history has never seen, on the
- *  default graph and worker count. */
-export const NO_HISTORY_CASES: readonly { label: string; unknown: readonly string[] }[] = [
-  { label: 'Every task has history', unknown: [] },
-  { label: 'app#docs is new', unknown: ['app#docs'] },
-  { label: 'ui#lint is new', unknown: ['ui#lint'] },
-]

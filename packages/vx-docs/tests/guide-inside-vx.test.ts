@@ -22,12 +22,7 @@ import { nx, nxCache, turbo, turboCache } from '@vzn/vx-migrate'
 import { otel } from '@vzn/vx-otel'
 import { reapi } from '@vzn/vx-reapi'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
-import {
-  STAGES,
-  filledBy,
-  hookSignatures,
-  stageExample,
-} from '../src/components/demos/model/pipeline.js'
+import { STAGES, hookSignatures, stageExample } from '../src/components/demos/model/pipeline.js'
 import * as P from '../src/components/guide/inside-vx/pictures.js'
 import {
   DIST,
@@ -280,9 +275,7 @@ describe('the pipeline explorer on guide/inside-vx', () => {
       const hrefsOf = [...linked[0]![1]!.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1])
       expect(hrefsOf).toEqual(stage.firstParty.map((p) => `/vx/${p.href}`))
       if (stage.firstParty.length === 0) {
-        expect(text(linked[0]![1]!)).toBe(
-          'First-party: none yet. The stage is open to your own plugin.',
-        )
+        expect(text(linked[0]![1]!)).toBe('First-party: none yet.')
       }
     }
   })
@@ -299,10 +292,13 @@ describe('the pipeline explorer on guide/inside-vx', () => {
     expect(missing).toEqual([])
   })
 
+  // Each stage's first-party plugins are its section's links (above), so the
+  // table says only what core does alone and what a plugin decides.
   it('tabulates what core does and what a plugin decides at each stage', () => {
-    const table = only(element, /(<table\b[\s\S]*?<\/table>)/g)
-    expect(tableRows(table)).toEqual(STAGES.map((s) => [s.hook, s.core, s.plugin, filledBy(s)]))
+    const table = only(element, /(<table class="overview\b[\s\S]*?<\/table>)/g)
+    expect(tableRows(table)).toEqual(STAGES.map((s) => [s.hook, s.core, s.plugin]))
     expect(tableRows(table).map((r) => r[0])).toEqual([...PLUGIN_HOOKS])
+    expect(only(element, /<table class="overview\b[^"]*"([^>]*)>/g).trim()).toBe('')
   })
 
   it('ships every stage visible and no control that needs JavaScript', () => {
@@ -316,14 +312,12 @@ describe('the pipeline explorer on guide/inside-vx', () => {
     ).toEqual(PLUGIN_HOOKS.map(() => false))
   })
 
-  it('names the stages in the caption', () => {
-    const caption = only(html, /<figcaption\b[^>]*>(The 13 hooks[\s\S]*?)<\/figcaption>/g)
+  it('counts the stages in its one-line caption', () => {
+    const caption = only(html, /<figcaption\b[^>]*>(The 13 stages[\s\S]*?)<\/figcaption>/g)
     expect(text(caption)).toBe(
-      "The 13 hooks a plugin can fill, in the order of core's own list. Each section shows the " +
-        "hook's declaration from core's source, the first-party plugins that fill it, and a " +
-        'short example plugin. The table says what core does at each stage when no plugin ' +
-        'fills it, and what a plugin can decide there.',
+      "The 13 stages a plugin can fill, in core's order. Pick one to see its hook and a plugin.",
     )
+    expect(PLUGIN_HOOKS).toHaveLength(13)
   })
 
   it("loads the element's module from the page's own scripts", () => {

@@ -224,6 +224,61 @@ describe("the kit's colours and faces", () => {
     expect(wrong).toEqual([])
   })
 
+  // The Guide's widgets take the pictures' look (Next 16 b): the same tokens
+  // and faces, and a frame and caption of the same size, so no widget reads
+  // as a second hand.
+  it('are the only colours and faces of the Guide’s widgets, framed like a picture', () => {
+    const DEMOS = path.join(SITE, 'src/components/demos')
+    const files = [
+      path.join(SITE, 'src/components/Demo.astro'),
+      ...[
+        'widget.css',
+        'Checkpoint.astro',
+        'GraphExplorer.astro',
+        'KeyCalculator.astro',
+        'PipelineExplorer.astro',
+        'PipelineStrip.astro',
+        'Playground.astro',
+        'SchedulerSim.astro',
+        'StaleHit.astro',
+      ].map((f) => path.join(DEMOS, f)),
+    ]
+    const wrong: string[] = []
+    for (const f of files) {
+      const src = readFileSync(f, 'utf8')
+      for (const m of src.matchAll(/var\(\s*(--[\w-]+)/g)) {
+        if (![...TOKENS, ...FONTS].includes(m[1]!)) wrong.push(`${path.basename(f)}: ${m[1]}`)
+      }
+      for (const m of src.matchAll(
+        /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|hsl)a?\(|font-family:(?!\s*var\()/g,
+      ))
+        wrong.push(`${path.basename(f)}: ${m[0]}`)
+    }
+    const widget = readFileSync(path.join(DEMOS, 'widget.css'), 'utf8')
+    const kit = readFileSync(path.join(KIT, 'diagram.css'), 'utf8')
+    const rule = (css: string, selector: string): string => {
+      const at = css.indexOf(`${selector} {`)
+      expect(at).toBeGreaterThan(-1)
+      return css.slice(at, css.indexOf('}', at))
+    }
+    // Positive first: the widgets' stylesheet was read, and Demo loads it.
+    expect(widget).toContain('var(--vx-accent)')
+    expect(readFileSync(files[0]!, 'utf8')).toContain("import './demos/widget.css'")
+    expect(wrong).toEqual([])
+    const frame = (css: string, selector: string): string[] =>
+      rule(css, selector)
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^(?:border|border-radius|background|padding|margin):/.test(l))
+    expect(frame(widget, '.vx-demo')).toEqual(frame(kit, '.vx-diagram'))
+    const caption = (css: string, selector: string): string[] =>
+      rule(css, selector)
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^(?:font-size|line-height|color|text-align):/.test(l))
+    expect(caption(widget, '.vx-demo > figcaption')).toEqual(caption(kit, '.vx-diagram figcaption'))
+  })
+
   it('set the landing’s mono in the drawing and the body’s sans in the caption', () => {
     const css = readFileSync(path.join(KIT, 'diagram.css'), 'utf8')
     const rule = (selector: string): string => {

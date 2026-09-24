@@ -1,5 +1,5 @@
 ---
-// A Learn page's checkpoint, checked against vx's planner (roadmap W11,
+// A page's checkpoint, checked against vx's planner (roadmap W11,
 // item 705; design/labs-checkpoints-2026-09.md § W11). Without JavaScript it
 // is the question and, in a `<details>`, the answer. `checkpoint.ts` unhides
 // a checkbox per task and a Check button, hides the answer, and on Check
@@ -51,7 +51,7 @@ const answer = await answerCheckpoint(
 )
 const text = answerText(answer)
 const planner = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}playground/planner.js`
-const legend = `Tick every task that ${checkpoint.form === 'edit' ? 'reruns' : 'runs'}, then press Check.`
+const legend = `Tick each task that ${checkpoint.form === 'edit' ? 'reruns' : 'runs'}.`
 ---
 
 <Demo name="checkpoint">
@@ -71,7 +71,7 @@ const legend = `Tick every task that ${checkpoint.form === 'edit' ? 'reruns' : '
         ))
       }
     </ul>
-    <button type="button" data-action="check">Check</button>
+    <button type="button" class="primary" data-action="check">Check</button>
   </fieldset>
   <div class="result" aria-live="polite"></div>
   <details class="answer">
@@ -105,66 +105,99 @@ const legend = `Tick every task that ${checkpoint.form === 'edit' ? 'reruns' : '
   vx-checkpoint {
     display: block;
   }
+  vx-checkpoint .question {
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--vx-fg);
+  }
   vx-checkpoint .form[hidden],
   vx-checkpoint .answer[hidden] {
     display: none;
   }
   vx-checkpoint .form {
-    margin: 0.5rem 0 0;
+    margin: 0.75rem 0 0;
     padding: 0;
     border: 0;
   }
   vx-checkpoint legend {
     padding: 0;
-    font-size: var(--sl-text-sm);
-    color: var(--sl-color-gray-2);
+    font-size: 0.95rem;
+    color: var(--vx-muted);
   }
   vx-checkpoint .choices {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem 1rem;
-    margin: 0.5rem 0;
+    gap: 0.4rem;
+    margin: 0.5rem 0 0.75rem;
     padding: 0;
     list-style: none;
   }
+  vx-checkpoint .choices li {
+    margin: 0;
+  }
+  /* Each task is a box of the pictures: a mono chip that takes its tone
+     when marked (ok right, warn missed, danger wrong). */
   vx-checkpoint .choices label {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface-2);
     cursor: pointer;
   }
-  vx-checkpoint .choices li[data-verdict='missed'] code,
+  vx-checkpoint .choices code {
+    padding: 0;
+    background: none;
+    font-family: var(--vx-mono);
+    font-size: 13px;
+    color: var(--vx-fg);
+  }
+  vx-checkpoint .choices input {
+    accent-color: var(--vx-accent);
+  }
+  vx-checkpoint .choices li[data-verdict='right'] label {
+    border-color: var(--vx-ok);
+  }
+  vx-checkpoint .choices li[data-verdict='missed'] label {
+    border-color: var(--vx-warn);
+  }
+  vx-checkpoint .choices li[data-verdict='wrong'] label {
+    border-color: var(--vx-danger);
+  }
   vx-checkpoint .marks li[data-verdict='missed'] {
-    color: var(--sl-color-orange-high);
+    color: var(--vx-warn);
   }
-  vx-checkpoint .choices li[data-verdict='wrong'] code,
   vx-checkpoint .marks li[data-verdict='wrong'] {
-    color: var(--sl-color-red-high);
-  }
-  vx-checkpoint .choices li[data-verdict='right'] code {
-    color: var(--sl-color-green-high);
-  }
-  vx-checkpoint button {
-    padding: 0.1rem 0.75rem;
-    border: 1px solid var(--sl-color-accent);
-    border-radius: 999px;
-    background: var(--sl-color-accent-low);
-    color: var(--sl-color-white);
-    font: inherit;
-    cursor: pointer;
+    color: var(--vx-danger);
   }
   vx-checkpoint button:disabled {
-    opacity: 0.6;
     cursor: progress;
   }
-  vx-checkpoint button:focus-visible {
-    outline: 2px solid var(--sl-color-text-accent);
-    outline-offset: 2px;
+  vx-checkpoint .result {
+    margin-top: 0.75rem;
   }
   vx-checkpoint .result .verdict {
-    font-weight: 600;
+    font-weight: 700;
   }
-  vx-checkpoint .result .marks {
-    font-size: var(--sl-text-sm);
+  vx-checkpoint .result .marks,
+  vx-checkpoint .answer ul {
+    font-family: var(--vx-mono);
+    font-size: 13px;
+  }
+  vx-checkpoint .answer {
+    margin-top: 0.75rem;
+  }
+  vx-checkpoint .answer summary {
+    cursor: pointer;
+    font-family: var(--vx-mono);
+    font-size: 13px;
+    color: var(--vx-muted);
+  }
+  vx-checkpoint .answer .rest {
+    font-family: var(--vx-mono);
+    font-size: 13px;
+    color: var(--vx-muted);
   }
 </style>

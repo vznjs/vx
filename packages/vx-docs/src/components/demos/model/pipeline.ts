@@ -160,43 +160,6 @@ export function stageExample(hook: PluginHook): string {
   return `stages/${hook}.ts`
 }
 
-/** `a`, `a and b`, `a, b and c`. */
-export function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) return names.join('')
-  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
-}
-
-/** The stage's first-party plugins as one phrase, for the table and the live region. */
-export function filledBy(stage: Stage): string {
-  if (stage.firstParty.length === 0) return 'none'
-  return joinNames(stage.firstParty.map((p) => `${p.call} from ${p.pkg}`))
-}
-
-/** The pipeline as a Mermaid flowchart: the run's stages in a row, the local
- *  floor under `executor` and `cache`, and the lifecycle pair and `commands`
- *  apart from the row, since neither is a step a task passes through. */
-export function pipelineMermaid(): string {
-  const id = (hook: string) => `s_${hook}`
-  const lines = ['flowchart LR']
-  lines.push(`  ${RUN_STAGES.map((s) => `${id(s.hook)}["${s.hook}"]`).join(' --> ')}`)
-  lines.push(`  ${id('setup')}["setup: once, before any task starts"]`)
-  lines.push(`  ${id('teardown')}["teardown: once, when the run ends"]`)
-  lines.push(`  ${id('executor')} -. declined .-> floorExec["local executor: the floor"]`)
-  lines.push(`  ${id('cache')} -. last layer .-> floorCache["local store: the floor"]`)
-  lines.push(`  ${id('commands')}["commands: vx with a verb core does not know"]`)
-  return lines.join('\n')
-}
-
-/** What the Mermaid diagram says, for readers who do not see it. */
-export function pipelineSentence(): string {
-  return (
-    `The pipeline: ${RUN_STAGES.map((s) => s.hook).join(', then ')}. ` +
-    'When every plugin declines, the local executor runs the task and the local store ' +
-    'caches it. setup runs once before any task starts and teardown once when the run ' +
-    'ends. commands sits beside the run.'
-  )
-}
-
 /** Hooks whose value is an object: the signature shows the interface too. */
 const OBJECT_HOOK_TYPES: Partial<Record<PluginHook, string>> = {
   fingerprint: 'FingerprintClaim',

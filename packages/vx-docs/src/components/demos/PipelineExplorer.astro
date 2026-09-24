@@ -3,9 +3,10 @@
 // link to its section), one section per stage with the hook's declaration,
 // its first-party plugins and an example plugin, and a table of what core
 // does and what a plugin decides at each stage. `pipeline-explorer.ts`
-// turns the strip's links into toggle buttons and shows one section at a
-// time. The `a[data-hook]`, `section[data-hook]`, `tr[data-hook]` and
-// `.status` hooks below are the element's contract with this markup.
+// turns the strip's links into toggle buttons, shows one section at a time
+// and hides the table, whose sentence for the chosen stage it says instead.
+// The `a[data-hook]`, `section[data-hook]`, `.overview` and `.status` hooks
+// below are the element's contract with this markup.
 //
 // The declarations are read from core's source at build time and the
 // examples from `src/examples/stages/`, so neither is a copy.
@@ -16,7 +17,7 @@ import { Code } from '@astrojs/starlight/components'
 import pluginSource from '../../../../vx/src/orchestrator/plugin.ts?raw'
 import Demo from '../Demo.astro'
 import PipelineStrip from './PipelineStrip.astro'
-import { STAGES, filledBy, hookSignatures, stageExample } from './model/pipeline.js'
+import { STAGES, hookSignatures, stageExample } from './model/pipeline.js'
 
 const examples = import.meta.glob<string>('../../examples/stages/*.ts', {
   query: '?raw',
@@ -36,11 +37,8 @@ const stages = STAGES.map((s, i) => {
 ---
 
 <Demo name="pipeline-explorer">
-  <PipelineStrip
-    links
-    label="The pipeline's stages. Each one leads to its hook, its first-party plugins and an example."
-  />
-  <p class="status" aria-live="polite" hidden></p>
+  <PipelineStrip label="The pipeline's stages. Each leads to its hook and an example." />
+  <p class="status vx-say" aria-live="polite" hidden></p>
   {
     stages.map((s) => (
       <section
@@ -52,12 +50,11 @@ const stages = STAGES.map((s, i) => {
         <h3 id={`vx-stage-${s.hook}-title`}>
           Stage {s.n} of {stages.length}: <code>{s.hook}</code>
         </h3>
-        <p>The hook, as <code>VxPlugin</code> in core declares it:</p>
         <Code code={s.signature} lang="ts" />
         <p class="first-party">
           First-party:{' '}
           {s.firstParty.length === 0
-            ? 'none yet. The stage is open to your own plugin.'
+            ? 'none yet.'
             : s.firstParty.map((p, i) => (
                 <>
                   {i > 0 && (i === s.firstParty.length - 1 ? ' and ' : ', ')}
@@ -71,35 +68,29 @@ const stages = STAGES.map((s, i) => {
       </section>
     ))
   }
-  <table>
+  <table class="overview">
     <thead>
       <tr>
         <th scope="col">Stage</th>
-        <th scope="col">What core does</th>
-        <th scope="col">What a plugin decides</th>
-        <th scope="col">First-party plugins</th>
+        <th scope="col">Core, alone</th>
+        <th scope="col">A plugin</th>
       </tr>
     </thead>
     <tbody>
       {
         stages.map((s) => (
           <tr data-hook={s.hook}>
-            <th scope="row">
-              <code>{s.hook}</code>
-            </th>
-            <td data-label="Core">{s.core}</td>
-            <td data-label="A plugin">{s.plugin}</td>
-            <td data-label="First-party">{filledBy(s)}</td>
+            <th scope="row">{s.hook}</th>
+            <td>{s.core}</td>
+            <td>{s.plugin}</td>
           </tr>
         ))
       }
     </tbody>
   </table>
   <Fragment slot="caption">
-    The {stages.length} hooks a plugin can fill, in the order of core's own list. Each section shows the
-    hook's declaration from core's source, the first-party plugins that fill it, and a short example
-    plugin. The table says what core does at each stage when no plugin fills it, and what a plugin
-    can decide there.
+    The {stages.length} stages a plugin can fill, in core's order. Pick one to see its hook and a
+    plugin.
   </Fragment>
 </Demo>
 
@@ -107,51 +98,30 @@ const stages = STAGES.map((s, i) => {
   .stage {
     margin-top: 1.25rem;
     padding-top: 0.75rem;
-    border-top: 1px solid var(--sl-color-gray-5);
+    border-top: 1px solid var(--vx-border);
   }
-  .stage[hidden] {
+  .stage[hidden],
+  .overview[hidden] {
     display: none;
   }
   h3 {
     margin: 0 0 0.5rem;
-    font-size: var(--sl-text-h4);
+    font-family: var(--vx-mono);
+    font-size: 15px;
   }
-  .status {
-    min-height: 1.5em;
-    margin: 0.5rem 0 0;
-    font-size: var(--sl-text-sm);
+  .stage > :global(* + *) {
+    margin-top: 0.75rem;
   }
-  table {
+  /* Past widget.css's paragraph rule, which the scoped one above loses to. */
+  .stage .first-party {
+    margin: 0.75rem 0;
+    font-size: 0.95rem;
+    color: var(--vx-muted);
+  }
+  .overview {
     margin-top: 1.5rem;
-    font-size: var(--sl-text-sm);
   }
-  tr.is-selected {
-    background: var(--sl-color-accent-low);
-  }
-  /* Four columns of sentences do not fit a phone: one block per stage. */
-  @media (max-width: 40rem) {
-    table,
-    tbody,
-    tr,
-    th,
-    td {
-      display: block;
-    }
-    thead {
-      display: none;
-    }
-    tr {
-      padding-block: 0.5rem;
-      border-bottom: 1px solid var(--sl-color-gray-5);
-    }
-    th,
-    td {
-      border: none;
-      padding-block: 0.1rem;
-    }
-    td::before {
-      content: attr(data-label) ': ';
-      font-weight: 600;
-    }
+  .overview td {
+    font-family: var(--vx-font-body);
   }
 </style>
