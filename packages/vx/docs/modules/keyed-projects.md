@@ -60,6 +60,15 @@ cached and executes; the memo makes it the whole graph's walk, once.
 worst task (334 of them, three real links) 1.36 / 1.69 ms against 0.25 /
 0.36 ms uncached — beside a sandboxed spawn, which costs hundreds.
 
+This repo's gate (`vx run ci --all`), interleaved against a worktree of
+the previous commit, each arm in its own copy: cold (cache wiped), min of
+3, 159 s before and 142 s after, every run green (the spread, 142–251 s,
+is the suites' own); warm, min / median of 15, 0.49 / 0.59 s before and
+0.51 / 0.62 s after. The warm stage table is equal through `classify +
+probe` (60 / 61 ms), `task hash` and `stable keys`; what differs lies in
+`run graph`, which on a warm gate is `check.bun`, the one uncached
+sandboxed task, and whose median favoured the after arm (462 ms, against 477).
+
 ## Tests
 
 `tests/keyed-projects.test.ts`: the walk row by row on hand-built graphs
