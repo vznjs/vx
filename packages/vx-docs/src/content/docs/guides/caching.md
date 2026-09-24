@@ -70,13 +70,13 @@ app#build — run 019f5a02-…
     changed file  src/index.ts  a1b2c3… → d4e5f6…
 ```
 
-| The verdict line says                                                                                   | It means                              |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| cache key changed between the previous run and this one (inputs differ)                                 | the lines below name what changed     |
-| cache key unchanged — this run was served from cache, nothing re-ran                                    | a hit                                 |
-| cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)                  | you forced it, or something unkeyed   |
-| cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown               | vx does not guess                     |
-| this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only | not cached at all                     |
+| The verdict line says | It means |
+| --- | --- |
+| `cache key changed between the previous run and this one (inputs differ)` | the lines below name what changed |
+| `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
+| `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | you forced it, or something unkeyed |
+| `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
+| `` this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only `` | not cached at all |
 
 ## Common problems
 

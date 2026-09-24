@@ -46,11 +46,11 @@ export default defineProject({
 ## Run
 
 ```bash
-vx run build --all              # every package, in dependency order
-vx run build          # ⇢ success local — the cache hit, restored in milliseconds
-vx run test --affected          # what changed since the base branch, and its dependents
-vx run build --all --dry        # predicted hits and misses; runs nothing
-vx run build --graph            # the task graph as Graphviz DOT
+vx run build --all        # every package, in dependency order
+vx run build              # ⇢ success local — a cache hit
+vx run test --affected    # what changed, and its dependents
+vx run build --all --dry  # the plan; runs nothing
+vx run build --graph      # the task graph as Graphviz DOT
 ```
 
 ## Common problems
@@ -72,7 +72,3 @@ vx run build --graph            # the task graph as Graphviz DOT
 - A cache hit replays the first and last 8 MiB of a task's output.
 - A `workspaceFiles` glob stops at the edge of a git submodule.
 
-## Next
-
-[Add vx to a repo you have](../add-to-existing-repo/) ·
-[Tasks and dependencies](../guides/tasks/) · [Caching](../guides/caching/)

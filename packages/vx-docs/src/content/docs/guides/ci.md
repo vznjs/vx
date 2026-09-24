@@ -1,6 +1,9 @@
 ---
 title: Continuous integration
 description: Run only what a change affects in CI, share the cache between runs, and get a job summary and a PR check from @vzn/vx-github.
+# The job summary sample below carries its own headings; a table of contents
+# would list them as this page's sections.
+tableOfContents: false
 ---
 
 Build only what a change touched, and reuse what another run already built.
