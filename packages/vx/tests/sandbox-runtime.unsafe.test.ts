@@ -143,6 +143,35 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // The task's PATH leads with the project's node_modules/.bin, and the
+  // sandboxed spawn (`strace … -- sh -c` on Linux, `sh -c` elsewhere) let
+  // strace or Bun resolve `sh` through it: a dependency's `sh` bin ran in
+  // place of the shell. util/which.ts resolves it on vx's own PATH.
+  it(
+    "a sandboxed task's shell is the machine's, not a node_modules/.bin/sh",
+    async () => {
+      const projDir = await addProject(fixture.root, 'app', {
+        files: { 'node_modules/.bin/sh': '#!/bin/sh\necho hijacked\n' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'echo parsed-by-the-real-shell', sandbox: { allow: { read: ['.'] } } },
+              },
+            },
+          }
+        `,
+      })
+      const { chmod } = await import('node:fs/promises')
+      await chmod(path.join(projDir, 'node_modules', '.bin', 'sh'), 0o755)
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      expect(fixture.log).toContain('parsed-by-the-real-shell')
+      expect(fixture.log).not.toContain('hijacked')
+    },
+    TIMEOUT,
+  )
+
   // A dev server's literal write grant meets the trap of a one-shot task's
   // (2026-09-16): the grant is pre-created as a FILE, its own `mkdir` says
   // "File exists", and the file used to outlive the run. The persistent
@@ -3298,10 +3327,12 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     try {
       await runSandboxed(args('true'))
       // `strace --version` is the availability probe; the trace carries `-o`.
+      // The tracer is spawned by its absolute path (util/which.ts).
       const argv = spy.mock.calls
         .map((c) => c[0] as unknown as string[])
-        .find((c) => c[0] === 'strace' && c.includes('-o'))
-      expect(argv?.slice(0, 5)).toEqual(['strace', '-f', '--seccomp-bpf', '-e', 'trace=openat'])
+        .find((c) => Array.isArray(c) && (c[0] ?? '').endsWith('/strace') && c.includes('-o'))
+      expect(argv?.[0]).toBe(Bun.which('strace')!)
+      expect(argv?.slice(1, 5)).toEqual(['-f', '--seccomp-bpf', '-e', 'trace=openat'])
     } finally {
       spy.mockRestore()
     }
@@ -3316,7 +3347,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const logOf = (): string | undefined => {
       const argv = spy.mock.calls
         .map((c) => c[0] as unknown as string[])
-        .find((c) => c[0] === 'strace' && c.includes('-o'))
+        .find((c) => Array.isArray(c) && (c[0] ?? '').endsWith('/strace') && c.includes('-o'))
       return argv?.[argv.indexOf('-o') + 1]
     }
     try {
@@ -3390,8 +3421,9 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   // CI's strace answers 0 and a modern version, so a detector that ignored
   // the exit, never memoized, or let a missing binary through unrecorded
   // answered the same there. These rows put a different strace on PATH —
-  // in a process of its own, since `Bun.spawn` resolves a bare name against
-  // the PATH its process STARTED with, not a later `process.env.PATH`.
+  // in a process of its own, since the verdict is memoized per process.
+  // `which strace` is the PATH lookup (util/which.ts), `strace --version`
+  // the probe.
   describe('strace detection', () => {
     const detecting = (pathDirs: string): unknown => {
       const src = path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts')
@@ -3399,7 +3431,9 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
         `const calls = []`,
         `const spawn = Bun.spawn`,
-        `Bun.spawn = (cmd, ...rest) => { if (Array.isArray(cmd) && cmd[0] === 'strace') calls.push(cmd.includes('-o') ? 'trace' : cmd.join(' ')); return spawn(cmd, ...rest) }`,
+        `const which = Bun.which`,
+        `Bun.which = (name, ...rest) => { if (name === 'strace') calls.push('which strace'); return which(name, ...rest) }`,
+        `Bun.spawn = (cmd, ...rest) => { if (Array.isArray(cmd) && cmd[0].endsWith('/strace')) calls.push(cmd.includes('-o') ? 'trace' : ['strace', ...cmd.slice(1)].join(' ')); return spawn(cmd, ...rest) }`,
         `await initSandbox()`,
         `const dir = ${JSON.stringify(dir)}`,
         `const outs = []`,
@@ -3430,7 +3464,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       )
       expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
         outs: ['ok\n', 'ok\n'],
-        calls: ['strace --version'],
+        calls: ['which strace', 'strace --version'],
       })
     })
 
@@ -3442,7 +3476,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         const found = Bun.which(name)
         if (found !== null) await symlink(found, path.join(bin, name))
       }
-      expect(detecting(bin)).toEqual({ outs: ['ok\n', 'ok\n'], calls: ['strace --version'] })
+      // The lookup's miss is the verdict: nothing is spawned to learn it.
+      expect(detecting(bin)).toEqual({ outs: ['ok\n', 'ok\n'], calls: ['which strace'] })
     })
   })
 

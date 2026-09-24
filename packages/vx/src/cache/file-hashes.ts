@@ -9,6 +9,7 @@
 import type { Database } from 'bun:sqlite'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
+import { executablePath } from '../util/index.js'
 import { FILE_HASH_RACY_MS } from './layer.js'
 
 export class FileHashStore {
@@ -264,7 +265,7 @@ export class FileHashStore {
     let detected: 'sha1' | 'sha256' = 'sha1'
     try {
       const proc = Bun.spawnSync({
-        cmd: ['git', 'rev-parse', '--show-object-format'],
+        cmd: [executablePath('git'), 'rev-parse', '--show-object-format'],
         cwd: path.dirname(nearPath),
         stdout: 'pipe',
         stderr: 'pipe',

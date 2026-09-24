@@ -12,6 +12,7 @@ import { PLUGIN_HOOKS } from '../config.js'
 import {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,
+  executablePath,
   isUnsupportedBun,
   machineMemoryBytes,
   machineParallelism,
@@ -288,7 +289,7 @@ function memoryFact(): InfoFacts['memory'] {
 function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
   try {
     const p = Bun.spawnSync({
-      cmd: ['git', 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
+      cmd: [executablePath('git'), 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -306,7 +307,11 @@ function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
 
 function gitVersion(): string | null {
   try {
-    const p = Bun.spawnSync({ cmd: ['git', '--version'], stdout: 'pipe', stderr: 'pipe' })
+    const p = Bun.spawnSync({
+      cmd: [executablePath('git'), '--version'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
     if (p.exitCode !== 0) return null
     return new TextDecoder()
       .decode(p.stdout)
