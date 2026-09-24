@@ -943,7 +943,8 @@ options, ignoring `.md`, `.mdx` and `.astro/`), a sandboxed
 are formatted. Red with an unformatted line appended to a widget model,
 green after the reverse edit. Recorded from the same reports, not fixed
 here: `KeyCalculator.astro` reads `var(--sl-font-mono)`, which Starlight
-never defines, so the caching widget's keys render proportional; every
+never defines, so the caching widget's keys render proportional (fixed
+in item 696); every
 page with a Mermaid diagram logs one uncaught non-Error object in
 Chromium; and `benchmarks.md`'s 2026-09-03 head-to-head credits Turbo's
 daemon with answering "what changed", which Turbo 2.10+ no longer uses
@@ -969,6 +970,19 @@ round reuses the registry, 1 for 2). A repeat round of 50 configs, min of
 5, interleaved, before arm from a worktree: 148 ms before, 10.5 ms after.
 The module page's claim that `prepareRun` loads with `Promise.all` was
 wrong and is corrected.
+
+14cr. **Item 696 (2026-09-24): the site's monospace falls back to
+Starlight's.** `--sl-font-mono` is a property a site may set; Starlight
+defines only `--sl-font-system-mono` and reads the other through a
+fallback. `KeyCalculator.astro` and `Head.astro` read it bare, so the
+caching widget's keys (and the head's code) rendered in the inherited
+proportional font. Both now carry the fallback the stale-hit widget
+already used. `tests/starlight-vars.test.ts` holds the class: every
+`var(--sl-…)` in the site's source names a property Starlight's own
+stylesheets define (read from its `dist/style/`, so the set follows the
+installed version), or carries a fallback. Red with the two fixes
+reverted, naming both files; a control row checks the definitions were
+read (`--sl-font-system-mono` in, `--sl-font-mono` out).
 
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
