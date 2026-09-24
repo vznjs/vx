@@ -1,0 +1,170 @@
+---
+// A Learn page's checkpoint, checked against vx's planner (roadmap W11,
+// item 705; design/labs-checkpoints-2026-09.md § W11). Without JavaScript it
+// is the question and, in a `<details>`, the answer. `checkpoint.ts` unhides
+// a checkbox per task and a Check button, hides the answer, and on Check
+// runs the planner from `data-planner` and marks each task right, missed or
+// wrong in the live region. The element reads `.form` (and its
+// `data-checkpoint` and `data-planner`), the `.choices` checkboxes, the
+// `data-action="check"` button, `.result` and `.answer`, so they are its
+// contract with this markup.
+//
+// The answer is computed here, at build time, by the planner the site ships
+// (`public/playground/planner.js`, which `build.playground` writes before
+// the build) over the question's files, so it is the model's and not a
+// sentence someone wrote. The build may run under Node (vx.config.ts, item
+// 700): the bundle imports there as it is, and configs are evaluated by
+// `evaluateConfigInProcess`, since Node has no `Worker`.
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import Demo from '../Demo.astro'
+import { evaluateConfigInProcess } from '../../playground/config-eval.js'
+import {
+  CHECKPOINTS,
+  answerCheckpoint,
+  answerText,
+  codeSpans,
+  questionOf,
+  type CheckpointId,
+} from './model/checkpoint.js'
+import type { Planner } from './model/playground-view.js'
+
+interface Props {
+  id: CheckpointId
+}
+
+const { id } = Astro.props
+const checkpoint = CHECKPOINTS[id]
+// The build runs from the package directory, as `vx run build` and `astro
+// build` both do.
+const bundle = path.resolve('public/playground/planner.js')
+if (!existsSync(bundle)) {
+  throw new Error(
+    `<Checkpoint id="${id}">: ${bundle} is missing: run @vzn/vx-docs#build.playground first`,
+  )
+}
+const shipped = (await import(/* @vite-ignore */ pathToFileURL(bundle).href)) as Planner
+const answer = await answerCheckpoint(
+  { ...shipped, evaluateConfig: evaluateConfigInProcess },
+  checkpoint,
+)
+const text = answerText(answer)
+const planner = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}playground/planner.js`
+const legend = `Tick every task that ${checkpoint.form === 'edit' ? 'reruns' : 'runs'}, then press Check.`
+---
+
+<Demo name="checkpoint">
+  <p class="question">
+    {codeSpans(questionOf(checkpoint)).map((s) => (s.code ? <code>{s.text}</code> : s.text))}
+  </p>
+  <fieldset class="form not-content" data-checkpoint={id} data-planner={planner} hidden>
+    <legend>{legend}</legend>
+    <ul class="choices">
+      {
+        answer.rows.map((r) => (
+          <li>
+            <label>
+              <input type="checkbox" value={r.id} /> <code>{r.id}</code>
+            </label>
+          </li>
+        ))
+      }
+    </ul>
+    <button type="button" data-action="check">Check</button>
+  </fieldset>
+  <div class="result" aria-live="polite"></div>
+  <details class="answer">
+    <summary>Answer</summary>
+    <p>{text.summary}</p>
+    {
+      text.yes.length > 0 && (
+        <ul class="yes">
+          {text.yes.map((line) => (
+            <li>{line}</li>
+          ))}
+        </ul>
+      )
+    }
+    {text.rest.map((line) => <p class="rest">{line}</p>)}
+    {
+      checkpoint.note !== undefined && (
+        <p class="note">
+          {codeSpans(checkpoint.note).map((s) => (s.code ? <code>{s.text}</code> : s.text))}
+        </p>
+      )
+    }
+  </details>
+</Demo>
+
+<!--
+  Global, under the element's tag: the element writes the marks, and Astro's
+  scoping attribute is only on the markup it rendered.
+-->
+<style is:global>
+  vx-checkpoint {
+    display: block;
+  }
+  vx-checkpoint .form[hidden],
+  vx-checkpoint .answer[hidden] {
+    display: none;
+  }
+  vx-checkpoint .form {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    border: 0;
+  }
+  vx-checkpoint legend {
+    padding: 0;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+  vx-checkpoint .choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0.5rem 0;
+    padding: 0;
+    list-style: none;
+  }
+  vx-checkpoint .choices label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+  }
+  vx-checkpoint .choices li[data-verdict='missed'] code,
+  vx-checkpoint .marks li[data-verdict='missed'] {
+    color: var(--sl-color-orange-high);
+  }
+  vx-checkpoint .choices li[data-verdict='wrong'] code,
+  vx-checkpoint .marks li[data-verdict='wrong'] {
+    color: var(--sl-color-red-high);
+  }
+  vx-checkpoint .choices li[data-verdict='right'] code {
+    color: var(--sl-color-green-high);
+  }
+  vx-checkpoint button {
+    padding: 0.1rem 0.75rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 999px;
+    background: var(--sl-color-accent-low);
+    color: var(--sl-color-white);
+    font: inherit;
+    cursor: pointer;
+  }
+  vx-checkpoint button:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  vx-checkpoint button:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  vx-checkpoint .result .verdict {
+    font-weight: 600;
+  }
+  vx-checkpoint .result .marks {
+    font-size: var(--sl-text-sm);
+  }
+</style>

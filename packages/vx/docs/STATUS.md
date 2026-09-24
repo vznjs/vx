@@ -1375,6 +1375,41 @@ prerender is not most of the build). Build-time code stays
 runtime-agnostic (item 700's `evaluateConfigInProcess`). CLAUDE.md
 gains the rule.
 
+14dc. **Item 705 (2026-09-24): the checkpoints are checked against the
+live model (roadmap W11).** `<vx-checkpoint>` (`Checkpoint.astro`,
+`demos/checkpoint.ts`, questions in `demos/model/checkpoint.ts`) asks one
+question about the toy workspace: an edit ("you run `vx run build test`
+once, then you edit X and run it again: which tasks rerun?", X a file or
+an env value, on the toy workspace or a variant of it) or a run
+("`vx run T` on an empty cache: which tasks run?"). The reader ticks tasks; Check
+imports the site's planner, runs `runPlayground` twice (or plans `T`),
+and marks each task right, missed or wrong, in words in an `aria-live`
+region with the reason item 703 names ("Missed: ui#test reruns
+(upstream ui#build moved)."). Without JavaScript the `<details>` holds
+the answer, computed at build time by the same planner: Node imports the
+Bun-built bundle as plain ESM (same keys as under Bun), configs are
+evaluated in-process, and `ASTRO_TELEMETRY_DISABLED=1 node
+node_modules/.bin/astro build` exits 0. `dev` now depends on
+`build.playground`. Pages: what-is-task-orchestration (an edit in
+`utils`, plus the run form, `vx run app#build`), caching (stop declaring
+`ui`'s `tsconfig.json`: four rerun, "config changed, file removed"),
+correctness (edit that undeclared file: nothing moves, and the note says
+what a hit then replays; this replaced the stale-hit demo's question,
+which the planner cannot answer) and playground (its two questions, as two
+checkpoints). Scheduling, choosing, architecture and extending keep their
+`<details>`. A probe found that the planner holds one workspace at a time
+(its VFS and env are module state), and two plans at once read each
+other's files. A page renders sibling checkpoints concurrently, so
+`answerCheckpoint` queues its computations; a checkpoint and a playground
+on one page are not yet serialized against each other (follow-up: a queue
+in `entry.ts`). Rows: `tests/learn-checkpoints.test.ts` holds every
+question and every answer, with each task's reason, written out by
+hand, against the shipped planner and against the built pages, plus pure
+marking rows and the markup contract. The differentials (swap missed
+and wrong, another file in a question, a constant answer right and
+wrong, the queue removed), the question changes and the Chromium
+probe: `design/labs-checkpoints-2026-09.md` § Shipped (item 705).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1401,12 +1436,17 @@ gains the rule.
     itself (item 700, entry 14cx): `learn/playground` runs the real
     planner on the toy monorepo, and core's parity rows hold the page's
     Run to the CLI. The playground names why a key moved, by `vx why`'s
-    rule (item 703, entry 14cy). Next are W10, the labs (guided
-    exercises on the playground: an undeclared input and its stale hit,
-    a file no config mentions, two tasks writing one output, a bad
-    order and its critical path), and W11, the checkpoints, per
-    `design/labs-checkpoints-2026-09.md` (items 704 and 705, in
-    flight). W8, the landing page, is last and designed in
+    rule (item 703, entry 14cy). W11, the checkpoints, is DONE (item
+    705, entry 14dc): the what-is, caching, correctness and playground
+    pages ask questions the reader ticks and the live planner marks, and
+    each no-JavaScript answer is computed by that planner at build time.
+    Next is W10, the labs (guided exercises on the playground: an
+    undeclared input and its stale hit, a file no config mentions, two
+    tasks writing one output, a bad order and its critical path), per
+    `design/labs-checkpoints-2026-09.md` (item 704, in flight, which also
+    serializes the bundle's plans in `entry.ts` so a playground and a
+    checkpoint on one page cannot read each other's files: item 705's
+    finding). W8, the landing page, is last and designed in
     `design/landing-2026-09.md` (item 709): the problem and the three
     ideas first, each linked to its Learn page, the numbers after, the
     generator's anchors untouched.

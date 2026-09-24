@@ -85,9 +85,9 @@ const STEPS_TRUTH: Record<string, Truth> = {
   declare: { moved: true, verdict: 'miss', stale: false, output: out(1, 1), truth: out(1, 1) },
 }
 
-/** The checkpoint: after step 5, turn the sandbox off, then stop declaring. */
-const CHECKPOINT: StaleChange[] = ['sandbox', 'declare']
-const CHECKPOINT_TRUTH: Truth[] = [
+/** After step 5, two of the demo's toggles: the sandbox off, then the file undeclared. */
+const TOGGLED: StaleChange[] = ['sandbox', 'declare']
+const TOGGLED_TRUTH: Truth[] = [
   { moved: true, verdict: 'miss', stale: false, output: out(1, 1), truth: out(1, 1) },
   { moved: true, verdict: 'hit', stale: true, output: out(1, 0), truth: out(1, 1) },
 ]
@@ -129,15 +129,15 @@ describe('the stale-hit model', () => {
     expect(staleRuns().map((r) => r.denied)).toEqual([[], [], [], [STALE_BANNER], []])
   })
 
-  it('answers the checkpoint: a miss, then a stale hit on the entry step 2 stored', () => {
-    const runs = runsThrough(CHECKPOINT)
-    expect(runs.slice(5).map(truthOf)).toEqual(CHECKPOINT_TRUTH)
+  it('toggled after step 5: a miss, then a stale hit on the entry step 2 stored', () => {
+    const runs = runsThrough(TOGGLED)
+    expect(runs.slice(5).map(truthOf)).toEqual(TOGGLED_TRUTH)
     expect(runs[6]!.key).toBe(runs[2]!.key)
     expect(runs[6]!.key).toBe(runs[1]!.key)
   })
 
   it("prints the config it keys on: the page's snippet evaluates to staleConfig", () => {
-    for (const r of runsThrough(CHECKPOINT)) {
+    for (const r of runsThrough(TOGGLED)) {
       const snippet = configSource(r.state)
       // eslint-disable-next-line typescript/no-implied-eval -- the page's snippet is the subject
       const evaluated = new Function(`return { ${snippet} }`)() as { build: unknown }
@@ -237,10 +237,10 @@ describe('the stale-hit model against vx', () => {
   it('moves, hits and goes stale where vx does, step by step', async () => {
     const cached = await makeWorkspace()
     const fresh = await makeWorkspace()
-    const model = runsThrough(CHECKPOINT)
+    const model = runsThrough(TOGGLED)
     let before: Seen | undefined
     for (const [i, m] of model.entries()) {
-      const label = i < STALE_STEPS.length ? `step ${i + 1}` : `checkpoint run ${i - 4}`
+      const label = i < STALE_STEPS.length ? `step ${i + 1}` : `toggle run ${i - 4}`
       await writeState(cached, m.state)
       await writeState(fresh, m.state)
       // The plan's key is the run's key: a planned step below is the same
@@ -473,23 +473,6 @@ describe('the stale-hit demo on learn/correctness', () => {
         'which runs hit is what vx does on the same files, and the report is the one vx ' +
         'prints; tests run vx to check both.',
     )
-  })
-
-  it('answers the checkpoint with what the model does', () => {
-    const answer = only(html, /<details>([\s\S]*?)<\/details>/g)
-    const paragraphs = [...answer.matchAll(/<p>([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
-    expect(paragraphs).toHaveLength(2)
-    const [off, undeclared] = runsThrough(CHECKPOINT).slice(5)
-    expect([off!.verdict, off!.stale, undeclared!.verdict, undeclared!.stale]).toEqual([
-      'miss',
-      false,
-      'hit',
-      true,
-    ])
-    expect(paragraphs[0]).toStartWith('The first run misses and runs.')
-    expect(paragraphs[0]).toContain('The output is right.')
-    expect(paragraphs[1]).toStartWith('The second run hits, and the hit is stale.')
-    expect(paragraphs[1]).toContain('so the key is step 3')
   })
 
   it("loads the element's module from the page's own scripts, free of Bun, process and node:", () => {

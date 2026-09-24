@@ -4,6 +4,7 @@ description: What a cache key is, what goes into one, why it folds upstream inpu
 ---
 
 import KeyCalculator from '../../../components/demos/KeyCalculator.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
 
 [The first page](../what-is-task-orchestration/) ended with a promise: a
 cache stores each task's result under a key made from its inputs, and gives
@@ -300,24 +301,4 @@ byte for byte.
 
 ## Checkpoint
 
-`ui#build` reads `ui/tsconfig.json`. You stop declaring it and run once.
-Then you edit `ui/tsconfig.json` and run again. What does the first run
-miss? On the second run, which tasks hit, and which of those hits are
-stale? Answer before you open the box, then check it with the calculator.
-
-<details>
-<summary>Answer</summary>
-
-The first run misses `ui#build`, `ui#test`, `app#build` and `app#test`. The
-list of inputs is part of `ui#build`'s config, so its key moved, and the
-keys that fold it moved with it.
-
-The second run hits all eight tasks, because no key moved. The hits of
-`utils#build`, `utils#test`, `api#build` and `api#test` are safe: nothing
-they read changed.
-
-The hits of `ui#build`, `ui#test`, `app#build` and `app#test` are stale.
-`ui#build` read the edited file, and the other three read its output,
-directly or through `app#build`. The run is green, and the outputs are old.
-
-</details>
+<Checkpoint id="caching" />

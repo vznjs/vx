@@ -4,6 +4,7 @@ description: Edit a toy monorepo's files and configs, run vx's own planner in yo
 ---
 
 import Playground from '../../../components/demos/Playground.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
 
 The pages before this one explain what a cache key is, what goes into it
 and which keys an edit moves. This page lets you check that on files you
@@ -122,20 +123,6 @@ package declares, such as `lint`.
 
 ## Checkpoint
 
-Start from Reset. You run once. Then you edit
-`packages/utils/test/index.test.ts` and run again. Which keys move? Then
-you change `API_URL` to another value and run a third time. Which keys
-move now? Answer before you open the box, then check it in the playground.
+<Checkpoint id="playground-edit" />
 
-<details>
-<summary>Answer</summary>
-
-Only `utils#test` moves. It is the only task that reads `test/**` in
-`utils`, and no task waits for it. The build of `utils` reads `src/**`, so
-its key stays, and so does every key that folds it.
-
-`api#build`, `api#test`, `app#build` and `app#test` move. `api#build`
-declares `API_URL`, `api#test` and `app#build` wait for `api#build`, and
-`app#test` waits for `app#build`.
-
-</details>
+<Checkpoint id="playground-env" />

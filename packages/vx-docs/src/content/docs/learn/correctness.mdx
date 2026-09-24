@@ -4,6 +4,7 @@ description: The stale hit, declared versus inferred inputs, and the sandbox as 
 ---
 
 import StaleHit from '../../../components/demos/StaleHit.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
 
 [Caching](../caching/) showed how a key is made from a task's inputs, and
 how a hit goes wrong when the task reads something the key never saw. This
@@ -245,21 +246,4 @@ declaration on your own machine, task by task, without a cloud service.
 
 ## Checkpoint
 
-You have reached step 5. Now you turn `exec.sandbox` off and run. Then you
-stop declaring `banner.txt` and run again. What does each run do, and is
-either output stale? Answer before you open the box, then check it with
-the demo's toggles.
-
-<details>
-<summary>Answer</summary>
-
-The first run misses and runs. The sandbox block is part of the task's
-config, so removing it moves the key, and no run has stored that key yet.
-The output is right.
-
-The second run hits, and the hit is stale. The config and `src/index.ts`
-are now what they were at step 3, so the key is step 3's key. The cache
-still holds the entry that step 2 stored, with the old banner, and replays
-it. The sandbox is off, so nothing checks the read.
-
-</details>
+<Checkpoint id="correctness" />

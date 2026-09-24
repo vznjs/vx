@@ -197,9 +197,10 @@ export default defineProject({
             // demo-islands.test.ts and learn-architecture.test.ts import the
             // widgets' model to hold the built pages to it.
             'src/components/demos/model/**',
-            // learn-playground.test.ts reads the element's source for the
-            // markup it queries.
+            // learn-playground.test.ts and learn-checkpoints.test.ts read the
+            // elements' source for the markup they query.
             'src/components/demos/playground.ts',
+            'src/components/demos/checkpoint.ts',
             // The playground rows: its glob and xxh3 against Bun's, and the
             // shipped bundle against a fresh build.
             'src/playground/**',
@@ -304,9 +305,12 @@ export default defineProject({
       },
     },
 
+    // A Learn page's checkpoint computes its answer as the page renders, with
+    // the playground's bundle (Checkpoint.astro), so the dev server needs it
+    // as the build does.
     dev: {
       description: 'astro dev server (persistent)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'build.playground'],
       exec: {
         command: 'bun --bun astro dev',
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
