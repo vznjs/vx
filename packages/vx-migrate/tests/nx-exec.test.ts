@@ -145,6 +145,27 @@ describe('nx-exec', () => {
     expect((await nxExec(results([]))).code).toBe(1)
   })
 
+  it('what it does not know is Nx’s: overrides parsed by Nx’s createOverrides, a repeated own flag included (nx#12165)', async () => {
+    const r = await nxExec([
+      'x:y',
+      '--project',
+      'app',
+      '--target',
+      'build',
+      '--options',
+      '{"registry":"x"}',
+      '--otp=123',
+      'extra',
+      '--project=other',
+    ])
+    expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+    const rec = await record()
+    expect(rec['description']).toEqual({ project: 'app', target: 'build' })
+    // Parsed by Nx; its unparsed copy is runExecutor's to derive, not a flag to pass.
+    expect(rec['overrides']).toEqual({ otp: 123, project: 'other' })
+    expect(rec['target']).toEqual({ executor: 'x:y', options: { registry: 'x' } })
+  })
+
   it('a project the graph does not have is exit 1 with its name', async () => {
     const r = await nxExec(['x:y', '--project', 'nope', '--target', 'build'])
     expect(r.code).toBe(1)
@@ -154,7 +175,6 @@ describe('nx-exec', () => {
   it('usage errors are exit 2 before nx is loaded', async () => {
     const rows: [string[], string][] = [
       [[], 'expected one executor (got 0)'],
-      [['x:y', 'z:w', '--project', 'app', '--target', 'build'], 'expected one executor (got 2)'],
       [['nocolon', '--project', 'app', '--target', 'build'], 'executor must be <package>:<name>'],
       [['x:y', '--target', 'build'], '--project is required'],
       [['x:y', '--project', 'app'], '--target is required'],
@@ -166,7 +186,6 @@ describe('nx-exec', () => {
         ['x:y', '--project', 'app', '--target', 'build', '--options', '[1]'],
         '--options must be a JSON object',
       ],
-      [['x:y', '--project', 'app', '--target', 'build', '--bogus', '1'], 'unknown flag --bogus'],
       [['x:y', '--project', 'app', '--target'], '--target needs a value'],
     ]
     for (const [args, message] of rows) {

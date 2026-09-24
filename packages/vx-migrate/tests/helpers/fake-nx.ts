@@ -28,6 +28,21 @@ export async function fakeNx(root: string): Promise<void> {
 exports.workspaceRoot = path.resolve(__dirname, '..', '..', '..', '..')
 `,
   )
+  // Nx's own is yargs-parser; the fake knows `--k=v` with numbers, enough
+  // to show what the bin handed it.
+  await writeFile(
+    path.join(src, 'utils', 'command-line-utils.js'),
+    `exports.createOverrides = (unparsed = []) => {
+  const o = {}
+  for (const t of unparsed) {
+    const m = /^--([^=]+)=(.*)$/.exec(t)
+    if (m) o[m[1]] = /^\\d+$/.test(m[2]) ? Number(m[2]) : m[2]
+  }
+  o.__overrides_unparsed__ = unparsed
+  return o
+}
+`,
+  )
   await writeFile(
     path.join(src, 'config', 'nx-json.js'),
     `const fs = require('node:fs'); const path = require('node:path')

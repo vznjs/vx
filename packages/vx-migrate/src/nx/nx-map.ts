@@ -21,7 +21,7 @@ import {
   type ProjectMeta,
   UserError,
 } from '@vzn/vx'
-import { nxRunCommand } from '../nx-command.js'
+import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
@@ -299,7 +299,7 @@ function buildTask(
   const todos: string[] = []
   const options = variant.options
 
-  const command = mapCommand(
+  const mapped = mapCommand(
     targetName,
     target,
     options,
@@ -322,12 +322,16 @@ function buildTask(
   // outputs and no `cache` was cached anyway, so refine's 204 persistent
   // `dev` targets (tsup --watch, outputs `dist`) were cached and then
   // made uncached only by the shared-output rule (2026-09-22).
-  const persistent = persistentTarget(target)
-  const cacheEnabled =
-    !persistent &&
-    (target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName)))
+  const readyWhen = mapped?.readyWhen
+  const persistent = readyWhen !== undefined || persistentTarget(target)
+  const cacheWanted =
+    target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
+  const cacheEnabled = !persistent && cacheWanted
+  if (persistent && cacheWanted) {
+    todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
+  }
 
-  if (command === null) {
+  if (mapped === null) {
     // nx:noop → vx group task: dependsOn only, no exec, no cache
     // (vx forbids cache on groups). A noop with nothing to chain has
     // no vx representation — skipped with a report line.
@@ -344,9 +348,14 @@ function buildTask(
     )
   }
 
-  const exec: Record<string, unknown> = { command }
-  if (inputs.envNames.length > 0) exec.env = { passThrough: inputs.envNames }
-  if (persistent) {
+  const exec: Record<string, unknown> = { command: mapped.command }
+  const env: Record<string, unknown> = {}
+  if (inputs.envNames.length > 0) env.passThrough = inputs.envNames
+  if (Object.keys(mapped.env).length > 0) env.define = mapped.env
+  if (Object.keys(env).length > 0) exec.env = env
+  if (readyWhen !== undefined) {
+    exec.persistent = { readyWhen }
+  } else if (persistent) {
     exec.persistent = {}
     todos.push(opts.persistentTodo)
   }
@@ -373,6 +382,13 @@ function buildTask(
   return { name: variant.name, todos, task }
 }
 
+/** What a target runs as; null for `nx:noop`, which is a group task. */
+interface MappedCommand {
+  readonly command: string
+  readonly env: Readonly<Record<string, string>>
+  readonly readyWhen: string | undefined
+}
+
 function mapCommand(
   targetName: string,
   target: NxTarget,
@@ -382,31 +398,25 @@ function mapCommand(
   configuration: string | undefined,
   scripts: Record<string, unknown>,
   todos: string[],
-): string | null {
+): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
     // No command by definition — the vx equivalent is a group task
     // (handled by the caller; nothing to map here).
     return null
   }
-  // run-commands, and a plain `command` (its shorthand): Nx runs them from
-  // the workspace root unless `cwd` says otherwise, with `{projectRoot}`,
-  // `{projectName}` and `{workspaceRoot}` expanded — see nx-command.ts.
-  const shell = (cmd: string): string =>
-    nxRunCommand(cmd, { projectRel, projectName, cwd: options.cwd }, todos)
-  if (executor === 'nx:run-commands') {
-    const cmds = options.commands
-    if (Array.isArray(cmds) && cmds.length > 0) {
-      const parts = cmds
-        .map((c) => (typeof c === 'string' ? c : ((c as { command?: unknown }).command as string)))
-        .filter((c): c is string => typeof c === 'string' && c.length > 0)
-      if (parts.length > 0) return shell(parts.join(' && '))
-    }
-    if (typeof options.command === 'string' && options.command.length > 0) {
-      return shell(options.command)
-    }
-    todos.push(`nx:run-commands target has no command — options: ${JSON.stringify(options)}`)
-    return PLACEHOLDER
+  const line = (command: string): MappedCommand => ({ command, env: {}, readyWhen: undefined })
+  // run-commands, and a plain `command` (its shorthand, over the same
+  // options) — see nx-command.ts.
+  const plain =
+    executor === undefined && typeof target.command === 'string' && target.command.length > 0
+  if (executor === 'nx:run-commands' || plain) {
+    const rc = mapRunCommands(
+      plain ? { ...options, command: target.command } : options,
+      { projectRel, projectName },
+      todos,
+    )
+    return rc ?? line(PLACEHOLDER)
   }
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName
@@ -418,20 +428,17 @@ function mapCommand(
     // An empty script is a target Nx lists and `pnpm run` runs as nothing
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
-    if (body !== undefined && body.length > 0) return scriptCommand(script, body, scripts)
+    if (body !== undefined && body.length > 0) return line(scriptCommand(script, body, scripts))
     todos.push(
       body === undefined
         ? `nx:run-script: package.json has no ${JSON.stringify(script)} script`
         : `nx:run-script: package.json script ${JSON.stringify(script)} is empty`,
     )
-    return PLACEHOLDER
-  }
-  if (executor === undefined && typeof target.command === 'string' && target.command.length > 0) {
-    return shell(target.command)
+    return line(PLACEHOLDER)
   }
   if (executor === undefined) {
     todos.push(`target has neither an executor nor a command — options: ${JSON.stringify(options)}`)
-    return PLACEHOLDER
+    return line(PLACEHOLDER)
   }
   // Every other executor runs as itself, one process per task, through
   // this package's `nx-exec` bin: the executor and its options are on the
@@ -441,7 +448,7 @@ function mapCommand(
       '`{args.*}` in the options: params forwarding is not supported — put the value in the option',
     )
   }
-  return nxExecCommand(executor, projectName, targetName, configuration, options)
+  return line(nxExecCommand(executor, projectName, targetName, configuration, options))
 }
 
 /** The `nx-exec` line for one target, shell-quoted; `--options` only when there are any. */
@@ -454,13 +461,9 @@ export function nxExecCommand(
 ): string {
   const parts = ['nx-exec', executor, '--project', project, '--target', target]
   if (configuration !== undefined) parts.push('--configuration', configuration)
+  // JSON's own escapes keep a newline out of the line.
   if (Object.keys(options).length > 0) parts.push('--options', JSON.stringify(options))
   return parts.map(shellQuote).join(' ')
-}
-
-/** Single-quoted unless the word is safe bare; JSON's own escapes keep a newline out of the line. */
-function shellQuote(word: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`
 }
 
 /**

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `nx-exec <executor> --project <p> --target <t> [--configuration <c>] --options '<json>'`
+// `nx-exec <executor> --project <p> --target <t> [--configuration <c>] --options '<json>' [overrides…]`
 //
 // One Nx executor as one process, through Nx's own public `runExecutor`
 // (design: docs/design/nx-unchanged-2026-09.md). The command line carries
@@ -33,9 +33,18 @@ if (typeof enableCompileCache === 'function') {
 }
 
 const USAGE =
-  "usage: nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>']"
+  "usage: nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>'] [overrides…]"
 
-/** Parsed argv, or `{ error }` — a usage error is exit 2, before Nx is loaded. */
+/** The flags that are nx-exec's own, each taken once; everything else is Nx's. */
+const OWN = new Set(['project', 'target', 'configuration', 'options'])
+
+/**
+ * Parsed argv, or `{ error }` — a usage error is exit 2, before Nx is loaded.
+ * Every token that is not the executor or the first of an own flag is an
+ * OVERRIDE, kept verbatim for Nx to parse: what `vx run … -- --otp=123`
+ * appends to the line is what `nx run p:t --otp=123` gives the executor,
+ * where it used to be a usage error (nx#12165).
+ */
 function parseArgs(argv) {
   const out = {
     executor: undefined,
@@ -43,17 +52,24 @@ function parseArgs(argv) {
     target: undefined,
     configuration: undefined,
     options: {},
+    overrides: [],
   }
-  const positional = []
+  const seen = new Set()
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--help' || a === '-h') return { help: true }
     if (!a.startsWith('--')) {
-      positional.push(a)
+      if (out.executor === undefined) out.executor = a
+      else out.overrides.push(a)
       continue
     }
     const eq = a.indexOf('=')
     const name = eq === -1 ? a.slice(2) : a.slice(2, eq)
+    if (!OWN.has(name) || seen.has(name)) {
+      out.overrides.push(a)
+      continue
+    }
+    seen.add(name)
     const value = eq === -1 ? argv[++i] : a.slice(eq + 1)
     if (value === undefined) return { error: `--${name} needs a value\n${USAGE}` }
     if (name === 'options') {
@@ -65,14 +81,9 @@ function parseArgs(argv) {
       if (typeof out.options !== 'object' || out.options === null || Array.isArray(out.options)) {
         return { error: '--options must be a JSON object' }
       }
-    } else if (name === 'project' || name === 'target' || name === 'configuration') {
-      out[name] = value
-    } else return { error: `unknown flag --${name}\n${USAGE}` }
+    } else out[name] = value
   }
-  if (positional.length !== 1) {
-    return { error: `expected one executor (got ${positional.length})\n${USAGE}` }
-  }
-  out.executor = positional[0]
+  if (out.executor === undefined) return { error: `expected one executor (got 0)\n${USAGE}` }
   if (!out.executor.includes(':')) {
     return { error: `executor must be <package>:<name>, got ${JSON.stringify(out.executor)}` }
   }
@@ -175,7 +186,20 @@ async function main(argv) {
   let ok = false
   const description = { project: args.project, target: args.target }
   if (args.configuration !== undefined) description.configuration = args.configuration
-  for await (const result of await runExecutor(description, {}, context)) {
+  // Parsed by Nx itself, as `nx run` parses what follows the target. Loaded
+  // only when there is something to parse: the module pulls in git helpers.
+  // `runExecutor` derives the unparsed list from the parsed overrides, so the
+  // parser's own copy is dropped — kept, it was serialized back as a flag,
+  // `--__overrides_unparsed__=--otp=123`, and handed to the executor. The
+  // derived list puts positional words first, where `nx run` keeps them in
+  // the order typed.
+  let overrides = {}
+  if (args.overrides.length > 0) {
+    const { createOverrides } = nx('nx/src/utils/command-line-utils')
+    const { __overrides_unparsed__: _raw, ...parsed } = createOverrides(args.overrides)
+    overrides = parsed
+  }
+  for await (const result of await runExecutor(description, overrides, context)) {
     ok = result !== null && typeof result === 'object' && result.success === true
   }
   return ok ? 0 : 1
