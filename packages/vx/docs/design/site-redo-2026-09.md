@@ -56,10 +56,13 @@ talks about these four packages and nothing else.
 | 9   | `inside-vx/`: How vx is built   | You now know the ideas; how does one tool hold them without growing a branch for every vendor? | The pipeline (config, project, graph, key, schedule, executor, cache, telemetry) with a seam at each stage; the local floor; a plugin in 20 lines.                                                         | PipelineExplorer            |
 | 10  | `try-it/`: Try it               | —                                                                                              | The playground on the same four packages: edit a file, the env or a config and read which tasks run and why. Then the labs, then the quickstart.                                                           | Playground, labs            |
 
-Chapters 1–9 run 800 to 1,500 words each. Every chapter has exactly one
-diagram or widget that carries its idea, and a two-question check at the
-end (the existing Checkpoint component where the planner can answer, a
-static `<details>` where it cannot).
+A chapter is pictures first (owner, 2026-09-24: "simple language, as
+little text as possible and as visual as possible … people read that
+without context"). It has three to five small build-time SVGs, each with
+one to three short sentences, and about 300 words of prose in all. Its
+section titles make the point, so the titles alone tell the story. One
+question closes it (the Checkpoint component where the planner can
+answer, a static `<details>` where it cannot).
 
 **What moves out of the chapters:** "Choosing a tool" (the current
 `learn/choosing`) becomes one page after the Guide, **"vx, Turborepo,
@@ -180,11 +183,18 @@ The landing is the story's cover, not a second story.
 
 ## Voice
 
-- **Second person, present tense, short paragraphs.** Say the problem
-  before the mechanism.
-- **Anchor every term.** A term is defined the first time it is used and
-  linked to the glossary.
-- **No claim without its test.** "vx refuses a cycle" links the row that
-  holds it, as today.
-- **No bullet walls in the Guide.** A list is for steps and choices, not
-  for explanations.
+The owner's rule wins over everything below it: simple language, as
+little text as possible, as visual as possible, for a reader with no
+context. Don't overcomplicate.
+
+- **A picture before a paragraph.** If a sentence restates a picture, cut
+  it.
+- **Plain words.** A term the reader may not know gets a one-line plain
+  explanation the first time and a glossary link. No nested clauses.
+- **Second person, present tense.** Say the problem before the
+  mechanism.
+- **Claims keep their tests, out of the way.** Each chapter ends "In vx"
+  with one collapsed "How we know this is true" list of test links; the
+  prose carries none.
+- **The Docs follow the same rule.** A how-to page is the goal in one
+  line, the steps, the config, and nothing else.
