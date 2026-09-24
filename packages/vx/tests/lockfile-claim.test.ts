@@ -47,14 +47,38 @@ describe('key', () => {
   it("folds the project's digest, the root's for an unlisted project, and nothing without a file", async () => {
     const hooks = claim()
     expect(await hooks.key(task('packages/a'), ctx())).toBeUndefined()
-    await lock('.=root1\npackages/a=a1\n')
+    await lock('packages/a=a1\n')
     expect(await hooks.key(task('packages/a'), ctx())).toEqual({ deps: 'a1' })
+    await lock('.=root1\npackages/a=a1\n')
     expect(await hooks.key(task('packages/b'), ctx())).toEqual({ deps: 'root1' })
     expect(await hooks.key(task('.'), ctx())).toEqual({ deps: 'root1' })
   })
 
+  it("a listed project folds the root importer's digest too: the root's tools are on its PATH", async () => {
+    // The root `node_modules/.bin` is on every task's PATH and Node's
+    // resolution walks up to the root `node_modules`, so a root
+    // devDependency bump that moved no project's key replayed the old
+    // tool's output (nx#36415 class, 2026-09-24).
+    const hooks = claim()
+    const key = async (text: string, dir: string) => {
+      await lock(text)
+      return (await hooks.key(task(dir), ctx()))!['deps']!
+    }
+    const base = await key('.=root1\npackages/a=a1\npackages/b=b1\n', 'packages/a')
+    const rootMoved = await key('.=root2\npackages/a=a1\npackages/b=b1\n', 'packages/a')
+    const ownMoved = await key('.=root1\npackages/a=a2\npackages/b=b1\n', 'packages/a')
+    const sibling = await key('.=root1\npackages/a=a1\npackages/b=b2\n', 'packages/a')
+    expect(new Set([base, rootMoved, ownMoved]).size).toBe(3)
+    // CONTROL: a sibling's own closure is not a's.
+    expect(sibling).toBe(base)
+    // Neither half alone: a's key is not the root's, nor its own bare digest.
+    expect(base).not.toBe('root1')
+    expect(base).not.toBe('a1')
+  })
+
   it('parses once per content: the memo serves the next process, the context the next task', async () => {
-    await lock('.=root1\npackages/a=a1\n')
+    // No root importer: these rows are about the memo, so a's key is its own digest.
+    await lock('packages/a=a1\n')
     const first = claim()
     const run = ctx()
     await first.key(task('packages/a'), run)
@@ -66,7 +90,7 @@ describe('key', () => {
       importers: Record<string, string>
     }
     expect(memo.version).toBe(1)
-    expect(memo.importers).toEqual({ '.': 'root1', 'packages/a': 'a1' })
+    expect(memo.importers).toEqual({ 'packages/a': 'a1' })
     // A fresh instance (a new process) reads the memo instead of parsing.
     const second = claim()
     expect(await second.key(task('packages/a'), ctx())).toEqual({ deps: 'a1' })
@@ -77,7 +101,7 @@ describe('key', () => {
     expect(await claim().key(task('packages/a'), ctx())).toEqual({ deps: 'planted' })
     expect(calls).toHaveLength(1)
     // Changed bytes ignore the stale memo and parse again.
-    await lock('.=root1\npackages/a=a2\n')
+    await lock('packages/a=a2\n')
     expect(await claim().key(task('packages/a'), ctx())).toEqual({ deps: 'a2' })
     expect(calls).toHaveLength(2)
   })
@@ -121,7 +145,7 @@ describe('key', () => {
     // read-only cache, a full disk, a path that is not a directory — the
     // digests were computed anyway and the run must carry on. The next run
     // simply computes them again.
-    await lock('.=root1\npackages/a=a1\n')
+    await lock('packages/a=a1\n')
     const blocked = path.join(root, 'not-a-dir')
     await writeFile(blocked, 'this is a file, so lockfile-claims/ cannot be made under it')
     const hooks = claim()
@@ -157,10 +181,12 @@ describe('affected', () => {
       { ...ctx(), projects: projects() },
     )
 
-  it('names the projects whose digest moved; an unlisted project follows the root', async () => {
+  it('names the projects whose digest moved; a root move moves every project', async () => {
     const base = '.=r1\npackages/a=a1\npackages/b=b1\n'
     expect([...(await ask(claim(), base, '.=r1\npackages/a=a2\npackages/b=b1\n'))!]).toEqual(['a'])
     expect([...(await ask(claim(), base, '.=r2\npackages/a=a1\npackages/b=b1\n'))!]).toEqual([
+      'a',
+      'b',
       'tools',
     ])
     expect([...(await ask(claim(), base, base))!]).toEqual([])

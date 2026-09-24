@@ -6,6 +6,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { npm } from '../src/index.js'
 import { importerDigests, parseLockfile } from '../src/npm.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
@@ -30,9 +31,10 @@ function silent(): Logger {
  * workspace package `b` through the `node_modules/b` link.
  */
 function lock(
-  opts: { bar?: string; baz?: string; nestedBar?: string; overrides?: string } = {},
+  opts: { bar?: string; baz?: string; nestedBar?: string; overrides?: string; ts?: string } = {},
 ): string {
   const bar = opts.bar ?? '2.0.0'
+  const ts = opts.ts ?? '5.0.0'
   const baz = opts.baz ?? '3.0.0'
   const nested = opts.nestedBar ?? '1.0.0'
   return JSON.stringify(
@@ -67,9 +69,9 @@ function lock(
           dependencies: { bar: '^2' },
         },
         'node_modules/typescript': {
-          version: '5.0.0',
-          resolved: 'https://r/ts.tgz',
-          integrity: 'sha512-ts',
+          version: ts,
+          resolved: `https://r/ts-${ts}.tgz`,
+          integrity: `sha512-ts${ts}`,
         },
         'packages/a': { name: 'a', version: '1.0.0', dependencies: { foo: '^1' } },
         'packages/b': { name: 'b', version: '1.0.0', dependencies: { baz: '^3', bar: '^1' } },
@@ -177,6 +179,26 @@ describe('npm() declared', () => {
     expect(after['a#build']).not.toBe(before['a#build'])
     expect(after['b#build']).toBe(before['b#build'])
     expect(after['c#build']).toBe(before['c#build'])
+  })
+
+  it('a root devDependency bump re-keys and selects every project: the root `.bin` is on every PATH', async () => {
+    // The root package's tools run from the root `node_modules/.bin`,
+    // which core puts on every task's PATH, and Node resolution walks up
+    // to the root `node_modules`: a bump that moved no project's key
+    // replayed the old tool's output (nx#36415 class, 2026-09-24).
+    const plan = async () => {
+      const p = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      return Object.fromEntries(p.tasks.map((t) => [t.node.id, t.hash]))
+    }
+    commitAll(root)
+    const before = await plan()
+    // CONTROL: a package only `a` reaches still moves only a's key.
+    await writeFile(path.join(root, 'package-lock.json'), lock({ bar: '2.0.1' }))
+    expect(moved(before, await plan())).toEqual(['a#build'])
+    expect(affectedIds(root, 'build')).toEqual(['a#build'])
+    await writeFile(path.join(root, 'package-lock.json'), lock({ ts: '5.1.0' }))
+    expect(moved(before, await plan())).toEqual(['a#build', 'b#build', 'c#build'])
+    expect(affectedIds(root, 'build')).toEqual(['a#build', 'b#build', 'c#build'])
   })
 
   it('refuses an unknown scope', () => {

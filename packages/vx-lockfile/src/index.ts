@@ -9,8 +9,10 @@
 // the key digest, each task folds one digest per project — what that
 // project can reach through its dependencies, by resolved identity — and
 // `--affected` names the projects whose digest moved. This package is the
-// parsers; the claim, the per-project key, the memo (one parse per file
-// content), the per-run read and the diff are core's.
+// parsers; the claim, the per-project key (which folds the root
+// importer's digest into every project: the root's tools are on every
+// task's PATH), the memo (one parse per file content), the per-run read
+// and the diff are core's.
 //
 // Imports core only through the public `@vzn/vx` specifier.
 import { definePlugin, lockfileClaim, type VxPlugin } from '@vzn/vx'

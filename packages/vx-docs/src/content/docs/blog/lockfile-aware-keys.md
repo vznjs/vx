@@ -52,6 +52,10 @@ The closure is exactly what the project's `node_modules` can resolve:
 - install-wide material every project folds: `lockfileVersion`,
   `overrides`, `settings`, `patchedDependencies` (and, under `bun()`,
   the catalogs).
+- the root package's own closure, folded into every project (added
+  2026-09-24): the root's tools run from the root `node_modules/.bin`
+  on every task's PATH, so a root devDependency bump that re-keyed
+  nothing replayed the old tool's output.
 
 `bun()` does the same through Bun's hoisted layout (a nested version
 counts for the package it is nested under and no other); `npm()`

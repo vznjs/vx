@@ -240,6 +240,10 @@ export default defineWorkspace({
 | `npm()`  | the same, from `package-lock.json` versions 2 and 3                                   |                                 |
 | `yarn()` | the same, from a berry lockfile; a yarn 1 lockfile records no workspaces, so every package folds the whole file | |
 
+Every package's key also folds the root package's own dependencies:
+their bins run from the root `node_modules/.bin`, which is on every
+task's PATH. So bumping a root devDependency re-runs every package.
+
 `vx why` names the part `plugin @vzn/vx-lockfile/pnpm`. An unreadable
 lockfile stops the run and names the install to re-run. An import you
 never declared is in no package's key.
