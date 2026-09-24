@@ -401,7 +401,7 @@ describe('signal handling during vx run (e2e)', () => {
               },
               slow: {
                 exec: {
-                  command: "trap 'sleep 0.5; echo LATE-OUTPUT; exit 0' TERM; sleep 30 & echo $! > child.pid; echo $$ > slow.pid; wait",
+                  command: "trap 'sleep 0.5; printf LATE-%s OUTPUT; exit 0' TERM; sleep 30 & echo $! > child.pid; echo $$ > slow.pid; wait",
                 },
               },
             },
@@ -437,6 +437,7 @@ describe('signal handling during vx run (e2e)', () => {
           alive: [],
           closed: true,
         })
+        // Spelled apart in the command: a failed task's frame echoes it.
         expect(closed!.join('')).not.toContain('LATE-OUTPUT')
       }
     },
