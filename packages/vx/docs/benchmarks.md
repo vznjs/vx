@@ -133,7 +133,8 @@ repairs it, which the release workflow now does on a macOS runner.
 ## Head-to-head, 2026-09-03 (46 packages, `packages/vx-bench/compare.ts 10 5 1`)
 
 Same workspace, identical commands, every runner pinned to concurrency
-10, daemons on for Turbo/Nx, vx as its compiled binary. Median of 1,
+10, Nx's daemon on (Turbo uses none for `turbo run` since 2.9), vx as
+its compiled binary. Median of 1,
 this machine (macOS arm64, Bun 1.4.0):
 
 | Runner      | Version | Fresh (cold) | Warm (no restore) | Warm (restore) |
@@ -144,14 +145,15 @@ this machine (macOS arm64, Bun 1.4.0):
 | nx          | 23.2.0  | 19.66 s      | 540 ms            | 531 ms         |
 
 Read it honestly: at 46 packages Turborepo 2.10 and vx are within a few
-milliseconds of each other on a fully-cached run — Turbo's daemon
-answers "what changed" without a walk, vx pays one `git status`. vx wins
+milliseconds of each other on a fully-cached run, and neither keeps a
+process between runs: Turbo 2.10 uses no daemon for `turbo run` (its docs
+say so from 2.9), so both work out what changed on every invocation. vx wins
 the restore case and ties the cold one; Nx is 7× off. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
 The same 46-package run on the four-core Linux container (2026-09-23,
 after items 615 and 622; a different machine, so only the ratios compare
-with the table above). Turbo 2.11.3 and Nx 23.2.1, daemons on, vx as
+with the table above). Turbo 2.11.3 (no daemon for `turbo run`) and Nx 23.2.1 (daemon on), vx as
 its compiled binary, median of 1. The CPU column is user + system of
 the invocation and every child it waited for; a daemon that outlives
 the invocation is not counted, so Turbo's and Nx's are floors:
@@ -224,8 +226,8 @@ about two seconds between runs; vx's cold CPU sits within that noise).
 
 **CPU** is user + system time of the invocation and every child it
 waited for. The tasks are `sleep`, so this is the runner's own work; a
-daemon that outlives the invocation (Turbo's, Nx's) is not counted, so
-their CPU is a floor.
+daemon that outlives the invocation (Nx's) is not counted, so Nx's CPU
+is a floor.
 
 > Methodology note: a synthetic graph with `sleep`-based tasks isolates
 > _runner_ overhead from real compilation. All three runners are
@@ -325,8 +327,9 @@ same graph: `build` is four executed tasks (`solid-js#types`, `#link`,
 `#build`, `solid-element#build`; Turbo lists three more `build` nodes
 for packages with no such script and runs nothing for them), and
 `test test-types` is seven. Both restore the identical 64 output files.
-vx as its compiled binary, Turbo without its daemon (`--no-daemon`, so
-every run pays its own discovery — the same footing vx is on), four
+vx as its compiled binary, Turbo with no daemon (2.10 uses none for
+`turbo run`, so every run pays its own discovery, the same footing vx is
+on; the `--no-daemon` the script passes is ignored), four
 cores, Linux, arms interleaved. Medians (3 reps for `build`, 2 for
 `test`); the script is `packages/vx-bench/real/turbo-repo.sh`.
 
@@ -349,9 +352,8 @@ package, its log capture, its cache write), not measured to the frame
 here. The warm rows are the product: with everything cached, vx
 answers in 50–80 ms where Turbo takes 95–170 ms, and the restore case
 — what a CI job or a fresh checkout does — is where the ratio is
-widest. Turbo with its daemon on would close part of the no-op gap
-(the daemon answers "what changed" without a walk); vx has no daemon
-to turn on.
+widest. Neither tool has a daemon to turn on for this: Turbo's docs
+deprecate it for `turbo run` from 2.9, and vx has none.
 
 ## Five real Turbo repos (2026-09-11)
 

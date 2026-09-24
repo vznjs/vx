@@ -156,7 +156,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Non-JS projects (Rust, .NET, Gradle, ...) | experimental (native Go, Cargo, uv)     | yes (plugins)                           | no         | no                                                                  |
 | Filter DSL                                | pnpm-style + `[<since>]` (git-relative) | yes via `--projects/--exclude` (no DSL) | pnpm-style | pnpm-style + `[<since>]`                                            |
 | Affected / git-relative                   | `--filter '[since...]'`, `--affected`   | full `affected` subcommand              | —          | `--affected[=<base>]` + `[<since>]`                                 |
-| Daemon / persistent project-graph process | not for `turbo run` since 2.10          | yes (on by default locally)             | —          | — **out of scope**                                                  |
+| Daemon / persistent project-graph process | not for `turbo run` since 2.9           | yes (on by default locally)             | —          | — **out of scope**                                                  |
 | Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | `vx watch <task>`                                                   |
 | Prune workspace (Docker subset)           | `turbo prune`                           | —                                       | —          | — **gap**                                                           |
 
@@ -360,8 +360,9 @@ deliberate design pass.
 - **Daemon / persistent project-graph process.** Re-discovery is fast
   enough on Bun (a warm 1000-project run is ~170 ms end to end, with
   config loading scoped and pure configs served from the eval cache);
-  the operational cost of a daemon doesn't pay for itself. Turbo 2.10
-  reached the same conclusion and deprecated its daemon for `run`.
+  the operational cost of a daemon doesn't pay for itself. Turbo
+  reached the same conclusion: from 2.9 its docs say the daemon is no
+  longer used for `turbo run`.
 - **JS-function tasks.** "Shell is the API" is a deliberate
   constraint: a task is a command string. The `executor` capability
   decides WHERE that command runs (a worker, a sandbox, this machine)

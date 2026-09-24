@@ -63,8 +63,8 @@ pinned commit: five packages, pnpm 9, Turbo 2.10.10 as the repository's
 own dependency, Node 22. vx is put on top through `turbo()` from `@vzn/vx-migrate`, a
 two-line `vx.workspace.mjs`, no config rewritten, so both tools see the
 same graph and restore the identical 64 output files. vx runs as its
-compiled binary; Turbo runs with `--no-daemon` so both pay their own
-discovery. Four cores, Linux, arms interleaved, medians.
+compiled binary; Turbo 2.10 uses no daemon for `turbo run` (deprecated
+there since 2.9), so both pay their own discovery. Four cores, Linux, arms interleaved, medians.
 
 | `build` (4 tasks)              | vx         | Turbo 2.10.10  |
 | ------------------------------ | ---------- | -------------- |
@@ -90,8 +90,8 @@ tells you otherwise is measuring something else.
 The warm rows are the product. With everything cached, vx answers in
 50–80 ms where Turbo takes 95–170 ms, and the restore case, which is
 what a CI job or a fresh checkout does, is where the ratio is widest.
-Turbo's daemon, if turned on, would close part of the no-op gap. vx
-has no daemon to turn on.
+Neither has a daemon to turn on here: Turbo's no longer serves
+`turbo run`, and vx has none.
 
 ## The method is the point
 

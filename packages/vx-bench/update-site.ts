@@ -195,8 +195,8 @@ about two seconds between runs; vx's cold CPU sits within that noise).
 
 **CPU** is user + system time of the invocation and every child it
 waited for. The tasks are \`sleep\`, so this is the runner's own work; a
-daemon that outlives the invocation (Turbo's, Nx's) is not counted, so
-their CPU is a floor.
+daemon that outlives the invocation (Nx's) is not counted, so Nx's CPU
+is a floor.
 
 > Methodology note: a synthetic graph with \`sleep\`-based tasks isolates
 > _runner_ overhead from real compilation. All three runners are
