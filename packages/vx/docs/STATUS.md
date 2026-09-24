@@ -1273,6 +1273,65 @@ green under the swap. Bundle +729 B (+252 B gzip). Rows, differentials
 and the Chromium probe: `design/playground-ui-2026-09.md` § Shipped
 (item 703).
 
+14cz. **Item 706 (2026-09-24): the run ends with each failure's last
+lines.** A failure's frame prints when the task ends, which in a long
+CI log is thousands of lines above the end, and GitHub's API returns
+only a job log's last 5,000 lines: this repo's own CI failed on
+`@vzn/vx-docs#build` and its error could be read nowhere, since the
+summary named the task and nothing else. After the summary's sections,
+`run()` now prints a `Failed:` block: per failed task, its id and
+`failedLabel`, then its last 30 lines (stdout then stderr, the frame's
+order), capped at 8 KiB, with a note of what was cut
+(`… 70 earlier lines`,
+`… 12,288 bytes cut from the start of the line below`, and what a
+persistent task's 64 KiB capture had already dropped). Five tasks get
+a tail; the rest are named (`… and 2 more failed: app#f6, app#f7`). The
+capture is `src/orchestrator/failure-recap.ts`, a ring over the END of
+the output that holds at most 8,193 characters and counts every
+eviction. A buffered task's ring is filled at its failure from the
+buffers its frame already drains; the one live-streamed task (focused,
+single request) gets a ring at frame-open, fed as its chunks are
+written, dropped at its outcome. `DefaultLogger.failureRecap()` renders
+it and `run()` asks only the logger it built, so a custom logger gets
+none. It prints in every view that prints task output (`none` and
+`hash-only` promise none), on a terminal, in CI and on Actions, where
+each tail is fenced in `::stop-commands::` and nothing is grouped.
+Colour codes pass through. Exit codes, `--summarize`, `--dry=json`,
+telemetry (which drops `run:status`) and the cache are untouched. Two
+defects the rows caught before commit: the ring first held 8,192
+characters, so the final newline cost a character of the 8 KiB, and it
+evicted a head chunk whole even when that left fewer characters than
+the cap (an 8,000-character chunk and a 300-character one left one line
+of a 30-line tail). Refuted from the design: a 64 KiB total cap cannot
+bind (five tails at 8 KiB is 40 KiB), so there is none; "combined
+output" in arrival order is not what the logger holds (it splits the
+streams for the frame), so a buffered tail reads stdout then stderr,
+as the frame does, and only the live stream is in arrival order; and a
+live-streamed cache hit's replay does go through its ring, one task
+per run. Warm all-hit run (300 projects, 600 tasks, interleaved,
+15 reps): before min 183 ms, median 197; after min 180, median 197.
+Rows (`tests/failure-recap.test.ts`, 19): the exact block a CI run ends
+with (lines 71–100 of a 100-line task that exits 3,
+`… 70 earlier lines`), the control (a passing chatty task: the
+summary's `time` row ends the run), seven failures (five tails, two
+named, as sets), Actions (one group above, none in the recap, the
+exact fenced block), the byte cap (a 20 KiB line cut to 8 KiB; a
+two-byte cut on a character boundary; one landing mid-character; forty
+long lines, the whole lines counted before the bytes),
+stdout-then-stderr with colour codes, a timeout's label and
+`(no output)`, the live ring with both streams in arrival order, a
+persistent task's dropped characters, each mode, and the ring's bound
+over 51.2 MB in 64,000-byte chunks and in one. Differentials, each
+reversed: the recap for every outcome reddens the control, the Actions
+row and the passed-task row; `RECAP_LINES` 31 or 29 reddens the exact
+row, the Actions row, the live row and the three ring rows; the recap
+wrapped in a `::group::` reddens the Actions row; the fence dropped
+reddens it too; `RECAP_TASKS` 6 reddens the seven; the
+character-boundary step dropped reddens the mid-character row; the
+cut's newline count or its partial-bytes arithmetic dropped reddens
+the two-byte forty-lines row; the live stderr append dropped reddens the live
+row; whole-chunk eviction past the cap reddens its ring row.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

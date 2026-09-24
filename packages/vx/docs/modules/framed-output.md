@@ -31,6 +31,21 @@ export function formatTaskHitLine(node, outcome, colors?): string
 
 // ` ⏺ <time> success miss <id>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?): string
+
+export interface RecapEntry {
+  node: TaskNode
+  outcome: TaskOutcome
+  tail: RecapTail // failure-recap.ts
+  droppedChars: number // what a persistent task's bounded capture dropped first
+}
+
+// The run's last block: each failed task's last lines (item 706)
+export function formatFailureRecap(
+  entries: readonly RecapEntry[],
+  more: readonly string[], // ids of the failures past RECAP_TASKS
+  colors?: ColorSupport,
+  fence?: (lines: string[]) => string[], // wraps each tail's lines (Actions)
+): string[]
 ```
 
 ## Task block shape
@@ -70,6 +85,36 @@ returned string beyond the final newline).
 
 Group tasks (no `exec`) render empty string — they aren't real tasks.
 
+## Failure recap
+
+`formatFailureRecap` renders the block `run()` prints last, after the
+summary's own sections (see [`failure-recap.md`](./failure-recap.md)):
+
+```
+  Failed:   2 tasks — the last lines each one printed
+
+  ◼ app#fail — failed (exit 3)
+  … 70 earlier lines
+line 71
+…
+line 100
+
+  ◼ app#dep — failed (exit 1)
+  (no output)
+
+  … and 2 more failed: app#f6, app#f7
+```
+
+One row per tail: the failed glyph, the id, and `failedLabel` (a
+timeout, a sandbox violation and a never-ready task read as they do on
+the frame). The note says what was cut: whole lines above, bytes cut
+from the start of the first line shown, and anything a persistent
+task's bounded capture had already dropped. The lines are raw, as a
+frame's are, colour codes included; `fence` wraps them where the text
+could be read as something else. `(no output)` stands for a task that
+printed nothing. The last line names, by id, the failures past the
+tail limit.
+
 ## Outcome vocabulary + colors
 
 One vocabulary across every surface (one-liners, frames, summary,
@@ -89,6 +134,7 @@ Duration formats: `<1s` → `Nms`, ≥1s → `N.NNs`.
 
 ## Tests
 
+`tests/failure-recap.test.ts` renders the recap through the logger.
 `tests/framed-output.test.ts`:
 
 - Block shape per status (cache-hit, success, failed, skipped, remote,

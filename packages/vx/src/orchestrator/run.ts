@@ -178,7 +178,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // additional subscribers. The fan-out is synchronous and order-
   // preserving, so terminal output is byte-identical to a direct call.
   // See docs/design/event-stream-2026-06.md.
-  const sink = options.log ?? defaultLogger(colors, resolveOutputView(options))
+  const terminal =
+    options.log === undefined ? defaultLogger(colors, resolveOutputView(options)) : null
+  const sink = options.log ?? terminal!
   // An injected bus already has surfaces subscribed; we add the terminal
   // renderer for this run and take it off again on every way out: the bus
   // outlives the run, and a renderer left behind reported the next run on
@@ -186,7 +188,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const bus = options.bus ?? createEventBus()
   const unsubscribeTerminal = bus.subscribe(terminalSubscriber(sink))
   try {
-    return await runOnBus(options, bus, colors)
+    return await runOnBus(options, bus, colors, () => terminal?.failureRecap() ?? [])
   } finally {
     unsubscribeTerminal()
   }
@@ -196,6 +198,7 @@ async function runOnBus(
   options: RunOptions,
   bus: EventBus,
   colors: ColorSupport,
+  failureRecap: () => string[],
 ): Promise<RunSummary> {
   const log = busLogger(bus)
 
@@ -732,6 +735,8 @@ async function runOnBus(
         `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--download=none): ${stillDeferred.join(', ')}`,
       )
     }
+    // Last, where a long log's reader lands: each failure's own last lines.
+    for (const line of failureRecap()) log.status(line)
 
     // Optional artifacts. Errors are surfaced to the user but don't
     // change the run's exit code — the run already happened.

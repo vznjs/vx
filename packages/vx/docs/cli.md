@@ -478,8 +478,36 @@ lib#build`; a fail-fast skip, which nothing blocked, carries no
 
 When a dependency fails mid-run, the stream gets ONE permanent
 `◼ … failed miss <id>` line and the run continues; **all full failure
-frames replay together at run end**, right above the summary, so
-failures read last and are never capped.
+frames replay together at run end**, right above the summary, and are
+never capped; the run's last block then repeats each one's last lines.
+
+**The run ends with each failure's last lines.** A failure's frame
+prints when the task ends, which in a long CI log is thousands of lines
+above the end (and GitHub's API returns only a job log's last 5,000).
+So after the summary, a `Failed:` block repeats, for each failed task,
+its id, its failure label (`failed (exit 3)`, or its kind:
+`failed (timed out, exit 143)`) and the last 30 lines of its output,
+stdout then stderr as the frame orders them, capped at 8 KiB. A note
+says what was cut: `… 1,204 earlier lines`, or
+`… 12,288 bytes cut from the start of the line below`. The first five
+failures get a tail; the rest are named:
+`… and 2 more failed: app#f6, app#f7`. Colour codes pass through as
+the task printed them. It prints on a terminal, in CI and on GitHub
+Actions, where its lines are fenced from workflow commands and never
+put in a `::group::`, so the block reads with every group collapsed.
+`--output-logs none` and `hash-only` print no task output, so no
+recap. A task that passed is never repeated, and the recap changes no
+exit code and no `--summarize` or `--dry=json` output.
+
+```
+  Failed:   1 task — the last lines it printed
+
+  ◼ app#fail — failed (exit 3)
+  … 70 earlier lines
+line 71
+…
+line 100
+```
 
 The end-of-run summary always prints; cache-hit counts that broad
 mode silences per-task surface there. A focused `vx run test` is meant
