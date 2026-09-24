@@ -88,8 +88,12 @@ export function execWord(command: string): string | undefined
   stat per entry on every spawn. The task's PATH still decides what
   the command resolves, inside the shell; `argv0` keeps `$0` the `sh`
   it always was.
-- **stdio:** `stdin: 'ignore'` (no interactive prompts);
-  `stdout: 'pipe'`, `stderr: 'pipe'`.
+- **stdio:** `stdin: 'ignore'` (no interactive prompts; a task reading
+  stdin sees EOF, never a hang); `stdout: 'pipe'`, `stderr: 'pipe'`.
+  `runPersistent` alone spawns with `stdin: 'pipe'` and never writes
+  it: a dev server that exits on stdin EOF (esbuild `--watch`) stays up
+  while vx lives, and sees EOF when vx exits (execution.md § Output
+  capture and rendering).
 - **forwardArgs** are appended to `command` after a single space, each
   quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe).
 - **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8

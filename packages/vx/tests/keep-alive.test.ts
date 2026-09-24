@@ -85,3 +85,50 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     }, 20_000)
   }
 })
+
+describe('a persistent task keeps an open stdin', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-keepalive-stdin-' })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('a server that exits on stdin EOF stays up while vx runs', async () => {
+    // esbuild --watch (Vite's case in turborepo#8915) exits 0 when its
+    // stdin ends. Spawned with `stdin: 'ignore'`, it became ready and
+    // exited at once, and `vx run dev` ended green. `cat` is that server.
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: 'echo $$ > pid.txt; echo READY; cat; echo STDIN-ENDED',
+                persistent: { readyWhen: 'READY' },
+              },
+            },
+          },
+        }
+      `,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+    })
+    const out = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    // Under 'ignore' the shell saw EOF and vx exited within 50 ms of this.
+    const early = await Promise.race([proc.exited, Bun.sleep(500).then(() => 'running' as const)])
+    expect(early).toBe('running')
+    expect(isAlive(pid)).toBe(true)
+    process.kill(proc.pid, 'SIGTERM')
+    expect(await proc.exited).toBe(143)
+    expect((await out).join('')).not.toContain('STDIN-ENDED')
+  }, 20_000)
+})
