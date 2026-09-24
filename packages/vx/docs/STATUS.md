@@ -262,6 +262,20 @@ test is telling the truth.
       row that holds CLAUDE.md's count against the configs stays, its page
       half gone.
 
+729.  DONE (2026-09-24, Next 16, `design/site-short-2026-09.md`). The site,
+      short. The landing is the story: one line, one diagram (`one-run`:
+      the toy build after an edit to app, with six callouts for tasks,
+      parallel, cache, only what changed, sandbox and plugins, and a phone
+      layout), the first bench alone, and four pillars (correctness,
+      sandbox, extensibility, freedom). The ten Guide chapters, the labs
+      and the widgets no page hosts went; every old chapter and Learn URL
+      lands on its callout or the playground, now `playground/`, the Docs'
+      last page. The Docs are six pages (quickstart, configure, sandboxing,
+      CI and remote, migrate, plugins; 303-445 words of prose each), every
+      old page redirecting to its section; every law that read a merged
+      page moved with its text (20 one-line breakages each reddened one).
+      `update-site.ts` stops writing the real-repo and scaling panels.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -473,19 +487,12 @@ its own package through its self-link (720, `CACHE_VERSION` v30), nor a
 linked sibling its key does not cover (726, v31, the Decisions entry on
 narrowing core's grant), and a task downstream of a persistent task has
 one key on both paths (727). WHAT STANDS: 14dj is in the next-log file
-(§ Handoff 14dj); the loop holds 719–728. OWNER, unchanged: the site's read
-(Next 16), cut 0.1.0 (the tag, then delete `NPM_TOKEN`), the scope list (roadmap 2.4), the soak length. NEXT: the short site (Next 16, `design/site-short-2026-09.md`); the trim when the loop reaches twenty items; the warm-path A/B on the next run-path change (Next 6). Never end with "what
+(§ Handoff 14dj); the loop holds 719–729. OWNER, unchanged: the site's read
+(Next 16), cut 0.1.0 (the tag, then delete `NPM_TOKEN`), the scope list (roadmap 2.4), the soak length. NEXT: the owner's read of the short site (Next 16); the trim when the loop reaches twenty items; the warm-path A/B on the next run-path change (Next 6). Never end with "what
 next?".
 
-16. **The site, short (owner, 2026-09-24, after 728).** "Still
-    terrible. It should be short but visualizing. Maybe one diagram that
-    has all the examples. We don't need 2 benches. Leave first. Focus on
-    extensibility, no paywall, freedom, performance, sandbox,
-    correctness" — for the whole site. Design: `design/site-short-2026-09.md`
-    (the landing is the story: one diagram with six callouts, the first
-    bench, four pillars; the Guide collapses into it; the Docs become six
-    pages; every law moves with its text). The site's address is GitHub
-    Pages, settled by the owner.
+16. **The site, short (owner, 2026-09-24, after 728).** Shipped as item
+    729 (`design/site-short-2026-09.md`). Left: the owner's read.
 
 ## Decisions (this arc)
 
