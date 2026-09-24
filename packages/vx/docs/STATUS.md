@@ -1410,6 +1410,42 @@ and wrong, another file in a question, a constant answer right and
 wrong, the queue removed), the question changes and the Chromium
 probe: `design/labs-checkpoints-2026-09.md` § Shipped (item 705).
 
+14dd. **Item 704 (roadmap W10, 2026-09-24): the labs.** `learn/labs`,
+after the playground page, has three labs that each embed a
+`<vx-playground data-lab="<id>">` opened on a named state from
+`src/playground/labs.ts` (the workspace plus one change): a file no
+config mentions (`packages/ui/notes.md`: nothing moves until `ui#build`
+declares it, then "config changed, file added: packages/ui/notes.md"
+and the three downstream), an undeclared read (`api#build` copies
+`config.json`: an edit moves nothing, a stale hit in a real run; the
+sandbox block moves the key so the next real run is checked, and
+declaring the file moves it), and two tasks writing `dist/**` (core's
+`detectOutputCollisions` refusal, shown verbatim; `dependsOn: ['build']`
+makes it the addition shape). The fourth lab, a bad order, is a section
+of `learn/scheduling` on its simulator's own knobs. Each lab ends with
+what stopped it in vx, linked to the page that teaches it, and one
+cited sentence each for Turborepo, Nx and Bazel. The element reads
+`data-lab` in `connectedCallback` and Reset restores that state; with no
+attribute it is the workspace, as before. `Playground.astro` takes a
+`lab` prop through `Demo.astro`'s new `data` prop and renders that
+state's static table. The bundle holds one workspace at a time (its file
+system and env are module state; found by item 705's implementer), so
+`planPlayground` and `listPlaygroundProjects` now run through one queue
+in `entry.ts`: without it, a plan started beside one under another
+`API_URL` took that value's keys (site and parity rows, red without the
+queue). Rows: core's parity rows hold every state each lab's
+steps reach to `vx run --dry=json` (keys, statuses, deps, the moved set
+per step by hand, and lab 3's refusal equal to the CLI's stderr); the
+site's `tests/learn-labs.test.ts` holds each step's sentence and cells to
+hand-written truth and to the step's text, the static renders, the
+checkpoint, `data-lab` over a stub DOM, and lab 4's numbers. Refuted
+from the design: at 20 s `docs#build` does not grow the critical path
+(the work bound does; the lab goes to 30 s), and Turborepo's docs say
+nothing of additive restores or of two tasks naming one output, so the
+page says only what they say. Built under Node 22 too. Rows,
+differentials, competitor sources and the Chromium probe:
+`design/labs-checkpoints-2026-09.md` § Shipped (item 704).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1436,20 +1472,19 @@ probe: `design/labs-checkpoints-2026-09.md` § Shipped (item 705).
     itself (item 700, entry 14cx): `learn/playground` runs the real
     planner on the toy monorepo, and core's parity rows hold the page's
     Run to the CLI. The playground names why a key moved, by `vx why`'s
-    rule (item 703, entry 14cy). W11, the checkpoints, is DONE (item
-    705, entry 14dc): the what-is, caching, correctness and playground
-    pages ask questions the reader ticks and the live planner marks, and
-    each no-JavaScript answer is computed by that planner at build time.
-    Next is W10, the labs (guided exercises on the playground: an
-    undeclared input and its stale hit, a file no config mentions, two
-    tasks writing one output, a bad order and its critical path), per
-    `design/labs-checkpoints-2026-09.md` (item 704, in flight, which also
-    serializes the bundle's plans in `entry.ts` so a playground and a
-    checkpoint on one page cannot read each other's files: item 705's
-    finding). W8, the landing page, is last and designed in
-    `design/landing-2026-09.md` (item 709): the problem and the three
-    ideas first, each linked to its Learn page, the numbers after, the
-    generator's anchors untouched.
+    rule (item 703, entry 14cy). W10, the labs, is DONE (item 704,
+    entry 14dd): `learn/labs` runs three labs in the playground (a file
+    no config mentions, an undeclared read and its stale hit, two tasks
+    writing one output), each held to the CLI by core's parity rows, and
+    a bad order on the scheduling page's simulator; the bundle's plans
+    are serialized in `entry.ts` (item 705's finding). W11, the
+    checkpoints, is DONE (item 705, entry 14dc): the what-is, caching,
+    correctness and playground pages ask questions the reader ticks and
+    the live planner marks, and each no-JavaScript answer is computed by
+    that planner at build time. Next and last is W8, the landing page,
+    designed in `design/landing-2026-09.md` (item 709): the problem and
+    the three ideas first, each linked to its Learn page, the numbers
+    after, the generator's anchors untouched.
 
 ## Decisions (this arc)
 

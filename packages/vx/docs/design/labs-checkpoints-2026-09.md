@@ -298,3 +298,194 @@ on each checkpoint gave:
 
 Each mark was coloured by its `data-verdict`. The live region was
 `aria-live="polite"`. There was no page error and no console error.
+
+## Shipped (item 704): the labs
+
+`learn/labs` follows the playground page in the sidebar, before the
+glossary. Labs 1 to 3 each embed a `<vx-playground data-lab="<id>">`;
+lab 4 is a section of `learn/scheduling`, and the labs page links to it.
+The page ends with a Checkpoint in the `<details>` form.
+
+- **Where things are.** `src/playground/labs.ts` holds `LABS`, the
+  three start states (`unlisted-file`, `undeclared-read`,
+  `shared-output`; each `{ files, env, tasks }`, the workspace plus one
+  change), and `LAB_STEPS`, the edits each step asks for (replace a text
+  once, or append), which the site's rows and core's parity rows apply
+  with `applyEdits`. An edit whose text is not in its file throws, so a
+  lab that drifts from the workspace fails its rows instead of planning
+  something else. `startState(lab)` is the state an element opens on:
+  the lab's, or the workspace's with no attribute; an unknown id throws.
+- **The element.** `Playground.astro` takes `lab` and passes it through
+  `Demo.astro`'s new `data` prop (`data-*` attributes on the element), and
+  its static render is that state's: the file list, each config and the
+  task table, from `configTextsOf(files)` (each package's config text
+  under its `package.json` name) evaluated in-process at build time, as
+  before. `<vx-playground>` reads `data-lab` in `connectedCallback`, and
+  Reset restores that state, env and task specs included. With no
+  attribute it opens and resets on the workspace, as the playground page
+  does.
+- **Lab 1, a file no config mentions:** `packages/ui/notes.md`, named by
+  no config. Run; edit it (nothing moves, nine hits); declare it in
+  `ui#build`'s inputs (`ui#build` moves, "config changed, file added:
+  packages/ui/notes.md", and `ui#test`, `app#build`, `app#test` by
+  upstream); edit it again ("packages/ui/notes.md changed"). The key
+  folds the task's config, so declaring a file names two changes, not
+  "file added" alone; the page says both.
+- **Lab 2, an undeclared read:** `api#build` runs
+  `mkdir -p dist && cp src/server.ts config.json dist/`, the shape of the
+  correctness page's stale-hit demo, and declares `src/**` and `API_URL`.
+  Run; edit `config.json` (nothing moves: a real run replays a stale
+  `dist/`); add `sandbox: { allow: { read: ['src/**'], write: ['dist/'] } }`
+  ("config changed": the next real run runs, in the sandbox, which denies
+  the read); declare the file in the inputs and the grant ("config
+  changed, file added: packages/api/config.json"); edit it again
+  ("packages/api/config.json changed"). The page says in one sentence
+  that the playground runs nothing, and links to the correctness page's
+  demo and its section on the sandbox.
+- **Lab 3, two tasks and one output:** `ui#bundle` writes `dist/**` with
+  no edge, and the task field asks for `build test bundle`. The first Run
+  is refused with core's `detectOutputCollisions` message, shown in a
+  code block, since Starlight's typography turns a quoted `"dist/**"`
+  into curly quotes. `dependsOn: ['build']` makes the pair the addition
+  shape: ten tasks, all miss, then all hit, and a `button.tsx` edit
+  moves `ui#bundle` too, with "packages/ui/src/button.tsx changed,
+  upstream ui#build moved". The prose follows the code: a refusal only
+  for an overlap the check can prove (equal paths, a path the other's
+  glob matches, the same glob twice), between two tasks neither of which
+  reaches the other (of one project for `outputs.files`, of any for
+  `outputs.workspaceFiles`; a `remote: 'only'` task is left out); with
+  the edge, the dependant's output is what its run added or changed, and
+  its restore cleans only that.
+- **Lab 4, a bad order,** on the scheduling page, uses only the
+  simulator's knobs (the Workers menu, the chart menus, the Takes fields
+  and Reset): Reset (27 s against 24), `docs#build` at 20 s (the work
+  sets the bound, 29; tasks waiting 30, learned durations 29), at 30 s
+  (the critical path is `docs#build` alone, 30 s; bound 34; tasks waiting
+  starts it at 8 s and ends at 38, learned durations at 34), and three
+  workers (32 against 30).
+- **One workspace at a time in the bundle.** The shim's file system and
+  env are module state (`useVfs`, `setEnv`), and a plan awaits many
+  times, so two plans in flight read each other's state: item 705's
+  implementer found it, and the labs page is the first with several
+  playgrounds. `listPlaygroundProjects` and `planPlayground`, the two
+  entry points that install them, now run through one module-level queue
+  in `entry.ts` (`oneAtATime`: each starts after the one before has
+  settled, a failure included). `evaluateConfig` installs neither and is
+  not queued. Without the queue, a plan started beside one with another
+  `API_URL` came back with that `API_URL`'s keys for `api#build` and the
+  three tasks above it, and a discovery of a four-project workspace
+  started beside a plan of the five-project one listed five projects.
+  Two workspaces that differ only in a file's content do not show it: a
+  plan takes each file's hash from its own map, and only the walk, the
+  env and discovery read the shared state. The rows therefore plan
+  workspaces that differ in a file's presence and in the env, with
+  configs evaluated in-process first so both plans start in the same
+  tick (a Worker's timing staggered them and hid the race in 705's first
+  probe).
+
+What the probes and the docs refuted:
+
+- **"`docs#build` at 20 s, and watch the critical path grow."** At 20 s
+  the chain `utils#build` → `api#build` → `app#build` → `app#test`
+  (24 s) is still the longest; what grows is the work bound (58 s over
+  two workers, 29). The path grows past 24 s, so the lab goes on to
+  30 s, the Takes field's maximum.
+- **"Turborepo restores additively, so it cannot hit this hazard, and it
+  cannot tell which task wrote a path either."** Turborepo's own docs do
+  not say either. They say it caches the files `outputs` names and
+  restores them on a hit (`crafting-your-repository/caching#task-outputs`),
+  and nothing about two tasks naming the same files (searched: restore,
+  overwrite, overlap, collide, conflict, same output, clean, delete). By
+  the W7 rule the page says what the docs say, and that they say nothing
+  about the shared case. The claim comes from vx's own parity research
+  (`graph/task-graph.ts`'s comment on `detectOutputCollisions`), not
+  from Turborepo's docs.
+- **"Bazel has no undeclared file at all, because the action cannot see
+  it."** The glossary says an action includes its "declared input/output
+  artifacts", and that sandboxing "helps ensure" an action does not read
+  undeclared inputs, which is weaker than "cannot see". Lab 1 cites the
+  first, lab 2 the second.
+- **Lab 2's command.** `bun build … && cp config.json dist/` was the
+  first draft. Under a sandbox that grants `src/**`, a read `bun build`
+  makes of its own (a `package.json`, a `tsconfig.json`) could fail first,
+  and `&&` would stop before the read the lab is about. A plain copy has
+  no read the page does not name.
+
+Competitor claims, each checked against the tool's docs (Turborepo,
+Nx and Bazel clones of 2026-09-24) and linked to the published page:
+
+| Lab | Tool      | What the page says                                                                                    | Source                                                                                          |
+| --- | --------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1   | Turborepo | no `inputs` key: all files in the package checked into source control are inputs                      | `turborepo.com/docs/reference/configuration#inputs`                                             |
+| 1   | Nx        | all files under a project's root by default                                                           | `nx.dev/docs/concepts/how-caching-works#configure-inputs`                                       |
+| 1   | Bazel     | an action carries its declared input artifacts                                                        | `bazel.build/reference/glossary#action`                                                         |
+| 2   | Turborepo | the default inputs include the file; a task's own `inputs` must list it; the docs describe no sandbox | `turborepo.com/docs/reference/configuration#inputs`                                             |
+| 2   | Nx        | task sandboxing: reading an undeclared file is a violation; an Nx Cloud add-on on a dedicated cluster | `nx.dev/docs/features/ci-features/sandboxing`                                                   |
+| 2   | Bazel     | the sandbox helps ensure an action does not read undeclared inputs                                    | `bazel.build/reference/glossary#sandboxing`                                                     |
+| 3   | Turborepo | caches `outputs` and restores them on a hit; nothing on two tasks naming the same files               | `turborepo.com/docs/crafting-your-repository/caching#task-outputs`                              |
+| 3   | Nx        | the same output location for multiple tasks often causes unintentional behavior                       | `nx.dev/docs/kb/configure-outputs#workspace-level-outputs`                                      |
+| 3   | Bazel     | an artifact must be generated by at most one action                                                   | `bazel.build/reference/glossary#artifact`                                                       |
+| 4   | Turborepo | how many tasks run at once, not which ready task starts first                                         | `turborepo.com/docs/reference/run#--concurrency-number--percentage`                             |
+| 4   | Nx        | Nx Agents pick up tasks by historical processing time and dependencies; nothing on a local run        | `nx.dev/docs/features/ci-features/distribute-task-execution`                                    |
+| 4   | Bazel     | nothing on the order of ready actions; the profiler shows a finished build's critical path            | `bazel.build/advanced/performance/json-trace-profile` (the scheduling page's existing citation) |
+
+The rows:
+
+| Row                                                                                                                                         | Where                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Per lab, every state its steps reach: `vx run <tasks> --all --dry=json` and the page's Run plan the same keys, statuses and deps            | `packages/vx/tests/playground-parity.unsafe.test.ts` |
+| Per step, the moved set equals the hand-written one, in both planners                                                                       | same                                                 |
+| Lab 3 as it opens: the CLI's stderr is `vx: <message>` and the page's error is the message, both equal to the hand-written refusal          | same                                                 |
+| Every state each lab's steps reach evaluates                                                                                                | `packages/vx-docs/tests/learn-labs.test.ts`          |
+| Each step through `runPlayground`: the live sentence and every moved cell equal hand-written truth, and the step's text on the page says it | same                                                 |
+| Each lab's static render: its file list (the added file by hand), its configs, the task table by hand, the task field, the env              | same                                                 |
+| The page holds the three playgrounds, in lab order                                                                                          | same                                                 |
+| The Checkpoint's answer names exactly what the planner moves                                                                                | same                                                 |
+| `data-lab`: the element (over a stub DOM) opens on its lab's files and Reset restores its specs; an unknown id throws                       | same                                                 |
+| No attribute: the element opens on the workspace, and the playground page's element carries no `data-lab`                                   | same                                                 |
+| Lab 4: each step's critical path, bound, both finish times and `docs#build`'s start, by hand, and the step's text says them                 | same                                                 |
+| Two plans started at once through the bundle, of workspaces differing in a file and the env: each gets the keys it gets alone               | same                                                 |
+| A discovery and a plan started at once: each reads its own workspace                                                                        | same                                                 |
+| Two plans in flight at once (the fixture committed, and under another `API_URL`): each equals the CLI's plan of its own state               | `packages/vx/tests/playground-parity.unsafe.test.ts` |
+
+Differentials, each restored by reverse edit:
+
+| Mutation                                                                              | Red                                                                                                                                             |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lab 1's start state already declares `notes.md` (in `ui#test`'s inputs)               | the site's lab 1 steps row, its static-render row and the Checkpoint row; the parity row "unlisted-file, after step 2's edits: moves exactly 0" |
+| The element ignores `data-lab` (`startState(undefined)`)                              | the site's `data-lab` row and its unknown-id row                                                                                                |
+| `runPlayground` shows "the plan failed" for a planner error instead of core's message | the site's lab 3 steps row and the playground's "core's refusal unchanged" row; the parity row "shared-output, as it opens"                     |
+| `oneAtATime` runs its argument at once, no queue (bundle rebuilt)                     | the site's two at-once rows; the parity row "two plans in flight at once"                                                                       |
+
+Declaring `notes.md` in `ui#build` itself was the first form of the
+first mutation; it cannot leave the steps intact, since step 3's edit
+is the declaration, so `applyEdits` throws. The `ui#test` form keeps the
+steps and still turns the rows red for the reason the lab is about.
+
+**Sizes.** The element's chunk is 11,015 B (4,217 B gzip), against item
+703's 9,795 B: the three start states' texts. `LAB_STEPS` and
+`applyEdits` are tree-shaken out of it (no step text is in the chunk).
+The planner bundle is 86,497 B, +157 B for the queue.
+
+**Node.** The site builds under Node 22
+(`ASTRO_TELEMETRY_DISABLED=1 node node_modules/.bin/astro build`, exit
+0, `/learn/labs/` rendered): the labs' static renders evaluate through
+`evaluateConfigInProcess`, as the playground's does.
+
+In Chromium (Playwright's, headless, over `astro preview`), the labs page
+requested no `planner.js` until the first Run, and one in all. Each lab's
+element opened on its own files (lab 1 with `packages/ui/notes.md` after
+`ui`'s files, lab 2 with `packages/api/config.json`) and task field
+(`build test bundle` in lab 3). Typing each step's edit into the editor
+and running gave, step by step, the sentences and cells the page states:
+lab 1 "Every key is new.", "No key moved.", then the four moved with
+`ui#build`'s cell "config changed, file added: packages/ui/notes.md", then
+"packages/ui/notes.md changed"; lab 2 likewise for `api#build` with
+"config changed" for the sandbox step; lab 3 "The run failed." with
+core's message in the error list and no table, then "10 tasks: 0 hit, 10
+miss.", "10 tasks: 10 hit, 0 miss.", and five moved after the
+`button.tsx` edit. Reset restored each lab's files and task field and
+hid the table. On the scheduling page the simulator, stepped as lab 4
+says, finished at 27 / 24, 30 / 29, 38 / 34 and 32 / 30 seconds, and its
+bounds sentence named `docs#build` as the critical path from 30 s. There
+was no page error and no console error.

@@ -328,6 +328,19 @@ export function orderLine(dispatchOrder: readonly string[]): string {
   return `On 2 workers, vx's scheduler dispatches them in this order: ${dispatchOrder.join(', ')}.`
 }
 
+/** Each package's `vx.config.mjs` text, under the name its
+ *  `packages/<dir>/package.json` gives it, for the static render to
+ *  evaluate before any planner has loaded. */
+export function configTextsOf(files: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(files).flatMap(([f, text]) => {
+      const dir = /^(packages\/[^/]+)\/vx\.config\.mjs$/.exec(f)?.[1]
+      const manifest = dir === undefined ? undefined : files[`${dir}/package.json`]
+      return manifest === undefined ? [] : [[(JSON.parse(manifest) as { name: string }).name, text]]
+    }),
+  )
+}
+
 /** The page's projects for `staticTable`, from its files and evaluated
  *  configs: each `packages/<dir>/package.json` in file order. */
 export function staticProjects(

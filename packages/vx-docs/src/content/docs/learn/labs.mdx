@@ -1,0 +1,211 @@
+---
+title: 'Labs: break it on purpose'
+description: Four short labs in which you break a build on purpose, watch what vx does about it, and see whether Turborepo, Nx or Bazel would catch it.
+---
+
+import Playground from '../../../components/demos/Playground.astro'
+
+The pages before this one explain how a task runner can go wrong. In these
+labs you make it go wrong yourself. Each of the first three starts the
+[playground](../playground/) from the toy workspace with one change, and
+gives you a few steps to follow. The fourth uses the scheduling page's
+simulator. Each lab ends with what stopped the failure in vx, and whether
+Turborepo, Nx or Bazel would stop it too.
+
+The playground plans. It does not run commands. It computes every task's
+key and asks a simulated cache for it, so it shows which tasks would hit
+and which would run, but it writes no file.
+
+After these labs you should be able to say, for a change to a workspace,
+whether vx would catch it, and where.
+
+## Lab 1: a file no config mentions
+
+This workspace has one file more than the playground's:
+`packages/ui/notes.md`. No config names it.
+
+<Playground lab="unlisted-file" />
+
+1. **Run.** The cache is empty, so all nine tasks miss.
+2. **Edit `packages/ui/notes.md`** (add a line) and run. No key moves, and
+   all nine tasks hit. No task declares the file, so no key reads it.
+3. **Declare it.** In `packages/ui/vx.config.mjs`, change the inputs of
+   `build` to `files: ['src/**', 'notes.md']`, and run. Four keys move.
+   The cell for `ui#build` says
+   `config changed, file added: packages/ui/notes.md`: its config changed,
+   and its inputs hold a file they did not hold before. The cells for
+   `ui#test` and `app#build` say `upstream ui#build moved`, and the cell
+   for `app#test` says `upstream app#build moved`.
+4. **Edit `notes.md` again** and run. The same four keys move, and the
+   cell for `ui#build` now says `packages/ui/notes.md changed`.
+
+### What stopped it
+
+Explicit inputs. `cache.inputs.files` has no default, and apart from the
+package's `package.json`, a task's key folds only the files of its
+package that the list names
+([how vx does it](../caching/#how-vx-does-it),
+[why caching is opt-in](../../caching/#why-caching-is-opt-in)). Here that
+is right: no command reads `notes.md`, so an edit to it should not
+rebuild anything. Once `build` declares it, the file is an input like any
+other, and every key that folds `ui#build`'s key moves with it. The price
+is that a file a command does read must be declared too. That is lab 2.
+
+### Would Turborepo, Nx or Bazel?
+
+- **Turborepo:** a task with no `inputs` key has all the files in its
+  package that are checked into source control as inputs, so a committed
+  `notes.md` is one without any config
+  ([inputs](https://turborepo.com/docs/reference/configuration#inputs)).
+- **Nx** includes all the files under a project's root by default
+  ([configure inputs](https://nx.dev/docs/concepts/how-caching-works#configure-inputs)).
+- **Bazel:** an action carries its declared input artifacts
+  ([action](https://bazel.build/reference/glossary#action)), and a file
+  no rule declares is not one of them.
+
+## Lab 2: an input the task reads but does not declare
+
+In this workspace `api#build` runs
+`mkdir -p dist && cp src/server.ts config.json dist/`: it copies
+`packages/api/config.json` into its output. Its inputs still declare only
+`src/**` and `API_URL`.
+
+<Playground lab="undeclared-read" />
+
+1. **Run.** All nine tasks miss.
+2. **Edit `packages/api/config.json`:** change `"hello"` to `"hi"`, and
+   run. No key moves, and all nine tasks hit. In a real run `api#build`
+   would hit too, and restore the `dist/` it stored in step 1, whose
+   `config.json` still says `"hello"`. That is a stale hit: the run is
+   green and the output is wrong. The playground cannot show you the wrong
+   file, because it runs nothing, but it shows you the key that did not
+   move, which is where the failure starts.
+3. **Turn on the sandbox.** In `packages/api/vx.config.mjs`, add
+   `sandbox: { allow: { read: ['src/**'], write: ['dist/'] } }` to the
+   `exec` of `build`, which grants the files its inputs declare. Run. Four
+   keys move, and the cell for `api#build` says `config changed`: the
+   sandbox block is part of the config, and the config is in the key. So
+   a real run would run `api#build` instead of replaying the stale hit,
+   inside the sandbox, which denies the read of `config.json`. The task
+   fails, the failure names the file, and nothing is stored.
+4. **Declare the file,** in the inputs and in the grant:
+   `files: ['src/**', 'config.json']` and
+   `read: ['src/**', 'config.json']`. Run. The same four keys move, and
+   the cell for `api#build` says
+   `config changed, file added: packages/api/config.json`.
+5. **Edit `config.json` again** and run. The four keys move, and the cell
+   for `api#build` says `packages/api/config.json changed`. The key sees
+   the file now.
+
+### What stopped it
+
+The sandbox, `exec.sandbox`. Declared inputs are a claim, and nothing in
+step 2 checks it. A sandbox that grants only what the inputs declare turns
+the claim into a check: the first run that reads an undeclared file fails
+and names it, and a failed task is never cached
+([the sandbox turns the claim into a check](../correctness/#the-sandbox-turns-the-claim-into-a-check)).
+The correctness page's demo runs this failure step by step, with a
+command of the same shape
+([a stale hit, then the sandbox that catches it](../correctness/#try-it-a-stale-hit-then-the-sandbox-that-catches-it)).
+
+### Would Turborepo, Nx or Bazel?
+
+- **Turborepo's** default inputs, every file in the package checked into
+  source control, include `config.json`. A task that lists its own
+  `inputs` must list it, and Turborepo's docs describe no sandbox that
+  checks the list
+  ([inputs](https://turborepo.com/docs/reference/configuration#inputs)).
+- **Nx** includes every file under the project's root by default. Its
+  task sandboxing treats reading a file the task did not declare as a
+  violation. It is an Nx Cloud add-on that runs on a dedicated compute
+  cluster
+  ([task sandboxing](https://nx.dev/docs/features/ci-features/sandboxing)).
+- **Bazel's** sandbox runs an action in a restricted, temporary execution
+  root, which helps ensure that it does not read undeclared inputs
+  ([sandboxing](https://bazel.build/reference/glossary#sandboxing)).
+
+## Lab 3: two tasks, one output
+
+Here `ui` has a third task, `bundle`, which writes `dist/**` as
+`ui#build` does. Nothing orders the two. The task field asks for
+`build test bundle`.
+
+<Playground lab="shared-output" />
+
+1. **Run.** There is no table. vx refuses the run with this message, from
+   its task graph:
+
+   ```text wrap
+   ui#build and ui#bundle both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output and the run still reports success. Give each task its own output path.
+   ```
+
+2. **Order them.** In `packages/ui/vx.config.mjs`, give `bundle`
+   `dependsOn: ['build']`, and run. Ten tasks plan, and all ten miss.
+   `ui#bundle` now waits for `ui#build`.
+3. **Run again.** All ten tasks hit.
+4. **Edit `packages/ui/src/button.tsx`** and run. Five keys move:
+   `ui#build`, `ui#test`, `ui#bundle`, `app#build` and `app#test`. The
+   cell for `ui#bundle` says
+   `packages/ui/src/button.tsx changed, upstream ui#build moved`: it
+   reads `src/**`, and it waits for `ui#build`.
+
+### What stopped it
+
+Core's task graph. vx cleans a task's declared outputs before the task
+runs and before it restores a hit, so that what a task leaves behind is
+exactly what its key stored
+([strict output ownership](../../caching/#strict-output-ownership)). Two
+tasks that own one path would each delete the other's output, in
+whichever order they ran, and the run would still succeed. So when vx
+builds the graph for a run and finds two tasks whose declared outputs
+overlap, with neither waiting for the other, it refuses the run before
+any task starts. `outputs.files` is relative to the project, so there
+only two tasks of one project can collide; `outputs.workspaceFiles` can
+collide across projects. A task with `exec.remote: 'only'` writes
+nothing on this machine and is left out. The check refuses only an overlap it
+can prove: two equal paths, a path the other's glob matches, or the same
+glob twice. Two different globs that might overlap pass.
+
+With the edge, the pair is allowed. `ui#bundle` always runs after
+`ui#build` and adds to its tree. vx saves as the output of `ui#bundle`
+only the files its run added or changed, and a restore of `ui#bundle`
+cleans and writes only those. `ui#build` still owns all of `dist/**`, and
+`ui#bundle` restores or runs after it
+([additive outputs](../../caching/#additive-outputs-two-tasks-one-tree-an-edge-between-them)).
+
+### Would Turborepo, Nx or Bazel?
+
+- **Turborepo** caches the files a task's `outputs` names and restores
+  them on a hit
+  ([task outputs](https://turborepo.com/docs/crafting-your-repository/caching#task-outputs)).
+  Its docs do not say what happens when two tasks name the same files.
+- **Nx** warns that giving multiple tasks the same output location often
+  causes unintentional behavior
+  ([configure outputs](https://nx.dev/docs/kb/configure-outputs#workspace-level-outputs)).
+- **Bazel:** an artifact may be an input to many actions, but it must be
+  generated by at most one
+  ([artifact](https://bazel.build/reference/glossary#artifact)).
+
+## Lab 4: a bad order
+
+The fourth lab is on the [Scheduling](../scheduling/#lab-a-bad-order)
+page, in its simulator. You make `docs#build` long, watch the critical
+path grow, and see how much a run loses when the scheduler starts the
+long task late.
+
+## Checkpoint
+
+Start lab 1 from Reset and run once. This time you declare `notes.md` in
+the inputs of `test` in `packages/ui/vx.config.mjs`, not of `build`, and
+run. Then you edit `notes.md` and run again. Which keys move each time?
+Answer before you open the box, then check it in lab 1's playground.
+
+<details>
+<summary>Answer</summary>
+
+Only `ui#test`, both times. Its cell says
+`config changed, file added: packages/ui/notes.md` after the first run and
+`packages/ui/notes.md changed` after the second. No task waits for
+`ui#test`, so no other key folds its key.
+
+</details>
