@@ -23,7 +23,7 @@ export const TOOL_NAME: Record<Tool, string> = {
 
 export interface Source {
   label: string
-  /** A full URL, or for vx a site path relative to the base (`guides/caching/`). */
+  /** A full URL, or for vx a site path relative to the base (`guides/configure/`). */
   href: string
   /** For a link to a vx test: the title of the row that holds the claim. */
   row?: string
@@ -74,7 +74,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'Writing and maintaining the lists is your work. A file a task reads but the list leaves out is a stale hit waiting to happen, unless the sandbox catches it.',
         sources: [
-          { label: 'Caching tasks', href: 'guides/caching/' },
+          { label: 'Caching tasks', href: 'guides/configure/#caching' },
           {
             label: 'tests/config.test.ts',
             href: `${GH}packages/vx/tests/config.test.ts`,
@@ -437,7 +437,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'No first-party hosted cache: you run or rent someone else’s server. The plugins are not on npm until 0.1.0 is cut.',
         sources: [
-          { label: 'Remote caching', href: 'guides/remote-caching/' },
+          { label: 'Remote caching', href: 'guides/ci/#remote-cache' },
           {
             label: 'tests/layered-cache.test.ts',
             href: `${GH}packages/vx/tests/layered-cache.test.ts`,
@@ -493,7 +493,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'Every input must be declared, since the worker sees nothing else. vx ships no workers, service or dashboard: you run a pool or rent one.',
         sources: [
-          { label: 'Remote execution', href: 'guides/remote-execution/' },
+          { label: 'Remote execution', href: 'guides/ci/#remote-execution' },
           {
             label: 'packages/vx-reapi/tests/exec-e2e.test.ts',
             href: `${GH}packages/vx-reapi/tests/exec-e2e.test.ts`,
@@ -653,8 +653,8 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'The plugins are not on npm until 0.1.0 is cut. nx() runs Nx executors through a Node bin. Moving to native configs means writing input lists.',
         sources: [
-          { label: 'From Turborepo', href: 'migrate/from-turborepo/' },
-          { label: 'From Nx', href: 'migrate/from-nx/' },
+          { label: 'From Turborepo', href: 'guides/migrate/#turborepo' },
+          { label: 'From Nx', href: 'guides/migrate/#nx' },
           {
             label: 'packages/vx-migrate/tests/turbo.test.ts',
             href: `${GH}packages/vx-migrate/tests/turbo.test.ts`,

@@ -19,7 +19,7 @@ other way.
 relationships, and the settings that apply to all of them.** A workspace
 is what a single command operates over.
 
-- vx: the workspace, configured by `vx.workspace.ts` ([workspace config](../guides/workspace-config/))
+- vx: the workspace, configured by `vx.workspace.ts` ([workspace config](../guides/configure/#workspace-config))
 - Turborepo: the Workspace ([package and task graphs](https://turborepo.com/docs/core-concepts/package-and-task-graph))
 - Nx: the workspace ([glossary](https://nx.dev/docs/reference/glossary#workspace))
 - Bazel: the workspace, organised into [repositories](https://bazel.build/reference/glossary#repository)
@@ -130,7 +130,7 @@ whose stored outputs are wrong for today's inputs, because something the
 task read was never part of the key. It reports success and serves
 yesterday's result, which makes it the worst failure a cache can have.
 
-- vx: hit, miss and stale hit ([caching](../guides/caching/))
+- vx: hit, miss and stale hit ([caching](../guides/configure/#caching))
 - Turborepo: cache hit and cache miss ([caching](https://turborepo.com/docs/crafting-your-repository/caching))
 - Nx: cache hit and cache miss ([glossary](https://nx.dev/docs/reference/glossary#cache-hit)); a stale result is called a "false cache hit" in its [sandboxing](https://nx.dev/docs/features/ci-features/sandboxing) docs
 - Bazel: served from the [action cache](https://bazel.build/reference/glossary#action-cache); a wrong one breaks [correctness](https://bazel.build/reference/glossary#correctness)
@@ -140,7 +140,7 @@ yesterday's result, which makes it the worst failure a cache can have.
 **A cache shared between machines**, so CI and every developer reuse each
 other's results. It makes the cost of a stale hit shared too.
 
-- vx: a remote `CacheLayer` from a plugin, such as `@vzn/vx-reapi` or `turboCache()` ([remote caching](../guides/remote-caching/))
+- vx: a remote `CacheLayer` from a plugin, such as `@vzn/vx-reapi` or `turboCache()` ([remote caching](../guides/ci/#remote-cache))
 - Turborepo: Remote Caching ([remote caching](https://turborepo.com/docs/core-concepts/remote-caching))
 - Nx: remote cache ([glossary](https://nx.dev/docs/reference/glossary#remote-cache)), offered as Nx Replay
 - Bazel: remote caching, with a local [disk cache](https://bazel.build/reference/glossary#disk-cache)
@@ -164,7 +164,7 @@ trusting it.
 laptop can use a build farm. It needs every input declared, because the
 other machine sees nothing else.
 
-- vx: `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../guides/remote-execution/))
+- vx: `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../guides/ci/#remote-execution))
 - Turborepo: —
 - Nx: distributed task execution, which spreads tasks across CI agents ([glossary](https://nx.dev/docs/reference/glossary#distributed-task-execution))
 - Bazel: remote execution, whose protocol (REAPI) the vx plugin speaks
@@ -175,7 +175,7 @@ other machine sees nothing else.
 cannot wait for it to finish before starting what depends on it, and it
 must never be cached.
 
-- vx: `exec.persistent`, ready when its output matches `readyWhen` ([dev tasks](../guides/dev-tasks/))
+- vx: `exec.persistent`, ready when its output matches `readyWhen` ([dev tasks](../guides/configure/#dev-tasks))
 - Turborepo: `persistent: true` ([configuration](https://turborepo.com/docs/reference/configuration#persistent))
 - Nx: a continuous task, `continuous: true`
 - Bazel: —

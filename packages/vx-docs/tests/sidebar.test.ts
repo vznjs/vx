@@ -1,7 +1,7 @@
 // The site's four places and three sidebars (design/site-redo-2026-09.md §
 // The site around the story), read from the built HTML: what a reader sees,
 // not what the config says. The Guide's sidebar is the ten chapters and
-// nothing else; the Docs' is the design's four groups; the Reference ends
+// nothing else; the Docs' is six pages (site-short-2026-09.md); the Reference ends
 // with the one way into the internals. Every page shows exactly one of the
 // three (the blog keeps its own), and no sidebar links an internals page.
 
@@ -20,7 +20,15 @@ const PLACES: [string, string][] = [
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
 ]
-const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Extend']
+// The Docs are six pages, no groups (design/site-short-2026-09.md).
+const DOCS_PAGES: [string, string][] = [
+  ['Quickstart', 'quickstart/'],
+  ['Configure', 'guides/configure/'],
+  ['Sandboxing', 'guides/sandboxing/'],
+  ['CI and remote', 'guides/ci/'],
+  ['Migrate', 'guides/migrate/'],
+  ['Plugins', 'guides/plugins/'],
+]
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
 const INTERNALS_DIRS = ['modules/', 'design/']
@@ -106,9 +114,9 @@ describe('the sidebars', () => {
     expect(groupLabels(guide)).toEqual([])
   })
 
-  it('the Docs are the design’s four groups', () => {
-    expect(groupLabels(docs)).toEqual(DOCS_GROUPS)
-    expect(sidebarLinks(docs).map(([, href]) => href)).toContain('quickstart/')
+  it('the Docs are the design’s six pages, in order', () => {
+    expect(groupLabels(docs)).toEqual([])
+    expect(sidebarLinks(docs)).toEqual(DOCS_PAGES)
   })
 
   it('the Reference is the four groups, and ends with the internals index, which links every internals page', () => {
@@ -152,7 +160,7 @@ describe('the sidebars', () => {
 
   it('puts a chapter, a Docs page and a Reference page each in its own section', () => {
     expect(places(html('guide/caching/')).current).toEqual(['Guide'])
-    expect(places(html('guides/caching/')).current).toEqual(['Docs'])
+    expect(places(html('guides/configure/')).current).toEqual(['Docs'])
     expect(places(html('caching/')).current).toEqual(['Reference'])
     expect(places(html('modules/')).current).toEqual(['Reference'])
     expect(places(html('blog/')).current).toEqual(['Blog'])

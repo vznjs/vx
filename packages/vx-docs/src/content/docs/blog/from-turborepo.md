@@ -112,4 +112,4 @@ Three things you get that the JSON could not give you:
 Every other Turbo behaviour a user would reach for is pinned by a
 parity case that runs vx's real CLI against the Turbo contract it
 stands in for. The full guide, with before/after
-configs, is [Migrate from Turborepo](../../migrate/from-turborepo/).
+configs, is [Migrate from Turborepo](../../guides/migrate/#turborepo).

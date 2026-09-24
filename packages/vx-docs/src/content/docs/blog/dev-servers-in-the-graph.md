@@ -86,4 +86,4 @@ dependents can be; `e2e`'s key includes `dev`'s key, so a config change
 to the server re-runs the tests.
 
 The guide, with the readiness patterns for the common servers, is
-[Dev & long-running tasks](../../guides/dev-tasks/).
+[Dev & long-running tasks](../../guides/configure/#dev-tasks).

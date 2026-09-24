@@ -43,12 +43,27 @@ export default defineConfig({
   // Docs pages merged into another page, and the old Learn pages the Guide
   // replaced (design/site-redo-2026-09.md): the old URL lands on the new
   // one. tests/redirects.test.ts holds every URL the old sidebar linked.
-  // Astro puts the base on the old path but not on the target.
+  // Astro puts the base on the old path but not on the target. A Docs page
+  // the six took in (design/site-short-2026-09.md) lands on its section.
   redirects: {
     '/introduction/': `${root}quickstart/`,
-    '/guides/trusting-the-cache/': `${root}guides/caching/`,
-    '/guides/task-dependencies/': `${root}guides/tasks/`,
+    '/add-to-existing-repo/': `${root}quickstart/#an-existing-repo`,
+    '/guides/tasks/': `${root}guides/configure/#tasks-and-dependencies`,
+    '/guides/task-dependencies/': `${root}guides/configure/#tasks-and-dependencies`,
+    '/guides/caching/': `${root}guides/configure/#caching`,
+    '/guides/trusting-the-cache/': `${root}guides/configure/#caching`,
+    '/guides/environment-variables/': `${root}guides/configure/#environment-variables`,
+    '/guides/dev-tasks/': `${root}guides/configure/#dev-tasks`,
+    '/guides/workspace-config/': `${root}guides/configure/#workspace-config`,
+    '/guides/lockfiles/': `${root}guides/configure/#lockfiles`,
+    '/guides/running-tasks/': `${root}guides/ci/#run-and-filter`,
+    '/guides/remote-caching/': `${root}guides/ci/#remote-cache`,
+    '/guides/remote-execution/': `${root}guides/ci/#remote-execution`,
     '/guides/extensibility/': `${root}guides/plugins/`,
+    '/guides/otel-bridge/': `${root}guides/plugins/#opentelemetry`,
+    '/guides/mcp/': `${root}guides/plugins/#vx-mcp`,
+    '/migrate/from-turborepo/': `${root}guides/migrate/#turborepo`,
+    '/migrate/from-nx/': `${root}guides/migrate/#nx`,
     '/concepts/how-vx-works/': `${root}guide/inside-vx/`,
     '/learn/what-is-task-orchestration/': `${root}guide/dependencies/`,
     '/learn/caching/': `${root}guide/caching/`,

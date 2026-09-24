@@ -261,8 +261,8 @@ describe("the chapter's pictures and exits", () => {
     const links = hrefs(inVx)
     for (const exit of [
       '../../quickstart/',
-      '../../migrate/from-turborepo/',
-      '../../migrate/from-nx/',
+      '../../guides/migrate/#turborepo',
+      '../../guides/migrate/#nx',
     ]) {
       expect(links).toContain(exit)
     }

@@ -65,13 +65,13 @@ export default defineWorkspace({
 <details>
 <summary>How we know this is true</summary>
 
-- [The shared-cache plugin, and why it is safe to leave declared](../../guides/remote-caching/#the-first-party-shared-cache)
+- [The shared-cache plugin, and why it is safe to leave declared](../../guides/ci/#remote-cache)
 - [A key depends only on the task's inputs](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-hash-derive.test.ts)
 - [A remote error or a broken download becomes a miss, and a laptop can read without writing](https://github.com/vznjs/vx/blob/main/packages/vx/tests/layered-cache.test.ts)
 - [Read-only for laptops: `--cache=local:rw,remote:r`](../../cli/#cache-control---cache---no-cache---force)
-- [A worker gets only declared inputs](../../guides/remote-execution/#it-proves-your-declared-inputs)
+- [A worker gets only declared inputs](../../guides/ci/#remote-execution)
 - [Only tasks with declared inputs go to a worker](https://github.com/vznjs/vx/blob/main/packages/vx-reapi/tests/executor.test.ts)
-- Keeping a cache you already run for Turborepo or Nx: `turboCache()` and `nxCache()` from `@vzn/vx-migrate` ([remote caching](../../guides/remote-caching/#a-hosted-cache-in-three-commands))
+- Keeping a cache you already run for Turborepo or Nx: `turboCache()` and `nxCache()` from `@vzn/vx-migrate` ([remote caching](../../guides/ci/#remote-cache))
 
 </details>
 

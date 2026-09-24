@@ -35,47 +35,15 @@ type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
 /** Each sidebar section's items, keyed by the label its top-level group carries. */
 const SIDEBAR_GROUPS: Record<'Guide' | 'Docs' | 'Reference', SidebarItem[]> = {
   Guide: CHAPTERS.map((c) => ({ label: c.title, link: `/guide/${c.slug}/` })),
-  // One page per job, each page the goal, the steps, the config and its
-  // common problems. The Guide teaches why; a Docs page links its chapter.
+  // Six pages (design/site-short-2026-09.md § The shape), each the goal in
+  // one line and short sections; the landing's diagram teaches the ideas.
   Docs: [
-    {
-      label: 'Get started',
-      items: [
-        { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Add vx to an existing repo', link: '/add-to-existing-repo/' },
-        { label: 'From Turborepo', link: '/migrate/from-turborepo/' },
-        { label: 'From Nx', link: '/migrate/from-nx/' },
-      ],
-    },
-    {
-      label: 'Configure',
-      items: [
-        { label: 'Tasks and dependencies', link: '/guides/tasks/' },
-        { label: 'Caching', link: '/guides/caching/' },
-        { label: 'Environment variables', link: '/guides/environment-variables/' },
-        { label: 'Sandboxing tasks', link: '/guides/sandboxing/' },
-        { label: 'Dev & long-running tasks', link: '/guides/dev-tasks/' },
-        { label: 'Lockfile-aware caching', link: '/guides/lockfiles/' },
-        { label: 'Workspace configuration', link: '/guides/workspace-config/' },
-      ],
-    },
-    {
-      label: 'Run',
-      items: [
-        { label: 'Running & filtering tasks', link: '/guides/running-tasks/' },
-        { label: 'Continuous integration', link: '/guides/ci/' },
-        { label: 'Remote caching', link: '/guides/remote-caching/' },
-        { label: 'Remote execution', link: '/guides/remote-execution/' },
-      ],
-    },
-    {
-      label: 'Extend',
-      items: [
-        { label: 'Writing a vx plugin', link: '/guides/plugins/' },
-        { label: 'OpenTelemetry traces & metrics', link: '/guides/otel-bridge/' },
-        { label: 'vx mcp — AI agents', link: '/guides/mcp/' },
-      ],
-    },
+    { label: 'Quickstart', link: '/quickstart/' },
+    { label: 'Configure', link: '/guides/configure/' },
+    { label: 'Sandboxing', link: '/guides/sandboxing/' },
+    { label: 'CI and remote', link: '/guides/ci/' },
+    { label: 'Migrate', link: '/guides/migrate/' },
+    { label: 'Plugins', link: '/guides/plugins/' },
   ],
   // Four short groups in plain words. The caching deep dive and "What a run
   // does" are reference only; the Docs' caching page links the first.

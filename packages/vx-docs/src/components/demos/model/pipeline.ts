@@ -29,7 +29,7 @@ export interface Stage {
 const LOCKFILE: FirstParty = {
   call: 'pnpm(), bun(), npm(), yarn()',
   pkg: '@vzn/vx-lockfile',
-  href: 'guides/lockfiles/',
+  href: 'guides/configure/#lockfiles',
 }
 const HISTORY: FirstParty = {
   call: 'scheduleHistoryPlugin()',
@@ -39,7 +39,7 @@ const HISTORY: FirstParty = {
 const REAPI_CACHE: FirstParty = {
   call: 'reapi()',
   pkg: '@vzn/vx-reapi',
-  href: 'guides/remote-caching/',
+  href: 'guides/ci/#remote-cache',
 }
 
 export const STAGES: readonly Stage[] = [
@@ -57,8 +57,8 @@ export const STAGES: readonly Stage[] = [
     plugin:
       "Adds, removes or edits a project's tasks, including in a package that has no config file.",
     firstParty: [
-      { call: 'turbo()', pkg: '@vzn/vx-migrate', href: 'migrate/from-turborepo/' },
-      { call: 'nx()', pkg: '@vzn/vx-migrate', href: 'migrate/from-nx/' },
+      { call: 'turbo()', pkg: '@vzn/vx-migrate', href: 'guides/migrate/#turborepo' },
+      { call: 'nx()', pkg: '@vzn/vx-migrate', href: 'guides/migrate/#nx' },
     ],
   },
   {
@@ -103,7 +103,11 @@ export const STAGES: readonly Stage[] = [
     core: 'Runs the command on this machine. The local executor is the last in the list.',
     plugin: 'Runs a task somewhere else, or declines it and hands it back.',
     firstParty: [
-      { call: 'reapi({ execute: true })', pkg: '@vzn/vx-reapi', href: 'guides/remote-execution/' },
+      {
+        call: 'reapi({ execute: true })',
+        pkg: '@vzn/vx-reapi',
+        href: 'guides/ci/#remote-execution',
+      },
     ],
   },
   {
@@ -113,8 +117,8 @@ export const STAGES: readonly Stage[] = [
     plugin: 'Adds a layer in front of the local store, such as a remote cache.',
     firstParty: [
       REAPI_CACHE,
-      { call: 'turboCache()', pkg: '@vzn/vx-migrate', href: 'guides/remote-caching/' },
-      { call: 'nxCache()', pkg: '@vzn/vx-migrate', href: 'guides/remote-caching/' },
+      { call: 'turboCache()', pkg: '@vzn/vx-migrate', href: 'guides/ci/#remote-cache' },
+      { call: 'nxCache()', pkg: '@vzn/vx-migrate', href: 'guides/ci/#remote-cache' },
     ],
   },
   {
@@ -123,8 +127,8 @@ export const STAGES: readonly Stage[] = [
     core: 'Builds run and task records only when a sink wants them.',
     plugin: 'Receives the records and sends them somewhere. It cannot change the run.',
     firstParty: [
-      { call: 'otel()', pkg: '@vzn/vx-otel', href: 'guides/otel-bridge/' },
-      { call: 'github()', pkg: '@vzn/vx-github', href: 'guides/ci/' },
+      { call: 'otel()', pkg: '@vzn/vx-otel', href: 'guides/plugins/#opentelemetry' },
+      { call: 'github()', pkg: '@vzn/vx-github', href: 'guides/ci/#github-actions' },
     ],
   },
   {
@@ -140,7 +144,7 @@ export const STAGES: readonly Stage[] = [
     core: "Owns its own verbs. It asks the workspace's plugins about any other verb, in order.",
     plugin: 'Adds verbs to the vx command line.',
     firstParty: [
-      { call: 'mcp()', pkg: '@vzn/vx-mcp', href: 'guides/mcp/' },
+      { call: 'mcp()', pkg: '@vzn/vx-mcp', href: 'guides/plugins/#vx-mcp' },
       { call: 'scheduleHistoryPlugin()', pkg: '@vzn/vx-schedule-history', href: 'guides/plugins/' },
     ],
   },
@@ -149,7 +153,7 @@ export const STAGES: readonly Stage[] = [
     group: 'lifecycle',
     core: 'Calls it at the end of the run. An error is logged, never thrown.',
     plugin: 'Flushes buffers and closes connections.',
-    firstParty: [{ call: 'reapi()', pkg: '@vzn/vx-reapi', href: 'guides/remote-execution/' }],
+    firstParty: [{ call: 'reapi()', pkg: '@vzn/vx-reapi', href: 'guides/ci/#remote-execution' }],
   },
 ]
 
