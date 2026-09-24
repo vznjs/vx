@@ -365,6 +365,24 @@ test is telling the truth.
       and capped parallelism. CLAUDE.md principle 3 gains the line that
       nothing boots between the scheduler and the shell.
 
+736.  DONE (2026-09-24, upstream survey, nx#28477, #31345, #12165,
+      #23581, #20465, #32610, #33092). `nx()` now runs `nx:run-commands`
+      targets as Nx runs them: `commands` in parallel unless `parallel:
+false`, the first failure failing the task; `commands: []` a no-op;
+      args after `--` and unconsumed options forwarded per Nx's
+      `forwardAllArgs` / `args` / `{args.*}` rules (`nx-exec` hands flags it
+      does not own to Nx's `createOverrides`); `env` into
+      `exec.env.define` (so the key sees it); `envFile` and Nx's automatic
+      `.env` files loaded at RUN time by Nx's own loader (a new `nx-env`
+      bin), their bytes in the key through a runtime input, never written
+      into `vx show` or the lock; persistence from Nx's `continuous`
+      field, never the target's name (a cached `dev` target caches). Both
+      `nxCache()` and `turboCache()` ask for `application/octet-stream`, so
+      a gateway that base64-encodes other types no longer turns every hit
+      into a corrupt artifact. Parity rows compare each option shape with
+      real Nx 22.7.12. Still todos (reported in the migration): `{args.name}`
+      from `--`, several `readyWhen` strings, per-command prefixes.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -597,14 +615,14 @@ next?".
 
 ## Decisions (this arc)
 
-- **Once per run (owner, 2026-09-24, item 733).** Within a run nothing
+- **Once per run (owner, 2026-09-24, item 732).** Within a run nothing
   outside vx changes the files it reads; what vx learns once (a read, a
   stat, a PATH lookup, a spawn's answer) it reuses, and only vx's own
   writes or its tasks' runs invalidate a fact. A repeat that stays has a
   measured reason in a comment and in the strace laws that pin it.
-- **Tools resolve on vx's own PATH (item 733).** The task's PATH decides
+- **Tools resolve on vx's own PATH (item 732).** The task's PATH decides
   what its command runs, never which shell parses it.
-- **Every project's lockfile key folds the root importer (item 734).**
+- **Every project's lockfile key folds the root importer (item 733).**
   What the root declares is reachable from every task.
 
 - **Declaring `cache` may narrow core's own grant, never widen one
