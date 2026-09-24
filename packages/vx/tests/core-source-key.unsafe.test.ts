@@ -1,10 +1,11 @@
-// Item 687: every package that imports `@vzn/vx` reads core's SOURCE (core
-// has no build), so its suite and its type-check must re-key when that
+// Item 687: a package that imports a `@vzn/*` package reads its SOURCE
+// (none has a build), so its suite and its type-check must re-key when that
 // source changes. They do through the task graph: a dependant's `install`
-// folds `^build`, and core's `build` depends on `@vzn/vx#source`, whose
-// inputs are core's source. As an empty group, core's `build` had a key
-// that never moved, and a warm local cache replayed a plugin's pass over a
-// core edit that broke it. Unsafe: it reads every package's manifest.
+// folds `^build`, and every package's `build` depends on its own `source`
+// task, whose inputs are its source. With core's `build` an empty group and
+// the plugins' absent, those keys never moved, and a warm local cache
+// replayed a plugin's pass over a core edit that broke it. Unsafe: it reads
+// every package's manifest.
 
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
@@ -18,8 +19,9 @@ interface DryTask {
   deps: string[]
 }
 
-function dependantsOfCore(): string[] {
-  const out: string[] = []
+/** Every workspace package, with the `@vzn/*` packages it depends on. */
+function workspaceEdges(): Map<string, string[]> {
+  const out = new Map<string, string[]>()
   for (const dir of readdirSync(path.join(REPO, 'packages'))) {
     let pkg: Record<string, unknown>
     try {
@@ -30,13 +32,16 @@ function dependantsOfCore(): string[] {
     const deps = ['dependencies', 'devDependencies', 'peerDependencies'].flatMap((k) =>
       Object.keys((pkg[k] as Record<string, string> | undefined) ?? {}),
     )
-    if (pkg['name'] !== '@vzn/vx' && deps.includes('@vzn/vx')) out.push(pkg['name'] as string)
+    out.set(
+      pkg['name'] as string,
+      deps.filter((d) => d.startsWith('@vzn/')),
+    )
   }
-  return out.sort()
+  return out
 }
 
-describe('a dependant of core re-keys on core source (item 687)', () => {
-  it("every dependant's test and type-check reach @vzn/vx#source in the task graph", () => {
+describe('a dependant re-keys on the source of every package it imports (item 687)', () => {
+  it("every dependant's test and type-check reach each dependency's #source in the task graph", () => {
     // A cache of its own: the suite runs as a user who cannot write the
     // checkout's `.vx/cache`, and a dry run still opens one.
     const cacheDir = mkdtempSync(path.join(os.tmpdir(), 'vx-srckey-'))
@@ -58,23 +63,30 @@ describe('a dependant of core re-keys on core source (item 687)', () => {
     const parsed = JSON.parse(r.stdout.toString()) as { tasks?: DryTask[] } | DryTask[]
     const tasks = Array.isArray(parsed) ? parsed : (parsed.tasks ?? [])
     const byId = new Map(tasks.map((t) => [t.id, t]))
-    const reaches = (id: string): boolean => {
+    const reach = (id: string): Set<string> => {
       const seen = new Set<string>()
       const stack = [id]
       while (stack.length > 0) {
         for (const d of byId.get(stack.pop()!)?.deps ?? []) {
-          if (d === '@vzn/vx#source') return true
           if (!seen.has(d)) stack.push((seen.add(d), d))
         }
       }
-      return false
+      return seen
     }
-    const dependants = new Set(dependantsOfCore())
-    const checked = tasks
-      .map((t) => t.id)
-      .filter((id) => /#(test|lint\.oxlint)$/.test(id) && dependants.has(id.split('#')[0]!))
-    // Positive first: the walk found the dependants' suites at all.
-    expect(checked.length).toBeGreaterThanOrEqual(dependants.size)
-    expect(checked.filter((id) => !reaches(id))).toEqual([])
+    const edges = workspaceEdges()
+    const missing: string[] = []
+    let checked = 0
+    for (const t of tasks) {
+      if (!/#(test|lint\.oxlint)$/.test(t.id)) continue
+      const reached = reach(t.id)
+      for (const dep of edges.get(t.id.split('#')[0]!) ?? []) {
+        checked++
+        if (!reached.has(`${dep}#source`)) missing.push(`${t.id} -> ${dep}#source`)
+      }
+    }
+    // Positive first: every plugin's suite imports core, so the walk
+    // checked at least one edge per plugin package.
+    expect(checked).toBeGreaterThanOrEqual(edges.size - 1)
+    expect(missing).toEqual([])
   })
 })

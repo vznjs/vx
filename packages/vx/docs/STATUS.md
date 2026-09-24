@@ -592,9 +592,16 @@ so every dependant's install folds that key; the same edit moves the
 test's key and restoring the file restores it. Held by
 `core-source-key.unsafe.test.ts`: every dependant's `test` and
 `lint.oxlint` reach `@vzn/vx#source` in the dry-run graph (red with
-`build` back to no deps). Found by the W2 implementer, who had patched
-only the site's test with `workspaceFiles: ['packages/vx/src/**']`; that
-second copy of the rule is removed, the cascade covers it.
+`build` back to no deps). The class is every package consumed as source, not
+core alone: the site imports vx-github and vx-schedule-history, and the
+bench vx-schedule-history, and no plugin had a `build` at all. Every
+plugin package now has `build` (`^build` and its own `source`, keyed by
+`src/**`), and the law checks every workspace dependency edge: each
+dependant's `test` and `lint.oxlint` reach `<dep>#source` (red, naming
+the three missing edges, with vx-schedule-history's `source` edge
+removed). Found by the W2 implementer, who had patched only the site's
+test with `workspaceFiles: ['packages/vx/src/**']`; that second copy of
+the rule is removed, the cascade covers it.
 
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn

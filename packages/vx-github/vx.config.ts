@@ -6,6 +6,20 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
+    // Consumed as source by the packages that depend on this one, so
+    // `build` carries the source's key and their `install` (which folds
+    // `^build`) re-keys on an edit here (item 687).
+    build: {
+      description: 'nothing to build — consumed as source',
+      dependsOn: ['^build', 'source'],
+    },
+
+    source: {
+      description: 'the source dependants import: a key, not a build',
+      exec: { command: 'true', sandbox: { allow: { read: [] } } },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+    },
+
     ci: {
       dependsOn: ['lint', 'test'],
     },
