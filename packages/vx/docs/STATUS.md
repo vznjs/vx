@@ -1492,6 +1492,30 @@ refused (679). The `Failed:` recap (706), the sandbox's `~` path (652),
 The count is 455 PRs since v0.0.21, the first-parent commits through
 #798; it is recounted at the cut. Roadmap 1.3 reads DONE through 710.
 
+14dh. **Item 711 (2026-09-24): every internal link in the built site
+lands.** `packages/vx-docs/tests/site-links.test.ts` reads every page in
+`dist/` (239) and checks each `href` and `src` that points inside the
+site, relative, root-relative or absolute under `SITE_URL` and
+`BASE_PATH`: it must name a built file, and a `#fragment` must name an
+id on it. The sitemaps and the blog feed must name only built pages,
+and the pages scanned must be exactly the sitemap's plus `404.html`, so
+the scan cannot go vacuous. External links are not fetched; Pagefind's
+index is not parsed, but the `pagefind.js` the search script loads by a
+path no attribute names must exist; the 404 page's canonical `404/` is
+the one excused link (built as `404.html`), and a row fails when the
+excuse goes unused; a relative link on the 404 page is dead by rule,
+since the host serves it at any path. A fixture row holds each kind of
+dead link to its exact report. Found and fixed: the design index's
+links to `roadmap-1.0` and `versioning-1.0` (Astro slugs a dot away, so
+the pages are `roadmap-10/` and `versioning-10/`); `import-docs.ts`'s
+`cleanUrlFor` now slugs as Astro does. No other link on the site was
+dead. Differentials, each reversed: `../playground/` →
+`../playgrund/` in `learn/caching.mdx`, rebuilt, reddens the scan with
+exactly that link; `../glossary/#inputs` → `#inputz` reddens it with
+exactly that anchor; the old `cleanUrlFor` reddens it with the two
+design links; the checker's id test dropped reddens the fixture row
+only. The file runs in 0.4 s (the scan 0.33–0.39 s).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1533,16 +1557,18 @@ The count is 455 PRs since v0.0.21, the first-parent commits through
     untouched. The track, W0–W12, is DONE. Of the plan's "Done means",
     met: the playground's parity with the CLI (core's parity rows),
     comparisons that state vx's costs and name a better pick (the
-    choosing page, which the landing links). Not yet met: the glossary
-    has no diagram, interactive element or checkpoint, and scheduling,
-    choosing, architecture and extending end with a static `<details>`,
-    not a live checkpoint; no page per monorepo.tools checkmark was
+    choosing page, which the landing links), and the site-wide link
+    check (item 711, entry 14dg). Decided (architect, 2026-09-24):
+    scheduling, choosing, architecture and extending keep their static
+    `<details>` checkpoints, because their questions are not planner
+    questions; the glossary is a reference, not a lesson, so it carries
+    no checkpoint. Not yet met: the glossary has no diagram or
+    interactive element; no page per monorepo.tools checkmark was
     checked row by row, and none was found for code generation or
     project constraints; the landing's hand-typed figures ("84
     packages", "within 3%") are not in `benchmarks.md` in that form, no
     row holds its figures to it, and its cards link docs pages, not
-    tests; the site has per-page link rows but no site-wide link check
-    in `vx run ci --all`.
+    tests.
 
 ## Decisions (this arc)
 

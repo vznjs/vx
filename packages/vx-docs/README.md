@@ -173,6 +173,12 @@ when the landing page or `benchmarks.md` drifts from
   held to them; the built pages' no-JavaScript answers held to them (the
   build computes each answer with that planner, under Node or Bun); the
   marking (right, missed, wrong) by pure rows; and the markup contract.
+- `tests/site-links.test.ts` — every `href` and `src` in every built
+  page that points inside the site lands on a built file, and on an id
+  when it names a `#fragment`; the sitemaps and the blog feed name only
+  built pages; the pages scanned are exactly the sitemap's and the 404
+  page. External links are not fetched. What it excuses, and why, is at
+  the top of the file.
 
 ## The playground bundle
 

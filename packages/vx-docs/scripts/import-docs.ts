@@ -37,7 +37,13 @@ function normalize(p: string): string {
 function cleanUrlFor(srcRel: string): string {
   if (srcRel === 'README.md') return 'overview/'
   if (srcRel === 'modules/README.md') return 'modules/'
-  const noExt = srcRel.replace(/\.md$/i, '')
+  // Astro slugs each path segment (github-slugger), which lowercases and
+  // drops punctuation: `design/roadmap-1.0.md` is served at
+  // `design/roadmap-10/`. tests/site-links.test.ts holds the two to agree.
+  const noExt = srcRel
+    .replace(/\.md$/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9/_-]/g, '')
   return `${noExt}/`
 }
 
