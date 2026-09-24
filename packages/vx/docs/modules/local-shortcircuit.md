@@ -51,6 +51,9 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   every task whose project directory (or own `workspaceFiles` input
   prefix) a declared workspace output's static prefix reaches, and every
   transitive dependant of one; a prefix at the root reaches everything,
-  which is the graph-wide rule item 584 replaced.
+  which is the graph-wide rule item 584 replaced. The dependants are
+  reached by one walk up the dependant edges on an explicit stack: a
+  recursion per edge threw `RangeError` out of the classify, failing the
+  run, on a 50,000-deep chain over a writer.
 - Never throws — degrades to the normal schedule.
 - Measured: mixed workload −6.6%; warm all-hit at parity.

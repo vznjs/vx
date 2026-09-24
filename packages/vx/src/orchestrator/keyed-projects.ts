@@ -36,18 +36,34 @@ export function keyedProjects(
   nodes: ReadonlyMap<string, TaskNode>,
 ): (node: TaskNode) => ReadonlySet<string> {
   const below = new Map<string, ReadonlySet<string>>()
-  const walk = (node: TaskNode): ReadonlySet<string> => {
-    const memo = below.get(node.id)
-    if (memo !== undefined) return memo
-    const out = new Set<string>()
-    for (const { node: dep } of folded(node, nodes)) {
-      if (!isGroupTask(dep)) out.add(dep.projectDir)
-      for (const dir of walk(dep)) out.add(dir)
+  // Post-order on an explicit stack: a fold is as deep as the graph, and a
+  // recursion per edge threw `RangeError` at the 50,000 the builder takes
+  // (item 737). A frame's folded dependencies are listed when it is first
+  // reached and combined once each has its set.
+  return (root) => {
+    const stack: Array<[node: TaskNode, deps: FoldCandidate[] | undefined]> = [[root, undefined]]
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!
+      const [node, deps] = frame
+      if (below.has(node.id)) {
+        stack.pop()
+        continue
+      }
+      if (deps === undefined) {
+        frame[1] = folded(node, nodes)
+        for (const { node: dep } of frame[1]) if (!below.has(dep.id)) stack.push([dep, undefined])
+        continue
+      }
+      stack.pop()
+      const out = new Set<string>()
+      for (const { node: dep } of deps) {
+        if (!isGroupTask(dep)) out.add(dep.projectDir)
+        for (const dir of below.get(dep.id)!) out.add(dir)
+      }
+      below.set(node.id, out)
     }
-    below.set(node.id, out)
-    return out
+    return below.get(root.id)!
   }
-  return walk
 }
 
 /** The dependencies `node`'s key folds, per the hash path's rules above. */

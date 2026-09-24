@@ -39,7 +39,9 @@ export class DeferredOutputs {
   TRANSITIVE dependency closure. Which upstream bytes a command reads is
   unknowable (that is what `dependsOn` declares), so the whole closure is
   taken; each producer materialises at most once per run and they run
-  concurrently.
+  concurrently. The closure is walked pre-order on an explicit stack: it
+  is as deep as the graph, and a recursion per edge threw `RangeError`
+  at 50,000.
 - `pending()` — task ids whose outputs are still remote, for the run
   summary (`size` is their count). An entry is cleared only on
   SUCCESS, so this covers both "nothing needed them" and "fetching
@@ -66,4 +68,5 @@ export class DeferredOutputs {
 
 `tests/download-policy.test.ts` — no-local-entry, lazy materialisation,
 memoisation (two consumers, one fetch), convergence to a local hit,
-never-clean, fail-loud, and the `--continue` interactions.
+never-clean, fail-loud, the `--continue` interactions, and a producer
+50,000 tasks below its consumer.

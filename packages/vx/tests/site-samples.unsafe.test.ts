@@ -889,7 +889,7 @@ describe('the remote-execution post states the placement rules core applies', ()
     for (const field of ['exec?.persistent', 'exec?.sandbox', 'exec?.remote === false']) {
       expect(fn).toContain(field)
     }
-    expect(fn).toContain('node.deps.some((d) => visit(d))')
+    expect(fn).toContain('dependants.get(stack.pop()!)')
     const flat = page.replace(/\s+/g, ' ')
     expect(flat).toContain('Not persistent tasks, or anything depending on one')
     expect(flat).toContain('Not sandboxed tasks')

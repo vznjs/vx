@@ -587,6 +587,30 @@ false`, the first failure failing the task; `commands: []` a no-op;
       fails when a cited title is not a test in the file it names (two
       template-titled loops were unrolled so their rows can be cited).
 
+746.  DONE (2026-09-24, Next 20 as it stood: graph walks at depth).
+      `vx run app#t0 --dry` on a 50,000-deep chain threw `RangeError`
+      from `pinnedLocalSet`, a walk items 737 and 741 left recursive.
+      Grepping the class found four more recursions over the task graph,
+      each reproduced at 50,000 and each now on an explicit stack: the
+      restore-tier exclusion below a workspace-output writer (a real run
+      of a 50,000-deep group chain over one threw out of the classify);
+      `expandGroupUpstream` (a task over a 50,000-deep chain of groups
+      failed as an internal error, and a group reached along two paths
+      was expanded once per path, 2^16 reads for sixteen stacked
+      diamonds, now once); `keyedProjects` (a sandboxed task's fold);
+      and `materializeFor` (a deferred producer's closure). The pin and
+      the exclusion flow up the dependant edges from what seeds them,
+      and a graph that pins nothing builds no index. Each fix has a row
+      at 50,000 that throws `RangeError` without it, and a 50,000-task
+      cached chain then ran green cold (443 s) and warm (6.2 s). The
+      package graph's walks, the cycle check, the lockfile's Tarjan walk
+      and the plan's critical path were already iterative (a
+      50,000-project chain filters in 29 ms). Not recursion, and left:
+      the scheduler's reverse-dependant closure and the package graph's
+      transitive closure are bitsets of n²/32 words, 312 MB at 50,000
+      tasks by arithmetic, and `transitiveDeps` on a 50,000-project
+      chain took 3.4 s.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -825,38 +849,32 @@ next?".
     in a group of its own inside the sandbox without losing the TERM
     grace a cancellation gives it, and pin both.
 
-20. **Planning a 50,000-deep chain still overflows the stack (found in
-    741).** `vx run app#t0 --dry` without `--exclude-dependencies`
-    throws `RangeError` in `placement.ts` (`pinnedLocalSet`'s recursive
-    `visit`); item 737 fixed only the builder. Walk it on an explicit
-    stack like the builder and the excluded-key walk, with a row at
-    50,000.
-21. **`detectOutputCollisions` is quadratic in one project's tasks with
+20. **`detectOutputCollisions` is quadratic in one project's tasks with
     outputs (found in 741).** 4,000 such tasks in one project spend
     10.7 s building the graph. Index the output prefixes so each task is
     compared only with the ones that can overlap it, and pin the time
     at 4,000.
-22. **Yarn 4 catalogs make `yarn()` keys stale (found in 745,
+21. **Yarn 4 catalogs make `yarn()` keys stale (found in 745,
     turborepo#12635).** A real Yarn 4.18.1 install records a catalog
     dependency as `"catalog:"`, and `resolveDescriptor` folds that
     literal: bumping the catalog `^6 → ^7` left every importer digest
     byte-identical, a stale hit under `yarn()` and a miss for
     `--affected`. Resolve the catalog entry through `.yarnrc.yml` (or
     the lockfile's resolution), with the ledger's row as the pin.
-23. **A remote-cache warning names nothing (found in 745).** An upload
+22. **A remote-cache warning names nothing (found in 745).** An upload
     timeout warns `vx/<plugin>: The operation timed out.` with no PUT,
     hash or server; an unreachable server repeats the bare runtime
     message once per request (3 lines for `turboCache`, 2 for
     `nxCache` on a one-task run; a 401 is already deduplicated). Name
     the operation and endpoint, and say it once per run.
-24. **A dangling output-root link fails a hit (found in 745, confirmed
+23. **A dangling output-root link fails a hit (found in 745, confirmed
     on main after 742).** `dist -> real-out` inside the project with
     `real-out` deleted: the next hit exits 1, "blocked by what is on
     disk (EEXIST mkdir …/dist) … a path the output globs do not
     cover", which is wrong, since `dist/**` covers it. Restore through
     an in-project dangling link (make its target) or replace it, and
     say which.
-25. **Three stale-hit edges 743 left (its report).** A cached task that
+24. **Three stale-hit edges 743 left (its report).** A cached task that
     rewrites its own input in place (a formatter with `outputs: []`)
     leaves a same-project `tasks: []` reader classed stable, so it can
     be restored ahead of the formatter for one run; cached tasks that

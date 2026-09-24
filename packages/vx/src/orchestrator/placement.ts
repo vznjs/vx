@@ -23,23 +23,35 @@ import type { prepareRun } from './prepare.js'
  */
 export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
   const pinned = new Set<string>()
-  const memo = new Map<string, boolean>()
-  const visit = (id: string): boolean => {
-    const known = memo.get(id)
-    if (known !== undefined) return known
-    const node = nodes.get(id)
-    if (node === undefined) return false
-    memo.set(id, false) // cycle guard; the graph builder already rejects cycles
-    const result =
+  for (const node of nodes.values()) {
+    if (
       node.config.exec?.persistent !== undefined ||
       node.config.exec?.sandbox !== undefined ||
-      node.config.exec?.remote === false ||
-      node.deps.some((d) => visit(d))
-    memo.set(id, result)
-    if (result) pinned.add(id)
-    return result
+      node.config.exec?.remote === false
+    ) {
+      pinned.add(node.id)
+    }
   }
-  for (const id of nodes.keys()) visit(id)
+  if (pinned.size === 0) return pinned
+  // Pinning flows up the dependant edges from what pins itself, one walk on
+  // an explicit stack: a chain is as deep as the graph, and a recursion
+  // per edge threw `RangeError` on the 50,000 the builder takes (item 737).
+  const dependants = new Map<string, string[]>()
+  for (const node of nodes.values()) {
+    for (const dep of node.deps) {
+      const list = dependants.get(dep)
+      if (list === undefined) dependants.set(dep, [node.id])
+      else list.push(node.id)
+    }
+  }
+  const stack = [...pinned]
+  while (stack.length > 0) {
+    for (const up of dependants.get(stack.pop()!) ?? []) {
+      if (pinned.has(up)) continue
+      pinned.add(up)
+      stack.push(up)
+    }
+  }
   return pinned
 }
 

@@ -1038,6 +1038,30 @@ describe('local cache short-circuit', () => {
     TIMEOUT,
   )
 
+  // The exclusion follows the edges down from a workspace-output writer,
+  // and followed them by recursion: a 50,000-deep chain of groups over one
+  // threw `RangeError` out of the classify and failed the run, at a depth
+  // the builder takes (item 737).
+  it(
+    'a 50,000-deep chain over a workspace-output writer classifies',
+    async () => {
+      const DEPTH = 50_000
+      const tasks: string[] = []
+      for (let i = 0; i < DEPTH - 1; i++) tasks.push(`t${i}: { dependsOn: ['t${i + 1}'] }`)
+      tasks.push(`t${DEPTH - 1}: {
+        exec: { command: 'true' },
+        cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen/**'] } },
+      }`)
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'a' },
+        config: `export default { tasks: { ${tasks.join(', ')} } }`,
+      })
+      const c = await classify(fixture, ['app#t0'])
+      expect([[...c.preProbedIds], [...c.restoreTier]]).toEqual([[`app#t${DEPTH - 1}`], []])
+    },
+    TIMEOUT * 4,
+  )
+
   it('gate: LayeredCache runs never classify — remote-prefetch owns those', async () => {
     // Under a LayeredCache, cache.get is a remote READ-THROUGH and the
     // up-front classify is awaited before scheduling — N remote GETs

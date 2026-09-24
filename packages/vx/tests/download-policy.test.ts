@@ -13,6 +13,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { planRun, run } from '../src/index.js'
 import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import { deferralEligibility, resolveDownloadModes } from '../src/orchestrator/download-policy.js'
+import { DeferredOutputs } from '../src/orchestrator/deferred-outputs.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { pluginSource } from './helpers/plugin.js'
 
@@ -766,7 +767,7 @@ describe('--download end to end', () => {
     // upstream bytes a command reads is unknowable and `dependsOn` is what
     // declares the reach. Every other row here puts the deferred producer one
     // hop from the consumer, where a direct-deps-only walk finds it anyway —
-    // so cutting the recursion left the whole repo green.
+    // so cutting the walk to direct deps left the whole repo green.
     //
     // pkg-b#use -> pkg-c#mid -> pkg-a#gen. Only pkg-a#gen is deferred, and
     // pkg-c#mid reads nothing, so the middle edge carries no bytes: if the
@@ -974,4 +975,38 @@ describe('a reader that can see the producer keeps its key under --download', ()
       expect([glob, await consumerKey(glob, 'none')]).toEqual([glob, await consumerKey(glob)])
     }
   }, 60_000)
+})
+
+// `materializeFor` walks the consumer's whole dependency closure, and did so
+// by recursion: a producer 50,000 tasks down threw `RangeError` into the
+// consumer (item 737's builder takes that depth).
+describe('materializeFor on a 50,000-deep closure', () => {
+  it('fetches the producer at the bottom, once', async () => {
+    const DEPTH = 50_000
+    const nodes = new Map<string, TaskNode>()
+    for (let i = 0; i < DEPTH; i++) {
+      const n = node(
+        `app#t${i}`,
+        { outputs: { files: [] } },
+        i + 1 < DEPTH ? [`app#t${i + 1}`] : [],
+      )
+      nodes.set(n.id, n)
+    }
+    const deferred = new DeferredOutputs({
+      nodes,
+      cache: {} as never,
+      workspaceRoot: '/ws',
+      nestedDirsByProject: new Map(),
+      localWrite: false,
+    })
+    const fetched: string[] = []
+    const bottom = `app#t${DEPTH - 1}`
+    deferred.register(bottom, {
+      materialize: async () => void fetched.push(bottom),
+      hash: 'h',
+      entry: { taskId: bottom, command: 'true', durationMs: 0, stdout: '' },
+    })
+    await deferred.materializeFor(nodes.get('app#t0')!)
+    expect([fetched, deferred.pending()]).toEqual([[bottom], []])
+  })
 })

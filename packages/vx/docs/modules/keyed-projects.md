@@ -39,7 +39,9 @@ of a sandboxed task that declares `cache`.
 - **The task itself is not counted**, and its own project is never
   granted through a link anyway (`sandbox-request.ts`).
 - **Lazy and memoized by task id.** A run of hits asks nothing; a shared
-  subgraph is walked once.
+  subgraph is walked once. The walk is a post-order on an explicit
+  stack, since a fold is as deep as the graph (the builder takes
+  50,000, item 737) and a recursion per edge overflowed the call stack.
 
 ## Cost
 
@@ -71,7 +73,7 @@ sandboxed task, and whose median favoured the after arm (462 ms, against 477).
 ## Tests
 
 `tests/keyed-projects.test.ts`: the walk row by row on hand-built graphs
-(R3), and against the key itself (R4) — for each shape `run()` computes
+(R3, a 50,000-deep chain among them), and against the key itself (R4) — for each shape `run()` computes
 the task's real hash, every other project is edited in turn, and the
 hash must move for exactly the projects the set names on the live path,
 and for at least them on the classify path.

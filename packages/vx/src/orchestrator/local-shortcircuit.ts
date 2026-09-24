@@ -201,25 +201,29 @@ function restoreTierExclusions(nodes: Map<string, TaskNode>, workspaceRoot: stri
     dir === '' ||
     dir === '.' ||
     prefixes.some((p) => p === dir || p.startsWith(`${dir}/`) || dir.startsWith(`${p}/`))
-  const direct = new Map<string, boolean>()
+  const dependants = new Map<string, string[]>()
   for (const node of nodes.values()) {
     const dir = relPosix(workspaceRoot, node.projectDir)
     const wsInputs = node.config.cache?.inputs?.workspaceFiles ?? []
-    direct.set(
-      node.id,
-      reaches(dir) || (wsInputs.length > 0 && workspaceInputsReach(wsInputs, prefixes)),
-    )
+    if (reaches(dir) || (wsInputs.length > 0 && workspaceInputsReach(wsInputs, prefixes))) {
+      out.add(node.id)
+    }
+    for (const dep of node.deps) {
+      const list = dependants.get(dep)
+      if (list === undefined) dependants.set(dep, [node.id])
+      else list.push(node.id)
+    }
   }
-  const memo = new Map<string, boolean>()
-  const excluded = (id: string): boolean => {
-    const known = memo.get(id)
-    if (known !== undefined) return known
-    memo.set(id, false) // a cycle cannot exist in a built graph; this only guards the recursion
-    const node = nodes.get(id)
-    const v = direct.get(id) === true || (node !== undefined && node.deps.some(excluded))
-    memo.set(id, v)
-    return v
+  // Up the dependant edges on an explicit stack: a chain is as deep as the
+  // graph, and a recursion per edge threw `RangeError` at the 50,000 the
+  // builder takes (item 737).
+  const stack = [...out]
+  while (stack.length > 0) {
+    for (const up of dependants.get(stack.pop()!) ?? []) {
+      if (out.has(up)) continue
+      out.add(up)
+      stack.push(up)
+    }
   }
-  for (const id of nodes.keys()) if (excluded(id)) out.add(id)
   return out
 }
