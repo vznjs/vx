@@ -127,4 +127,4 @@ so a shared input list is an import.
   prints what a run would see.
 
 The full guide, with the trade-offs spelled out one by one, is
-[Migrate from Nx](../../migrate/from-nx/).
+[Migrate from Nx](../../guides/migrate/#nx).

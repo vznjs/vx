@@ -1,4 +1,4 @@
-/* The one look of every Guide picture (Diagram.astro): the landing's mono
+/* The one look of every picture on the site (Diagram.astro): the landing's mono
    for everything inside the drawing, the body's sans for the caption, one
    corner radius, two stroke widths and the theme's --vx-* tokens only
    (tests/diagram-kit.test.ts holds that). */
@@ -50,17 +50,6 @@
   .vx-diagram svg[data-layout='narrow'] {
     display: block;
   }
-}
-
-/* A widget that draws with the kit (DiagramSvg.astro; the graph explorer)
-   already sits in the same frame (demos/widget.css), so its drawing takes
-   none of its own. */
-.vx-diagram.inset,
-.sl-markdown-content .vx-diagram.inset {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
 }
 
 .vx-diagram text {

@@ -26,40 +26,62 @@ export default defineConfig({
   // nowhere to resolve from in Bun's isolated install layout. Kept external
   // — and declared here so it resolves from this package — it loads from
   // its real path in the store, where its platform package is linked.
-  //
-  // `import.meta.main` is Bun's "this file is the entry point", and no module
-  // the site bundles ever is. The scheduler simulator imports
-  // packages/vx-bench/schedule-policy.ts, whose report runs only under it:
-  // defined false, the report and its `process` calls are dropped from the
-  // browser bundle instead of shipped as dead code.
   vite: {
     cacheDir: './.astro/vite',
     ssr: { external: ['satteri'] },
-    define: { 'import.meta.main': 'false' },
   },
   site,
   base,
   trailingSlash: 'always',
-  // Docs pages merged into another page, and the old Learn pages the Guide
-  // replaced (design/site-redo-2026-09.md): the old URL lands on the new
-  // one. tests/redirects.test.ts holds every URL the old sidebar linked.
-  // Astro puts the base on the old path but not on the target.
+  // Docs pages the six took in, the old Learn pages, and the Guide's
+  // chapters, which the landing's one picture replaced
+  // (design/site-short-2026-09.md): the old URL lands on the new page and
+  // section, and a chapter on the landing's line for the idea it taught.
+  // Each old URL goes straight to where it ends, never through another
+  // redirect. tests/redirects.test.ts holds every URL the old sidebar and
+  // the Guide linked. Astro puts the base on the old path but not on the
+  // target.
   redirects: {
     '/introduction/': `${root}quickstart/`,
-    '/guides/trusting-the-cache/': `${root}guides/caching/`,
-    '/guides/task-dependencies/': `${root}guides/tasks/`,
+    '/add-to-existing-repo/': `${root}quickstart/#an-existing-repo`,
+    '/guides/tasks/': `${root}guides/configure/#tasks-and-dependencies`,
+    '/guides/task-dependencies/': `${root}guides/configure/#tasks-and-dependencies`,
+    '/guides/caching/': `${root}guides/configure/#caching`,
+    '/guides/trusting-the-cache/': `${root}guides/configure/#caching`,
+    '/guides/environment-variables/': `${root}guides/configure/#environment-variables`,
+    '/guides/dev-tasks/': `${root}guides/configure/#dev-tasks`,
+    '/guides/workspace-config/': `${root}guides/configure/#workspace-config`,
+    '/guides/lockfiles/': `${root}guides/configure/#lockfiles`,
+    '/guides/running-tasks/': `${root}guides/ci/#run-and-filter`,
+    '/guides/remote-caching/': `${root}guides/ci/#remote-cache`,
+    '/guides/remote-execution/': `${root}guides/ci/#remote-execution`,
     '/guides/extensibility/': `${root}guides/plugins/`,
-    '/concepts/how-vx-works/': `${root}guide/inside-vx/`,
-    '/learn/what-is-task-orchestration/': `${root}guide/dependencies/`,
-    '/learn/caching/': `${root}guide/caching/`,
-    '/learn/correctness/': `${root}guide/trust/`,
-    '/learn/scheduling/': `${root}guide/concurrency/`,
-    '/learn/architecture/': `${root}guide/inside-vx/`,
-    '/learn/extending/': `${root}guide/inside-vx/`,
-    '/learn/playground/': `${root}guide/try-it/`,
-    '/learn/labs/': `${root}guide/labs/`,
+    '/guides/otel-bridge/': `${root}guides/plugins/#opentelemetry`,
+    '/guides/mcp/': `${root}guides/plugins/#vx-mcp`,
+    '/migrate/from-turborepo/': `${root}guides/migrate/#turborepo`,
+    '/migrate/from-nx/': `${root}guides/migrate/#nx`,
+    '/concepts/how-vx-works/': `${root}#plugins`,
+    '/learn/what-is-task-orchestration/': `${root}#tasks`,
+    '/learn/caching/': `${root}#cache`,
+    '/learn/correctness/': `${root}#sandbox`,
+    '/learn/scheduling/': `${root}#parallel`,
+    '/learn/architecture/': `${root}#plugins`,
+    '/learn/extending/': `${root}#plugins`,
+    '/learn/playground/': `${root}playground/`,
+    '/learn/labs/': `${root}playground/`,
     '/learn/choosing/': `${root}compare/`,
     '/learn/glossary/': `${root}glossary/`,
+    '/guide/why/': `${root}#one-run`,
+    '/guide/tasks/': `${root}#tasks`,
+    '/guide/dependencies/': `${root}#tasks`,
+    '/guide/concurrency/': `${root}#parallel`,
+    '/guide/caching/': `${root}#cache`,
+    '/guide/trust/': `${root}#sandbox`,
+    '/guide/affected/': `${root}#changed`,
+    '/guide/many-machines/': `${root}#extensible`,
+    '/guide/inside-vx/': `${root}#plugins`,
+    '/guide/try-it/': `${root}playground/`,
+    '/guide/labs/': `${root}playground/`,
   },
   // `remarkPlugins` runs on the `unified()` processor from
   // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the
@@ -79,15 +101,12 @@ export default defineConfig({
         replacesTitle: false,
       },
       favicon: '/favicon.svg',
-      // The site's chrome: the four places in the header (and atop the phone
-      // menu), the chapter header and Next card on Guide pages, the landing's
-      // fonts, and dark as the default theme.
+      // The site's chrome: the three places in the header (and atop the phone
+      // menu), the landing's fonts, and dark as the default theme.
       components: {
         Head: './src/components/Head.astro',
         Header: './src/components/starlight/Header.astro',
         Sidebar: './src/components/starlight/Sidebar.astro',
-        PageTitle: './src/components/starlight/PageTitle.astro',
-        Footer: './src/components/starlight/Footer.astro',
         ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
       customCss: ['./src/styles/theme.css'],
@@ -113,7 +132,7 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/vznjs/vx/edit/main/packages/vx-docs/',
       },
-      // Three sidebars (Guide, Docs, Reference) from one: src/nav/sections.ts
+      // Two sidebars (Docs, Reference) from one: src/nav/sections.ts
       // defines them as top-level groups, and src/nav/route-data.ts shows a
       // page only its own section's group.
       sidebar: SIDEBAR,

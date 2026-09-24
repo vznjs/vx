@@ -1,10 +1,11 @@
-// The labs' starting states and the edits their steps ask for (guide/labs,
-// item 704; design/labs-checkpoints-2026-09.md § W10). Each state is the
-// playground's workspace (workspace.ts) plus one change, and
-// `<vx-playground data-lab="<id>">` opens on it. The steps are here so the
-// site's rows and core's parity rows (packages/vx/tests/playground-parity.unsafe.test.ts)
-// apply the edits the page tells the reader to make; what each step moves is
-// written out by hand in those rows, never computed from this file.
+// The labs' starting states and the edits their steps ask for (item 704;
+// design/labs-checkpoints-2026-09.md § W10). Each state is the playground's
+// workspace (workspace.ts) plus one change, and
+// `<vx-playground data-lab="<id>">` opens on it. The labs page went with the
+// Guide (design/site-short-2026-09.md); core's parity rows
+// (packages/vx/tests/playground-parity.unsafe.test.ts) still apply each
+// state's edits, and what each step moves is written out by hand there,
+// never computed from this file.
 
 import { CONFIG_TEXTS, ENV, FILES, OPEN, TASKS } from './workspace.js'
 
@@ -38,11 +39,10 @@ function withFile(
 const UI_CONFIG = 'packages/ui/vx.config.mjs'
 const API_CONFIG = 'packages/api/vx.config.mjs'
 const API_BUILD = 'bun build src/server.ts --outdir dist'
-// A plain copy, the shape of the correctness page's stale-hit demo: the
-// sandbox the lab turns on meets exactly the read that demo shows it deny.
+// A plain copy: the sandbox the lab turns on meets exactly this one read.
 const API_LAB_BUILD = 'mkdir -p dist && cp src/server.ts config.json dist/'
 
-export const LAB_IDS = ['unlisted-file', 'undeclared-read', 'shared-output'] as const
+const LAB_IDS = ['unlisted-file', 'undeclared-read', 'shared-output'] as const
 export type LabId = (typeof LAB_IDS)[number]
 
 export const LABS: Record<LabId, PlaygroundState> = {

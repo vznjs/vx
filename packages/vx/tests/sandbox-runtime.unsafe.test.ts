@@ -1376,15 +1376,13 @@ describe.skipIf(!available || process.platform !== 'linux')(
 )
 
 describe.skipIf(!available || process.platform !== 'linux')(
-  "the site's stale-hit demo, run for real",
+  'an undeclared read, run for real',
   () => {
-    // The site's stale-hit demo (guide/trust) shows the frame vx prints when
-    // `app#build` reads `banner.txt` without declaring it. The site's suite
-    // runs inside a sandbox and cannot start another, so it holds the demo's
-    // text to `formatTaskBlock` over the line `parseStraceViolations` writes
-    // for a SYNTHETIC trace (packages/vx-docs/tests/guide-trust.test.ts).
-    // This is the half it cannot run: a real trace of the same task yields
-    // exactly that one line, and declaring the file lets the task pass.
+    // The landing's fifth callout, "a read you did not declare fails the
+    // task", as a real trace: `app#build` reads `banner.txt` without
+    // declaring it and fails with exactly one violation line naming it, and
+    // declaring the file lets the task pass. (The Guide's stale-hit demo,
+    // which held its text to a synthetic trace, went with the Guide.)
     let fixture: Fixture
 
     beforeEach(async () => {

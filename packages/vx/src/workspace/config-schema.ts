@@ -350,7 +350,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       // EMPTY one is deliberate and documented: `build: { dependsOn: [] }`
       // is how a package consumed as source says it has nothing to build,
       // so a dependant's `^build` finds it and waits on nothing
-      // (add-to-existing-repo.md). The comment here used to call that case
+      // (the quickstart). The comment here used to call that case
       // "almost certainly a config mistake" while the docs taught it.
       if (dependsOn === undefined) {
         throw new UserError(

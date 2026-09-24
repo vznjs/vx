@@ -82,4 +82,4 @@ session is cancelled. An agent that can only run declared commands
 against declared paths is an agent you can leave alone with the
 repository.
 
-The guide is [`vx mcp` — AI agents](../../guides/mcp/).
+The guide is [`vx mcp` — AI agents](../../guides/plugins/#vx-mcp).

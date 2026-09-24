@@ -1,23 +1,20 @@
 ---
-title: Writing a vx plugin
-description: A plugin fills one or more stages of every run — the tasks a project has, the cache key, the order, where a task runs, where artifacts live, where run records go — from one object in vx.workspace.ts.
+title: Plugins
+description: Write a plugin that fills one or more stages of every run, export runs to OpenTelemetry, and let an AI agent read your workspace with vx mcp.
 ---
 
 Change every run from one place: add tasks, key material, a cache, an
-exporter or a CLI verb. Why plugins? →
-[Chapter 9: How vx is built](../../guide/inside-vx/)
+exporter or a CLI verb.
 
-## Steps
+## Write one
 
-1. Write a function that returns `definePlugin(import.meta, hooks)`. Its name is its package's name.
-2. Fill only the hooks you need (below). An unfilled hook costs nothing.
-3. Declare it in `vx.workspace.ts`: `plugins: [typecheck()]`. Plugins are asked in that order.
-4. Run `vx info`: it lists each plugin and its hooks.
-5. Test it: call `run()` from `@vzn/vx` on a throwaway workspace and read what your hooks saw.
+A plugin is a function that returns `definePlugin(import.meta, hooks)`.
+Its name is its package's name. Fill only the hooks you need; an unfilled
+hook costs nothing. Declare it in `vx.workspace.ts`
+(`plugins: [typecheck()]`), and `vx info` lists it with its hooks. To test
+it, call `run()` from `@vzn/vx` on a throwaway workspace.
 
-## Config
-
-A plugin that gives every TypeScript package a `typecheck` task:
+This one gives every TypeScript package a `typecheck` task:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -39,6 +36,9 @@ export function typecheck(): VxPlugin {
 
 ## The hooks
 
+Plugins are asked in the order you list them. What every plugin declines
+runs and is stored on this machine.
+
 | Stage       | Hook                   | Decides                                                   |
 | ----------- | ---------------------- | --------------------------------------------------------- |
 | config      | `config(ws, ctx)`      | the workspace config, before it is used                   |
@@ -54,8 +54,6 @@ export function typecheck(): VxPlugin {
 | setup       | `setup(ctx)`           | once per run, before the first task                       |
 | cli         | `commands`             | which verbs `vx` has                                      |
 | teardown    | `teardown()`           | flush and close at the end of the run                     |
-
-What every plugin declines runs and is stored on this machine.
 
 ```ts
 import type { VxPlugin } from '@vzn/vx'
@@ -115,7 +113,10 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 ```
 
-## Adding a verb
+## A verb and a sink
+
+`commands` adds a verb. A telemetry sink gets each run's summary; do
+network I/O in `flush()`, which vx awaits for up to 3 s.
 
 ```ts
 import { Cache, definePlugin, type VxPlugin } from '@vzn/vx'
@@ -136,11 +137,6 @@ export function mcp(): VxPlugin {
   })
 }
 ```
-
-## The telemetry sink
-
-A sink gets each run's summary. Do network I/O in `flush()`, which vx
-awaits for up to 3 s.
 
 ```ts
 import { definePlugin, defineWorkspace, type VxPlugin } from '@vzn/vx'
@@ -163,8 +159,9 @@ export default defineWorkspace({ plugins: [hello()] })
 
 ## Your own cache
 
-Implement core's `RemoteCacheLayer` (`has`, `get`, `put`, optional
-`hasMany`) and wrap it in `LayeredCache`. A remote error is then a miss:
+Implement core's `RemoteCacheLayer`: `has`, `get` and `put`, plus an
+optional `hasMany`. Wrap it in `LayeredCache`, and a remote error is a
+miss:
 
 ```ts
 import { definePlugin, defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
@@ -198,20 +195,6 @@ function acmeCache(): VxPlugin {
 export default defineWorkspace({ plugins: [acmeCache()] })
 ```
 
-## Plugins that ship
-
-| Package                     | Hooks it fills                             |
-| --------------------------- | ------------------------------------------ |
-| `@vzn/vx-reapi`             | `cache`, `executor`                        |
-| `@vzn/vx-migrate`           | `project` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) |
-| `@vzn/vx-lockfile`          | `fingerprint`, `key`                       |
-| `@vzn/vx-schedule-history`  | `schedule`, `admit`, `commands`            |
-| `@vzn/vx-otel`              | `telemetry`                                |
-| `@vzn/vx-github`            | `telemetry`                                |
-| `@vzn/vx-mcp`               | `commands`                                 |
-
-One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
-
 ## What core refuses
 
 - A `cache` or `executor` hook whose return breaks the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
@@ -219,3 +202,91 @@ One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 - A verb that names a core verb, or one two plugins both declare.
 
 A sink that throws is switched off for the run, with a warning.
+
+## Plugins that ship
+
+| Package                     | Hooks it fills                             |
+| --------------------------- | ------------------------------------------ |
+| `@vzn/vx-reapi`             | `cache`, `executor` ([CI and remote](../ci/#remote-cache)) |
+| `@vzn/vx-migrate`           | `project` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
+| `@vzn/vx-lockfile`          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)) |
+| `@vzn/vx-schedule-history`  | `schedule`, `admit`, `commands`            |
+| `@vzn/vx-otel`              | `telemetry` ([below](#opentelemetry))      |
+| `@vzn/vx-github`            | `telemetry` ([GitHub Actions](../ci/#github-actions)) |
+| `@vzn/vx-mcp`               | `commands` ([below](#vx-mcp))              |
+
+One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
+
+## OpenTelemetry
+
+`@vzn/vx-otel` exports every run as OTLP traces, metrics and logs, with no
+OpenTelemetry SDK: one trace per run, one span per task. Install it
+(`bun add -d @vzn/vx-otel`) and point it at your collector
+(`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`). Without an
+endpoint it declines.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { otel } from '@vzn/vx-otel'
+
+export default defineWorkspace({
+  plugins: [otel({ serviceName: 'my-monorepo', headers: { authorization: 'Bearer …' } })],
+})
+```
+
+| Option            | Env var                                | Default                 |
+| ----------------- | -------------------------------------- | ----------------------- |
+| `endpoint`        | `OTEL_EXPORTER_OTLP_ENDPOINT`          | none: the plugin declines |
+| `tracesEndpoint`  | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`   | `<endpoint>/v1/traces`  |
+| `metricsEndpoint` | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`  | `<endpoint>/v1/metrics` |
+| `logsEndpoint`    | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`     | `<endpoint>/v1/logs`    |
+| `serviceName`     | `OTEL_SERVICE_NAME`                    | `vx`                    |
+| `headers`         | `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,…`) | `{}`                    |
+| `metrics`         | none                                   | `true`                  |
+| `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
+| `timeoutMs`       | none                                   | `15000`                 |
+
+| Signal            | Carries                                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------------------------- |
+| `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.exit_ok`, `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
+| `vx.task` span    | `vx.cache.source`, `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready` |
+| metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.run.duration_ms`                          |
+| a log per task    | the task's output, linked to its span; `vx.log.chars_full` says when it was cut                           |
+
+A failed task sets its span status to `ERROR`. A failed export warns once
+and names the reply; a slow collector is cut off after `timeoutMs`, and
+the run still exits green.
+
+## vx mcp
+
+`@vzn/vx-mcp` lets Claude Code, Cursor, Continue.dev or Copilot ask your
+workspace why a task re-ran, read-only, over stdio. Install it
+(`npm install -D @vzn/vx-mcp`) and declare it; `vx help` then lists
+`vx mcp`. Point your agent at it (`claude mcp add vx -- vx mcp`) and start
+the agent inside the workspace; restart it if it lists no vx tools.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { mcp } from '@vzn/vx-mcp'
+
+export default defineWorkspace({ plugins: [mcp()] })
+```
+
+```jsonc
+// ~/.claude/mcp.json; Cursor, Continue.dev and Copilot take the same shape
+{ "mcpServers": { "vx": { "command": "vx", "args": ["mcp"] } } }
+```
+
+| Tool               | Answers                                                          |
+| ------------------ | ---------------------------------------------------------------- |
+| `listTasks`        | What can I run here?                                             |
+| `getCacheStats`    | How big is the cache, and what is today's hit rate?              |
+| `getRunHistory`    | Which tasks run, how fast, how often they fail or flake?         |
+| `explainCacheKey`  | What is the cache identity of `pkg#build`?                       |
+| `whyDidThisRerun`  | Why did `pkg#test` re-run instead of hitting?                    |
+| `getWorkspaceInfo` | What `vx info` says: versions, plugins, cache, sandbox           |
+
+Nothing it exposes can run a task or write the cache. The server speaks
+MCP in about 150 lines, with no dependencies.

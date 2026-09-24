@@ -1,6 +1,6 @@
 /* The docs wear the landing's palette and type (src/styles/landing.css), so
    the site is one product (design/site-redo-2026-09.md § One look). The
-   --vx-* tokens are the only colours a Guide diagram may use
+   --vx-* tokens are the only colours a diagram may use
    (components/guide/diagram/README.md); Starlight's own properties are mapped
    onto them below. Dark is the default theme (components/starlight/
    ThemeProvider.astro); the light theme keeps every pair readable. */
@@ -122,55 +122,20 @@ header.header {
   color: var(--vx-accent);
 }
 
-/* A link at the top of a sidebar (the Guide's chapters, the Reference's
-   pages) reads as an entry, not as a group heading. */
+/* A link at the top of a sidebar (the Reference's pages, the Docs' last)
+   reads as an entry, not as a group heading. */
 .sidebar-content ul.top-level > li > a {
   font-size: var(--sl-text-sm);
   font-weight: 500;
 }
 
-/* The Guide's sidebar numbers its chapters. */
-[data-vx-section='guide'] ul.top-level {
-  counter-reset: vx-chapter;
-}
-[data-vx-section='guide'] ul.top-level > li > a {
-  display: flex;
-  gap: 0.6em;
-}
-[data-vx-section='guide'] ul.top-level > li > a::before {
-  counter-increment: vx-chapter;
-  content: counter(vx-chapter, decimal-leading-zero);
-  font-family: var(--vx-mono);
-  font-size: 0.85em;
-  opacity: 0.6;
-  padding-top: 0.1em;
-}
-
-/* A chapter is read by someone with no context, so it reads large and short:
-   18px type, a short measure for the prose, room between paragraphs, and
-   the pictures across the whole content column (the header is
-   PageTitle.astro). */
-main:has(.vx-chapter-head) .sl-markdown-content {
-  font-size: 1.125rem;
-  line-height: 1.7;
-}
-main:has(.vx-chapter-head) .sl-markdown-content > :is(p, ul, ol, h2, h3, h4, blockquote, details) {
-  max-width: 60ch;
-}
-main:has(.vx-chapter-head) .sl-markdown-content > * + * {
-  margin-top: 1.4rem;
-}
-main:has(.vx-chapter-head) .sl-markdown-content > h2 {
-  margin-top: 3.5rem;
-}
-
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
 
-/* A Guide picture's look is components/guide/diagram/diagram.css, beside
-   the one component that draws every picture. */
+/* A picture's look is components/guide/diagram/diagram.css, beside the one
+   component that draws every picture. */
 
-/* Mermaid renders on the client and stays on internals pages only; the Guide
-   draws with components/guide/diagram at build time. */
+/* Mermaid renders on the client and stays on internals pages only; the
+   site's own pictures draw with components/guide/diagram at build time. */
 pre.mermaid {
   background: transparent;
   border: none;

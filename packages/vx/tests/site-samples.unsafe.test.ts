@@ -56,6 +56,18 @@ function handAuthoredSitePages(): string[] {
   return pages
 }
 
+/**
+ * A Docs page's `## heading` section, up to the next `## `: the six Docs
+ * pages each hold several topics (design/site-short-2026-09.md), and a pin
+ * that reads a whole page lets one topic's rows answer for another's.
+ */
+function section(page: string, heading: string): string {
+  const start = page.indexOf(`\n## ${heading}\n`)
+  expect(start).toBeGreaterThan(-1)
+  const end = page.indexOf('\n## ', start + 1)
+  return page.slice(start, end === -1 ? undefined : end)
+}
+
 function fencedBlock(page: string, lang: string, firstLine: string): string {
   const open = `\`\`\`${lang}\n${firstLine}`
   const start = page.indexOf(open)
@@ -65,9 +77,10 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
   return page.slice(body, end)
 }
 
-describe('the running-tasks guide shows what --dry prints', () => {
+// The running-tasks guide merged into the CI page (the short site).
+describe('the CI guide shows what --dry prints', () => {
   it('its `would run:` block is formatPlanText on three local hits', () => {
-    const page = readFileSync(path.join(GUIDES, 'running-tasks.md'), 'utf8')
+    const page = readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')
     const task = (id: string, hash: string) => ({
       node: {
         id,
@@ -122,9 +135,13 @@ describe('the plugins guide states the CacheLayer method count', () => {
   })
 })
 
-describe('the environment-variables guide names the essential allowlist', () => {
+// The environment-variables guide is the configure page's section now.
+describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
-    const page = readFileSync(path.join(GUIDES, 'environment-variables.md'), 'utf8')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Environment variables',
+    )
     const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)plus the Windows/.exec(page)
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
@@ -134,7 +151,8 @@ describe('the environment-variables guide names the essential allowlist', () => 
   })
 })
 
-describe('the remote-execution guide states the wire chunk sizes', () => {
+// The remote-execution guide is the CI page's section now.
+describe('the CI guide states the wire chunk sizes', () => {
   it('its uploads bullet names CHUNK_BYTES in KB and the SAFE_CHUNK_BYTES retry size', () => {
     const wire = readFileSync(
       path.resolve(import.meta.dir, '..', '..', 'vx-reapi', 'src', 'wire.ts'),
@@ -144,7 +162,7 @@ describe('the remote-execution guide states the wire chunk sizes', () => {
     const safe = /export const SAFE_CHUNK_BYTES = (\d+)/.exec(wire)
     expect(chunk).not.toBeNull()
     expect(safe).not.toBeNull()
-    const page = readFileSync(path.join(GUIDES, 'remote-execution.md'), 'utf8')
+    const page = section(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8'), 'Remote execution')
     const m =
       /- Uploads chunk at (\d+) KB[\s\S]*?retries once\s+at (\d+) bytes — `SAFE_CHUNK_BYTES`/.exec(
         page,
@@ -188,11 +206,16 @@ describe('the quickstart shows what a run prints and what its flags do', () => {
   })
 })
 
-describe('the add-to-existing-repo page states the concurrency default `vx help` states', () => {
+// The add-to-existing-repo page folded into the quickstart, and its
+// vx.workspace.ts block into the configure page's workspace section.
+describe('the configure guide states the concurrency default `vx help` states', () => {
   it("its `concurrency` comment is the help line's default clause", () => {
     const help = /--concurrency <n>\s+Max parallel tasks \(default: ([^)]+)\)/.exec(HELP)
     expect(help).not.toBeNull()
-    const page = readFileSync(path.join(DOCS, 'add-to-existing-repo.md'), 'utf8')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Workspace config',
+    )
     const m = /^\s+concurrency: 8,\s+\/\/ default: (.*)$/m.exec(page)
     expect(m).not.toBeNull()
     expect(m![1]).toBe(help![1])
@@ -200,9 +223,10 @@ describe('the add-to-existing-repo page states the concurrency default `vx help`
 })
 
 // The trusting-the-cache guide merged into the caching guide (the site redo,
-// R3); its `vx why` table and sample moved with it.
-describe('the caching guide quotes what vx why says', () => {
-  const guide = readFileSync(path.join(GUIDES, 'caching.md'), 'utf8')
+// R3), and that into the configure page (the short site); its `vx why`
+// table and sample moved with it.
+describe('the configure guide quotes what vx why says', () => {
+  const guide = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Caching')
   const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
   it("every verdict sentence metrics.ts can print is a row of its table, and of the post's", () => {
     const src = readFileSync(
@@ -655,7 +679,7 @@ describe('the from-turborepo pages map every turbo.json key the mapper knows', (
     ['the post', page, 'Three things you get'],
     [
       'the migrate guide',
-      readFileSync(path.join(DOCS, 'migrate', 'from-turborepo.md'), 'utf8'),
+      section(readFileSync(path.join(GUIDES, 'migrate.md'), 'utf8'), 'Turborepo'),
       'The command itself comes from',
     ],
   ])('%s: every KNOWN_TASK_KEYS entry is named in its table', (_label, text, endsBefore) => {
@@ -703,7 +727,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     'utf8',
   )
   const page = readFileSync(path.join(DOCS, 'blog', 'from-nx.md'), 'utf8')
-  const guide = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
+  const guide = section(readFileSync(path.join(GUIDES, 'migrate.md'), 'utf8'), 'Nx')
   const m = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
   const servers = [...m![1]!.matchAll(/'([^']+)': \{ persistent: true \}/g)].map((x) => x[1]!)
   it('every server executor the mapper marks persistent is in the post', () => {
@@ -906,14 +930,19 @@ describe('the config-in-typescript post shows what vx init writes', () => {
   })
 })
 
+// The MCP guide is the plugins page's `vx mcp` section (the short site),
+// and the section is what these read: the page's other tables have
+// one-word backticked rows of their own (the OTel options).
 describe('the MCP guide and post state the server size the source has', () => {
+  const mcpSection = (): string =>
+    section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'vx mcp')
   const server = readFileSync(
     path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'server.ts'),
     'utf8',
   )
   const lines = server.split('\n').length
   for (const [label, file] of [
-    ['the guide', path.join(DOCS, 'guides', 'mcp.md')],
+    ['the guide', 'plugins.md § vx mcp'],
     ['the agents-and-mcp post', path.join(DOCS, 'blog', 'agents-and-mcp.md')],
     // Item 345 fixed the two site pages; the package README said it too
     // (item 351, 2026-09-19).
@@ -928,7 +957,7 @@ describe('the MCP guide and post state the server size the source has', () => {
       // Both said "about a hundred lines" of a 144-line file; item 339 fixed
       // the post's body and left its heading (item 345, 2026-09-19). A round
       // number is fine, a 30% one is not.
-      const page = readFileSync(file, 'utf8')
+      const page = file === 'plugins.md § vx mcp' ? mcpSection() : readFileSync(file, 'utf8')
       const m = /(?:about|~) ?(\d+) lines/.exec(page)
       expect(m).not.toBeNull()
       expect(Math.abs(Number(m![1]) - lines) / lines).toBeLessThan(0.15)
@@ -940,12 +969,15 @@ describe('the MCP guide and post state the server size the source has', () => {
       'utf8',
     )
     const names = [...tools.matchAll(/^    name: '(\w+)',$/gm)].map((m) => m[1]!)
-    const page = readFileSync(path.join(DOCS, 'guides', 'mcp.md'), 'utf8')
+    const page = mcpSection()
     const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
     expect(rows.sort()).toEqual([...names].sort())
   })
 })
 
+// The otel guide is the plugins page's OpenTelemetry section (the short
+// site); both pins read that section, so another section's rows and code
+// spans cannot stand in for it.
 describe('the otel guide names attributes the exporter actually emits', () => {
   it('every `vx.<name>` it prints is one otlp.ts writes', () => {
     // Span names live beside the attribute map, so read the exporter's
@@ -960,7 +992,7 @@ describe('the otel guide names attributes the exporter actually emits', () => {
         .map((m) => m[1]!),
     )
     expect(emitted.size).toBeGreaterThan(30)
-    const page = readFileSync(path.join(DOCS, 'guides', 'otel-bridge.md'), 'utf8')
+    const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'OpenTelemetry')
     // Backticked attribute names only, and not the prefixes it shows as
     // shapes (`vx.tag.<k>`, `vx.log.*`) or the workspace file's name.
     const named = [...page.matchAll(/`(vx\.[a-z_.]+)`/g)]
@@ -990,7 +1022,7 @@ describe('the otel guide tabulates every option the plugin takes', () => {
       .map((m) => m[1]!)
       .filter((f) => f !== 'post')
     expect(fields.length).toBe(9)
-    const page = readFileSync(path.join(DOCS, 'guides', 'otel-bridge.md'), 'utf8')
+    const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'OpenTelemetry')
     const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
     expect(rows.sort()).toEqual([...fields].sort())
   })
@@ -1024,24 +1056,29 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
   })
 })
 
+// The workspace-config guide is the configure page's section (the short
+// site), and its `## field` sections became one table: a row per field,
+// `plugins` included, which the old page covered only by its config block.
 describe('the workspace-config guide documents every WorkspaceConfig field', () => {
-  it('each field of the interface has a section', () => {
+  it('each field of the interface has a row', () => {
     const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
     expect(fields.length).toBe(5)
-    const page = readFileSync(path.join(GUIDES, 'workspace-config.md'), 'utf8')
-    // `plugins` is the page's subject — it shows it in every config block
-    // rather than giving it a `## field` section of its own.
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Workspace config',
+    )
     expect(page).toContain('plugins: [')
-    for (const field of fields.filter((f) => f !== 'plugins')) {
-      expect(page).toContain('## `' + field + '`')
-    }
+    const rows = [...page.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!)
+    expect(rows.sort()).toEqual([...fields].sort())
   })
 })
 
-describe('the remote-caching guide names the seam core defines', () => {
+// The remote-caching guide merged into the CI page, which links the
+// plugins page for your own backend; the seam is named there (the short site).
+describe('the plugins guide names the remote seam core defines', () => {
   it('every RemoteCacheLayer method is named, the optional one as optional', () => {
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'layered-cache.ts'),
@@ -1054,7 +1091,7 @@ describe('the remote-caching guide names the seam core defines', () => {
       optional: m[2] === '?',
     }))
     expect(methods.map((m) => m.name).sort()).toEqual(['get', 'has', 'hasMany', 'put'])
-    const page = readFileSync(path.join(GUIDES, 'remote-caching.md'), 'utf8')
+    const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'Your own cache')
     for (const m of methods) expect(page).toContain('`' + m.name + '`')
     expect(methods.find((m) => m.name === 'hasMany')!.optional).toBe(true)
     expect(page.replace(/\s+/g, ' ')).toContain('an optional `hasMany`')
@@ -1074,8 +1111,10 @@ describe('the CI guide states what --frozen measured, not what it once claimed',
   })
 })
 
+// The caching guide is the configure page's section (the short site); its
+// always-excluded sentence became a row of the key's table.
 describe('the caching guide lists what the cache never reads', () => {
-  const page = readFileSync(path.join(GUIDES, 'caching.md'), 'utf8')
+  const page = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Caching')
   it('its always-excluded list is ALWAYS_IGNORE', () => {
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
@@ -1091,10 +1130,9 @@ describe('the caching guide lists what the cache never reads', () => {
       .join('\n')
     const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
     expect(names.length).toBe(6)
-    const section = /## Outputs/.exec(page)
-    expect(section).not.toBeNull()
-    const excluded = page.slice(page.indexOf("What's always excluded"), section!.index)
-    for (const name of names) expect(excluded).toContain(name)
+    const excluded = /^\| Always excluded +\|.*$/m.exec(page)
+    expect(excluded).not.toBeNull()
+    for (const name of names) expect(excluded![0]).toContain(name)
   })
   it('its benchmark figures are the benchmarks page’s, as written', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
@@ -1112,7 +1150,10 @@ describe('the tasks guide names every exec field a task can declare', () => {
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\??:/gm)].map((m) => m[1]!)
     expect(fields).toContain('command')
-    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Tasks and dependencies',
+    )
     for (const field of fields.filter((f) => f !== 'command')) {
       expect(page).toContain('`exec.' + field + '`')
     }
@@ -1127,7 +1168,10 @@ describe('the tasks guide names every exec field a task can declare', () => {
       'utf8',
     )
     expect(hash).toContain('const { remote: _remote, ...execRest } = cfg.exec')
-    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Tasks and dependencies',
+    ).replace(/\s+/g, ' ')
     expect(page).toContain('the one `exec` field stripped from the key')
   })
 
@@ -1143,7 +1187,10 @@ describe('the tasks guide names every exec field a task can declare', () => {
       'utf8',
     ).replace(/\s+/g, ' ')
     expect(contract).toContain('Editing a description therefore costs one re-run')
-    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Tasks and dependencies',
+    ).replace(/\s+/g, ' ')
     expect(page).toContain('editing a description costs one re-run')
   })
 })
@@ -1170,6 +1217,7 @@ describe('cli.md lists the fields `vx show` prints', () => {
   })
 })
 
+// The dev-tasks guide is the configure page's section (the short site).
 describe('the dev-tasks guide bounds the teardown the way signals.ts does', () => {
   it('its grace is SIGNAL_SHUTDOWN_GRACE_MS', () => {
     const src = readFileSync(
@@ -1179,7 +1227,10 @@ describe('the dev-tasks guide bounds the teardown the way signals.ts does', () =
     const m = /export const SIGNAL_SHUTDOWN_GRACE_MS = (\d+)/.exec(src)
     expect(m).not.toBeNull()
     expect(src).toContain("killTree(child, 'SIGKILL')")
-    const page = readFileSync(path.join(GUIDES, 'dev-tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Dev tasks',
+    ).replace(/\s+/g, ' ')
     expect(page).toContain(`${Number(m![1]) / 1000}-second grace`)
     expect(page).toContain('`SIGKILL`ed')
   })
@@ -1194,7 +1245,10 @@ describe('the tasks guide uses the status words the scheduler sets', () => {
     )
     // Both words are statuses of TaskOutcome, and they are not the same one.
     for (const status of ["'skipped'", "'aborted'"]) expect(src).toContain(status)
-    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Tasks and dependencies',
+    ).replace(/\s+/g, ' ')
     expect(page).toContain('skips its transitive dependents')
     expect(page).not.toContain('aborts its transitive dependents')
     for (const mode of ['deps-ok', 'never', 'always']) {
@@ -1220,16 +1274,14 @@ describe.each(['pnpm', 'bun'])(
       expect(global).not.toBeNull()
       const keys = [...global![1]!.matchAll(/^\s+(\w+):/gm)].map((m) => m[1]!)
       expect(keys.length).toBe(6)
-      const page = readFileSync(path.join(GUIDES, 'lockfiles.md'), 'utf8')
-      // That manager's OWN paragraph, not the page: both list
-      // `lockfileVersion`, so a whole-page search lets one paragraph cover
-      // for the other's omission — which is how the bun list lost two keys
-      // while the pnpm list carried them.
-      const starts = page.indexOf(`With \`${manager}()\``)
-      expect(starts).toBeGreaterThan(0)
-      const next = page.indexOf('With `', starts + 10)
-      const section = page.slice(starts, next > 0 ? next : page.length)
-      for (const key of keys) expect(section).toContain('`' + key + '`')
+      const page = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Lockfiles')
+      // That manager's OWN row, not the page: both list `lockfileVersion`,
+      // so a whole-page search lets one row cover for the other's omission
+      // — which is how the bun list lost two keys while the pnpm list
+      // carried them. (Paragraphs until the short site made them a table.)
+      const row = new RegExp('^\\| `' + manager + '\\(\\)` +\\|.*$', 'm').exec(page)
+      expect(row).not.toBeNull()
+      for (const key of keys) expect(row![0]).toContain('`' + key + '`')
     })
   },
 )
@@ -1260,12 +1312,13 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
   })
 })
 
+// The migrate-from-nx guide is the migrate page's Nx section (the short site).
 describe('the migrate-from-nx guide shows the nx-exec line the mapper writes', () => {
   it('its sample is the shape `nxExecCommand` produces, as vx-migrate’s own suite pins it', () => {
     // The guide's sample and `tests/migrate.test.ts` ("executors") in
     // vx-migrate spell the same line; a change to the bin's argv shape has
     // to land in both.
-    const page = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
+    const page = section(readFileSync(path.join(GUIDES, 'migrate.md'), 'utf8'), 'Nx')
     expect(page).toContain(
       `nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'`,
     )
@@ -1297,7 +1350,10 @@ describe('the tasks guide states which wildcards dependsOn takes', () => {
     }
     // The legal case: a self pattern expands over the project's task names.
     expect(src).toContain('if (isTaskPattern(spec.task))')
-    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    const page = section(
+      readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
+      'Tasks and dependencies',
+    ).replace(/\s+/g, ' ')
     expect(page).toContain('A task-name pattern is allowed')
     expect(page).toContain("`dependsOn: ['build.*']`")
     expect(page).toContain('Bare wildcards and negation')

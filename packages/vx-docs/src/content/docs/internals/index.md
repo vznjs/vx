@@ -4,9 +4,8 @@ description: How vx is built inside, for the people who change it — the techni
 ---
 
 These pages describe vx from the inside. You do not need them to use vx;
-[the Guide](../guide/why/) teaches the ideas and [the Docs](../quickstart/)
-show how to use them. They are here for contributors, and because the
-repository's own tests and notes link them.
+[the Docs](../quickstart/) show how. They are here for contributors, and
+because the repository's own tests and notes link them.
 
 The pages in the first two lists are generated from `packages/vx/docs/` in
 the repository, which stays their source of truth.

@@ -79,5 +79,5 @@ configs and retired it: technology-specific knowledge is the
 community's to write as presets, in TypeScript, on top of a runner that
 only knows what a command is.
 
-Reference: [Running tasks](../../guides/running-tasks/) and
-[Environment variables](../../guides/environment-variables/).
+Reference: [Running tasks](../../guides/ci/#run-and-filter) and
+[Environment variables](../../guides/configure/#environment-variables).

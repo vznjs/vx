@@ -1,30 +1,30 @@
 # The diagram kit
 
-Every picture in the Guide is one component, `Diagram.astro`, drawing one
+Every picture on the site is one component, `Diagram.astro`, drawing one
 value of `Picture` (`diagram.ts`). It renders SVG into the page at build
 time: no client script, no Mermaid, readable in both themes and at any
 width. The look is one stylesheet, `diagram.css`: the landing's mono
 (`--vx-mono`) for every label in the drawing, the body's sans for the
 caption, 8-unit box corners, 1.5 and 2.5 strokes, and the theme's `--vx-*`
-tokens only. `tests/diagram-kit.test.ts` holds that, and every chapter
-picture's text to fit its box and the drawing. Each part is rendered on the
+tokens only. `tests/diagram-kit.test.ts` holds that, and every picture
+kept as data to fit its text in its boxes and the drawing. Each part is rendered on the
 site at `/internals/diagrams/` (`src/content/docs/internals/diagrams.mdx`).
 
-## A chapter's pictures
+## A page's pictures
 
-A chapter keeps its pictures as data in
-`src/components/guide/<chapter>/pictures.ts`, so its rows
-(`tests/guide-<chapter>.test.ts`) read the same values the page draws:
+A page keeps its pictures as data in a module of their own, so its rows
+read the same values the page draws. The landing's one picture is
+`src/components/landing/one-run.ts`, held by `tests/landing.test.ts`:
 
-```mdx
-import Diagram from '../../../components/guide/diagram/Diagram.astro'
-import * as P from '../../../components/guide/why/pictures.js'
+```astro
+import Diagram from '../components/guide/diagram/Diagram.astro'
+import { oneRun } from '../components/landing/one-run.js'
 
-<Diagram {...P.packages} />
+<Diagram {...oneRun} />
 ```
 
-A picture drawn from a widget's model (the scheduler simulator, the toy
-monorepo) computes its data from that model in `pictures.ts`, never by hand.
+A new pictures module is listed in `tests/diagram-kit.test.ts`'s
+`PICTURES`, so the kit's laws reach it.
 
 ## `Picture`
 
@@ -34,7 +34,7 @@ monorepo) computes its data from that model in `pictures.ts`, never by hand.
 | `label`         | the `aria-label`: what the picture says, for a reader who cannot see it         |
 | `caption`       | one short sentence under the drawing                                            |
 | `width`, `height` | the canvas, default 600 × 260; the viewBox keeps the width and crops to what is drawn, so every picture shares one scale |
-| `boxes`         | `{ id, x, y, w?, h?, label, sub?, tone?, title?, data? }`; `w` × `h` default 130 × 52 (60 high with a `sub`); `data` becomes `data-*` attributes |
+| `boxes`         | `{ id, x, y, w?, h?, label, sub?, tone?, title? }`; `w` × `h` default 130 × 52 (60 high with a `sub`) |
 | `arrows`        | `{ from, to, label?, tone?, dashed?, via? }`; `via` lists corners to pass       |
 | `notes`         | `{ x, y, text, tone?, anchor? }`; loose text, muted by default                  |
 | `frames`        | `{ x, y, w, h, label, tone? }`; a dashed group, titled at its top left          |
@@ -42,8 +42,7 @@ monorepo) computes its data from that model in `pictures.ts`, never by hand.
 
 `lanes(rows, at)` turns workers and their bars into boxes and notes (a
 timeline); a bar too narrow for its label prints none and keeps its
-`title`. With `down: true` time runs down the page, one column per lane:
-the shape a timeline takes on a phone.
+`title`.
 
 ## Tones
 
@@ -58,7 +57,7 @@ the shape a timeline takes on a phone.
 | `muted`   | skipped, absent, not involved (dashed)     |
 
 A picture that needs a look the tones do not give is a reason to add a
-tone here, not to write a colour in a chapter.
+tone here, not to write a colour in a page.
 
 ## On a phone
 
@@ -75,23 +74,8 @@ and that it says what the wide one says.
 ## Widgets
 
 `Diagram.astro` is `DiagramSvg.astro` (the drawing) in a figure with its
-caption. A widget that draws with the kit, the graph explorer, puts
-`<DiagramSvg {...picture} live />` inside a `<div class="vx-diagram inset">`:
-`inset` drops the picture's own frame, since the widget sits in the same
-frame already, and `live` defines an arrowhead for every tone, so the
-widget's element can change a box's or an arrow's tone class. A box's
-`data` names what the element finds it by.
-
-Every widget takes this look through `demos/widget.css`: the same frame and
-caption, mono for what a reader acts on or reads as data, sans for
-sentences, the 8-unit corner, the two strokes and these tones.
-`tests/diagram-kit.test.ts` holds the widgets to the same tokens.
-
-A widget that draws its own SVG keeps the phone rule too. The scheduler
-simulator's `ganttSvg` draws each chart twice, `data-layout="wide"` with
-time across and `data-layout="narrow"` with time down the page, one
-column per worker, 340 across. Its stylesheet swaps them by a container
-query at the wide chart's own 34rem minimum, so the chart's box decides
-and no width between phone and desktop scrolls sideways;
-`tests/guide-concurrency.test.ts` holds the phone chart to the wide one's
-bars, lines and words.
+caption. A widget (`src/components/Demo.astro`) takes the same look
+through `demos/widget.css`: the same frame and caption, mono for what a
+reader acts on or reads as data, sans for sentences, the 8-unit corner,
+the two strokes and these tones. `tests/diagram-kit.test.ts` holds the
+widgets to the same tokens.

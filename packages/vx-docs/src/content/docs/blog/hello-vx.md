@@ -23,7 +23,7 @@ feature inside.
 Where to look next:
 
 - [Quickstart](../../quickstart/) — a workspace running under vx in a few
-  minutes, or [add vx to an existing repo](../../add-to-existing-repo/)
+  minutes, or [add vx to an existing repo](../../quickstart/#an-existing-repo)
   without rewriting a config (a Turbo repo runs as it is).
 - [Benchmarks](../../benchmarks/) — synthetic workspaces up to 3,270 tasks,
   and a real Turbo monorepo measured against Turbo itself.

@@ -81,4 +81,4 @@ The plugin is separate from core on purpose. Core owns the `fingerprint`
 seam, the memo and the per-run gate; the lockfile *parsers* are
 package-manager knowledge, and package-manager knowledge changes on the
 package manager's schedule. The guide is [Lockfile-aware
-caching](../../guides/lockfiles/).
+caching](../../guides/configure/#lockfiles).

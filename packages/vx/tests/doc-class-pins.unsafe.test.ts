@@ -38,8 +38,9 @@ const CLASS_PAGES = {
     'layered-cache.md',
     'options.md',
     'patterns.md',
+    // The remote-caching guide merged into ci.md (the short site), which
+    // links plugins.md for the seam rather than naming it.
     'plugins.md',
-    'remote-caching.md',
   ],
   retryLine: ['execute-task.md', 'schema.md'],
   outputFingerprint: [
@@ -394,10 +395,11 @@ describe('every page listing the env allowlist lists all of it', () => {
     expect(posix.length).toBe(17)
     const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
     // schema.md (pinned separately), execution.md, modules/env.md, and the
-    // environment-variables guide. A fifth copy lands here unpinned no more.
+    // configure guide (the environment-variables guide until the short
+    // site). A fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
+      'configure.md',
       'env.md',
-      'environment-variables.md',
       'execution.md',
       'schema.md',
     ])
@@ -433,12 +435,13 @@ describe('every page stating the timeout ladder states all four rungs', () => {
     const pages = handAuthoredDocs().filter((p) =>
       readFileSync(p, 'utf8').includes('VX_TASK_TIMEOUT'),
     )
-    // cli.md, schema.md and the workspace-config guide. A fourth copy lands
+    // cli.md, schema.md and the configure guide's workspace section (the
+    // workspace-config guide until the short site). A fourth copy lands
     // here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'cli.md',
+      'configure.md',
       'schema.md',
-      'workspace-config.md',
     ])
     for (const page of pages) {
       const text = readFileSync(page, 'utf8')

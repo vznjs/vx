@@ -1,10 +1,12 @@
-// The Guide's diagram kit (src/components/guide/diagram/): one component
-// draws every picture at build time, from data. What it drew is in the built
-// HTML, read here from the page that renders each part (internals/diagrams).
-// It colours only with the theme's tokens, which theme.css defines for both
-// themes, so a picture reads in dark and in light alike. And every chapter's
-// picture keeps its text inside its boxes and its drawing, measured in the
-// mono face the stylesheet sets, so no label is cut or overlaps its frame.
+// The diagram kit (src/components/guide/diagram/): one component draws
+// every picture at build time, from data. What it drew is in the built HTML,
+// read here from the page that renders each part (internals/diagrams). It
+// colours only with the theme's tokens, which theme.css defines for both
+// themes, so a picture reads in dark and in light alike. And every picture a
+// page keeps as data (the landing's `one-run`) keeps its text inside its
+// boxes and its drawing, measured in the mono face the stylesheet sets, so no
+// label is cut or overlaps its frame, and carries a phone layout that says
+// the same thing.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -18,20 +20,10 @@ import {
   textWidth,
   type Picture,
 } from '../src/components/guide/diagram/diagram.js'
-import * as affected from '../src/components/guide/affected/pictures.js'
-import * as caching from '../src/components/guide/caching/pictures.js'
-import * as concurrency from '../src/components/guide/concurrency/pictures.js'
-import * as dependencies from '../src/components/guide/dependencies/pictures.js'
-import * as insideVx from '../src/components/guide/inside-vx/pictures.js'
-import * as manyMachines from '../src/components/guide/many-machines/pictures.js'
-import * as tasks from '../src/components/guide/tasks/pictures.js'
-import * as trust from '../src/components/guide/trust/pictures.js'
-import * as tryIt from '../src/components/guide/try-it/pictures.js'
-import * as why from '../src/components/guide/why/pictures.js'
+import * as landing from '../src/components/landing/one-run.js'
 
 const SITE = path.resolve(import.meta.dir, '..')
 const KIT = path.join(SITE, 'src/components/guide/diagram')
-const GUIDE = path.join(SITE, 'src/components/guide')
 const THEME = path.join(SITE, 'src/styles/theme.css')
 
 // The tokens a picture may use (design/site-redo-2026-09.md, R1's contract),
@@ -50,22 +42,14 @@ const TOKENS = [
 ]
 const FONTS = ['--vx-mono', '--vx-font-body']
 
-const CHAPTERS: Record<string, Record<string, unknown>> = {
-  why,
-  tasks,
-  dependencies,
-  concurrency,
-  caching,
-  trust,
-  affected,
-  'many-machines': manyMachines,
-  'inside-vx': insideVx,
-  'try-it': tryIt,
+// Every module that keeps a page's pictures as data, by its file.
+const PICTURES: Record<string, Record<string, unknown>> = {
+  'src/components/landing/one-run.ts': landing,
 }
 
-/** Every picture a chapter's `pictures.ts` exports. */
-function chapterPictures(): { at: string; p: Picture }[] {
-  return Object.entries(CHAPTERS).flatMap(([slug, mod]) =>
+/** Every picture a pictures module exports. */
+function pagePictures(): { at: string; p: Picture }[] {
+  return Object.entries(PICTURES).flatMap(([slug, mod]) =>
     Object.entries(mod)
       .filter(([, v]) => typeof v === 'object' && v !== null && 'boxes' in v && 'caption' in v)
       .map(([k, v]) => ({ at: `${slug}/${k}`, p: v as Picture })),
@@ -141,17 +125,11 @@ describe('the diagram kit, as built', () => {
   })
 })
 
-describe("every chapter's pictures", () => {
-  const all = chapterPictures()
+describe('every picture kept as data', () => {
+  const all = pagePictures()
 
-  it('are found, ten chapters of them', () => {
-    expect(new Set(all.map((a) => a.at.split('/')[0])).size).toBe(10)
-    expect(all.length).toBeGreaterThanOrEqual(30)
-  })
-
-  it('have names unique across the Guide', () => {
-    const names = all.map((a) => a.p.name)
-    expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([])
+  it('are found: the landing’s one picture', () => {
+    expect(all.map((a) => a.p.name)).toEqual(['one-run'])
   })
 
   it('keep every label inside its box or along its arrow, and everything inside the drawing', () => {
@@ -284,11 +262,11 @@ function content(p: Picture): Record<'boxes' | 'arrows' | 'frames' | 'notes', st
 }
 
 describe("the kit's colours and faces", () => {
-  it('are the theme’s tokens, and nothing else, in the kit and every chapter', () => {
+  it('are the theme’s tokens, and nothing else, in the kit and every picture', () => {
     const wrong: string[] = []
     const files = [
       ...readdirSync(KIT).map((f) => path.join(KIT, f)),
-      ...Object.keys(CHAPTERS).map((slug) => path.join(GUIDE, slug, 'pictures.ts')),
+      ...Object.keys(PICTURES).map((f) => path.join(SITE, f)),
     ].filter((f) => /\.(astro|css|ts)$/.test(f))
     for (const f of files) {
       const src = readFileSync(f, 'utf8')
@@ -305,24 +283,14 @@ describe("the kit's colours and faces", () => {
     expect(wrong).toEqual([])
   })
 
-  // The Guide's widgets take the pictures' look (Next 16 b): the same tokens
-  // and faces, and a frame and caption of the same size, so no widget reads
-  // as a second hand.
-  it('are the only colours and faces of the Guide’s widgets, framed like a picture', () => {
+  // The widgets take the pictures' look (Next 16 b): the same tokens and
+  // faces, and a frame and caption of the same size, so no widget reads as a
+  // second hand.
+  it('are the only colours and faces of the widgets, framed like a picture', () => {
     const DEMOS = path.join(SITE, 'src/components/demos')
     const files = [
       path.join(SITE, 'src/components/Demo.astro'),
-      ...[
-        'widget.css',
-        'Checkpoint.astro',
-        'GraphExplorer.astro',
-        'KeyCalculator.astro',
-        'PipelineExplorer.astro',
-        'PipelineStrip.astro',
-        'Playground.astro',
-        'SchedulerSim.astro',
-        'StaleHit.astro',
-      ].map((f) => path.join(DEMOS, f)),
+      ...['widget.css', 'Playground.astro'].map((f) => path.join(DEMOS, f)),
     ]
     const wrong: string[] = []
     for (const f of files) {

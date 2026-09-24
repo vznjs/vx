@@ -3,8 +3,7 @@ title: Sandboxing tasks
 description: Run a task where only the files and network you declared exist, so an undeclared read fails the task instead of hiding in the cache.
 ---
 
-Prove a task reads only what it declares. Why? →
-[Chapter 6: Can you trust a hit?](../../guide/trust/)
+Prove a task reads only what it declares.
 
 ## Steps
 

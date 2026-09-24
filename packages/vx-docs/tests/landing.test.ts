@@ -1,37 +1,77 @@
-// The landing page as the Guide's cover (design/site-redo-2026-09.md § The
-// landing; R3 of the site redo): one question and one picture, the ten
-// chapters, then the numbers, adoption and what is not inside. These rows
-// read the page as it shipped, `dist/index.html`, which the `build` task
-// writes.
+// The landing page is the whole story (design/site-short-2026-09.md § The
+// shape, § Laws): the hero, the one picture with its six callouts, the one
+// benchmark, and the four pillars. These rows read the page as it shipped,
+// `dist/index.html`, which the `build` task writes, and the picture as data
+// (src/components/landing/one-run.ts). What the design says is written out
+// here by hand, never read from the module it holds.
 //
 // The measurements are not checked here: `@vzn/vx-bench#check.site` holds
-// the benchRows block, the stat tiles and the graph's size to results.json,
-// and the n8n panel and its task count to benchmarks.md. The page's other
-// figures (item 712) are held below, each to its own source.
+// the benchRows block and the graph's size to results.json.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { CHAPTERS } from '../src/guide/chapters.js'
+import { CALLOUTS, oneRun } from '../src/components/landing/one-run.js'
+import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
-// Every section below the hero, top to bottom. The three idea sections of
-// item 709 (`inputs`, `seams`, `speed`), the feature and plugin cards
-// (`why`, `plugins`) and the config sample (`config`) are gone: the
-// chapters teach each of them now.
-const SECTIONS = ['chapters', 'run', 'bench', 'real', 'scale', 'migrate', 'open']
+// Every section below the hero, top to bottom.
+const SECTIONS = ['one-run', 'bench', 'pillars']
 
-// The toy monorepo's four packages, in the order `for p in packages/*`
-// visits them: by name.
-const LOOP_ORDER = ['api', 'app', 'ui', 'utils']
+// The six lines under the picture, as the design writes them, each at the
+// anchor the old chapters redirect to.
+const LINES = [
+  ['tasks', '1 Tasks. app builds after what it uses.'],
+  ['parallel', '2 Parallel. ui and api build at once.'],
+  ['cache', '3 Cache. Unchanged work comes back from the cache.'],
+  ['changed', '4 Only what changed. You edited app; only app runs.'],
+  ['sandbox', '5 Sandbox. A read you did not declare fails the task.'],
+  ['plugins', '6 Plugins. Swap the cache, runner or telemetry. No fork.'],
+]
 
-// Every internal link the page carried before item 709 (the built page at
-// f565ec5f), without the base path. Two of them, the benchmark panels'
-// links, were written as quoted `{href(…)}` in the source and shipped as that
-// literal text, so they never resolved; they are listed by the target they
-// named, which the page now links.
+// The picture, as the design draws it: box → tone and label (and sub line),
+// arrows, frames, and the words of its notes by tone.
+const BOXES = [
+  'api ok: api#build / from cache',
+  'app accent: app#build / you edited app',
+  'cache default: cache',
+  'graph default: graph',
+  'key default: key',
+  'otel default: OpenTelemetry',
+  'remote default: remote cache',
+  'run default: run',
+  'schedule default: schedule',
+  'secrets muted: ../secrets.env',
+  'telemetry default: telemetry',
+  'ui ok: ui#build / from cache',
+  'utils ok: utils#build / from cache',
+]
+const ARROWS = [
+  'api → app default',
+  'app → secrets danger: ✕ denied',
+  'otel → telemetry default dashed',
+  'remote → cache default dashed',
+  'ui → app default',
+  'utils → api default',
+  'utils → ui default',
+]
+const FRAMES = ['default: a run’s stages', 'default: at once', 'link: sandbox']
+const STAGES = ['graph', 'key', 'schedule', 'run', 'cache', 'telemetry']
+
+// The four pillars, in order: title, and the Docs page each links.
+const PILLARS = [
+  ['Correctness', 'caching/'],
+  ['Sandbox', 'guides/sandboxing/'],
+  ['Extensibility', 'guides/plugins/'],
+  ['Freedom', 'guides/migrate/'],
+]
+
+// Every internal link the page carried before the short site (the built
+// page at 094c80f3), without the base path, and the reason each one the
+// page no longer carries went. A link to a page that exists is kept unless
+// a reason is written here.
 const OLD_LINKS = [
   '',
   'architecture/',
@@ -41,16 +81,24 @@ const OLD_LINKS = [
   'blog/',
   'cli/',
   'cli/#vx-init',
-  'cli/#vx-why',
+  'compare/',
   'comparison/',
-  'guides/extensibility/',
+  'guide/affected/',
+  'guide/caching/',
+  'guide/concurrency/',
+  'guide/dependencies/',
+  'guide/inside-vx/',
+  'guide/many-machines/',
+  'guide/tasks/',
+  'guide/trust/',
+  'guide/try-it/',
+  'guide/why/',
+  'guides/caching/',
   'guides/mcp/',
   'guides/plugins/',
-  'guides/plugins/#keys-and-order',
   'guides/remote-caching/',
   'guides/remote-execution/',
   'guides/sandboxing/',
-  'guides/trusting-the-cache/',
   'logo-mark.svg',
   'migrate/from-nx/',
   'migrate/from-turborepo/',
@@ -58,36 +106,30 @@ const OLD_LINKS = [
   'quickstart/',
   'schema/',
 ]
-// Links removed on purpose, each with the reason.
+const CHAPTER = 'the Guide collapsed into this page; the chapter redirects to its line'
 const REMOVED: Record<string, string> = {
-  'cli/#vx-why': 'the feature cards went; the Docs caching page shows `vx why`',
-  'guides/extensibility/': 'merged into guides/plugins/, which the footer links',
-  'guides/plugins/#keys-and-order': 'the plugin cards went; chapter 9 teaches the stages',
-  'guides/trusting-the-cache/': 'merged into guides/caching/, which the footer links',
-}
-
-// benchmarks.md as the import step copied it; its tables and headings are
-// the source's, byte for byte.
-const BENCHMARKS = path.resolve(import.meta.dir, '../src/content/docs/benchmarks.md')
-const CORE_PACKAGE = path.resolve(import.meta.dir, '../node_modules/@vzn/vx/package.json')
-
-/** A `## ` section of benchmarks.md, up to the next one. */
-function benchSection(heading: string): string {
-  const doc = readFileSync(BENCHMARKS, 'utf8')
-  const at = doc.indexOf(`\n## ${heading}`)
-  expect(at).toBeGreaterThan(-1)
-  const next = doc.indexOf('\n## ', at + 1)
-  return doc.slice(at, next === -1 ? undefined : next)
-}
-
-/** The cells of the row labelled `label` in a Markdown table. */
-function tableRow(md: string, label: string): string[] {
-  const line = md.split('\n').find((l) => l.split('|')[1]?.trim() === label)
-  expect(line).toBeDefined()
-  return line!
-    .split('|')
-    .slice(2, -1)
-    .map((c) => c.trim())
+  'architecture/': 'internals, reached from the Reference; the footer lists what a user reads',
+  'benchmarks/#five-real-turbo-repos-2026-09-11': 'the #real panel went; one benchmark stays',
+  'benchmarks/#how-the-overhead-scales-with-the-workspace-2026-09-10':
+    'the #scale panel went; one benchmark stays',
+  'cli/#vx-init': 'the migrate section went; the quickstart runs vx init',
+  'comparison/': 'the footer links compare/, the page that says when to pick another tool',
+  'guide/affected/': CHAPTER,
+  'guide/caching/': CHAPTER,
+  'guide/concurrency/': CHAPTER,
+  'guide/dependencies/': CHAPTER,
+  'guide/inside-vx/': CHAPTER,
+  'guide/many-machines/': CHAPTER,
+  'guide/tasks/': CHAPTER,
+  'guide/trust/': CHAPTER,
+  'guide/try-it/': 'the playground moved to playground/, which the footer links',
+  'guide/why/': CHAPTER,
+  'guides/caching/': 'the Docs became six pages; the footer links them',
+  'guides/mcp/': 'the Docs became six pages; the footer links them',
+  'guides/remote-caching/': 'the Docs became six pages; the footer links them',
+  'guides/remote-execution/': 'the Docs became six pages; the footer links them',
+  'migrate/from-nx/': 'the freedom card links the one migration page',
+  'migrate/from-turborepo/': 'the freedom card links the one migration page',
 }
 
 function page(): string {
@@ -106,11 +148,6 @@ function text(html: string): string {
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
-}
-
-/** Text with each tag read as a space: a `<br>` or two spans side by side. */
-function spaced(html: string): string {
-  return text(html.replace(/<[^>]+>/g, ' '))
 }
 
 function section(html: string, id: string): string {
@@ -144,138 +181,175 @@ function resolves(link: string): string | undefined {
   return undefined
 }
 
+/** What a picture says, apart from where: boxes, arrows and frames as sorted
+ *  lines, and its notes' words per tone, in order. */
+function says(p: Picture): {
+  boxes: string[]
+  arrows: string[]
+  frames: string[]
+  notes: string[]
+} {
+  const words = new Map<string, string[]>()
+  for (const n of p.notes ?? []) {
+    const tone = n.tone ?? 'muted'
+    words.set(tone, [...(words.get(tone) ?? []), ...n.text.split(/\s+/)])
+  }
+  return {
+    boxes: p.boxes
+      .map((b) => `${b.id} ${b.tone ?? 'default'}: ${b.label}${b.sub ? ` / ${b.sub}` : ''}`)
+      .sort(),
+    arrows: (p.arrows ?? [])
+      .map(
+        (a) =>
+          `${a.from} → ${a.to} ${a.tone ?? 'default'}${a.dashed ? ' dashed' : ''}${a.label ? `: ${a.label}` : ''}`,
+      )
+      .sort(),
+    frames: (p.frames ?? []).map((f) => `${f.tone ?? 'default'}: ${f.label}`).sort(),
+    notes: [...words].map(([tone, w]) => `${tone}: ${w.join(' ')}`).sort(),
+  }
+}
+
 describe('the landing page', () => {
   const html = page()
   const h1At = html.indexOf('<h1')
   const hero = html.slice(h1At, html.indexOf('<section', h1At))
 
-  it('asks the question in the h1, then lists the chapters, then the numbers', () => {
+  it('says what vx is in one line, then the picture, the benchmark and the pillars', () => {
     const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
-    expect(spaced(h1[0]![1]!)).toBe(
-      'Four packages. One build. Why is it slow, and why is it wrong?',
-    )
+    expect(text(h1[0]![1]!)).toBe('A fast, correct task runner for JavaScript monorepos.')
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
     expect(h1[0]!.index!).toBeLessThan(ids[0]!.index!)
   })
 
-  it('sends the reader to the guide first, then the quickstart', () => {
-    expect(hrefs(hero)).toEqual([`${BASE}guide/why/`, `${BASE}quickstart/`])
-    const primary = /<a\b[^>]*class="btn btn-primary[^"]*"[^>]*>([\s\S]*?)<\/a>/.exec(hero)
-    expect(text(primary![1]!)).toBe('Read the guide →')
+  it('offers the install command, the quickstart and GitHub, nothing else', () => {
     expect(hero).toContain('data-copy="npm install -g @vzn/vx"')
+    expect(hrefs(hero)).toEqual([`${BASE}quickstart/`, 'https://github.com/vznjs/vx'])
+    const buttons = [...hero.matchAll(/<a\b[^>]*class="btn [^"]*"[^>]*>([\s\S]*?)<\/a>/g)]
+    expect(buttons.map((m) => text(m[1]!))).toEqual(['Quickstart →', 'GitHub'])
   })
 
-  it('draws the loop failing three ways, as one static picture', () => {
-    const svgs = [...hero.matchAll(/<svg\b([^>]*)>([\s\S]*?)<\/svg>/g)].filter((m) =>
-      /\srole="img"/.test(m[1]!),
-    )
-    expect(svgs).toHaveLength(1)
-    const [, attrs, body] = svgs[0]!
-    expect(attrs).toMatch(/\saria-label="[^"]{80,}"/)
-    // The command is text above the drawing, so it wraps on a phone.
-    expect(/<code class="loop-code">([\s\S]*?)<\/code>/.exec(hero)?.[1]).toContain(
-      'for p in packages/*',
-    )
-    // One lane per package, in the loop's order; the three that need a
-    // package built later fail, and the one that needs nothing builds.
-    const lanes = [...body!.matchAll(/<text class="lane"[^>]*>([^<]*)</g)].map((m) => m[1])
-    expect(lanes).toEqual(LOOP_ORDER)
-    const bars = [...body!.matchAll(/<g class="bar (fail|ok)"/g)].map((m) => m[1])
-    expect(bars).toEqual(['fail', 'fail', 'fail', 'ok'])
-    const legend = [...hero.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => spaced(m[1]!))
-    expect(legend.map((l) => l.replace(/\..*$/, ''))).toEqual([
-      '1 Wrong order',
-      '2 Rebuilds everything',
-      '3 One at a time',
-    ])
-    expect(hero).not.toMatch(/<script\b|\son[a-z]+=/)
+  it('draws the one picture, both layouts, and lists its six lines at their anchors', () => {
+    const run = section(html, 'one-run')
+    const figures = [...run.matchAll(/<figure\b[^>]*data-picture="([^"]+)"/g)].map((m) => m[1])
+    expect(figures).toEqual(['one-run'])
+    const svgs = [...run.matchAll(/<svg\b[^>]*data-layout="(\w+)"[^>]*>/g)].map((m) => m[1])
+    expect(svgs).toEqual(['wide', 'narrow'])
+    const items = [...run.matchAll(/<li\b[^>]*\bid="([\w-]+)"[^>]*>([\s\S]*?)<\/li>/g)]
+    const line = (li: string): string => {
+      const [, n, rest] = /<span class="n">(\d)<\/span>\s*<span>([\s\S]*)<\/span>/.exec(li)!
+      return `${n} ${text(rest!)}`
+    }
+    expect(items.map((m) => [m[1], line(m[2]!)])).toEqual(LINES)
+    expect(run).not.toMatch(/<script\b|\son[a-z]+=/)
   })
 
-  it('lists the ten chapters, each its title and problem, as chapters.ts has them', () => {
-    const items = [...section(html, 'chapters').matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => {
-      const link = /<a href="([^"]*)"/.exec(m[1]!)![1]!
-      const part = (cls: string) =>
-        text(new RegExp(`<span class="${cls}"[^>]*>([\\s\\S]*?)</span>`).exec(m[1]!)![1]!)
-      return [link, part('n'), part('t'), part('p')]
-    })
-    expect(items).toEqual(
-      CHAPTERS.map((c) => [
-        `${BASE}guide/${c.slug}/`,
-        String(c.chapter).padStart(2, '0'),
-        c.title,
-        c.problem.replace(/`/g, ''),
+  it('holds exactly one benchmark section, the first one', () => {
+    const bench = section(html, 'bench')
+    expect(text(bench)).toContain('First in every row.')
+    expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
+  })
+
+  it('carries the four pillars in order, each an icon, a title, one short sentence and its page', () => {
+    const cards = [
+      ...section(html, 'pillars').matchAll(
+        /<a\b[^>]*class="card"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g,
+      ),
+    ]
+    expect(
+      cards.map((m) => [
+        text(/<h3\b[^>]*>([\s\S]*?)<\/h3>/.exec(m[2]!)![1]!),
+        m[1]!.slice(BASE.length),
       ]),
-    )
-    for (const [link] of items) expect(resolves(link!.slice(BASE.length))).toBeUndefined()
+    ).toEqual(PILLARS)
+    for (const [, , body] of cards) {
+      expect(body).toMatch(/<svg\b/)
+      const sentence = text(/<p\b[^>]*>([\s\S]*?)<\/p>/.exec(body!)![1]!)
+      expect({ sentence, one: sentence.split(/[.!?]\s/).length }).toEqual({ sentence, one: 1 })
+      expect(sentence.split(' ').length).toBeLessThanOrEqual(15)
+    }
   })
 
-  it('keeps every internal link the page had, unless it was removed on purpose', () => {
+  it('writes no paragraph longer than one sentence', () => {
+    const long = [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/g)]
+      .map((m) => text(m[1]!))
+      .filter((p) => (p.match(/[.!?](?:\s|$)/g) ?? []).length > 1)
+    expect(long).toEqual([])
+  })
+
+  it('keeps every internal link the page had, unless it went on purpose, and each lands', () => {
     const now = new Set(
       allHrefs(html)
         .filter((h) => h.startsWith(BASE))
         .map((h) => h.slice(BASE.length)),
     )
-    const lost = OLD_LINKS.filter((l) => !now.has(l) && !(l in REMOVED))
-    expect(lost).toEqual([])
+    expect(OLD_LINKS.filter((l) => !now.has(l) && !(l in REMOVED))).toEqual([])
     // Removed means removed: a link on the list that is still on the page is
     // a stale entry.
     expect(Object.keys(REMOVED).filter((l) => now.has(l))).toEqual([])
-    const broken = [...now].map(resolves).filter((m) => m !== undefined)
-    expect(broken).toEqual([])
-    // No link is a literal of the source's expression syntax.
+    expect([...now].map(resolves).filter((m) => m !== undefined)).toEqual([])
     expect(allHrefs(html).filter((h) => h.includes('{'))).toEqual([])
   })
 })
 
-// Item 712: every figure on the page that update-site.ts does not write,
-// held to its source. The expected facts are written out here, and each is
-// read from the source AND from the built page, so a change to either
-// fails the row.
-describe("the landing page's figures", () => {
-  const html = page()
-
-  it("says five real Turbo repos and vx's restore on all five, as benchmarks.md does", () => {
-    const five = benchSection('Five real Turbo repos')
-    // One `### owner/name (…)` subsection per repo; the section's last
-    // subsection, the wide graphs, is not a repo.
-    const subsections = five.split(/^### /m).filter((s) => /^[\w.-]+\/[\w.-]+ \(/.test(s))
-    expect(subsections.map((s) => s.slice(0, s.indexOf(' ')))).toEqual([
-      'withastro/astro',
-      'payloadcms/payload',
-      'medusajs/medusa',
-      'n8n-io/n8n',
-      'calcom/cal.com',
-    ])
-    // A bold cell is the faster tool's; vx's is the first.
-    const restore = subsections.map((repo) =>
-      tableRow(repo, 'warm, outputs wiped (restore)')[0]!.startsWith('**'),
-    )
-    expect(restore).toEqual([true, true, true, true, true])
-    expect(text(section(html, 'real'))).toContain(
-      'On five real Turbo repos, the fastest restore on all five;',
-    )
-    // The panel shows n8n and names the other four.
-    expect(text(section(html, 'real'))).toContain(
-      'Astro, payload, medusa and cal.com are in the benchmarks.',
-    )
+describe('the one picture, as data', () => {
+  it('says what the design draws, wide and on a phone', () => {
+    const want = { boxes: BOXES, arrows: ARROWS, frames: FRAMES }
+    const wide = says(oneRun)
+    const phone = says(narrowOf(oneRun)!)
+    expect({ boxes: wide.boxes, arrows: wide.arrows, frames: wide.frames }).toEqual(want)
+    expect({ boxes: phone.boxes, arrows: phone.arrows, frames: phone.frames }).toEqual(want)
   })
 
-  it('names the three sizes the scaling table measures', () => {
-    const sizes = benchSection('How the overhead scales with the workspace')
-      .split('\n')
-      .filter((l) => /^\| [\d,]+ /.test(l))
-      .map((l) => l.split('|')[1]!.trim())
-    expect(sizes).toEqual(['100', '300', '1,000'])
-    expect(text(section(html, 'scale'))).toContain('Benchmarks: 100, 300 and 1,000 packages')
+  it('numbers the six callouts on the drawing, in order, beside the note that app runs', () => {
+    const marks = CALLOUTS.map((c) => c.mark)
+    expect(marks).toEqual(['①', '②', '③', '④', '⑤', '⑥'])
+    for (const p of [oneRun, narrowOf(oneRun)!]) {
+      expect(says(p).notes).toEqual([
+        `accent: ${marks.slice(0, 4).join(' ')} ✎ runs ${marks.slice(4).join(' ')}`,
+        'muted: yours plugs in the same way',
+      ])
+    }
   })
 
-  it("labels the terminal a sample, and prints core's version in it", () => {
-    const version = (JSON.parse(readFileSync(CORE_PACKAGE, 'utf8')) as { version: string }).version
-    const term = section(html, 'run')
-    expect(term).toContain('<div class="term">')
-    expect(text(term)).toContain('zsh — vx · sample output')
-    expect(text(term)).toContain(`─ vx ${version} `)
+  it('runs the stages below the run, in the pipeline’s order, the plugins hanging under them', () => {
+    const RUN = ['utils', 'ui', 'api', 'app', 'secrets']
+    const PLUGINS = ['remote', 'otel']
+    for (const p of [oneRun, narrowOf(oneRun)!]) {
+      const ys = (ids: string[]): number[] =>
+        p.boxes.filter((b) => ids.includes(b.id)).map((b) => b.y)
+      const stages = p.boxes.filter((b) => STAGES.includes(b.id))
+      const order = [...stages].sort((a, b) => a.y - b.y || a.x - b.x).map((b) => b.id)
+      expect(order).toEqual(STAGES)
+      expect(Math.min(...ys(STAGES))).toBeGreaterThan(Math.max(...ys(RUN)))
+      expect(Math.min(...ys(PLUGINS))).toBeGreaterThan(Math.max(...ys(STAGES)))
+    }
+  })
+
+  it('keeps utils, ui and api inside neither frame but their own, and app inside the sandbox', () => {
+    for (const p of [oneRun, narrowOf(oneRun)!]) {
+      const inside = (id: string, label: string): boolean => {
+        const b = p.boxes.find((x) => x.id === id)!
+        const f = p.frames!.find((x) => x.label === label)!
+        const w = b.w ?? 130
+        const h = b.h ?? (b.sub === undefined ? 52 : 60)
+        return b.x >= f.x && b.y >= f.y && b.x + w <= f.x + f.w && b.y + h <= f.y + f.h
+      }
+      expect(['utils', 'ui', 'api', 'app', 'secrets'].map((id) => inside(id, 'at once'))).toEqual([
+        false,
+        true,
+        true,
+        false,
+        false,
+      ])
+      expect(['utils', 'ui', 'api', 'app', 'secrets'].map((id) => inside(id, 'sandbox'))).toEqual([
+        false,
+        false,
+        false,
+        true,
+        false,
+      ])
+    }
   })
 })

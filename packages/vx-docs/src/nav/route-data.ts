@@ -1,9 +1,8 @@
 // Starlight's route middleware: each page sees the sidebar of its own section
 // only, and its prev/next links stay inside that section. The section is the
 // top-level group that lists the page; a page no group lists goes by its
-// path: one under guide/ (the labs, which chapter 10 links) belongs to the
-// Guide, and every other one, internals included, to the Reference, which is
-// where the internals index is linked from.
+// path: the blog's to the Blog, and every other one, internals included, to
+// the Reference, which is where the internals index is linked from.
 
 import { defineRouteMiddleware, type StarlightRouteData } from '@astrojs/starlight/route-data'
 import { GROUP_SECTION, type SectionId } from './sections.js'
@@ -15,12 +14,9 @@ function links(entries: Entry[]): Link[] {
   return entries.flatMap((e) => (e.type === 'link' ? [e] : links(e.entries)))
 }
 
-/** A page's section from its route id (`guide/why`, `blog/hello-vx`, `404`). */
+/** A page's section from its route id (`blog/hello-vx`, `modules/cache`, `404`). */
 function sectionByPath(id: string): SectionId {
-  const first = id.split('/')[0]
-  if (first === 'blog') return 'blog'
-  if (first === 'guide') return 'guide'
-  return 'reference'
+  return id.split('/')[0] === 'blog' ? 'blog' : 'reference'
 }
 
 export const onRequest = defineRouteMiddleware((context) => {

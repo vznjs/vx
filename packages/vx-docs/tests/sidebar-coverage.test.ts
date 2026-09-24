@@ -7,10 +7,8 @@
 // sidebar cannot drift silently.
 //
 // Kept out on purpose (design/site-redo-2026-09.md): the internals, reached
-// through the internals index at the end of the Reference; the labs, a tool
-// page after the Guide's last chapter, which that chapter links (the Guide's
-// sidebar is the ten chapters and nothing else); and the blog, which has its
-// own.
+// through the internals index at the end of the Reference, and the blog,
+// which has its own.
 //
 // It reads only THIS project: the site's sidebar module, its `.gitignore`,
 // and the generated content collection. The generated set is what the
@@ -27,7 +25,6 @@ const CONTENT = path.join(SITE, 'src/content/docs')
 
 const INTERNALS = ['/overview/', '/architecture/', '/optimizations/', '/patterns/', '/flows/']
 const OUT_OF_SIDEBAR = /^\/(?:modules|design|internals|blog)\//
-const LABS = '/guide/labs/'
 
 /**
  * Top-level pages the last `import` generated, as file names. A generated
@@ -70,30 +67,27 @@ describe('docs site sidebar coverage', () => {
     expect(ignored).toEqual(importedPages())
   })
 
-  it('names every page but the internals, the labs and the blog', () => {
+  it('names every page but the internals and the blog', () => {
     const orphans = collectionPages()
       .map((p) => `/${p}`)
-      .filter(
-        (u) =>
-          !listed.includes(u) && !INTERNALS.includes(u) && u !== LABS && !OUT_OF_SIDEBAR.test(u),
-      )
+      .filter((u) => !listed.includes(u) && !INTERNALS.includes(u) && !OUT_OF_SIDEBAR.test(u))
     expect(orphans).toEqual([])
   })
 
   // The control for the row above: each kind it excuses exists, so the
   // excuse is not true of an empty set; the two pages the Reference took
-  // from the old Learn section are listed; and no Learn page is left.
+  // from the old Learn section are listed; and no Learn or Guide page is
+  // left, the playground the Guide hosted being a Docs page now.
   it('excuses only kinds of page that exist, and lists the glossary and the comparison', () => {
     const pages = collectionPages().map((p) => `/${p}`)
     expect(INTERNALS.filter((u) => !pages.includes(u))).toEqual([])
     for (const dir of ['modules', 'design', 'internals', 'blog']) {
       expect(pages.some((u) => u.startsWith(`/${dir}/`))).toBe(true)
     }
-    expect(pages).toContain(LABS)
-    expect(listed).not.toContain(LABS)
     expect(listed).toContain('/glossary/')
     expect(listed).toContain('/compare/')
-    expect(pages.filter((u) => u.startsWith('/learn/'))).toEqual([])
+    expect(listed).toContain('/playground/')
+    expect(pages.filter((u) => /^\/(?:learn|guide)\//.test(u))).toEqual([])
   })
 
   it('links only to pages that exist, each once', () => {

@@ -3,28 +3,16 @@
   --ink-900: #0a0b0d;
   --ink-850: #0e1013;
   --ink-800: #14171b;
-  --ink-750: #181c21;
   --ink-700: #1c2127;
   --ink-600: #252b32;
-  --ink-500: #333b44;
-  --ink-400: #4a535d;
 
   /* ---- Phosphor (primary) — electric chartreuse ---- */
   --phosphor-bright: #d8ff6b;
   --phosphor: #c6f84e;
   --phosphor-deep: #a4d62f;
-  --phosphor-dim: #7f9b3a;
-  --phosphor-ink: #14210a;
 
-  /* ---- Amber (secondary) — CRT nostalgia ---- */
-  --amber-bright: #ffb668;
-  --amber: #ff9d42;
-  --amber-deep: #d97a23;
-
-  /* ---- Plasma (tertiary) — cool electric cyan ---- */
-  --plasma-bright: #8eecff;
+  /* ---- Plasma — cool electric cyan ---- */
   --plasma: #5ee0ff;
-  --plasma-deep: #2bb6db;
 
   /* ---- Text ---- */
   --text-hi: #f2f5ef;
@@ -47,7 +35,6 @@
   --bg-page: var(--ink-900);
   --bg-sunken: var(--ink-850);
   --surface-card: var(--ink-800);
-  --accent: var(--phosphor);
   --accent-text: var(--phosphor-deep);
   --link: var(--plasma);
 
@@ -59,14 +46,9 @@
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
-  --text-2xs: 11px;
   --text-xs: 12px;
   --text-sm: 13px;
-  --text-base: 15px;
   --text-md: 16px;
-  --text-lg: 18px;
-  --text-xl: 21px;
-  --text-4xl: 44px;
   --ls-display: -0.04em;
   --ls-tight: -0.02em;
   --ls-label: 0.14em;
@@ -77,8 +59,6 @@
   /* ---- Spacing / layout ---- */
   --container-max: 1200px;
   --gutter: clamp(20px, 5vw, 64px);
-  --grid-cell: 44px;
-  --grid-line: color-mix(in srgb, var(--phosphor) 7%, transparent);
 
   /* ---- Radii ---- */
   --radius-xs: 3px;
@@ -86,10 +66,8 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
-  --radius-pill: 999px;
 
   /* ---- Shadows / glow ---- */
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
   --glow-phosphor-sm: 0 0 16px color-mix(in srgb, var(--phosphor) 30%, transparent);
   --glow-phosphor: 0 0 28px color-mix(in srgb, var(--phosphor) 38%, transparent);
   --text-glow: 0 0 18px color-mix(in srgb, var(--phosphor) 45%, transparent);
@@ -160,24 +138,6 @@ body:has(.vx-landing) {
   color: var(--accent-text);
   margin: 0;
 }
-.vx-scanlines {
-  position: relative;
-}
-.vx-scanlines::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent 0,
-    transparent 2px,
-    rgba(0, 0, 0, 0.14) 3px,
-    transparent 4px
-  );
-  opacity: 0.5;
-  mix-blend-mode: multiply;
-}
 
 .container {
   max-width: var(--container-max);
@@ -238,92 +198,6 @@ body:has(.vx-landing) {
 }
 .btn .arr {
   font-size: 1.1em;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 10px;
-  font: var(--fw-medium) 11px/1 var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  white-space: nowrap;
-  flex-shrink: 0;
-  border-radius: var(--radius-pill);
-  color: var(--text-mut);
-  background: var(--ink-700);
-  border: 1px solid var(--line-strong);
-}
-.badge-phosphor {
-  color: var(--phosphor-bright);
-  background: color-mix(in srgb, var(--phosphor) 12%, transparent);
-  border-color: color-mix(in srgb, var(--phosphor) 35%, transparent);
-}
-.badge .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 8px currentColor;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.stat .val {
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-}
-.stat .num {
-  font: var(--fw-bold) var(--text-4xl) / 0.95 var(--font-display);
-  letter-spacing: var(--ls-tight);
-  color: var(--phosphor-bright);
-  text-shadow: var(--text-glow);
-}
-.stat.plasma .num {
-  color: var(--plasma-bright);
-  text-shadow: none;
-}
-.stat.amber .num {
-  color: var(--amber-bright);
-  text-shadow: none;
-}
-.stat .unit {
-  font: var(--fw-semibold) var(--text-xl) / 1 var(--font-display);
-  color: var(--phosphor-bright);
-  opacity: 0.8;
-}
-.stat.plasma .unit {
-  color: var(--plasma-bright);
-}
-.stat.amber .unit {
-  color: var(--amber-bright);
-}
-/* the competitors' tiles in their lane colours — the same unit, a different runner */
-.stat.turbo .num,
-.stat.turbo .unit {
-  color: var(--c-turbo);
-  text-shadow: none;
-}
-.stat.nx .num,
-.stat.nx .unit {
-  color: var(--c-nx);
-  text-shadow: none;
-}
-.stat .label {
-  font: var(--type-label);
-  text-transform: uppercase;
-  letter-spacing: var(--ls-label);
-  color: var(--text-mut);
-}
-.stat .sub {
-  font: var(--type-body-sm);
-  color: var(--text-faint);
 }
 
 /* ============================================================
@@ -440,181 +314,11 @@ body:has(.vx-landing) {
 .install-pill.copied .icon-copy {
   display: none;
 }
-
-/* ============================================================
-   Terminal
-   ============================================================ */
-.term {
-  background: var(--ink-850);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg), var(--glow-phosphor-sm);
-  overflow: hidden;
-  font-family: var(--font-mono);
-}
-.term-bar-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--ink-800);
-}
-.term-bar-top .tdot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.35);
-}
-.term-bar-top .ttitle {
-  margin-left: 10px;
-  font-size: 12px;
-  color: var(--text-faint);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.term-body {
-  padding: 18px 20px;
-  font-size: 13.5px;
-  line-height: 1.85;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.term-prompt {
-  white-space: pre-wrap;
-  margin-bottom: 8px;
-}
-.term-prompt .caret {
-  color: var(--phosphor);
-}
-.term-prompt .cmd {
-  color: var(--text-hi);
-}
-.term-task {
-  display: flex;
-  white-space: pre;
-}
-/* Real `vx` output palette (matches src/orchestrator: SUCCESS green,
-   WARN yellow, ERROR red, LOCAL sky, TASK pink, project hue blue-400
-   for "@vzn/vx", dim = faint). */
-.t-green {
-  color: #22c55e;
-}
-.t-pink {
-  color: #f472b6;
-}
-.t-proj {
-  color: #60a5fa;
-}
-.t-yellow {
-  color: #eab308;
-}
-.t-red {
-  color: #ef4444;
-}
-.t-dim {
-  color: var(--text-faint);
-}
-.t-plain {
-  color: var(--text-hi);
-}
-
-.term-task .glyph {
-  color: #22c55e;
-}
-.term-task .time {
-  color: var(--text-faint);
-  display: inline-block;
-  width: 64px;
-  text-align: right;
-}
-.term-task .ok {
-  color: #22c55e;
-  margin-left: 14px;
-}
-.term-task .cache {
-  color: var(--text-faint);
-  margin-left: 10px;
-}
-.term-task .target {
-  margin-left: 14px;
-}
-.term-gap {
-  height: 12px;
-}
-.term-rule {
-  display: flex;
-  align-items: center;
-  color: var(--text-faint);
-  overflow: hidden;
-  white-space: nowrap;
-}
-.term-rule .mark {
-  color: var(--text-hi);
-  font-weight: 600;
-}
-.term-rule .fill {
-  flex: 1;
-  background: linear-gradient(90deg, #a78bfa, #f472b6);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.term-row {
-  display: flex;
-}
-.term-row .lbl {
-  width: 78px;
-  flex-shrink: 0;
-  color: var(--text-faint);
-}
-.term-row .v {
-  flex: 1;
-  min-width: 0;
-}
-.term-meter {
-  overflow: hidden;
-  white-space: nowrap;
-  letter-spacing: -0.5px;
-  line-height: 1.4;
-}
-.term-meter .off {
-  color: var(--ink-600);
-}
-.term-time {
-  color: var(--text-hi);
-}
-.term-time-rest {
-  color: var(--text-faint);
-}
-
-/* ============================================================
-   Benchmark
-   ============================================================ */
-.bench {
-  padding: 40px var(--gutter) 96px;
-}
 .bench-panel {
   background: var(--bg-sunken);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   overflow: hidden;
-}
-.bench-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 34px 36px 28px;
-  border-bottom: 1px solid var(--line);
-}
-.bench-head h2 {
-  font: var(--fw-bold) clamp(26px, 3vw, 38px) / 1.05 var(--font-display);
-  letter-spacing: var(--ls-tight);
-  color: var(--text-hi);
-  margin: 12px 0 0;
 }
 .bench-legend {
   display: flex;
@@ -730,44 +434,11 @@ body:has(.vx-landing) {
   font-weight: var(--fw-bold);
   color: var(--phosphor-bright);
 }
-.bench-note {
-  padding: 0 36px 30px;
-}
-.bench-note p {
-  font: var(--type-body-sm);
-  color: var(--text-mut);
-  margin: 0;
-  max-width: 760px;
-  line-height: 1.6;
-}
-.bench-note strong {
-  color: var(--text-hi);
-}
-.bench-note .accent {
-  color: var(--accent-text);
-}
 
 @media (prefers-reduced-motion: reduce) {
   .bench-bar .fill {
     animation: none;
   }
-}
-
-.cmd-pill {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 48px;
-  padding: 0 20px;
-  background: var(--ink-800);
-  white-space: nowrap;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  font: 14px/1 var(--font-mono);
-  color: var(--text);
-}
-.cmd-pill .dollar {
-  color: var(--phosphor);
 }
 
 /* ============================================================
@@ -780,7 +451,7 @@ body:has(.vx-landing) {
 }
 .foot-grid {
   display: grid;
-  grid-template-columns: 1.4fr repeat(5, 1fr);
+  grid-template-columns: 1.4fr repeat(3, 1fr);
   gap: 32px;
 }
 .foot-brand .row {
@@ -832,7 +503,7 @@ body:has(.vx-landing) {
 /* ============================================================
    Page sections. Static. Three repeated primitives, each exactly the
    same everywhere it appears: the section head (kicker, h2, one line),
-   the card (icon, title, two sentences, a docs link), the benchmark
+   the card (icon, title, one sentence, a docs link), the benchmark
    panel (legend, rows of bars, every competitor a multiple of vx).
    ============================================================ */
 .vx-landing h1 {
@@ -890,30 +561,62 @@ body:has(.vx-landing) {
     ),
     var(--bg-page);
 }
-.hero-grid {
+.hero h1 {
+  max-width: 15em;
+}
+
+/* ---- the one picture and its six lines ----
+   The drawing is the diagram kit's (Diagram.astro), which colours with the
+   --vx-* tokens set on .vx-landing above; below 32rem it draws its phone
+   layout. A line is where an old Guide chapter redirects, so the one a
+   reader lands on is marked. */
+.one-run {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: 56px;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  gap: 40px;
   align-items: center;
 }
-.hero-grid > * {
-  min-width: 0;
+.one-run .vx-diagram {
+  margin: 0;
 }
-/* The question reads as the h1's second line, smaller than the scene. */
-.hero h1 .phosphor {
-  display: inline-block;
-  margin-top: 12px;
-  font-size: 0.6em;
-  line-height: 1.12;
+.callouts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
 }
-.hero .lede {
-  font: var(--fw-regular) 20px / 1.5 var(--font-body);
-  color: var(--text-mut);
-  max-width: 560px;
-  margin: 22px 0 0;
+.callouts li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font: var(--fw-regular) 17px / 1.45 var(--font-body);
+  color: var(--vx-text);
+  scroll-margin-top: 88px;
 }
-.hero-aside .term {
-  max-width: 100%;
+.callouts strong {
+  color: var(--vx-fg);
+}
+.callouts code {
+  font: 0.9em var(--vx-mono);
+  color: var(--vx-fg);
+}
+.callouts .n {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--vx-accent);
+  color: var(--vx-accent);
+  font: 700 13px/1 var(--vx-font-body);
+  transform: translateY(-2px);
+}
+.callouts li:target .n {
+  background: var(--vx-accent);
+  color: var(--vx-bg);
 }
 
 /* ---- the benchmark panel ---- */
@@ -950,22 +653,10 @@ body:has(.vx-landing) {
   font-size: 14px;
 }
 
-/* ---- stat tiles ---- */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, auto));
-  gap: 24px 56px;
-  justify-content: start;
-}
-.stat .sub {
-  font-size: 15px;
-  margin: 6px 0 0;
-}
-
 /* ---- the card ---- */
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 .card {
@@ -978,6 +669,10 @@ body:has(.vx-landing) {
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s;
+  scroll-margin-top: 88px;
+}
+.card:target {
+  border-color: var(--c);
 }
 .card:hover {
   border-color: color-mix(in srgb, var(--c) 50%, transparent);
@@ -1011,172 +706,6 @@ body:has(.vx-landing) {
   font: var(--fw-semibold) 14px / 1 var(--font-body);
 }
 
-/* ---- the cover's picture: the shell loop failing three ways ----
-   Drawn with the --vx-* tokens the Guide's diagrams use (theme.css), set
-   on .vx-landing above, so the cover and chapter 1 read as one picture. */
-.loop-fig {
-  margin: 0;
-  min-width: 0;
-}
-/* The drawing is 410 wide so a phone's column draws it near full size; the
-   command sits above it as text, which wraps, rather than as a 560-wide
-   line that shrank the whole picture to eight-pixel type. */
-.loop-fig svg {
-  display: block;
-  width: 100%;
-  max-width: 460px;
-  height: auto;
-  margin: 18px auto 0;
-}
-.loop-fig .loop-code {
-  display: block;
-  padding: 12px 16px;
-  border: 1px solid var(--vx-border);
-  border-radius: 8px;
-  background: var(--vx-surface);
-  color: var(--vx-fg);
-  font: 500 14px / 1.5 var(--vx-mono);
-}
-.loop-fig .loop-code .prompt {
-  color: var(--vx-accent);
-}
-.loop-fig .lane {
-  font: 500 16px var(--vx-mono);
-  fill: var(--vx-muted);
-  text-anchor: end;
-}
-.loop-fig .bar rect {
-  stroke-width: 1.5;
-}
-.loop-fig .bar.fail rect {
-  fill: color-mix(in srgb, var(--vx-danger) 18%, transparent);
-  stroke: var(--vx-danger);
-}
-.loop-fig .bar.ok rect {
-  fill: color-mix(in srgb, var(--vx-accent) 16%, transparent);
-  stroke: var(--vx-accent);
-}
-.loop-fig .bar text {
-  font: 600 14px var(--vx-mono);
-  text-anchor: middle;
-}
-.loop-fig .bar.fail text {
-  fill: var(--vx-danger);
-}
-.loop-fig .bar.ok text {
-  fill: var(--vx-accent);
-}
-.loop-fig .axis {
-  stroke: var(--vx-muted);
-  stroke-width: 1.5;
-}
-.loop-fig .axis-head {
-  fill: var(--vx-muted);
-}
-.loop-fig .axis-label {
-  font: 500 14px var(--vx-mono);
-  fill: var(--vx-muted);
-}
-.loop-fig .brace {
-  fill: none;
-  stroke: var(--vx-warn);
-  stroke-width: 1.5;
-  stroke-dasharray: 5 4;
-}
-.loop-fig .badge circle {
-  fill: var(--vx-bg);
-  stroke-width: 2;
-}
-.loop-fig .badge text {
-  font: 700 14px var(--vx-font-body);
-  text-anchor: middle;
-}
-.loop-fig .badge.b1 circle {
-  stroke: var(--vx-danger);
-}
-.loop-fig .badge.b1 text {
-  fill: var(--vx-danger);
-}
-.loop-fig .badge.b2 circle {
-  stroke: var(--vx-warn);
-}
-.loop-fig .badge.b2 text {
-  fill: var(--vx-warn);
-}
-.loop-fig .badge.b3 circle {
-  stroke: var(--vx-link);
-}
-.loop-fig .badge.b3 text {
-  fill: var(--vx-link);
-}
-.loop-legend {
-  list-style: none;
-  margin: 22px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-}
-.loop-legend li {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font: var(--fw-regular) 17px / 1.45 var(--font-body);
-  color: var(--vx-text);
-}
-.loop-legend strong {
-  color: var(--vx-fg);
-}
-.loop-legend .n {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid var(--c);
-  color: var(--c);
-  font: 700 13px/1 var(--vx-font-body);
-  transform: translateY(-2px);
-}
-
-/* ---- the guide's contents: one line per chapter ---- */
-.toc {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-}
-.toc a {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 15em) minmax(0, 1fr);
-  gap: 20px;
-  align-items: baseline;
-  padding: 18px 4px;
-  border-bottom: 1px solid var(--line);
-  text-decoration: none;
-  color: inherit;
-}
-.toc a:hover {
-  background: color-mix(in srgb, var(--vx-accent) 5%, transparent);
-}
-.toc .n {
-  font: var(--fw-semibold) 15px/1 var(--font-mono);
-  color: var(--vx-accent);
-}
-.toc .t {
-  font: var(--fw-semibold) 20px / 1.3 var(--font-display);
-  color: var(--vx-fg);
-}
-.toc .p {
-  font: var(--fw-regular) 17px / 1.45 var(--font-body);
-  color: var(--vx-muted);
-}
-.toc code {
-  font: 0.9em var(--vx-mono);
-  color: var(--vx-text);
-}
-
 /* ---- links under a panel ---- */
 .section-links {
   display: flex;
@@ -1188,38 +717,28 @@ body:has(.vx-landing) {
   margin-top: 0;
   line-height: 1.35;
 }
-.sub code {
-  font: 0.9em var(--font-mono);
-  color: var(--text);
-}
-
-/* ---- one run, as the terminal shows it ---- */
-.run-term {
-  max-width: 820px;
-}
 
 /* ---- responsive ---- */
+@media (max-width: 1100px) {
+  .one-run {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 900px) {
   .nav-links {
     display: none;
   }
-  .hero-grid,
-  .cards,
   .foot-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .hero {
     padding: 48px var(--gutter) 64px;
   }
   .section {
     padding: 72px var(--gutter);
-  }
-  .term {
-    max-width: 100%;
-    min-width: 0;
-  }
-  .term-body {
-    overflow-x: auto;
   }
 }
 @media (max-width: 620px) {
@@ -1229,24 +748,12 @@ body:has(.vx-landing) {
   .foot-grid {
     grid-template-columns: 1fr 1fr;
   }
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .foot-bottom {
     flex-direction: column;
     gap: 8px;
-  }
-  .stats {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
-  .stat .num {
-    font-size: 36px;
-  }
-  .toc a {
-    grid-template-columns: 32px minmax(0, 1fr);
-    gap: 4px 12px;
-    padding: 14px 2px;
-  }
-  .toc .p {
-    grid-column: 2;
   }
   .bench-panel {
     padding: 16px 16px 4px;
@@ -1277,9 +784,5 @@ body:has(.vx-landing) {
   }
   .bench-bar .track {
     grid-area: track;
-  }
-  .term-body {
-    font-size: 12px;
-    padding: 14px 16px;
   }
 }

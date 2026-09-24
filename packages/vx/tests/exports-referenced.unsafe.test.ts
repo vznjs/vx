@@ -11,12 +11,9 @@
 // Unsafe: it reads every package.
 //
 // Out of scope: `index.ts` façades (the public API, pinned by the boundary
-// tests), `bin.ts` entrypoints, the files a framework reads by name
+// tests), `bin.ts` entrypoints, and the files a framework reads by name
 // (`content.config.ts`, `vx.config.ts`, `astro.config.mjs`, and the site's
-// Starlight route middleware, whose `onRequest` Starlight imports), and the
-// site's worked examples (`packages/vx-docs/src/examples/`): code a reader
-// copies, where the export is the lesson, each imported by path and
-// type-checked by the site's `guide-inside-vx.test.ts` (item 686).
+// Starlight route middleware, whose `onRequest` Starlight imports).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -25,7 +22,7 @@ const repo = path.resolve(import.meta.dir, '..', '..', '..')
 
 const CODE = /\.(?:ts|mts|cts|js|mjs|cjs|astro)$/
 const SKIP =
-  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^packages\/vx-docs\/src\/examples\/|^packages\/vx-docs\/src\/nav\/route-data\.ts$/
+  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^packages\/vx-docs\/src\/nav\/route-data\.ts$/
 const DECLARATION =
   /^export (?:async )?(?:function\*?|const|let|class|abstract class|enum) ([A-Za-z_$][\w$]*)/gm
 const IDENT = /[A-Za-z_$][\w$]*/g
