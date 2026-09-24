@@ -9,19 +9,13 @@
 // `.status`, `.errors`, `.results` with its `caption` and `tbody`, `.order`
 // and `.static`, so they are its contract with this markup.
 //
-// `lab` opens it on one of the labs' states (item 704;
-// `src/playground/labs.ts`): the element gets it as `data-lab`, and the
-// static render is that state's. Without it, the workspace's. No page opens
-// a lab since the labs page went (design/site-short-2026-09.md); the states
-// stay as core's parity fixtures.
-//
 // The table comes from the config TEXTS, evaluated here at build time by the
 // page's own rewrite and JSON rule (`evaluateConfigInProcess`: no Worker, which
 // a Node build lacks), so the reader's first Run and the static render read
 // one source.
 import Demo from '../Demo.astro'
 import { evaluateConfigInProcess } from '../../playground/config-eval.js'
-import { startState, type LabId } from '../../playground/labs.js'
+import { START } from '../../playground/workspace.js'
 import {
   configTextsOf,
   envText,
@@ -30,12 +24,7 @@ import {
   staticTable,
 } from './model/playground-view.js'
 
-interface Props {
-  lab?: LabId
-}
-
-const { lab } = Astro.props
-const { files: FILES, env: ENV, tasks: TASKS } = startState(lab)
+const { files: FILES, env: ENV, tasks: TASKS } = START
 const configs: Record<string, unknown> = {}
 for (const [name, text] of Object.entries(configTextsOf(FILES))) {
   const r = await evaluateConfigInProcess(text)
@@ -49,7 +38,7 @@ const planner = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}playground/plan
 const HEAD = ['Task', 'Waits for', 'Inputs']
 ---
 
-<Demo name="playground" data={lab === undefined ? {} : { 'data-lab': lab }}>
+<Demo name="playground">
   <div class="controls not-content" data-planner={planner} hidden>
     <p class="vx-row">
       <select class="file" aria-label="File">{paths.map((f) => <option value={f}>{f}</option>)}</select>

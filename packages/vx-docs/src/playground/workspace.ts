@@ -114,3 +114,15 @@ export const OPEN = 'packages/ui/src/button.tsx'
 
 /** The task specs the page runs, as `vx run build test` takes them. */
 export const TASKS = ['build', 'test']
+
+/** What a playground opens with, and what its Reset restores. */
+export interface PlaygroundState {
+  files: Record<string, string>
+  env: Record<string, string>
+  tasks: string[]
+  /** The file the editor opens on; the first file when unset. */
+  open?: string
+}
+
+/** The state the page opens on. */
+export const START: PlaygroundState = { files: FILES, env: ENV, tasks: TASKS, open: OPEN }

@@ -12,11 +12,9 @@ import './demos/widget.css'
 interface Props {
   /** The element module `src/components/demos/<name>.ts`, which defines `<vx-<name>>`. */
   name: string
-  /** `data-*` attributes for the element, which it reads as its settings. */
-  data?: Record<`data-${string}`, string>
 }
 
-const { name, data = {} } = Astro.props
+const { name } = Astro.props
 // A misspelt name fails the build here instead of a reader's console.
 if (!(`./demos/${name}.ts` in import.meta.glob('./demos/*.ts'))) {
   throw new Error(`<Demo name="${name}">: no src/components/demos/${name}.ts`)
@@ -25,7 +23,7 @@ const Tag = `vx-${name}`
 ---
 
 <figure class="vx-demo not-content">
-  <Tag data-vx-demo={name} {...data}><slot /></Tag>
+  <Tag data-vx-demo={name}><slot /></Tag>
   {
     Astro.slots.has('caption') && (
       <figcaption>
