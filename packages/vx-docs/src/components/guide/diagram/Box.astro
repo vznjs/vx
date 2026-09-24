@@ -1,0 +1,66 @@
+---
+// A labelled node, drawn into a Diagram (or by TaskGraph). `x`/`y` is its
+// top-left corner in the diagram's own units.
+import { round, type Variant } from './geometry.js'
+
+interface Props {
+  x: number
+  y: number
+  w?: number
+  h?: number
+  label: string
+  /** A second, quieter line under the label. */
+  sub?: string | undefined
+  variant?: Variant | undefined
+}
+
+const { x, y, w = 140, h = 44, label, sub, variant = 'default' } = Astro.props
+const cx = round(x + w / 2)
+const cy = round(y + h / 2)
+---
+
+<g class={`vx-box ${variant}`}>
+  <rect x={x} y={y} width={w} height={h} rx="6"></rect>
+  <text class="label" x={cx} y={sub === undefined ? cy : round(cy - 8)}>{label}</text>
+  {sub !== undefined && <text class="sub" x={cx} y={round(cy + 10)}>{sub}</text>}
+</g>
+
+<style>
+  rect {
+    fill: var(--vx-surface-2);
+    stroke: var(--vx-border);
+    stroke-width: 1.5;
+  }
+  text {
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+  .label {
+    fill: var(--vx-fg);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .sub {
+    fill: var(--vx-muted);
+    font-size: 11px;
+  }
+  .accent rect {
+    fill: color-mix(in srgb, var(--vx-accent) 16%, var(--vx-surface-2));
+    stroke: var(--vx-accent);
+  }
+  .danger rect {
+    fill: color-mix(in srgb, var(--vx-danger) 14%, var(--vx-surface-2));
+    stroke: var(--vx-danger);
+  }
+  .muted rect {
+    fill: var(--vx-surface);
+  }
+  .muted .label {
+    fill: var(--vx-muted);
+  }
+  .dashed rect {
+    fill: none;
+    stroke: var(--vx-muted);
+    stroke-dasharray: 5 4;
+  }
+</style>

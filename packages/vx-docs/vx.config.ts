@@ -170,7 +170,7 @@ export default defineProject({
     // this task.
     test: {
       description:
-        'bun test — the Guide, sidebar, redirect, demo, Learn and site-link pins (needs the imported content and dist/)',
+        'bun test — the Guide, sidebar, redirect, diagram, demo, Learn and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
@@ -206,9 +206,12 @@ export default defineProject({
             'src/components/demos/playground.ts',
             'src/components/demos/checkpoint.ts',
             // guide.test.ts and sidebar-coverage.test.ts import the Guide's
-            // chapter list and the sidebars.
+            // chapter list and the sidebars; diagram-kit.test.ts reads the
+            // kit's styles and the theme's tokens.
             'src/guide/**',
             'src/nav/**',
+            'src/components/guide/**',
+            'src/styles/theme.css',
             // The playground rows: its glob and xxh3 against Bun's, and the
             // shipped bundle against a fresh build.
             'src/playground/**',

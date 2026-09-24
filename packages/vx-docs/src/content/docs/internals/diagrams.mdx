@@ -1,0 +1,61 @@
+---
+title: The diagram kit
+description: The build-time SVG components a Guide chapter draws its picture with — Box, Arrow, TaskGraph and Timeline — each rendered with the toy monorepo.
+---
+
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import Box from '../../../components/guide/diagram/Box.astro'
+import Arrow from '../../../components/guide/diagram/Arrow.astro'
+import TaskGraph from '../../../components/guide/diagram/TaskGraph.astro'
+import Timeline from '../../../components/guide/diagram/Timeline.astro'
+
+A Guide chapter draws its picture with these components. Each one renders
+SVG into the page when the site is built, so the picture is there with no
+script, in both themes, and at any width. Their props are documented in
+`packages/vx-docs/src/components/guide/diagram/README.md`; this page renders
+each of them, and `packages/vx-docs/tests/diagram-kit.test.ts` reads what it
+built.
+
+## TaskGraph
+
+<TaskGraph
+  nodes={[
+    { id: 'utils', label: 'utils#build', wave: 0, col: 0.5, variant: 'accent' },
+    { id: 'ui', label: 'ui#build', wave: 1, col: 0 },
+    { id: 'api', label: 'api#build', sub: 'cache hit', wave: 1, col: 1, variant: 'muted' },
+    { id: 'app', label: 'app#build', wave: 2, col: 0.5, variant: 'danger' },
+  ]}
+  edges={[
+    { from: 'utils', to: 'ui' },
+    { from: 'utils', to: 'api' },
+    { from: 'ui', to: 'app', label: '^build' },
+    { from: 'api', to: 'app', dashed: true },
+  ]}
+>
+  The toy monorepo's builds, in waves: `utils` first, then `ui` and `api`, then `app`.
+</TaskGraph>
+
+## Timeline
+
+<Timeline
+  unit="s"
+  lanes={[
+    { name: 'worker 1', bars: [{ start: 0, end: 2, label: 'utils#build', variant: 'accent' }, { start: 2, end: 5, label: 'ui#build' }, { start: 5, end: 7, label: 'app#build' }] },
+    { name: 'worker 2', bars: [{ start: 2, end: 4, label: 'api#build' }, { start: 4, end: 5, label: 'api#test', variant: 'muted' }] },
+  ]}
+>
+  Two workers: `ui` and `api` build at once, and `app` waits for both.
+</Timeline>
+
+## Box and Arrow
+
+<Diagram width={520} height={80} label="A shell loop runs the four builds one after another.">
+  <Box x={10} y={18} w={90} label="utils" />
+  <Arrow x1={100} y1={40} x2={120} y2={40} />
+  <Box x={120} y={18} w={90} label="ui" variant="accent" />
+  <Arrow x1={210} y1={40} x2={230} y2={40} dashed />
+  <Box x={230} y={18} w={90} label="api" variant="dashed" />
+  <Arrow x1={320} y1={40} x2={420} y2={40} label="then" variant="danger" />
+  <Box x={420} y={18} w={90} label="app" variant="danger" />
+  <Fragment slot="caption">The loop's order, one box after the next.</Fragment>
+</Diagram>

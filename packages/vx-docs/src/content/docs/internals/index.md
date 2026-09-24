@@ -27,3 +27,8 @@ the repository, which stays their source of truth.
 - [Module reference](../modules/): one page per module under `src/`.
 - [Design notes](../design/): proposals and the record of what was explored,
   and why.
+
+## Writing the site
+
+- [The diagram kit](diagrams/): the build-time SVG components the Guide
+  draws with, each rendered.

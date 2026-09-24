@@ -1,0 +1,72 @@
+---
+// A straight arrow from (x1, y1) to (x2, y2), its head at the second point,
+// drawn into a Diagram (or by TaskGraph). A label sits on the middle of the
+// shaft, on a patch of the diagram's background so the line does not cross it.
+import { arrow, round, textWidth } from './geometry.js'
+
+interface Props {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  label?: string | undefined
+  dashed?: boolean | undefined
+  /** `accent` and `danger` colour the arrow; anything else draws it plain. */
+  variant?: 'default' | 'accent' | 'danger' | undefined
+}
+
+const { x1, y1, x2, y2, label, dashed = false, variant = 'default' } = Astro.props
+const { shaftEnd, head } = arrow({ x: x1, y: y1 }, { x: x2, y: y2 })
+const mx = round((x1 + x2) / 2)
+const my = round((y1 + y2) / 2)
+const lw = label === undefined ? 0 : textWidth(label, 11) + 8
+---
+
+<g class:list={['vx-arrow', variant, { dashed }]}>
+  <line x1={x1} y1={y1} x2={round(shaftEnd.x)} y2={round(shaftEnd.y)}></line>
+  <polygon points={head}></polygon>
+  {
+    label !== undefined && (
+      <>
+        <rect class="patch" x={round(mx - lw / 2)} y={my - 9} width={round(lw)} height="18" rx="3" />
+        <text x={mx} y={my}>
+          {label}
+        </text>
+      </>
+    )
+  }
+</g>
+
+<style>
+  line {
+    stroke: var(--vx-muted);
+    stroke-width: 1.5;
+  }
+  polygon {
+    fill: var(--vx-muted);
+  }
+  .dashed line {
+    stroke-dasharray: 5 4;
+  }
+  .accent line {
+    stroke: var(--vx-accent);
+  }
+  .accent polygon {
+    fill: var(--vx-accent);
+  }
+  .danger line {
+    stroke: var(--vx-danger);
+  }
+  .danger polygon {
+    fill: var(--vx-danger);
+  }
+  .patch {
+    fill: var(--vx-surface);
+  }
+  text {
+    fill: var(--vx-muted);
+    font-size: 11px;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+</style>

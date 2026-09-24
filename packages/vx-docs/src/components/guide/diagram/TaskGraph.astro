@@ -1,0 +1,96 @@
+---
+// A graph of tasks, placed on a grid: `wave` is the row (down the page, or
+// across it with direction="right") and `col` the place within it; a
+// fractional col centres a node between two others. Each edge is an arrow
+// from `from` to `to`, leaving and entering the boxes at their edges. The
+// default slot is the caption.
+import Arrow from './Arrow.astro'
+import Box from './Box.astro'
+import Diagram from './Diagram.astro'
+import { boxEdge, round, type Variant } from './geometry.js'
+
+export interface GraphNode {
+  id: string
+  label: string
+  sub?: string
+  wave: number
+  col: number
+  variant?: Variant
+}
+
+export interface GraphEdge {
+  from: string
+  to: string
+  label?: string
+  dashed?: boolean
+}
+
+interface Props {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  /** Read aloud in place of the picture; by default, the edges in words. */
+  label?: string
+  direction?: 'down' | 'right'
+  nodeWidth?: number
+}
+
+const { nodes, edges, direction = 'down', nodeWidth = 140 } = Astro.props
+const W = nodeWidth
+const H = nodes.some((n) => n.sub !== undefined) ? 54 : 40
+const PAD = 12
+const GAP_ALONG = direction === 'down' ? 56 : 72
+const GAP_ACROSS = direction === 'down' ? 28 : 22
+
+const place = (n: GraphNode): { x: number; y: number } => {
+  const along = n.wave
+  const across = n.col
+  return direction === 'down'
+    ? { x: PAD + across * (W + GAP_ACROSS), y: PAD + along * (H + GAP_ALONG) }
+    : { x: PAD + along * (W + GAP_ALONG), y: PAD + across * (H + GAP_ACROSS) }
+}
+const at = new Map(nodes.map((n) => [n.id, place(n)]))
+const width = Math.ceil(Math.max(...[...at.values()].map((p) => p.x)) + W + PAD)
+const height = Math.ceil(Math.max(...[...at.values()].map((p) => p.y)) + H + PAD)
+
+const byId = new Map(nodes.map((n) => [n.id, n]))
+const lines = edges.map((e) => {
+  const a = at.get(e.from)
+  const b = at.get(e.to)
+  if (a === undefined || b === undefined) {
+    throw new Error(`TaskGraph: the edge ${e.from} → ${e.to} names a node that is not in nodes`)
+  }
+  const ca = { x: a.x + W / 2, y: a.y + H / 2 }
+  const cb = { x: b.x + W / 2, y: b.y + H / 2 }
+  const p = boxEdge(ca, W + 4, H + 4, cb)
+  const q = boxEdge(cb, W + 6, H + 6, ca)
+  return { ...e, x1: round(p.x), y1: round(p.y), x2: round(q.x), y2: round(q.y) }
+})
+
+const label =
+  Astro.props.label ??
+  `Task graph: ${edges.map((e) => `${byId.get(e.from)!.label} to ${byId.get(e.to)!.label}`).join('; ')}.`
+---
+
+<Diagram width={width} height={height} label={label}>
+  {lines.map((l) => <Arrow {...l} />)}
+  {
+    nodes.map((n) => (
+      <Box
+        x={at.get(n.id)!.x}
+        y={at.get(n.id)!.y}
+        w={W}
+        h={H}
+        label={n.label}
+        sub={n.sub}
+        variant={n.variant}
+      />
+    ))
+  }
+  {
+    Astro.slots.has('default') && (
+      <Fragment slot="caption">
+        <slot />
+      </Fragment>
+    )
+  }
+</Diagram>

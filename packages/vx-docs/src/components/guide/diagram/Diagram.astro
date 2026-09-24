@@ -1,0 +1,59 @@
+---
+// The frame every diagram draws into: a figure holding one responsive SVG
+// (its viewBox is `width` × `height`; it scales down to the column, never up
+// past its own width) and an optional caption. Put Box and Arrow inside it;
+// TaskGraph and Timeline use it themselves.
+interface Props {
+  width: number
+  height: number
+  /** What the picture says, for a reader who cannot see it. */
+  label: string
+}
+
+const { width, height, label } = Astro.props
+---
+
+<figure class="vx-diagram not-content">
+  <svg
+    viewBox={`0 0 ${width} ${height}`}
+    width={width}
+    height={height}
+    role="img"
+    aria-label={label}
+    style={`max-width: ${width}px`}
+  >
+    <slot />
+  </svg>
+  {
+    Astro.slots.has('caption') && (
+      <figcaption>
+        <slot name="caption" />
+      </figcaption>
+    )
+  }
+</figure>
+
+<style>
+  .vx-diagram {
+    margin: 1.75rem 0;
+    padding: 1.25rem 1rem 1rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface);
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 0 auto;
+    overflow: visible;
+    font-family: var(--vx-mono);
+  }
+  figcaption {
+    margin-top: 0.9rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--vx-muted);
+    text-align: center;
+  }
+</style>
