@@ -40,6 +40,7 @@ import {
   buildTaskGraph,
   expandRequested,
   type TaskNode,
+  undeclaredDepsError,
   unresolvedRequests,
 } from '../graph/index.js'
 import {
@@ -239,19 +240,22 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     throw new UserError(FROZEN_WITHOUT_LOCK)
   }
 
+  const loadArgs = {
+    workspaceRoot,
+    cacheDir,
+    plugins,
+    projectMetas,
+    packageGraph,
+    lock,
+    evalCache: { store: localCache, workspaceFingerprint: fingerprints.all },
+    warn: (m: string) => log.status(m),
+  }
   let loaded: LoadedProjects
   try {
     loaded = await loadProjects({
-      workspaceRoot,
-      cacheDir,
-      plugins,
-      projectMetas,
-      packageGraph,
+      ...loadArgs,
       seeds,
       closure: true,
-      lock,
-      evalCache: { store: localCache, workspaceFingerprint: fingerprints.all },
-      warn: (m) => log.status(m),
       ...(options.staged !== undefined ? { staged: options.staged } : {}),
     })
   } catch (err) {
@@ -360,6 +364,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     }
   }
 
+  // A scoped load is not the whole workspace: a `^name` nothing loaded
+  // declares may be declared by a config the scope left out, so the builder
+  // hands it back instead of refusing it, and the rest decide.
+  const unproven: Array<[taskId: string, name: string]> = []
   const nodes = buildTaskGraph({
     projects,
     packageGraph,
@@ -367,7 +375,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     ...(options.excludeDependencies !== undefined
       ? { excludeDependencies: options.excludeDependencies }
       : {}),
+    ...(projects.size < projectsWithConfigs.length
+      ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
+      : {}),
   })
+  if (unproven.length > 0) {
+    await refuseUndeclaredDeps(unproven, () =>
+      loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
+    )
+  }
   // The graph is built; what follows is the plugins' (graph, key,
   // schedule). Two rows, so a plugin's key stage reads as its own cost
   // and not as graph building — a lockfile plugin's 1000 stats per run
@@ -413,5 +429,32 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     hashCache,
     workspaceProjectCount: projectMetas.length,
     empty: nodes.size === 0 ? 'empty-graph' : null,
+  }
+}
+
+/**
+ * Refuses the first `^name` in `unproven` that no project in the whole
+ * workspace declares. `load` evaluates the configs a scoped run left out;
+ * it is reached only when a `^name` found no holder and nothing loaded
+ * declares it, so a run that names only declared tasks never pays for it.
+ * The rest failing to load leaves the names unjudged: an out-of-scope
+ * broken config does not fail a scoped run.
+ */
+async function refuseUndeclaredDeps(
+  unproven: ReadonlyArray<readonly [taskId: string, name: string]>,
+  load: () => Promise<LoadedProjects>,
+): Promise<void> {
+  let all: LoadedProjects
+  try {
+    all = await load()
+  } catch {
+    return
+  }
+  const declared = new Set<string>()
+  for (const p of all.projects.values()) {
+    for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+  }
+  for (const [id, name] of unproven) {
+    if (!declared.has(name)) throw undeclaredDepsError(id, name)
   }
 }

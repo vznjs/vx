@@ -82,7 +82,14 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    the config-evaluation key over every root file, and the task key
    over the files no plugin's `fingerprint` claims.
 5. **Build the task graph** — `buildTaskGraph(...)` with optional
-   `excludeDependencies` filter.
+   `excludeDependencies` filter. A `^name` no project in the workspace
+   declares is refused (`undeclaredDepsError`); when the load was
+   scoped, the builder cannot see the whole workspace, so it hands such
+   a name back (`undeclaredDeps`) and `refuseUndeclaredDeps` evaluates
+   the configs the scope left out — only then, and never for a name
+   something loaded declares — refusing if none of them declares it
+   either. One of them failing to load leaves the name unjudged, since
+   an out-of-scope broken config does not fail a scoped run.
 
 The cache + fingerprint are constructed even when the result will be
 empty so callers always have a uniform `try { ... } finally {

@@ -485,7 +485,20 @@ Semantics:
   cascade going (the universal pattern). Deps that don't declare the
   task are passed through, so a sparse dep doesn't break ordering to
   deeper packages that do (sparse tasks across a workspace are normal
-  — not every package has a `lint`).
+  — not every package has a `lint`). Finding no holder at all is legal
+  too, as long as SOME project in the workspace declares `name`: a
+  preset spreads `'^build'` over packages whose deps have no `build`.
+  A `'^name'` that **no project in the whole workspace declares** is a
+  hard error at graph-build time, since it can only be a typo: "Task
+  app#test depends on ^biuld but no project in the workspace declares
+  biuld". Until 2026-09-24 it resolved to no edges and the run went
+  green (Nx#32779 is the same bug). A scoped run (an anchored
+  `app#test`, `--filter`, a project directory) loads only its projects
+  and their dependency closure; when a `'^name'` there finds no holder
+  and nothing loaded declares it, vx evaluates the remaining configs to
+  decide, and if one of them fails to load the name is let through
+  rather than failing the scoped run. A `'^name.*'` pattern matching
+  nothing anywhere stays legal, as `'name.*'` does.
 - **`'pkg#name'`** — missing pkg or task is a hard error (you named
   them explicitly).
 - **Patterns (`'name.*'` / `'^name.*'`)** — `*` matches any run of

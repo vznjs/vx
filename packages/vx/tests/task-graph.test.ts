@@ -619,6 +619,99 @@ describe('buildTaskGraph', () => {
 
 const group = (deps: string[]): TaskConfig => ({ dependsOn: deps })
 
+// nx#32779: `^biuld`, a name no project declares, resolved to no edges and the
+// run went green, where a misspelled same-project name or `pkg#task` throws. A
+// `^name` SOME project declares stays legal with no holder — a preset spreads
+// `^build` over projects whose deps lack it — but one NOTHING declares can
+// only be a typo.
+describe('a ^name no project declares is refused (nx#32779)', () => {
+  const caught = (fn: () => unknown): unknown => {
+    try {
+      fn()
+    } catch (err) {
+      return err
+    }
+    return undefined
+  }
+  const typo = (deps: string[] = ['^biuld']) =>
+    projects(
+      project('app', { typo: { ...cmd('t'), dependsOn: deps } }),
+      project('cart', { build: cmd('b') }),
+    )
+  const request = [{ project: 'app', task: 'typo' }]
+
+  it('refuses ^biuld when no project in the workspace declares biuld', () => {
+    const err = caught(() =>
+      buildTaskGraph({
+        projects: typo(),
+        packageGraph: packageGraph({ app: ['cart'] }),
+        requested: request,
+      }),
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect((err as Error).message).toBe(
+      'Task app#typo depends on ^biuld but no project in the workspace declares biuld',
+    )
+  })
+
+  it('a ^name declared only off the dependency path plans, with no edge', () => {
+    // app depends on cart alone; `web` declares build and is nobody's dep.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', { test: { ...cmd('t'), dependsOn: ['^build'] } }),
+        project('cart', { lint: cmd('l') }),
+        project('web', { build: cmd('b') }),
+      ),
+      packageGraph: packageGraph({ app: ['cart'] }),
+      requested: [{ project: 'app', task: 'test' }],
+    })
+    expect([...nodes.keys()]).toEqual(['app#test'])
+    expect(nodes.get('app#test')?.deps).toEqual([])
+  })
+
+  it('a leaf that declares the name itself plans (the preset-spread shape)', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(project('leaf', { build: { ...cmd('b'), dependsOn: ['^build'] } })),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'leaf', task: 'build' }],
+    })
+    expect([...nodes.keys()]).toEqual(['leaf#build'])
+    expect(nodes.get('leaf#build')?.deps).toEqual([])
+  })
+
+  it('a ^pattern that matches nothing anywhere plans, as a same-project one does', () => {
+    const nodes = buildTaskGraph({
+      projects: typo(['^biuld.*']),
+      packageGraph: packageGraph({ app: ['cart'] }),
+      requested: request,
+    })
+    expect([...nodes.keys()]).toEqual(['app#typo'])
+    expect(nodes.get('app#typo')?.deps).toEqual([])
+  })
+
+  it('a name --exclude-dependencies drops is not judged', () => {
+    const nodes = buildTaskGraph({
+      projects: typo(),
+      packageGraph: packageGraph({ app: ['cart'] }),
+      requested: request,
+      excludeDependencies: ['biuld'],
+    })
+    expect([...nodes.keys()]).toEqual(['app#typo'])
+  })
+
+  it('a caller whose projects are a scoped load is handed the name instead', () => {
+    const handed: Array<[string, string]> = []
+    const nodes = buildTaskGraph({
+      projects: typo(['^biuld', '^build']),
+      packageGraph: packageGraph({ app: ['cart'] }),
+      requested: request,
+      undeclaredDeps: (id, name) => handed.push([id, name]),
+    })
+    expect(handed).toEqual([['app#typo', 'biuld']])
+    expect(nodes.get('app#typo')?.deps).toEqual(['cart#build'])
+  })
+})
+
 describe('the request helpers dedupe (item 646)', () => {
   // Both doc comments claimed it and nothing held either: deleting each
   // `seen` check survived the whole core suite.

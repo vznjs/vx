@@ -186,7 +186,7 @@ export async function mapNxWorkspace(
       ? null
       : await listDotenv(root, [...relOf.values()])
 
-  const projects: GeneratedProject[] = []
+  const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
   for (const meta of allMetas) {
     const node = nodeByMeta.get(meta)
     const targets = node?.data?.targets
@@ -230,6 +230,17 @@ export async function mapNxWorkspace(
         )
       }
     }
+    mapped.push({ meta, tasks })
+  }
+
+  // Nx gives `^name` no edges when no project runs the target; core refuses
+  // a `^name` no project declares as a typo, so such an edge is dropped
+  // before the shared-output rule reads which tasks have a `^` edge.
+  const emitted = new Set<string>()
+  for (const { tasks } of mapped) for (const t of tasks) if (t.task !== null) emitted.add(t.name)
+  const projects: GeneratedProject[] = []
+  for (const { meta, tasks } of mapped) {
+    for (const t of tasks) dropUnheldDeps(t.task, emitted)
     projects.push({
       name: meta.name,
       dir: meta.dir,
@@ -320,6 +331,21 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
     // Unreadable nx.json just degrades named-input refs to TODOs.
     return none
   }
+}
+
+function dropUnheldDeps(task: Record<string, unknown> | null, emitted: ReadonlySet<string>): void {
+  const deps = task?.['dependsOn']
+  if (task === null || !Array.isArray(deps)) return
+  // A pattern (`^build-*`, `*` in core's dependency syntax) may match
+  // nothing; core takes that, as Nx does.
+  const kept = deps.filter(
+    (d) =>
+      typeof d !== 'string' || !d.startsWith('^') || d.includes('*') || emitted.has(d.slice(1)),
+  )
+  if (kept.length === deps.length) return
+  // A group keeps its (now empty) list: `dependsOn` is all a group is.
+  if (kept.length > 0 || task['exec'] === undefined) task['dependsOn'] = kept
+  else delete task['dependsOn']
 }
 
 function buildTask(

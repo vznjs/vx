@@ -277,6 +277,27 @@ describe('turbo()', () => {
   )
 
   it(
+    'a ^task no package has a script for is no edge, as under turbo',
+    async () => {
+      // turbo.json may name a task no package runs (`prepack` here): Turbo
+      // gives `^prepack` no edges. Passed through, core refuses a `^name`
+      // no project declares (nx#32779), so the mapper drops it.
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: { build: {}, prepack: {}, test: { dependsOn: ['^build', '^prepack'] } },
+        }),
+      )
+      const plan = await planRun({ cwd: root, tasks: ['test'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#test', 'lib#build'])
+      const test = plan.tasks.find((t) => t.node.id === 'app#test')!.node
+      expect(test.deps).toEqual(['lib#build'])
+      expect(test.config.dependsOn).toEqual(['^build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a gap shared by many tasks is one warning per run, not written',
     async () => {
       await writeFile(

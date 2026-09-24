@@ -18,5 +18,6 @@ export {
   outputsOverlap,
   splitTaskId,
   type TaskNode,
+  undeclaredDepsError,
   unresolvedRequests,
 } from './task-graph.js'
