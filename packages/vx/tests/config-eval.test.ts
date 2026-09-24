@@ -27,6 +27,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { configEvalWorkerCount, evaluateConfigFresh } from '../src/workspace/config-eval.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
+import type { ProjectConfig } from '../src/config.js'
 
 const BUDGET_ENV = 'VX_CONFIG_WORKER_TIMEOUT_MS'
 
@@ -315,23 +316,18 @@ describe('evaluateConfigFresh: errors cross the boundary', () => {
     expect(viaWorker?.name).toBe('TypeError')
   })
 
-  const UNSERIALIZABLE: ReadonlyArray<readonly [string, string, RegExp]> = [
-    ['a cyclic structure', 'const o = {}\no.self = o\nexport default o\n', /cyclic/i],
-    ['a BigInt value', 'export default { size: 1n }\n', /bigint/i],
-  ]
-
-  for (const [label, body, expected] of UNSERIALIZABLE) {
-    it(`rejects with a usable message when a config contains ${label}`, async () => {
-      // A DELIBERATE divergence, worth knowing: both of these evaluate fine
-      // in-process and only fail on the repeat path, because JSON.stringify
-      // runs inside the worker. What matters is that the throw is caught there
-      // and travels back as an error — an uncaught one would post no reply at
-      // all and leave the caller waiting out the full deadline.
-      const outcome = await settleOrHang(evaluateConfigFresh(await write(body)), 5000)
-      expect(outcome).toMatch(/^REJECTED/)
-      expect(outcome).toMatch(expected)
-    })
-  }
+  it("rejects with the getter's own message when reading the config throws, instead of hanging", async () => {
+    // The worker reads every value before it replies (the JSON-data walk,
+    // then `JSON.stringify`), so a throwing getter throws there. It must be
+    // caught and travel back as an error: an uncaught one posts no reply at
+    // all and leaves the caller waiting out the full deadline. (A cyclic
+    // config and a bigint, the two throws this row held before item 701,
+    // are now refused by name on both paths — below.)
+    const body = `export default { get tasks() { throw new Error('getter says no') } }\n`
+    expect(await settleOrHang(evaluateConfigFresh(await write(body)), 5000)).toBe(
+      'REJECTED getter says no',
+    )
+  })
 
   it('names the config file when it cannot be read', async () => {
     // A config deleted mid-session (branch switch, rename) during `vx watch`.
@@ -574,4 +570,174 @@ describe('the evaluation deadline', () => {
     const slow = await write('await Bun.sleep(600)\nexport default { tasks: { ok: {} } }\n')
     expect(await settleOrHang(evaluateConfigFresh(slow), 5000)).toBe('RESOLVED {"tasks":{"ok":{}}}')
   }, 15_000)
+})
+
+describe('a config is JSON data, on every path (item 701)', () => {
+  const JSON_DATA = '— a config must be JSON data, because the cache key folds its JSON'
+
+  it('the same file is refused by the first load and by the repeat load, with one message', async () => {
+    // The defect: the first load validated the live object and refused the
+    // function ("must be a string"); the repeat load round-tripped through
+    // JSON first, dropped it and accepted the config — `vx watch` accepted
+    // what `vx run` refused.
+    const file = await write(
+      `export default { tasks: { build: { exec: { command: 'true' }, description: () => 'x' } } }\n`,
+    )
+    const message = `${file}: tasks.build.description is a function ${JSON_DATA}`
+    expect(await settle(loadProjectConfig(file))).toBe(`REJECTED ${message}`)
+    expect(await settle(loadProjectConfig(file))).toBe(`REJECTED ${message}`)
+  })
+
+  // Each kind of value JSON cannot carry: the module text, then the path
+  // and what the message calls it. Several sit where the validator never
+  // looks at the type (a whole `sandbox`, `persistent`, the `tasks` table),
+  // so before item 701 they loaded on both paths and hashed as something
+  // else.
+  const KINDS: ReadonlyArray<readonly [string, string, string, string]> = [
+    [
+      'a function',
+      `export default { tasks: { build: { exec: { command: 'true' }, description: () => 'x' } } }\n`,
+      'tasks.build.description',
+      'a function',
+    ],
+    [
+      'a symbol',
+      `export default { tasks: { build: { exec: { command: 'true' }, description: Symbol('x') } } }\n`,
+      'tasks.build.description',
+      'a symbol',
+    ],
+    [
+      'a bigint',
+      `export default { tasks: { build: { exec: { command: 'true', timeout: 1000n } } } }\n`,
+      'tasks.build.exec.timeout',
+      'a bigint',
+    ],
+    [
+      'NaN',
+      `export default { tasks: { build: { exec: { command: 'true', timeout: NaN } } } }\n`,
+      'tasks.build.exec.timeout',
+      'NaN',
+    ],
+    [
+      'Infinity',
+      `export default { tasks: { build: { exec: { command: 'true', timeout: Infinity } } } }\n`,
+      'tasks.build.exec.timeout',
+      'Infinity',
+    ],
+    [
+      '-Infinity',
+      `export default { tasks: { build: { exec: { command: 'true', retries: -Infinity } } } }\n`,
+      'tasks.build.exec.retries',
+      '-Infinity',
+    ],
+    [
+      'undefined in an array',
+      `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build', undefined] } } }\n`,
+      'tasks.build.dependsOn[1]',
+      'undefined in an array, which JSON writes as null',
+    ],
+    [
+      'a hole in an array',
+      `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build', , 'lint'] } } }\n`,
+      'tasks.build.dependsOn[1]',
+      'undefined in an array, which JSON writes as null',
+    ],
+    [
+      'a Date',
+      `export default { tasks: { build: { exec: { command: 'true', persistent: new Date(0) } } } }\n`,
+      'tasks.build.exec.persistent',
+      'an instance of Date',
+    ],
+    [
+      'a Map',
+      `export default { tasks: new Map([['build', { exec: { command: 'true' } }]]) }\n`,
+      'tasks',
+      'an instance of Map',
+    ],
+    [
+      'a Set',
+      `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: new Set(['^build']) } } }\n`,
+      'tasks.build.dependsOn',
+      'an instance of Set',
+    ],
+    [
+      'a RegExp',
+      `export default { tasks: { dev: { exec: { command: 'true', persistent: { readyWhen: /ready/ } } } } }\n`,
+      'tasks.dev.exec.persistent.readyWhen',
+      'an instance of RegExp',
+    ],
+    [
+      'a class instance',
+      `class Sandbox { allow = { read: [] } }\nexport default { tasks: { build: { exec: { command: 'true', sandbox: new Sandbox() } } } }\n`,
+      'tasks.build.exec.sandbox',
+      'an instance of Sandbox',
+    ],
+    [
+      'a cycle',
+      `const config = { tasks: { build: { exec: { command: 'true' } } } }\nconfig.tasks.build.exec.env = { define: config }\nexport default config\n`,
+      'tasks.build.exec.env.define',
+      'a cyclic reference',
+    ],
+    [
+      'a default export that is not a plain object',
+      `export default new Map()\n`,
+      'the default export',
+      'an instance of Map',
+    ],
+  ]
+
+  for (const [label, body, at, is] of KINDS) {
+    it(`the first load (in-process) refuses ${label}`, async () => {
+      const file = await write(body)
+      expect(await settle(loadProjectConfig(file))).toBe(
+        `REJECTED ${file}: ${at} is ${is} ${JSON_DATA}`,
+      )
+    })
+
+    it(`the worker refuses ${label}, before its JSON round trip drops it`, async () => {
+      const file = await write(body)
+      expect(await settle(evaluateConfigFresh(file))).toBe(
+        `REJECTED ${file}: ${at} is ${is} ${JSON_DATA}`,
+      )
+    })
+  }
+
+  // The controls: what JSON carries, or drops the way every path already
+  // agrees on, loads on both paths as the same object.
+  const FAITHFUL: ReadonlyArray<readonly [string, string, ProjectConfig]> = [
+    [
+      'an undefined property and a conditional spread',
+      `const ci = false\nexport default { tasks: { build: { exec: { command: 'true', timeout: undefined, ...(ci ? { retries: 2 } : {}) }, description: undefined } } }\n`,
+      { tasks: { build: { exec: { command: 'true' } } } },
+    ],
+    [
+      'a null-prototype object and one object shared by two tasks',
+      `const exec = Object.assign(Object.create(null), { command: 'true' })\nexport default { tasks: { a: { exec }, b: { exec } } }\n`,
+      { tasks: { a: { exec: { command: 'true' } }, b: { exec: { command: 'true' } } } },
+    ],
+  ]
+
+  for (const [label, body, expected] of FAITHFUL) {
+    it(`control: ${label} loads on both paths`, async () => {
+      const file = await write(body)
+      const first = await loadProjectConfig(file)
+      const repeat = await loadProjectConfig(file)
+      expect(JSON.parse(JSON.stringify(first))).toStrictEqual(expected)
+      expect(repeat).toStrictEqual(expected)
+    })
+  }
+
+  it('a faithful config crosses both paths with the same JSON, the bytes its key folds', async () => {
+    // Why item 701 moves no cache key: the rule only refuses, so a config
+    // that passes is the object it was, and `hashTaskConfig` folds its
+    // `JSON.stringify`. The literal is what 107a8f8b (before the rule)
+    // produced for this file on both paths.
+    const file = await write(
+      `const shared = ['src/**', 'package.json']\nexport default {\n  tasks: {\n    build: {\n      description: 'büild — "quoted"',\n      exec: { command: 'bun run build', timeout: 60000, env: { passThrough: ['HOME'], define: { MODE: 'prod' } } },\n      dependsOn: ['^build'],\n      cache: { inputs: { files: shared, env: ['API_URL'] }, outputs: { files: ['dist/**'] } },\n    },\n    ci: { dependsOn: ['build'], description: undefined },\n  },\n}\n`,
+    )
+    const json =
+      '{"tasks":{"build":{"description":"büild — \\"quoted\\"","exec":{"command":"bun run build","timeout":60000,"env":{"passThrough":["HOME"],"define":{"MODE":"prod"}}},"dependsOn":["^build"],"cache":{"inputs":{"files":["src/**","package.json"],"env":["API_URL"]},"outputs":{"files":["dist/**"]}}},"ci":{"dependsOn":["build"]}}}'
+    expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
+    expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
+  })
 })

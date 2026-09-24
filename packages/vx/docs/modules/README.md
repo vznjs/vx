@@ -101,21 +101,22 @@ group.
 
 ## Workspace + discovery
 
-| File                                       | Topic                                                                                                                             |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| [`workspace.md`](./workspace.md)           | `src/workspace/workspace.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir.                                                     |
-| [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.                                                  |
-| [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                            |
-| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.                                                         |
-| [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                           |
-| [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                                                                     |
-| [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel.                                                          |
-| [`config-cache.md`](./config-cache.md)     | `src/workspace/config-cache.ts` — cached evaluations of provably-pure configs.                                                    |
-| [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).                                                 |
-| [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml).                                               |
-| [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `vx-lock.json` freeze / trust / audit.                                                              |
-| [`migration.md`](./migration.md)           | `src/workspace/{migration,migrate-scripts}.ts` — the plan → files seam `vx init` and `@vzn/vx-migrate` share; the scripts mapper. |
-|                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                         |
+| File                                       | Topic                                                                                                                                           |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`workspace.md`](./workspace.md)           | `src/workspace/workspace.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir.                                                                   |
+| [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.                                                                |
+| [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                          |
+|                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader, the config worker and the playground run (see config-schema.md). |
+| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.                                                                       |
+| [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                                         |
+| [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                                                                                   |
+| [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel.                                                                        |
+| [`config-cache.md`](./config-cache.md)     | `src/workspace/config-cache.ts` — cached evaluations of provably-pure configs.                                                                  |
+| [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).                                                               |
+| [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml).                                                             |
+| [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `vx-lock.json` freeze / trust / audit.                                                                            |
+| [`migration.md`](./migration.md)           | `src/workspace/{migration,migrate-scripts}.ts` — the plan → files seam `vx init` and `@vzn/vx-migrate` share; the scripts mapper.               |
+|                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                                       |
 
 ## Graph + scheduler
 

@@ -34,7 +34,7 @@ import { xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
 
 /** Bump when the key derivation or the stored shape changes. */
-export const CONFIG_EVAL_VERSION = 2
+export const CONFIG_EVAL_VERSION = 3
 
 /** Where cached evaluations live; `Cache` implements it over `cache.db`. */
 export interface ConfigEvalStore {

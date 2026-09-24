@@ -24,6 +24,7 @@ import {
   BUN_GLOB_WILDCARDS,
 } from '../util/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
+import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
 // the same reason the task levels reject them: `plugin: [...]` (singular)
@@ -62,6 +63,9 @@ function validateRetention(retention: unknown, configPath: string): void {
 }
 
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
+  // No JSON-data rule here, unlike `validateProjectConfig`: `plugins` holds
+  // objects of functions by design, the file is evaluated in-process on
+  // every load (never through the config worker), and no key folds its JSON.
   assertKnownFields(config, WORKSPACE_FIELDS, configPath)
   if (config.concurrency !== undefined) {
     if (
@@ -220,6 +224,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
  * back from `vx-lock.json` (a hand-editable file — same boundary).
  */
 export function validateProjectConfig(config: ProjectConfig, configPath: string): void {
+  // Before the schema, on the object as it stands: the key folds its JSON,
+  // so a value JSON cannot carry is refused here and in the config worker
+  // alike (json-data.ts). A plugin's `project` edit and a lock entry cross
+  // this line too.
+  const [nonJson] = nonJsonPaths(config)
+  if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
   // The top level too: `task:` (singular) loaded as a project with no
   // tasks and every request against it said "no projects declare".
   assertKnownFields(config, PROJECT_FIELDS, configPath)

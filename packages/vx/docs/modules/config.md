@@ -98,7 +98,9 @@ The function body is a one-liner today and that's by design.
 - The types are JSON-serializable. No `Function` fields, no
   `Date` objects. This is what makes the task-config digest —
   `xxh3hex(JSON.stringify(hashableConfig(config)))` in
-  `task-hash.ts` — well-defined.
+  `task-hash.ts` — well-defined. A config that is plain JavaScript
+  can still hold anything, so the loader enforces it at runtime on
+  every path (item 701, `workspace/json-data.ts`, config-schema.md).
 
 ## Replacing this module
 

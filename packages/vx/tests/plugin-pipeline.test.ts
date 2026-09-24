@@ -268,6 +268,50 @@ describe('project stage', () => {
   )
 
   it(
+    'a plugin that puts a value JSON cannot carry into a config is refused like a user would be (item 701)',
+    async () => {
+      // A Map where `sandbox` goes passes the schema (an object with no
+      // unknown keys) and hashed as `{}`: only the JSON-data rule sees it.
+      await pkg('a', build)
+      await workspace([
+        pluginSource(
+          'org/map',
+          `{ project(config) { config.tasks.build.exec.sandbox = new Map() } }`,
+        ),
+      ])
+      const err = await planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      // From the project's own path on: the root is macOS's symlinked temp
+      // dir there, and which spelling discovery reports is not this row's.
+      const message = err?.message ?? ''
+      expect(message.slice(message.indexOf('/packages/a/vx.config.mjs'))).toBe(
+        `/packages/a/vx.config.mjs (after plugin 'org/map'): tasks.build.exec.sandbox is an instance of Map — a config must be JSON data, because the cache key folds its JSON`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the workspace config is not held to the JSON-data rule: its plugins are objects of functions (item 701)',
+    async () => {
+      await pkg('a', build)
+      await workspace([
+        pluginSource(
+          'org/describe',
+          `{ project(config) { config.tasks.build.description = 'd' } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      expect(plan.tasks.map((t) => [t.node.id, t.node.config.description])).toEqual([
+        ['a#build', 'd'],
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a throwing hook aborts with the plugin and stage named',
     async () => {
       await pkg('a', build)

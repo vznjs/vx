@@ -536,12 +536,9 @@ describe("the page evaluates a config's text as the CLI does (item 699)", () => 
 
   // `vx run` evaluates a config in-process; a repeat load (`vx watch`)
   // evaluates it in a worker and JSON-round-trips it BEFORE validation, as
-  // the page does. The page equals that path on what JSON drops.
+  // the page does. The page equals that path on what JSON drops; what JSON
+  // cannot carry every path refuses (item 701, the row at the end).
   const WORKER_PATH_TEXTS: Record<string, string> = {
-    'a function-valued property': `export default {
-  tasks: { build: { exec: { command: 'true' }, description: () => 'built' } },
-}
-`,
     'an undefined property': `export default {
   tasks: { build: { exec: { command: 'true', timeout: undefined } } },
 }
@@ -581,5 +578,33 @@ describe("the page evaluates a config's text as the CLI does (item 699)", () => 
       ok: false,
       error: 'the config did not finish evaluating within 200 ms',
     })
+  })
+})
+
+describe('a config is JSON data on the page as in the CLI (item 701)', () => {
+  const FUNCTION_TEXT = `export default {
+  tasks: { build: { exec: { command: 'true' }, description: () => 'built' } },
+}
+`
+
+  it("a function-valued description: `vx run --dry=json`, the CLI's worker and the page give one refusal", async () => {
+    const file = path.join(ws, CONFIG_FILE['@pg/docs']!)
+    const refusal = (at: string): string =>
+      `${at}: tasks.build.description is a function — a config must be JSON data, because the cache key folds its JSON`
+    write({ ...FILES, [CONFIG_FILE['@pg/docs']!]: FUNCTION_TEXT })
+    try {
+      const cli = cliRun(ENV)
+      const worker = await evaluateConfigFresh(file).then(
+        () => 'RESOLVED',
+        (e: unknown) => (e as Error).message,
+      )
+      const page = await evaluate(FUNCTION_TEXT)
+      expect(cli.exitCode).toBe(1)
+      expect(cli.stderr).toBe(`vx: ${refusal(file)}\n`)
+      expect(worker).toBe(refusal(file))
+      expect(page).toEqual({ ok: false, error: refusal('vx.config.mjs') })
+    } finally {
+      write(FILES)
+    }
   })
 })

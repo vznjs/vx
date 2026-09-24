@@ -1132,6 +1132,53 @@ planned the fixture with all eight keys equal to the CLI's.
 Design: `design/playground-spike-2026-09.md` § Shipped (item 699),
 whose W9 decision on structured clone is corrected in place.
 
+14cv. **Item 701 (2026-09-24): a config is JSON data, on every path.**
+The same `vx.config.mjs` with `description: () => 'x'`, loaded twice in
+one process, was refused by the first load ("must be a string") and
+accepted by the second, whose worker round-tripped it through JSON
+first: `vx watch` (and `vx info`'s per-file fallback) accepted what
+`vx run` refused. Probed at 107a8f8b, other kinds were worse: a `Map`
+as `tasks`, a class instance as `exec.sandbox`, a `Date` as
+`exec.persistent` or a hole in `dependsOn` loaded on BOTH paths and
+hashed as something else (`{}`, a string, `null`), and a cycle or a
+bigint passed the first load's schema and threw on the worker's.
+`src/workspace/json-data.ts`'s `nonJsonPaths` names every value JSON
+cannot carry (a function, symbol, bigint, `NaN` / `±Infinity`,
+`undefined` inside an array, a cycle, an object neither plain nor an
+array), and every path refuses the first before the schema, with one
+message: "FILE: tasks.build.description is a function — a config must
+be JSON data, because the cache key folds its JSON". The first load
+runs it in `validateProjectConfig` (so a plugin's `project` edit and a
+`vx-lock.json` entry meet it too; `1e999` in a lock parses as
+Infinity). Core's config worker and the playground's worker embed the
+same function by `toString()` and reply with its findings instead of
+the JSON, so the page refuses exactly what the CLI refuses. An
+`undefined` property stays allowed; the workspace config is not held
+to the rule (its plugins are objects of functions). No key moves: a
+config that passes is the object it was, and a row pins the key's JSON
+for a faithful config to the literal 107a8f8b produced on both paths.
+No `CACHE_VERSION` bump. `CONFIG_EVAL_VERSION` 2 → 3: a cached evaluation stores the JSON, so one made before the rule (a `Map` stored as `{}`, a hole as `null`) would be served as valid until the config's bytes changed, in any checkout whose `VERSION` did not move (every dev checkout is `0.0.0`). Rows: the repro (both
+loads refused, exact message); fifteen kinds on the in-process path and
+the same fifteen on the worker; two controls (an `undefined` property
+with a conditional spread, a null-prototype object shared by two
+tasks); a plugin's `Map` refused naming the plugin; a workspace whose
+plugins carry functions loads; the lock's Infinity; the schema-doc
+table row; a parity row (`vx run --dry=json`, `evaluateConfigFresh`
+and the page give one refusal); and `check.binary` now drives the
+compiled binary's worker (`vx info` over a function-valued config
+reports the worker's refusal). Cost: 10 µs per walk of core's own
+30-task config; the cold `load configs` stage over 1,000 generated
+configs is 203 ms before and 201 after (min of 11, interleaved), warm
+20.6 and 20.9. Differentials, each reversed: the core worker without
+the check reddens its 15 rows, the repro, the parity row and
+`check.binary`; `validateProjectConfig` without it reddens its 15, the
+repro, the plugin, lock, schema-doc and parity rows; `undefined` in an
+array let through reddens the four array rows; an `undefined` property
+refused reddens both controls, the key's-JSON row, the undefined-typo
+row and the parity file's `undefined` variant; the page's worker without
+it reddens the parity row; the rule applied to `validateWorkspace`
+reddens the workspace and plugin rows.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

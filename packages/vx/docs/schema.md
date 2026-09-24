@@ -45,6 +45,19 @@ and `@vzn/vx-migrate` generate, because Bun erases the type import and the
 file then loads in a workspace that runs the `vx` binary without the
 package installed. Either form is fine; the object is what vx reads.
 
+The object is JSON data. The cache key folds `JSON.stringify` of each
+task's config, `vx lock` stores the same JSON, and `vx watch` re-reads a
+config through a worker that hands it back as JSON, so a value JSON
+cannot carry would be dropped, rewritten or refused depending on the
+path. vx refuses it on every path, before the schema: a function, a
+symbol, a bigint, `NaN` or `±Infinity`, `undefined` inside an array
+(JSON writes `null`), a cycle, and any object that is not a plain object
+or an array (a `Date`, `Map`, `Set`, `RegExp` or class instance). An
+`undefined` property is fine: JSON drops it and the schema reads it as
+absent, which is what a conditional spread
+(`...(ci ? { retries: 2 } : {})`) relies on. The workspace config is not
+held to this: its plugins are objects of functions.
+
 `tasks` is a `Record<string, TaskConfig>`. Task names are arbitrary
 strings; they're referenced by `dependsOn`, by `cache.inputs.tasks`,
 and by the CLI (`vx run <taskName>` or `vx run <pkg>#<taskName>`).
@@ -1374,6 +1387,7 @@ and surfaces `UserError` (clean output, no stack):
 | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `did not export a default object`                                                                                 | Forgot `export default`, or exported a non-object.                                                                                                                                                                             |
 | `tasks must be an object keyed by task name`                                                                      | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
+| `<path> is <what> — a config must be JSON data, because the cache key folds its JSON`                             | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` inside an array, a cycle, or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance).      |
 | `<level> has unknown field "<key>"`                                                                               | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
 | `<level> must be an object (fields: <fields>), not an array`                                                      | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first` | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |

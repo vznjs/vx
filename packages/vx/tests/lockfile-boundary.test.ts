@@ -355,6 +355,19 @@ describe('frozenProjectConfig — the trust model', () => {
     expect(err.message).toMatch(/`tasks` must be an object/)
   })
 
+  it('holds a stored config to the JSON-data rule a loaded one meets (item 701)', async () => {
+    // JSON.parse yields only JSON values but one: a number literal past the
+    // double range parses as Infinity, which the key's JSON writes as null.
+    await writeRaw(
+      JSON.stringify(lock()).replace('"command":"echo hi"', '"command":"echo hi","timeout":1e999'),
+    )
+    const read = (await readLockfile(root))!
+    const err = await rejection(frozenProjectConfig(read, metaFor('pkg/vx.config.ts'), root))
+    expect(err.message).toBe(
+      `${LOCKFILE_NAME} (pkg): tasks.build.exec.timeout is Infinity — a config must be JSON data, because the cache key folds its JSON`,
+    )
+  })
+
   it('accepts a locked project that declares no tasks', async () => {
     // A config with no `tasks` is legal (validation returns early), so the
     // frozen path must not invent a requirement the live loader does not have.

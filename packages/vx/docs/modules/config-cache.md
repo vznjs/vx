@@ -24,7 +24,7 @@ the first warm load builds the memo in one transaction instead.
 ## Public surface
 
 ```ts
-export const CONFIG_EVAL_VERSION = 2
+export const CONFIG_EVAL_VERSION = 3
 
 /** Where cached evaluations live; `Cache` implements it over `cache.db`. */
 export interface ConfigEvalStore {
@@ -69,7 +69,7 @@ export async function configEvalKeyFromClosure(a: {
 ## Key
 
 `configEvalKey({ configPath, bytes, workspaceFingerprint })` folds, in
-order: `CONFIG_EVAL_VERSION` (2 since 2026-09-03: the key folds each closure file's git blob id, not its bytes), `Bun.version`, the workspace fingerprint
+order: `CONFIG_EVAL_VERSION` (3 since 2026-09-24, item 701: an evaluation cached before configs had to be JSON data may hold what JSON made of a `Map` or a hole, which the rule now refuses; 2 since 2026-09-03: the key folds each closure file's git blob id, not its bytes), `Bun.version`, the workspace fingerprint
 (lockfiles — covers package imports), then for the config and every file
 it transitively imports by **relative** specifier: the path and the
 bytes. Editing a shared preset the config imports moves the key even

@@ -257,8 +257,9 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
  * participate because the loader has already baked them into the
  * resolved object before we serialize.
  *
- * The schema is JSON-serializable by construction (no functions in
- * fields). The `hashCache.taskConfig` WeakMap is consulted first —
+ * A loaded config is JSON data: every load path refuses a value JSON
+ * cannot carry (workspace/json-data.ts, item 701), so this JSON is the
+ * config as vx reads it. The `hashCache.taskConfig` WeakMap is consulted first —
  * each task's config object is created once per run, so a hit there
  * skips the JSON.stringify + xxh3 entirely.
  */
