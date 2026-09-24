@@ -36,6 +36,12 @@ describe('execution.md follows the source it traces', () => {
     const fn = /export async function startGitEnumeration\b[\s\S]*?\n\}/.exec(src)
     expect(fn).not.toBeNull()
     const spawned = [...fn![0]!.matchAll(/spawnGit\(\s*\[\s*'([a-z-]+)'/g)].map((m) => m[1]!)
+    // The rev-parse is asked through `repoFacts`, the memo the file hasher
+    // shares: its command is read from there.
+    expect(fn![0]!).toContain('repoFacts(workspaceRoot)')
+    const facts = /export function repoFacts\b[\s\S]*?\n\}/.exec(src)
+    const revParse = /executablePath\('git'\),\s*'([a-z-]+)'/.exec(facts?.[0] ?? '')
+    spawned.push(revParse![1]!)
     expect(spawned.sort()).toEqual(['config', 'ls-files', 'rev-parse', 'status'])
 
     const step = /11\. Bulk git populate([\s\S]*?)\n \u251c/.exec(doc)

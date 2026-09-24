@@ -236,7 +236,7 @@ export async function loadResolvedProjects(
   const metas = await listProjects(await loadWorkspace(workspaceRoot, reads))
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warn)
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
-  const cache = new Cache(cacheDir)
+  const cache = new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
   noteSchemaReset(cache, warn)
   try {
     const loaded = await loadProjects({
