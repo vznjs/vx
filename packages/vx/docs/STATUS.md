@@ -493,6 +493,22 @@ making `assertKnownFields` refuse non-objects itself (653's proposal):
 every caller already checks its own level and 653 holds each, so the
 guard would be unreachable.
 
+14ce. **Item 683 (roadmap W12, 2026-09-24): the glossary.** `learn/glossary.md`
+defines seventeen terms once, without reference to a tool (workspace,
+project, task, task dependency, task graph, project graph, affected,
+inputs, outputs, cache key, hit/miss/stale hit, remote cache,
+hermeticity and sandboxing, remote execution, persistent task, critical
+path, seam and plugin), then gives the name vx, Turborepo, Nx and Bazel
+use, each linked to that tool's documentation. Every name was checked
+against the tools' own doc sources on 2026-09-24 (shallow clones of
+vercel/turborepo, nrwl/nx and bazelbuild/bazel; their sites are not
+reachable from this box), and the check changed three claims a guess
+would have made: Nx has task sandboxing (an Nx Cloud add-on on a
+dedicated cluster), its term for a stale hit is "false cache hit", and
+its long-running tasks are `continuous`, not `persistent`. A dash means
+the tool's docs have no term, not that the tool cannot do the thing.
+Pages linking their terms into it is W1–W7's job as each is written.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -505,7 +521,8 @@ guard would be unreachable.
     build (W10), checkpoints (W11) and a glossary (W12). W0, the
     skeleton and the island pattern, is DONE (item 675, entry 14bw).
     W1, the first real Learn page and the graph explorer, is DONE (item
-    681, entry 14cc). Next step: W2 and the key calculator.
+    681, entry 14cc), and so is W12, the glossary (item 683, entry 14ce).
+    Next step: W2 and the key calculator.
 
 ## Decisions (this arc)
 

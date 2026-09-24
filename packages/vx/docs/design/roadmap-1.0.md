@@ -108,7 +108,7 @@ The plan is `design/site-teaches-2026-09.md`.
 | W9  | The playground: the real planner (graph, keys, scheduler) running in the browser over a workspace the reader edits. Starts with a spike.                                                                                | L    |
 | W10 | Labs: break a build on purpose (a stale hit, an undeclared input, an output collision) and see what catches it.                                                                                                         | M    |
 | W11 | Checkpoints: one question per page, checked against the live model.                                                                                                                                                     | S    |
-| W12 | A tool-neutral glossary that every page links into.                                                                                                                                                                     | S    |
+| W12 | ~~A tool-neutral glossary that every page links into.~~ DONE in item 683: `learn/glossary.md`, seventeen terms, each tool's name checked against its own docs.                                                          | S    |
 
 **Exit:** every Learn page has a diagram and an interactive element and
 reads with JavaScript off. Every number comes from `benchmarks.md`,
