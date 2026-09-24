@@ -1,9 +1,11 @@
 ---
 // vx landing page — standalone (its own nav, footer and theme; the docs
-// stay Starlight), static, one script for the copy button. Every number is
-// server-rendered from results.json by packages/vx-bench/update-site.ts:
-// the benchRows block and the three stat tiles are the regions it
-// rewrites (check.site guards them).
+// stay Starlight), static, one script for the copy button. Every
+// measurement is written by packages/vx-bench/update-site.ts (check.site
+// guards it): from results.json, the benchRows block, the three stat tiles
+// and the graph's size in the #bench kicker and the first card; from
+// benchmarks.md, the n8nRows block and the #real kicker's task count.
+// tests/landing.test.ts holds the page's other figures to their sources.
 import '../styles/landing.css'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
@@ -28,14 +30,20 @@ const tasks = meter(50)
 const cache = meter(50)
 const dashes = '─'.repeat(80)
 
-// Real `vx run` rows. The id paints as project-hue `@vzn/vx` + dim `#` +
-// pink task, exactly like the CLI's identity coloring.
+// A sample of `vx run`'s output, in its layout and colours, labelled a
+// sample on the page: no recorded run stands behind its times. The id
+// paints as project-hue `@vzn/vx` + dim `#` + pink task, like the CLI's
+// identity coloring. The summary is computed from the rows.
 const termTasks = [
-  { time: '241ms', proj: '@vzn/vx', task: 'build.bun.darwin-x64' },
-  { time: '243ms', proj: '@vzn/vx', task: 'build.bun.linux-arm64' },
-  { time: '242ms', proj: '@vzn/vx', task: 'build.bun.darwin-arm64' },
-  { time: '245ms', proj: '@vzn/vx', task: 'build.bun.linux-x64' },
+  { ms: 241, proj: '@vzn/vx', task: 'build.bun.darwin-x64' },
+  { ms: 243, proj: '@vzn/vx', task: 'build.bun.linux-arm64' },
+  { ms: 242, proj: '@vzn/vx', task: 'build.bun.darwin-arm64' },
+  { ms: 245, proj: '@vzn/vx', task: 'build.bun.linux-x64' },
 ]
+const termMs = termTasks.map((t) => t.ms)
+const termMax = Math.max(...termMs)
+const termMin = Math.min(...termMs)
+const termAvg = Math.round(termMs.reduce((a, b) => a + b, 0) / termMs.length)
 
 // Differentiators only — the things Turbo and Nx can't do. Every claim
 // traces to README.md / docs (no table-stakes like "affected graph",
@@ -49,8 +57,8 @@ const features = [
   {
     icon: 'bolt',
     tone: 'var(--phosphor)',
-    title: 'Fastest in every row',
-    body: 'Cold, cached, restore and CPU on a synthetic 3,270-task graph; restore and no-op on five real Turbo repos, where the cold build is the compilers\' time and reads within 3% either way.',
+    title: 'First in every synthetic row',
+    body: 'Cold, cached, restore and CPU on a synthetic 3,270-task graph. On five real Turbo repos, the fastest restore on all five; their cold builds are the compilers\' time.',
     doc: href('benchmarks/'),
   },
   {
@@ -78,7 +86,7 @@ const features = [
     icon: 'box',
     tone: 'var(--plasma)',
     title: 'Tested like infrastructure',
-    body: '2,700+ tests, every fix pinned by one that fails without it, and parity suites that run Turborepo’s and Nx’s behaviours under vx.',
+    body: 'Every fix pinned by a test that fails without it, and parity suites that run Turborepo’s and Nx’s behaviours under vx.',
     doc: href('parity/'),
   },
   {
@@ -211,19 +219,16 @@ const clock = (ms: number): string => {
   return `${m}:${String(sec).padStart(2, '0')}`
 }
 const plus = (val: number): string => `+${clock(val - raceBase.val)}`
-const PACKAGES = 1090
-const perPkg = (val: number): string => Math.round((val - raceBase.val) / PACKAGES).toLocaleString('en-US')
 const lanes = [
   { name: 'vx', label: 'vx', bar: raceVx, tone: 'var(--phosphor)' },
   { name: 'turbo', label: 'Turborepo', bar: raceTurbo, tone: 'var(--c-turbo)' },
   { name: 'nx', label: 'Nx', bar: raceNx, tone: 'var(--c-nx)' },
 ]
 
-// A real Turbo repo in the same panel, the same rows: n8n-io/n8n, the
-// most-starred Turborepo monorepo, its own turbo.json, nothing rewritten,
-// 70 `build` tasks, medians of three; the tables for all five repos are
-// in docs/benchmarks.md. The cold row is the compilers' (Turbo took it by
-// 3%, inside the disk's noise); the runner's rows are the other two.
+// A real Turbo repo in the same panel, the same rows: n8n-io/n8n, its own
+// turbo.json, nothing rewritten. update-site.ts writes this block from the
+// n8n table in docs/benchmarks.md, where the other four repos are too. The
+// cold row is the compilers'; the runner's rows are the other two.
 const n8nRows = [
   {
     task: 'Cold build · caches and outputs wiped',
@@ -386,7 +391,7 @@ const footCols = {
               <span class="tdot" style="background:#ff5f57"></span>
               <span class="tdot" style="background:#febc2e"></span>
               <span class="tdot" style="background:#28c840"></span>
-              <span class="ttitle">zsh — vx</span>
+              <span class="ttitle">zsh — vx · sample output</span>
             </div>
             <div class="term-body">
               <div class="term-prompt">
@@ -396,7 +401,7 @@ const footCols = {
                 termTasks.map((t) => (
                   <div class="term-task">
                     <span class="glyph">⏺ </span>
-                    <span class="time">{t.time}</span>
+                    <span class="time">{t.ms}ms</span>
                     <span class="ok">success</span>
                     <span class="cache">miss</span>
                     <span class="target">
@@ -440,7 +445,7 @@ const footCols = {
               </div>
               <div class="term-row">
                 <span class="lbl"></span><span class="v"
-                  ><span class="t-green">4 success</span><span class="t-dim"> · 4 total</span></span
+                  ><span class="t-green">{termTasks.length} success</span><span class="t-dim"> · {termTasks.length} total</span></span
                 >
               </div>
               <div style="height:6px"></div>
@@ -453,7 +458,7 @@ const footCols = {
                 >
               </div>
               <div class="term-row">
-                <span class="lbl"></span><span class="v"><span class="t-red">4 miss</span></span>
+                <span class="lbl"></span><span class="v"><span class="t-red">{termTasks.length} miss</span></span>
               </div>
               <div class="term-gap"></div>
               <div class="term-row">
@@ -463,7 +468,7 @@ const footCols = {
                 <span class="lbl">time</span>
                 <span class="v"
                   ><span class="term-time">252ms</span><span class="term-time-rest"
-                    > · max 245ms · avg 243ms · min 241ms</span
+                    > · max {termMax}ms · avg {termAvg}ms · min {termMin}ms</span
                   ></span
                 >
               </div>
@@ -748,7 +753,7 @@ const footCols = {
       <section class="section" id="real">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// a real repo · n8n-io/n8n · 84 packages · its own turbo.json, nothing rewritten</p>
+            <p class="vx-kicker">// a real repo · n8n-io/n8n · 70 build tasks · its own turbo.json, nothing rewritten</p>
             <h2>The runner's rows on a real repo.</h2>
             <p class="sub">The same executed graph and the same output files on both sides. The cold row is the compilers' time; restore and no-op are the runner's. Astro, payload, medusa and cal.com are in the benchmarks.</p>
           </div>
@@ -829,7 +834,7 @@ const footCols = {
           <div class="section-head">
             <p class="vx-kicker">// built different, on purpose</p>
             <h2>What sets it apart.</h2>
-            <p class="sub">Six things, each with the page that proves it.</p>
+            <p class="sub">Each with the page that proves it.</p>
           </div>
           <div class="cards">
             {

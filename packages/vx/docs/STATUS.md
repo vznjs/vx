@@ -1492,6 +1492,76 @@ refused (679). The `Failed:` recap (706), the sandbox's `~` path (652),
 The count is 455 PRs since v0.0.21, the first-parent commits through
 #798; it is recounted at the cut. Roadmap 1.3 reads DONE through 710.
 
+14dh. **Item 711 (2026-09-24): every internal link in the built site
+lands.** `packages/vx-docs/tests/site-links.test.ts` reads every page in
+`dist/` (239) and checks each `href` and `src` that points inside the
+site, relative, root-relative or absolute under `SITE_URL` and
+`BASE_PATH`: it must name a built file, and a `#fragment` must name an
+id on it. The sitemaps and the blog feed must name only built pages,
+and the pages scanned must be exactly the sitemap's plus `404.html`, so
+the scan cannot go vacuous. External links are not fetched; Pagefind's
+index is not parsed, but the `pagefind.js` the search script loads by a
+path no attribute names must exist; the 404 page's canonical `404/` is
+the one excused link (built as `404.html`), and a row fails when the
+excuse goes unused; a relative link on the 404 page is dead by rule,
+since the host serves it at any path. A fixture row holds each kind of
+dead link to its exact report. Found and fixed: the design index's
+links to `roadmap-1.0` and `versioning-1.0` (Astro slugs a dot away, so
+the pages are `roadmap-10/` and `versioning-10/`); `import-docs.ts`'s
+`cleanUrlFor` now slugs as Astro does. No other link on the site was
+dead. Differentials, each reversed: `../playground/` →
+`../playgrund/` in `learn/caching.mdx`, rebuilt, reddens the scan with
+exactly that link; `../glossary/#inputs` → `#inputz` reddens it with
+exactly that anchor; the old `cleanUrlFor` reddens it with the two
+design links; the checker's id test dropped reddens the fixture row
+only. The file runs in 0.4 s (the scan 0.33–0.39 s). CI found one
+more, and it was a lost page: `modules/README.md` (the module index)
+and `modules/index.md` (`src/index.ts`'s page) both wrote the
+collection's `modules/index.md`, so the directory scan's order chose
+which page the site kept. This machine kept `src/index.ts`'s; CI's
+runner kept the index, whose link to the other page was then dead.
+`src/index.ts`'s page is now `modules/public-surface/`, and
+`import-docs.ts` refuses two sources on one output before it clears a
+page; a row holds both pages by title. Differentials: the new mapping
+dropped, the import exits 1 naming both sources; the collision this
+machine built (the index lost) reddens the title row. And a gap in item
+706's recap: `bun test` prints a failure's diff where the test ran and
+only its name at the end, so the recap's last 30 lines named the row
+but not the dead link; the diff came from the job log's tail.
+
+14di. **Item 712 (2026-09-24): the landing page's figures come from
+their sources.** Every figure on `index.astro` that `update-site.ts`
+did not write was inventoried and given a source. The generator now
+also writes, and `check.site` compares: the graph's size in the
+`#bench` kicker and the first card (3,270 tasks, 1,090 packages, 100
+layers, from `results.json`, whose `layers` it now reads), and the
+n8n panel (`n8nRows`, each bar's value and label from the cell text of
+`benchmarks.md`'s n8n table, the bold cell the best) and the `#real`
+kicker's task count, from that table's heading. `landing.test.ts`
+holds the rest to `benchmarks.md` as imported: the five real Turbo
+repos by their five `###` headings, vx's restore on each (its cell
+bold), the four named besides n8n, and the scaling table's 100, 300
+and 1,000 packages; and core's `package.json` version in the
+terminal. Claims without evidence, rewritten: "84 packages" (REPOS.md's
+workspace members, nowhere in `benchmarks.md`) is "70 build tasks";
+the first card's "Fastest in every row … restore and no-op on five
+real Turbo repos … reads within 3% either way" was refuted by
+`benchmarks.md` (Turbo takes payload's no-op, and astro's cold build
+is 1.21×), so it reads "First in every synthetic row" and "the fastest
+restore on all five"; "2,700+ tests" had no count behind it and went;
+"Six things" went; the terminal's times, "1 affected · 2 total" and
+"10 workers" have no recorded run, so the terminal is labelled a
+sample and its summary is computed from its rows; the unused
+`PACKAGES = 1090` went. Differentials, each reversed: on the page,
+the n8n no-op 842 → 843, the `#real` count 70 → 84, the card's 3,270 →
+3,300, the kicker's 100 layers → 99 and n8n's cold `best` dropped each
+redden `check.site`, as does the n8n no-op 842 → 852 in
+`benchmarks.md`; rebuilt, "all five" → "all four", "1,000" → "3,000"
+and the sample label dropped redden their three rows, and dropping
+medusa from the four reddens the first; in the source, moving
+payload's restore bold, a scaling size 300 → 500 and core's version
+0.0.1 each redden exactly their row.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1533,16 +1603,17 @@ The count is 455 PRs since v0.0.21, the first-parent commits through
     untouched. The track, W0–W12, is DONE. Of the plan's "Done means",
     met: the playground's parity with the CLI (core's parity rows),
     comparisons that state vx's costs and name a better pick (the
-    choosing page, which the landing links). Not yet met: the glossary
-    has no diagram, interactive element or checkpoint, and scheduling,
-    choosing, architecture and extending end with a static `<details>`,
-    not a live checkpoint; no page per monorepo.tools checkmark was
+    choosing page, which the landing links), the site-wide link check
+    (item 711, entry 14dh), and on the landing page every figure from
+    its source (item 712, entry 14di). Decided (architect, 2026-09-24):
+    scheduling, choosing, architecture and extending keep their static
+    `<details>` checkpoints, because their questions are not planner
+    questions; the glossary is a reference, not a lesson, so it carries
+    no checkpoint. Not yet met: the glossary has no diagram or
+    interactive element; no page per monorepo.tools checkmark was
     checked row by row, and none was found for code generation or
-    project constraints; the landing's hand-typed figures ("84
-    packages", "within 3%") are not in `benchmarks.md` in that form, no
-    row holds its figures to it, and its cards link docs pages, not
-    tests; the site has per-page link rows but no site-wide link check
-    in `vx run ci --all`.
+    project constraints; the landing's cards link docs pages, not
+    tests; no row holds the figures on pages other than the landing.
 
 ## Decisions (this arc)
 

@@ -168,7 +168,7 @@ export default defineProject({
     // this task.
     test: {
       description:
-        'bun test — the guide, sidebar, demo and Learn pins (needs the imported content and dist/)',
+        'bun test — the guide, sidebar, demo, Learn and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
