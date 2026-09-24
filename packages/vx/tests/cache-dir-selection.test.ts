@@ -14,6 +14,7 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { loadCliProjects } from '../src/cli/workspace-config.js'
 import { listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
+import { summarized } from './helpers/parity.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -208,6 +209,54 @@ describe('the run’s --cache-dir reaches selection', () => {
       expect(out + err).toContain('app')
       expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(true)
       expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+})
+
+// nx#7692: two checkouts of one commit at different paths derived
+// different keys, so a cache they shared never hit across them.
+describe('two checkouts of one commit sharing --cache-dir', () => {
+  it(
+    'the second checkout, at another and longer path, restores what the first saved',
+    async () => {
+      const first = await makeWorkspace({ prefix: 'vx-two-checkouts-' })
+      const parent = await mkdtemp(path.join(os.tmpdir(), 'vx-two-checkouts-other-'))
+      const shared = await mkdtemp(path.join(os.tmpdir(), 'vx-two-checkouts-cache-'))
+      try {
+        await addProject(first, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'mkdir -p dist && cat src/in.txt > dist/out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/in.txt': 'v1\n' },
+        })
+        const git = gitIn(first)
+        git('add', '-A')
+        git('commit', '-q', '-m', 'init')
+        const second = path.join(parent, 'a', 'deeper', 'checkout')
+        git('clone', '-q', first, second)
+
+        const statusIn = async (cwd: string) =>
+          (await summarized(cwd, ['build', '--all', '--cache-dir', shared])).tasks.get(
+            'app#build',
+          )?.['status']
+        expect(await statusIn(first)).toBe('success')
+        expect(await statusIn(second)).toBe('cache-hit')
+        expect(await Bun.file(path.join(second, 'packages', 'app', 'dist', 'out.txt')).text()).toBe(
+          'v1\n',
+        )
+      } finally {
+        await rm(first, { recursive: true, force: true })
+        await rm(parent, { recursive: true, force: true })
+        await rm(shared, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

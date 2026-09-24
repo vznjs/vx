@@ -418,6 +418,27 @@ describe('archive restore — non-regular entries are never materialized', () =>
     await restore(tar, dest)
     expect(existsSync(path.join(dest, 'dist', 'nested'))).toBe(false)
   })
+
+  // nx#32996: a directory record's mode (0644, no search bit) was applied,
+  // and the file under it could not be written. The mode is asserted, not
+  // the write: as root a missing search bit refuses nothing.
+  it('directory records with 0644 or 0600 modes never set a directory mode; the file under them lands', async () => {
+    const body = new TextEncoder().encode('inside\n')
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/dist/', size: 0, typeFlag: '5', mode: 0o644 }),
+      makeHeader({ name: 'outputs/dist/sub/', size: 0, typeFlag: '5', mode: 0o600 }),
+      makeHeader({ name: 'outputs/dist/sub/f.txt', size: body.length, typeFlag: '0' }),
+      makeDataBlock(body),
+      EOF_BLOCKS,
+    ])
+    await restore(tar, dest)
+    expect(await readFile(path.join(dest, 'dist', 'sub', 'f.txt'), 'utf8')).toBe('inside\n')
+    const fresh = 0o777 & ~process.umask()
+    const modes = await Promise.all(
+      ['dist', 'dist/sub'].map(async (d) => (await stat(path.join(dest, d))).mode & 0o777),
+    )
+    expect(modes).toEqual([fresh, fresh])
+  })
 })
 
 describe('name rejections', () => {

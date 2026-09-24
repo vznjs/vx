@@ -24,6 +24,8 @@ import {
 } from '../src/cache/inputs.js'
 import { UserError } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { run } from '../src/orchestrator/index.js'
 
 async function write(p: string, content = 'x'): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -1172,5 +1174,45 @@ describe('resolveInputs — runtime values', () => {
     })
     const bytes = await readFile(counter, 'utf8')
     expect(bytes.length).toBe(1)
+  })
+})
+
+// nx#35228: a FIFO in the project hung the hasher, which opened it and
+// waited for a writer that never came.
+describe('a named pipe under an input or output glob (e2e)', () => {
+  it('neither hangs the run nor enters the key or the artifact', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-fifo-' })
+    try {
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+        files: { 'src/a.txt': 'a1\n' },
+      })
+      await mkdir(path.join(dir, 'dist'))
+      for (const fifo of ['src/pipe', 'pipe', 'dist/pipe']) {
+        expect(Bun.spawnSync(['mkfifo', path.join(dir, fifo)]).exitCode).toBe(0)
+      }
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const status = async () =>
+        (await run({ cwd: root, tasks: ['build'], log: quiet })).outcomes.map((o) => o.status)
+
+      expect(await status()).toEqual(['success'])
+      await rm(path.join(dir, 'dist', 'out.txt'))
+      expect(await status()).toEqual(['cache-hit'])
+      expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\n')
+      // CONTROL: the key is live — a real input edit misses.
+      await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
+      expect(await status()).toEqual(['success'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

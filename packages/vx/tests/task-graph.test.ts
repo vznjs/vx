@@ -621,6 +621,40 @@ describe('buildTaskGraph', () => {
       })
       expect(nodes.get('app#all')?.deps).toEqual(['app#build.x1'])
     })
+
+    // nx#36498: a task name holding `[`, `]` or `/` (a route path in a
+    // generated target) was read as a pattern and linked nothing.
+    it('names holding brackets and slashes are literal, exact or inside a pattern', () => {
+      const tasks = {
+        't--plain': cmd('p'),
+        't--src/app/[id]/page': cmd('r'),
+        // What the bracket would match as a character class, were it one.
+        't--src/app/i/page': cmd('bad'),
+      }
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', {
+            ...tasks,
+            all: { dependsOn: ['t--plain', 't--src/app/[id]/page'] },
+            pat: { dependsOn: ['t--*'] },
+            route: { dependsOn: ['t--src/app/[id]/*'] },
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [
+          { project: 'app', task: 'all' },
+          { project: 'app', task: 'pat' },
+          { project: 'app', task: 'route' },
+        ],
+      })
+      expect(nodes.get('app#all')?.deps).toEqual(['app#t--plain', 'app#t--src/app/[id]/page'])
+      expect([...(nodes.get('app#pat')?.deps ?? [])].sort()).toEqual([
+        'app#t--plain',
+        'app#t--src/app/[id]/page',
+        'app#t--src/app/i/page',
+      ])
+      expect(nodes.get('app#route')?.deps).toEqual(['app#t--src/app/[id]/page'])
+    })
   })
 })
 

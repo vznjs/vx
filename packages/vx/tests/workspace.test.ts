@@ -542,7 +542,7 @@ describe('listProjects', () => {
 
   // nx#15625: a project directory named with underscores (`__generated__`)
   // was skipped by the project scan.
-  it('a directory named __generated__ or _generated is a project like any other', async () => {
+  it('a directory named `__generated__` or `_generated` is a project like any other', async () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "libs/*"\n')
     for (const d of ['__generated__', '_generated', 'plain']) {
       await mkdir(path.join(dir, 'libs', d), { recursive: true })

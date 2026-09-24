@@ -319,6 +319,30 @@ describe('buildPackageGraph', () => {
     ])
   })
 
+  // nx#36290: the workspace root as a project lost its edges to members,
+  // whatever spec named them.
+  it('the workspace root as a project links a member by `file:`, `link:` and `workspace:*`', () => {
+    const member = (name: string): ProjectMeta => ({
+      name,
+      dir: `/ws/packages/${name}`,
+      packageJson: { name, version: '1.0.0' },
+      configPath: null,
+    })
+    for (const spec of ['file:./packages/child', 'link:./packages/child', 'workspace:*']) {
+      const g = buildPackageGraph([
+        {
+          name: 'root',
+          dir: '/ws',
+          packageJson: { name: 'root', version: '1.0.0', dependencies: { child: spec } },
+          configPath: null,
+        },
+        member('child'),
+        member('other'),
+      ])
+      expect({ spec, deps: g.directDeps('root') }).toEqual({ spec, deps: ['child'] })
+    }
+  })
+
   it('a range the local version does not satisfy is a registry dependency (turborepo#4214)', () => {
     // bun, npm and yarn install `shared@^1.0.0` from the registry when the
     // workspace's `shared` is 2.0.0, and link it for `^2.0.0`, padded or not.

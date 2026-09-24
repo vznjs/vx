@@ -200,6 +200,94 @@ describe('artifact round-trip', () => {
     },
     TIMEOUT,
   )
+
+  const project = async (outputs: string[], command: string): Promise<void> => {
+    await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+    await writeLocalWorkspace(root)
+    await write(
+      path.join(root, 'vx.config.mjs'),
+      `export default {
+         tasks: {
+           build: {
+             exec: { command: ${JSON.stringify(command)} },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} } },
+           },
+         },
+       }`,
+    )
+    await write(path.join(root, 'src/in.txt'), 'IN')
+    git(root, 'init', '-q')
+    git(root, 'config', 'user.email', 'test@vx.local')
+    git(root, 'config', 'user.name', 'vx test')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+  }
+
+  // nx#34013: overlapping output globs and directory literals collided on
+  // restore (a file two globs matched written twice, a directory literal
+  // over a directory a glob had made).
+  it(
+    'overlapping output globs and directory literals save and restore the exact tree once',
+    async () => {
+      await project(
+        [
+          '.next/*.json',
+          '.next/standalone',
+          '.next/server',
+          '.next/standalone/**',
+          '.next/**/*.json',
+        ],
+        [
+          'mkdir -p .next/standalone/deep .next/server',
+          'echo a > .next/a.json',
+          'echo s > .next/standalone/server.js',
+          'echo b > .next/standalone/deep/b.json',
+          'echo p > .next/server/page.js',
+        ].join(' && '),
+      )
+      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      const produced = await snapshotTree(path.join(root, '.next'))
+      expect([...produced.keys()].sort()).toEqual([
+        'a.json',
+        'server/page.js',
+        'standalone/deep/b.json',
+        'standalone/server.js',
+      ])
+      await rm(path.join(root, '.next'), { recursive: true, force: true })
+      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(await snapshotTree(path.join(root, '.next'))).toEqual(produced)
+      const again = vx(root, 'run', 'build')
+      expect(again.exitCode).toBe(0)
+      expect(again.out).toContain('up-to-date')
+    },
+    TIMEOUT,
+  )
+
+  // nx#18075: an output glob with an extension set captured nothing.
+  it(
+    'an output glob with a brace extension set captures those extensions and restores them',
+    async () => {
+      await project(
+        ['.build/**/*.{js,map,ts}'],
+        [
+          'mkdir -p .build/sub',
+          'echo js > .build/a.js',
+          'echo ts > .build/b.ts',
+          'echo map > .build/sub/a.map',
+          'echo css > .build/c.css',
+        ].join(' && '),
+      )
+      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      await rm(path.join(root, '.build'), { recursive: true, force: true })
+      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect([...(await snapshotTree(path.join(root, '.build'))).keys()].sort()).toEqual([
+        'a.js',
+        'b.ts',
+        'sub/a.map',
+      ])
+    },
+    TIMEOUT,
+  )
 })
 
 describe('artifact round-trip — odd names', () => {

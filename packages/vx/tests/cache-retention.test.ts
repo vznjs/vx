@@ -343,6 +343,59 @@ describe('a run applies the workspace retention at its end', () => {
     ])
   })
 
+  // nx#35329: a cache moved outside the workspace was never evicted.
+  it('evicts from a cache directory outside the workspace, set by cacheDir or --cache-dir', async () => {
+    const evicted: Record<string, unknown> = {}
+    for (const via of ['cacheDir', '--cache-dir'] as const) {
+      root = await makeWorkspace({ prefix: 'vx-retention-outside-' })
+      const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-retention-shared-'))
+      try {
+        const where =
+          via === 'cacheDir' ? `, cacheDir: ${JSON.stringify(path.relative(root, outside))}` : ''
+        await writeFile(
+          path.join(root, 'vx.workspace.mjs'),
+          `export default { cacheRetention: { olderThan: '1d' }${where} }\n`,
+        )
+        await addProject(root, 'a', { config: task('a'), files: { 'src/a.txt': 'a' } })
+        await addProject(root, 'b', { config: task('b'), files: { 'src/b.txt': 'b' } })
+        const flag = via === '--cache-dir' ? { cacheDir: outside } : {}
+        const first = await run({
+          cwd: root,
+          tasks: ['build'],
+          log: logger(),
+          handleSignals: false,
+          ...flag,
+        })
+        expect(first.ok).toBe(true)
+        expect(projects(outside)).toEqual(['a', 'b'])
+        const db = new Database(path.join(outside, 'cache.db'))
+        db.query("UPDATE entries SET accessed_at = 1 WHERE task = 'build' AND project = 'a'").run()
+        db.close()
+
+        const log = logger()
+        await run({
+          cwd: root,
+          tasks: ['build'],
+          projects: ['b'],
+          log,
+          handleSignals: false,
+          ...flag,
+        })
+        evicted[via] = {
+          left: projects(outside),
+          said: log.lines.filter((l) => l.includes('cache retention')).length,
+        }
+      } finally {
+        await rm(outside, { recursive: true, force: true })
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+    expect(evicted).toEqual({
+      cacheDir: { left: ['b'], said: 1 },
+      '--cache-dir': { left: ['b'], said: 1 },
+    })
+  })
+
   it('a workspace that declares no retention evicts nothing', async () => {
     const cacheDir = await setup('plugins: []')
     const log = logger()
