@@ -394,10 +394,11 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (envList !== undefined) {
         if (
           !Array.isArray(envList) ||
-          envList.some((s) => typeof s !== 'string' || s.length === 0)
+          // A NUL can be in no env name, and the key fold's delimiter is one.
+          envList.some((s) => typeof s !== 'string' || s.length === 0 || s.includes('\0'))
         ) {
           throw new UserError(
-            `${where}.cache.inputs.env must be an array of non-empty env var names`,
+            `${where}.cache.inputs.env must be an array of non-empty env var names, none holding a NUL`,
           )
         }
         for (const name of envList as string[]) {

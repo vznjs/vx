@@ -287,6 +287,20 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/env.*non-empty/)
     })
 
+    // The key folds an unset name as its bare name and a set one as
+    // `name\0value`; a name holding a NUL would let the two meet.
+    it('rejects a NUL in a cache.inputs.env name', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'], env: ['MODE\\0x'] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/env.*none holding a NUL/)
+    })
+
     it('rejects empty-string entries in cache.outputs.files', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(

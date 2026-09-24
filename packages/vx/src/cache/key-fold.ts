@@ -139,9 +139,13 @@ export async function foldKey(
   h = xxh3(`env-values:${input.envValues.length}`, h)
   // \0 delimiter, not `=`: names and values may themselves contain
   // `=`, and `A` + `B=C` must never fold the same bytes as `A=B` + `C`.
-  for (const [n, v] of input.envValues) h = xxh3(`${n}\0${v}`, h)
+  // An unset name folds its bare name: a name holds no \0 (the schema
+  // refuses one), so that is no `name\0value` for any value, the empty
+  // one included, and a set value's bytes stay what they always were.
+  for (const [n, v] of input.envValues) h = xxh3(v === undefined ? n : `${n}\0${v}`, h)
   if (cap)
-    for (const [n, v] of input.envValues) cap.push({ kind: 'env', name: n, hash: xxh3hex(v) })
+    for (const [n, v] of input.envValues)
+      cap.push({ kind: 'env', name: n, hash: v === undefined ? 'unset' : xxh3hex(v) })
 
   const runtimeValues = input.runtimeValues ?? []
   h = xxh3(`runtime-values:${runtimeValues.length}`, h)

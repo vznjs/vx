@@ -1,7 +1,8 @@
 // Resolve declared cache inputs into the concrete pieces that go into the
 // cache key:
 //   - files: absolute paths whose contents are hashed
-//   - envValues: [name, value] pairs from parent process.env
+//   - envValues: [name, value] pairs from parent process.env (value
+//     undefined for an unset name)
 //
 // `cache.inputs.env` is the cache-tracking axis for env vars; it's
 // independent of `exec.env`, which controls what reaches the child.
@@ -78,7 +79,7 @@ const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 
 export interface ResolvedInputs {
   files: string[]
-  envValues: Array<[name: string, value: string]>
+  envValues: Array<[name: string, value: string | undefined]>
   runtimeValues: Array<[command: string, output: string]>
   workspaceRuntimeValues: Array<[command: string, output: string]>
 }
@@ -323,8 +324,8 @@ function isInputOnDisk(abs: string): boolean {
 function resolveEnvValues(
   names: readonly string[],
   source: NodeJS.ProcessEnv,
-): Array<[string, string]> {
-  return [...names].sort().map((name) => [name, source[name] ?? ''] as [string, string])
+): Array<[string, string | undefined]> {
+  return [...names].sort().map((name) => [name, source[name]])
 }
 
 /**

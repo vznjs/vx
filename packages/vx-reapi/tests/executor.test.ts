@@ -94,7 +94,7 @@ describe('outputPathSets', () => {
 })
 
 describe('commandEnvironment', () => {
-  const inputs = (env: Array<{ name: string; value: string }>) =>
+  const inputs = (env: Array<{ name: string; value: string | undefined }>) =>
     ({ env }) as unknown as NonNullable<ExecuteRequest['inputs']>
 
   it('carries exec.env.define across to the worker', () => {
@@ -107,6 +107,20 @@ describe('commandEnvironment', () => {
     expect(commandEnvironment(inputs([{ name: 'API_URL', value: 'https://x' }]), {})).toEqual([
       { name: 'API_URL', value: 'https://x' },
     ])
+  })
+
+  // The worker runs what the key describes: an unset name is absent there, as
+  // `passThrough` leaves it absent here, and an empty one is carried empty.
+  it('leaves an unset cache.inputs.env name out, and carries an empty one', () => {
+    expect(
+      commandEnvironment(
+        inputs([
+          { name: 'EMPTY', value: '' },
+          { name: 'GONE', value: undefined },
+        ]),
+        {},
+      ),
+    ).toEqual([{ name: 'EMPTY', value: '' }])
   })
 
   // ORDER is NOT pinned here on purpose. The proto requires

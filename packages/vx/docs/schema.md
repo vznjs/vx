@@ -661,10 +661,11 @@ isolated, so without it the key varies on a value the command never
 sees. Tracking-only declarations (an env var that influences inputs
 some other way) are legal but rare; if in doubt, declare both.
 
-Unset names contribute the empty string to the key — and that's
-distinguishable from a name that was never listed, because the key
-holds the count of names and the names themselves as well as their
-values.
+An unset name, a name set to the empty string, and a name never
+listed are three different keys: the key holds the count of names,
+the names, and each value, with "unset" folded apart from every value
+(the child tells unset from empty too — `process.env.X ?? 'dflt'`,
+`${X-dflt}`). A name holding a NUL is refused.
 
 ##### `inputs.runtime` (optional, default `[]`)
 
