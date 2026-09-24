@@ -32,11 +32,18 @@ export function paint(
 
 Standard env precedence:
 
-| Env                 | Result                         |
-| ------------------- | ------------------------------ |
-| `NO_COLOR=<any>`    | off — overrides `FORCE_COLOR`  |
-| `FORCE_COLOR=<any>` | on                             |
-| neither             | on iff `stream.isTTY === true` |
+| Env                              | Result                         |
+| -------------------------------- | ------------------------------ |
+| `NO_COLOR=<non-empty>`           | off — overrides `FORCE_COLOR`  |
+| `FORCE_COLOR=0` / `false`        | off, even on a TTY             |
+| `FORCE_COLOR=<any other>` or `=` | on                             |
+| neither                          | on iff `stream.isTTY === true` |
+
+`0` and `false` are the convention's "off" (supports-color, chalk,
+Node); reading any non-empty `FORCE_COLOR` as on painted a piped CI log
+that set `FORCE_COLOR=0` (nx#35292's bug, fixed 2026-09-24). The task
+environment is not this module's: `exec/env.ts` passes both variables
+to a task as set.
 
 `orchestrator.run()` always passes `{ enabled: false }` when the
 caller provides a custom `log` — programmatic embedders see plain
@@ -66,6 +73,11 @@ safe fallback.
 
 `tests/colors.test.ts`:
 
-- `detectColors` precedence (NO_COLOR > FORCE_COLOR > TTY).
+- `detectColors` precedence (NO_COLOR > FORCE_COLOR > TTY), and the
+  exact decision for `FORCE_COLOR` `0`, `false`, `1`, `true`, empty and
+  unset, each on a TTY and piped, with and without `NO_COLOR`.
 - `paint` no-op when disabled.
 - `paint` emits sequences when enabled.
+
+`tests/ci-output.test.ts`: a piped run with `FORCE_COLOR=0` or `=false`
+carries no escape sequence, and the task still sees the value as set.

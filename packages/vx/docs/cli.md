@@ -1941,11 +1941,20 @@ probe of the failed-row index; `vx info` keeps the standing list.
 
 ANSI truecolor (`ansi-16m`) sequences, gated by env:
 
-| Var             | Effect                              |
-| --------------- | ----------------------------------- |
-| `NO_COLOR=…`    | Force off. Overrides `FORCE_COLOR`. |
-| `FORCE_COLOR=…` | Force on.                           |
-| (neither)       | On iff `stdout.isTTY`.              |
+| Var                         | Effect                                                   |
+| --------------------------- | -------------------------------------------------------- |
+| `NO_COLOR=…` (non-empty)    | Force off. Overrides `FORCE_COLOR`.                      |
+| `FORCE_COLOR=0` / `=false`  | Force off, on a TTY too.                                 |
+| `FORCE_COLOR=…` (any other) | Force on — `1`, `true`, `2`, `3`, the empty string, etc. |
+| (neither)                   | On iff `stdout.isTTY`.                                   |
+
+`0` and `false` are `FORCE_COLOR`'s "off" by the convention
+supports-color, chalk and Node follow; until 2026-09-24 vx read every
+non-empty value as "on", so a CI setting `FORCE_COLOR=0` got escape
+sequences in its log (the bug Nx has as nx#35292). An empty `NO_COLOR`
+has no effect (no-color.org). This is vx's own output only: a task
+gets `FORCE_COLOR` and `NO_COLOR` passed through as set, and decides
+its own colour.
 
 Programmatic callers passing a custom `log` to the run options always
 see plain text.

@@ -44,6 +44,7 @@ describe('a CI log receives the CLI plain', () => {
               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
             },
             fail: { exec: { command: 'echo boom >&2; exit 3' } },
+            fc: { exec: { command: 'echo "FC=[$FORCE_COLOR]"' } },
           },
         }
       `,
@@ -80,5 +81,29 @@ describe('a CI log receives the CLI plain', () => {
     const r = vx(root, { CI: '1', FORCE_COLOR: '1' }, ['run', 'build', '--all'])
     expect(r.code).toBe(0)
     expect(r.text).toContain('\x1b[')
+  })
+
+  // nx#35292: `0` and `false` are FORCE_COLOR's "off", and read as "on"
+  // they wrote escapes into exactly the log this file guards. The task
+  // still sees the value as set: vx decides its own colour, not the task's.
+  it('FORCE_COLOR=0 and =false leave the piped run plain, and reach the task as set', () => {
+    const seen = ['0', 'false'].map((value) => {
+      const r = vx(root, { CI: '1', FORCE_COLOR: value }, [
+        'run',
+        'fc',
+        '--all',
+        '--output-logs=full',
+      ])
+      return {
+        value,
+        code: r.code,
+        escapes: r.text.includes('\x1b'),
+        task: /^FC=\[[^\]\n]*\]$/m.exec(r.text)?.[0],
+      }
+    })
+    expect(seen).toEqual([
+      { value: '0', code: 0, escapes: false, task: 'FC=[0]' },
+      { value: 'false', code: 0, escapes: false, task: 'FC=[false]' },
+    ])
   })
 })

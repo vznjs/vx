@@ -24,13 +24,18 @@ export interface PaintOptions {
 
 /**
  * Standard env precedence:
- *   NO_COLOR=anything   → off (overrides FORCE_COLOR)
- *   FORCE_COLOR=anything → on
+ *   NO_COLOR non-empty          → off (overrides FORCE_COLOR)
+ *   FORCE_COLOR=0 or =false     → off, even on a TTY
+ *   FORCE_COLOR any other value → on (the empty string too)
  *   else: on iff stdout is a TTY.
+ * `0` and `false` are the convention's "off" (supports-color, chalk,
+ * Node); reading every non-empty value as on painted a piped CI log that
+ * set `FORCE_COLOR=0` (nx#35292's bug).
  */
 export function detectColors(stream: NodeJS.WriteStream = process.stdout): ColorSupport {
   if (process.env['NO_COLOR']) return { enabled: false }
-  if (process.env['FORCE_COLOR']) return { enabled: true }
+  const force = process.env['FORCE_COLOR']
+  if (force !== undefined) return { enabled: force !== '0' && force !== 'false' }
   return { enabled: stream.isTTY === true }
 }
 
