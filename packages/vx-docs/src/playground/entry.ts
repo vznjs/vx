@@ -38,9 +38,11 @@ import {
 import { computeReverseDepCount } from '../../../vx/src/graph/priorities.js'
 import { loadProjects } from '../../../vx/src/orchestrator/projects.js'
 import { plan } from '../../../vx/src/orchestrator/plan.js'
-import { createHashCache } from '../../../vx/src/orchestrator/task-hash.js'
+import { createHashCache, type TaskInputComponent } from '../../../vx/src/orchestrator/task-hash.js'
 
 export { evaluateConfig } from './config-eval.js'
+// The page names what moved a key by the rule `vx why` does (item 703).
+export { diffKeyComponents, type InputDiffEntry } from '../../../vx/src/orchestrator/metrics.js'
 
 export interface PlaygroundInput {
   /** Absolute posix path the workspace lives at inside the VFS. */
@@ -66,6 +68,9 @@ export interface PlaygroundTask {
   hash: string
   cacheStatus: string
   deps: string[]
+  /** What the key folded, one row per component, as a `vx run` miss records
+   *  them (none for a group, whose key is not a fold). */
+  components: TaskInputComponent[]
 }
 
 export interface PlaygroundResult {
@@ -90,19 +95,50 @@ async function blobOid(bytes: Uint8Array): Promise<string> {
 
 /**
  * A `CacheLayer` over a set of keys, whose `key()` is core's own fold
- * (`foldKey`, which `Cache.key` delegates to; item 691).
+ * (`foldKey`, which `Cache.key` delegates to; item 691). Every key it folds
+ * leaves its components in `captured`, under the key: what a real run's
+ * miss persists to `entry_inputs`, and what `vx why` diffs.
  */
 function playgroundCache(
   held: ReadonlySet<string>,
   oidOf: (abs: string) => Promise<string>,
+  captured: Map<string, TaskInputComponent[]>,
 ): CacheLayer {
   const layer = {
-    key: (input: Parameters<CacheLayer['key']>[0]) =>
-      foldKey(input, oidOf, (f) => relPosix(input.workspaceRoot, f)),
+    key: async (input: Parameters<CacheLayer['key']>[0]) => {
+      const components: TaskInputComponent[] = []
+      const hash = await foldKey({ ...input, captureInto: components }, oidOf, (f) =>
+        relPosix(input.workspaceRoot, f),
+      )
+      captured.set(hash, components)
+      return hash
+    },
     has: async (hash: string) => (held.has(hash) ? 'local' : null),
     close: () => {},
   }
   return layer as unknown as CacheLayer
+}
+
+export interface PlaygroundProject {
+  name: string
+  /** Root-relative path of the config file core loads for it, or null. */
+  configFile: string | null
+}
+
+/**
+ * The workspace's projects as core discovers them, so the page evaluates
+ * the config file core would load (its name precedence included) under the
+ * name core gives the project.
+ */
+export async function listPlaygroundProjects(
+  input: Pick<PlaygroundInput, 'root' | 'files'>,
+): Promise<PlaygroundProject[]> {
+  useVfs(new Vfs(input.root, input.files))
+  const metas = await listProjects(await loadWorkspace(input.root))
+  return metas.map((m) => ({
+    name: m.name,
+    configFile: m.configPath === null ? null : m.configPath.slice(input.root.length + 1),
+  }))
 }
 
 export async function planPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
@@ -162,11 +198,16 @@ export async function planPlayground(input: PlaygroundInput): Promise<Playground
     gitFilesCache,
     usesWorkspaceInputs,
   )
-  const cache = playgroundCache(new Set(input.cached ?? []), async (abs) => {
-    const bytes = vfs.read(abs)
-    if (bytes === undefined) throw new Error(`playground: no file ${abs}`)
-    return blobOid(bytes)
-  })
+  const captured = new Map<string, TaskInputComponent[]>()
+  const cache = playgroundCache(
+    new Set(input.cached ?? []),
+    async (abs) => {
+      const bytes = vfs.read(abs)
+      if (bytes === undefined) throw new Error(`playground: no file ${abs}`)
+      return blobOid(bytes)
+    },
+    captured,
+  )
 
   const planned = await plan({
     nodes,
@@ -199,6 +240,7 @@ export async function planPlayground(input: PlaygroundInput): Promise<Playground
       hash: t.hash,
       cacheStatus: t.cacheStatus,
       deps: [...t.deps],
+      components: captured.get(t.hash) ?? [],
     })),
     unresolvedTasks: [...unresolvedTasks],
     priorities: Object.fromEntries(priorities),

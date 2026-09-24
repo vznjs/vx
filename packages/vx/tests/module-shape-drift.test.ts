@@ -130,6 +130,9 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogEntry'],
   ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogBundle'],
   ['util-tail', 'util/tail.ts', 'Tail'],
+  ['failure-recap', 'orchestrator/failure-recap.ts', 'RecapRing'],
+  ['failure-recap', 'orchestrator/failure-recap.ts', 'RecapTail'],
+  ['framed-output', 'orchestrator/framed-output.ts', 'RecapEntry'],
   ['package-graph', 'workspace/package-graph.ts', 'PackageGraph'],
   ['projects', 'orchestrator/projects.ts', 'LoadProjectsArgs'],
   ['projects', 'orchestrator/projects.ts', 'LoadedProjects'],
@@ -290,10 +293,16 @@ describe('a module page lists the functions the module exports', () => {
   it("metrics.md's signature block names every exported function, and counts them", () => {
     const src = read('src/orchestrator/metrics.ts')
     const exported = [...src.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]!)
+    // What "a reader over another store" reimplements: the functions over
+    // the Database. `diffKeyComponents` (item 703) is the join alone.
+    const overStore = [...src.matchAll(/^export (?:async )?function (\w+)\(\s*db: Database/gm)].map(
+      (m) => m[1]!,
+    )
+    expect(exported.filter((f) => !overStore.includes(f))).toEqual(['diffKeyComponents'])
     const doc = read('docs/modules/metrics.md')
     const block = /```ts\n([\s\S]*?)```/.exec(doc)
     expect(block).not.toBeNull()
-    const named = [...block![1]!.matchAll(/^(\w+)\(db/gm)].map((m) => m[1]!)
+    const named = [...block![1]!.matchAll(/^(\w+)\(/gm)].map((m) => m[1]!)
     expect([...named].sort()).toEqual([...exported].sort())
     const WORDS = [
       'zero',
@@ -308,7 +317,7 @@ describe('a module page lists the functions the module exports', () => {
       'nine',
       'ten',
     ]
-    expect(doc).toContain(`the same ${WORDS[exported.length]} signatures`)
+    expect(doc).toContain(`the same ${WORDS[overStore.length]} signatures`)
   })
 })
 

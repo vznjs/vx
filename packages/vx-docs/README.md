@@ -113,6 +113,7 @@ bun packages/vx/src/bin.ts run build.playground --filter @vzn/vx-docs  # the pla
 bun packages/vx/src/bin.ts run dev --filter @vzn/vx-docs      # astro dev server
 bun packages/vx/src/bin.ts run preview --filter @vzn/vx-docs  # serve the built dist/
 bun packages/vx/src/bin.ts run test --filter @vzn/vx-docs     # the guide pins below
+bun packages/vx/src/bin.ts run lint --filter @vzn/vx-docs     # oxlint (type-checked) + oxfmt
 ```
 
 `bun packages/vx/src/bin.ts run check.site --filter @vzn/vx-bench` fails
@@ -151,6 +152,14 @@ when the landing page or `benchmarks.md` drifts from
 - `tests/playground-xxh3.test.ts`, `tests/playground-glob.test.ts` — the
   playground's xxh3 and glob matcher answer exactly what the running
   Bun's do (the glob fuzz's generator is `tests/glob-fuzz.ts`).
+- `tests/playground-view.test.ts` — the playground page's view module
+  (diff, summary, env parse, static table) against truth written out by
+  hand, and the page's Run over the shipped planner: run, run, edit, add
+  a file, break a config.
+- `tests/learn-playground.test.ts` — the built playground page: the
+  static table for every task, the file list and config texts, the
+  hidden controls, every piece of markup the element reads, the element
+  reachable without the planner, and the checkpoint's answers.
 
 ## The playground bundle
 
@@ -170,6 +179,18 @@ priorities and the dispatch order equal `vx run --dry=json` on
 the shipped copy to it. `src/playground/` may import core's source by
 relative path; `packages/vx/tests/package-boundaries.unsafe.test.ts`
 exempts that one directory by name.
+
+The page that loads it is `learn/playground` (item 700; design:
+`packages/vx/docs/design/playground-ui-2026-09.md`). Its workspace is
+`src/playground/workspace.ts`, the Learn toy monorepo as files and
+`vx.config.mjs` texts; what the page computes is
+`src/components/demos/model/playground-view.ts` (`runPlayground` asks the
+bundle's `listPlaygroundProjects` which config file core loads for each
+project, evaluates each text, and plans); `Playground.astro` renders the
+static table at build time from the texts, evaluated by the page's own
+`evaluateConfig`, and `demos/playground.ts` imports the planner on the
+first Run. Core's parity rows hold the page's Run on that workspace to
+`vx run build test --all --dry=json`.
 
 ## Worked examples
 

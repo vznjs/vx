@@ -244,7 +244,15 @@ state of each:
    has its own number since 2026-09-23 (item 615): 1,000 projects,
    `.vx` removed, 2,938–3,420 ms before against 2,680–2,997 after, the
    `load configs` stage 507–607 → 207–272; a cold arm is five reps with
-   the cache removed before each, no A/A needed at that size.
+   the cache removed before each, no A/A needed at that size. 2026-09-24 (items
+   690–702, the day's run-path changes being the key fold's move to
+   `key-fold.ts`, one config worker per repeat round and the JSON-data
+   walk): base 39294a8d against head, compiled binaries, 1,000 projects
+   warm, interleaved, n=25 — medians 266.5 ms before and 266.4 after,
+   mins 245.1 and 230.8; A/A 270.4 against 264.8 (mins 238.5, 238.1).
+   A tie; a first n=15 pass read the mins the other way round (225.9
+   before, 251.8 after) with the same tied medians, which is the box's
+   min-of-N noise, not a cost.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
@@ -1179,6 +1187,156 @@ row and the parity file's `undefined` variant; the page's worker without
 it reddens the parity row; the rule applied to `validateWorkspace`
 reddens the workspace and plugin rows.
 
+14cw. **Item 702 (2026-09-24): the site's TypeScript is type-checked.**
+`@vzn/vx-docs` had no `lint.oxlint`, so a type error in the playground,
+a widget's model, a script or a test failed no gate task (`bun test`
+and astro's build only transpile). It has one now, in the shape of
+vx-bench's: sandboxed, after `install`, reading `../vx/src/**` (the
+playground's imports) and vx-bench's `schedule-policy.ts` (the
+simulator's), keyed on the directories it checks plus `SIM_SOURCES`,
+and under a new `lint` group that the site's `ci` depends on. It names
+its directories (`astro.config.mjs scripts src/components src/examples
+src/pages src/playground src/plugins tests`, 77 files, 1.2 s in the
+sandbox), never `.`; `src/content/` is left out, being Markdown and a
+`content.config.ts` whose `astro:content` types exist only after astro
+generates them. The site's `tsconfig.json` gains the four options every
+package's has over astro's `strict` (`noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes`, `noImplicitOverride`,
+`noFallthroughCasesInSwitch`), and the package the shared
+`.oxlintrc.json`. What it surfaced: one error, the import plugin
+reading `PipelineExplorer.astro`'s Vite `?raw` import as a missing
+default export (disabled on that line, with the reason), and one
+warning, `TOY_OPTIONAL_INPUTS` in the toy monorepo's model, dead since
+W2, removed. The stricter options surfaced nothing. Differential: a
+planted `const planted: number = "x"` in `config-eval.ts` turns the
+task red with TS2322; the reverse edit turns it green. Proven in a
+copy of the tree outside `.claude/`, where the sandbox sees the files
+(inside it the task checks 1 file).
+
+14cx. **Item 700 (roadmap W9, 2026-09-24): the playground page.**
+`learn/playground` runs vx's real planner on the Learn toy monorepo
+(`utils`; `ui` and `api`; `app`; plus `docs#build`, nine tasks, bare
+names so the ids are the Learn pages' `ui#build`), from
+`src/playground/workspace.ts` (config texts, files, `API_URL`). The
+reader edits any file in a `<textarea>`, adds and deletes files, edits
+the env as `NAME=value` lines and the specs (default `build test`), and
+runs: every key (16 hex), hit or miss against a simulated cache that
+saves every planned key, and a "key moved" marker against the last run,
+with an `aria-live` summary ("9 tasks: 5 hit, 4 miss. Keys moved:
+ui#build, ui#test, app#build, app#test."). The planner loads on the first
+Run. Errors (a config that does not evaluate, core's refusal, an
+undeclared spec in the CLI's words) keep the last table, marked stale.
+Without JavaScript the page shows the file list, each config and the
+task table (what each waits for, what it declares). What it computes is
+`demos/model/playground-view.ts`; `runPlayground` is the page's Run,
+and asks the bundle's new `listPlaygroundProjects` export which config
+file core loads. The static table is the texts evaluated at build time
+by the page's own rewrite and JSON rule, in-process
+(`evaluateConfigInProcess`, base64 `data:` modules). The first version
+ran the Worker path at build time on the premise that the build runs
+under Bun; Linux CI's prerender ran under Node, which has no global
+`Worker`, and the page failed to render there only. It went unseen
+until item 706 put the error in the log's tail; reproduced under Node 22
+and fixed before merge. Rows: core's
+parity rows hold the page's Run to `vx run build test --all --dry=json`
+(committed, and an uncommitted `button.tsx` edit moving exactly the
+four); `tests/playground-view.test.ts` and `tests/learn-playground.test.ts`
+in the site. The KeyCalculator caption's "in a later step of this site"
+now names the playground. A differential the step asked for is refuted:
+`ui#test` no longer declaring `src/**` does not change the edit's moved
+set, because `ui#test` folds `ui#build`'s key, so no parity row can see
+it; the site's hand-written table does. Chromium probe, rows and the
+differential table: `design/playground-ui-2026-09.md` § Shipped (item
+700).
+
+14cy. **Item 703 (2026-09-24): the playground names why a key moved, by
+`vx why`'s rule.** The join `cacheKeyDiff` did over two runs'
+`entry_inputs` is its own pure function now, `diffKeyComponents(before,
+after)` in `orchestrator/metrics.ts` (two `{ kind, name, hash }` sets in,
+the changed / added / removed entries and the unchanged count out, same
+order), and `cacheKeyDiff` calls it; behaviour-neutral, held by its
+existing rows plus one recorded BEFORE the move (name order within one
+kind, mixed case, green on the old code and red with the name tiebreak
+deleted). The playground's cache layer passes a fresh `captureInto` to
+`foldKey` for every key, so each `PlaygroundTask` carries its
+`components`; core's `foldKey` and run path are untouched. The bundle
+re-exports `diffKeyComponents`, and the page diffs the previous Run's
+components with that copy: the view module cannot import core
+(`package-boundaries.unsafe`'s exemption is `src/playground/` alone),
+the element's chunk stays free of core, and the planner is loaded by the
+time a key can move. The "Key moved" cell names at most two changes
+(`describeChange`: "packages/ui/src/button.tsx changed", "upstream
+ui#build moved", "file added: …", "env API_URL changed"), then "and N
+more"; the live summary is unchanged. Parity: a real `vx run build test
+--all` in a temp repo (the page's texts with every command `true`), then
+the `button.tsx` edit, a new file, and that file gone; for each step,
+`vx why <id> --format json`'s `diff.entries` equal the page's for all
+four moved tasks, hashes included. The architect's differential that
+swaps `added` and `removed` needed the second and third step: the edit
+alone yields only `changed`, and the first version of the row stayed
+green under the swap. Bundle +729 B (+252 B gzip). Rows, differentials
+and the Chromium probe: `design/playground-ui-2026-09.md` § Shipped
+(item 703).
+
+14cz. **Item 706 (2026-09-24): the run ends with each failure's last
+lines.** A failure's frame prints when the task ends, which in a long
+CI log is thousands of lines above the end, and GitHub's API returns
+only a job log's last 5,000 lines: this repo's own CI failed on
+`@vzn/vx-docs#build` and its error could be read nowhere, since the
+summary named the task and nothing else. After the summary's sections,
+`run()` now prints a `Failed:` block: per failed task, its id and
+`failedLabel`, then its last 30 lines (stdout then stderr, the frame's
+order), capped at 8 KiB, with a note of what was cut
+(`… 70 earlier lines`,
+`… 12,288 bytes cut from the start of the line below`, and what a
+persistent task's 64 KiB capture had already dropped). Five tasks get
+a tail; the rest are named (`… and 2 more failed: app#f6, app#f7`). The
+capture is `src/orchestrator/failure-recap.ts`, a ring over the END of
+the output that holds at most 8,193 characters and counts every
+eviction. A buffered task's ring is filled at its failure from the
+buffers its frame already drains; the one live-streamed task (focused,
+single request) gets a ring at frame-open, fed as its chunks are
+written, dropped at its outcome. `DefaultLogger.failureRecap()` renders
+it and `run()` asks only the logger it built, so a custom logger gets
+none. It prints in every view that prints task output (`none` and
+`hash-only` promise none), on a terminal, in CI and on Actions, where
+each tail is fenced in `::stop-commands::` and nothing is grouped.
+Colour codes pass through. Exit codes, `--summarize`, `--dry=json`,
+telemetry (which drops `run:status`) and the cache are untouched. Two
+defects the rows caught before commit: the ring first held 8,192
+characters, so the final newline cost a character of the 8 KiB, and it
+evicted a head chunk whole even when that left fewer characters than
+the cap (an 8,000-character chunk and a 300-character one left one line
+of a 30-line tail). Refuted from the design: a 64 KiB total cap cannot
+bind (five tails at 8 KiB is 40 KiB), so there is none; "combined
+output" in arrival order is not what the logger holds (it splits the
+streams for the frame), so a buffered tail reads stdout then stderr,
+as the frame does, and only the live stream is in arrival order; and a
+live-streamed cache hit's replay does go through its ring, one task
+per run. Warm all-hit run (300 projects, 600 tasks, interleaved,
+15 reps): before min 183 ms, median 197; after min 180, median 197.
+Rows (`tests/failure-recap.test.ts`, 19): the exact block a CI run ends
+with (lines 71–100 of a 100-line task that exits 3,
+`… 70 earlier lines`), the control (a passing chatty task: the
+summary's `time` row ends the run), seven failures (five tails, two
+named, as sets), Actions (one group above, none in the recap, the
+exact fenced block), the byte cap (a 20 KiB line cut to 8 KiB; a
+two-byte cut on a character boundary; one landing mid-character; forty
+long lines, the whole lines counted before the bytes),
+stdout-then-stderr with colour codes, a timeout's label and
+`(no output)`, the live ring with both streams in arrival order, a
+persistent task's dropped characters, each mode, and the ring's bound
+over 51.2 MB in 64,000-byte chunks and in one. Differentials, each
+reversed: the recap for every outcome reddens the control, the Actions
+row and the passed-task row; `RECAP_LINES` 31 or 29 reddens the exact
+row, the Actions row, the live row and the three ring rows; the recap
+wrapped in a `::group::` reddens the Actions row; the fence dropped
+reddens it too; `RECAP_TASKS` 6 reddens the seven; the
+character-boundary step dropped reddens the mid-character row; the
+cut's newline count or its partial-bytes arithmetic dropped reddens
+the two-byte forty-lines row; the live stderr append dropped reddens the live
+row; whole-chunk eviction past the cap reddens its ring row.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1198,19 +1356,18 @@ reddens the workspace and plugin rows.
     architecture page with its pipeline explorer and the worked plugins,
     are DONE (item 686, entry 14ch). W3, the correctness page and its
     stale-hit demo, is DONE (item 688, entry 14cj). W7, the choosing page and its
-    matrix, is DONE (item 689, entry 14ck). W9, the playground, has started: its first core
-    change, P1, is DONE (item 691, entry 14cm), and its three open
-    questions are decided in `design/playground-spike-2026-09.md` § W9
-    decisions (parity rows in core's unsafe suite, `vx.config.mjs`
-    evaluated in a Worker, a Bun-built bundle from a vx task). The exact
-    glob port is DONE (item 692, entry 14cn), and so are the bundle, its
-    task and the parity rows (item 695, entry 14cq): the site builds
-    `playground/planner.js` and core's unsafe suite holds it to the CLI.
-    Config editing is DONE (item 699, entry 14cu): the reader's
-    `vx.config.mjs` is evaluated in a Worker and held to the CLI's keys.
-    What remains of W9 is the island and the UI, designed in
-    `design/playground-ui-2026-09.md` (item 700: one Learn page on the
-    toy monorepo, held to the CLI by its own parity row).
+    matrix, is DONE (item 689, entry 14ck). W9, the playground, is
+    DONE: P1 (item 691, entry 14cm), the exact glob port (item 692,
+    entry 14cn), the bundle, its task and the parity rows (item 695,
+    entry 14cq), config editing (item 699, entry 14cu) and the page
+    itself (item 700, entry 14cx): `learn/playground` runs the real
+    planner on the toy monorepo, and core's parity rows hold the page's
+    Run to the CLI. The playground names why a key moved, by `vx why`'s
+    rule (item 703, entry 14cy). Next are W10, the labs (guided
+    exercises on the playground: an undeclared input and its stale hit,
+    a file no config mentions, two tasks writing one output, a bad
+    order and its critical path), and W11, the checkpoints, per
+    `design/labs-checkpoints-2026-09.md`.
 
 ## Decisions (this arc)
 

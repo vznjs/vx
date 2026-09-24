@@ -29,6 +29,7 @@ import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { formatDuration } from './summary.js'
 import { outcomeLabel, skippedReason } from './events.js'
+import type { RecapTail } from './failure-recap.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -477,6 +478,60 @@ export function formatPersistentList(
     (n) =>
       `  ${paint(ACCENT, '▸', colors)} ${paintTaskId(n, colors)} ${paint('', 'running', colors, { dim: true })}`,
   )
+}
+
+/** One failed task's section of the end-of-run recap. */
+export interface RecapEntry {
+  node: TaskNode
+  outcome: TaskOutcome
+  tail: RecapTail
+  /** Characters a bounded capture (a persistent task's) dropped before the tail saw them. */
+  droppedChars: number
+}
+
+/**
+ * The run's last block: each failed task's last lines, under the failure's
+ * label, then the ids of the failures past the tail limit. The lines are
+ * raw, like a frame's, and `fence` wraps them where a task's text could be
+ * read as something other than text (GitHub Actions' workflow commands).
+ */
+export function formatFailureRecap(
+  entries: readonly RecapEntry[],
+  more: readonly string[],
+  colors: ColorSupport = NO_COLOR,
+  fence: (lines: string[]) => string[] = (lines) => lines,
+): string[] {
+  const total = entries.length + more.length
+  const dim = (s: string) => paint('', s, colors, { dim: true })
+  const lines = [
+    '',
+    `  Failed:   ${total} task${total === 1 ? '' : 's'} — the last lines ${total === 1 ? 'it' : 'each one'} printed`,
+  ]
+  for (const e of entries) {
+    lines.push(
+      '',
+      `  ${paint(ERROR, '◼︎', colors)} ${paintTaskId(e.node, colors, { bold: true })} ${dim('—')} ${paint(ERROR, outcomeLabel(e.outcome), colors, { bold: true })}`,
+    )
+    const cut: string[] = []
+    const { earlierLines, cutBytes } = e.tail
+    if (earlierLines > 0)
+      cut.push(`${count(earlierLines)} earlier line${earlierLines === 1 ? '' : 's'}`)
+    if (cutBytes > 0) cut.push(`${count(cutBytes)} bytes cut from the start of the line below`)
+    if (e.droppedChars > 0) {
+      cut.push(`the capture dropped ${count(e.droppedChars)} characters of the task's output`)
+    }
+    if (cut.length > 0) lines.push(dim(`  … ${cut.join(', and ')}`))
+    if (e.tail.text.length === 0) lines.push(dim('  (no output)'))
+    else lines.push(...fence(e.tail.text.split('\n')))
+  }
+  if (more.length > 0) {
+    lines.push('', `  … and ${more.length} more failed: ${more.join(', ')}`)
+  }
+  return lines
+}
+
+function count(n: number): string {
+  return n.toLocaleString('en-US')
 }
 
 function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {

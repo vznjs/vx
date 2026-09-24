@@ -1,0 +1,251 @@
+---
+// The playground (learn/playground, item 700; design/playground-ui-2026-09.md).
+// Without JavaScript it is the toy workspace: its file list, each
+// `vx.config.mjs`, and the tasks as a table of what each waits for and the
+// inputs it declares. `playground.ts` unhides the editor and the run
+// controls, hides that, and imports vx's planner from `data-planner` on the
+// first Run. The element reads `.controls` (and its `data-planner`), `.file`,
+// `.editor`, `.new-path`, `.env`, `.tasks`, the `data-action` buttons,
+// `.status`, `.errors`, `.results` with its `caption` and `tbody`, `.order`
+// and `.static`, so they are its contract with this markup.
+//
+// The table comes from the config TEXTS, evaluated here at build time by the
+// page's own rewrite and JSON rule (`evaluateConfigInProcess`: no Worker, which
+// a Node build lacks), so the reader's first Run and the static render read
+// one source.
+import Demo from '../Demo.astro'
+import { evaluateConfigInProcess } from '../../playground/config-eval.js'
+import { CONFIG_TEXTS, ENV, FILES, TASKS } from '../../playground/workspace.js'
+import {
+  envText,
+  staticCells,
+  staticProjects,
+  staticTable,
+} from './model/playground-view.js'
+
+const configs: Record<string, unknown> = {}
+for (const [name, text] of Object.entries(CONFIG_TEXTS)) {
+  const r = await evaluateConfigInProcess(text)
+  if (!r.ok) throw new Error(`<Playground>: ${name}'s vx.config.mjs does not evaluate: ${r.error}`)
+  configs[name] = r.config
+}
+const rows = staticTable(staticProjects(FILES, configs)).map(staticCells)
+const paths = Object.keys(FILES)
+const configFiles = paths.filter((f) => f.endsWith('/vx.config.mjs'))
+const planner = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}playground/planner.js`
+const HEAD = ['Task', 'Waits for', 'Declared inputs']
+---
+
+<Demo name="playground">
+  <div class="controls not-content" data-planner={planner} hidden>
+    <p class="bar">
+      <label>File <select class="file">{paths.map((f) => <option value={f}>{f}</option>)}</select></label>
+      <button type="button" data-action="delete">Delete file</button>
+    </p>
+    <textarea class="editor" rows="12" spellcheck="false" autocomplete="off" aria-label="The file's contents"
+    ></textarea>
+    <p class="bar">
+      <label>New file <input class="new-path" type="text" placeholder="packages/ui/README.md" /></label>
+      <button type="button" data-action="add">Add file</button>
+    </p>
+    <p class="bar">
+      <label class="env-label">
+        <span>Environment, one <code>NAME=value</code> per line</span>
+        <textarea class="env" rows="2" spellcheck="false" autocomplete="off">{envText(ENV)}</textarea>
+      </label>
+    </p>
+    <p class="bar">
+      <label
+        ><code>vx run</code>
+        <input class="tasks" type="text" value={TASKS.join(' ')} aria-label="Task specs" />
+        <code>--all</code></label
+      >
+      <button type="button" data-action="run">Run</button>
+      <button type="button" data-action="reset">Reset</button>
+    </p>
+  </div>
+  <p class="status" aria-live="polite" hidden></p>
+  <ul class="errors not-content" hidden></ul>
+  <table class="results" hidden>
+    <caption></caption>
+    <thead>
+      <tr>
+        <th scope="col">Task</th>
+        <th scope="col">Key</th>
+        <th scope="col">Cache</th>
+        <th scope="col">Key moved</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <p class="order" hidden></p>
+  <div class="static">
+    <p class="label">The workspace's files:</p>
+    <ul class="file-list">{paths.map((f) => <li><code>{f}</code></li>)}</ul>
+    {
+      configFiles.map((f, i) => (
+        <details open={i === 0}>
+          <summary>
+            <code>{f}</code>
+          </summary>
+          <pre class="config">{FILES[f]}</pre>
+        </details>
+      ))
+    }
+    <table class="graph">
+      <caption>
+        The tasks <code>vx run {TASKS.join(' ')} --all</code> plans: what each waits for, and the
+        inputs its config declares. A task's key reads its declared inputs and the keys of the tasks
+        it waits for.
+      </caption>
+      <thead>
+        <tr>{HEAD.map((h) => <th scope="col">{h}</th>)}</tr>
+      </thead>
+      <tbody>
+        {
+          rows.map(([id, waits, inputs]) => (
+            <tr>
+              <th scope="row">{id}</th>
+              <td data-label={HEAD[1]}>{waits}</td>
+              <td data-label={HEAD[2]}>{inputs}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <Fragment slot="caption">
+    vx's own planner, bundled from core's source for the browser; tests hold its keys to the CLI's
+    on this workspace. It plans: it evaluates each config, computes every key and asks a simulated
+    cache, which holds every key an earlier run planned. It runs no command.
+  </Fragment>
+</Demo>
+
+<!--
+  Global, under the element's tag: the element writes the results table's
+  rows, and Astro's scoping attribute is only on the markup it rendered.
+-->
+<style is:global>
+  vx-playground {
+    display: block;
+    font-size: var(--sl-text-sm);
+  }
+  vx-playground pre,
+  vx-playground textarea,
+  vx-playground input[type='text'],
+  vx-playground select {
+    font-family: var(--sl-font-mono, var(--sl-font-system-mono));
+    font-size: var(--sl-text-xs);
+  }
+  vx-playground pre,
+  vx-playground textarea {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-white);
+    white-space: pre;
+    overflow-x: auto;
+  }
+  vx-playground textarea {
+    display: block;
+    width: 100%;
+    resize: vertical;
+    tab-size: 2;
+  }
+  vx-playground input[type='text'],
+  vx-playground select {
+    padding: 0.15rem 0.4rem;
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 0.25rem;
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-white);
+  }
+  vx-playground .controls[hidden],
+  vx-playground .static[hidden],
+  vx-playground .results[hidden],
+  vx-playground .errors[hidden],
+  vx-playground .order[hidden] {
+    display: none;
+  }
+  vx-playground .bar {
+    margin: 0.5rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  vx-playground .bar label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  vx-playground .bar .env-label {
+    flex: 1;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  vx-playground .controls button {
+    padding: 0.1rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    cursor: pointer;
+  }
+  vx-playground .controls button[data-action='run'] {
+    background: var(--sl-color-accent-low);
+    border-color: var(--sl-color-accent);
+  }
+  vx-playground .controls button:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  vx-playground .controls button:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  vx-playground .status {
+    min-height: 1.5em;
+    margin: 0.75rem 0 0;
+    font-weight: 600;
+  }
+  vx-playground .errors {
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem 0.5rem 1.75rem;
+    border: 1px solid var(--sl-color-red);
+    border-radius: 0.25rem;
+    color: var(--sl-color-red-high);
+    white-space: pre-wrap;
+  }
+  vx-playground caption {
+    text-align: start;
+    padding-block: 0.5rem;
+  }
+  vx-playground .results td:nth-child(2) {
+    font-family: var(--sl-font-mono, var(--sl-font-system-mono));
+  }
+  vx-playground .results tr[data-change='moved'] td:nth-child(4) {
+    color: var(--sl-color-orange-high);
+    font-weight: 700;
+  }
+  vx-playground .results[data-stale='true'] {
+    opacity: 0.55;
+  }
+  vx-playground .results[data-stale='true'] caption {
+    color: var(--sl-color-red-high);
+    font-weight: 600;
+  }
+  vx-playground .label {
+    margin: 0 0 0.25rem;
+    color: var(--sl-color-gray-2);
+  }
+  vx-playground details {
+    margin-top: 0.5rem;
+  }
+  vx-playground .file-list {
+    columns: 2 18rem;
+  }
+</style>

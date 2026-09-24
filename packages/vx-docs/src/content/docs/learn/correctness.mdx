@@ -45,7 +45,8 @@ There are two ways to get a task's list of inputs.
 hashes exactly those files. This is fast and predictable, and it proves
 nothing. The list is a claim. If the command also reads `banner.txt` and
 the list does not say so, every edit to `banner.txt` is a stale hit
-waiting to happen.
+waiting to happen. In the [playground](../playground/) you can add a file
+that no config declares and see that no key moves.
 
 **Inferred.** The runner works the list out itself. There are two ways to
 do it.

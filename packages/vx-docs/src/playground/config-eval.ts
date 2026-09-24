@@ -293,12 +293,55 @@ export async function evaluateConfig(
       worker.postMessage(configUrl)
     })
     worker.terminate()
-    if (!reply.ok) return reply
-    const [nonJson] = reply.nonJson
-    if (nonJson !== undefined) return { ok: false, error: nonJsonMessage(CONFIG_FILE, nonJson) }
-    if (reply.json === null) return { ok: false, error: NOT_AN_OBJECT }
-    return { ok: true, config: JSON.parse(reply.json) as unknown }
+    return settle(reply)
   } finally {
     for (const url of urls) URL.revokeObjectURL(url)
+  }
+}
+
+type Evaluated = { ok: true; config: unknown } | { ok: false; error: string }
+
+function settle(reply: Reply): Evaluated {
+  if (!reply.ok) return reply
+  const [nonJson] = reply.nonJson
+  if (nonJson !== undefined) return { ok: false, error: nonJsonMessage(CONFIG_FILE, nonJson) }
+  if (reply.json === null) return { ok: false, error: NOT_AN_OBJECT }
+  return { ok: true, config: JSON.parse(reply.json) as unknown }
+}
+
+// Base64, not percent-encoding: Bun picks a `data:` module's loader from the
+// last extension-like run in the URL, and a percent-encoded body that holds
+// `src/server.ts --outdir dist` loaded as text (a string default export).
+const dataUrl = (source: string): string => {
+  let binary = ''
+  for (const byte of new TextEncoder().encode(source)) binary += String.fromCharCode(byte)
+  return `data:text/javascript;base64,${btoa(binary)}`
+}
+
+/**
+ * The same evaluation in this process, for texts the site itself ships:
+ * the static render evaluates the playground's workspace at build time, and
+ * the build's runtime is not guaranteed to be Bun (CI's astro prerender ran
+ * under Node, which has no global `Worker`: item 700's first CI failure).
+ * The modules are `data:` URLs, which Node and Bun both import and a
+ * `data:` module may import another. No deadline and no isolation: never
+ * hand it the reader's text.
+ */
+export async function evaluateConfigInProcess(text: string): Promise<Evaluated> {
+  const rewritten = rewriteConfigImports(text, dataUrl(VX_MODULE))
+  if (!rewritten.ok) return rewritten
+  try {
+    const ns = (await import(/* @vite-ignore */ dataUrl(rewritten.text))) as { default?: unknown }
+    const mod = ns.default
+    const isObject = mod !== null && typeof mod === 'object'
+    const nonJson = isObject ? nonJsonPaths(mod) : []
+    return settle({
+      ok: true,
+      nonJson,
+      json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null,
+    })
+  } catch (err) {
+    const e = err as { name?: string; message?: string }
+    return { ok: false, error: `${e.name ?? 'Error'}: ${e.message ?? String(err)}` }
   }
 }

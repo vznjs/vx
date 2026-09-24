@@ -30,7 +30,55 @@ const CHOOSING_PROOFS = [
 export default defineProject({
   tasks: {
     ci: {
-      dependsOn: ['lint.oxfmt', 'build', 'test'],
+      dependsOn: ['lint', 'build', 'test'],
+    },
+
+    lint: {
+      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+    },
+
+    // The site's TypeScript is type-checked like every package's (item 702):
+    // `bun test` and astro's build only transpile, so a type error in the
+    // playground, a widget's model or a test failed nothing. The directories
+    // are named, not `.`: a type-checker pointed at a directory holding a
+    // symlinked node_modules walks it. `src/content/` is left out, being
+    // Markdown and a `content.config.ts` whose `astro:content` types exist
+    // only after astro generates them. The check follows imports across the
+    // boundary: the playground into core's source (a devDependency, its key
+    // through `install`), the scheduler simulator into vx-bench's policy file
+    // (granted by name and keyed, like the sim sources).
+    'lint.oxlint': {
+      description: 'oxlint with tsgolint-backed type-aware checks',
+      exec: {
+        command:
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/examples src/pages src/playground src/plugins tests',
+        sandbox: {
+          allow: {
+            read: ['**/*', SIM_READ, '../vx/src/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      dependsOn: ['install'],
+      cache: {
+        inputs: {
+          files: [
+            'astro.config.mjs',
+            'scripts/**',
+            'src/components/**',
+            'src/examples/**',
+            'src/pages/**',
+            'src/playground/**',
+            'src/plugins/**',
+            'tests/**',
+            'package.json',
+            '.oxlintrc.json',
+            'tsconfig.json',
+          ],
+          workspaceFiles: SIM_SOURCES,
+        },
+        outputs: { files: [] },
+      },
     },
 
     // The site's code is formatted like every package's. Its Markdown is
@@ -149,6 +197,9 @@ export default defineProject({
             // demo-islands.test.ts and learn-architecture.test.ts import the
             // widgets' model to hold the built pages to it.
             'src/components/demos/model/**',
+            // learn-playground.test.ts reads the element's source for the
+            // markup it queries.
+            'src/components/demos/playground.ts',
             // The playground rows: its glob and xxh3 against Bun's, and the
             // shipped bundle against a fresh build.
             'src/playground/**',
@@ -201,12 +252,15 @@ export default defineProject({
       description: 'astro build → dist/',
       dependsOn: ['install', 'import', 'build.playground'],
       exec: {
-        // Under Bun, not the host's Node: `bun --bun` runs astro's bin on
-        // Bun's runtime, which builds the same 133 pages in half the time
-        // (18.5 s against 37 s under Node 22, 2026-09-09) and leaves no
-        // dependency on whichever Node a CI image ships — astro 6 refuses
-        // anything below 22.12, and the Linux gate's docs build had been
-        // exiting 1 in 61 ms with no output at all.
+        // Meant to run under Bun: `bun --bun` runs astro's bin on Bun's
+        // runtime, which builds the same 133 pages in half the time (18.5 s
+        // against 37 s under Node 22, 2026-09-09). NOT what Linux CI gets:
+        // there the prerender ran under Node (no global `Worker`, item 700),
+        // most likely because `bun --bun` needs a `node` shim under
+        // `/tmp/bun-node-*` that this sandbox cannot write, and falls back
+        // to the PATH's Node. So nothing the build runs may assume Bun, and
+        // astro 6 refuses a Node below 22.12 (the Linux gate's docs build
+        // once exited 1 in 61 ms with no output at all).
         command: 'bun --bun astro build',
         // astro's telemetry does `mkdir ~/.config` before anything else; a
         // sandboxed task may read HOME but not write it, so it is told to

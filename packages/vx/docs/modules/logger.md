@@ -43,11 +43,16 @@ export function resolveOutputView(
   env?: Record<string, string | undefined>,
 ): OutputView
 
+// What run() builds when no logger is passed.
+export interface DefaultLogger extends Logger {
+  failureRecap(): string[] // the run's last block; [] when nothing failed
+}
+
 export function defaultLogger(
   colors?: ColorSupport,
   view?: OutputView, // default { mode: 'full' }
   out?: StatusStream, // default process.stdout
-): Logger
+): DefaultLogger
 ```
 
 ## View resolution (priority order)
@@ -85,6 +90,32 @@ export function defaultLogger(
 
 `status()` lines (header, summary) always print. Group tasks never
 print in any mode.
+
+## Failure recap
+
+`failureRecap()` returns the block `run()` prints last, after the
+summary and its Aborted / Skipped / Flaky / Deferred sections, through
+`status()`: each failed task's last 30 lines, 8 KiB at most, for the
+first five failures, then the rest by id (item 706; the capture and
+its caps are [`failure-recap.md`](./failure-recap.md), the rendering
+[`framed-output.md`](./framed-output.md)). It exists because a
+failure's frame prints when the task ends, and in a long log that is
+far from the end, where the reader looks.
+
+- The tail is decided at the failure, from what the logger already
+  holds: a buffered task's stdout and stderr (the frame's order), or,
+  for the one live-streamed task, a bounded ring fed as its chunks are
+  written, created at its frame-open and dropped at its outcome. A task
+  that passes leaves nothing behind.
+- Every view that prints task output recaps (`full`, `errors-only`,
+  `broad`, `focused`), on a terminal, in CI, and on Actions; `none` and
+  `hash-only` promise no task output and print none.
+- With `gha`, each tail is fenced in `::stop-commands::` as a frame
+  body is, and the block is never in a `::group::`, so it reads with
+  every group collapsed.
+- A custom logger gets no recap: `run()` asks only the logger it built.
+  The recap touches no exit code, no `--summarize` or `--dry=json`
+  output, no telemetry (`run:status` is not telemetry), and no cache.
 
 ## Status region
 
@@ -127,6 +158,7 @@ progress out-of-band — `Logger` is the only event bus.
 per-mode visibility matrix, GHA grouping, and flow e2e through the
 CLI. `tests/status-line.test.ts` — writer serialization, throttling,
 permanent clear, and the logger's lifecycle integration.
+`tests/failure-recap.test.ts` holds the recap end to end and per mode.
 `tests/framed-output.test.ts` tests the format functions directly;
 `tests/orchestrator.test.ts` covers the custom-logger path.
 

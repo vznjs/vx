@@ -81,6 +81,45 @@ const { NOT_AN_OBJECT } = (await import(path.join(DOCS, 'src/playground/config-e
   NOT_AN_OBJECT: string
 }
 
+// The page's workspace and its Run (item 700), imported the same way.
+const PAGE = (await import(path.join(DOCS, 'src/playground/workspace.ts'))) as {
+  ENV: Record<string, string>
+  FILES: Record<string, string>
+  TASKS: string[]
+}
+type RunOutcome =
+  | { ok: true; tasks: PlanTask[]; cached: Set<string> }
+  | { ok: false; errors: string[] }
+interface DiffEntry {
+  kind: string
+  name: string
+  change: string
+  before: string | null
+  after: string | null
+}
+type DiffKeyComponents = (
+  before: readonly unknown[],
+  after: readonly unknown[],
+) => { entries: DiffEntry[]; unchangedCount: number }
+const { diffRuns, runPlayground } = (await import(
+  path.join(DOCS, 'src/components/demos/model/playground-view.ts')
+)) as {
+  runPlayground: (
+    planner: unknown,
+    input: {
+      files: Record<string, string>
+      env: Record<string, string>
+      tasks: string[]
+      cached: ReadonlySet<string>
+    },
+  ) => Promise<RunOutcome>
+  diffRuns: (
+    prev: readonly PlanTask[],
+    next: readonly PlanTask[],
+    diff: DiffKeyComponents,
+  ) => Array<{ id: string; change: string; why: DiffEntry[] }>
+}
+
 const ONLY_VX = 'the playground evaluates a config on its own: it can import only @vzn/vx'
 const CONFIG_FILE: Record<string, string> = {
   '@pg/utils': 'packages/utils/vx.config.mjs',
@@ -293,6 +332,8 @@ function disarm(): void {
 
 let planPlayground: PlanPlayground
 let evaluateConfig: EvaluateConfig
+/** The bundle's module: the page's Run calls it as its planner. */
+let bundle: unknown
 
 async function evaluate(text: string, deadlineMs = 10_000): Promise<Evaluated> {
   arm()
@@ -357,9 +398,18 @@ async function nativeSchedule(
   return { priorities: Object.fromEntries(priorities), dispatchOrder }
 }
 
+// The plan's fields `--dry=json` prints: the bundle's tasks also carry the
+// key's components, which `vx why` answers for (item 703's rows).
 const comparable = (tasks: PlanTask[]) =>
   tasks
-    .map((t) => ({ ...t, deps: [...t.deps].sort() }))
+    .map(({ id, project, task, hash, cacheStatus, deps }) => ({
+      id,
+      project,
+      task,
+      hash,
+      cacheStatus,
+      deps: [...deps].sort(),
+    }))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
 const movedFrom = (base: PlanTask[], tasks: PlanTask[]): string[] =>
@@ -389,7 +439,8 @@ beforeAll(async () => {
   const bundleFile = path.join(scratch, 'planner.js')
   writeFileSync(bundleFile, (await buildPlayground()).bytes)
   // Loaded BEFORE any trap is armed: loading reads the file through the host.
-  ;({ planPlayground, evaluateConfig } = (await import(bundleFile)) as {
+  bundle = await import(bundleFile)
+  ;({ planPlayground, evaluateConfig } = bundle as {
     planPlayground: PlanPlayground
     evaluateConfig: EvaluateConfig
   })
@@ -607,4 +658,257 @@ describe('a config is JSON data on the page as in the CLI (item 701)', () => {
       write(FILES)
     }
   })
+})
+
+describe("the playground page's workspace plans what the CLI plans (item 700)", () => {
+  // The page's Run is the view module's `runPlayground`: core's discovery
+  // (the bundle's `listPlaygroundProjects`) picks each config file, the
+  // page evaluates its text, and the bundle plans. The CLI runs
+  // `vx run build test --all --dry=json` over the same files, committed to
+  // a repository of their own; the edit is uncommitted, as the fixture's is.
+  const EDIT = 'packages/ui/src/button.tsx'
+  const MOVED = ['app#build', 'app#test', 'ui#build', 'ui#test']
+  const pageWs = path.join(scratch, 'page')
+  const pageCache = path.join(scratch, 'page-cache')
+  const runs = new Map<string, { cli: PlanTask[]; page: PlanTask[] }>()
+
+  function pageWrite(files: Record<string, string>): void {
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(pageWs, rel)), { recursive: true })
+      writeFileSync(path.join(pageWs, rel), body)
+    }
+  }
+
+  function pageGit(...args: string[]): void {
+    const r = Bun.spawnSync(['git', ...args], { cwd: pageWs, stdout: 'pipe', stderr: 'pipe' })
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`)
+  }
+
+  function pageCli(): PlanTask[] {
+    const r = Bun.spawnSync(
+      [
+        process.execPath,
+        BIN,
+        'run',
+        ...PAGE.TASKS,
+        '--all',
+        '--dry=json',
+        `--cache-dir=${pageCache}`,
+      ],
+      {
+        cwd: pageWs,
+        env: { ...baseEnv, ...PAGE.ENV, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    if (r.exitCode !== 0) throw new Error(`CLI exited ${r.exitCode}: ${r.stderr.toString()}`)
+    return (JSON.parse(r.stdout.toString()) as { tasks: PlanTask[] }).tasks
+  }
+
+  async function pageRun(files: Record<string, string>): Promise<PlanTask[]> {
+    arm()
+    let r: RunOutcome
+    try {
+      r = await runPlayground(bundle, {
+        files,
+        env: PAGE.ENV,
+        tasks: PAGE.TASKS,
+        cached: new Set(),
+      })
+    } finally {
+      disarm()
+    }
+    if (!r.ok) throw new Error(r.errors.join('\n'))
+    return r.tasks
+  }
+
+  beforeAll(async () => {
+    pageWrite(PAGE.FILES)
+    pageGit('init', '-q')
+    pageGit('add', '-A')
+    pageGit(
+      '-c',
+      'user.email=parity@vx',
+      '-c',
+      'user.name=parity',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'page',
+    )
+    const edited = { ...PAGE.FILES, [EDIT]: `${PAGE.FILES[EDIT]}// edited\n` }
+    for (const [name, files] of [
+      ['committed', PAGE.FILES],
+      ['edited', edited],
+    ] as const) {
+      pageWrite(files)
+      runs.set(name, { cli: pageCli(), page: await pageRun(files) })
+    }
+  }, 60_000)
+
+  for (const name of ['committed', 'edited']) {
+    it(`${name}: every task's key, cache status and deps`, () => {
+      const { cli, page } = runs.get(name)!
+      expect(cli.length).toBe(9)
+      expect(comparable(page)).toEqual(comparable(cli))
+    })
+  }
+
+  it(`an edit to ${EDIT} moves exactly ${MOVED.join(', ')}, in both planners`, () => {
+    const base = runs.get('committed')!
+    const edit = runs.get('edited')!
+    expect(movedFrom(base.cli, edit.cli)).toEqual(MOVED)
+    expect(movedFrom(base.page, edit.page)).toEqual(MOVED)
+  })
+})
+
+describe('the page names what moved a key as `vx why` does (item 703)', () => {
+  // The CLI half RUNS here: `vx run build test --all` saves each miss and
+  // records its key's components in `entry_inputs`, and `vx why` diffs them
+  // with `diffKeyComponents`. The page's half is the view's `diffRuns` over
+  // successive Runs of the bundle, with the bundle's copy of the same
+  // function. The page's commands (`vite build`, `tsc -b`, …) are not on
+  // this box, so both halves read the page's texts with every command made
+  // `true`: a command folds into its task's key, and no step moves a config.
+  // Three steps, one per verdict the join gives: the page's `button.tsx`
+  // edit (changed), then a new file (added), then that file gone (removed).
+  const EDIT = 'packages/ui/src/button.tsx'
+  const NEW = 'packages/ui/src/icon.tsx'
+  const MOVED = ['app#build', 'app#test', 'ui#build', 'ui#test']
+  const whyWs = path.join(scratch, 'why')
+  const whyCache = path.join(scratch, 'why-cache')
+  const harmless = (files: Record<string, string>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(files).map(([f, text]) => [
+        f,
+        f.endsWith('vx.config.mjs') ? text.replace(/command: '[^']*'/g, "command: 'true'") : text,
+      ]),
+    )
+  const committed = harmless(PAGE.FILES)
+  const edited = { ...committed, [EDIT]: `${committed[EDIT]}// edited\n` }
+  const withNew = { ...edited, [NEW]: 'export const Icon = () => null\n' }
+  const expected = (file: string, change: string): Record<string, string[][]> => ({
+    'app#build': [['upstream', 'ui#build', 'changed']],
+    'app#test': [['upstream', 'app#build', 'changed']],
+    'ui#build': [['file', file, change]],
+    'ui#test': [
+      ['file', file, change],
+      ['upstream', 'ui#build', 'changed'],
+    ],
+  })
+  const STEPS = [
+    { name: `${EDIT} edited`, files: edited, expected: expected(EDIT, 'changed') },
+    { name: `${NEW} added`, files: withNew, expected: expected(NEW, 'added') },
+    { name: `${NEW} removed`, files: edited, expected: expected(NEW, 'removed') },
+  ]
+  const cli = new Map<string, Map<string, DiffEntry[]>>()
+  const page = new Map<string, Map<string, DiffEntry[]>>()
+
+  function whyWrite(files: Record<string, string>): void {
+    rmSync(path.join(whyWs, NEW), { force: true })
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(whyWs, rel)), { recursive: true })
+      writeFileSync(path.join(whyWs, rel), body)
+    }
+  }
+
+  function whyGit(...args: string[]): void {
+    const r = Bun.spawnSync(['git', ...args], { cwd: whyWs, stdout: 'pipe', stderr: 'pipe' })
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`)
+  }
+
+  function vx(...args: string[]): string {
+    const r = Bun.spawnSync([process.execPath, BIN, ...args, `--cache-dir=${whyCache}`], {
+      cwd: whyWs,
+      env: { ...baseEnv, ...PAGE.ENV, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (r.exitCode !== 0) {
+      throw new Error(`vx ${args.join(' ')} exited ${r.exitCode}: ${r.stderr.toString()}`)
+    }
+    return r.stdout.toString()
+  }
+
+  async function pageRun(
+    files: Record<string, string>,
+    cached: ReadonlySet<string>,
+  ): Promise<{ tasks: PlanTask[]; cached: Set<string> }> {
+    arm()
+    let r: RunOutcome
+    try {
+      r = await runPlayground(bundle, { files, env: PAGE.ENV, tasks: PAGE.TASKS, cached })
+    } finally {
+      disarm()
+    }
+    if (!r.ok) throw new Error(r.errors.join('\n'))
+    return r
+  }
+
+  beforeAll(async () => {
+    whyWrite(committed)
+    whyGit('init', '-q')
+    whyGit('add', '-A')
+    whyGit(
+      '-c',
+      'user.email=parity@vx',
+      '-c',
+      'user.name=parity',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'why',
+    )
+    vx('run', ...PAGE.TASKS, '--all')
+    const diff = (bundle as { diffKeyComponents: DiffKeyComponents }).diffKeyComponents
+    let last = await pageRun(committed, new Set())
+    for (const step of STEPS) {
+      whyWrite(step.files)
+      vx('run', ...PAGE.TASKS, '--all')
+      const said = new Map<string, DiffEntry[]>()
+      for (const id of MOVED) {
+        const out = JSON.parse(vx('why', id, '--format', 'json')) as {
+          diff: { entries: DiffEntry[] }
+        }
+        said.set(id, out.diff.entries)
+      }
+      cli.set(step.name, said)
+
+      const next = await pageRun(step.files, last.cached)
+      page.set(
+        step.name,
+        new Map(
+          diffRuns(last.tasks, next.tasks, diff)
+            .filter((r) => r.change === 'moved')
+            .map((r) => [r.id, r.why]),
+        ),
+      )
+      last = next
+    }
+  }, 60_000)
+
+  const byText = (a: string[], b: string[]): number =>
+    a.join('\0') < b.join('\0') ? -1 : a.join('\0') > b.join('\0') ? 1 : 0
+  const named = (entries: readonly DiffEntry[]): string[][] =>
+    entries.map((e) => [e.kind, e.name, e.change]).sort(byText)
+
+  for (const step of STEPS) {
+    it(`${step.name}: the page moves exactly ${MOVED.join(', ')}`, () => {
+      expect([...page.get(step.name)!.keys()].sort()).toEqual(MOVED)
+    })
+
+    it(`${step.name}: \`vx why\`'s diff.entries are the page's named changes, for each`, () => {
+      const said = cli.get(step.name)!
+      const shown = page.get(step.name)!
+      for (const id of MOVED) {
+        expect({ id, cli: named(said.get(id)!) }).toEqual({ id, cli: step.expected[id]! })
+        expect({ id, page: named(shown.get(id)!) }).toEqual({ id, page: step.expected[id]! })
+        // The hashes too: a file's OIDs, an upstream's keys.
+        expect({ id, page: shown.get(id) }).toEqual({ id, page: said.get(id) })
+      }
+    })
+  }
 })
