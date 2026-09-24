@@ -97,7 +97,7 @@ The plan is `design/site-teaches-2026-09.md`.
 | #   | Item                                                                                                                                                                                                                    | Size |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | W0  | ~~A Learn section, stub pages, and the interactive-island pattern with a no-JavaScript fallback.~~ DONE in item 675: `Demo.astro` and `demos/<name>.ts`, pinned against the built HTML by `tests/demo-islands.test.ts`. | S    |
-| W1  | What task orchestration is, with a graph explorer.                                                                                                                                                                      | M    |
+| W1  | ~~What task orchestration is, with a graph explorer.~~ DONE in item 681: `learn/what-is-task-orchestration.mdx` with `GraphExplorer.astro` over the shared `demos/model/toy-monorepo.ts`.                               | M    |
 | W2  | Caching from first principles, with a key calculator.                                                                                                                                                                   | M    |
 | W3  | Correctness: trusting the cache, with a stale-hit demo.                                                                                                                                                                 | S–M  |
 | W4  | Scheduling, with the item 669 simulator running in the browser.                                                                                                                                                         | M    |
@@ -108,7 +108,7 @@ The plan is `design/site-teaches-2026-09.md`.
 | W9  | The playground: the real planner (graph, keys, scheduler) running in the browser over a workspace the reader edits. Starts with a spike.                                                                                | L    |
 | W10 | Labs: break a build on purpose (a stale hit, an undeclared input, an output collision) and see what catches it.                                                                                                         | M    |
 | W11 | Checkpoints: one question per page, checked against the live model.                                                                                                                                                     | S    |
-| W12 | A tool-neutral glossary that every page links into.                                                                                                                                                                     | S    |
+| W12 | ~~A tool-neutral glossary that every page links into.~~ DONE in item 683: `learn/glossary.md`, seventeen terms, each tool's name checked against its own docs.                                                          | S    |
 
 **Exit:** every Learn page has a diagram and an interactive element and
 reads with JavaScript off. Every number comes from `benchmarks.md`,

@@ -126,9 +126,11 @@ when the landing page or `benchmarks.md` drifts from
 - `tests/sidebar-coverage.test.ts` — every page is reachable from the
   sidebar; an orphan page fails.
 - `tests/demo-islands.test.ts` — reads the BUILT page: the Learn demo's
-  static SVG and caption are in the HTML, and the page's scripts reach
-  the module that defines its element. It needs `dist/`, so the `test`
-  task depends on `build`.
+  static SVG, table and caption are in the HTML and match the model,
+  the JavaScript-only controls ship hidden, the checkpoint's answer is
+  the model's, and the page's scripts reach the module that defines its
+  element. It also holds the toy monorepo model to sets written out by
+  hand. It needs `dist/`, so the `test` task depends on `build`.
 
 ## Interactive demos
 
@@ -149,7 +151,10 @@ that a small custom element enhances in place. No UI framework.
   `src/components/demos/model/`, so the static render and the enhanced
   one cannot disagree.
 - A page that uses a widget is `.mdx` (Starlight renders components in
-  MDX); `learn/what-is-task-orchestration.mdx` is the example.
+  MDX); `learn/what-is-task-orchestration.mdx` is the example, with the
+  graph explorer (`GraphExplorer.astro` + `graph-explorer.ts`). Mermaid
+  fences work in MDX too, and the site-wide laws read `.mdx` pages
+  (item 680).
 
 **The no-JavaScript rule.** The default slot must teach on its own: a
 real diagram, table or state with a caption that says what the widget

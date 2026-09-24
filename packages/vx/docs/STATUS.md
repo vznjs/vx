@@ -406,6 +406,65 @@ negation is its control. Found by the 653 implementer, not a sweep
 survivor. A config that carried one now fails to load, where before
 it ran with the line ignored.
 
+14cb. **Item 680 (2026-09-23): the site-wide laws read `.mdx`.** W0 made
+a page that holds a widget `.mdx`, and four laws walked `.md` only, so
+such a page was invisible to them: the site's `config-snippets.test.ts`
+(every config block type-checks), `doc-class-pins.unsafe.test.ts` (six
+walkers: `handAuthoredDocs` and the five class pins with their own walk,
+the blog-table one included), `site-samples.unsafe.test.ts`
+(`handAuthoredSitePages`), and `doc-references.unsafe.test.ts` (the
+guides' core paths, and every relative link, whose target resolver
+also had no `.mdx` candidate: a link to the W1 page read as missing).
+Each now matches `/\.mdx?$/`. Proven with twelve probes, one per walker,
+each appended to the W1 page or a new `.mdx` beside the guides and blog,
+then restored: with the old laws P1–P10 passed (blind), and both links
+to the `.mdx` page (P11 with an anchor it lacks, P12 with none) failed
+as missing; with the new ones P1–P11 fail, each message naming the
+`.mdx` page or the bad anchor, and P12 passes (the control). No law is meaningless on MDX: the fences, headings and links
+these laws read are the same syntax there. Two walkers stay `.md` on
+purpose: `sidebar-coverage.test.ts`'s imported set and the safe
+`doc-references.test.ts` read what `import-docs.ts` generates from
+`packages/vx/docs`, which is Markdown only.
+
+14cc. **Item 681 (roadmap W1, 2026-09-24): the first Learn page teaches.**
+`learn/what-is-task-orchestration.mdx` explains a task, a dependency,
+the task graph and why `npm run` or a shell script stops scaling
+(ordering, parallelism, rerunning only what changed, caching as a
+preview of W2) in tool-neutral terms, then how vx does it (a config
+block, now type-checked by item 680's widened law, with links to the
+schema, CLI, scheduler and caching pages, and the cost of explicit
+inputs), then one sentence each for Turborepo, Nx and Bazel with a link
+to their docs, then a checkpoint whose answer is in a `<details>`. Two
+Mermaid diagrams (the package graph, and `^build` and `build` applied to
+`ui`). The W0 widget grew into the graph explorer and took its place
+(`GraphExplorer.astro` + `graph-explorer.ts`; `AffectedGraph` is gone,
+because one page carries one widget). The toy monorepo is four packages
+(`utils`; `ui` and `api` use it; `app` uses both) with `build` and `test`
+each. The shared model in `demos/model/toy-monorepo.ts` derives the
+eight tasks, the waves, the affected packages, the tasks `--affected`
+selects, the upstream tasks the cache restores, and the order sentence.
+Without JavaScript: the SVG in four wave rows, a caption that states the
+waves, and a table that gives, per changed package, what runs, what is
+needed first from the cache, and the order. With JavaScript: package
+buttons (a node click also works; Escape and Clear reset), lit / dashed /
+faded tasks, the selected table row, and a live region with the run and
+its order. Checked in Chromium at 1440 and 390 px, with JavaScript on and
+off; the table stacks per row under 40rem. `tests/demo-islands.test.ts`
+has 13 rows: the model against hand-written sets (edges, waves, each
+change's affected, rerun and needed sets, the order), the built page
+against those sets and against the model, the caption, the hidden
+controls, the checkpoint answer, and the loader. Twelve mutations (model
+rules, the Astro render, the MDX answer, the element's name) turned
+every row red at least once and green after restore. Two first-draft
+mutations were no-ops and survived for that reason: dropping the first
+task's edges (it has none) and removing a second mention of a task. They
+were replaced with mutations that change what the rows read. The site's
+`test` task declares the model as an input, because the test imports it.
+The competitor links could not be fetched from the implementer's box; the
+coordinator checked each claim and URL against the tools' own docs
+sources (vercel/turborepo, nrwl/nx, bazelbuild/bazel, 2026-09-24) and
+moved three Nx links to its current `/docs/` paths.
+
 14cd. **Item 682 (2026-09-24): the cache key carries 64 bits of state.**
 The W9 spike (item 676) measured that Bun's xxHash3 reads only the low
 32 bits of its seed, and every cache key, the workspace fingerprint,
@@ -434,6 +493,22 @@ making `assertKnownFields` refuse non-objects itself (653's proposal):
 every caller already checks its own level and 653 holds each, so the
 guard would be unreachable.
 
+14ce. **Item 683 (roadmap W12, 2026-09-24): the glossary.** `learn/glossary.md`
+defines seventeen terms once, without reference to a tool (workspace,
+project, task, task dependency, task graph, project graph, affected,
+inputs, outputs, cache key, hit/miss/stale hit, remote cache,
+hermeticity and sandboxing, remote execution, persistent task, critical
+path, seam and plugin), then gives the name vx, Turborepo, Nx and Bazel
+use, each linked to that tool's documentation. Every name was checked
+against the tools' own doc sources on 2026-09-24 (shallow clones of
+vercel/turborepo, nrwl/nx and bazelbuild/bazel; their sites are not
+reachable from this box), and the check changed three claims a guess
+would have made: Nx has task sandboxing (an Nx Cloud add-on on a
+dedicated cluster), its term for a stale hit is "false cache hit", and
+its long-running tasks are `continuous`, not `persistent`. A dash means
+the tool's docs have no term, not that the tool cannot do the thing.
+Pages linking their terms into it is W1–W7's job as each is written.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -445,7 +520,9 @@ guard would be unreachable.
     planner running in the browser (W9), labs where the reader breaks a
     build (W10), checkpoints (W11) and a glossary (W12). W0, the
     skeleton and the island pattern, is DONE (item 675, entry 14bw).
-    Next step: W1 and the graph explorer.
+    W1, the first real Learn page and the graph explorer, is DONE (item
+    681, entry 14cc), and so is W12, the glossary (item 683, entry 14ce).
+    Next step: W2 and the key calculator.
 
 ## Decisions (this arc)
 

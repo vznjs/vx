@@ -4,7 +4,8 @@
 // two tasks the example never declared, a type error in the IDE that the
 // page had carried since the typed `dependsOn` arrived (item 284). The
 // plugins guide has its own pin (plugins-guide-snippets.test.ts); this one
-// takes every other page. A block is a config when it calls one of the two
+// takes every other page, `.md` and `.mdx` alike (a Learn page with a widget
+// is MDX, item 680). A block is a config when it calls one of the two
 // and imports only `@vzn/*` packages; fragments (no import, a relative
 // preset path, a signature sketch) are illustrations and stay out.
 import { mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
@@ -37,7 +38,7 @@ async function pages(dir: string): Promise<string[]> {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
       if (e.name !== 'blog') out.push(...(await pages(p)))
-    } else if (e.name.endsWith('.md') && !p.endsWith('guides/plugins.md')) out.push(p)
+    } else if (/\.mdx?$/.test(e.name) && !p.endsWith('guides/plugins.md')) out.push(p)
   }
   return out
 }
