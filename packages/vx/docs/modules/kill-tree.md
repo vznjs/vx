@@ -56,6 +56,16 @@ groups are polled every 20 ms, and only while one is left.
 
 - Reach a daemon that called `setsid` itself — the residual every
   non-cgroup runner shares; a sandbox's pid namespace takes even that.
+- Outlive a `kill -9` of vx: nothing in vx runs to signal the groups,
+  so a persistent task survives under init (turborepo#9666 reproduced
+  on vx, 2026-09-24). A persistent task's stdin is a pipe vx holds, so
+  a server that exits on stdin EOF (esbuild `--watch`) goes with vx
+  (`tests/keep-alive.test.ts`). `prctl(PR_SET_PDEATHSIG)` is not the
+  fix, measured 2026-09-24: `Bun.spawn` has no pre-exec hook, a
+  `bun:ffi` wrapper that calls prctl and then execve costs a Bun start
+  per spawn (9.8 ms against 1.0 ms for a bare `sh`, min of 10), it is
+  Linux and glibc only, and the death signal reaches the group leader
+  alone — `sh -c 'server & wait'` lost the shell and kept the server.
 - Reap: the caller awaits `exited` as before.
 
 ## Tests
