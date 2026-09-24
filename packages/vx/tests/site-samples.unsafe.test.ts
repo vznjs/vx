@@ -572,11 +572,7 @@ describe('the keys-from-git post counts the parts the key folds', () => {
     )
     // ls-files, status and the config read; the rev-parse is `repoFacts`.
     expect(spawned.length).toBeGreaterThanOrEqual(3)
-    for (const named of [
-      'git ls-files -s -v',
-      'git status --porcelain -uall',
-      'git config --get-regexp',
-    ]) {
+    for (const named of ['git ls-files -s -v', 'git status --porcelain -uall', 'git var -l']) {
       expect(spawned.some((s) => s.startsWith(named))).toBe(true)
       expect(page).toContain('`' + named)
     }

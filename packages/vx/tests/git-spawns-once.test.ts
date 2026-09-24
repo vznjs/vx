@@ -26,10 +26,7 @@ const CONFIG = `
   }
 `
 
-const ENUMERATION = [
-  'config --get-regexp ^core\\.(autocrlf|eol|attributesfile)$',
-  'rev-parse --show-prefix --git-common-dir --show-object-format',
-]
+const ENUMERATION = ['var -l', 'rev-parse --show-prefix --git-common-dir --show-object-format']
 
 describe('git spawns on a cold run', () => {
   let root: string

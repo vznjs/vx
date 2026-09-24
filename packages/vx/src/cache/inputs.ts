@@ -42,6 +42,7 @@ export {
   gitPathspecs,
   parseCheckAttrOutput,
   autocrlfConverts,
+  attributeFilesOutsideTree,
   type GitEnumeration,
 } from './git-inputs.js'
 
