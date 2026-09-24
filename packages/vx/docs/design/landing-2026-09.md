@@ -72,3 +72,78 @@ labs (W10) and the checkpoints (W11) now exist to link to.
 - A new visual identity. The page keeps its current styles and adds
   the three idea sections in them.
 - Any JavaScript on the landing page.
+
+## Shipped (item 709)
+
+The page, top to bottom: the hero, the three ideas (`#inputs`,
+`#seams`, `#speed`), the numbers (`#bench`, `#real`, `#scale`), then
+today's later sections in their places (`#why`, `#open`, `#plugins`,
+`#config`, `#migrate`).
+
+- **Hero.** The `h1` is "Hundreds of commands. Which must run?". The
+  lede asks the three questions and says what vx is in one sentence.
+  The actions are "Learn how it works"
+  (`learn/what-is-task-orchestration/`), "Plan a monorepo in your
+  browser" (`learn/playground/`) and "Quickstart", in that order. The
+  install pill sits on its own row below them.
+- **Idea 1** links `learn/caching/`, `learn/correctness/` and
+  `learn/labs/`. Its one guarantee cites core's
+  `tests/sandbox-runtime.unsafe.test.ts`, row "the undeclared read fails
+  with one line naming banner.txt; declaring it passes". That row runs
+  Learn's stale-hit demo for real in the sandbox. It asserts that the
+  task fails with exactly one violation line, naming `banner.txt`, and
+  that declaring the file lets the same task pass with the file's bytes
+  in its output. It is Linux-only (`describe.skipIf`); CI's Linux jobs
+  run it with `VX_REQUIRE_SANDBOX=1`. The site's `test` task already
+  granted and keyed that file, because the choosing page cites it too.
+- **Idea 2** links `learn/architecture/` and `learn/extending/`.
+  **Idea 3** links `concepts/why-vx-is-fast/` (its mechanisms; a page
+  this design did not name), `benchmarks/`, and `#bench` below. Idea 3
+  states no number.
+- **The numbers.** `benchRows` and the three stat tiles are untouched,
+  and `update-site.ts` is unchanged; `@vzn/vx-bench#check.site` exits 0.
+  The benchmark panel gained a link to `learn/choosing/` ("When another
+  tool is the better pick").
+- **Removed as repeats of an idea section.** No whole section merely
+  repeated one, so no section went. Cards did. From `#why`: "Sandboxed,
+  per task" (idea 1), "A plugin at every stage" and "Modular to the
+  core" (idea 2). From `#plugins`: "Nothing applied by default" (idea
+  2's floor). `#plugins`' heading was idea 2's own ("A pipeline with a
+  seam at every stage."), so it is now "What fills the seams." Every
+  page those cards linked is still linked from the page.
+- **Found.** Two links in the benchmark panels were written as quoted
+  `href="{href(…)}"` in the source. They shipped as that literal text
+  and never resolved. Both now render as links.
+- **JavaScript.** The idea sections carry none. The page keeps the one
+  script it had, the install pill's copy button, and astro's site-wide
+  prefetch module. "No JavaScript" was read as "this step adds none".
+
+Rows (`packages/vx-docs/tests/landing.test.ts`, reading `dist/`):
+
+- the `h1`, then the exact order of the section ids;
+- the hero's three actions, in order;
+- each idea's links, each resolving to a built page;
+- idea 1's one GitHub link points under `packages/vx/tests/`, the file
+  exists, and it holds the linked text as a quoted row title;
+- each idea has one `role="img"` SVG with an `aria-label`, and no
+  script or `on*=` handler;
+- every internal `href` the page had at f565ec5f is still on it, or on
+  a removed-on-purpose list (empty), and every internal `href` resolves
+  to a built file and anchor.
+
+Differentials. Each was rebuilt through `@vzn/vx-docs#build` and
+restored by copying the saved page back (`cmp` equal):
+
+| Mutation                         | Row that went red                              | Tally          |
+| -------------------------------- | ---------------------------------------------- | -------------- |
+| `#bench` moved above idea 1      | the h1, then the three ideas, then the numbers | 5 pass, 1 fail |
+| guarantee path without `.unsafe` | idea 1's guarantee to the core test row        | 5 pass, 1 fail |
+| the nav's `blog/` link dropped   | every internal link the page had               | 5 pass, 1 fail |
+
+Chromium at 1440 px and at 390 px: `document.documentElement.scrollWidth`
+equals the viewport width at both, and no element's box ends past the
+viewport outside a scroll container. The second check is the one that
+decides. `landing.css` sets `overflow-x: clip` on `html` and `body`, so
+`scrollWidth` stays at the viewport width whatever overflows: with the
+idea 2 SVG forced to 900 px at 390, `scrollWidth` still read 390, while
+the element check named the `svg`.

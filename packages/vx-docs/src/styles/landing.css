@@ -1045,12 +1045,137 @@ body:has(.vx-landing) {
   max-width: 900px;
 }
 
+/* ---- the three ideas: a paragraph, its links, a drawing; no script ---- */
+.idea-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: center;
+}
+.idea-copy {
+  min-width: 0;
+}
+.idea-copy code {
+  font: 0.9em var(--font-mono);
+  color: var(--text);
+}
+.guarantee {
+  font: var(--fw-regular) 16px / 1.55 var(--font-body);
+  color: var(--text-mut);
+  max-width: 680px;
+  margin: 22px 0 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--phosphor);
+  overflow-wrap: anywhere;
+}
+.guarantee a {
+  color: var(--link);
+}
+.idea-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  margin-top: 32px;
+}
+.idea-links .section-link {
+  margin-top: 0;
+  line-height: 1.35;
+}
+.idea-fig {
+  margin: 0;
+  min-width: 0;
+}
+.idea-fig svg {
+  display: block;
+  width: 100%;
+  max-width: 440px;
+  height: auto;
+  margin: 0 auto;
+}
+.idea-fig figcaption {
+  font: var(--type-label);
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 14px;
+}
+.idea-fig .node rect {
+  fill: var(--ink-750);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+.idea-fig .node.on rect {
+  fill: color-mix(in srgb, var(--phosphor) 8%, var(--ink-800));
+  stroke: var(--phosphor);
+}
+.idea-fig .node.slot rect {
+  fill: transparent;
+  stroke: var(--amber);
+  stroke-dasharray: 5 4;
+}
+.idea-fig text {
+  font: var(--fw-medium) 13px var(--font-mono);
+  fill: var(--text-hi);
+  text-anchor: middle;
+}
+.idea-fig text.small,
+.idea-fig text.note {
+  font-size: 11px;
+  fill: var(--text-mut);
+}
+.idea-fig text.deny {
+  fill: var(--c-turbo);
+}
+.idea-fig text.lbl {
+  font-size: 11px;
+  fill: var(--text-faint);
+  text-anchor: start;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.idea-fig .edge {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+}
+.idea-fig .edge.on {
+  stroke: var(--phosphor);
+}
+.idea-fig .edge.deny {
+  stroke: var(--c-turbo);
+  stroke-dasharray: 4 3;
+}
+.idea-fig .edge.floor {
+  stroke-dasharray: 2 3;
+}
+.idea-fig .head {
+  fill: var(--text-faint);
+}
+.idea-fig .head.on {
+  fill: var(--phosphor);
+}
+.idea-fig .cross {
+  stroke: var(--c-turbo);
+  stroke-width: 2.5;
+}
+.idea-fig .wall {
+  fill: none;
+  stroke: var(--plasma);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+}
+.idea-fig .process {
+  fill: color-mix(in srgb, var(--phosphor) 3%, transparent);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
 /* ---- responsive ---- */
 @media (max-width: 900px) {
   .nav-links {
     display: none;
   }
   .hero-grid,
+  .idea-grid,
   .cards,
   .foot-grid {
     grid-template-columns: minmax(0, 1fr);

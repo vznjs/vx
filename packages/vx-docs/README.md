@@ -27,25 +27,32 @@ Hand-authored pages live only in the site and ARE tracked:
 page (its own nav, footer and theme; the docs stay Starlight). It is
 static — no canvases, no pinned scenes, no scroll scripting, no reveal
 or tilt effects; one script for the install command's copy button —
-and built from three primitives that are exactly the same everywhere
-they appear (owner, 2026-09-11): the section head (kicker, `h2`, one
-line), the card (icon, title, two sentences, a "Docs →" link), and the
-benchmark panel (legend, rows of bars, every competitor a multiple of
-vx). Every point on the page links to the docs page that proves it.
-Sections: the hero with the terminal; the benchmark panel (overhead,
-cold, cached, restore, CPU); the same panel for solidjs/solid; the
-three per-package stat tiles; the nine cards; the three "no" cards;
-the six plugin cards; the config card; migrate; the footer.
+and built from four primitives that are the same everywhere they
+appear (owner, 2026-09-11; the fourth, item 709): the section head
+(kicker, `h2`, one line), the card (icon, title, two sentences, a
+"Docs →" link), the benchmark panel (legend, rows of bars, every
+competitor a multiple of vx), and the idea section (a paragraph, its
+links, one inline SVG drawn in the Learn pages' style, no script).
+Every point on the page links to the docs page that proves it.
+Sections, in order (item 709, `design/landing-2026-09.md`): the hero,
+which states the problem and sends the reader to Learn, then the
+playground, then the quickstart; the three ideas (`#inputs`, `#seams`,
+`#speed`); the benchmark panel (overhead, cold, cached, restore, CPU);
+the same panel for n8n-io/n8n; the three per-package stat tiles; the
+six cards; the three "no" cards; the five hook and plugin cards; the
+config card; migrate; the footer. `tests/landing.test.ts` holds the
+order, each idea's links, idea 1's guarantee link to the test row that
+holds it, and every internal link the page had before item 709.
 
 - **The numbers** are generated: `packages/vx-bench/update-site.ts`
   rewrites the `benchRows` block and the three per-package stat tiles
   from `results.json`, and `check.site` fails when they drift. Edit
   the generator, not those regions. The overhead row reads the same
   constants (`raceBase`, `lanes`, `plus()`), so a re-benchmark reshapes
-  it too; the solid rows are typed from `docs/benchmarks.md`.
-- **The message** (owner, 2026-09-11): vx is the fastest in every row,
-  on the synthetic graph and on a real repo, at any size. No
-  percentage-and-multiple mix: every competitor bar reads as a multiple
+  it too; the n8n rows are typed from `docs/benchmarks.md`.
+- **The message** (item 709): the problem and the three ideas first,
+  the numbers after. The numbers keep the owner's rule (2026-09-11): no
+  percentage-and-multiple mix; every competitor bar reads as a multiple
   of vx, every overhead as clock time.
 
 To check it visually, drive the pre-installed Chromium from a scratch

@@ -1455,6 +1455,32 @@ checkpoint asked at once as it answers each alone", stays green, and
 now holds the planner's queue: with `oneAtATime` running its argument at
 once (bundle rebuilt), it goes red; restored, green.
 
+14df. **Item 709 (roadmap W8, 2026-09-24): the landing page leads with
+the problem.** The `h1` is "Hundreds of commands. Which must run?"; the
+lede asks which must run, in what order and which to skip, and says
+what vx is in one sentence. The actions go to Learn
+(`learn/what-is-task-orchestration/`), then the playground, then the
+quickstart. Three idea sections follow, each a paragraph, its links and
+one static inline SVG: explicit inputs (`#inputs`: caching,
+correctness, labs; its one guarantee links core's
+`sandbox-runtime.unsafe.test.ts` row "the undeclared read fails with
+one line naming banner.txt; declaring it passes"), a pipeline with
+seams (`#seams`: architecture, extending) and Bun-native speed
+(`#speed`: why-vx-is-fast, benchmarks, no number of its own). The
+numbers (`#bench`, `#real`, `#scale`) come after them, with
+`update-site.ts` unchanged and `check.site` green, and the panel links
+`learn/choosing/`. No section merely repeated an idea, so none went;
+four cards that did went (sandboxed, plugin at every stage, modular
+core, nothing applied by default), and `#plugins` is now "What fills
+the seams." Found: the two benchmark panels' links were quoted
+`{href(…)}` literals that never resolved. Rows:
+`packages/vx-docs/tests/landing.test.ts` holds the order, the hero's
+actions, each idea's links, the guarantee's file and row title, the
+static figures, and every internal link of the page at f565ec5f. The
+differentials (bench first, a broken guarantee path, a dropped link)
+and the Chromium check at 390 px: `design/landing-2026-09.md` § Shipped
+(item 709).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1490,10 +1516,22 @@ once (bundle rebuilt), it goes red; restored, green.
     checkpoints, is DONE (item 705, entry 14dc): the what-is, caching,
     correctness and playground pages ask questions the reader ticks and
     the live planner marks, and each no-JavaScript answer is computed by
-    that planner at build time. Next and last is W8, the landing page,
-    designed in `design/landing-2026-09.md` (item 709): the problem and
-    the three ideas first, each linked to its Learn page, the numbers
-    after, the generator's anchors untouched.
+    that planner at build time. W8, the landing page, is DONE (item
+    709, entry 14df): the problem and the three ideas first, each linked
+    to its Learn page, the numbers after, the generator's anchors
+    untouched. The track, W0–W12, is DONE. Of the plan's "Done means",
+    met: the playground's parity with the CLI (core's parity rows),
+    comparisons that state vx's costs and name a better pick (the
+    choosing page, which the landing links). Not yet met: the glossary
+    has no diagram, interactive element or checkpoint, and scheduling,
+    choosing, architecture and extending end with a static `<details>`,
+    not a live checkpoint; no page per monorepo.tools checkmark was
+    checked row by row, and none was found for code generation or
+    project constraints; the landing's hand-typed figures ("84
+    packages", "within 3%") are not in `benchmarks.md` in that form, no
+    row holds its figures to it, and its cards link docs pages, not
+    tests; the site has per-page link rows but no site-wide link check
+    in `vx run ci --all`.
 
 ## Decisions (this arc)
 
