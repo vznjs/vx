@@ -33,10 +33,9 @@ of a sandboxed task that declares `cache`.
   declares no `inputs.files`, so it folds every file of its project (the
   design assumed it folded none; the key-level rows refuted it). A group
   counts nothing of its own.
-- **A persistent task is folded by no one.** The live path gives it no
-  hash, so nothing beneath it reaches the key. The local classify pass
-  (`stable-keys.ts`) does hash it, so a key derived there can move with
-  more than this set names — never with less.
+- **A persistent task is folded by no one.** Neither key path gives it a
+  hash (the local classify pass, `stable-keys.ts`, skips it as the live
+  path does, item 727), so nothing beneath it reaches the key.
 - **The task itself is not counted**, and its own project is never
   granted through a link anyway (`sandbox-request.ts`).
 - **Lazy and memoized by task id.** A run of hits asks nothing; a shared
