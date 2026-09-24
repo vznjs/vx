@@ -11,6 +11,7 @@
 // takes even that.
 
 import { readdirSync, readFileSync } from 'node:fs'
+import { procfsIsOwn } from '../util/index.js'
 
 export type Child = ReturnType<typeof Bun.spawn>
 
@@ -70,7 +71,10 @@ export async function untilGroupsGone(
  * answers for the group but counts a zombie, and an orphaned member that
  * died on the SIGTERM waits as one until init reaps it — 1 to 2 s under a
  * container's init (measured 2026-09-24) — so on Linux a group the kernel
- * still knows is read from /proc, where a zombie says so.
+ * still knows is read from /proc, where a zombie says so — when /proc is
+ * this namespace's. One mounted for another reads as no member at all,
+ * and a group that ignored the SIGTERM went un-killed; there the group
+ * signal is the answer and the grace ends the wait.
  */
 function groupAlive(child: Child): boolean {
   if (!(child.pid > 0)) return false
@@ -79,7 +83,7 @@ function groupAlive(child: Child): boolean {
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
-  return process.platform !== 'linux' || groupHasLiveMember(child.pid)
+  return !procfsIsOwn() || groupHasLiveMember(child.pid)
 }
 
 function groupHasLiveMember(pgid: number): boolean {

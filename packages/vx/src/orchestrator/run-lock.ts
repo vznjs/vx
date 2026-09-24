@@ -36,7 +36,7 @@ import { readFileSync } from 'node:fs'
 import { mkdir, readFile, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { isTmpdirRefusal, TMPDIR_HINT, xxh3hex } from '../util/index.js'
+import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, xxh3hex } from '../util/index.js'
 
 /** Runs in this process currently holding the lock, per lock directory. */
 const heldHere = new Map<string, number>()
@@ -79,11 +79,11 @@ async function holder(lockDir: string): Promise<Holder | null> {
 /**
  * When a process started, in clock ticks since boot: field 22 of
  * `/proc/<pid>/stat`. Two processes that wore one pid differ here. Null
- * off Linux, where the answer costs a `ps` spawn per run, and for a pid
- * procfs does not show.
+ * off Linux, where the answer costs a `ps` spawn per run, under a procfs
+ * mounted for another pid namespace, and for a pid procfs does not show.
  */
 function startTime(pid: number | 'self'): string | null {
-  if (process.platform !== 'linux') return null
+  if (!procfsIsOwn()) return null
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
     // Fields after the LAST ')' start at field 3; comm may hold spaces.

@@ -41,7 +41,11 @@ groups are polled every 20 ms, and only while one is left.
   reaps it — 1 to 2 s under this container's init — so on Linux a group
   the kernel still knows is read from `/proc/*/stat` (state and pgrp).
   Counting the zombie made a clean teardown wait 1.5–2 s instead of
-  0.32 s. Elsewhere `kill(-pgid, 0)` is the answer.
+  0.32 s. Elsewhere `kill(-pgid, 0)` is the answer — and on Linux too
+  when procfs is another pid namespace's (`util/procfs.ts`): there the
+  table held no member, a group that ignored the SIGTERM was never
+  SIGKILLed, and a run under vx's own sandbox hung on a persistent
+  dependency's server.
 - Callers: the runner's timeout and readiness deadline, the signal
   teardown (`orchestrator/signals.ts`), the end-of-run persistent
   shutdown (`orchestrator/persistent.ts`). The sandboxed spawn is

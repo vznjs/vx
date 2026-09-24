@@ -218,8 +218,9 @@ file), and on Linux the pid file also carries the holder's start time
 (field 22 of `/proc/<pid>/stat`), so a live pid another process now
 wears is stale as well. The start time is read once per process for
 the pid file and once per holder while waiting; elsewhere, where it
-would cost a `ps` spawn per run, the lock trusts the pid
-(`tests/run-lock.test.ts`). A directory that cannot be made
+would cost a `ps` spawn per run, and under a procfs mounted for another
+pid namespace (`util/procfs.ts`), the lock trusts the pid
+(`tests/run-lock.test.ts`, `tests/run-lock-recycled.unsafe.test.ts`). A directory that cannot be made
 for any reason but "exists" is a one-line warning and an unlocked run;
 when the reason is the temp directory itself (missing, a file, not
 writable), the warning adds `point TMPDIR at a writable directory`.

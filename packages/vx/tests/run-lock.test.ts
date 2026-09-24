@@ -2,18 +2,22 @@
 // PROCESS waits for the holder's release and says so after a second; runs
 // in one process share the lock; a killed run's lock is reclaimed; a lock
 // that cannot be made is a warning, not a refusal. A lock naming this
-// process's own pid, or (on Linux) a pid another process now wears, is
-// stale.
+// process's own pid is stale; one another process now wears is too, where
+// procfs gives start times (run-lock-recycled.unsafe.test.ts).
 import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { acquireRunLock, runLockPath } from '../src/orchestrator/run-lock.js'
+import { procfsIsOwn } from '../src/util/procfs.js'
 
-/** Field 22 of /proc/<pid>/stat on Linux — what the lock records beside the pid. */
+/**
+ * Field 22 of /proc/<pid>/stat — what the lock records beside the pid
+ * where procfs is this pid namespace's (not in the sandbox's nested one).
+ */
 function startOf(pid: number): string | null {
-  if (process.platform !== 'linux') return null
+  if (!procfsIsOwn()) return null
   const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
   return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]!
 }
@@ -124,32 +128,6 @@ describe('the run lock', () => {
     )()
     expect(lines).toEqual([])
   })
-
-  it.skipIf(process.platform !== 'linux')(
-    'a lock whose pid another process now wears is stale: the start time differs',
-    async () => {
-      // The same restart with the pid recycled to some other process: it
-      // is alive, so only the start time the holder recorded tells them
-      // apart. The control below writes the live holder's real one.
-      const child = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore' })
-      try {
-        await mkdir(runLockPath('/w/app', dir))
-        await writeFile(pidFile(), `${child.pid} 1\n`)
-        const acquired = acquireRunLock('/w/app', { dir, log })
-        const first = await Promise.race([
-          acquired,
-          Bun.sleep(1_000).then(() => 'waiting' as const),
-        ])
-        expect(first).not.toBe('waiting')
-        await (
-          await acquired
-        )()
-        expect(lines).toEqual([])
-      } finally {
-        child.kill()
-      }
-    },
-  )
 
   it('CONTROL: a live holder is not reclaimed', async () => {
     const other = await otherHolder()

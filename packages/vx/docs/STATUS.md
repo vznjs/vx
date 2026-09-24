@@ -448,6 +448,12 @@ false`, the first failure failing the task; `commands: []` a no-op;
       (nx#35302). `kill -9` of vx leaving persistent tasks is a
       documented limit: `PR_SET_PDEATHSIG` needs a pre-exec hook Bun
       lacks, and an ffi wrapper cost 9.8 ms per spawn (turborepo#9666).
+      The gate caught what the batch's unsandboxed shard runs missed:
+      under vx's sandbox `/proc` is another pid namespace's (the task is
+      pid 2, `/proc/self` names 7), so the group check found no member
+      and a SIGTERM-ignoring server hung the run. `util/procfs.ts` asks
+      once whether `/proc/self` is our pid; if not, the group signal and
+      the plain pid are the answers.
 
 ## In flight
 

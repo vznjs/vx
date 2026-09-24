@@ -346,14 +346,16 @@ describe('signal handling during vx run (e2e)', () => {
       // The terminal signals its foreground process group, which is vx's;
       // a task in vx's group would get the Ctrl-C twice, once from the
       // terminal and once forwarded. Field 6 of /proc/<pid>/stat is the
-      // session id; a session leader's is its own pid.
+      // session id; a session leader's is its own pid. The shell reads its
+      // own line through /proc/self: under the sandbox's nested pid
+      // namespace procfs numbers processes differently from `$$`.
       const dir = await addProject(
         fixture.root,
         'app',
         `
           export default {
             tasks: {
-              t: { exec: { command: 'echo $$ $(cut -d" " -f5,6 /proc/$$/stat) > ids.txt' } },
+              t: { exec: { command: 'read -r pid comm state ppid pgrp sid rest < /proc/self/stat; echo $pid $pgrp $sid > ids.txt' } },
             },
           }
         `,
