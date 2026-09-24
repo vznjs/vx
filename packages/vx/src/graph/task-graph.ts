@@ -680,7 +680,7 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
  * matches `b`). Ending early only widens the candidate set. A fuzz of
  * nearly four million glob/literal pairs (over 400,000 of them matching)
  * found no match outside the head this cuts, and thousands once `\` and
- * `!` were left out (item 745).
+ * `!` were left out (item 746).
  */
 const GLOB_HEAD_END = /[*?{}\\!]/
 
