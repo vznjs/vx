@@ -484,6 +484,29 @@ is on):
    fingerprint rows, and the `entry_inputs` component rows
    (`INSERT OR IGNORE`).
 
+**The key is re-checked before the save** (item 741). It was taken
+before the command ran — at the task's start, or up front by the local
+short-circuit — and the save files the outputs under it, so the inputs
+must still be what it describes. Two checks, in order. The key
+re-derived just before the command (`describeTaskInputs`, which the
+executor seam needs anyway) must equal it. Then each input file and the
+project's `package.json` is `lstat`ed once: a file whose ctime falls
+after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
+learned — the enumeration's start for an index OID, the describe for a
+hashed file — is hashed again and compared, and a file that is gone has
+moved. When one moved, the task's result stands but no entry is saved,
+one status line names the file (``[vx] app#format: `packages/app/a.ts`
+changed after its key was taken — …``), and the run forgets what it
+knew about the project, as after an uncached task (§ Cache key
+derivation, step 12). This covers a formatter rewriting its own input
+(turborepo#10111) and a user's edit mid-run (turborepo#1146); a
+formatter converges, since its next run rewrites the same bytes and
+saves. Not seen: an input changed and changed BACK before the check
+(content is compared, not writes), and a file ADDED under an input glob
+mid-run (the listing is not taken again; the next run's key holds the
+file, so a stale hit needs it to vanish again). Cost: one `lstat` per
+input on a miss that saves; a hit runs no command and checks nothing.
+
 A declared set that resolves to **nothing** is said on the run's
 status line, once, on the miss that saved: `cache.inputs matched no
 files (lib/**)` — the key would not change when the source does — and

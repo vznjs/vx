@@ -32,7 +32,7 @@ import {
   PersistentReadyError,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { span } from '../util/index.js'
+import { relPosix, span } from '../util/index.js'
 import {
   type Placeholder,
   placeholderSweeper,
@@ -56,6 +56,7 @@ import {
   computeTaskHash,
   describeTaskInputs,
   type HashCache,
+  movedInput,
   type TaskInputComponent,
 } from './task-hash.js'
 
@@ -825,7 +826,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         },
       })
     }
-  } else if (effectiveExitCode === 0 && willSave) {
+  } else if (effectiveExitCode === 0 && willSave && (await keyStillTrue())) {
     const ownOutputFiles =
       additive && stampedBefore !== undefined
         ? await ownOutputsSince(cleanArgs, stampedBefore)
@@ -851,6 +852,32 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       deferSave: args.deferSave,
     })
     args.deferredSaves?.set(node.id, landed)
+  }
+
+  /**
+   * Does the key still describe the inputs the command ran over? It was
+   * taken before the command — up front, or before `describeTaskInputs` —
+   * and a save files the outputs under it. A user's edit mid-run, or a
+   * task rewriting its own input (a formatter), saved bytes built from one
+   * state under the key of another: restore the old state and the next run
+   * replayed them as up-to-date (turborepo#10111, #1146, item 741). The
+   * result stands; only the entry is withheld, and the facts about the
+   * project go, since something wrote there.
+   */
+  async function keyStillTrue(): Promise<boolean> {
+    const endCheck = span('miss: recheck inputs')
+    // The describe re-derived the key just before the command: a different
+    // answer means an input moved between the two, the file unnamed.
+    const moved = described!.hash !== hash ? null : await movedInput(described!.facts, cache)
+    endCheck()
+    if (moved === undefined) return true
+    const what = moved === null ? 'its inputs' : `\`${relPosix(args.workspaceRoot, moved)}\``
+    log.status(
+      `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
+        `but is not saved under a key that no longer describes it`,
+    )
+    forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
+    return false
   }
 
   const finalViolations = violations

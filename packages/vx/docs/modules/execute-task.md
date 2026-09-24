@@ -100,8 +100,14 @@ caches.
      cached stdout) is the last attempt's; `TaskOutcome.attempts` is
      set when > 1.
    - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
-5. **If exit 0 + caching enabled**: `resolveOutputs(...)` →
-   `cache.save({ hash, projectDir, outputFiles, entry })`.
+5. **If exit 0 + caching enabled**: the key is re-checked
+   (`keyStillTrue`, item 741): the key the describe re-derived before
+   the command must equal it, and no input may have moved since its
+   fact (`movedInput`). A move withholds the save, says so on the
+   status line, and drops the project's facts as an uncached command
+   does (every partition when the task declares workspace outputs,
+   whose save would have marked them). Otherwise `resolveOutputs(...)`
+   → `cache.save({ hash, projectDir, outputFiles, entry })`.
 6. Return outcome with hash, status (`success` / `failed`),
    exitCode, durationMs, captured stdout/stderr, hrtime spans, and
    (when Bun's resourceUsage returned them) `cpuMs` / `peakRssBytes` —
