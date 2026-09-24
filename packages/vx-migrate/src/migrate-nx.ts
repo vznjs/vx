@@ -19,8 +19,8 @@ export async function migrateNx(
   return {
     headerNotes: [
       'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
-        'are frozen as static config; executor targets run through `nx-exec` (keep ' +
-        '@vzn/vx-migrate and nx installed)',
+        'are frozen as static config; executor targets run through `nx-exec` and ' +
+        'targets with `.env` files through `nx-env` (keep @vzn/vx-migrate and nx installed)',
     ],
     projects: mapped.projects,
     extraFiles: [],
