@@ -475,7 +475,10 @@ Semantics:
   from this project's direct deps (`dependencies`, `devDependencies`,
   `optionalDependencies`, and a `peerDependencies` entry on a
   workspace sibling unless that edge would close a cycle — then the
-  consumer provides it and it orders nothing); each path stops at the first dep
+  consumer provides it and it orders nothing; an entry is a dep when
+  the package manager links it to the workspace package, so a range the
+  local version does not satisfy is a registry dependency, see
+  `modules/package-graph.md` § Which entries are edges); each path stops at the first dep
   that declares the task and an edge is added to it (Turbo/Nx
   direct-deps parity). The holder's own `dependsOn` is responsible
   for anything deeper — chain `'^name'` in the holder to keep the

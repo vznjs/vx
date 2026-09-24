@@ -9,6 +9,7 @@
 // What it provides, and why each is needed:
 //   hash.xxHash3  — the key fold and the workspace fingerprint (xxh3.ts);
 //   Glob          — `taskGlob` for input filtering and output overlap (glob.ts);
+//   semver.satisfies — a manifest range against a workspace version (semver.ts);
 //   file          — manifests, lockfiles, workspace globs (the VFS);
 //   nanoseconds   — `util/timing.ts` takes a start mark at module load;
 //   process.env   — `cache.inputs.env` values, and `VX_TIMING` at load;
@@ -17,6 +18,7 @@
 // Every call is counted in `platformCalls`.
 
 import { Glob } from './glob.js'
+import { satisfies } from './semver.js'
 import { vfs } from './vfs.js'
 import { bunXxHash3 } from './xxh3.js'
 
@@ -69,6 +71,12 @@ export const bun = {
       count('Bun.Glob')
       super(pattern)
     }
+  },
+  semver: {
+    satisfies(version: string, range: string): boolean {
+      count('Bun.semver.satisfies')
+      return satisfies(version, range)
+    },
   },
   file,
   nanoseconds(): number {

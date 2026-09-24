@@ -429,7 +429,10 @@ describe('plugin-host.md names every export of the host', () => {
 describe('a module page lists the tests its suite has', () => {
   it("package-graph.md's Tests bullets are the suite's it names, in order", () => {
     const src = read('tests/package-graph.test.ts')
-    const names = [...src.matchAll(/^  it\('(.+)', \(\) => \{$/gm)].map((m) => m[1]!)
+    // One line, or the title on its own line when a timeout follows the body.
+    const names = [
+      ...src.matchAll(/^  it\((?:\n {4})?'(.+)',(?: |\n {4})(?:async )?\(\) => \{$/gm),
+    ].map((m) => m[1]!)
     expect(names.length).toBeGreaterThan(10)
     const doc = read('docs/modules/package-graph.md')
     const section = /## Tests\n\n`tests\/package-graph\.test\.ts`:\n\n([\s\S]*?)\n\n/.exec(doc)

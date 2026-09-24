@@ -139,7 +139,12 @@ facing summary.
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
 that would close a cycle counts for selection only, see
-`modules/package-graph.md`) OR a
+`modules/package-graph.md`) — an entry the package manager links to a
+workspace package, not one whose key merely names it:
+`"shared": "^1.0.0"` beside a local `shared@2.0.0` is a registry
+dependency and no edge, and `"luigi": "workspace:../waluigi"` is an
+edge to `waluigi` (the rule: `modules/package-graph.md` § Which entries
+are edges) — OR a
 cross-project `dependsOn` entry (`e2e`'s `test: { dependsOn:
 ['app#build'] }` makes `e2e` a dependent of `app`). The task graph knows
 both, so selection follows both: `vx run test --filter '...app'` runs
