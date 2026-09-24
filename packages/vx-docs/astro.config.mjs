@@ -92,6 +92,7 @@ export default defineConfig({
             { label: 'Extending vx', link: '/learn/extending/' },
             { label: 'vx, Turbo, Nx, Bazel: choosing', link: '/learn/choosing/' },
             { label: 'Playground: run the planner', link: '/learn/playground/' },
+            { label: 'Labs: break it on purpose', link: '/learn/labs/' },
             { label: 'Glossary', link: '/learn/glossary/' },
           ],
         },

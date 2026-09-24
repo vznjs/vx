@@ -9,22 +9,33 @@
 // `.status`, `.errors`, `.results` with its `caption` and `tbody`, `.order`
 // and `.static`, so they are its contract with this markup.
 //
+// `lab` opens it on one of the labs' states (learn/labs, item 704;
+// `src/playground/labs.ts`): the element gets it as `data-lab`, and the
+// static render is that state's. Without it, the workspace's.
+//
 // The table comes from the config TEXTS, evaluated here at build time by the
 // page's own rewrite and JSON rule (`evaluateConfigInProcess`: no Worker, which
 // a Node build lacks), so the reader's first Run and the static render read
 // one source.
 import Demo from '../Demo.astro'
 import { evaluateConfigInProcess } from '../../playground/config-eval.js'
-import { CONFIG_TEXTS, ENV, FILES, TASKS } from '../../playground/workspace.js'
+import { startState, type LabId } from '../../playground/labs.js'
 import {
+  configTextsOf,
   envText,
   staticCells,
   staticProjects,
   staticTable,
 } from './model/playground-view.js'
 
+interface Props {
+  lab?: LabId
+}
+
+const { lab } = Astro.props
+const { files: FILES, env: ENV, tasks: TASKS } = startState(lab)
 const configs: Record<string, unknown> = {}
-for (const [name, text] of Object.entries(CONFIG_TEXTS)) {
+for (const [name, text] of Object.entries(configTextsOf(FILES))) {
   const r = await evaluateConfigInProcess(text)
   if (!r.ok) throw new Error(`<Playground>: ${name}'s vx.config.mjs does not evaluate: ${r.error}`)
   configs[name] = r.config
@@ -36,7 +47,7 @@ const planner = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}playground/plan
 const HEAD = ['Task', 'Waits for', 'Declared inputs']
 ---
 
-<Demo name="playground">
+<Demo name="playground" data={lab === undefined ? {} : { 'data-lab': lab }}>
   <div class="controls not-content" data-planner={planner} hidden>
     <p class="bar">
       <label>File <select class="file">{paths.map((f) => <option value={f}>{f}</option>)}</select></label>

@@ -120,6 +120,17 @@ const { diffRuns, runPlayground } = (await import(
   ) => Array<{ id: string; change: string; why: DiffEntry[] }>
 }
 
+// The labs (item 704): each lab's start state and the edits its steps make.
+type LabEdit = { file: string; replace: string; with: string } | { file: string; append: string }
+const LAB = (await import(path.join(DOCS, 'src/playground/labs.ts'))) as {
+  LABS: Record<
+    string,
+    { files: Record<string, string>; env: Record<string, string>; tasks: string[] }
+  >
+  LAB_STEPS: Record<string, LabEdit[][]>
+  applyEdits: (files: Record<string, string>, edits: readonly LabEdit[]) => Record<string, string>
+}
+
 const ONLY_VX = 'the playground evaluates a config on its own: it can import only @vzn/vx'
 const CONFIG_FILE: Record<string, string> = {
   '@pg/utils': 'packages/utils/vx.config.mjs',
@@ -425,6 +436,7 @@ interface Outcome {
 }
 const outcomes = new Map<string, Outcome>()
 let wrongEnv: BundlePlan
+let concurrent: BundlePlan[]
 let bundleTrapHits: Record<string, number>
 const variants = new Map<string, { cli: PlanTask[]; bundle: BundlePlan }>()
 let control: { cli: PlanTask[]; bundle: BundlePlan }
@@ -467,6 +479,24 @@ beforeAll(async () => {
     outcomes.set(sc.name, { cli, bundle, native: await nativeSchedule(cli) })
   }
   wrongEnv = await bundlePlan(FILES, { API_URL: 'https://wrong.example.test' }, configs)
+  // Two plans in flight at once, as two playgrounds on one page start them
+  // (item 704): the bundle holds one workspace at a time, so it queues them.
+  arm()
+  try {
+    concurrent = await Promise.all(
+      [SCENARIOS[0]!, SCENARIOS[1]!].map((sc) =>
+        planPlayground({
+          root: '/ws',
+          files: { ...FILES, ...sc.edits },
+          configs,
+          env: sc.env,
+          tasks: TASKS,
+        }),
+      ),
+    )
+  } finally {
+    disarm()
+  }
 
   for (const v of CORE_VARIANTS) {
     const files = { ...FILES, [CONFIG_FILE['@pg/core']!]: v.text }
@@ -522,6 +552,14 @@ describe('the playground bundle plans what the CLI plans', () => {
       expect(movedFrom(base.bundle.tasks, bundle.tasks)).toEqual(sc.moved)
     })
   }
+
+  it('two plans in flight at once: each plans what the CLI plans for its own files', () => {
+    const cli = [SCENARIOS[0]!, SCENARIOS[1]!].map((sc) => comparable(outcomes.get(sc.name)!.cli))
+    expect(
+      movedFrom(outcomes.get(SCENARIOS[0]!.name)!.cli, outcomes.get(SCENARIOS[1]!.name)!.cli),
+    ).toEqual(SCENARIOS[1]!.moved)
+    expect(concurrent.map((p) => comparable(p.tasks))).toEqual(cli)
+  })
 
   it('negative control: the bundle under the wrong API_URL differs from the CLI on exactly the tasks it reaches', () => {
     const base = outcomes.get(SCENARIOS[0]!.name)!
@@ -910,5 +948,160 @@ describe('the page names what moved a key as `vx why` does (item 703)', () => {
         expect({ id, page: shown.get(id) }).toEqual({ id, page: said.get(id) })
       }
     })
+  }
+})
+
+describe('the labs plan what the CLI plans, before and after each fix (item 704)', () => {
+  // Each lab's start state is committed to a repository of its own; each
+  // step's edits are uncommitted on top of the step before, as the reader
+  // makes them. Per state, `vx run <the lab's tasks> --all --dry=json` and
+  // the page's Run with an empty cache must plan the same keys and statuses,
+  // and each step must move the same keys in both planners: the hand-written
+  // set below. Lab 3 opens on a graph core refuses, and the page must show
+  // the CLI's words.
+  const REFUSAL =
+    'ui#build and ui#bundle both declare the output "dist/**" in cache.outputs.files — ' +
+    "vx cleans a task's declared outputs before it runs and before a cache-hit restore, so " +
+    "whichever of these runs second DELETES the other's output and the run still reports " +
+    'success. Give each task its own output path.'
+  const UI = ['app#build', 'app#test', 'ui#build', 'ui#test']
+  const API = ['api#build', 'api#test', 'app#build', 'app#test']
+  // Per state: how many tasks it plans, or the refusal; and what it moves
+  // against the state before (null after a refused state, or for the first).
+  const TRUTH: Record<string, Array<{ plans: number | string; moved: string[] | null }>> = {
+    'unlisted-file': [
+      { plans: 9, moved: null },
+      { plans: 9, moved: [] },
+      { plans: 9, moved: UI },
+      { plans: 9, moved: UI },
+    ],
+    'undeclared-read': [
+      { plans: 9, moved: null },
+      { plans: 9, moved: [] },
+      { plans: 9, moved: API },
+      { plans: 9, moved: API },
+      { plans: 9, moved: API },
+    ],
+    'shared-output': [
+      { plans: REFUSAL, moved: null },
+      { plans: 10, moved: null },
+      { plans: 10, moved: [] },
+      { plans: 10, moved: ['app#build', 'app#test', 'ui#build', 'ui#bundle', 'ui#test'] },
+    ],
+  }
+  type Side = { ok: true; tasks: PlanTask[] } | { ok: false; error: string }
+  const results = new Map<string, Array<{ cli: Side; page: Side }>>()
+
+  function labWrite(dir: string, files: Record<string, string>): void {
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+      writeFileSync(path.join(dir, rel), body)
+    }
+  }
+
+  function labSpawn(
+    dir: string,
+    cmd: string[],
+  ): { exitCode: number; stdout: string; stderr: string } {
+    const r = Bun.spawnSync(cmd, {
+      cwd: dir,
+      env: { ...baseEnv, ...PAGE.ENV, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
+  }
+
+  function labGit(dir: string, ...args: string[]): void {
+    const r = labSpawn(dir, ['git', ...args])
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`)
+  }
+
+  beforeAll(async () => {
+    for (const [lab, start] of Object.entries(LAB.LABS)) {
+      const dir = path.join(scratch, `lab-${lab}`)
+      labWrite(dir, start.files)
+      labGit(dir, 'init', '-q')
+      labGit(dir, 'add', '-A')
+      labGit(
+        dir,
+        '-c',
+        'user.email=parity@vx',
+        '-c',
+        'user.name=parity',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-qm',
+        lab,
+      )
+      const states: Array<{ cli: Side; page: Side }> = []
+      let files = start.files
+      for (const edits of [[], ...LAB.LAB_STEPS[lab]!]) {
+        files = LAB.applyEdits(files, edits)
+        labWrite(dir, files)
+        const cli = labSpawn(dir, [
+          process.execPath,
+          BIN,
+          'run',
+          ...start.tasks,
+          '--all',
+          '--dry=json',
+          `--cache-dir=${path.join(scratch, `lab-${lab}-cache`)}`,
+        ])
+        arm()
+        let page: RunOutcome
+        try {
+          page = await runPlayground(bundle, {
+            files,
+            env: start.env,
+            tasks: start.tasks,
+            cached: new Set(),
+          })
+        } finally {
+          disarm()
+        }
+        states.push({
+          cli:
+            cli.exitCode === 0
+              ? { ok: true, tasks: (JSON.parse(cli.stdout) as { tasks: PlanTask[] }).tasks }
+              : { ok: false, error: cli.stderr },
+          page: page.ok
+            ? { ok: true, tasks: page.tasks }
+            : { ok: false, error: page.errors.join('\n') },
+        })
+      }
+      results.set(lab, states)
+    }
+  }, 60_000)
+
+  for (const [lab, truth] of Object.entries(TRUTH)) {
+    for (const [i, t] of truth.entries()) {
+      const name = i === 0 ? `${lab}, as it opens` : `${lab}, after step ${i + 1}'s edits`
+      const plans = t.plans
+      if (typeof plans === 'string') {
+        it(`${name}: the page shows the refusal the CLI prints`, () => {
+          const { cli, page } = results.get(lab)![i]!
+          expect(cli).toEqual({ ok: false, error: `vx: ${plans}\n` })
+          expect(page).toEqual({ ok: false, error: plans })
+        })
+        continue
+      }
+      it(`${name}: every task's key, cache status and deps`, () => {
+        const { cli, page } = results.get(lab)![i]!
+        if (!cli.ok || !page.ok) throw new Error(`refused: ${JSON.stringify({ cli, page })}`)
+        expect(cli.tasks.length).toBe(plans)
+        expect(comparable(page.tasks)).toEqual(comparable(cli.tasks))
+      })
+      const moved = t.moved
+      if (moved === null) continue
+      it(`${name}: moves exactly ${moved.length} keys, in both planners`, () => {
+        const before = results.get(lab)![i - 1]!
+        const now = results.get(lab)![i]!
+        const tasks = (s: Side): PlanTask[] => (s.ok ? s.tasks : [])
+        expect(movedFrom(tasks(before.cli), tasks(now.cli))).toEqual(moved)
+        expect(movedFrom(tasks(before.page), tasks(now.page))).toEqual(moved)
+      })
+    }
   }
 })

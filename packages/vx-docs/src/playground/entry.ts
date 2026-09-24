@@ -119,6 +119,20 @@ function playgroundCache(
   return layer as unknown as CacheLayer
 }
 
+// The shim's file system and env are module state (`useVfs`, `setEnv`): the
+// bundle holds one workspace at a time, and every await in a plan is a point
+// where another plan could install its own. A page with several playgrounds
+// (learn/labs, item 704) would then plan one workspace's tasks over another's
+// files. So each entry point that installs them runs after the one before
+// it has settled.
+let settled: Promise<unknown> = Promise.resolve()
+
+function oneAtATime<T>(run: () => Promise<T>): Promise<T> {
+  const next = settled.then(run)
+  settled = next.catch(() => {})
+  return next
+}
+
 export interface PlaygroundProject {
   name: string
   /** Root-relative path of the config file core loads for it, or null. */
@@ -130,7 +144,13 @@ export interface PlaygroundProject {
  * the config file core would load (its name precedence included) under the
  * name core gives the project.
  */
-export async function listPlaygroundProjects(
+export function listPlaygroundProjects(
+  input: Pick<PlaygroundInput, 'root' | 'files'>,
+): Promise<PlaygroundProject[]> {
+  return oneAtATime(() => discover(input))
+}
+
+async function discover(
   input: Pick<PlaygroundInput, 'root' | 'files'>,
 ): Promise<PlaygroundProject[]> {
   useVfs(new Vfs(input.root, input.files))
@@ -141,7 +161,11 @@ export async function listPlaygroundProjects(
   }))
 }
 
-export async function planPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
+export function planPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
+  return oneAtATime(() => planWorkspace(input))
+}
+
+async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> {
   platformCalls.clear()
   const vfs = new Vfs(input.root, input.files)
   useVfs(vfs)
