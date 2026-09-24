@@ -17,7 +17,7 @@
 // be a git work tree; non-git environments are not supported.
 
 import path from 'node:path'
-import { lstatSync } from 'node:fs'
+import { lstatSync, readdirSync } from 'node:fs'
 import { realpath, rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import {
@@ -241,9 +241,12 @@ async function resolveWorkspaceFiles(args: {
   // any loaded task declares workspaceFiles; a missing/invalidated
   // partition re-spawns git at the root on demand.
   let gitFiles = args.gitFilesCache?.snapshotFor(args.workspaceRoot, positiveGlobs)
+  let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles === undefined) {
-    gitFiles = runGitLsFiles(args.workspaceRoot).files
+    const ls = runGitLsFiles(args.workspaceRoot)
+    gitFiles = ls.files
     args.gitFilesCache?.set(args.workspaceRoot, gitFiles)
+    undecodable = noteUndecodable(args.gitFilesCache, args.workspaceRoot, ls.undecodable)
   }
   // The memo is valid for the snapshot it was computed over: a task that
   // wrote workspace outputs mid-run replaces the partition, and the next
@@ -256,7 +259,14 @@ async function resolveWorkspaceFiles(args: {
     const hit = args.memo!.get(memoKey)
     if (hit !== undefined && hit.snapshot === gitFiles) return hit.result
   }
-  const result = resolveWorkspaceFilesOver(args, gitFiles, positive, positiveGlobs, excludeGlobs)
+  const result = resolveWorkspaceFilesOver(
+    args,
+    gitFiles,
+    positive,
+    positiveGlobs,
+    excludeGlobs,
+    undecodable,
+  )
   if (memoKey !== undefined) args.memo!.set(memoKey, { snapshot: gitFiles, result })
   return result
 }
@@ -267,6 +277,7 @@ async function resolveWorkspaceFilesOver(
   positive: readonly string[],
   positiveGlobs: readonly Bun.Glob[],
   excludeGlobs: readonly Bun.Glob[],
+  undecodable: ReadonlySet<string> | undefined,
 ): Promise<string[]> {
   // Second call site of the literal-input guard. `resolveWorkspaceFiles`
   // carries its own copy of the filter-over-git-set design, so the same
@@ -285,6 +296,7 @@ async function resolveWorkspaceFilesOver(
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.workspaceRoot, 'workspaceFiles')
   }
+  refuseUndecodable(candidates, undecodable, args.workspaceRoot, 'workspaceFiles')
   // Same OID-trust shortcut as project files: a clean-per-status
   // tracked file necessarily exists on disk.
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
@@ -761,6 +773,44 @@ interface ResolveFilesArgs {
   projectFilesCache?: ProjectFilesCache
 }
 
+/**
+ * Record the names a fresh `git ls-files` could not decode, in the run's
+ * cache when there is one, and return the set to check against.
+ */
+function noteUndecodable(
+  cache: GitFilesCache | undefined,
+  dir: string,
+  rels: readonly string[],
+): ReadonlySet<string> {
+  const abs = rels.map((rel) => path.join(dir, rel))
+  if (cache === undefined) return new Set(abs)
+  cache.markUndecodable(abs)
+  return cache.undecodableNames
+}
+
+/**
+ * An input whose name is not UTF-8 is one vx cannot open (a string cannot
+ * spell it), so it could only drop out of the key, where an edit to it is a
+ * hit. Named instead, with the way out. One git still lists after it left
+ * the disk (a tracked file deleted) drops out as any deleted file does.
+ */
+function refuseUndecodable(
+  candidates: readonly string[],
+  undecodable: ReadonlySet<string> | undefined,
+  root: string,
+  field: 'files' | 'workspaceFiles',
+): void {
+  if (undecodable === undefined || undecodable.size === 0) return
+  const bad = candidates.filter((abs) => undecodable.has(abs) && undecodableOnDisk(abs))
+  if (bad.length === 0) return
+  const names = bad.map((abs) => JSON.stringify(path.relative(root, abs).split(path.sep).join('/')))
+  throw new UserError(
+    `cache.inputs.${field} matched ${names.join(', ')} in ${root}: the name is not valid UTF-8 ` +
+      `(shown with \ufffd), and vx cannot read a file by it. Rename it, or exclude it with a ` +
+      `negated glob.`,
+  )
+}
+
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const positive: string[] = []
   const negative: string[] = []
@@ -797,6 +847,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // it declares, what it excludes as its own outputs, and the boundaries.
   const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${boundaryIgnores.join('\u0001')}`
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
+  let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles !== undefined) {
     const memo = args.projectFilesCache?.get(memoKey)
     // Identity, not equality: a re-enumeration hands back a new array even
@@ -814,9 +865,11 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     // tree just changed); set() drops the project's OID slot and these
     // files fall back to Cache.hashFile, which computes the identical
     // blob OID from disk.
-    gitFiles = runGitLsFiles(args.projectDir).files
+    const ls = runGitLsFiles(args.projectDir)
+    gitFiles = ls.files
     // set() also clears the project's pending-changed bookkeeping.
     args.gitFilesCache?.set(args.projectDir, gitFiles)
+    undecodable = noteUndecodable(args.gitFilesCache, args.projectDir, ls.undecodable)
   }
   // A LITERAL entry — one with no glob metacharacter — names exactly one file,
   // so "this matched nothing" is unambiguous. For a glob it is not: matching
@@ -850,6 +903,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
   }
+  refuseUndecodable(candidates, undecodable, args.projectDir, 'files')
   // Second pass: existence check — but ONLY for paths without a
   // trusted index OID. A clean-per-status tracked file necessarily
   // exists on disk, so skipping its probe keeps the warm path free of
@@ -863,6 +917,57 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
   return [...resolved]
 }
+
+/**
+ * `Bun.Glob` decodes a name that is not UTF-8 lossily, so the path it
+ * yields names no file and the output dropped out of the artifact without
+ * a word: a hit then restored a tree without it (turborepo#9345's output
+ * half). A `\ufffd` that does not stat is that case or a file that left
+ * mid-scan; `undecodableOnDisk` tells them apart.
+ */
+function refuseUndecodableOutput(abs: string): void {
+  if (!undecodableOnDisk(abs)) return
+  throw new UserError(
+    `cache.outputs matched ${JSON.stringify(abs)}: the name is not valid UTF-8 (shown with ` +
+      `\ufffd), and vx cannot save a file by it. Rename it, or keep it out of the outputs.`,
+  )
+}
+
+/**
+ * Is `abs` (a lossy spelling) something on disk whose name, or a
+ * directory's above it, is not UTF-8? From the deepest ancestor a string
+ * can reach, read the raw names and look for one that decodes lossily to
+ * the next segment and fatally not at all. Only a path that failed to
+ * stat reaches here, so the reads are off every warm path.
+ */
+function undecodableOnDisk(abs: string): boolean {
+  let dir = path.dirname(abs)
+  let next = path.basename(abs)
+  while (!existsOnDisk(dir)) {
+    const parent = path.dirname(dir)
+    if (parent === dir) return false
+    next = path.basename(dir)
+    dir = parent
+  }
+  let raw: Buffer[]
+  try {
+    raw = readdirSync(dir, { encoding: 'buffer' })
+  } catch {
+    return false
+  }
+  const lossy = new TextDecoder()
+  for (const name of raw) {
+    if (lossy.decode(name) !== next) continue
+    try {
+      FATAL_UTF8.decode(name)
+    } catch {
+      return true
+    }
+  }
+  return false
+}
+
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
 
 /**
  * Union of the OUTPUT files matching any positive pattern in `cwd`, minus
@@ -900,6 +1005,7 @@ async function scanUnion(
       const abs = path.resolve(cwd, rel)
       const st = lstatSync(abs, { throwIfNoEntry: false })
       if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
+      else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
     }
   }
   return matches

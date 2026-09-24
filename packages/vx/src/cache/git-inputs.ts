@@ -97,6 +97,20 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * populate runs, or when the status spawn failed (non-repo).
    */
   private dirty: boolean | null = null
+  /**
+   * Absolute paths, as git's lossy decoding spells them, of enumerated
+   * files whose names are not UTF-8 (`decodeGitZ`). Such a name cannot
+   * be opened from a string, so `resolveFiles` refuses one it would fold.
+   */
+  private undecodable = new Set<string>()
+
+  get undecodableNames(): ReadonlySet<string> {
+    return this.undecodable
+  }
+
+  markUndecodable(absPaths: readonly string[]): void {
+    for (const p of absPaths) this.undecodable.add(p)
+  }
 
   setWorkspaceRoot(root: string): void {
     this.wsRoot = root
@@ -230,7 +244,47 @@ interface GitLsResult {
   oids: Map<string, string>
   /** Paths flagged skip-worktree / assume-unchanged (only when `-v` was passed). */
   flagged: Set<string>
+  /** cwd-relative paths whose names are not UTF-8, spelled lossily (`decodeGitZ`). */
+  undecodable: string[]
 }
+
+/**
+ * git's `-z` output as text, plus the NUL-separated records that were not
+ * UTF-8. git prints a path's bytes as they are, and a lossy decode turns
+ * `x\xffy` into `x\ufffdy`, which names no file: the name reached the
+ * input set, failed the disk probe, and dropped out of the key silently,
+ * so every edit to it was a hit (turborepo#9345). Nothing in vx can open a
+ * path a string cannot spell, so such a record is kept (lossily, so a
+ * glob still matches it) and named, for `resolveFiles` to refuse.
+ *
+ * The common output holds no U+FFFD at all. Measured on a 1.3 MB,
+ * 15,000-record listing (min of 2,000, interleaved): the lossy decode plus
+ * the U+FFFD check cost 0.17 ms against 0.10 for the `Response.text()` it
+ * replaced, and the check alone 0.003; a fatal decode of the whole output
+ * ran 0.73 ms at the median against 0.26. Only output holding a U+FFFD,
+ * from an invalid byte or from a name that really holds one, is split at
+ * its NULs and each record decoded fatally, which tells the two apart.
+ */
+function decodeGitZ(bytes: Uint8Array): { text: string; undecodable: Set<string> } {
+  const undecodable = new Set<string>()
+  const text = LOSSY_UTF8.decode(bytes)
+  if (!text.includes('\ufffd')) return { text, undecodable }
+  let start = 0
+  for (let i = 0; i <= bytes.length; i++) {
+    if (i < bytes.length && bytes[i] !== 0) continue
+    const record = bytes.subarray(start, i)
+    try {
+      FATAL_UTF8.decode(record)
+    } catch {
+      undecodable.add(LOSSY_UTF8.decode(record))
+    }
+    start = i + 1
+  }
+  return { text, undecodable }
+}
+
+const LOSSY_UTF8 = new TextDecoder()
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
 
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
@@ -266,7 +320,8 @@ export function runGitLsFiles(cwd: string): GitLsResult {
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
-  return parseLsFilesOutput(new TextDecoder().decode(proc.stdout))
+  const { text, undecodable } = decodeGitZ(proc.stdout)
+  return parseLsFilesOutput(text, undecodable)
 }
 
 // Each `ls-files -s -v` record is `[<flag> ]<mode> <oid> <stage>\t<path>` —
@@ -274,21 +329,20 @@ export function runGitLsFiles(cwd: string): GitLsResult {
 // `h`, …) in front. `--others` paths print bare; with `-z`, core.quotePath
 // quoting is off, so a bare path containing a literal tab still cannot
 // match the fixed-form prefix. Both answers come from ONE spawn.
-function parseLsFilesOutput(out: string): GitLsResult {
+function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
   const flagged = new Set<string>()
-  if (out.length === 0) return { files, oids, flagged }
+  const undecodable: string[] = []
+  if (out.length === 0) return { files, oids, flagged, undecodable }
   // NUL-separated; trailing NUL produces an empty segment we skip.
   for (const record of out.split('\0')) {
     if (record.length === 0) continue
     const m = LS_FILES_STAGE_RE.exec(record)
-    if (m === null) {
-      files.push(record) // --others entry: bare path
-      continue
-    }
-    const filePath = record.slice(m[0].length)
+    const filePath = m === null ? record : record.slice(m[0].length) // --others: bare path
     files.push(filePath)
+    if (undecodableRecords.size > 0 && undecodableRecords.has(record)) undecodable.push(filePath)
+    if (m === null) continue
     const mode = m[2]!
     const stage = m[4]!
     if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === '0') {
@@ -300,7 +354,7 @@ function parseLsFilesOutput(out: string): GitLsResult {
     const flag = m[1]
     if (flag !== undefined && (flag === 'S' || (flag >= 'a' && flag <= 'z'))) flagged.add(filePath)
   }
-  return { files, oids, flagged }
+  return { files, oids, flagged, undecodable }
 }
 
 /** One completed `git` invocation. */
@@ -308,6 +362,8 @@ interface GitRun {
   exitCode: number
   stdout: string
   stderr: string
+  /** `stdout`'s records that were not UTF-8 (`decodeGitZ`). */
+  undecodable: ReadonlySet<string>
 }
 
 /**
@@ -458,13 +514,19 @@ export function autocrlfConverts(coreConfig: string): boolean {
   return false
 }
 
-function parseStatusOutput(out: string): { dirty: Set<string>; untracked: string[] } {
+function parseStatusOutput(
+  out: string,
+  undecodableRecords: ReadonlySet<string>,
+): { dirty: Set<string>; untracked: string[]; undecodable: Set<string> } {
   const tokens = out.split('\0')
   const dirty = new Set<string>()
   const untracked: string[] = []
+  const undecodable = new Set<string>()
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!
     if (token.length < 4) continue
+    if (undecodableRecords.size > 0 && undecodableRecords.has(token))
+      undecodable.add(token.slice(3))
     if (token[0] === '?') {
       untracked.push(token.slice(3))
       continue
@@ -477,7 +539,7 @@ function parseStatusOutput(out: string): { dirty: Set<string>; untracked: string
       dirty.add(tokens[i]!)
     }
   }
-  return { dirty, untracked }
+  return { dirty, untracked, undecodable }
 }
 
 /**
@@ -543,6 +605,8 @@ export interface GitEnumeration {
   trusted: Map<string, string>
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
   dirty: boolean | null
+  /** Workspace-relative paths whose names are not UTF-8 (`decodeGitZ`). */
+  undecodable: readonly string[]
 }
 
 /**
@@ -590,11 +654,12 @@ export async function startGitEnumeration(
         stderr: 'pipe',
       })
       const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout).text(),
+        new Response(proc.stdout).bytes(),
         new Response(proc.stderr).text(),
         proc.exited,
       ])
-      return { exitCode, stdout, stderr }
+      const { text, undecodable } = decodeGitZ(stdout)
+      return { exitCode, stdout: text, stderr, undecodable }
     } catch {
       return null
     }
@@ -643,7 +708,12 @@ export async function startGitEnumeration(
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
-  const { files: tracked, oids, flagged } = parseLsFilesOutput(ls.stdout)
+  const {
+    files: tracked,
+    oids,
+    flagged,
+    undecodable,
+  } = parseLsFilesOutput(ls.stdout, ls.undecodable)
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
   // OID map. Without this, when the workspace root is a git subdir, a modified
@@ -654,7 +724,9 @@ export async function startGitEnumeration(
   const gitPrefix = facts?.prefix ?? ''
   const gitDir = facts?.commonDir ?? ''
   const parsedStatus =
-    status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
+    status !== null && status.exitCode === 0
+      ? parseStatusOutput(status.stdout, status.undecodable)
+      : null
   const dirty = parsedStatus === null ? null : stripPrefixFromSet(parsedStatus.dirty, gitPrefix)
   // Untracked files are inputs too (a new file is the commonest edit there
   // is). They come from the status walk, repo-root-relative like the dirty
@@ -697,7 +769,10 @@ export async function startGitEnumeration(
     coreConfig: coreCfg !== null && coreCfg.exitCode === 0 ? coreCfg.stdout : '',
     spawnGit,
   })
-  return { all, trusted, dirty: worktreeDirty }
+  if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {
+    undecodable.push(...stripPrefixFromSet(parsedStatus.undecodable, gitPrefix))
+  }
+  return { all, trusted, dirty: worktreeDirty, undecodable }
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
@@ -710,6 +785,7 @@ export function applyGitEnumeration(
 ): void {
   const { all, trusted } = enumeration
   cache.setWorktreeDirty(enumeration.dirty)
+  cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×

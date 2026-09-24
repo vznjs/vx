@@ -147,6 +147,13 @@ over (in order):
     declare the block (`tests/uncached-upstream-key.test.ts` pins both
     arms).
 
+    A file whose name is **not valid UTF-8** (Linux allows any byte
+    but `/` and NUL) cannot be opened from a string, so it cannot be
+    hashed: a task whose globs select one is refused by name, and so
+    is a task whose declared outputs hold one, rather than the file
+    dropping out of the key or the artifact without a word
+    (turborepo#9345). Rename it, or exclude it with a negated glob.
+
     Your globs are a **filter over the set git reports**, so a filter
     can only ever remove — a gitignored file can never be filtered back
     in, however explicitly you name it. Naming one by hand is therefore

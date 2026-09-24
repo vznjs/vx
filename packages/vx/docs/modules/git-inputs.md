@@ -24,12 +24,15 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
+  get undecodableNames(): ReadonlySet<string> // listed paths whose names are not UTF-8 (lossy spelling)
+  markUndecodable(absPaths: readonly string[]): void
 }
 
 export interface GitEnumeration {
   all: string[] // every path git listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   dirty: boolean | null
+  undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
 }
 export function gitPathspecs(
   workspaceRoot: string,
@@ -91,6 +94,23 @@ existence probe and the hash; a dirty or untracked path falls back to a
 content hash. The OID trust is pruned for merge-conflict stages,
 gitlinks, paths a filter converts, and paths flagged skip-worktree /
 assume-unchanged (`docs/caching.md` § Clean filters).
+
+## A name that is not UTF-8
+
+git prints a path's bytes as they are. A lossy decode turned `x\xffy`
+into `x\ufffdy`, which names no file, so the path reached the input
+set, failed the disk probe and dropped out of the key without a word:
+every edit to it was a hit (turborepo#9345). An output holding no
+U+FFFD after the lossy decode, which is every real repository's, is
+done (0.07 ms more than before on a 15,000-record listing). One that
+holds one is split at its NULs and each record decoded fatally, and the
+records that fail are kept, spelled lossily so a glob still matches
+them, in `GitEnumeration.undecodable` and
+`GitFilesCache.undecodableNames`. `inputs.ts` refuses one a task's
+globs select while it is on disk (`cache.inputs.files matched … the
+name is not valid UTF-8`), rather than dropping it: nothing in vx can
+open a path a string cannot spell. The same refusal covers outputs,
+where `Bun.Glob` decodes a name the same lossy way.
 
 ## A project inside a nested repository
 
