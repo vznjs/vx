@@ -2,9 +2,10 @@
 
 ## Purpose
 
-Take the set of requested `(project, task)` pairs, a workspace
-package graph, and an optional `excludeDependencies` filter; produce
-the concrete DAG of `TaskNode`s the scheduler will execute.
+Take the set of requested `(project, task)` pairs and a workspace
+package graph; produce the concrete DAG of `TaskNode`s. `--exclude-dependencies`
+is a later pass over that DAG (`excludeDependencies`): it narrows the
+SCHEDULE and leaves the dropped tasks to be keyed.
 
 ## Public surface
 
@@ -19,6 +20,7 @@ export interface TaskNode {
   requested: boolean // user-requested vs dep-pulled
   addsToOutputsOf?: string[] // upstream ids whose output trees this task adds to (item 588)
   outputsAddedToBy?: string[] // dependants' output globs that add into this task's tree
+  excludedUpstream?: TaskOutcome[] // dependencies --exclude-dependencies dropped, with their keys
 }
 
 import type { ProjectEntry } from '../workspace/index.js' // { name, dir, config }
@@ -27,7 +29,6 @@ export interface BuildGraphOptions {
   projects: Map<string, ProjectEntry>
   packageGraph: PackageGraph
   requested: Array<{ project: string; task: string }>
-  excludeDependencies?: 'all' | readonly string[]
   // Set when `projects` is a scoped load: a literal `^name` nothing in
   // `projects` declares is handed here instead of refused (see below).
   undeclaredDeps?: (taskId: string, name: string) => void
@@ -35,6 +36,13 @@ export interface BuildGraphOptions {
 
 export function taskId(project: string, task: string): string
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode>
+// Removes the unscheduled tasks from `nodes` (returned, deps intact, as
+// `keyOnly`) and trims each scheduled task's `deps` (the ids it lost in
+// `dropped`).
+export function excludeDependencies(
+  nodes: Map<string, TaskNode>,
+  exclude: 'all' | readonly string[],
+): { keyOnly: Map<string, TaskNode>; dropped: Map<string, string[]> }
 // Lives in `src/util/task-id.ts` (the cache reads the same rule and may
 // not import the graph); re-exported here and on the façade.
 export function splitTaskId(id: string): [project: string, task: string]
@@ -94,12 +102,20 @@ dependsOn expansion is `requested: false`. If a node is later named
 explicitly (or the user passed both `build` AND `pkg#build`), it gets
 promoted to `requested: true` — never demoted.
 
-`excludeDependencies` filters the expansion:
+`excludeDependencies` narrows the schedule after the `graph` and `key`
+stages have seen the whole graph:
 
-- `undefined` — full expansion (default).
-- `'all'` — skip every dependsOn entry. Only `requested` nodes exist.
+- `'all'` — drop every edge. Only `requested` nodes stay scheduled.
 - `string[]` — drop edges whose target task name appears. Works
-  uniformly across same-project, deps-bucket, and cross-project edges.
+  uniformly across same-project, deps-bucket, and cross-project edges,
+  and per expanded name for a pattern.
+
+What the requested tasks still reach stays in `nodes`; the rest is
+returned as `keyOnly`. It is a pass and not a filter on the expansion
+because a dropped dependency is still KEYED (nx#35234): `prepareRun`
+derives each dropped task's key on the whole graph as a full run would
+(`orchestrator/excluded-keys.ts`) and sets it on the dependant as
+`excludedUpstream`, so a key never depends on the selection.
 
 The resulting `TaskNode.deps` is the concrete id list of upstream
 tasks. It's sorted before being stored so downstream cache-key
@@ -151,17 +167,21 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 - `'pkg#name'` cross-project edge (missing throws)
 - `'^name'` no project declares throws `undeclaredDepsError`'s message;
   the controls — declared only off the dependency path, declared by the
-  leaf itself, a `^pattern` matching nothing, an excluded name — plan;
-  a scoped caller's `undeclaredDeps` receives the name instead
+  leaf itself, a `^pattern` matching nothing — plan; a scoped caller's
+  `undeclaredDeps` receives the name instead. The builder no longer
+  knows `--exclude-dependencies`, so a name the flag drops is judged
+  too (`tests/prepare-run.test.ts` holds the refusal under the flag)
 - wildcard / negation rejection in dependsOn
 - diamond dedup (shared upstream created once)
 - cross-project cycle detection
 - self-cycle detection
 - a 50,000-deep chain plans and a 50,000-deep ring is refused as that
-  cycle (the recursive builder overflowed the stack on both)
+  cycle (the recursive builder overflowed the stack on both), and
+  `excludeDependencies(nodes, 'all')` narrows that chain to its head
 - empty `requested` → empty graph
-- `excludeDependencies: 'all'` skips everything but requested
-- `excludeDependencies: [...]` drops named edges only
+- `excludeDependencies(nodes, 'all')` schedules only the requested, and
+  returns the rest as `keyOnly` with the edges each task lost
+- `excludeDependencies(nodes, [...])` drops named edges only
 
 `tests/output-collision.test.ts` covers the overlapping-output refusal:
 what is refused, the spellings that name one path (`./dist/**` against

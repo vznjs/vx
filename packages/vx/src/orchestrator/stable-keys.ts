@@ -15,6 +15,7 @@ import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
+import { keyUpstream } from './upstream.js'
 
 export interface DeriveStableKeysArgs {
   nodes: Map<string, TaskNode>
@@ -152,7 +153,7 @@ function synthUpstream(
       hash: keyById.get(dep),
     } as TaskOutcome)
   }
-  return out
+  return keyUpstream(node, out)
 }
 
 /**

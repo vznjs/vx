@@ -13,6 +13,9 @@
 //   every success built on it — or a grand-dependent would cache the same
 //   partial tree one hop later. Only that mode ever executes a task behind
 //   a failure; the other modes skip it, so a default run carries no check.
+//   `--exclude-dependencies` seeds the same taint: a task whose key folds a
+//   dependency that did not run has bytes nothing vouches for
+//   (excluded-keys.ts).
 //
 // Split from `run.ts` on 2026-09-10 (pure motion).
 
@@ -23,26 +26,29 @@ import type { ShortCircuit } from './local-shortcircuit.js'
 import { computeTaskHash, type ComputeHashArgs } from './task-hash.js'
 
 /**
- * Records which tasks ran behind a failure and answers, per task, whether
- * this one does. Disabled (always `false`, nothing recorded) unless the
- * run's `continueMode` is `'always'`.
+ * Records which tasks ran behind a failure, or on the key of a dependency
+ * that did not run (`seeds`), and answers, per task, whether this one does.
+ * Disabled (always `false`, nothing recorded) unless the run's
+ * `continueMode` is `'always'` or there is a seed.
  */
 export function taintTracker(
-  enabled: boolean,
+  continueAlways: boolean,
+  seeds: ReadonlySet<string>,
 ): (node: TaskNode, upstream: TaskOutcome[]) => boolean {
-  if (!enabled) return () => false
+  if (!continueAlways && seeds.size === 0) return () => false
   const tainted = new Set<string>()
   return (node, upstream) => {
-    const taint = upstream.some(
-      // A restore-tier task may run before its deps and see holes here;
-      // it never saves anyway (a hit restores), so a hole is not taint.
-      (u) =>
-        u !== undefined &&
-        (u.status === 'failed' ||
-          u.status === 'aborted' ||
-          u.status === 'skipped' ||
-          tainted.has(u.node.id)),
-    )
+    const taint =
+      seeds.has(node.id) ||
+      upstream.some(
+        // A restore-tier task may run before its deps and see holes here;
+        // it never saves anyway (a hit restores), so a hole is not taint.
+        (u) =>
+          u !== undefined &&
+          (tainted.has(u.node.id) ||
+            (continueAlways &&
+              (u.status === 'failed' || u.status === 'aborted' || u.status === 'skipped'))),
+      )
     if (taint) tainted.add(node.id)
     return taint
   }

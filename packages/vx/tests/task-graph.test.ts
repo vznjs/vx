@@ -3,6 +3,7 @@ import type { TaskConfig } from '../src/config.js'
 import type { PackageGraph } from '../src/workspace/package-graph.js'
 import {
   buildTaskGraph,
+  excludeDependencies,
   expandRequested,
   markSurfacedDeps,
   splitTaskId,
@@ -352,7 +353,7 @@ describe('buildTaskGraph', () => {
     expect(nodes.get('lib#build')?.requested).toBe(true)
   })
 
-  it('excludeDependencies: "all" skips both self and dependencies expansion', () => {
+  it('excludeDependencies: "all" schedules only the requested task, and keeps the rest to key', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
@@ -366,10 +367,12 @@ describe('buildTaskGraph', () => {
       ),
       packageGraph: packageGraph({ app: ['lib'] }),
       requested: [{ project: 'app', task: 'build' }],
-      excludeDependencies: 'all',
     })
+    const { keyOnly, dropped } = excludeDependencies(nodes, 'all')
     expect([...nodes.keys()]).toEqual(['app#build'])
     expect(nodes.get('app#build')?.deps).toEqual([])
+    expect([...keyOnly.keys()].sort()).toEqual(['app#codegen', 'lib#build'])
+    expect([...dropped]).toEqual([['app#build', ['app#codegen', 'lib#build']]])
   })
 
   it('excludeDependencies: name-list drops only matching edges in both self and deps', () => {
@@ -386,11 +389,13 @@ describe('buildTaskGraph', () => {
       ),
       packageGraph: packageGraph({ app: ['lib'] }),
       requested: [{ project: 'app', task: 'build' }],
-      excludeDependencies: ['build'],
     })
+    const { keyOnly, dropped } = excludeDependencies(nodes, ['build'])
     // build edge to lib#build is dropped, but the same-project codegen edge stays.
     expect(nodes.has('lib#build')).toBe(false)
     expect(nodes.get('app#build')?.deps).toEqual(['app#codegen'])
+    expect([...keyOnly.keys()]).toEqual(['lib#build'])
+    expect([...dropped]).toEqual([['app#build', ['lib#build']]])
   })
 
   // ─── dependsOn rejects wildcards/negation; cache.inputs.tasks accepts ──
@@ -536,8 +541,8 @@ describe('buildTaskGraph', () => {
         ),
         packageGraph: packageGraph({}),
         requested: [{ project: 'app', task: 'lint' }],
-        excludeDependencies: ['lint.oxfmt'],
       })
+      excludeDependencies(nodes, ['lint.oxfmt'])
       expect(nodes.get('app#lint')?.deps).toEqual(['app#lint.oxlint'])
     })
 
@@ -548,8 +553,8 @@ describe('buildTaskGraph', () => {
       // EVERY match leaves no edge and still no pass-through, because
       // holder-ness is about declaration, not about what survives the
       // filter.
-      const graph = (exclude: string[]) =>
-        buildTaskGraph({
+      const graph = (exclude: string[]) => {
+        const nodes = buildTaskGraph({
           projects: projects(
             project('app', { test: { ...cmd('test'), dependsOn: ['^build.*'] } }),
             project('lib', { 'build.js': cmd('js'), 'build.dts': cmd('dts') }),
@@ -557,8 +562,10 @@ describe('buildTaskGraph', () => {
           ),
           packageGraph: packageGraph({ app: ['lib'], lib: ['deeper'] }),
           requested: [{ project: 'app', task: 'test' }],
-          excludeDependencies: exclude,
         })
+        excludeDependencies(nodes, exclude)
+        return nodes
+      }
       const one = graph(['build.dts'])
       expect([one.get('app#test')?.deps, one.has('lib#build.dts')]).toEqual([
         ['lib#build.js'],
@@ -687,16 +694,6 @@ describe('a ^name no project declares is refused (nx#32779)', () => {
     })
     expect([...nodes.keys()]).toEqual(['app#typo'])
     expect(nodes.get('app#typo')?.deps).toEqual([])
-  })
-
-  it('a name --exclude-dependencies drops is not judged', () => {
-    const nodes = buildTaskGraph({
-      projects: typo(),
-      packageGraph: packageGraph({ app: ['cart'] }),
-      requested: request,
-      excludeDependencies: ['biuld'],
-    })
-    expect([...nodes.keys()]).toEqual(['app#typo'])
   })
 
   it('a caller whose projects are a scoped load is handed the name instead', () => {
@@ -1073,6 +1070,18 @@ describe('buildTaskGraph — depth is not bounded by the call stack', () => {
     expect([...nodes.keys()]).toEqual(ids)
     expect(nodes.get('p0#build')?.deps).toEqual(['p1#build'])
     expect(nodes.get(`p${DEPTH - 1}#build`)?.deps).toEqual([])
+  })
+
+  it('--exclude-dependencies narrows a 50,000-deep chain to the requested task', () => {
+    const nodes = buildTaskGraph(deepGraph(false))
+    const { keyOnly, dropped } = excludeDependencies(nodes, 'all')
+    expect([[...nodes.keys()], keyOnly.size, [...dropped]]).toEqual([
+      ['p0#build'],
+      DEPTH - 1,
+      [['p0#build', ['p1#build']]],
+    ])
+    // The dropped chain keeps its edges: it is keyed as a full run keys it.
+    expect(keyOnly.get('p1#build')?.deps).toEqual(['p2#build'])
   })
 
   it('a 50,000-deep ring is refused as that cycle', () => {

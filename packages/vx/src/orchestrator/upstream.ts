@@ -10,6 +10,17 @@ import {
 import { UserError } from '../util/index.js'
 
 /**
+ * A task's upstream as its KEY reads it: the live outcomes of its scheduled
+ * dependencies, plus the keys of any `--exclude-dependencies` took out of
+ * the schedule (`excluded-keys.ts`). Every key site goes through this —
+ * the run, the plan, the up-front classify — so a selection cannot change
+ * a key at one of them and not the others.
+ */
+export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcome[] {
+  return node.excludedUpstream === undefined ? upstream : [...upstream, ...node.excludedUpstream]
+}
+
+/**
  * Pick which upstream task hashes participate in the current task's
  * cache key, filtered by `cache.inputs.tasks`. The folded value is the
  * upstream's own cache key (its input-based task hash) — pure-input

@@ -12,6 +12,7 @@ export { type ContinueMode, runGraph, type TaskOutcome, type TaskStatus } from '
 export {
   buildTaskGraph,
   detectCycle,
+  excludeDependencies,
   expandRequested,
   isGroupTask,
   markSurfacedDeps,

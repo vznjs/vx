@@ -17,6 +17,11 @@ NOT the same question:
 ## Public surface
 
 ```ts
+// The upstream a KEY reads: the live outcomes plus `node.excludedUpstream`
+// (the keys of dependencies --exclude-dependencies dropped). The run, the
+// plan and the up-front classify all go through it.
+export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcome[]
+
 export function filterUpstreamHashes(
   upstream: TaskOutcome[],
   filter: readonly string[] | undefined,

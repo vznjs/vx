@@ -91,7 +91,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 > `dependsOn: ['^build']` you meant it. The legitimate
 > "I want to fan out without waiting" cases are already covered by
 > (a) not declaring `dependsOn` in the first place, and (b)
-> `--exclude-dependencies`, which skips dependsOn expansion entirely
+> `--exclude-dependencies`, which keeps dependencies from running, entirely
 > or selectively.
 
 ## Config schema comparison
