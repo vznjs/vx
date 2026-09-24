@@ -1609,11 +1609,33 @@ payload's restore bold, a scaling size 300 → 500 and core's version
     scheduling, choosing, architecture and extending keep their static
     `<details>` checkpoints, because their questions are not planner
     questions; the glossary is a reference, not a lesson, so it carries
-    no checkpoint. Not yet met: the glossary has no diagram or
-    interactive element; no page per monorepo.tools checkmark was
-    checked row by row, and none was found for code generation or
-    project constraints; the landing's cards link docs pages, not
-    tests; no row holds the figures on pages other than the landing.
+    no checkpoint. The monorepo.tools audit is done
+    (`design/capability-audit-2026-09.md`): of its twelve capabilities
+    three were taught, nine were not; the glossary is a reference and
+    exempt from the diagram-and-element rule, and the Learn section gets
+    three kinds (lessons, tools, reference) a law holds. Planned, in
+    order: 714 the page kinds and the missing glossary links, 715
+    what-is's graph source, graph pictures and what `--affected` cannot
+    see, 716 scheduling's workers on other machines, 717 a new lesson
+    "Around the runner" (shared code, generators, constraints), 718 the
+    twelve capabilities mapped on choosing. Not yet met besides those:
+    the landing's cards link docs pages, not tests; no row holds the
+    figures on pages other than the landing.
+
+17. **A sandboxed task reads a linked sibling package unseen (found by
+    the capability audit, 2026-09-24).** `sandbox-request.ts` grants
+    every `node_modules` link from the project and the workspace root
+    (`linkedDeps`), and reports only inside the project
+    (`reportWithin`). So a task that reads a workspace package's source
+    through its link, with no `dependsOn` edge to one of that package's
+    tasks, is neither denied nor reported, and an edit there does not
+    move its key: the stale hit the sandbox exists to prove absent.
+    `learn/correctness` names `node_modules` as always readable, but a
+    reader takes that for third-party code. Design first (architect):
+    report such a read as a violation, deny it, or fold the linked
+    package's inputs, each against this repo's own `source` tasks (item
+    687), which already key what the suites import; item 717's pin row
+    is the repro.
 
 ## Decisions (this arc)
 
