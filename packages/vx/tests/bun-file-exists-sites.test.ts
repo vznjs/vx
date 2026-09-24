@@ -16,11 +16,9 @@ const FILE_PATH_SITES: Record<string, number> = {
   'orchestrator/doctor.ts': 1, // the lockfile
   'orchestrator/task-hash.ts': 1, // a file to hash
   'workspace/affected.ts': 1, // a file to read bytes from
-  'workspace/fingerprint.ts': 1, // a workspace fingerprint file
+  'workspace/load-reads.ts': 1, // a root file: manifest, fingerprint file, workspace config
   'workspace/lockfile.ts': 1, // the lockfile
   'workspace/migration.ts': 2, // workspace config candidates; write targets
-  'workspace/project-loader.ts': 1, // a config file candidate
-  'workspace/workspace.ts': 2, // pnpm-workspace.yaml, package.json
 }
 
 describe('Bun.file(...).exists() in src/ probes file paths only', () => {

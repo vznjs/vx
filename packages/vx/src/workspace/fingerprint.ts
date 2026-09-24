@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
+import { type LoadReads, readOnce } from './load-reads.js'
 
 // Every package-manager lockfile we know about, plus the workspace
 // definition files. Whichever ones exist get folded into the
@@ -43,8 +44,11 @@ export const WORKSPACE_FINGERPRINT_FILES = [
  * `npm install`, `bun install`, …) or a workspace-shape change
  * invalidates every cached entry. Coarse but correct.
  */
-export async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string> {
-  return (await computeWorkspaceFingerprints(workspaceRoot, NONE)).all
+export async function computeWorkspaceFingerprint(
+  workspaceRoot: string,
+  reads?: LoadReads,
+): Promise<string> {
+  return (await computeWorkspaceFingerprints(workspaceRoot, NONE, reads)).all
 }
 
 const NONE: ReadonlySet<string> = new Set()
@@ -60,22 +64,22 @@ export interface WorkspaceFingerprints {
 }
 
 /**
- * Both digests from one read of each file. A claimed file leaves the key
- * digest entirely (its name too): the claimant folds what it means per
- * project, and a fold of "present" would still re-key the workspace when
- * the file appeared.
+ * Both digests from one read of each file — none at all for the
+ * `pnpm-workspace.yaml` discovery already read into the load's `reads`. A
+ * claimed file leaves the key digest entirely (its name too): the claimant
+ * folds what it means per project, and a fold of "present" would still
+ * re-key the workspace when the file appeared.
  */
 export async function computeWorkspaceFingerprints(
   workspaceRoot: string,
   claimed: ReadonlySet<string>,
+  reads?: LoadReads,
 ): Promise<WorkspaceFingerprints> {
   let all = 0n
   let unclaimed = 0n
   for (const f of WORKSPACE_FINGERPRINT_FILES) {
-    const full = path.join(workspaceRoot, f)
-    const file = Bun.file(full)
-    if (!(await file.exists())) continue
-    const bytes = await file.bytes()
+    const bytes = await readOnce(reads, path.join(workspaceRoot, f))
+    if (bytes === null) continue
     all = xxh3(`${f}\0`, all)
     all = xxh3(bytes, all)
     if (claimed.has(f)) continue

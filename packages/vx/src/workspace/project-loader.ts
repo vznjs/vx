@@ -5,6 +5,7 @@ import { validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { beginEvalRound, evaluateConfigFresh } from './config-eval.js'
 import { unprovidedBareImports } from './config-imports.js'
 import { configEvalKey, configEvalKeyFromClosure, type ConfigEvalStore } from './config-cache.js'
+import { readOnce } from './load-reads.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
 // reaches the loader for it (the tests do) keeps working.
@@ -38,9 +39,8 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
 async function loadDefaultExport(
   configPath: string,
   kind: string,
-  bytes?: Uint8Array,
+  bytes: Uint8Array,
 ): Promise<unknown> {
-  bytes ??= await Bun.file(configPath).bytes()
   refuseUnprovidedImports(bytes, configPath, kind)
   // No random bust for `vx lock`: a project config reaches this import
   // only on its FIRST load in the process, so nothing is cached under the
@@ -331,15 +331,12 @@ export async function loadProjectConfig(
  * a `UserError` on malformed input.
  */
 export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig | null> {
-  let configPath: string | null = null
-  for (const candidate of WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f))) {
-    if (await Bun.file(candidate).exists()) {
-      configPath = candidate
-      break
-    }
+  for (const configPath of WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f))) {
+    const bytes = await readOnce(undefined, configPath)
+    if (bytes === null) continue
+    const mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    validateWorkspace(mod, configPath)
+    return mod
   }
-  if (!configPath) return null
-  const mod = (await loadDefaultExport(configPath, 'Workspace')) as WorkspaceConfig
-  validateWorkspace(mod, configPath)
-  return mod
+  return null
 }

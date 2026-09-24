@@ -7,6 +7,7 @@ import { seeHelp } from './help.js'
 import { relPosix, xxh3hex } from '../util/index.js'
 import {
   findWorkspaceRoot,
+  type LoadReads,
   listProjects,
   loadProjectConfig,
   loadWorkspace,
@@ -41,8 +42,9 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx lock: ${parsed.error}\n`)
     return 1
   }
-  const root = await findWorkspaceRoot(process.cwd())
-  const workspace = await loadWorkspace(root)
+  const reads: LoadReads = new Map()
+  const root = await findWorkspaceRoot(process.cwd(), reads)
+  const workspace = await loadWorkspace(root, reads)
   const all = await listProjects(workspace)
   const metas = all.filter((m): m is ConfiguredMeta => m.configPath !== null)
   // A project with no vx.config has nothing to freeze: its tasks (a plugin's,
