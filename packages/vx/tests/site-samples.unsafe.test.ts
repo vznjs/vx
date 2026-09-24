@@ -1463,9 +1463,9 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
       'utf8',
     )
     const numbered = [...memory.matchAll(/^\d\. \*\*/gm)].length
-    expect(numbered).toBe(8)
+    expect(numbered).toBe(9)
     const page = readFileSync(path.join(DOCS, 'blog', 'values.md'), 'utf8')
-    const section = /## The eight principles\n([\s\S]*?)\n## /.exec(page)
+    const section = /## The nine principles\n([\s\S]*?)\n## /.exec(page)
     expect(section).not.toBeNull()
     expect([...section![1]!.matchAll(/^\*\*[^*]+\*\*/gm)].length).toBe(numbered)
   })
