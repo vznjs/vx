@@ -1405,7 +1405,11 @@ gains the rule.
     exercises on the playground: an undeclared input and its stale hit,
     a file no config mentions, two tasks writing one output, a bad
     order and its critical path), and W11, the checkpoints, per
-    `design/labs-checkpoints-2026-09.md`.
+    `design/labs-checkpoints-2026-09.md` (items 704 and 705, in
+    flight). W8, the landing page, is last and designed in
+    `design/landing-2026-09.md` (item 709): the problem and the three
+    ideas first, each linked to its Learn page, the numbers after, the
+    generator's anchors untouched.
 
 ## Decisions (this arc)
 
