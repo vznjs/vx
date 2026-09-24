@@ -45,7 +45,6 @@ const ALL = [
   'api#test',
   'app#build',
   'app#test',
-  'app#docs',
 ]
 
 interface Truth {
@@ -57,84 +56,57 @@ interface Truth {
 }
 
 const TRUTH: Record<string, Truth> = {
-  'what-is-run': {
+  // Chapter 3: `^build` pulls in every build app uses, and no test.
+  dependencies: {
     form: 'run',
-    question: 'You run `vx run app#build` on an empty cache. Which tasks run?',
+    question: 'Which tasks does `vx run app#build` run on an empty cache?',
     yes: {
       'utils#build': 'ui#build waits for it',
       'ui#build': 'app#build waits for it',
       'api#build': 'app#build waits for it',
       'app#build': 'you asked for it',
     },
-    summary: '4 of the 9 tasks run.',
+    summary: '4 of the 8 tasks run.',
   },
-  'what-is-edit': {
-    form: 'edit',
-    question:
-      'You run `vx run build test docs` once. Then you edit `packages/utils/src/index.ts` and run it again. Which tasks rerun?',
-    yes: {
-      'utils#build': 'packages/utils/src/index.ts changed',
-      'utils#test': 'packages/utils/src/index.ts changed, upstream utils#build moved',
-      'ui#build': 'upstream utils#build moved',
-      'ui#test': 'upstream ui#build moved',
-      'api#build': 'upstream utils#build moved',
-      'api#test': 'upstream api#build moved',
-      'app#build': 'upstream api#build moved, upstream ui#build moved',
-      'app#test': 'upstream app#build moved',
-    },
-    summary: '8 of the 9 tasks rerun.',
-  },
+  // Chapter 5: a change in api moves api's keys and the keys above it.
   caching: {
     form: 'edit',
-    question:
-      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, and its inputs declare the file: `files: ['src/**', 'tsconfig.json']`. You run `vx run build test docs` once. Then you edit `packages/ui/vx.config.mjs` to stop declaring it and run it again. Which tasks rerun?",
+    question: 'Which tasks rerun when you edit `api/src/server.ts`?',
     yes: {
-      'ui#build': 'config changed, file removed: packages/ui/tsconfig.json',
-      'ui#test': 'upstream ui#build moved',
-      'app#build': 'upstream ui#build moved',
+      'api#build': 'packages/api/src/server.ts changed',
+      'api#test': 'packages/api/src/server.ts changed, upstream api#build moved',
+      'app#build': 'upstream api#build moved',
       'app#test': 'upstream app#build moved',
     },
-    summary: '4 of the 9 tasks rerun.',
+    summary: '4 of the 8 tasks rerun.',
   },
+  // Chapter 6: app's banner.txt, which no input lists.
   correctness: {
     form: 'edit',
-    question:
-      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, but its inputs declare only `files: ['src/**']`. You run `vx run build test docs` once. Then you edit `packages/ui/tsconfig.json` and run it again. Which tasks rerun?",
+    question: 'Which tasks rerun when you edit `app/banner.txt`?',
     yes: {},
     summary: 'No task reruns.',
   },
-  'playground-edit': {
-    form: 'edit',
-    question:
-      'Start from Reset. You run `vx run build test docs` once. Then you edit `packages/utils/test/index.test.ts` and run it again. Which tasks rerun?',
-    yes: { 'utils#test': 'packages/utils/test/index.test.ts changed' },
-    summary: '1 of the 9 tasks reruns.',
-  },
   'playground-env': {
     form: 'edit',
-    question:
-      'Start from Reset. You run `vx run build test docs` once. Then you change `API_URL` to another value and run it again. Which tasks rerun?',
+    question: 'Which tasks rerun when you change `API_URL`?',
     yes: {
       'api#build': 'env API_URL changed',
       'api#test': 'upstream api#build moved',
       'app#build': 'upstream api#build moved',
       'app#test': 'upstream app#build moved',
     },
-    summary: '4 of the 9 tasks rerun.',
+    summary: '4 of the 8 tasks rerun.',
   },
 }
 
 /** Which chapter places which checkpoints, in order. */
 const PAGES: Record<string, string[]> = {
   caching: ['caching'],
+  dependencies: ['dependencies'],
   trust: ['correctness'],
   'try-it': ['playground-env'],
 }
-
-/** The checkpoints the old Learn pages asked, which no chapter places now:
- *  the model still defines them, and every row below but placement holds
- *  them, until they are placed or dropped. */
-const UNPLACED = ['playground-edit', 'what-is-edit', 'what-is-run']
 
 const NO_REASON = { edit: 'key unchanged', run: 'not needed by what you asked for' }
 const VERB = {
@@ -269,6 +241,12 @@ describe('the marking', () => {
       yes: [],
       rest: ['b#build, b#test do not rerun (key unchanged).'],
     })
+    const all: CheckpointAnswer = { form: 'edit', rows: answer.rows.slice(0, 2) }
+    expect(answerText(all)).toEqual({
+      summary: 'All 2 tasks rerun.',
+      yes: ['a#build reruns (src/a.ts changed).', 'a#test reruns (upstream a#build moved).'],
+      rest: [],
+    })
     const one: CheckpointAnswer = { form: 'run', rows: answer.rows.slice(1, 3) }
     expect(answerText(one)).toEqual({
       summary: '1 of the 2 tasks runs.',
@@ -359,7 +337,7 @@ describe('the marking', () => {
 })
 
 describe('the checkpoints', () => {
-  it('are the ones written out here, each placed by one chapter at most', () => {
+  it('are the ones written out here, each placed by exactly one chapter', () => {
     const placed: Record<string, string[]> = {}
     for (const f of readdirSync(GUIDE).filter((n) => n.endsWith('.mdx'))) {
       const ids = [
@@ -369,7 +347,7 @@ describe('the checkpoints', () => {
     }
     expect(placed).toEqual(PAGES)
     const onPages = Object.values(PAGES).flat()
-    expect([...onPages, ...UNPLACED].sort()).toEqual(Object.keys(TRUTH).sort())
+    expect([...onPages].sort()).toEqual(Object.keys(TRUTH).sort())
     expect(Object.keys(CHECKPOINTS).sort()).toEqual(Object.keys(TRUTH).sort())
   })
 
@@ -381,6 +359,20 @@ describe('the checkpoints', () => {
         form: TRUTH[id]!.form,
         question: TRUTH[id]!.question,
       })
+    }
+  })
+
+  // The simple brief (2026-09-24): a reader with no context gets one short
+  // plain sentence, with no setup and no config to read first.
+  it('ask each in one short sentence', () => {
+    for (const id of Object.keys(TRUTH)) {
+      const q = questionOf(CHECKPOINTS[id as CheckpointId])
+      expect({
+        id,
+        sentences: q.split(/[.?!](?:\s|$)/).filter((x) => x.trim() !== '').length,
+        short: q.split(/\s+/).length <= 12,
+        asks: q.endsWith('?'),
+      }).toEqual({ id, sentences: 1, short: true, asks: true })
     }
   })
 
@@ -463,7 +455,9 @@ describe('the checkpoints on the built pages', () => {
     )
     const others = ALL.filter((task) => !(task in t.yes))
     const not = others.length === 1 ? verb.notOne : verb.notMany
-    expect(rest).toEqual([`${others.join(', ')} ${not} (${NO_REASON[t.form]}).`])
+    expect(rest).toEqual(
+      others.length === 0 ? [] : [`${others.join(', ')} ${not} (${NO_REASON[t.form]}).`],
+    )
     const note = CHECKPOINTS[id as CheckpointId].note
     expect(paragraphs.slice(1 + rest.length)).toEqual(note === undefined ? [] : [note])
   })
@@ -482,7 +476,7 @@ describe('the checkpoints on the built pages', () => {
       ]
       expect(boxes.map((m) => [m[1], m[2]])).toEqual(ALL.map((task) => [task, task]))
       expect(only(el, /<legend>([\s\S]*?)<\/legend>/g)).toBe(
-        `Tick every task that ${TRUTH[id]!.form === 'edit' ? 'reruns' : 'runs'}, then press Check.`,
+        `Tick each task that ${TRUTH[id]!.form === 'edit' ? 'reruns' : 'runs'}.`,
       )
       expect(only(el, /(<div class="result\b[^>]*>[\s\S]*?<\/div>)/g)).toMatch(
         /^<div class="result"[^>]* aria-live="polite"><\/div>$/,

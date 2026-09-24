@@ -2,7 +2,8 @@
 // renders. It unhides a checkbox per task and a Check button, and hides the
 // answer. Check imports vx's planner from the site (once per page: the
 // module is cached), computes the answer as the build did, and marks each
-// task right, missed or wrong in the live region, in words and by colour.
+// task right, missed or wrong by colour; the live region sums it up and
+// names, with its reason, each task missed or wrong.
 // What it computes is `model/checkpoint.ts`; this only wires it to the markup.
 import {
   CHECKPOINTS,
@@ -87,12 +88,14 @@ class Checkpoint extends HTMLElement {
       const list = document.createElement('ul')
       list.className = 'marks'
       list.append(
-        ...marks.map((m) => {
-          const li = document.createElement('li')
-          li.dataset['verdict'] = m.verdict
-          li.textContent = markLine(answer.form, m)
-          return li
-        }),
+        ...marks
+          .filter((m) => m.verdict !== 'right')
+          .map((m) => {
+            const li = document.createElement('li')
+            li.dataset['verdict'] = m.verdict
+            li.textContent = markLine(answer.form, m)
+            return li
+          }),
       )
       result.replaceChildren(verdict, list)
       const note = this.#checkpoint().note

@@ -10,9 +10,9 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import {
   TOY_PACKAGES,
   TOY_TASKS,
+  affectedBy,
   joinNames,
   neededBy,
-  orderSentence,
   rerunBy,
   waves,
 } from '../src/components/demos/model/toy-monorepo.js'
@@ -95,41 +95,54 @@ describe('the graph explorer on guide/dependencies', () => {
         .map((m) => `${m[1]}→${m[2]}`)
         .sort(),
     ).toEqual(EDGES)
-    expect(
-      [...svg.matchAll(/<text\b[^>]*class="wave\b[^"]*"[^>]*>([^<]*)</g)].map((m) => m[1]),
-    ).toEqual(['wave 1', 'wave 2', 'wave 3', 'wave 4'])
+    expect([...svg.matchAll(/<text class="note\b[^"]*"[^>]*>([^<]*)</g)].map((m) => m[1])).toEqual([
+      'wave 1',
+      'wave 2',
+      'wave 3',
+      'wave 4',
+    ])
+    // A wave is a row: every box of a wave at one height, each wave lower.
+    const rowOf = new Map<number, Set<string>>()
+    for (const m of svg.matchAll(/data-wave="(\d+)"[^>]*>\s*<rect\b[^>]*\sy="([\d.]+)"/g)) {
+      rowOf.set(Number(m[1]), (rowOf.get(Number(m[1])) ?? new Set()).add(m[2]!))
+    }
+    const ys = [1, 2, 3, 4].map((w) => [...rowOf.get(w)!])
+    expect(ys.map((y) => y.length)).toEqual([1, 1, 1, 1])
+    expect(ys.map((y) => Number(y[0])).every((y, i, all) => i === 0 || y > all[i - 1]!)).toBe(true)
     // Without JavaScript the SVG is one image with a name, not dead buttons.
     expect(svg).toMatch(/^<svg\b[^>]*role="img"/)
+    expect(only(svg, /^<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(
+      'Task graph of the toy monorepo in 4 waves: wave 1 is utils#build; wave 2 is ' +
+        'utils#test, ui#build and api#build; wave 3 is ui#test, api#test and app#build; ' +
+        'wave 4 is app#test.',
+    )
     expect(svg).not.toContain('role="button"')
   })
 
-  it("states each change's run, what it needs first and the order, in a table", () => {
+  // The explorer is one of the Guide's pictures: the kit draws it, in the
+  // kit's own frame and classes, so it takes the pictures' look.
+  it("is drawn by the Guide's diagram kit", () => {
+    expect(element).toMatch(/<div class="vx-diagram inset\b[^"]*"[^>]*>\s*<svg\b/)
+    const boxes = [...svg.matchAll(/<g class="box (\w+)" data-box="([^"]+)"/g)]
+    expect(boxes.map((m) => `${m[2]} ${m[1]}`)).toEqual(TOY_TASKS.map((t) => `${t.id} default`))
+    // Every tone the element may give an arrow has its head.
+    expect([...svg.matchAll(/<marker id="vx-dg-graph-explorer-(\w+)"/g)].map((m) => m[1])).toEqual([
+      'default',
+      'accent',
+      'link',
+      'danger',
+      'ok',
+      'warn',
+      'muted',
+    ])
+  })
+
+  it("states each change's packages to build and test again, and what it needs first, in a table", () => {
     expect(tableRows(table)).toEqual([
-      [
-        'utils',
-        'utils#build, utils#test, ui#build, ui#test, api#build, api#test, app#build and app#test',
-        'nothing',
-        'utils#build, then utils#test, ui#build and api#build together, ' +
-          'then ui#test, api#test and app#build together, then app#test',
-      ],
-      [
-        'ui',
-        'ui#build, ui#test, app#build and app#test',
-        'utils#build and api#build',
-        'ui#build, then ui#test and app#build together, then app#test',
-      ],
-      [
-        'api',
-        'api#build, api#test, app#build and app#test',
-        'utils#build and ui#build',
-        'api#build, then api#test and app#build together, then app#test',
-      ],
-      [
-        'app',
-        'app#build and app#test',
-        'utils#build, ui#build and api#build',
-        'app#build, then app#test',
-      ],
+      ['utils', 'utils, ui, api and app', 'nothing'],
+      ['ui', 'ui and app', 'utils#build and api#build'],
+      ['api', 'api and app', 'utils#build and ui#build'],
+      ['app', 'app', 'utils#build, ui#build and api#build'],
     ])
   })
 
@@ -141,31 +154,32 @@ describe('the graph explorer on guide/dependencies', () => {
     expect(tableRows(table)).toEqual(
       TOY_PACKAGES.map((p) => [
         p.id,
-        joinNames(rerunBy(p.id)),
+        joinNames(affectedBy(p.id)),
         neededBy(p.id).length === 0 ? 'nothing' : joinNames(neededBy(p.id)),
-        orderSentence(rerunBy(p.id)),
       ]),
     )
+    // Building and testing a package again is every task of it.
+    for (const p of TOY_PACKAGES) {
+      expect(rerunBy(p.id)).toEqual(
+        TOY_TASKS.filter((t) => affectedBy(p.id).includes(t.pkg)).map((t) => t.id),
+      )
+    }
   })
 
-  it('names the waves in the caption', () => {
+  it('says in one line what an arrow and a row mean', () => {
     // Expressive Code wraps every code block in a <figure> too.
     const figures = [...main.matchAll(/<figure class="vx-demo\b[^"]*">([\s\S]*?)<\/figure>/g)]
       .map((m) => m[1]!)
       .filter((f) => f.includes('<vx-graph-explorer'))
     expect(figures).toHaveLength(1)
     expect(text(only(figures[0]!, /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g))).toBe(
-      'The build and test tasks of a four-package monorepo. An arrow goes from a task to a task ' +
-        'that needs it, so the first must finish before the second starts. Tasks in the same ' +
-        'wave do not need each other and can run at the same time: wave 1 is utils#build; ' +
-        'wave 2 is utils#test, ui#build and api#build; wave 3 is ui#test, api#test and ' +
-        'app#build; wave 4 is app#test. The table says what a change to each package makes ' +
-        'vx run build test --affected run.',
+      'An arrow points to the task that waits. Tasks in one row run at the same time.',
     )
   })
 
   it('keeps the controls that need JavaScript hidden in the static page', () => {
     expect(only(element, /<div class="controls\b[^"]*"([^>]*)>/g).trim()).toBe('hidden')
+    expect(only(element, /<table class="static\b[^"]*"([^>]*)>/g).trim()).toBe('')
     expect([...element.matchAll(/<button\b[^>]*data-pkg="([^"]+)"/g)].map((m) => m[1])).toEqual([
       'utils',
       'ui',
@@ -202,7 +216,10 @@ chapterShape({
 
 describe('chapter 3, dependencies', () => {
   it('hosts the graph explorer and no other widget', () => {
-    expect([...main.matchAll(/<vx-([a-z-]+)\b/g)].map((m) => m[1])).toEqual(['graph-explorer'])
+    expect([...main.matchAll(/<vx-([a-z-]+)\b/g)].map((m) => m[1])).toEqual([
+      'graph-explorer',
+      'checkpoint',
+    ])
   })
 
   it('draws only arrows the graph has, each rule with its own', () => {
@@ -252,15 +269,19 @@ describe('chapter 3, dependencies', () => {
       })
     })
 
+    // The chapter's checkpoint asks this; its answer, computed at build time
+    // by the planner the site ships, is the one vx plans here.
     it('runs the four builds for app#build, and no test', async () => {
       const planned = await plan(await toyWorkspace(() => object), ['app#build'])
-      expect(planned.tasks.map((t) => t.node.id).sort()).toEqual([
-        'api#build',
-        'app#build',
-        'ui#build',
-        'utils#build',
-      ])
-      expect(prose).toContain('utils#build, ui#build, api#build and app#build. No tests.')
+      const four = ['api#build', 'app#build', 'ui#build', 'utils#build']
+      expect(planned.tasks.map((t) => t.node.id).sort()).toEqual(four)
+      const checkpoint = only(main, /<vx-checkpoint\b[^>]*>([\s\S]*?)<\/vx-checkpoint>/g)
+      expect(only(checkpoint, /data-checkpoint="([^"]+)"/g)).toBe('dependencies')
+      const answer = only(checkpoint, /<details class="answer\b[^"]*">([\s\S]*?)<\/details>/g)
+      const yes = [...answer.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(
+        (m) => text(m[1]!).split(' ')[0]!,
+      )
+      expect(yes.sort()).toEqual(four)
     })
 
     it('refuses the cycle utils → app with the message the chapter prints, around the loop it draws', async () => {
