@@ -1400,9 +1400,8 @@ checkpoints). Scheduling, choosing, architecture and extending keep their
 `<details>`. A probe found that the planner holds one workspace at a time
 (its VFS and env are module state), and two plans at once read each
 other's files. A page renders sibling checkpoints concurrently, so
-`answerCheckpoint` queues its computations; a checkpoint and a playground
-on one page are not yet serialized against each other (follow-up: a queue
-in `entry.ts`). Rows: `tests/learn-checkpoints.test.ts` holds every
+the planner serializes its own calls (`entry.ts`, item 704; the
+checkpoint's own queue went once that landed, item 710). Rows: `tests/learn-checkpoints.test.ts` holds every
 question and every answer, with each task's reason, written out by
 hand, against the shipped planner and against the built pages, plus pure
 marking rows and the markup contract. The differentials (swap missed
@@ -1445,6 +1444,16 @@ nothing of additive restores or of two tasks naming one output, so the
 page says only what they say. Built under Node 22 too. Rows,
 differentials, competitor sources and the Chromium probe:
 `design/labs-checkpoints-2026-09.md` § Shipped (item 704).
+
+14de. **Item 710 (2026-09-24): one queue for the playground's planner.**
+Item 705 serialized the checkpoints' answers with a queue in
+`answerCheckpoint`; item 704 then serialized the planner itself
+(`oneAtATime` in `entry.ts`), which covers a checkpoint, a playground and
+the labs page's three playgrounds alike. Two rules for one hazard is one
+too many, so the checkpoint's queue is gone. Its row, "answers every
+checkpoint asked at once as it answers each alone", stays green, and
+now holds the planner's queue: with `oneAtATime` running its argument at
+once (bundle rebuilt), it goes red; restored, green.
 
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn

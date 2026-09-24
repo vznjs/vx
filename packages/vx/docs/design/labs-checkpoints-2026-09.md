@@ -173,16 +173,7 @@ are module state, set when a plan starts and read across its awaits.
 Two plans at once read each other's files. A probe planned the toy
 workspace and an edited copy concurrently: the first plan's keys were
 the second's. A page renders sibling components concurrently, so
-`answerCheckpoint` queues its computations. The row "answers every
-checkpoint asked at once as it answers each alone" is red with the
-queue removed (six answers mixed up) and green with it. The queue
-covers checkpoints only. A checkpoint's Check and a `<vx-playground>`
-Run on the same page share the bundle and are not serialized against
-each other; nor are two playgrounds (the labs page, item 704). A reader
-cannot realistically click both within one plan's few milliseconds, but
-the fix belongs in the bundle (a queue in `entry.ts` around
-`listPlaygroundProjects` and `planPlayground`). It is a follow-up,
-because it touches the file 704 is changing.
+`answerCheckpoint` first queued its own computations; item 704 then serialized the planner itself (`oneAtATime` in `entry.ts`), which covers a checkpoint's Check, a `<vx-playground>` Run and the labs page's three playgrounds alike, so the checkpoint's queue went (item 710). The row "answers every checkpoint asked at once as it answers each alone" now holds the planner's queue: red with `oneAtATime` running its argument at once, green with it.
 
 **The questions, page by page.**
 
@@ -255,14 +246,14 @@ declare-then-edit row stays, renamed.
 
 Differentials, each reversed by the reverse edit:
 
-| Change                                                                        | Result                                                    |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `markAnswer` swaps missed and wrong                                           | 3 red: the marking, the lines, the sentence               |
-| `what-is-edit` edits `packages/api/src/server.ts` instead (rebuilt)           | 3 red: the question, the planner's answer, the built page |
-| Correctness's intro names `packages/api/tsconfig.json` (rebuilt)              | 2 red: the question, the built page's question            |
-| The build-time answer replaced by the correct answers as a constant (rebuilt) | green: the row holds values, and a correct value passes   |
-| The same constant with `ui#test` out of caching's answer (rebuilt)            | 1 red: the caching page's no-JavaScript answer            |
-| The queue in `answerCheckpoint` removed                                       | 1 red: the concurrent row                                 |
+| Change                                                                                                                                             | Result                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `markAnswer` swaps missed and wrong                                                                                                                | 3 red: the marking, the lines, the sentence               |
+| `what-is-edit` edits `packages/api/src/server.ts` instead (rebuilt)                                                                                | 3 red: the question, the planner's answer, the built page |
+| Correctness's intro names `packages/api/tsconfig.json` (rebuilt)                                                                                   | 2 red: the question, the built page's question            |
+| The build-time answer replaced by the correct answers as a constant (rebuilt)                                                                      | green: the row holds values, and a correct value passes   |
+| The same constant with `ui#test` out of caching's answer (rebuilt)                                                                                 | 1 red: the caching page's no-JavaScript answer            |
+| The queue in `answerCheckpoint` removed (it went for good in item 710; `entry.ts`'s `oneAtATime` running its argument at once is the mutation now) | 1 red: the concurrent row                                 |
 
 The architect's second differential cannot be built as stated: a
 page's question and its no-JavaScript answer come from one spec, so the

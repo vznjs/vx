@@ -200,19 +200,12 @@ function ok(o: RunOutcome, what: string): RunOutcome & { ok: true } {
   return o
 }
 
-// The planner holds one workspace at a time (its file system and env are
-// module state), so two answers computed at once would read each other's
-// files: a page with two checkpoints renders them concurrently.
-let queue: Promise<unknown> = Promise.resolve()
-
-/** The checkpoint's answer, from vx's planner over the question's files. */
-export function answerCheckpoint(planner: Planner, c: Checkpoint): Promise<CheckpointAnswer> {
-  const next = queue.then(() => compute(planner, c))
-  queue = next.catch(() => {})
-  return next
-}
-
-async function compute(planner: Planner, c: Checkpoint): Promise<CheckpointAnswer> {
+/**
+ * The checkpoint's answer, from vx's planner over the question's files. A
+ * page renders its checkpoints concurrently; the planner serializes its own
+ * calls (`entry.ts`, item 704), so answers computed at once stay their own.
+ */
+export async function answerCheckpoint(planner: Planner, c: Checkpoint): Promise<CheckpointAnswer> {
   if (c.form === 'run') {
     const all = ok(
       await runPlayground(planner, { files: FILES, env: ENV, tasks: TASKS, cached: new Set() }),
