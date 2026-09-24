@@ -276,6 +276,19 @@ test is telling the truth.
       page moved with its text (20 one-line breakages each reddened one).
       `update-site.ts` stops writing the real-repo and scaling panels.
 
+730.  DONE (2026-09-24, 729's leftovers). The playground no longer takes a
+      lab: `<Playground lab>` and the element's `data-lab` read went with
+      the labs page, and so did `Demo`'s `data` prop, which only that path
+      used. The opening state is `START` in `playground/workspace.ts`;
+      `labs.ts` keeps the three lab states and their steps, which core's
+      parity rows still plan against the CLI. The site drops three
+      devDependencies nothing in it imports (`@vzn/vx-lockfile`,
+      `-migrate`, `-reapi`: `config-snippets` types every plugin import as
+      `any`, and the choosing page only links their test files, granted by
+      name). What it keeps is imported: `-github` by the CI summary row,
+      `-schedule-history`, `-otel` and `-mcp` by the plugins guide's
+      snippets.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -3,9 +3,9 @@
 // and Reset, and hides the static render. The planner, vx's own, is
 // imported from the site on the first Run, so a page view that never runs
 // costs nothing. What a run computes is `model/playground-view.ts`; this
-// only wires it to the markup. `data-lab` names the state it opens on and
-// Reset restores (`playground/labs.ts`); without it, the workspace's.
-import { startState, type PlaygroundState } from '../../playground/labs.js'
+// only wires it to the markup. It opens on, and Reset restores, the
+// workspace's state (`playground/workspace.ts`).
+import { START } from '../../playground/workspace.js'
 import {
   changeCell,
   diffRuns,
@@ -23,7 +23,6 @@ import {
 const firstFile = (files: Record<string, string>): string | undefined => Object.keys(files)[0]
 
 class Playground extends HTMLElement {
-  #start!: PlaygroundState
   #files: Record<string, string> = {}
   #selected: string | undefined
   #cached = new Set<string>()
@@ -36,9 +35,8 @@ class Playground extends HTMLElement {
   }
 
   connectedCallback() {
-    this.#start = startState(this.dataset['lab'])
-    this.#files = { ...this.#start.files }
-    this.#selected = this.#start.open ?? firstFile(this.#files)
+    this.#files = { ...START.files }
+    this.#selected = START.open ?? firstFile(this.#files)
     this.#el('.controls').hidden = false
     this.#el('.status').hidden = false
     this.#el('.static').hidden = true
@@ -101,12 +99,12 @@ class Playground extends HTMLElement {
   }
 
   #reset() {
-    this.#files = { ...this.#start.files }
-    this.#selected = this.#start.open ?? firstFile(this.#files)
+    this.#files = { ...START.files }
+    this.#selected = START.open ?? firstFile(this.#files)
     this.#cached = new Set()
     this.#last = undefined
-    this.#el<HTMLTextAreaElement>('.env').value = envText(this.#start.env)
-    this.#el<HTMLInputElement>('.tasks').value = this.#start.tasks.join(' ')
+    this.#el<HTMLTextAreaElement>('.env').value = envText(START.env)
+    this.#el<HTMLInputElement>('.tasks').value = START.tasks.join(' ')
     this.#el('.results').hidden = true
     this.#el('.order').hidden = true
     this.#el('.errors').hidden = true

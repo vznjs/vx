@@ -1,22 +1,12 @@
 // The labs' starting states and the edits their steps ask for (item 704;
 // design/labs-checkpoints-2026-09.md § W10). Each state is the playground's
-// workspace (workspace.ts) plus one change, and
-// `<vx-playground data-lab="<id>">` opens on it. The labs page went with the
-// Guide (design/site-short-2026-09.md); core's parity rows
-// (packages/vx/tests/playground-parity.unsafe.test.ts) still apply each
-// state's edits, and what each step moves is written out by hand there,
-// never computed from this file.
+// workspace (workspace.ts) plus one change. No page opens a lab since the
+// labs page went with the Guide (design/site-short-2026-09.md); core's
+// parity rows (packages/vx/tests/playground-parity.unsafe.test.ts) still
+// plan each state and apply each step's edits, and what each step moves is
+// written out by hand there, never computed from this file.
 
-import { CONFIG_TEXTS, ENV, FILES, OPEN, TASKS } from './workspace.js'
-
-/** What a playground opens with, and what its Reset restores. */
-export interface PlaygroundState {
-  files: Record<string, string>
-  env: Record<string, string>
-  tasks: string[]
-  /** The file the editor opens on; the first file when unset. */
-  open?: string
-}
+import { CONFIG_TEXTS, ENV, FILES, TASKS, type PlaygroundState } from './workspace.js'
 
 /** One edit a step asks for: replace a text once, or append to the file. */
 export type LabEdit =
@@ -42,8 +32,7 @@ const API_BUILD = 'bun build src/server.ts --outdir dist'
 // A plain copy: the sandbox the lab turns on meets exactly this one read.
 const API_LAB_BUILD = 'mkdir -p dist && cp src/server.ts config.json dist/'
 
-const LAB_IDS = ['unlisted-file', 'undeclared-read', 'shared-output'] as const
-export type LabId = (typeof LAB_IDS)[number]
+export type LabId = 'unlisted-file' | 'undeclared-read' | 'shared-output'
 
 export const LABS: Record<LabId, PlaygroundState> = {
   // Lab 1: a file in `ui` that no config names.
@@ -167,11 +156,4 @@ export function applyEdits(
     }
   }
   return next
-}
-
-/** The state a playground opens with: its lab's, or the workspace's. */
-export function startState(lab: string | undefined): PlaygroundState {
-  if (lab === undefined) return { files: FILES, env: ENV, tasks: TASKS, open: OPEN }
-  if (!(LAB_IDS as readonly string[]).includes(lab)) throw new Error(`no playground lab '${lab}'`)
-  return LABS[lab as LabId]
 }
