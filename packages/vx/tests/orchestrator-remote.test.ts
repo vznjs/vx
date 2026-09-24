@@ -15,6 +15,7 @@ import { describe, expect, it, spyOn } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import {
   addProject,
+  FORCE,
   makeWorkspace as makeFixture,
   silentLogger,
   TIMEOUT,
@@ -845,6 +846,165 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(second.ok).toBe(true)
         // …and therefore no second upload of bytes the remote already holds.
         expect([...remote.store.keys()]).toEqual(putsAfterFirst)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#3127: `--force` re-ran the task but left the remote holding
+  // the old artifact, so every other machine kept replaying it.
+  it(
+    '--force uploads the re-executed artifact over the one the remote holds, and the next cold run is served it',
+    async () => {
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const remote = startArtifactEndpoint()
+      const puts: string[] = []
+      const layer: RemoteCacheLayer = {
+        ...remote.layer,
+        put: (hash, body, meta) => {
+          puts.push(hash)
+          return remote.layer.put(hash, body, meta)
+        },
+      }
+      try {
+        const dir = await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: "node -e 'process.stdout.write(String(Math.random()))' > out.txt" },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+        const out = path.join(dir, 'out.txt')
+        const once = async (cache?: typeof FORCE) => {
+          const r = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            ...(cache === undefined ? {} : { cache }),
+            log: silentLogger(fixture),
+            remoteCache: layer,
+          })
+          return r.outcomes[0]!.status
+        }
+        expect(await once()).toBe('success')
+        const plain = await Bun.file(out).text()
+        expect(await once(FORCE)).toBe('success')
+        const forced = await Bun.file(out).text()
+        expect(forced).not.toBe(plain)
+        expect(puts).toHaveLength(2)
+        expect(puts[1]).toBe(puts[0])
+
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(out)
+        expect(await once()).toBe('cache-hit-remote')
+        expect(await Bun.file(out).text()).toBe(forced)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#12346: a requested task with no cache left its cached
+  // dependency's artifact local-only.
+  it(
+    'a cached dependency of an uncached requested task is uploaded and later served remotely',
+    async () => {
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const remote = startArtifactEndpoint()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'echo built > out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+                deploy: { exec: { command: 'cat out.txt' }, dependsOn: ['build'] },
+              },
+            }
+          `,
+        })
+        const statuses = async () =>
+          Object.fromEntries(
+            (
+              await run({
+                cwd: fixture.root,
+                tasks: ['deploy'],
+                log: silentLogger(fixture),
+                remoteCache: remote.layer,
+              })
+            ).outcomes.map((o) => [o.node.id, o.status]),
+          )
+        expect(await statuses()).toEqual({ 'app#build': 'success', 'app#deploy': 'success' })
+        expect(remote.store.size).toBe(1)
+
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, 'packages', 'app', 'out.txt'))
+        expect(await statuses()).toEqual({
+          'app#build': 'cache-hit-remote',
+          'app#deploy': 'success',
+        })
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#8418: `--cache=remote:rw` still served the entry from the
+  // local cache.
+  it(
+    'local:,remote:rw re-executes over a LOCAL-only entry and uploads the result',
+    async () => {
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const remote = startArtifactEndpoint()
+      const runs = path.join(fixture.root, 'runs.txt')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'echo built > out.txt && echo run >> ../../runs.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+        const local = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        expect(local.outcomes[0]!.status).toBe('success')
+        const [predicted] = (
+          await planRun({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+          })
+        ).tasks
+        expect(predicted?.cacheStatus).toBe('hit-local')
+
+        const remoteOnly = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: true },
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(remoteOnly.outcomes[0]!.status).toBe('success')
+        expect(await Bun.file(runs).text()).toBe('run\nrun\n')
+        expect(remote.store.size).toBe(1)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

@@ -154,3 +154,39 @@ describe('restore across an output-shape change (e2e)', () => {
     TIMEOUT,
   )
 })
+
+// turborepo#13042: an output directory that is itself a symlink (`dist ->
+// real-out`, both inside the package) cached nothing.
+describe('an output directory that is a symlink inside the project (e2e)', () => {
+  it(
+    'saves through the link, hits, and a hit restores the file the link leads to',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-output-linkdir-' })
+      try {
+        const dir = await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'mkdir -p real-out && ln -sfn real-out dist && cat src/in.txt > dist/out.js' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/in.txt': 'v1\n' },
+        })
+        const status = async () => (await summarized(root, ['app#build'])).tasks.get('app#build')
+        expect((await status())?.['status']).toBe('success')
+        expect((await status())?.['status']).toBe('cache-hit')
+
+        await rm(path.join(dir, 'real-out', 'out.js'))
+        expect((await status())?.['status']).toBe('cache-hit')
+        expect(await readFile(path.join(dir, 'dist', 'out.js'), 'utf8')).toBe('v1\n')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

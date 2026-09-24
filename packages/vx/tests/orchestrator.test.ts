@@ -303,6 +303,57 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
     TIMEOUT,
   )
 
+  // nx#32214, nx#33379: an edit two hops up left the top of the chain a hit.
+  it(
+    'an edit two hops upstream misses the whole chain and reaches the top output',
+    async () => {
+      const build = (cmd: string) => `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: ${JSON.stringify(cmd)} },
+                dependsOn: ['^build'],
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist.txt'] } },
+              },
+            },
+          }
+        `
+      await addProject(fixture.root, 'libb', {
+        files: { 'src/x.txt': 'B1' },
+        config: build('cat src/x.txt > dist.txt'),
+      })
+      await addProject(fixture.root, 'liba', {
+        deps: { libb: 'workspace:*' },
+        files: { 'src/x.txt': 'a' },
+        config: build('cat ../libb/dist.txt > dist.txt'),
+      })
+      const appDir = await addProject(fixture.root, 'app', {
+        deps: { liba: 'workspace:*' },
+        files: { 'src/x.txt': 'app' },
+        config: build('cat ../liba/dist.txt > dist.txt'),
+      })
+      const statuses = async () => {
+        const r = await run({ cwd: fixture.root, tasks: ['app#build'], log: silentLogger(fixture) })
+        return r.outcomes.map((o) => `${o.node.id}:${o.status}`).sort()
+      }
+      await statuses()
+      expect(await statuses()).toEqual([
+        'app#build:cache-hit',
+        'liba#build:cache-hit',
+        'libb#build:cache-hit',
+      ])
+
+      await writeFile(path.join(fixture.root, 'packages/libb/src/x.txt'), 'B2')
+      expect(await statuses()).toEqual([
+        'app#build:success',
+        'liba#build:success',
+        'libb#build:success',
+      ])
+      expect(await readFile(path.join(appDir, 'dist.txt'), 'utf8')).toBe('B2')
+    },
+    TIMEOUT,
+  )
+
   it(
     'multi-state: upstream input A -> B -> back to A re-hits the original entries (branch ping-pong)',
     async () => {
@@ -490,6 +541,52 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         expect(await once()).toEqual(['cache-hit', ''])
       } finally {
         delete process.env.BUILD_TARGET
+      }
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#548: past some count of declared names, a change to the
+  // last one stopped reaching the hash.
+  it(
+    'a change to the LAST of thirteen declared env names misses',
+    async () => {
+      const names = 'ABCDEFGHIJKLM'.split('').map((c) => `VX_MANY_ENV_${c}`)
+      const last = names[names.length - 1]!
+      // Declared last-sorted first, so the fold's sort is on the path too.
+      const declared = [last, ...names.slice(0, -1)]
+      await addProject(fixture.root, 'envmany', {
+        files: { 'src/a.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              show: {
+                exec: {
+                  command: "node -e 'process.stdout.write(String(process.env.${last}))' > out.txt",
+                  env: { passThrough: [${JSON.stringify(last)}] },
+                },
+                cache: {
+                  inputs: { files: ['src/**'], env: ${JSON.stringify(declared)} },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const out = path.join(fixture.root, 'packages/envmany/out.txt')
+      const once = async () => {
+        const r = await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
+        return [r.outcomes[0]?.status, await readFile(out, 'utf8')]
+      }
+      try {
+        for (const n of names) process.env[n] = 'v1'
+        expect(await once()).toEqual(['success', 'v1'])
+        expect(await once()).toEqual(['cache-hit', 'v1'])
+        process.env[last] = 'v2'
+        expect(await once()).toEqual(['success', 'v2'])
+      } finally {
+        for (const n of names) delete process.env[n]
       }
     },
     TIMEOUT,
@@ -1033,6 +1130,59 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
     TIMEOUT,
   )
 
+  // nx#29854: `--skip-nx-cache` on one target still served its dependencies
+  // from the cache. vx's policy is the run's, whatever was named.
+  it(
+    '--force, --no-cache and --cache=local:w re-execute the dependencies of the named task too',
+    async () => {
+      const counted = (name: string) =>
+        `node -e 'require("fs").appendFileSync("../../runs.txt", "${name} ")' && echo ${name} > dist.txt`
+      const build = (name: string) => `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: ${JSON.stringify(counted(name))} },
+                dependsOn: ['^build'],
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist.txt'] } },
+              },
+            },
+          }
+        `
+      await addProject(fixture.root, 'lib', { files: { 'src/x.txt': 'l' }, config: build('lib') })
+      await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        files: { 'src/x.txt': 'a' },
+        config: build('app'),
+      })
+      const runs = path.join(fixture.root, 'runs.txt')
+      const executed = async (cache?: Parameters<typeof run>[0]['cache']) => {
+        await rm(runs, { force: true })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['app#build'],
+          ...(cache === undefined ? {} : { cache }),
+          log: silentLogger(fixture),
+        })
+        expect(r.ok).toBe(true)
+        return existsSync(runs) ? (await readFile(runs, 'utf8')).trim().split(' ').sort() : []
+      }
+      expect(await executed()).toEqual(['app', 'lib'])
+      expect(await executed()).toEqual([])
+
+      expect(await executed(FORCE)).toEqual(['app', 'lib'])
+      expect(await executed(NO_CACHE)).toEqual(['app', 'lib'])
+      const localWriteOnly = {
+        localRead: false,
+        localWrite: true,
+        remoteRead: false,
+        remoteWrite: false,
+      } as const
+      expect(await executed(localWriteOnly)).toEqual(['app', 'lib'])
+      expect(await executed()).toEqual([])
+    },
+    TIMEOUT,
+  )
+
   it(
     'local read-only (--cache=local:r) restores a hit but does NOT write a miss',
     async () => {
@@ -1267,6 +1417,52 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
       await writeFile(path.join(dir, 'src/keep.txt'), 'b')
       const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  // turborepo#9218: a negated input stopped excluding once the task had a
+  // same-project upstream writing where its inputs read — the path that
+  // enumerates the project again after the upstream ran.
+  it(
+    'a negated input still excludes when a same-project upstream writes into the inputs',
+    async () => {
+      const dir = await addProject(fixture.root, 'negdep', {
+        files: { 'src/a.ts': 'a', 'src/a.test.ts': 't1' },
+        config: `
+          export default {
+            tasks: {
+              prep: {
+                exec: { command: 'mkdir -p gen && cat src/a.ts > gen/g.ts' },
+                cache: {
+                  inputs: { files: ['src/**', '!src/**/*.test.ts'] },
+                  outputs: { files: ['gen/**'] },
+                },
+              },
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                dependsOn: ['prep'],
+                cache: {
+                  inputs: { files: ['src/**', 'gen/**', '!src/**/*.test.ts'] },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const statuses = async () => {
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        return Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
+      }
+      expect(await statuses()).toEqual({ 'negdep#prep': 'success', 'negdep#build': 'success' })
+
+      await writeFile(path.join(dir, 'src/a.test.ts'), 't2')
+      expect(await statuses()).toEqual({ 'negdep#prep': 'cache-hit', 'negdep#build': 'cache-hit' })
+
+      // The control: a file build does read moves it.
+      await writeFile(path.join(dir, 'src/a.ts'), 'b')
+      expect((await statuses())['negdep#build']).toBe('success')
     },
     TIMEOUT,
   )

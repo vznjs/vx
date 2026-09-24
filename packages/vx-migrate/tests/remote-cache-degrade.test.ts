@@ -19,7 +19,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 const TOKEN = 'tok'
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
-type Mode = 'ok' | 'error' | 'hang' | 'corrupt' | 'unauthorized'
+type Mode = 'ok' | 'error' | 'hang' | 'corrupt' | 'unauthorized' | 'put413' | 'puthang'
 
 /** One server for both wires; `mode` is what the next request meets. */
 function hostileServer() {
@@ -57,6 +57,19 @@ function hostileServer() {
           return Response.json(Object.fromEntries(hashes.map((h) => [h, store.get(h) ? {} : null])))
         }
         return new Response('not found', { status: 404 })
+      }
+      if (req.method === 'PUT' && state.mode === 'put413') {
+        return new Response('too large', { status: 413 })
+      }
+      if (req.method === 'PUT' && state.mode === 'puthang') {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 2_000)
+          req.signal.addEventListener('abort', () => {
+            clearTimeout(timer)
+            resolve()
+          })
+        })
+        return new Response(null, { status: 202 })
       }
       if (req.method === 'PUT') {
         store.set(hash, new Uint8Array(await req.arrayBuffer()))
@@ -276,3 +289,113 @@ describe('a refused token costs ONE line on a whole workspace', () => {
     expect(warnings[0]).toMatch(/401.*token was refused/)
   })
 })
+
+const BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+
+/** `vx run build` through the CLI: the warnings are stderr lines, and their count is the claim. */
+async function cliRun(
+  root: string,
+  prefix: string,
+): Promise<{ exitCode: number; warnings: string[] }> {
+  // `Bun.spawn`, never `spawnSync`: the stub the child dials lives in this
+  // process's event loop.
+  const proc = Bun.spawn({
+    cmd: ['bun', BIN, 'run', 'build', '--all'],
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1', CI: '' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  const exitCode = await proc.exited
+  return {
+    exitCode,
+    warnings: `${out}${err}`.split('\n').filter((l) => l.includes(prefix)),
+  }
+}
+
+for (const wire of ['turboCache', 'nxCache'] as const) {
+  const prefix = wire === 'turboCache' ? 'vx/turbo-cache:' : 'vx/nx-cache:'
+  // turborepo#487, #2096, #8772: a failed upload was silent, and the team
+  // found out only when nothing ever hit.
+  describe(`a refused or timed-out upload is said once and stores nothing (${wire})`, () => {
+    let srv: ReturnType<typeof hostileServer>
+    let root: string
+    beforeAll(async () => {
+      srv = hostileServer()
+      const decl =
+        wire === 'turboCache'
+          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700 })`
+          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700 })`
+      root = await fixture(decl, wire)
+    })
+    afterAll(async () => {
+      await srv.stop()
+      await rm(root, { recursive: true, force: true })
+    })
+
+    const upload = async (mode: 'put413' | 'puthang'): Promise<string[]> => {
+      await coldAgain(root)
+      srv.state.mode = mode
+      let warnings: string[]
+      try {
+        const r = await cliRun(root, prefix)
+        expect(r.exitCode).toBe(0)
+        warnings = r.warnings
+      } finally {
+        srv.state.mode = 'ok'
+      }
+      expect(srv.store.size).toBe(0)
+      await coldAgain(root)
+      const next = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect(next.outcomes.map((o) => o.status)).toEqual(['success'])
+      srv.store.clear()
+      return warnings
+    }
+
+    it('a 413: green, one warning naming the PUT, and the next cold run executes', async () => {
+      const warnings = await upload('put413')
+      expect(warnings).toHaveLength(1)
+      expect(warnings[0]).toMatch(new RegExp(`^${prefix} PUT [0-9a-f]+ → 413$`))
+    })
+
+    it('an upload past its deadline: green, one warning, and the next cold run executes', async () => {
+      expect(await upload('puthang')).toEqual([`${prefix} The operation timed out.`])
+    })
+  })
+
+  // turborepo#2081: an unreachable cache server was silent.
+  describe(`an unreachable server degrades to a miss, out loud (${wire})`, () => {
+    const unreachable = async (url: string): Promise<void> => {
+      const decl =
+        wire === 'turboCache'
+          ? `turboCache({ apiUrl: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700 })`
+          : `nxCache({ server: ${JSON.stringify(url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700 })`
+      const root = await fixture(decl, wire)
+      try {
+        const r = await cliRun(root, prefix)
+        expect(r.exitCode).toBe(0)
+        expect(r.warnings.length).toBeGreaterThan(0)
+        await coldAgain(root)
+        const next = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+        expect({ ok: next.ok, statuses: next.outcomes.map((o) => o.status) }).toEqual({
+          ok: true,
+          statuses: ['success'],
+        })
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+
+    it('a closed port: green, the task executes, and a warning says the remote failed', async () => {
+      await unreachable('http://127.0.0.1:1')
+    })
+
+    it('a host that does not resolve: green, the task executes, and a warning says the remote failed', async () => {
+      await unreachable('http://no-such-host.invalid')
+    })
+  })
+}
