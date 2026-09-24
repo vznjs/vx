@@ -1,23 +1,18 @@
 ---
 // The stale-hit demo: five runs of one task that reads a file it does not
-// declare. Without JavaScript it is a table of the five runs (the key, what
-// the run did, what you get and what a run with no cache writes), a sentence
-// per run, and the report vx prints at step 4. `stale-hit.ts` unhides the
-// step buttons, four toggles and a live panel, and hides the table, the
-// sentences and the static report. The element reads the `data-step` and
-// `data-toggle` buttons, `.controls`, `.status`, `.live` with its `.config`,
-// `.key`, `.verdict`, `.got`, `.want` and `.report`, and `.static`, so they
-// are its contract with this markup.
+// list. Without JavaScript it is a table of the five runs (the key, what the
+// run did, what you get and what it should be) and the report vx prints at
+// step 4. `stale-hit.ts` unhides the step buttons and a live panel, and
+// hides the table. The element reads the `data-step` buttons, `.controls`,
+// `.status`, `.live` with its `.config`, `.key`, `.verdict`, `.got`, `.want`
+// and `.report`, and `.static`, so they are its contract with this markup.
 import Demo from '../Demo.astro'
 import {
   REPORT_ROOT,
   STALE_OUTPUT,
   STALE_PROJECT,
   STALE_STEPS,
-  STALE_TASK,
-  STALE_TOGGLES,
   configSource,
-  describeStaleRun,
   keyCellOf,
   outputOf,
   sandboxReport,
@@ -29,77 +24,64 @@ const runs = staleRuns()
 const first = runs[0]!
 // Illustrative, like the keys: the path and the duration are one run's.
 const report = sandboxReport(`${REPORT_ROOT}/packages/${STALE_PROJECT}`, 12)
-const HEAD = ['Step', 'Key', 'This run', STALE_OUTPUT, 'With no cache']
+const mark = (r: (typeof runs)[number]): string => (r.stale ? 'stale' : r.verdict)
 ---
 
 <Demo name="stale-hit">
-  <div class="controls not-content" hidden>
-    <p>
-      <span class="label">Step:</span>
-      {
-        STALE_STEPS.map((s, i) => (
-          <button type="button" data-step={s.id} aria-pressed={i === 0 ? 'true' : 'false'}>
-            {i + 1}. {s.title}
-          </button>
-        ))
-      }
-    </p>
-    <p>
-      <span class="label">Or change one thing and run:</span>
-      {
-        STALE_TOGGLES.map((t) => (
-          <button type="button" data-toggle={t.change} aria-pressed="false">
-            {t.label}
-          </button>
-        ))
-      }
-    </p>
+  <div class="controls vx-row not-content" hidden>
+    {
+      STALE_STEPS.map((s, i) => (
+        <button type="button" data-step={s.id} aria-pressed={i === 0 ? 'true' : 'false'}>
+          {i + 1}. {s.title}
+        </button>
+      ))
+    }
   </div>
-  <p class="status" aria-live="polite" hidden></p>
   <div class="live not-content" hidden>
-    <div class="facts">
-      <pre class="config">{configSource(first.state)}</pre>
-      <dl>
-        <dt>Key</dt>
-        <dd class="key">{keyCellOf(first)}</dd>
-        <dt>This run</dt>
-        <dd class="verdict">{verdictOf(first)}</dd>
-      </dl>
-    </div>
+    <pre class="config">{configSource(first.state)}</pre>
+    <dl class="facts">
+      <dt>key</dt>
+      <dd class="key">{keyCellOf(first)}</dd>
+      <dt>this run</dt>
+      <dd class="verdict">{verdictOf(first)}</dd>
+    </dl>
     <div class="compare">
       <div>
-        <p class="label"><code>{STALE_OUTPUT}</code> after the run</p>
+        <p class="vx-label">{STALE_OUTPUT}</p>
         <pre class="got">{outputOf(first)}</pre>
       </div>
       <div>
-        <p class="label">A run with no cache writes</p>
+        <p class="vx-label">should be</p>
         <pre class="want">{first.truth}</pre>
       </div>
     </div>
     <pre class="report" hidden>{report}</pre>
   </div>
+  <p class="status vx-say" aria-live="polite" hidden></p>
   <div class="static">
     <table class="runs">
-      <caption>
-        Five runs of {STALE_TASK}. <code>{STALE_OUTPUT}</code> is what each run leaves; the last
-        column is what a run with no cache would write.
-      </caption>
       <thead>
-        <tr>{HEAD.map((h) => <th scope="col">{h}</th>)}</tr>
+        <tr>
+          <th scope="col">Step</th>
+          <th scope="col">Key</th>
+          <th scope="col">This run</th>
+          <th scope="col">{STALE_OUTPUT}</th>
+          <th scope="col">Should be</th>
+        </tr>
       </thead>
       <tbody>
         {
           runs.map((r, i) => (
-            <tr data-verdict={r.stale ? 'stale' : r.verdict}>
+            <tr data-verdict={mark(r)}>
               <th scope="row">
                 {i + 1}. {STALE_STEPS[i]!.title}
               </th>
-              <td data-label={HEAD[1]}>{keyCellOf(r)}</td>
-              <td data-label={HEAD[2]}>{verdictOf(r)}</td>
-              <td data-label={HEAD[3]}>
-                <pre>{outputOf(r)}</pre>
+              <td>{keyCellOf(r)}</td>
+              <td class="verdict">{verdictOf(r)}</td>
+              <td>
+                <pre class="got">{outputOf(r)}</pre>
               </td>
-              <td data-label={HEAD[4]}>
+              <td>
                 <pre>{r.truth}</pre>
               </td>
             </tr>
@@ -107,164 +89,79 @@ const HEAD = ['Step', 'Key', 'This run', STALE_OUTPUT, 'With no cache']
         }
       </tbody>
     </table>
-    <ol class="story">
-      {
-        runs.map((r, i) => (
-          <li>
-            <strong>{STALE_STEPS[i]!.title}.</strong> {describeStaleRun(r)}
-          </li>
-        ))
-      }
-    </ol>
-    <p class="label">What vx prints at step 4, on Linux:</p>
+    <p class="vx-label">Step 4 prints:</p>
     <pre class="report">{report}</pre>
   </div>
   <Fragment slot="caption">
-    A model of one task, not vx itself. The keys are digests the model computes, shortened to
-    seven hex digits, and the path in the report is an example. Which keys move and which runs hit
-    is what vx does on the same files, and the report is the one vx prints; tests run vx to check
-    both.
+    The keys come from a model of this task. Tests check it against real vx.
   </Fragment>
 </Demo>
 
 <!--
   Global, under the element's tag: the element rewrites the live panel's
   text, and Astro's scoping attribute is only on the markup it rendered.
+  The tones are the pictures': a miss runs (warn), a right hit (ok), a stale
+  hit or a failure (danger).
 -->
 <style is:global>
   vx-stale-hit {
     display: block;
-    font-size: var(--sl-text-sm);
   }
-  vx-stale-hit pre {
-    margin: 0;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.25rem;
-    background: var(--sl-color-gray-6);
-    font-family: var(--sl-font-mono, var(--sl-font-system-mono));
-    font-size: var(--sl-text-xs);
-    white-space: pre;
-    overflow-x: auto;
-  }
-  /* Every output line is at most 16 characters, so it fits unwrapped. */
   vx-stale-hit td pre {
     padding: 0.25rem 0.5rem;
   }
-  vx-stale-hit .runs th,
-  vx-stale-hit .runs td {
-    padding-inline: 0.35rem;
+  vx-stale-hit .runs :is(thead th, td.verdict) {
+    white-space: nowrap;
   }
-  vx-stale-hit caption {
-    text-align: start;
-    padding-block: 0.5rem;
-  }
-  vx-stale-hit tr[data-verdict='stale'] td:nth-child(3),
-  vx-stale-hit tr[data-verdict='failed'] td:nth-child(3),
-  vx-stale-hit .verdict[data-verdict='stale'],
-  vx-stale-hit .verdict[data-verdict='failed'] {
-    color: var(--sl-color-red-high);
-    font-weight: 700;
-  }
-  vx-stale-hit tr[data-verdict='stale'] td:nth-child(4) pre,
-  vx-stale-hit .got[data-verdict='stale'] {
-    border-color: var(--sl-color-red);
-  }
-  vx-stale-hit td:nth-child(2),
-  vx-stale-hit .key {
-    font-family: var(--sl-font-mono, var(--sl-font-system-mono));
-  }
-  vx-stale-hit .label {
-    margin: 0 0 0.25rem;
-    color: var(--sl-color-gray-2);
-  }
-  vx-stale-hit .controls[hidden],
-  vx-stale-hit .live[hidden],
-  vx-stale-hit .static[hidden],
-  vx-stale-hit .report[hidden] {
+  vx-stale-hit :is(.controls, .live, .static, .report)[hidden] {
     display: none;
   }
-  vx-stale-hit .controls p {
-    margin: 0 0 0.5rem;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  vx-stale-hit .controls button {
-    padding: 0.1rem 0.6rem;
-    border: 1px solid var(--sl-color-gray-4);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--sl-color-white);
-    font: inherit;
-    cursor: pointer;
-  }
-  vx-stale-hit .controls button[aria-pressed='true'] {
-    background: var(--sl-color-accent-low);
-    border-color: var(--sl-color-accent);
-  }
-  vx-stale-hit .controls button:focus-visible {
-    outline: 2px solid var(--sl-color-text-accent);
-    outline-offset: 2px;
-  }
-  vx-stale-hit .status {
-    min-height: 3em;
-    margin: 0.75rem 0 0;
-  }
-  /* The config is the widest thing in the panel: it gets a row of its own. */
-  vx-stale-hit .facts,
-  vx-stale-hit .compare {
+  vx-stale-hit .live {
     display: grid;
     gap: 0.75rem;
-    margin-top: 0.75rem;
   }
-  vx-stale-hit .compare {
-    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  }
-  vx-stale-hit dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
+  vx-stale-hit .facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
     gap: 0.25rem 0.75rem;
     margin: 0;
-    align-content: start;
+    font-family: var(--vx-mono);
+    font-size: 13px;
   }
-  vx-stale-hit dt {
-    color: var(--sl-color-gray-2);
+  vx-stale-hit .facts dt {
+    color: var(--vx-muted);
   }
-  vx-stale-hit dd {
-    margin: 0;
+  vx-stale-hit .facts dd {
+    margin: 0 1rem 0 0;
   }
-  vx-stale-hit .live .report {
-    margin-top: 0.75rem;
+  vx-stale-hit .compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 0.75rem;
   }
-  vx-stale-hit .story {
+  vx-stale-hit .compare .vx-label,
+  vx-stale-hit .static .vx-label {
+    margin: 0 0 0.25rem;
+  }
+  vx-stale-hit .static .vx-label {
     margin-top: 1rem;
   }
-  /* Five columns with code in two of them do not fit a phone: one block per step. */
-  @media (max-width: 40rem) {
-    vx-stale-hit .runs,
-    vx-stale-hit .runs caption,
-    vx-stale-hit .runs tbody,
-    vx-stale-hit .runs tr,
-    vx-stale-hit .runs th,
-    vx-stale-hit .runs td {
-      display: block;
-    }
-    vx-stale-hit .runs thead {
-      display: none;
-    }
-    vx-stale-hit .runs tr {
-      padding-block: 0.5rem;
-      border-bottom: 1px solid var(--sl-color-gray-5);
-    }
-    vx-stale-hit .runs td {
-      border: none;
-      padding-block: 0.1rem;
-    }
-    vx-stale-hit .runs td::before {
-      content: attr(data-label) ': ';
-      font-weight: 600;
-    }
+  vx-stale-hit [data-verdict='miss'] .verdict,
+  vx-stale-hit .verdict[data-verdict='miss'] {
+    color: var(--vx-warn);
+  }
+  vx-stale-hit [data-verdict='hit'] .verdict,
+  vx-stale-hit .verdict[data-verdict='hit'] {
+    color: var(--vx-ok);
+  }
+  vx-stale-hit :is([data-verdict='stale'], [data-verdict='failed']) .verdict,
+  vx-stale-hit .verdict:is([data-verdict='stale'], [data-verdict='failed']) {
+    color: var(--vx-danger);
+    font-weight: 700;
+  }
+  vx-stale-hit [data-verdict='stale'] .got,
+  vx-stale-hit .got[data-verdict='stale'] {
+    border-color: var(--vx-danger);
   }
 </style>

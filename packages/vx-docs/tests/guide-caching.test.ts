@@ -8,8 +8,9 @@ import { describe, expect, it } from 'bun:test'
 import {
   TOY_SCENARIOS,
   TOY_START,
-  describeRun,
+  TOY_TASKS,
   rowOf,
+  runSummary,
   toyRun,
   toyRuns,
   type ToyChange,
@@ -130,6 +131,15 @@ describe('the key model', () => {
     })
   })
 
+  it("counts each change's run in one line, for the live region", () => {
+    expect(TOY_SCENARIOS.map((s) => [s.id, runSummary(toyRuns(s.changes).at(-1)!)])).toEqual([
+      ['utils', '8 run, 0 hit.'],
+      ['app', '2 run, 6 hit.'],
+      ['env', '4 run, 4 hit.'],
+      ['stale', '0 run, 8 hit. 8 stale.'],
+    ])
+  })
+
   it('hits the old entries when an edit is undone', () => {
     const edit: ToyChange = { kind: 'edit', input: 'utils/src/index.ts' }
     const [first, , undone] = toyRuns([edit, edit])
@@ -193,8 +203,7 @@ describe('guide/caching', () => {
   const main = content(html)
   const prose = text(main)
   const element = only(main, /<vx-key-calculator\b[^>]*>([\s\S]*?)<\/vx-key-calculator>/g)
-  const scenarios = only(element, /<div class="scenarios\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g)
-  const tables = [...scenarios.matchAll(/<table data-scenario="([^"]+)"[^>]*>([\s\S]*?)<\/table>/g)]
+  const table = only(element, /(<table class="static\b[\s\S]*?<\/table>)/g)
   const runOf = (id: string): ToyRun =>
     toyRuns(TOY_SCENARIOS.find((s) => s.id === id)!.changes).at(-1)!
 
@@ -205,94 +214,83 @@ describe('guide/caching', () => {
     ])
   })
 
-  it('ships one static table per scenario, each row saying what the key and the run did', () => {
-    expect(tables.map((t) => t[1])).toEqual(Object.keys(SCENARIO))
-    for (const [, id, table] of tables) {
-      const truth = SCENARIO[id!]!
-      const rows = tableRows(`<table>${table}</table>`)
-      expect(rows.map((r) => [r[0], r[3], r[4]])).toEqual(
-        ALL.map((task) => [
-          task,
-          truth.moved[task] === 'input'
-            ? 'moved: own input'
-            : truth.moved[task] === 'upstream'
-              ? 'moved: upstream key'
-              : 'same',
-          `${truth.stale.includes(task) ? (truth.hit.includes(task) ? 'stale hit' : 'runs, on a stale input') : truth.hit.includes(task) ? 'hit' : 'runs'}`,
-        ]),
-      )
-      // A key that is `same` shows one digest twice; a moved one, two.
-      for (const r of rows) expect(r[1] === r[2]).toBe(r[3] === 'same')
-    }
-  })
-
-  it('renders what the model says, so the element and the fallback agree', () => {
-    for (const [, id, table] of tables) {
-      expect(tableRows(`<table>${table}</table>`)).toEqual(runOf(id!).tasks.map(rowOf))
-      const caption = only(table!, /<caption\b[^>]*>([\s\S]*?)<\/caption>/g)
-      const s = TOY_SCENARIOS.find((x) => x.id === id)!
-      expect(text(caption)).toBe(`${s.title}. ${describeRun(runOf(id!))}`)
-    }
-    const live = only(element, /<table class="live\b[^"]*"[^>]*>([\s\S]*?)<\/table>/g)
-    expect(tableRows(`<table>${live}</table>`)).toEqual(toyRun(TOY_START).tasks.map(rowOf))
-  })
-
-  it('says the stale hit plainly, in the stale table', () => {
-    const [, , stale] = tables.find((t) => t[1] === 'stale')!
-    expect(text(only(stale!, /<caption\b[^>]*>([\s\S]*?)<\/caption>/g))).toBe(
-      'Stop declaring utils/tsconfig.json, run, then edit it. No key moved. The run hits all 8 ' +
-        'tasks. utils#build, utils#test, ui#build, ui#test, api#build, api#test, app#build and ' +
-        'app#test are stale hits: no key saw the change, so the cache replays outputs built ' +
-        'before it.',
+  // The simple brief (2026-09-24): one small table, one column per change,
+  // where the page had a table per change with every key before and after.
+  it('ships one small table: each task, and whether it runs or hits after each change', () => {
+    const head = [
+      ...only(table, /<thead\b[^>]*>([\s\S]*?)<\/thead>/g).matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g),
+    ]
+    expect(head.map((m) => text(m[1]!))).toEqual([
+      'Task',
+      'Edit utils',
+      'Edit app',
+      'Change API_URL',
+      'Edit a file utils does not list',
+    ])
+    const ids = Object.keys(SCENARIO)
+    expect(tableRows(table)).toEqual(
+      ALL.map((task) => [
+        task,
+        ...ids.map((id) => {
+          const truth = SCENARIO[id]!
+          const hit = truth.hit.includes(task)
+          if (truth.stale.includes(task)) return hit ? 'stale hit' : 'runs, stale input'
+          return hit ? 'hit' : 'runs'
+        }),
+      ]),
     )
   })
 
-  it('keeps the controls that need JavaScript hidden, with a toggle per input', () => {
+  it('renders what the model says, so the element and the fallback agree', () => {
+    expect(TOY_SCENARIOS.map((s) => s.title)).toEqual([
+      'Edit utils',
+      'Edit app',
+      'Change API_URL',
+      'Edit a file utils does not list',
+    ])
+    expect(tableRows(table)).toEqual(
+      TOY_TASKS.map((t, i) => [t.id, ...TOY_SCENARIOS.map((s) => rowOf(runOf(s.id).tasks[i]!)[2])]),
+    )
+    const live = only(element, /<table class="live\b[^"]*"[^>]*>([\s\S]*?)<\/table>/g)
+    const liveHead = [...live.matchAll(/<th scope="col">([\s\S]*?)<\/th>/g)].map((m) => text(m[1]!))
+    expect(liveHead).toEqual(['Task', 'Key', 'This run'])
+    expect(tableRows(`<table>${live}</table>`)).toEqual(toyRun(TOY_START).tasks.map(rowOf))
+  })
+
+  it('says the stale hit plainly, in its own column', () => {
+    const stale = [
+      ...table.matchAll(/<td data-scenario="stale" data-outcome="([^"]+)">([\s\S]*?)<\/td>/g),
+    ]
+    expect(stale.map((m) => `${m[1]} ${text(m[2]!)}`)).toEqual(ALL.map(() => 'stale-hit stale hit'))
+  })
+
+  it('keeps the controls that need JavaScript hidden, with an edit button per package and the env', () => {
     expect(only(element, /<div class="controls\b[^"]*"([^>]*)>/g).trim()).toBe('hidden')
     expect(only(element, /<p class="status\b[^"]*"([^>]*)>/g).trim()).toBe(
       'aria-live="polite" hidden',
     )
     expect(only(element, /<table class="live\b[^"]*"([^>]*)>/g).trim()).toBe('hidden')
-    const toggles = (attr: string): string[] =>
-      [
-        ...element.matchAll(
-          new RegExp(`<button\\b[^>]*${attr}="([^"]+)" aria-pressed="(\\w+)"`, 'g'),
-        ),
-      ].map((m) => `${m[1]} ${m[2]}`)
-    expect(toggles('data-edit')).toEqual([
+    expect(only(element, /<table class="static\b[^"]*"([^>]*)>/g).trim()).toBe('')
+    expect(
+      [...element.matchAll(/<button\b[^>]*data-edit="([^"]+)" aria-pressed="(\w+)"/g)].map(
+        (m) => `${m[1]} ${m[2]}`,
+      ),
+    ).toEqual([
       'utils/src/index.ts false',
-      'utils/tsconfig.json false',
       'ui/src/index.ts false',
-      'ui/tsconfig.json false',
       'api/src/index.ts false',
-      'api/tsconfig.json false',
       'app/src/index.ts false',
-      'app/tsconfig.json false',
       'API_URL false',
     ])
-    expect(toggles('data-declare')).toEqual([
-      'utils/tsconfig.json true',
-      'ui/tsconfig.json true',
-      'api/tsconfig.json true',
-      'app/tsconfig.json true',
-      'API_URL true',
-    ])
-    expect(
-      [...element.matchAll(/<button\b[^>]*data-scenario="([^"]+)"/g)].map((m) => m[1]),
-    ).toEqual(Object.keys(SCENARIO))
   })
 
-  it('says in its caption that the keys come from a model', () => {
+  it('says in one line that the keys come from a model a test holds to vx', () => {
     const figures = [...main.matchAll(/<figure class="vx-demo\b[^"]*">([\s\S]*?)<\/figure>/g)]
       .map((m) => m[1]!)
       .filter((f) => f.includes('<vx-key-calculator'))
     expect(figures).toHaveLength(1)
     expect(text(only(figures[0]!, /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g))).toBe(
-      "A model of vx's key fold, not vx itself: the playground page runs the real planner in the " +
-        'browser. The keys are digests the model computes, shortened to seven hex ' +
-        "digits; vx's are xxHash3. Which keys move, which tasks hit and which hits are stale is " +
-        'what vx does on the same workspace, and a test runs vx to check it. Each table starts ' +
-        'from a first run on an empty cache.',
+      'The keys come from a model of vx. A test checks it against real vx.',
     )
   })
 

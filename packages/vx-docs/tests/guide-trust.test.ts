@@ -37,7 +37,6 @@ import {
   STALE_START,
   STALE_STEPS,
   STALE_TASK,
-  STALE_TOGGLES,
   applyStaleChange,
   configSource,
   describeStaleRun,
@@ -395,14 +394,24 @@ describe('guide/trust', () => {
     }
   })
 
-  it('ships the five runs as a static table: key, verdict, what you get, what a run writes', () => {
+  it('ships the five runs as a static table: key, verdict, what you get, what it should be', () => {
+    const head = [
+      ...only(table, /<thead\b[^>]*>([\s\S]*?)<\/thead>/g).matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g),
+    ]
+    expect(head.map((m) => text(m[1]!))).toEqual([
+      'Step',
+      'Key',
+      'This run',
+      'dist/out.txt',
+      'Should be',
+    ])
     const rows = tableRows(table)
     expect(rows.map((r) => [r[0], r[2], r[3], r[4]])).toEqual([
-      ['1. First run', 'miss: runs', flat(out(0, 0)), flat(out(0, 0))],
-      ['2. Edit src/index.ts', 'miss: runs', flat(out(1, 0)), flat(out(1, 0))],
+      ['1. First run', 'runs', flat(out(0, 0)), flat(out(0, 0))],
+      ['2. Edit src/index.ts', 'runs', flat(out(1, 0)), flat(out(1, 0))],
       ['3. Edit banner.txt', 'stale hit', flat(out(1, 0)), flat(out(1, 1))],
-      ['4. Turn on exec.sandbox', 'fails: sandbox violation', 'none: it failed', flat(out(1, 1))],
-      ['5. Declare banner.txt', 'miss: runs', flat(out(1, 1)), flat(out(1, 1))],
+      ['4. Turn on the sandbox', 'fails', 'nothing', flat(out(1, 1))],
+      ['5. List banner.txt', 'runs', flat(out(1, 1)), flat(out(1, 1))],
     ])
     // A key that did not move shows one digest; one that moved shows two.
     expect(rows.map((r) => r[1]!.replace(/[0-9a-f]{7}/g, 'K'))).toEqual([
@@ -425,23 +434,18 @@ describe('guide/trust', () => {
         flat(r.truth),
       ]),
     )
-    const story = only(staticPart, /<ol class="story\b[^"]*"[^>]*>([\s\S]*?)<\/ol>/g)
-    expect([...story.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))).toEqual(
-      runs.map((r, i) => `${STALE_STEPS[i]!.title}. ${describeStaleRun(r)}`),
-    )
   })
 
-  it('says the stale hit and the failure plainly, in the static sentences', () => {
-    const story = only(staticPart, /<ol class="story\b[^"]*"[^>]*>([\s\S]*?)<\/ol>/g)
-    const items = [...story.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
-    expect(items[2]).toBe(
-      'Edit banner.txt. The key did not move. The run hits and replays an output built before ' +
-        'the edit: a stale hit, on a green run.',
-    )
-    expect(items[3]).toBe(
-      'Turn on exec.sandbox. The key moved. The run misses, and the sandbox denies the read of ' +
-        'banner.txt, so the task fails and nothing is stored.',
-    )
+  // The page's sentences are the live region's now; the static table says
+  // the same in its verdict column.
+  it('says each run plainly, in the live sentence the element speaks', () => {
+    expect(staleRuns().map(describeStaleRun)).toEqual([
+      'The cache is empty, so the task runs and vx saves its output.',
+      'The key changed, so the task runs and vx saves its output.',
+      'The key did not change, so vx hands back the old file. It is wrong, and the run passes.',
+      'The key changed. The sandbox hides banner.txt, so the task fails and vx saves nothing.',
+      'The key changed, so the task runs and vx saves its output.',
+    ])
   })
 
   it('shows the report vx prints at step 4, for the illustrative path', () => {
@@ -468,23 +472,16 @@ describe('guide/trust', () => {
         (m) => `${m[1]} ${m[2]}`,
       ),
     ).toEqual(['first true', 'source false', 'banner false', 'sandbox false', 'declare false'])
-    expect(
-      [...element.matchAll(/<button\b[^>]*data-toggle="([^"]+)" aria-pressed="(\w+)"/g)].map(
-        (m) => `${m[1]} ${m[2]}`,
-      ),
-    ).toEqual(STALE_TOGGLES.map((t) => `${t.change} false`))
+    expect(element).not.toContain('data-toggle')
   })
 
-  it('says in its caption that the keys and the path are illustrative', () => {
+  it('says in one line that the keys come from a model tests hold to vx', () => {
     const figures = [...main.matchAll(/<figure class="vx-demo\b[^"]*">([\s\S]*?)<\/figure>/g)]
       .map((m) => m[1]!)
       .filter((f) => f.includes('<vx-stale-hit'))
     expect(figures).toHaveLength(1)
     expect(text(only(figures[0]!, /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g))).toBe(
-      'A model of one task, not vx itself. The keys are digests the model computes, shortened ' +
-        'to seven hex digits, and the path in the report is an example. Which keys move and ' +
-        'which runs hit is what vx does on the same files, and the report is the one vx ' +
-        'prints; tests run vx to check both.',
+      'The keys come from a model of this task. Tests check it against real vx.',
     )
   })
 

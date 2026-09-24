@@ -1,22 +1,16 @@
 ---
-// The pipeline as a strip: the run's stages in order, then the hooks around
-// and beside the run. Plain HTML, so it is a diagram without JavaScript. The
-// explorer draws it with `links` (each stage jumps to its section, and
-// `pipeline-explorer.ts` turns the links into toggle buttons); the extending
-// page draws it with `lit`, the stages one example fills.
-import type { PluginHook } from '@vzn/vx'
+// The pipeline as a strip: the run's stages in order, then the hooks outside
+// the run. Plain HTML, so it is a diagram without JavaScript. Each stage
+// links to its section in the explorer, and `pipeline-explorer.ts` turns the
+// links into toggle buttons.
 import { STAGES, RUN_STAGES } from './model/pipeline.js'
 
 interface Props {
   /** Names the strip for assistive technology. */
   label: string
-  /** The stages to light up. */
-  lit?: readonly PluginHook[]
-  /** Link each stage to `#vx-stage-<hook>`. */
-  links?: boolean
 }
 
-const { label, lit = [], links = false } = Astro.props
+const { label } = Astro.props
 const around = STAGES.filter((s) => s.group !== 'run')
 ---
 
@@ -24,33 +18,23 @@ const around = STAGES.filter((s) => s.group !== 'run')
   <ol class="run">
     {
       RUN_STAGES.map((s) => (
-        <li data-hook={s.hook} class:list={{ lit: lit.includes(s.hook) }}>
-          {links ? (
-            <a href={`#vx-stage-${s.hook}`} data-hook={s.hook}>
-              <code>{s.hook}</code>
-            </a>
-          ) : (
+        <li data-hook={s.hook}>
+          <a href={`#vx-stage-${s.hook}`} data-hook={s.hook}>
             <code>{s.hook}</code>
-          )}
-          {lit.includes(s.hook) && <span class="sr-only">(this example)</span>}
+          </a>
         </li>
       ))
     }
   </ol>
   <div class="around">
-    <span class="label">Around the run and beside it:</span>
+    <span class="label">outside the run:</span>
     <ul>
       {
         around.map((s) => (
-          <li data-hook={s.hook} class:list={{ lit: lit.includes(s.hook) }}>
-            {links ? (
-              <a href={`#vx-stage-${s.hook}`} data-hook={s.hook}>
-                <code>{s.hook}</code>
-              </a>
-            ) : (
+          <li data-hook={s.hook}>
+            <a href={`#vx-stage-${s.hook}`} data-hook={s.hook}>
               <code>{s.hook}</code>
-            )}
-            {lit.includes(s.hook) && <span class="sr-only">(this example)</span>}
+            </a>
           </li>
         ))
       }
@@ -59,15 +43,18 @@ const around = STAGES.filter((s) => s.group !== 'run')
 </div>
 
 <style>
+  /* The strip is drawn as the pictures draw a box: mono, the kit's corner
+     and strokes, the accent for the stage in question. */
   .vx-pipeline {
     margin-block: 0.5rem 1rem;
+    font-family: var(--vx-mono);
   }
   ol,
   ul {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.35rem 0;
+    gap: 0.4rem 0;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -80,46 +67,46 @@ const around = STAGES.filter((s) => s.group !== 'run')
   ol li + li::before {
     content: '→' / '';
     padding-inline: 0.3rem;
-    color: var(--sl-color-gray-3);
+    color: var(--vx-muted);
   }
   ul li + li::before {
     content: '·' / '';
     padding-inline: 0.4rem;
-    color: var(--sl-color-gray-3);
-  }
-  code,
-  a {
-    border-radius: 999px;
+    color: var(--vx-muted);
   }
   code {
     display: inline-block;
-    padding: 0.15rem 0.6rem;
-    border: 1px solid var(--sl-color-gray-4);
-    background: transparent;
-    font-size: var(--sl-text-sm);
+    padding: 0.25rem 0.6rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface-2);
+    color: var(--vx-fg);
+    font-family: var(--vx-mono);
+    font-size: 13px;
   }
   a {
+    border-radius: 8px;
     text-decoration: none;
   }
   a:focus-visible {
-    outline: 2px solid var(--sl-color-text-accent);
+    outline: 2px solid var(--vx-link);
     outline-offset: 2px;
   }
-  .lit code,
   a[aria-pressed='true'] code {
-    border-color: var(--sl-color-accent);
-    background: var(--sl-color-accent-low);
+    border-color: var(--vx-accent);
+    background: color-mix(in srgb, var(--vx-accent) 12%, var(--vx-surface-2));
+    box-shadow: inset 0 0 0 1px var(--vx-accent);
     font-weight: 700;
   }
   .around {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.35rem 0.5rem;
+    gap: 0.4rem 0.5rem;
     margin-top: 0.6rem;
   }
   .label {
-    font-size: var(--sl-text-sm);
-    color: var(--sl-color-gray-2);
+    font-size: 13px;
+    color: var(--vx-muted);
   }
 </style>

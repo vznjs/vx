@@ -1,13 +1,11 @@
 // `<vx-pipeline-explorer>`: enhances the static explorer
 // `PipelineExplorer.astro` renders. The strip's links become toggle
-// buttons; choosing a stage shows its section alone, marks its table row,
-// and says in the live region what a plugin decides there and which
-// first-party plugins fill it. Choosing it again, or Escape, shows every
-// stage, which is the page without JavaScript.
-import { STAGES, filledBy } from './model/pipeline.js'
+// buttons and the table goes; choosing a stage shows its section alone and
+// says in the live region what a plugin decides there, the table's cell for
+// it. Choosing it again, or Escape, shows every stage.
+import { STAGES } from './model/pipeline.js'
 
-const HINT =
-  'Showing every stage. Choose one in the pipeline above to see only its hook, its first-party plugins and an example.'
+const HINT = 'Every stage. Pick one above.'
 
 class PipelineExplorer extends HTMLElement {
   #selected: string | undefined
@@ -37,6 +35,7 @@ class PipelineExplorer extends HTMLElement {
       link.setAttribute('aria-controls', `vx-stage-${link.dataset['hook']}`)
     }
     this.querySelector<HTMLElement>('.status')!.hidden = false
+    this.querySelector<HTMLElement>('.overview')!.hidden = true
     // Open on the first stage: thirteen sections at once is the page
     // without JavaScript, and the explorer exists to show one.
     this.#selected = STAGES[0]!.hook
@@ -60,22 +59,13 @@ class PipelineExplorer extends HTMLElement {
     for (const section of this.querySelectorAll<HTMLElement>('section[data-hook]')) {
       section.hidden = hook !== undefined && section.dataset['hook'] !== hook
     }
-    for (const row of this.querySelectorAll<HTMLElement>('tr[data-hook]')) {
-      row.classList.toggle('is-selected', row.dataset['hook'] === hook)
-    }
     this.querySelector<HTMLElement>('.status')!.textContent =
       hook === undefined ? HINT : describe(hook)
   }
 }
 
 function describe(hook: string): string {
-  const n = STAGES.findIndex((s) => s.hook === hook)
-  const stage = STAGES[n]!
-  const who =
-    stage.firstParty.length === 0
-      ? 'No first-party plugin fills it yet.'
-      : `First-party: ${filledBy(stage)}.`
-  return `${hook}, stage ${n + 1} of ${STAGES.length}. ${stage.plugin} ${who}`
+  return STAGES.find((s) => s.hook === hook)!.plugin
 }
 
 customElements.define('vx-pipeline-explorer', PipelineExplorer)
