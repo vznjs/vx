@@ -255,6 +255,13 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (2026-09-16). On a shared box remove that directory before a run as
   another user. A file-system refusal (`EACCES`, `ENOSPC`) reaching the
   user as an "internal error" or a stack is a defect: `isFsRefusal`.
+- astro prerenders in a CHILD process it spawns as `node`, and
+  `bun --bun` redirects that child only through a shim it writes under
+  `/tmp/bun-node-*`; a sandboxed task cannot write it, so on CI the
+  prerender ran under Node while the parent ran Bun, and a box whose shim
+  already existed saw Bun everywhere (items 700, 708). "Runs under Bun"
+  is a claim about every process a task spawns: probe it without the
+  host's shim (`typeof Bun` printed from the code in question).
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI
