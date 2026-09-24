@@ -6,7 +6,12 @@ import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, utimes, stat, rename } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { Cache, type RunRecord, FILE_HASH_RACY_MS } from '../src/cache/cache.js'
+import {
+  ArtifactVanishedError,
+  Cache,
+  type RunRecord,
+  FILE_HASH_RACY_MS,
+} from '../src/cache/cache.js'
 
 /** Git blob OID (sha1 domain — fixtures live outside any repo). */
 function blobOid(content: string): string {
@@ -480,8 +485,9 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
     // This used to return quietly, which is silent data loss: the caller has
     // already wiped the declared outputs by the time it restores, so a quiet
     // return reports a green cache hit over an emptied output tree.
-    await expect(cache.restoreOutputs('does-not-exist', projectDir)).rejects.toThrow(
-      /corrupt artifact/i,
+    // Gone, not corrupt: the caller turns it into a miss (vanished-artifact.test.ts).
+    await expect(cache.restoreOutputs('does-not-exist', projectDir)).rejects.toBeInstanceOf(
+      ArtifactVanishedError,
     )
   })
 
