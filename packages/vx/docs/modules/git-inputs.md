@@ -21,6 +21,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
+  clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined

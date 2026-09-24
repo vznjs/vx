@@ -154,6 +154,21 @@ over (in order):
     declare the block (`tests/uncached-upstream-key.test.ts` pins both
     arms).
 
+    Declaring nothing, such a task may also have **written** anywhere
+    in its project, so what the run learned about that project at its
+    start — the git listing, the index OIDs, the `package.json` digest
+    — is dropped once its command exits, pass or fail, and a later key
+    re-lists and hashes by content. For the same reason a task after it
+    in the same project (`dependsOn`, even with `tasks: []`) is never
+    keyed up front by the local short-circuit or the remote prefetch.
+    Without both, an uncached `gen` that copies a seed into a `build`'s
+    declared `config.json` replayed seed B's build under seed A
+    (turborepo#13788, item 741). A sandbox narrows the reach to its
+    write grants: none reaches nothing, and a grant elsewhere in the
+    workspace reaches every project. An unsandboxed write into another
+    project crosses a project boundary and is not tracked, as for a
+    cached task's undeclared write (`tests/undeclared-writes.test.ts`).
+
     A file whose name is **not valid UTF-8** (Linux allows any byte
     but `/` and NUL) cannot be opened from a string, so it cannot be
     hashed: a task whose globs select one is refused by name, and so

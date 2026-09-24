@@ -39,6 +39,7 @@ import {
   reachedWithheld,
   sandboxRequestFor,
   sweepPlaceholders,
+  undeclaredWriteReach,
   untouchedPlaceholderLine,
   type WithheldLink,
   withheldLinkLine,
@@ -341,6 +342,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   args.persistentRegistry?.set(node.id, spawn.child)
+  forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   return {
     node,
     status: 'success',
@@ -728,9 +730,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Pass or fail, the command may have written where its project's
+  // run-start facts describe; a remote executor wrote on its own disk.
+  const writeReach =
+    args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
   for (;;) {
     attempt++
     const a = await runAttempt()
+    forgetUndeclaredWrites(args, writeReach)
     result = a.result
     effectiveExitCode = a.exitCode
 
@@ -871,6 +878,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
       : {}),
   }
+}
+
+/**
+ * Drop the run's facts about files a task may have written without
+ * declaring them (`undeclaredWriteReach`): the project's git snapshot and
+ * its index OIDs, and its `package.json` digest. The next reader
+ * re-enumerates the project (one `git ls-files`) and hashes its files by
+ * content; the per-declaration file-list memos are keyed on the snapshot
+ * array, so they miss with it (item 741).
+ */
+function forgetUndeclaredWrites(args: ExecuteArgs, reach: 'none' | 'project' | 'workspace'): void {
+  if (reach === 'none') return
+  if (reach === 'workspace') {
+    args.gitFilesCache?.clear()
+    args.hashCache?.packageJson.clear()
+    return
+  }
+  args.gitFilesCache?.delete(args.node.projectDir)
+  args.gitFilesCache?.invalidateWorkspacePartition()
+  args.hashCache?.packageJson.delete(args.node.projectDir)
 }
 
 /**

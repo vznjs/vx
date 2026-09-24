@@ -14,6 +14,7 @@
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
+import { undeclaredWriteReach } from './sandbox-request.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
 import { keyUpstream } from './upstream.js'
 
@@ -56,9 +57,11 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   // dep's accumulated producers fold forward.
   //   - outputProjects: the project names of every upstream task declaring
   //     cache.outputs.files (project-relative outputs land in the producer's
-  //     own dir).
+  //     own dir), and of every upstream with no cache block that may write
+  //     in its own project (`undeclaredWriteReach`, item 741).
   //   - wsOutputUpstream: any upstream declares cache.outputs.workspaceFiles
-  //     (root-anchored, boundary-ignoring outputs).
+  //     (root-anchored, boundary-ignoring outputs), or has no cache block
+  //     and a sandbox write grant elsewhere in the workspace.
   const outputProjectsById = new Map<string, ReadonlySet<string>>()
   const wsOutputUpstreamById = new Map<string, boolean>()
   const stableKeys: StableKey[] = []
@@ -87,6 +90,13 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       const depOut = depNode.config.cache?.outputs
       if ((depOut?.files?.length ?? 0) > 0) outputProjects.add(depNode.projectName)
       if ((depOut?.workspaceFiles?.length ?? 0) > 0) wsOutputUpstream = true
+      // An uncached producer declares no outputs, yet a same-project reader
+      // after it (`tasks: []` decouples the key, not the order) read the
+      // bytes it wrote: its key taken up front was the pre-producer one, and
+      // the fourth run of seeds A,B,B,A replayed B over A (turborepo#13788).
+      const reach = undeclaredWriteReach(depNode, args.workspaceRoot)
+      if (reach === 'project') outputProjects.add(depNode.projectName)
+      else if (reach === 'workspace') wsOutputUpstream = true
     }
     outputProjectsById.set(id, outputProjects)
     wsOutputUpstreamById.set(id, wsOutputUpstream)
