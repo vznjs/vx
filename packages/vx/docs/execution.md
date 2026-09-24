@@ -73,13 +73,14 @@ terminal and a task succeeding or failing. Read it alongside
  │       the dirty AND untracked sets, the one worktree walk;
  │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
  │       memoized per process and shared with the file hasher, which
- │       would otherwise spawn it again for the object format; a
- │       `core.*` config read)
+ │       would otherwise spawn it again for the object format; `var -l`
+ │       for core.autocrlf and the attributes files git reads outside
+ │       the tree)
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
  │       walked the same tree again. A fifth, `check-attr`, runs only
- │       when a `.gitattributes` could rewrite bytes.
+ │       when an attributes file could rewrite bytes.
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
  │    (every project that declares the task). Anchored entries

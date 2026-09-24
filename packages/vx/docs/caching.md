@@ -641,9 +641,19 @@ is gated in three steps, and the common case pays nothing:
    auto-detected text file with no attribute needed, so no OID is
    trusted.
 2. Otherwise, if no attributes source exists anywhere (no in-tree
-   `.gitattributes`, no `$GIT_DIR/info/attributes`, no
-   `core.attributesFile`), no rule can name a filter and vx does
-   **no** extra work. This is the default `git init` repo.
+   `.gitattributes`, no `$GIT_DIR/info/attributes`, and none of the
+   files git reads outside the tree: the global one, which is
+   `core.attributesFile` or by default `$XDG_CONFIG_HOME/git/attributes`
+   or `~/.config/git/attributes`, and the system one), no rule can name
+   a filter and vx does **no** extra work. This is the default
+   `git init` repo. The gate reads `git var -l`, one spawn, which from
+   git 2.42 names the global and system files itself
+   (`GIT_ATTR_GLOBAL`, `GIT_ATTR_SYSTEM`); for an older git the global
+   lookup is mirrored and the system file is looked for at
+   `/etc/gitattributes` and `<prefix>/etc/gitattributes` beside the
+   binary, where a standard build puts it. Before 2026-09-24 the gate
+   missed the default global file, so `* text` there left a CRLF file
+   keyed on its LF blob: a CRLF→LF edit was a stale hit.
 3. Otherwise `git check-attr` resolves the three attributes from the
    index — without reading worktree content — and only the paths
    actually carrying one lose their OID.

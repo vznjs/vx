@@ -83,7 +83,8 @@ The consequences:
   the file clean. vx drops the index id for exactly those paths and
   hashes the working-tree bytes instead. A repository with no
   attributes file and no `core.autocrlf` pays nothing for the check:
-  the gate is one `git config --get-regexp` that usually exits 1.
+  the gate is one `git var -l`, which also names the attributes files
+  git reads outside the tree, and a stat of each.
 
 Ignored files are not inputs; if your task reads a
 generated file, declare the task that generates it as a dependency and

@@ -947,7 +947,7 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       // One index-only `ls-files -s -v` (tracked list + index OIDs +
       // skip-worktree flags), one `status --porcelain -uall` (dirty set +
       // untracked files — the ONLY worktree walk), one `rev-parse`
-      // (repo→workspace path, common dir, object format), one `config --get-regexp` (the
+      // (repo→workspace path, common dir, object format), one `var -l` (the
       // clean-filter gate) — all concurrent, never per-project. `check-attr`
       // is NOT among them: this fixture declares no attributes, and paying
       // for it here would mean paying for it in every plain repo.

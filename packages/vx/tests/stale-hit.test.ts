@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
   GitFilesCache,
+  attributeFilesOutsideTree,
   autocrlfConverts,
   parseCheckAttrOutput,
   populateGitFilesCache,
@@ -695,6 +696,82 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  // Row X of the upstream survey: git's DEFAULT global attributes file,
+  // read when `core.attributesFile` is unset, is `$XDG_CONFIG_HOME/git/
+  // attributes`, else `~/.config/git/attributes`. The gate looked for the
+  // in-tree files, `info/attributes` and the config key, never for it, so
+  // `* text` there left the CRLF file's LF blob trusted: up-to-date, 10
+  // bytes, while the file held 8.
+  for (const where of ['HOME', 'XDG_CONFIG_HOME'] as const) {
+    it(
+      `a text rule in the global attributes file under ${where} is not served from cache`,
+      async () => {
+        const home = await mkdtemp(path.join(os.tmpdir(), 'vx-home-'))
+        try {
+          const config = where === 'HOME' ? path.join(home, '.config') : path.join(home, 'xdg')
+          await write(path.join(config, 'git', 'attributes'), '* text\n')
+          const env: Record<string, string | undefined> = {
+            ...process.env,
+            HOME: home,
+            XDG_CONFIG_HOME: where === 'HOME' ? undefined : config,
+            CI: '',
+            GITHUB_ACTIONS: '',
+            NO_COLOR: '1',
+          }
+          if (where === 'HOME') delete env.XDG_CONFIG_HOME
+          const run = (): void => {
+            Bun.spawnSync({ cmd: ['bun', CLI, 'run', 'build'], cwd: root, env, stdout: 'pipe' })
+          }
+          await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+          await writeLocalWorkspace(root)
+          await write(
+            path.join(root, 'vx.config.mjs'),
+            `export default { tasks: { build: {
+               exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             } } }`,
+          )
+          await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+          await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+          git(root, 'init', '-q')
+          git(root, 'add', '-A')
+          git(root, 'commit', '-q', '-m', 'initial')
+          // The helper's git runs under the real HOME; the index is plain
+          // CRLF there. Re-stage under the fixture HOME so `* text` stores
+          // the LF blob, as a user with that file would have.
+          Bun.spawnSync({ cmd: ['git', 'rm', '-q', '--cached', 'src/a.txt'], cwd: root, env })
+          Bun.spawnSync({ cmd: ['git', 'add', 'src/a.txt'], cwd: root, env })
+          Bun.spawnSync({
+            cmd: [
+              'git',
+              '-c',
+              'user.email=t@vx',
+              '-c',
+              'user.name=t',
+              '-c',
+              'commit.gpgsign=false',
+              'commit',
+              '-qm',
+              'lf',
+            ],
+            cwd: root,
+            env,
+          })
+          await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+
+          run()
+          expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('10')
+          await write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
+          run()
+          expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('8')
+        } finally {
+          await rm(home, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  }
+
   it(
     'core.autocrlf alone is enough to distrust index OIDs',
     async () => {
@@ -765,7 +842,7 @@ describe('stale cache hits', () => {
       }
       expect(seen.some((cmd) => cmd.includes('check-attr'))).toBe(false)
       // The gate probe itself must stay in the concurrent batch, not serial.
-      expect(seen.some((cmd) => cmd.includes('--get-regexp'))).toBe(true)
+      expect(seen.some((cmd) => cmd.at(-2) === 'var' && cmd.at(-1) === '-l')).toBe(true)
     },
     TIMEOUT,
   )
@@ -1004,12 +1081,55 @@ describe('parseCheckAttrOutput', () => {
 
 describe('autocrlfConverts', () => {
   it('is true only for the values that actually convert', () => {
-    expect(autocrlfConverts('core.autocrlf true')).toBe(true)
-    expect(autocrlfConverts('core.autocrlf input')).toBe(true)
-    expect(autocrlfConverts('core.autocrlf false')).toBe(false)
+    expect(autocrlfConverts('core.autocrlf=true')).toBe(true)
+    expect(autocrlfConverts('core.autocrlf=input')).toBe(true)
+    expect(autocrlfConverts('core.autocrlf=false')).toBe(false)
     expect(autocrlfConverts('')).toBe(false)
     // Other core.* keys in the same output must not be mistaken for it.
-    expect(autocrlfConverts('core.eol lf\ncore.attributesfile /x')).toBe(false)
-    expect(autocrlfConverts('core.eol lf\ncore.autocrlf TRUE')).toBe(true)
+    expect(autocrlfConverts('core.eol=lf\ncore.attributesfile=/x')).toBe(false)
+    expect(autocrlfConverts('core.eol=lf\ncore.autocrlf=TRUE')).toBe(true)
+    // The last value wins, as it does in git.
+    expect(autocrlfConverts('core.autocrlf=true\ncore.autocrlf=false')).toBe(false)
+  })
+})
+
+// The files the gate stats, from `git var -l`. A git from 2.42 names them;
+// an older one does not, and the documented lookup stands in.
+describe('attributeFilesOutsideTree', () => {
+  const env = { HOME: '/h' }
+  it('takes both files from a git that names them, and nothing else', () => {
+    const listing = [
+      'core.attributesfile=/ignored',
+      'GIT_ATTR_SYSTEM=/sys/gitattributes',
+      'GIT_ATTR_GLOBAL=/h/.config/git/attributes',
+      'GIT_CONFIG_GLOBAL=/h/.gitconfig',
+    ].join('\n')
+    expect(attributeFilesOutsideTree(listing, env)).toEqual([
+      '/h/.config/git/attributes',
+      '/sys/gitattributes',
+    ])
+    // Under GIT_ATTR_NOSYSTEM git leaves the system line out; so does this.
+    expect(
+      attributeFilesOutsideTree('GIT_ATTR_GLOBAL=/g\nGIT_CONFIG_GLOBAL=/h/.gitconfig', env),
+    ).toEqual(['/g'])
+  })
+
+  it('mirrors the global lookup for a git that does not name it', () => {
+    const global = (listing: string, e: Record<string, string>) =>
+      attributeFilesOutsideTree(listing, { ...e, GIT_ATTR_NOSYSTEM: '1' })
+    expect(global('core.attributesfile=~/attrs', env)).toEqual(['/h/attrs'])
+    expect(global('core.attributesfile=/abs', { ...env, XDG_CONFIG_HOME: '/x' })).toEqual(['/abs'])
+    expect(global('', { ...env, XDG_CONFIG_HOME: '/x' })).toEqual(['/x/git/attributes'])
+    // An EMPTY XDG_CONFIG_HOME is unset to git.
+    expect(global('', { ...env, XDG_CONFIG_HOME: '' })).toEqual(['/h/.config/git/attributes'])
+    expect(global('', env)).toEqual(['/h/.config/git/attributes'])
+  })
+
+  it('adds the system file where the build put it, unless GIT_ATTR_NOSYSTEM', () => {
+    const files = attributeFilesOutsideTree('', env)
+    expect(files[0]).toBe('/h/.config/git/attributes')
+    expect(files[1]).toBe('/etc/gitattributes')
+    expect(files[2]).toMatch(/\/etc\/gitattributes$/)
+    expect(files).toHaveLength(3)
   })
 })

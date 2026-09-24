@@ -6,7 +6,7 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
 
 /** Three facts of the repository a directory is in, from one `git rev-parse`. */
@@ -396,9 +396,10 @@ export function parseCheckAttrOutput(out: string): Set<string> {
  *  1. If `core.autocrlf` is true/input, conversion applies to every
  *     auto-detected text file with no attribute needed — trust nothing.
  *  2. Else, if no attributes source exists anywhere (no in-tree
- *     `.gitattributes`, no `$GIT_DIR/info/attributes`, no
- *     `core.attributesFile`), no rule can name a filter — return untouched,
- *     zero extra work. This is the default `git init` repo.
+ *     `.gitattributes`, no `$GIT_DIR/info/attributes`, none of the files
+ *     outside the tree git reads — `attributeFilesOutsideTree`), no rule
+ *     can name a filter — return untouched, zero extra work. This is the
+ *     default `git init` repo.
  *  3. Otherwise ask `git check-attr` (measured 21 ms; it resolves attributes
  *     from the index WITHOUT reading worktree content) and drop only the
  *     paths that actually carry `text`/`eol`/`ident`.
@@ -413,21 +414,23 @@ async function dropFilteredOids(
     gitDir: string
     gitPrefix: string
     pathspecs: readonly string[]
-    coreConfig: string
+    gitVars: string
     spawnGit: (a: string[], stdin?: string) => Promise<GitRun | null>
   },
 ): Promise<void> {
   if (trusted.size === 0) return
-  if (autocrlfConverts(args.coreConfig)) {
+  if (autocrlfConverts(args.gitVars)) {
     trusted.clear()
     return
   }
   // Cheap checks first, and nothing is materialized until one of them fires —
   // on a 15k-file repo with no attributes this whole function is a size check,
-  // a substring scan of an empty string, one stat, and a key walk that exits
-  // on the first `.gitattributes` it does not find.
+  // a line scan of `git var -l`, three stats, and a key walk that exits on the
+  // first `.gitattributes` it does not find.
   let attributesPossible =
-    args.coreConfig.toLowerCase().includes('core.attributesfile') ||
+    attributeFilesOutsideTree(args.gitVars, process.env).some((f) =>
+      existsSync(path.resolve(args.workspaceRoot, f)),
+    ) ||
     (args.gitDir !== '' &&
       existsSync(path.resolve(args.workspaceRoot, args.gitDir, 'info', 'attributes')))
   if (!attributesPossible) {
@@ -502,16 +505,73 @@ function attributesAbove(args: {
   return false
 }
 
+/**
+ * `git var -l` as `name → value`, the last line for a name winning, as the
+ * last value of a config key does in git. Config keys come first and
+ * lower-cased; git's own variables (`GIT_ATTR_GLOBAL`, …) follow.
+ */
+function gitVarList(listing: string): Map<string, string> {
+  const vars = new Map<string, string>()
+  for (const line of listing.split('\n')) {
+    const eq = line.indexOf('=')
+    if (eq > 0) vars.set(line.slice(0, eq), line.slice(eq + 1))
+  }
+  return vars
+}
+
 /** `true` when git may rewrite bytes for EVERY auto-detected text file. */
-export function autocrlfConverts(coreConfig: string): boolean {
-  for (const line of coreConfig.split('\n')) {
-    const [name, value] = [line.slice(0, line.indexOf(' ')), line.slice(line.indexOf(' ') + 1)]
-    if (name.toLowerCase() === 'core.autocrlf') {
-      const v = value.trim().toLowerCase()
-      return v === 'true' || v === 'input'
+export function autocrlfConverts(gitVars: string): boolean {
+  const v = gitVarList(gitVars).get('core.autocrlf')?.trim().toLowerCase()
+  return v === 'true' || v === 'input'
+}
+
+/**
+ * The attributes files outside the work tree git reads, from the same
+ * `git var -l` the gate already spawns. Git 2.42 and later name both:
+ * `GIT_ATTR_GLOBAL` is `core.attributesFile` or, unset, the default
+ * `$XDG_CONFIG_HOME/git/attributes` (`~/.config/git/attributes` without
+ * it), and `GIT_ATTR_SYSTEM` is the build's `$(sysconfdir)/gitattributes`,
+ * absent under `GIT_ATTR_NOSYSTEM`. The gate read only the config key, so
+ * `* text` in the default file left a CRLF file's LF blob trusted, a
+ * stale hit (the upstream survey's row X).
+ *
+ * An older git names neither; its global lookup is the documented one,
+ * mirrored here, and its system file sits where its build put it, which
+ * only git knows: `/etc/gitattributes` for a `/usr` build, else
+ * `<prefix>/etc/gitattributes` beside the binary's `bin/`. A path may be
+ * relative (a relative `core.attributesFile`), to the workspace root.
+ */
+export function attributeFilesOutsideTree(
+  gitVars: string,
+  env: Readonly<Record<string, string | undefined>>,
+): string[] {
+  const vars = gitVarList(gitVars)
+  const global = vars.get('GIT_ATTR_GLOBAL')
+  const system = vars.get('GIT_ATTR_SYSTEM')
+  if (global !== undefined || system !== undefined || vars.has('GIT_CONFIG_GLOBAL')) {
+    return [global, system].filter((f): f is string => f !== undefined && f !== '')
+  }
+  const out: string[] = []
+  const configured = vars.get('core.attributesfile')
+  const home = env.HOME ?? ''
+  if (configured !== undefined && configured !== '') {
+    out.push(configured.startsWith('~/') ? path.join(home, configured.slice(2)) : configured)
+  } else if ((env.XDG_CONFIG_HOME ?? '') !== '') {
+    out.push(path.join(env.XDG_CONFIG_HOME!, 'git', 'attributes'))
+  } else if (home !== '') {
+    out.push(path.join(home, '.config', 'git', 'attributes'))
+  }
+  const noSystem = (env.GIT_ATTR_NOSYSTEM ?? '').toLowerCase()
+  if (!['1', 'true', 'yes', 'on'].includes(noSystem)) {
+    out.push('/etc/gitattributes')
+    try {
+      const prefix = path.dirname(path.dirname(realpathSync(executablePath('git'))))
+      out.push(path.join(prefix, 'etc', 'gitattributes'))
+    } catch {
+      // No git to resolve: the enumeration has already refused the run.
     }
   }
-  return false
+  return out
 }
 
 function parseStatusOutput(
@@ -675,12 +735,14 @@ export async function startGitEnumeration(
   const running = Promise.all([
     spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs]),
     spawnGit(['status', '--porcelain', '-z', '-uall', '--', ...pathspecs]),
-    // Reads three config keys, no tree scan — the gate for whether a clean
-    // filter can rewrite bytes between the index and the worktree. Exits 1
-    // when none are set, which is the common case and means "no gate".
-    // Not foldable into the rev-parse below: rev-parse prints no config
-    // value, and the answer is git's merge of every config file.
-    spawnGit(['config', '--get-regexp', '^core\\.(autocrlf|eol|attributesfile)$']),
+    // The gate for whether a clean filter can rewrite bytes between the
+    // index and the worktree: git's merged config (`core.autocrlf`) and,
+    // from git 2.42, the attributes files it reads outside the tree
+    // (`attributeFilesOutsideTree`). No tree scan. It replaced a
+    // `config --get-regexp` of three keys at the same cost (1.29 against
+    // 1.32 ms, min of 30), which could not name the default global file.
+    // Not foldable into the rev-parse below: rev-parse prints no config.
+    spawnGit(['var', '-l']),
   ])
   // Asked while the three above run, from the memo the file hasher reads
   // too (`repoFacts`). `prefix` is the repo→workspace path (empty when the
@@ -697,7 +759,7 @@ export async function startGitEnumeration(
   // at all. `--git-dir` named the per-worktree directory, so the gate
   // looked where the rule can never be.
   const facts = repoFacts(workspaceRoot)
-  const [ls, status, coreCfg] = await running
+  const [ls, status, vars] = await running
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
@@ -766,7 +828,7 @@ export async function startGitEnumeration(
     gitDir,
     gitPrefix,
     pathspecs,
-    coreConfig: coreCfg !== null && coreCfg.exitCode === 0 ? coreCfg.stdout : '',
+    gitVars: vars !== null && vars.exitCode === 0 ? vars.stdout : '',
     spawnGit,
   })
   if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {

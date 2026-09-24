@@ -68,7 +68,13 @@ export interface RepoFacts {
 }
 export function repoFacts(dir: string): RepoFacts | null
 export function parseCheckAttrOutput(out: string): Set<string>
-export function autocrlfConverts(coreConfig: string): boolean
+export function autocrlfConverts(gitVars: string): boolean // over `git var -l`
+// The attributes files git reads outside the tree: from 2.42 git names them
+// (`GIT_ATTR_GLOBAL`, `GIT_ATTR_SYSTEM`); before, the lookup is mirrored.
+export function attributeFilesOutsideTree(
+  gitVars: string,
+  env: Readonly<Record<string, string | undefined>>,
+): string[]
 ```
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
@@ -80,7 +86,8 @@ refusal with `git init` as the remedy.
 
 `startGitEnumeration` is what `prepareRun` kicks off before the configs
 load (the spawn overlaps evaluation). It spawns `ls-files`, `status` and
-the `core.*` config read concurrently and asks `repoFacts` for the
+`var -l` (git's merged config and, from 2.42, the attributes files it
+reads outside the tree) concurrently and asks `repoFacts` for the
 prefix and the common dir while they run; the file hasher
 (`file-hashes.ts`) asks the same memo for the object format at the same
 directory (the workspace root, `new Cache(dir, policy, workspaceRoot)`),

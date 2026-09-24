@@ -42,7 +42,7 @@ describe('execution.md follows the source it traces', () => {
     const facts = /export function repoFacts\b[\s\S]*?\n\}/.exec(src)
     const revParse = /executablePath\('git'\),\s*'([a-z-]+)'/.exec(facts?.[0] ?? '')
     spawned.push(revParse![1]!)
-    expect(spawned.sort()).toEqual(['config', 'ls-files', 'rev-parse', 'status'])
+    expect(spawned.sort()).toEqual(['ls-files', 'rev-parse', 'status', 'var'])
 
     const step = /11\. Bulk git populate([\s\S]*?)\n \u251c/.exec(doc)
     expect(step).not.toBeNull()
