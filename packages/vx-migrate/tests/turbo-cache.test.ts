@@ -78,7 +78,12 @@ function turboServer(opts: { token?: string; verifyTag?: boolean } = {}) {
       if (s.duration !== null) headers['x-artifact-duration'] = s.duration
       if (s.tag !== null) headers['x-artifact-tag'] = s.tag
       if (req.method === 'HEAD') return new Response(null, { status: 200, headers })
-      if (req.method === 'GET') return new Response(s.body, { status: 200, headers })
+      // An API gateway's rule (nx#33092's class): a GET that does not ask for
+      // the binary type gets the body base64-encoded.
+      if (req.method === 'GET')
+        return req.headers.get('accept') === 'application/octet-stream'
+          ? new Response(s.body, { status: 200, headers })
+          : new Response(Buffer.from(s.body).toString('base64'), { status: 200 })
       return new Response('method', { status: 405 })
     },
   })
@@ -204,6 +209,7 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.has('bb22')).toBe(false)
     expect(await c.hasMany(['aa11', 'bb22'])).toEqual(new Set(['aa11']))
     const got = await c.get('aa11')
+    expect(srv.seen.at(-1)!.headers['accept']).toBe('application/octet-stream')
     expect(got?.durationMs).toBe(1234)
     expect(await got!.body.bytes()).toEqual(body)
     expect(await c.get('bb22')).toBeNull()

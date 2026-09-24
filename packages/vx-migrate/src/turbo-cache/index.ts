@@ -263,7 +263,11 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
     if (this.disabled) return null
-    const res = await this.request('GET', `/${hash}`)
+    // A gateway that keys binary media on Accept base64-encodes a `*/*`
+    // response, and every hit read as a corrupt artifact (nx#33092's class).
+    const res = await this.request('GET', `/${hash}`, {
+      headers: { Accept: 'application/octet-stream' },
+    })
     if (res === undefined) return null
     if (res.status === 404) return null
     if (res.status !== 200) throw new Error(`GET ${hash} → ${res.status}`)

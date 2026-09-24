@@ -164,7 +164,7 @@ Artifacts stream both ways on both wires: an upload sends the local artifact fro
 
 ## `nxCache()` — an Nx self-hosted remote cache
 
-Store vx artifacts in any server implementing Nx's remote cache OpenAPI spec (`GET`/`PUT /v1/cache/{hash}`, Bearer auth, immutable records — a second write of a hash is `409`, which the plugin treats as done). Same rule: the wire is theirs, the bytes are vx's.
+Store vx artifacts in any server implementing Nx's remote cache OpenAPI spec (`GET`/`PUT /v1/cache/{hash}`, Bearer auth, immutable records — a second write of a hash is `409`, which the plugin treats as done). Same rule: the wire is theirs, the bytes are vx's. A download asks for `Accept: application/octet-stream`, as Nx's own client does: an API gateway that keys binary media on `Accept` base64-encodes anything else (nx#33092); `turboCache()` asks the same way.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx'
