@@ -329,6 +329,26 @@ test is telling the truth.
       and 624 still select exactly one project. Self-healing, no
       `CACHE_VERSION` bump.
 
+734.  DONE (2026-09-24, upstream survey: turborepo#6744, #4214/#8989,
+      #12640). The package graph linked a dependency by its KEY alone, so
+      `"luigi": "workspace:../waluigi"` planned `luigi#build`, a `^1.0.0`
+      range against a local 2.0.0 planned the local build, and a registry
+      dev dependency shadowing a workspace peer still added an edge. An
+      entry is now an edge by its spec (`buildPackageGraph`, rule and
+      measurements in `docs/modules/package-graph.md` § "Which entries are
+      edges"): `workspace:` by name, range, alias or path; `file:`,
+      `link:`, `portal:` and bare paths by directory; `npm:` aliases and
+      plain ranges only when the local version satisfies them, through an
+      exported `SEMVER_RANGE` grammar, because `Bun.semver.satisfies`
+      answers true for `latest`, `../x` and other non-ranges. Every
+      spec form was measured against bun, npm, yarn and pnpm installs.
+      pnpm's `link-workspace-packages` is documented, not honoured: the
+      graph is built before any lockfile plugin runs (a lockfile → graph
+      seam is open). The playground bundles a `semver` shim held to
+      `Bun.semver` over the grammar; `nx()`'s implicit-dependency report
+      asks the graph instead of the manifest. Graph build at 1,000 × 30
+      deps 7.0 → 8.7 ms.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
