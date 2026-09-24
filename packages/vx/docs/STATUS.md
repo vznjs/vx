@@ -502,7 +502,12 @@ false`, the first failure failing the task; `commands: []` a no-op;
       under a 1 MB limit (nx#35483). The orphan sweep now also runs on
       its own clock (`schema_meta.orphans_swept_at`, at most hourly):
       listing the directory costs 0.5 ms per 1,000 entries (4.9 at
-      10,000), the clock read 4 µs.
+      10,000), the clock read 4 µs. A declared output directory made a
+      link out of the project after its entry was saved failed every run
+      as "internal error … ArchiveSecurityError" (nx#37061's shape): it
+      is now a user error naming the link and its target, and the link
+      is kept — never written through (containment unchanged) and never
+      replaced, which is the bug nx#37061 reports.
 
 ## In flight
 

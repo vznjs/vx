@@ -451,15 +451,11 @@ class Extractor {
     }
     const parentResolved = path.dirname(targetResolved)
     if (this.containedDirs.has(parentResolved)) return
-    await this.assertParentContained(base, targetResolved, name)
+    await this.assertParentContained(base, targetResolved)
     this.containedDirs.add(parentResolved)
   }
 
-  private async assertParentContained(
-    base: string,
-    targetResolved: string,
-    name: string,
-  ): Promise<void> {
+  private async assertParentContained(base: string, targetResolved: string): Promise<void> {
     const baseResolved = path.resolve(base)
     // Only ancestors strictly BELOW the base are candidates — those are the
     // ones a poisoned entry could follow out of the tree. The walk must never
@@ -479,9 +475,7 @@ class Extractor {
       if (real !== null) {
         const realBase = await this.realBaseOf(base)
         if (real !== realBase && !real.startsWith(realBase + path.sep)) {
-          throw new ArchiveSecurityError(
-            `archive entry escapes destDir via a symlinked parent: ${name}`,
-          )
+          throw await linkOutError(baseResolved, probe, realBase)
         }
         return
       }
@@ -630,6 +624,30 @@ const COMMIT_BATCH = 256
 let tmpSeq = 0
 
 const WORKSPACE_PREFIX = 'workspace-outputs/'
+
+/**
+ * The on-disk half of containment failed: `probe`, a directory under
+ * `base`, resolves outside it, so a directory between them is a link out.
+ * That is the tree, not the artifact — an output directory made a link
+ * after the entry was saved (upstream survey, nx#37061) — so it is the
+ * user's to fix, and the refusal names the link and where it leads. The
+ * restore never writes through it and never replaces it: the link is the
+ * user's, and replacing it is the bug nx#37061 reports.
+ */
+async function linkOutError(base: string, probe: string, realBase: string): Promise<UserError> {
+  let dir = base
+  let real = realBase
+  for (const part of path.relative(base, probe).split(path.sep)) {
+    dir = path.join(dir, part)
+    real = await realpath(dir)
+    if (real !== realBase && !real.startsWith(realBase + path.sep)) break
+  }
+  return new UserError(
+    `${dir} is a symbolic link to ${real}, outside ${base} — a cache restore never writes ` +
+      'through a link that leaves its directory. Remove the link and re-run (the restore ' +
+      'puts a real directory there), or stop declaring outputs under it.',
+  )
+}
 
 /**
  * Path-traversal defense, applied to every entry name at read time.

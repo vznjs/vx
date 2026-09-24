@@ -927,7 +927,15 @@ export class Cache implements CacheLayer {
       const tar = await decodedTar(Bun.file(src), hash)
       await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
     } catch (err) {
-      if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
+      // A UserError here is the extractor naming the tree's fault (an
+      // output directory that links out of the project).
+      if (
+        err instanceof ArchiveSecurityError ||
+        err instanceof CorruptArtifactError ||
+        err instanceof UserError
+      ) {
+        throw err
+      }
       // What is on disk, not what is in the archive: a directory standing
       // where the entry holds a file, or a file where it needs a directory.
       // The clean removes everything the output globs cover, so this is a
