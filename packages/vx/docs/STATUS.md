@@ -289,6 +289,13 @@ test is telling the truth.
       `-schedule-history`, `-otel` and `-mcp` by the plugins guide's
       snippets.
 
+731.  DONE (2026-09-24, 729's record). The 0.1.0 notes described the Learn
+      section, which the short site removed, and would have announced pages
+      that 404 to a redirect. Their site section now describes what ships:
+      the landing's one diagram, the six Docs pages with "Try it", and the
+      Reference. The roadmap marks the site's address as settled (1.5, and
+      the timeline row) and Track W as superseded by item 729.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

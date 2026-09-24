@@ -230,52 +230,27 @@ stats` points at the verb that answers it.
   own order), not the machine's locale, so its order no longer moves with
   `LANG` and the playground's diff lists the same way.
 
-## The site teaches
+## The site
 
-- A Learn section opens the sidebar and teaches task orchestration before
-  it sells vx: each teaching page explains the idea in tool-neutral
-  terms, then how vx does it, then one sentence each for Turborepo, Nx
-  and Bazel checked against their own docs, then a checkpoint. Every widget renders a
-  no-JavaScript version that teaches on its own.
-  - `learn/what-is-task-orchestration`: tasks, dependencies, the task
-    graph and why `npm run` stops scaling, with a graph explorer over a
-    four-package toy monorepo.
-  - `learn/caching`: content addressing, what a key folds, why it folds
-    upstream input keys and not outputs, and a key calculator whose model
-    is held to real `vx run`s (moved keys, hits, stale bytes).
-  - `learn/correctness`: the stale hit, declared against inferred inputs,
-    and the sandbox as the proof, with a stale-hit demo held to vx and to
-    a live sandboxed run.
-  - `learn/scheduling`: workers, the critical path, why the order of ready
-    tasks matters, with a simulator that ranks by vx's own scheduling
-    code in the browser.
-  - `learn/architecture` and `learn/extending`: the pipeline with seams,
-    with an explorer over the thirteen hooks read from `VxPlugin`'s
-    source, and five worked plugins, each a type-checked file.
-  - `learn/choosing`: twelve design choices, what each tool chose, what it
-    buys and costs, with a "choose another tool if" row that never names
-    vx, and vx's own costs in plain words.
-  - `learn/glossary`: seventeen terms defined once, with the name each of
-    vx, Turborepo, Nx and Bazel uses.
-- `learn/playground` runs vx's real planner, core's own source bundled for
-  the browser, on the toy monorepo: edit files, the env and the specs, and
-  read every key, hit or miss, and why a key moved by `vx why`'s rule. The
-  configs are real `vx.config.mjs`, evaluated in a worker that can import
-  only `@vzn/vx` and refuses what the CLI refuses. Core's parity rows hold
-  its plan to `vx run --dry=json` (keys, statuses, deps, dispatch order);
-  its glob matcher is a port of Bun's own.
-- `learn/labs` breaks a build on purpose in the playground: a file no
-  config mentions, an undeclared read and its stale hit, two tasks writing
-  one output (core's refusal, verbatim), and a bad order on the scheduling
-  simulator. Every state a lab reaches is held to the CLI.
-- Checkpoints on the what-is, caching, correctness and playground pages
-  ask which tasks rerun; the live planner marks each ticked task and says
-  why, and the no-JavaScript answer is computed by the same planner at
-  build time.
-- The landing page leads with the problem ("Hundreds of commands. Which
-  must run?") and three ideas (explicit inputs, a pipeline with seams,
-  Bun-native speed), each linked to its Learn pages, with the numbers
-  after.
+- The site lives on GitHub Pages (`vznjs.github.io/vx`) and is short.
+  The landing is one line, one diagram and the numbers. The diagram shows
+  the build of four small packages after you edit one of them. Six
+  numbered callouts on it point at tasks and dependencies, parallel
+  work, the cache, only what changed, the sandbox, and plugins. It has a
+  phone layout that says the same thing. Then comes the benchmark, and
+  four cards: correctness, the sandbox, extensibility and freedom (MIT,
+  no paywall, no account, a Turbo or Nx repo runs unchanged).
+- The Docs are six pages: quickstart, configure, sandboxing, CI and the
+  remote, migrate, and plugins. The last Docs page, "Try it", runs vx's
+  real planner in the browser: core's own source, bundled. Edit a file,
+  the env or a config and read every key, hit or miss, and why a key
+  moved. The configs are real `vx.config.mjs`, and core's parity rows
+  hold the plan to `vx run --dry=json`.
+- The Reference keeps the CLI, the config schema, caching in depth, the
+  benchmarks, the comparison of vx, Turborepo, Nx and Bazel (twelve
+  design choices, what each buys and costs), the parity map and a
+  glossary. Every old Guide and Learn URL redirects to the part of the
+  landing or the Docs that took its place.
 
 ## Docs and site
 
