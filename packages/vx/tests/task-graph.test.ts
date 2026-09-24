@@ -9,6 +9,7 @@ import {
   unresolvedRequests,
   type ProjectEntry,
 } from '../src/graph/task-graph.js'
+import { UserError } from '../src/util/index.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
   return { name, dir: `/ws/${name}`, config: { tasks } }
@@ -951,5 +952,46 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
         requested: [build('a')],
       }),
     ).toThrow(/Cycle detected/)
+  })
+})
+
+// nx#28788: the builder recursed once per edge, so a chain or ring ~20,000
+// deep threw `RangeError: Maximum call stack size exceeded` instead of a
+// plan or the cycle. 50,000 is well past where the recursion died.
+describe('buildTaskGraph — depth is not bounded by the call stack', () => {
+  const DEPTH = 50_000
+  const ids = Array.from({ length: DEPTH }, (_, i) => `p${i}#build`)
+  const deepGraph = (ring: boolean) => {
+    const entries: ProjectEntry[] = []
+    const direct: Record<string, string[]> = {}
+    for (let i = 0; i < DEPTH; i++) {
+      entries.push(project(`p${i}`, { build: { ...cmd('b'), dependsOn: ['^build'] } }))
+      direct[`p${i}`] = i + 1 < DEPTH ? [`p${i + 1}`] : ring ? ['p0'] : []
+    }
+    return {
+      projects: projects(...entries),
+      packageGraph: packageGraph(direct),
+      requested: [{ project: 'p0', task: 'build' }],
+    }
+  }
+
+  it('a 50,000-deep chain plans', () => {
+    const nodes = buildTaskGraph(deepGraph(false))
+    expect([...nodes.keys()]).toEqual(ids)
+    expect(nodes.get('p0#build')?.deps).toEqual(['p1#build'])
+    expect(nodes.get(`p${DEPTH - 1}#build`)?.deps).toEqual([])
+  })
+
+  it('a 50,000-deep ring is refused as that cycle', () => {
+    let thrown: unknown
+    try {
+      buildTaskGraph(deepGraph(true))
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(UserError)
+    expect((thrown as Error).message).toBe(
+      `Cycle detected in task graph: ${[...ids, 'p0#build'].join(' -> ')}`,
+    )
   })
 })

@@ -224,6 +224,19 @@ export interface BuildGraphOptions {
   excludeDependencies?: 'all' | readonly string[]
 }
 
+/** One task mid-expansion in `buildTaskGraph`'s walk. */
+interface Frame {
+  node: TaskNode
+  /** Index of the next `dependsOn` entry to resolve. */
+  entry: number
+  /** Whether the current entry has added a new node yet. */
+  added: boolean
+  /** The current entry's later new nodes, not yet in the graph. */
+  pending: TaskNode[] | null
+  /** Index into `pending` of the next one to add. */
+  next: number
+}
+
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode> {
   const { projects, packageGraph, requested, excludeDependencies } = options
   const skipAll = excludeDependencies === 'all'
@@ -233,20 +246,47 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       : null
   const nodes = new Map<string, TaskNode>()
 
-  function addNode(projectName: string, taskName: string, requested: boolean): TaskNode | null {
+  // The walk keeps its own stack instead of recursing once per edge: a
+  // `dependsOn` chain or ring ~20,000 deep overflowed V8's call stack
+  // (nx#28788's shape) before `detectCycle` could name the cycle. It adds
+  // nodes in the order the recursion did — depth-first, each target's
+  // subtree before the next target — and `detectCycle` walks that order,
+  // so it names the same cycle. Resolving an entry only reads configs and
+  // the package graph, so its targets can all be found first: the first
+  // new one is added at once (its subtree is expanded next, on top of the
+  // stack), the later ones wait in `pending` for their turn.
+  const stack: Frame[] = []
+
+  function add(node: TaskNode): void {
+    nodes.set(node.id, node)
+    if (!skipAll && (node.config.dependsOn?.length ?? 0) > 0) {
+      stack.push({ node, entry: 0, added: false, pending: null, next: 0 })
+    }
+  }
+
+  // Adds `projectName#taskName` to the graph if it is new, and the edge to
+  // it from `frame`'s task (null for a requested task). False when the
+  // project or the task is not declared.
+  function visit(
+    frame: Frame | null,
+    projectName: string,
+    taskName: string,
+    requested: boolean,
+  ): boolean {
     const id = taskId(projectName, taskName)
     const existing = nodes.get(id)
     if (existing) {
       // Promote an already-added node to requested if any caller asked
       // for it directly. Once requested, never demoted.
       if (requested) existing.requested = true
-      return existing
+      frame?.node.deps.push(id)
+      return true
     }
 
     const project = projects.get(projectName)
-    if (!project) return null
+    if (!project) return false
     const taskConfig = project.config.tasks?.[taskName]
-    if (!taskConfig) return null
+    if (!taskConfig) return false
 
     const node: TaskNode = {
       id,
@@ -257,136 +297,157 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       deps: [],
       requested,
     }
-    nodes.set(id, node)
+    if (frame === null) {
+      add(node)
+      return true
+    }
+    frame.node.deps.push(id)
+    if (frame.added) (frame.pending ??= []).push(node)
+    else {
+      frame.added = true
+      add(node)
+    }
+    return true
+  }
 
-    if (skipAll) return node
-
-    const rawSpecs = taskConfig.dependsOn ?? []
-    for (const raw of rawSpecs) {
-      let spec: DependencySpec
-      try {
-        spec = parseDependencySpec(raw)
-      } catch (err) {
-        if (err instanceof DependencySpecError) {
-          throw new UserError(`Task ${id}: ${err.message}`)
-        }
-        throw err
+  // Resolves one `dependsOn` entry of `frame`'s task into its edges.
+  function resolveEntry(frame: Frame, raw: string): void {
+    const { node } = frame
+    const { id, projectName, taskName } = node
+    let spec: DependencySpec
+    try {
+      spec = parseDependencySpec(raw)
+    } catch (err) {
+      if (err instanceof DependencySpecError) {
+        throw new UserError(`Task ${id}: ${err.message}`)
       }
-
-      // dependsOn is about which tasks to ADD to the graph, not which
-      // to filter. BARE wildcards ("*"/"^*" = "everything upstream") and
-      // negation aren't meaningful here — they're cache.inputs.tasks
-      // operations. PARTIAL patterns (`build.*`, `^build.*`) are legal:
-      // they name a namespace of tasks to add (Nx 19.5 parity).
-      if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
-        throw new UserError(`Task ${id}: dependsOn does not accept bare wildcards (got "${raw}")`)
-      }
-      if (spec.negated) {
-        throw new UserError(`Task ${id}: dependsOn does not accept negation (got "${raw}")`)
-      }
-      if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
-        throw new UserError(
-          `Task ${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
-        )
-      }
-      // CLI `--exclude-dependencies=name1,name2` drops edges whose target
-      // task name matches, regardless of bucket (self / deps / cross).
-      // Pattern specs re-apply the filter per EXPANDED name below.
-      if (skipNames?.has(spec.task)) continue
-
-      if (spec.kind === 'self') {
-        if (isTaskPattern(spec.task)) {
-          // `build.*` — every OTHER same-project task matching the
-          // pattern (the declaring task never matches itself — that
-          // would be an instant self-cycle). Zero matches is legal: a
-          // preset-spread pattern needn't match in every project.
-          const re = compileTaskPattern(spec.task)
-          for (const name of Object.keys(project.config.tasks ?? {})) {
-            if (name === taskName || !re.test(name)) continue
-            if (skipNames?.has(name)) continue
-            const child = addNode(projectName, name, false)
-            if (child) node.deps.push(child.id)
-          }
-        } else {
-          // Missing target is a hard error — the user typed a name that
-          // doesn't resolve in this project.
-          const child = addNode(projectName, spec.task, false)
-          if (!child) {
-            throw new UserError(
-              `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
-            )
-          }
-          node.deps.push(child.id)
-        }
-      } else if (spec.kind === 'deps') {
-        // Nearest-holder frontier (Turbo/Nx direct-deps parity +
-        // sparse bridging): walk the package dep graph from this
-        // project's direct deps; each path stops at the FIRST package
-        // declaring the task — a holder's own dependsOn is responsible
-        // for anything deeper. Packages without the task are passed
-        // through so a sparse dep doesn't break ordering to deeper
-        // holders. The visited set both dedupes shared subtrees and
-        // terminates on package-graph cycles (legal in PMs).
-        //
-        // With a pattern (`^build.*`), a holder is a package declaring
-        // AT LEAST ONE matching task and it receives edges to ALL its
-        // matches — holder-ness is about declaration, so a holder still
-        // stops the walk even when every match is --exclude-dependencies'd.
-        //
-        // The declaring project seeds `visited`: package graphs may legally
-        // contain cycles (the common "b devDepends on a for its tests"
-        // shape), and a cycle walks the frontier straight back to the
-        // origin. Mirrors the self-pattern rule below — a task can never
-        // depend on itself.
-        const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
-        const visited = new Set<string>([projectName])
-        const frontier = [...packageGraph.directDeps(projectName)]
-        while (frontier.length > 0) {
-          const target = frontier.pop()!
-          if (visited.has(target)) continue
-          visited.add(target)
-          if (re === null) {
-            const child = addNode(target, spec.task, false)
-            if (child) node.deps.push(child.id)
-            else frontier.push(...packageGraph.directDeps(target))
-          } else {
-            const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
-              re.test(n),
-            )
-            if (names.length > 0) {
-              for (const name of names) {
-                if (skipNames?.has(name)) continue
-                const child = addNode(target, name, false)
-                if (child) node.deps.push(child.id)
-              }
-            } else {
-              frontier.push(...packageGraph.directDeps(target))
-            }
-          }
-        }
-      } else {
-        // Cross-project edge: pkg#task. Missing target is a hard error
-        // because the user named the package + task explicitly.
-        const child = addNode(spec.project, spec.task, false)
-        if (!child) {
-          throw new UserError(
-            `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
-          )
-        }
-        node.deps.push(child.id)
-      }
+      throw err
     }
 
-    // Stable ordering for deterministic scheduling and cache keys — deduped:
-    // a target named twice (an exact entry + a pattern matching it, or a
-    // literal duplicate) must contribute ONE edge, not a double-folded
-    // upstream hash and a doubled DOT edge.
-    node.deps = [...new Set(node.deps)].sort()
-    return node
+    // dependsOn is about which tasks to ADD to the graph, not which
+    // to filter. BARE wildcards ("*"/"^*" = "everything upstream") and
+    // negation aren't meaningful here — they're cache.inputs.tasks
+    // operations. PARTIAL patterns (`build.*`, `^build.*`) are legal:
+    // they name a namespace of tasks to add (Nx 19.5 parity).
+    if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
+      throw new UserError(`Task ${id}: dependsOn does not accept bare wildcards (got "${raw}")`)
+    }
+    if (spec.negated) {
+      throw new UserError(`Task ${id}: dependsOn does not accept negation (got "${raw}")`)
+    }
+    if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
+      throw new UserError(
+        `Task ${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
+      )
+    }
+    // CLI `--exclude-dependencies=name1,name2` drops edges whose target
+    // task name matches, regardless of bucket (self / deps / cross).
+    // Pattern specs re-apply the filter per EXPANDED name below.
+    if (skipNames?.has(spec.task)) return
+
+    if (spec.kind === 'self') {
+      if (isTaskPattern(spec.task)) {
+        // `build.*` — every OTHER same-project task matching the
+        // pattern (the declaring task never matches itself — that
+        // would be an instant self-cycle). Zero matches is legal: a
+        // preset-spread pattern needn't match in every project.
+        const re = compileTaskPattern(spec.task)
+        for (const name of Object.keys(projects.get(projectName)!.config.tasks ?? {})) {
+          if (name === taskName || !re.test(name)) continue
+          if (skipNames?.has(name)) continue
+          visit(frame, projectName, name, false)
+        }
+      } else {
+        // Missing target is a hard error — the user typed a name that
+        // doesn't resolve in this project.
+        if (!visit(frame, projectName, spec.task, false)) {
+          throw new UserError(
+            `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
+          )
+        }
+      }
+    } else if (spec.kind === 'deps') {
+      // Nearest-holder frontier (Turbo/Nx direct-deps parity +
+      // sparse bridging): walk the package dep graph from this
+      // project's direct deps; each path stops at the FIRST package
+      // declaring the task — a holder's own dependsOn is responsible
+      // for anything deeper. Packages without the task are passed
+      // through so a sparse dep doesn't break ordering to deeper
+      // holders. The visited set both dedupes shared subtrees and
+      // terminates on package-graph cycles (legal in PMs).
+      //
+      // With a pattern (`^build.*`), a holder is a package declaring
+      // AT LEAST ONE matching task and it receives edges to ALL its
+      // matches — holder-ness is about declaration, so a holder still
+      // stops the walk even when every match is --exclude-dependencies'd.
+      //
+      // The declaring project seeds `visited`: package graphs may legally
+      // contain cycles (the common "b devDepends on a for its tests"
+      // shape), and a cycle walks the frontier straight back to the
+      // origin. Mirrors the self-pattern rule above — a task can never
+      // depend on itself.
+      const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
+      const visited = new Set<string>([projectName])
+      const frontier = [...packageGraph.directDeps(projectName)]
+      while (frontier.length > 0) {
+        const target = frontier.pop()!
+        if (visited.has(target)) continue
+        visited.add(target)
+        if (re === null) {
+          if (!visit(frame, target, spec.task, false)) {
+            frontier.push(...packageGraph.directDeps(target))
+          }
+        } else {
+          const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
+            re.test(n),
+          )
+          if (names.length > 0) {
+            for (const name of names) {
+              if (skipNames?.has(name)) continue
+              visit(frame, target, name, false)
+            }
+          } else {
+            frontier.push(...packageGraph.directDeps(target))
+          }
+        }
+      }
+    } else {
+      // Cross-project edge: pkg#task. Missing target is a hard error
+      // because the user named the package + task explicitly.
+      if (!visit(frame, spec.project, spec.task, false)) {
+        throw new UserError(
+          `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
+        )
+      }
+    }
   }
 
   for (const { project, task } of requested) {
-    addNode(project, task, true)
+    visit(null, project, task, true)
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!
+      const { node, pending } = frame
+      if (pending !== null && frame.next < pending.length) {
+        // An earlier target's subtree may have added it meanwhile.
+        const next = pending[frame.next++]!
+        if (!nodes.has(next.id)) add(next)
+        continue
+      }
+      const entries = node.config.dependsOn!
+      if (frame.entry < entries.length) {
+        frame.added = false
+        frame.pending = null
+        frame.next = 0
+        resolveEntry(frame, entries[frame.entry++]!)
+        continue
+      }
+      // Stable ordering for deterministic scheduling and cache keys — deduped:
+      // a target named twice (an exact entry + a pattern matching it, or a
+      // literal duplicate) must contribute ONE edge, not a double-folded
+      // upstream hash and a doubled DOT edge.
+      node.deps = [...new Set(node.deps)].sort()
+      stack.pop()
+    }
   }
 
   detectCycle(nodes)
