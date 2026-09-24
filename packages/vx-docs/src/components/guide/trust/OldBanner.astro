@@ -1,0 +1,35 @@
+---
+import '../vx-diagram.css'
+---
+
+<figure class="vx-diagram" data-diagram="old-banner">
+  <svg
+    viewBox="0 0 600 220"
+    role="img"
+    aria-label="app#build reads src/index.ts, which its inputs list, and banner.txt, which they do not, so banner.txt never reaches the key. You edit banner.txt. The key stays the same, so the run is a hit and restores the old banner. The run passes, and the output is wrong."
+  >
+    <defs>
+      <marker id="c6-stale-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+        <path class="head" d="M0,0 L10,5 L0,10 z"></path>
+      </marker>
+    </defs>
+    <rect class="box" x="0" y="30" width="150" height="44" rx="6"></rect>
+    <text x="75" y="57" text-anchor="middle">src/index.ts</text>
+    <text class="note" x="75" y="18" text-anchor="middle">listed</text>
+    <rect class="box danger" x="0" y="140" width="150" height="44" rx="6"></rect>
+    <text x="75" y="167" text-anchor="middle">banner.txt ✎</text>
+    <text class="note bad" x="75" y="206" text-anchor="middle">not listed, edited</text>
+    <path class="edge" d="M150,52 C185,52 185,100 216,100" marker-end="url(#c6-stale-head)"></path>
+    <path class="edge danger dashed" d="M150,162 C175,162 180,145 192,138"></path>
+    <text class="bad" x="203" y="142" text-anchor="middle" style="font-size:20px">✕</text>
+    <rect class="box" x="220" y="80" width="130" height="50" rx="6"></rect>
+    <text x="285" y="102" text-anchor="middle">key</text>
+    <text class="note" x="285" y="121" text-anchor="middle">same as before</text>
+    <path class="edge" d="M350,105 L396,105" marker-end="url(#c6-stale-head)"></path>
+    <rect class="box danger" x="400" y="70" width="200" height="70" rx="6"></rect>
+    <text x="500" y="96" text-anchor="middle">hit: old banner</text>
+    <text class="good" x="500" y="122" text-anchor="middle">run passes ✓</text>
+    <text class="note bad" x="500" y="165" text-anchor="middle">but the output is wrong</text>
+  </svg>
+  <figcaption>The key never saw banner.txt, so editing it changed nothing the cache could notice.</figcaption>
+</figure>

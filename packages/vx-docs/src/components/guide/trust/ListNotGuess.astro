@@ -1,0 +1,25 @@
+---
+import '../vx-diagram.css'
+---
+
+<figure class="vx-diagram" data-diagram="list-not-guess">
+  <svg
+    viewBox="0 0 600 210"
+    role="img"
+    aria-label="Left: you list src and banner.txt; the list is known before the task runs, and vx can check it. Right: a guess made by watching one run sees only src/index.ts and misses banner.txt, which that run did not read."
+  >
+    <rect class="box ok" x="0" y="10" width="280" height="190" rx="8"></rect>
+    <text x="140" y="40" text-anchor="middle">you list</text>
+    <text x="30" y="82">src/**</text>
+    <text x="30" y="110">banner.txt</text>
+    <text class="note" x="30" y="150">known before the run</text>
+    <text class="note good" x="30" y="175">vx can check it</text>
+    <rect class="box dashed" x="320" y="10" width="280" height="190" rx="8"></rect>
+    <text x="460" y="40" text-anchor="middle">a guess</text>
+    <text x="350" y="82">src/index.ts</text>
+    <text class="bad" x="350" y="110">banner.txt ?</text>
+    <text class="note" x="350" y="150">only what one run read</text>
+    <text class="note bad" x="350" y="175">misses the rest</text>
+  </svg>
+  <figcaption>vx uses your list and never guesses.</figcaption>
+</figure>

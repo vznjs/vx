@@ -26,8 +26,8 @@ about one per CPU core.
 This page uses the toy monorepo from
 [What is task orchestration?](../what-is-task-orchestration/) with two
 more kinds of task. Each package has a `lint` task, which waits for
-nothing. And a documentation site adds `docs#build`, which waits for
-nothing and which nothing waits for. Every task has a duration, made up
+nothing. And `app` adds `app#docs`, which builds its documentation. It
+waits for nothing, and nothing waits for it. Every task has a duration, made up
 for the example. Together the thirteen tasks are 48 seconds of work.
 
 ## More workers, but not N times faster
@@ -59,7 +59,7 @@ graph LR
   uib --> apb["app#build · 6 s"]
   ab --> apb
   apb --> apt["app#test · 6 s"]
-  docs["docs#build · 10 s"]
+  docs["app#docs · 10 s"]
   ul["utils#lint · 1 s"]
   il["ui#lint · 2 s"]
   al["api#lint · 1 s"]
@@ -84,12 +84,12 @@ finish sooner is to make a task on it faster, or to split it.
 
 On two workers, 24 seconds is possible. A scheduler does not get it for
 free. At the start six tasks are ready: `utils#build`, the four lints and
-`docs#build`. Only two can start, and which two decides how the run ends.
+`app#docs`. Only two can start, and which two decides how the run ends.
 
 A common rule starts first the task that the most other tasks wait on.
 `utils#build` has seven tasks waiting on it, so it starts. The lints and
-the docs build have none, so they tie, and the tie goes to the order they
-were listed in. `docs#build` starts only at 8 seconds and ends at 18. At 18
+`app#docs` have none, so they tie, and the tie goes to the order they
+were listed in. `app#docs` starts only at 8 seconds and ends at 18. At 18
 seconds `app#test`, the last task of the critical path, becomes ready,
 but `utils#test` has just taken the free worker, and `ui#test` and
 `api#test` were ready before it. `app#test` starts at 21 seconds, the run
@@ -97,7 +97,7 @@ ends at 27, and one worker is idle for the last 6.
 
 A better rule starts first the task with the longest chain of work still
 ahead of it, its own duration included. `utils#build` has 24 seconds
-ahead of it, `docs#build` 10, and each lint 1 or 2. So `docs#build` starts
+ahead of it, `app#docs` 10, and each lint 1 or 2. So `app#docs` starts
 at once beside `utils#build`, and the short lints fill the gaps later.
 The run ends at 24 seconds, on the lower bound.
 
@@ -108,10 +108,10 @@ browser on every change. Some things to try:
 
 - Set the workers to 3. Both charts end at 24 seconds: with a spare
   worker, the order stops mattering.
-- On 2 workers, make `docs#build` take 20 seconds. Now the work sets the
+- On 2 workers, make `app#docs` take 20 seconds. Now the work sets the
   bound, not the chain: 58 seconds over two workers is 29. Learned
   durations reaches it, and tasks waiting finishes at 30.
-- Tick "No history" for `docs#build`, then for `ui#lint` instead, and
+- Tick "No history" for `app#docs`, then for `ui#lint` instead, and
   compare the policies in the finish table. The next sections explain the
   difference.
 
@@ -146,7 +146,7 @@ either direction:
 
 <NoHistoryTable />
 
-If `docs#build` is new, the median guess is 2 seconds. It starts late and
+If `app#docs` is new, the median guess is 2 seconds. It starts late and
 the run takes 26 seconds. Starting tasks with no history first starts it
 at once, and the run takes 24. If `ui#lint` is new instead, starting it
 first takes a worker for its 2 seconds at the very start. Everything
@@ -218,7 +218,7 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default defineWorkspace({
   concurrency: 4,
-  plugins: [scheduleHistoryPlugin({ assume: { 'docs#build': 10_000 } })],
+  plugins: [scheduleHistoryPlugin({ assume: { 'app#docs': 10_000 } })],
 })
 ```
 
@@ -267,19 +267,19 @@ menu, the two chart menus and the Takes fields. Reset puts everything
 back.
 
 1. **Press Reset.** On 2 workers, the first chart is tasks waiting, vx
-   with no plugin. It starts `docs#build` at 8 seconds and finishes at
+   with no plugin. It starts `app#docs` at 8 seconds and finishes at
    27. The second chart, learned durations, finishes at 24.
-2. **Make `docs#build` take 20 seconds.** The critical path is still
+2. **Make `app#docs` take 20 seconds.** The critical path is still
    `utils#build`, `api#build`, `app#build` and `app#test`, 24 seconds.
    But 58 seconds of work on 2 workers takes at least 29, and that is the
    bound now. Tasks waiting finishes at 30, and learned durations at 29.
-3. **Make it take 30 seconds.** The critical path grows: `docs#build`
+3. **Make it take 30 seconds.** The critical path grows: `app#docs`
    alone takes 30 seconds, longer than the chain. The bound is 34. Tasks
-   waiting still starts `docs#build` at 8 seconds, because nothing waits
+   waiting still starts `app#docs` at 8 seconds, because nothing waits
    on it, so it ranks with the lints and after every task that something
    waits on. The run finishes at 38. Learned durations starts it at once
    and finishes at 34, on the bound.
-4. **Set the workers to 3.** Tasks waiting starts `docs#build` at 2
+4. **Set the workers to 3.** Tasks waiting starts `app#docs` at 2
    seconds, after `ui#lint`, and finishes at 32. Learned durations
    finishes at 30, the length of the critical path. The spare worker
    helped, but the order still costs 2 seconds.
@@ -287,7 +287,7 @@ back.
 ### What stopped it
 
 Nothing in vx's core. Its default order counts the tasks waiting on each
-task, and cannot see that `docs#build` is long. The history plugin,
+task, and cannot see that `app#docs` is long. The history plugin,
 `@vzn/vx-schedule-history`, ranks by the work still ahead of each task,
 learned from past runs, and its `assume` option names a duration for a
 task with no history yet ([How vx does it](#how-vx-does-it)).

@@ -1,0 +1,35 @@
+---
+import '../vx-diagram.css'
+---
+
+<figure class="vx-diagram" data-diagram="key">
+  <svg
+    viewBox="0 0 600 220"
+    role="img"
+    aria-label="The inputs go through a hash and become a short key. vx looks the key up. Found: it restores the saved output and replays the log. Not found: the task runs and its output is saved under the key."
+  >
+    <defs>
+      <marker id="c5-key-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+        <path class="head" d="M0,0 L10,5 L0,10 z"></path>
+      </marker>
+    </defs>
+    <rect class="box" x="0" y="88" width="110" height="44" rx="6"></rect>
+    <text x="55" y="115" text-anchor="middle">inputs</text>
+    <path class="edge" d="M110,110 L146,110" marker-end="url(#c5-key-head)"></path>
+    <rect class="box" x="150" y="88" width="80" height="44" rx="22"></rect>
+    <text x="190" y="115" text-anchor="middle">hash</text>
+    <path class="edge" d="M230,110 L266,110" marker-end="url(#c5-key-head)"></path>
+    <rect class="box accent" x="270" y="88" width="110" height="44" rx="6"></rect>
+    <text x="325" y="115" text-anchor="middle">7c1e04a</text>
+    <text class="note" x="325" y="152" text-anchor="middle">the key</text>
+    <path class="edge" d="M380,110 C410,110 410,50 436,50" marker-end="url(#c5-key-head)"></path>
+    <path class="edge" d="M380,110 C410,110 410,170 436,170" marker-end="url(#c5-key-head)"></path>
+    <rect class="box ok" x="440" y="22" width="160" height="56" rx="6"></rect>
+    <text class="good" x="520" y="45" text-anchor="middle">found: a hit</text>
+    <text class="note" x="520" y="66" text-anchor="middle">restore, don't run</text>
+    <rect class="box warn" x="440" y="142" width="160" height="56" rx="6"></rect>
+    <text x="520" y="165" text-anchor="middle">not found</text>
+    <text class="note" x="520" y="186" text-anchor="middle">run, then save</text>
+  </svg>
+  <figcaption>The key is a short fingerprint of everything the task reads.</figcaption>
+</figure>

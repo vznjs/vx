@@ -1,0 +1,29 @@
+---
+import '../vx-diagram.css'
+---
+
+<figure class="vx-diagram" data-diagram="together">
+  <svg
+    viewBox="0 0 600 200"
+    role="img"
+    aria-label="utils#build runs first. When it is done, ui#build and api#build both start, at the same time."
+  >
+    <defs>
+      <marker id="c4-together-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+        <path class="head" d="M0,0 L10,5 L0,10 z"></path>
+      </marker>
+    </defs>
+    <rect class="box" x="20" y="78" width="150" height="44" rx="6"></rect>
+    <text x="95" y="105" text-anchor="middle">utils#build</text>
+    <rect class="box accent" x="290" y="28" width="150" height="44" rx="6"></rect>
+    <text x="365" y="55" text-anchor="middle">ui#build</text>
+    <rect class="box accent" x="290" y="128" width="150" height="44" rx="6"></rect>
+    <text x="365" y="155" text-anchor="middle">api#build</text>
+    <path class="edge" d="M170,100 C230,100 230,50 286,50" marker-end="url(#c4-together-head)"></path>
+    <path class="edge" d="M170,100 C230,100 230,150 286,150" marker-end="url(#c4-together-head)"></path>
+    <path class="edge accent" d="M460,40 L470,40 L470,160 L460,160"></path>
+    <text class="note" x="480" y="96">both start</text>
+    <text class="note" x="480" y="116">together</text>
+  </svg>
+  <figcaption>Neither build needs the other, so they run side by side.</figcaption>
+</figure>

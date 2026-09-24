@@ -1,0 +1,97 @@
+---
+import '../vx-diagram.css'
+import { SIM_TASKS, criticalPath, schedule, secs } from '../../demos/model/scheduler-sim.js'
+
+// The chapter's one comparison: the eight build and test tasks on one worker
+// and on two, scheduled by the simulator's model of vx with no plugin. The
+// bars and both finish times are computed, never typed.
+const eight = SIM_TASKS.filter((t) => /#(build|test)$/.test(t.id))
+const critical = new Set(criticalPath(eight).chain)
+const runs = [1, 2].map((workers) => schedule(eight, new Set(), 'count', workers))
+const span = runs[0]!.makespan
+const GUTTER = 96
+const px = (ms: number): number => Math.round(((600 - GUTTER - 50) * ms) / span)
+const LANE = 44
+const panels = runs.map((run, i) => ({
+  run,
+  title: run.workers === 1 ? 'One worker' : 'Two workers',
+  top: i === 0 ? 30 : 30 + LANE + 50,
+}))
+// Package over task where they fit; a narrow bar keeps the package and the
+// task's first letter, and the narrowest keeps only its tooltip.
+const label = (id: string, w: number): [string, string] | undefined => {
+  const [pkg, task] = id.split('#') as [string, string]
+  const fits = (s: string): boolean => s.length * 8.6 + 6 <= w
+  if (!fits(pkg)) return undefined
+  return [pkg, fits(task) ? task : task[0]!]
+}
+const describe = runs
+  .map(
+    (r) =>
+      `${r.workers === 1 ? 'One worker' : 'Two workers'} finish at ${secs(r.makespan)}: ` +
+      r.bars.map((b) => `${b.id} on worker ${b.lane}`).join(', '),
+  )
+  .join('. ')
+---
+
+<figure
+  class="vx-diagram"
+  data-diagram="workers"
+  data-finish={runs.map((r) => r.makespan).join(' ')}
+>
+  <svg viewBox="0 0 600 270" role="img" aria-label={`${describe}.`}>
+    {
+      panels.map(({ run, title, top }) => (
+        <>
+          <text class="note" x="4" y={top - 10}>
+            {title}
+          </text>
+          {Array.from({ length: run.workers }, (_, l) => (
+            <line
+              class="rule"
+              x1={GUTTER}
+              x2={GUTTER + px(span)}
+              y1={top + (l + 1) * LANE}
+              y2={top + (l + 1) * LANE}
+            />
+          ))}
+          {run.bars.map((b) => {
+            const w = px(b.end - b.start)
+            const x0 = GUTTER + px(b.start)
+            const y0 = top + (b.lane - 1) * LANE
+            const words = label(b.id, w)
+            return (
+              <g data-task={b.id} data-lane={b.lane} data-start={b.start} data-end={b.end}>
+                <rect
+                  class={`box ${critical.has(b.id) ? 'accent' : ''}`}
+                  x={x0 + 1}
+                  y={y0 + 4}
+                  width={Math.max(w - 2, 1)}
+                  height={LANE - 8}
+                  rx="4"
+                />
+                {words && (
+                  <text x={x0 + w / 2} y={y0 + 20} text-anchor="middle" style="font-size:14px">
+                    {words[0]}
+                  </text>
+                )}
+                {words && (
+                  <text x={x0 + w / 2} y={y0 + 35} text-anchor="middle" style="font-size:14px">
+                    {words[1]}
+                  </text>
+                )}
+                <title>{b.id}</title>
+              </g>
+            )
+          })}
+          <text x={GUTTER + px(run.makespan) + 8} y={top + (run.workers * LANE) / 2 + 5}>
+            {secs(run.makespan)}
+          </text>
+        </>
+      ))
+    }
+  </svg>
+  <figcaption>
+    The same eight tasks. Highlighted: the longest chain, which still runs one task after another.
+  </figcaption>
+</figure>

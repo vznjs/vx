@@ -1,0 +1,47 @@
+---
+import '../vx-diagram.css'
+import { SIM_TASKS, criticalPath } from '../../demos/model/scheduler-sim.js'
+
+// The chain is the model's own critical path over the eight build and test
+// tasks, so the picture cannot name a different one than the simulator.
+const eight = SIM_TASKS.filter((t) => /#(build|test)$/.test(t.id))
+const { chain } = criticalPath(eight)
+const W = 120
+const GAP = (600 - chain.length * W) / (chain.length - 1)
+const x = (i: number): number => i * (W + GAP)
+---
+
+<figure class="vx-diagram" data-diagram="chain" data-chain={chain.join(' ')}>
+  <svg
+    viewBox="0 0 600 130"
+    role="img"
+    aria-label={`The longest chain: ${chain.join(', then ')}. Each waits for the one before.`}
+  >
+    <defs>
+      <marker id="c4-chain-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+        <path class="head" d="M0,0 L10,5 L0,10 z"></path>
+      </marker>
+    </defs>
+    {
+      chain.map((id, i) => (
+        <>
+          <rect class="box accent" x={x(i)} y="20" width={W} height="44" rx="6" />
+          <text x={x(i) + W / 2} y="47" text-anchor="middle">
+            {id}
+          </text>
+          {i > 0 && (
+            <path
+              class="edge"
+              d={`M${x(i - 1) + W},42 L${x(i) - 3},42`}
+              marker-end="url(#c4-chain-head)"
+            />
+          )}
+        </>
+      ))
+    }
+    <text class="note" x="300" y="105" text-anchor="middle">
+      each one waits for the one before, however many workers you have
+    </text>
+  </svg>
+  <figcaption>The longest chain of tasks. Nothing finishes before it does.</figcaption>
+</figure>

@@ -1,6 +1,6 @@
-// learn/correctness teaches the stale hit with a model of one task
+// Chapter 6, guide/trust, teaches the stale hit with a model of one task
 // (demos/model/stale-hit.ts): `app#build` reads `banner.txt` without
-// declaring it. The page may call the model a model; it may not be wrong.
+// declaring it. The chapter may call the model a model; it may not be wrong.
 // This file holds it three ways:
 //
 // - against a truth written out by hand, so a wrong rule cannot pass by
@@ -14,11 +14,11 @@
 // the site's sandboxed `test` task, and a sandbox cannot start inside
 // another. Core's tests/sandbox-runtime.unsafe.test.ts ("the site's
 // stale-hit demo, run for real") runs it and pins the same line from a real
-// trace.
+// trace, and the chapter links that row.
 //
-// The page rows read `dist/`, which the `build` task writes.
+// The chapter rows read `dist/`, which the `build` task writes.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -53,8 +53,33 @@ import {
   type StaleRun,
   type StaleState,
 } from '../src/components/demos/model/stale-hit.js'
+import {
+  DIST,
+  TOY,
+  article,
+  codeBlocks,
+  competitorMentions,
+  defining,
+  diagram,
+  diagrams,
+  missingPage,
+  missingRow,
+  only,
+  packagesNamed,
+  page,
+  pre,
+  proofs,
+  proseWords,
+  reachableScripts,
+  repoLinks,
+  sectionTitles,
+  siteLinks,
+  tableRows,
+  text,
+  withoutCheckpoints,
+  words,
+} from './guide-page.js'
 
-const DIST = path.resolve(import.meta.dir, '../dist')
 const SILENT: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 const NO_CACHE = { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
 const roots: string[] = []
@@ -315,72 +340,70 @@ describe('the report at step 4', () => {
   })
 })
 
-// ── The built page ─────────────────────────────────────────────────
-
-function page(slug: string): string {
-  const file = path.join(DIST, slug, 'index.html')
-  if (!existsSync(file)) throw new Error(`${file} is missing: run the site's build task first`)
-  return readFileSync(file, 'utf8')
-}
-
-function only(html: string, re: RegExp): string {
-  const found = [...html.matchAll(re)]
-  expect(found).toHaveLength(1)
-  return found[0]![1]!
-}
-
-function decode(s: string): string {
-  return s
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&#x27;/g, "'")
-    .replace(/&amp;/g, '&')
-}
-
-/** Text as a reader sees it, whitespace collapsed. */
-function text(html: string): string {
-  return decode(html.replace(/<[^>]+>/g, ''))
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/** A `<pre>`'s text, whitespace kept. */
-function pre(html: string): string {
-  return decode(html.replace(/<[^>]+>/g, ''))
-}
-
-function tableRows(table: string): string[][] {
-  const body = only(table, /<tbody\b[^>]*>([\s\S]*?)<\/tbody>/g)
-  return [...body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].map((row) =>
-    [...row[1]!.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => text(c[1]!)),
-  )
-}
-
-/** Every `_astro/*.js` reachable from `names` through the chunks' imports. */
-function closure(names: string[]): Set<string> {
-  const seen = new Set<string>()
-  const queue = [...names]
-  while (queue.length > 0) {
-    const name = queue.pop()!
-    const file = path.join(DIST, '_astro', name)
-    // mermaid's chunks name files it never emits (`./elk-worker.min.js`).
-    if (seen.has(name) || !existsSync(file)) continue
-    seen.add(name)
-    for (const m of readFileSync(file, 'utf8').matchAll(/["'`]\.\/([\w.-]+\.js)["'`]/g)) {
-      queue.push(m[1]!)
-    }
-  }
-  return seen
-}
+// ── The chapter ───────────────────────────────────────────────────
 
 const flat = (s: string): string => s.replace(/\s+/g, ' ').trim()
 
-describe('the stale-hit demo on learn/correctness', () => {
-  const html = page('learn/correctness')
-  const element = only(html, /<vx-stale-hit\b[^>]*>([\s\S]*?)<\/vx-stale-hit>/g)
+describe('guide/trust', () => {
+  const html = page('guide/trust')
+  const main = article(html)
+  const prose = text(main)
+  const element = only(main, /<vx-stale-hit\b[^>]*>([\s\S]*?)<\/vx-stale-hit>/g)
   const staticPart = only(element, /<div class="static\b[^"]*"[^>]*>([\s\S]*)<\/div>\s*$/g)
   const table = only(staticPart, /(<table class="runs\b[\s\S]*?<\/table>)/g)
+
+  it('tells the story in its section titles', () => {
+    expect(sectionTitles(main)).toEqual([
+      'A forgotten input makes a wrong hit',
+      'You list the inputs; vx never guesses',
+      'The sandbox turns a forgotten file into an error',
+      'Four things the sandbox does not check',
+      'In vx',
+      'Check yourself',
+    ])
+  })
+
+  it('draws three small pictures, and hosts the demo and its checkpoint', () => {
+    expect(diagrams(main)).toEqual(['old-banner', 'list-not-guess', 'sandbox'])
+    for (const name of diagrams(main)) {
+      const figure = diagram(main, name)
+      expect(figure).toMatch(/<svg\b[^>]*role="img"[^>]*aria-label="[^"]+"/)
+      expect(text(only(figure, /<figcaption>([\s\S]*?)<\/figcaption>/g))).not.toBe('')
+    }
+    expect([...main.matchAll(/<vx-[\w-]+\b/g)].map((m) => m[0])).toEqual([
+      '<vx-stale-hit',
+      '<vx-checkpoint',
+    ])
+    expect(main).not.toContain('class="mermaid"')
+  })
+
+  it('keeps its prose short', () => {
+    const n = proseWords(main)
+    expect(n).toBeGreaterThan(100)
+    expect(n).toBeLessThanOrEqual(350)
+  })
+
+  it('names only the four packages, and no other tool', () => {
+    expect(STALE_PROJECT).toBe('app')
+    const named = packagesNamed(words(withoutCheckpoints(main)))
+    expect(named.filter((n) => !TOY.includes(n))).toEqual([])
+    // Positive first: the reader found the chapter's own names.
+    expect(named).toEqual(['app'])
+    expect(competitorMentions(main)).toEqual([])
+  })
+
+  it('opens on the stale hit the demo shows at step 3', () => {
+    const step3 = staleRuns()[2]!
+    expect([step3.verdict, step3.moved, step3.stale]).toEqual(['hit', false, true])
+    expect(configSource(STALE_START)).toContain("files: ['src/**']")
+    expect(staleConfig(STALE_START)).toMatchObject({ cache: { inputs: { files: ['src/**'] } } })
+    expect(prose).toContain('Its inputs list only src/**. You edit banner.txt')
+    expect(prose).toContain('The key did not change, so vx handed back the old file.')
+    const svg = words(only(diagram(main, 'old-banner'), /(<svg\b[\s\S]*<\/svg>)/g))
+    for (const said of ['hit: old banner', 'run passes', 'but the output is wrong']) {
+      expect({ said, drawn: svg.includes(said) }).toEqual({ said, drawn: true })
+    }
+  })
 
   it('ships the five runs as a static table: key, verdict, what you get, what a run writes', () => {
     const rows = tableRows(table)
@@ -463,7 +486,7 @@ describe('the stale-hit demo on learn/correctness', () => {
   })
 
   it('says in its caption that the keys and the path are illustrative', () => {
-    const figures = [...html.matchAll(/<figure class="vx-demo\b[^"]*">([\s\S]*?)<\/figure>/g)]
+    const figures = [...main.matchAll(/<figure class="vx-demo\b[^"]*">([\s\S]*?)<\/figure>/g)]
       .map((m) => m[1]!)
       .filter((f) => f.includes('<vx-stale-hit'))
     expect(figures).toHaveLength(1)
@@ -476,29 +499,120 @@ describe('the stale-hit demo on learn/correctness', () => {
   })
 
   it("loads the element's module from the page's own scripts, free of Bun, process and node:", () => {
-    const scripts = [...html.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/g)].map((m) => m[0])
-    const entry = scripts.flatMap((s) =>
-      [...s.matchAll(/\/_astro\/([\w.-]+\.js)/g)].map((m) => m[1]!),
-    )
-    const defining = [...closure(entry)].filter((name) =>
-      /customElements\.define\(\s*["'`]vx-stale-hit["'`]/.test(
-        readFileSync(path.join(DIST, '_astro', name), 'utf8'),
-      ),
-    )
-    expect(defining).toHaveLength(1)
-    for (const name of closure(defining)) {
+    const names = defining(html, 'vx-stale-hit')
+    expect(names).toHaveLength(1)
+    // What the element module reaches from its own chunk, not the page's
+    // other scripts: those are held by their own widgets' rows.
+    const own = reachableScripts(`<script src="/_astro/${names[0]}"></script>`)
+    for (const name of own) {
       const body = readFileSync(path.join(DIST, '_astro', name), 'utf8')
       expect({
         name,
         bun: /\bBun\./.test(body),
         process: /\bprocess\./.test(body),
         node: /["'`]node:/.test(body),
-      }).toEqual({
-        name,
-        bun: false,
-        process: false,
-        node: false,
-      })
+      }).toEqual({ name, bun: false, process: false, node: false })
     }
+  })
+
+  it('draws the denial the demo reports at step 4', () => {
+    const step4 = staleRuns()[3]!
+    expect([step4.verdict, step4.denied]).toEqual(['failed', [STALE_BANNER]])
+    const svg = words(only(diagram(main, 'sandbox'), /(<svg\b[\s\S]*<\/svg>)/g))
+    expect(svg).toContain('task fails: denied banner.txt — nothing saved')
+    expect(prose).toContain('Reading banner.txt fails, and the error names it.')
+  })
+
+  it('names four things the sandbox does not check, in plain words', () => {
+    const section = only(
+      main,
+      /<h2\b[^>]*>Four things the sandbox does not check<\/h2>[\s\S]*?(<ul>[\s\S]*?<\/ul>)/g,
+    )
+    const items = [...section.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
+    expect(items).toEqual([
+      'Environment variables. List them in cache.inputs.env.',
+      'Tools on your machine, such as the Node version.',
+      'Installed packages in node_modules, including your own linked packages such as ui. This is a known gap.',
+      'Other systems. It runs on Linux and macOS, and on Windows only under WSL.',
+    ])
+  })
+
+  it('places the correctness checkpoint as its one check', () => {
+    const checkpoint = only(main, /<vx-checkpoint\b[^>]*>([\s\S]*?)<\/vx-checkpoint>/g)
+    expect(only(checkpoint, /<fieldset class="form\b[^"]*"[^>]*data-checkpoint="([^"]+)"/g)).toBe(
+      'correctness',
+    )
+    const { rest } = proofs(main)
+    // No other check than the checkpoint.
+    expect([...withoutCheckpoints(rest).matchAll(/<details>/g)]).toEqual([])
+  })
+
+  it('keeps test links out of the prose, in one collapsed list that stands on real rows', () => {
+    const { list, rest } = proofs(main)
+    expect(repoLinks(rest)).toEqual([])
+    const claims = repoLinks(list)
+    expect(claims.map((c) => c.label)).toEqual([
+      'vx never guesses a task’s input files',
+      'This chapter’s build fails on banner.txt in a real sandbox, and passes once it is listed',
+      'A failed sandboxed task is not saved',
+      'A run of hits never starts the sandbox',
+      'node_modules is readable without being listed',
+      'So is a linked package of your own',
+    ])
+    expect(claims.map(missingRow).filter((m) => m !== undefined)).toEqual([])
+    expect(siteLinks(rest, 'guide/trust')).toEqual([
+      'learn/glossary/#cache-hit-miss-and-stale-hit',
+      'learn/glossary/#hermeticity-and-sandboxing',
+    ])
+    const inList = siteLinks(list, 'guide/trust')
+    expect(inList).toEqual([
+      'guides/environment-variables/#the-two-lists',
+      'guides/sandboxing/#requirements--platform-support',
+    ])
+    const site = siteLinks(main, 'guide/trust')
+    expect(site.map(missingPage).filter((m) => m !== undefined)).toEqual([])
+  })
+
+  it('shows the last step of the demo as a config the schema defines', () => {
+    const blocks = codeBlocks('trust')
+    expect(blocks).toHaveLength(1)
+    const declared = staleRuns().at(-1)!.state
+    expect(blocks[0]).toBe(
+      [
+        "import { defineProject } from '@vzn/vx'",
+        '',
+        'export default defineProject({',
+        '  tasks: {',
+        '    build: {',
+        '      exec: {',
+        "        command: 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt',",
+        "        sandbox: { allow: { read: ['src/**', 'banner.txt'], write: ['dist/'] } },",
+        '      },',
+        '      cache: {',
+        "        inputs: { files: ['src/**', 'banner.txt'] },",
+        "        outputs: { files: ['dist/**'] },",
+        '      },',
+        '    },',
+        '  },',
+        '})',
+        '',
+      ].join('\n'),
+    )
+    // The block is the model's config at step 5, written as a project.
+    expect(staleConfig(declared)).toEqual({
+      exec: {
+        command: 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt',
+        sandbox: { allow: { read: ['src/**', 'banner.txt'], write: ['dist/'] } },
+      },
+      cache: {
+        inputs: { files: ['src/**', 'banner.txt'] },
+        outputs: { files: ['dist/**'] },
+      },
+    })
+    const schema = text(page('schema'))
+    expect(schema).toContain('Opt-in per task — omit it and the command runs unsandboxed.')
+    expect(schema).toContain(
+      'An undeclared read or write fails the task, and a failed task is never cached.',
+    )
   })
 })

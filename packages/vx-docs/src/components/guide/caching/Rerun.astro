@@ -1,0 +1,48 @@
+---
+import '../vx-diagram.css'
+import { TOY_PACKAGES, rerunBy } from '../../demos/model/toy-monorepo.js'
+
+// What an edit to app really needs: the model's own answer. Everything else
+// ran again for nothing.
+const needed = new Set(rerunBy('app'))
+const cols = TOY_PACKAGES.map((p) => p.id)
+const W = 130
+const GAP = (600 - cols.length * W) / (cols.length - 1)
+---
+
+<figure class="vx-diagram" data-diagram="rerun" data-needed={[...needed].join(' ')}>
+  <svg
+    viewBox="0 0 600 200"
+    role="img"
+    aria-label={`You edit app. All eight tasks run again. Only ${[...needed].join(' and ')} had to; the other six make the same result as last time.`}
+  >
+    <text class="note" x="596" y="16" text-anchor="end">edit in app ✎</text>
+    {
+      cols.flatMap((pkg, c) =>
+        ['build', 'test'].map((task, r) => {
+          const id = `${pkg}#${task}`
+          const x = c * (W + GAP)
+          const y = 30 + r * 62
+          return (
+            <g data-task={id} data-needed={needed.has(id) ? 'yes' : 'no'}>
+              <rect
+                class={`box ${needed.has(id) ? 'accent' : 'danger dashed'}`}
+                x={x}
+                y={y}
+                width={W}
+                height="44"
+                rx="6"
+              />
+              <text x={x + W / 2} y={y + 27} text-anchor="middle">
+                {id}
+              </text>
+            </g>
+          )
+        }),
+      )
+    }
+    <text class="note good" x="596" y="170" text-anchor="end">needed: {needed.size} tasks</text>
+    <text class="note bad" x="4" y="170">ran again for nothing: {cols.length * 2 - needed.size} tasks</text>
+  </svg>
+  <figcaption>One change in app. Every task ran, and six of them made the same result again.</figcaption>
+</figure>

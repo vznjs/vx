@@ -25,8 +25,9 @@ const s = (id: string, seconds: number, deps: string[] = []): SimTask => ({
   dur: seconds * 1000,
 })
 
-/** W1's toy monorepo with a lint task per package and a docs site: the
- *  docs build is long and nothing waits on it. Durations in ms. */
+/** W1's toy monorepo with a lint task per package and `app#docs`, which
+ *  builds app's documentation: it is long, waits for nothing and nothing
+ *  waits on it. Durations in ms. */
 export const SIM_TASKS: readonly SimTask[] = [
   s('utils#build', 6),
   s('utils#test', 3, ['utils#build']),
@@ -40,7 +41,7 @@ export const SIM_TASKS: readonly SimTask[] = [
   s('ui#lint', 2),
   s('api#lint', 1),
   s('app#lint', 2),
-  s('docs#build', 10),
+  s('app#docs', 10),
 ]
 
 export const DEFAULT_WORKERS = 2
@@ -235,6 +236,6 @@ export function finishTable(
  *  default graph and worker count. */
 export const NO_HISTORY_CASES: readonly { label: string; unknown: readonly string[] }[] = [
   { label: 'Every task has history', unknown: [] },
-  { label: 'docs#build is new', unknown: ['docs#build'] },
+  { label: 'app#docs is new', unknown: ['app#docs'] },
   { label: 'ui#lint is new', unknown: ['ui#lint'] },
 ]

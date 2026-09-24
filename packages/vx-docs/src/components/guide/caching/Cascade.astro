@@ -1,0 +1,60 @@
+---
+import '../vx-diagram.css'
+import { rerunBy } from '../../demos/model/toy-monorepo.js'
+
+// The builds whose keys an edit to utils moves, from the model: all of them.
+const moved = new Set(rerunBy('utils').filter((id) => id.endsWith('#build')))
+const NODES = [
+  { id: 'utils#build', x: 0, y: 88 },
+  { id: 'ui#build', x: 220, y: 28 },
+  { id: 'api#build', x: 220, y: 148 },
+  { id: 'app#build', x: 440, y: 88 },
+]
+const EDGES: [number, number][] = [
+  [0, 1],
+  [0, 2],
+  [1, 3],
+  [2, 3],
+]
+const W = 150
+---
+
+<figure class="vx-diagram" data-diagram="cascade" data-moved={[...moved].join(' ')}>
+  <svg
+    viewBox="0 0 600 230"
+    role="img"
+    aria-label="You edit utils. utils#build's key moves. ui#build and api#build fold it into their keys, so theirs move. app#build folds both, so its key moves too."
+  >
+    <defs>
+      <marker id="c5-cascade-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+        <path class="head" d="M0,0 L10,5 L0,10 z"></path>
+      </marker>
+    </defs>
+    <text class="note" x="4" y="72">edited ✎</text>
+    {
+      EDGES.map(([a, b]) => {
+        const from = NODES[a]!
+        const to = NODES[b]!
+        return (
+          <path
+            class="edge accent"
+            d={`M${from.x + W},${from.y + 22} C${from.x + W + 35},${from.y + 22} ${to.x - 35},${to.y + 22} ${to.x - 4},${to.y + 22}`}
+            marker-end="url(#c5-cascade-head)"
+          />
+        )
+      })
+    }
+    {
+      NODES.map((n) => (
+        <g data-task={n.id} data-moved={moved.has(n.id) ? 'yes' : 'no'}>
+          <rect class={`box ${moved.has(n.id) ? 'accent' : ''}`} x={n.x} y={n.y} width={W} height="44" rx="6" />
+          <text x={n.x + W / 2} y={n.y + 27} text-anchor="middle">
+            {n.id}
+          </text>
+        </g>
+      ))
+    }
+    <text class="note" x="300" y="222" text-anchor="middle">each key goes into the keys above it</text>
+  </svg>
+  <figcaption>Change utils, and every key above it changes too.</figcaption>
+</figure>

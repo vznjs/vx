@@ -37,6 +37,15 @@ const GUIDE_PROOFS = [
   'packages/vx/tests/config.test.ts',
   'packages/vx/tests/package-graph.test.ts',
   'packages/vx/tests/task-graph.test.ts',
+  'packages/vx/tests/scheduler.test.ts',
+  'packages/vx/tests/cgroup.test.ts',
+  'packages/vx/tests/show-info.test.ts',
+  'packages/vx/tests/git-subdir-workspace.test.ts',
+  'packages/vx/tests/execute-task.test.ts',
+  'packages/vx/tests/git-oid.test.ts',
+  'packages/vx/tests/sandbox-request.test.ts',
+  'packages/vx-schedule-history/tests/schedule-history.test.ts',
+  'packages/vx-bench/tests/schedule-policy.test.ts',
 ]
 const PROOFS = [...new Set([...CHOOSING_PROOFS, ...GUIDE_PROOFS])]
 

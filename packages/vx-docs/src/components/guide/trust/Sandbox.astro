@@ -1,0 +1,30 @@
+---
+import '../vx-diagram.css'
+---
+
+<figure class="vx-diagram" data-diagram="sandbox">
+  <svg
+    viewBox="0 0 600 220"
+    role="img"
+    aria-label="Inside the sandbox, app#build can see only src/index.ts. banner.txt is outside the wall. Reading it fails, the task fails with the message: denied banner.txt, and nothing is saved."
+  >
+    <defs>
+      <marker id="c6-sandbox-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+        <path class="head" d="M0,0 L10,5 L0,10 z"></path>
+      </marker>
+    </defs>
+    <rect class="wall" x="0" y="20" width="360" height="160" rx="12"></rect>
+    <text class="note" x="16" y="44">sandbox: only listed files exist</text>
+    <rect class="box accent" x="20" y="96" width="140" height="44" rx="6"></rect>
+    <text x="90" y="123" text-anchor="middle">app#build</text>
+    <rect class="box" x="200" y="96" width="140" height="44" rx="6"></rect>
+    <text x="270" y="123" text-anchor="middle">src/index.ts</text>
+    <path class="edge" d="M160,118 L196,118" marker-end="url(#c6-sandbox-head)"></path>
+    <rect class="box danger" x="440" y="96" width="140" height="44" rx="6"></rect>
+    <text x="510" y="123" text-anchor="middle">banner.txt</text>
+    <path class="edge danger" d="M90,96 C90,60 320,56 352,76"></path>
+    <text class="bad" x="362" y="86" text-anchor="middle" style="font-size:22px">✕</text>
+    <text class="bad" x="300" y="208" text-anchor="middle">task fails: denied banner.txt — nothing saved</text>
+  </svg>
+  <figcaption>A forgotten file becomes an error that names it, not a wrong hit weeks later.</figcaption>
+</figure>

@@ -560,7 +560,7 @@ describe('lab 4 on learn/scheduling', () => {
   const html = page('learn/scheduling')
   const none = new Set<string>()
   const docsAt = (seconds: number): SimTask[] =>
-    SIM_TASKS.map((t) => (t.id === 'docs#build' ? { ...t, dur: seconds * 1000 } : t))
+    SIM_TASKS.map((t) => (t.id === 'app#docs' ? { ...t, dur: seconds * 1000 } : t))
   const at = (tasks: SimTask[], workers: number) => {
     const count = schedule(tasks, none, 'count', workers)
     return {
@@ -568,7 +568,7 @@ describe('lab 4 on learn/scheduling', () => {
       path: criticalPath(tasks).length / 1000,
       bound: lowerBound(tasks, workers) / 1000,
       count: count.makespan / 1000,
-      docsStarts: count.bars.find((b) => b.id === 'docs#build')!.start / 1000,
+      docsStarts: count.bars.find((b) => b.id === 'app#docs')!.start / 1000,
       median: schedule(tasks, none, 'median', workers).makespan / 1000,
     }
   }
@@ -578,16 +578,16 @@ describe('lab 4 on learn/scheduling', () => {
     expect([at(docsAt(10), 2), at(docsAt(20), 2), at(docsAt(30), 2), at(docsAt(30), 3)]).toEqual([
       { chain: CHAIN, path: 24, bound: 24, count: 27, docsStarts: 8, median: 24 },
       { chain: CHAIN, path: 24, bound: 29, count: 30, docsStarts: 8, median: 29 },
-      { chain: ['docs#build'], path: 30, bound: 34, count: 38, docsStarts: 8, median: 34 },
-      { chain: ['docs#build'], path: 30, bound: 30, count: 32, docsStarts: 2, median: 30 },
+      { chain: ['app#docs'], path: 30, bound: 34, count: 38, docsStarts: 8, median: 34 },
+      { chain: ['app#docs'], path: 30, bound: 30, count: 32, docsStarts: 2, median: 30 },
     ])
     const said = steps(section(html, 'lab-a-bad-order'))
     expect(said).toHaveLength(4)
     const PROSE = [
-      ['starts docs#build at 8 seconds and finishes at 27', 'finishes at 24'],
+      ['starts app#docs at 8 seconds and finishes at 27', 'finishes at 24'],
       ['24 seconds', 'at least 29', 'Tasks waiting finishes at 30, and learned durations at 29'],
-      ['docs#build alone takes 30 seconds', 'The bound is 34', 'starts docs#build at 8 seconds'],
-      ['starts docs#build at 2 seconds', 'finishes at 32', 'finishes at 30'],
+      ['app#docs alone takes 30 seconds', 'The bound is 34', 'starts app#docs at 8 seconds'],
+      ['starts app#docs at 2 seconds', 'finishes at 32', 'finishes at 30'],
     ]
     for (const [i, phrases] of PROSE.entries()) {
       for (const p of phrases) {
