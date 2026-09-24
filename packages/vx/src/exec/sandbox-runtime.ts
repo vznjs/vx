@@ -748,7 +748,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
-  timeout.clear()
+  await timeout.settle()
   if (timeout.timedOut()) ac.abort()
   else await drainOrAbort(streams, ac)
   const [stdout, stderr] = await streams

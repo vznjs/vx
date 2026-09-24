@@ -372,13 +372,13 @@ describe('runPersistent', () => {
 // runner-adjacent suite (item 636). What survived guards a process the
 // runner no longer owns: a timer or a set entry that outlives the child
 // signals whatever holds that pid next.
-describe('armTimeout — what clear() disarms', () => {
-  it('a child that exits in time is never signalled: clear() before the deadline', async () => {
+describe('armTimeout — what settle() disarms and what it reaps', () => {
+  it('a child that exits in time is never signalled: settle() before the deadline', async () => {
     // Detached like the runner's own spawns: killTree signals the group.
     const proc = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore', detached: true })
     try {
       const handle = armTimeout(proc, 60)
-      handle.clear()
+      await handle.settle()
       await Bun.sleep(150)
       // Deleting the timer's clear reddens this: the stale deadline fires on
       // a pid the runner has moved on from.
@@ -396,32 +396,33 @@ describe('armTimeout — what clear() disarms', () => {
     }
   })
 
-  it('a child that dies on the SIGTERM is not SIGKILLed after: clear() disarms the escalation', async () => {
-    // A server that ignores TERM keeps the pid alive so the escalation has a
-    // target; the runner's real clear() runs when the child exits, but the
-    // claim is the same — after clear(), no SIGKILL, whoever holds the pid.
+  it('a timed-out shell that dies on the SIGTERM: settle() SIGKILLs the grandchild that ignored it', async () => {
+    // The shell exits on the SIGTERM; what it backgrounded ignores it. The
+    // escalation timer was cleared with the shell's exit, so the grandchild
+    // outlived the run under init (nx#11782's sibling, reproduced on vx
+    // 2026-09-24). settle() waits out the grace for the GROUP and SIGKILLs
+    // whoever is left.
     const prev = process.env['VX_KILL_GRACE_MS']
     process.env['VX_KILL_GRACE_MS'] = '200'
-    const proc = Bun.spawn(['sh', '-c', "trap '' TERM; exec sleep 30"], {
-      stdout: 'ignore',
-      stderr: 'ignore',
-      detached: true,
-    })
+    const proc = Bun.spawn(
+      ['sh', '-c', `sh -c 'trap "" TERM; echo $$; exec sleep 30' & sleep 30`],
+      { stdout: 'pipe', stderr: 'ignore', detached: true },
+    )
+    const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader()
+    const gc = Number(new TextDecoder().decode((await reader.read()).value).trim())
     try {
+      expect(isAlive(gc)).toBe(true)
       const handle = armTimeout(proc, 50)
-      await Bun.sleep(120)
+      await proc.exited
       expect(handle.timedOut()).toBe(true)
-      expect(isAlive(proc.pid)).toBe(true)
-      handle.clear()
-      await Bun.sleep(350)
-      // Deleting the kill timer's clear reddens this: the SIGKILL lands at
-      // 250 ms.
-      expect(isAlive(proc.pid)).toBe(true)
+      expect(isAlive(gc)).toBe(true)
+      await handle.settle()
+      expect(await waitForDead(gc, 500)).toBe(true)
     } finally {
       if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = prev
-      proc.kill('SIGKILL')
-      await proc.exited
+      reader.releaseLock()
+      if (isAlive(gc)) process.kill(gc, 'SIGKILL')
     }
   })
 })
