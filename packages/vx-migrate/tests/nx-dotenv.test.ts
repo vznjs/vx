@@ -149,7 +149,7 @@ describe('nx-env', () => {
     // What a failed parallel run-commands line does: TERM the group, exit 1.
     const r = await nxEnv([
       '--',
-      `trap 'trap "" TERM; kill -TERM 0; exit 1' USR1; sleep 5 & kill -USR1 $$; wait`,
+      `trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; sleep 5 & kill -USR1 $$; wait`,
     ])
     expect(r.code).toBe(1)
   })

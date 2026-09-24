@@ -195,10 +195,16 @@ run through `nx-exec` on the same options and arguments.
   command's `exit`, `cd` or `set` stays in it.
 - `commands` run in parallel unless `parallel: false` (the schema's
   default). The line starts each as a background job whose failure
-  sends `USR1` to the line's shell; its trap TERMs the process group and
+  sends `USR1` to the line's shell; its trap TERMs the process group,
+  waits for every command to exit (Nx settles them all before it fails
+  the task, so a TERMed server's cleanup trap runs inside the task) and
   exits 1, Nx's code for a failed parallel run. The group is the task's
   own: vx spawns every task `detached`, and a line pasted into a script
-  should run under `setsid sh -c` for the same reason. Joined with `&&`,
+  should run under `setsid sh -c` for the same reason. Not under vx's
+  Linux sandbox: the runtime's wrapper shell shares the group there, the
+  TERM ends it, and the task fails 143 with the namespace killing the
+  commands mid-trap (any `kill 0` does that to a sandboxed task, a core
+  defect this line only inherits). Joined with `&&`,
   a failing check waited for a server that never exits (nx#28477).
 - Arguments: Nx appends every option it does not consume (`--k=v`,
   quoted as it quotes), the `args` option and the command line's
