@@ -389,6 +389,35 @@ false`, the first failure failing the task; `commands: []` a no-op;
       plugin workers' sockets, so that row sets `NX_ISOLATE_PLUGINS=false`,
       what Nx does itself when it sees a sandbox.
 
+737.  DONE (2026-09-24, upstream survey, nx#32779, nx#28788, nx#35292).
+      A `^name` that NO project in the workspace declares (`^biuld`) is
+      refused like a misspelled same-project name; it planned no edges and
+      exited 0. A scoped run checks the configs it left out only then, and
+      `turbo()` / `nx()` drop a `^name` no mapped project emits, as Turbo
+      and Nx give it no edges. The graph builder expands on an explicit
+      stack: a 50,000-deep chain plans and a ring is refused with the same
+      message, where both threw `RangeError`; 60,000 random workspaces
+      matched the recursive builder node for node. `FORCE_COLOR=0` and
+      `=false` turn vx's colour off (they turned it on); tasks still get the
+      variable unchanged. Open from the survey: a graph-build error leaves
+      the local cache open (`prepareRun` closes it only on config and
+      cache-plugin errors).
+
+738.  REFUTED (2026-09-24, the owner's "never do anything twice", output
+      side). A run-scoped path memo (facts about output paths shared by the
+      check, walk, clean, pack, extraction and snapshot) was built and
+      reviewed adversarially twice. Review one reproduced two containment
+      escapes (a restore writing through a symlink a concurrent or
+      unsandboxed task planted; main refuses both); review two, after those
+      closed, reproduced a stale file mode packed through a cross-project
+      hardlink and a directory left out of the run-end snapshot. With all
+      four closed the restore made 11% fewer syscalls (46% fewer
+      `getdents64`) and was within noise of main on wall and CPU, min and
+      median, two sessions. Not shipped. The lesson is principle 9's
+      limit: an unsandboxed task may write anywhere, so a fact about a file
+      a task could write is not reused across task runs, and a refusal is
+      never decided from a memo.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
