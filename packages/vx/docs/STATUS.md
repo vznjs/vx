@@ -533,7 +533,22 @@ false`, the first failure failing the task; `commands: []` a no-op;
       persistent task is ready. Rule: an unsandboxed write into ANOTHER
       project is out of contract, as for a cached task. This repo's
       `check.bun` is sandboxed with no write grant, so the gate's shards
-      stay in the restore tier.
+      stay in the restore tier. Then turborepo#10111 and #1146: a key is
+      taken before the command, so a formatter rewriting its own input, or
+      a user's edit mid-run, filed bytes built from one state under the key
+      of another, and restoring the old state replayed them as up-to-date.
+      A miss now re-checks before it saves: the key re-derived just before
+      the command must match, and one `lstat` per input (and the
+      `package.json`) finds any file changed since its digest was learned
+      (the enumeration's start for an index OID, the describe for a hashed
+      file), which is hashed again. A move withholds the save with one
+      status line and drops the project's facts. A hit checks nothing
+      (warm A/B within noise); a miss pays ~1.8 µs per input file on the
+      main thread (`miss: recheck inputs`: 16 ms per 1,000 misses of two
+      inputs, 55 ms per 100 misses of 302; cold wall min-of-11 on a loaded
+      4-core box 624 → 667 ms at 30,200 inputs). Not seen: an input
+      changed and changed back before the check, a file added under a
+      glob.
 
 ## In flight
 

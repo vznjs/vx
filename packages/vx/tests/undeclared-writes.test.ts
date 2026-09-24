@@ -201,15 +201,18 @@ describe('execute-task drops what the command may have written, and nothing else
     executor: TaskExecutor = localExecutor(),
   ): Promise<{ partitions: string[]; manifests: string[] }> {
     const dir = await addProject(root, 'app', { files: { 'config.json': 'X' } })
+    const cache = new Cache(path.join(root, '.vx', 'cache'))
+    // The true digest, so a cached task's re-check before its save finds
+    // its package.json unmoved and drops nothing of its own.
+    const digest = await cache.hashFile(path.join(dir, 'package.json'))
     const git = new GitFilesCache()
     git.setWorkspaceRoot(root)
     for (const p of [dir, OTHER, root]) {
       git.set(p, ['package.json'])
-      git.setOids(p, new Map([[path.join(p, 'package.json'), 'oid']]))
+      git.setOids(p, new Map([[path.join(p, 'package.json'), digest]]))
     }
     const hashCache = createHashCache()
-    for (const p of [dir, OTHER]) hashCache.packageJson.set(p, Promise.resolve('digest'))
-    const cache = new Cache(path.join(root, '.vx', 'cache'))
+    for (const p of [dir, OTHER]) hashCache.packageJson.set(p, Promise.resolve(digest))
     try {
       const n = {
         id: 'app#gen',

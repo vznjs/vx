@@ -56,7 +56,18 @@ export interface ComputeHashArgs {
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string>
 export async function describeTaskInputs(
   args: ComputeHashArgs,
-): Promise<{ hash: string; inputs: TaskInputs }>
+): Promise<{ hash: string; inputs: TaskInputs; facts: InputFact[] }>
+
+// A file the key folded, its digest, and since when that digest is known true (ms epoch).
+export interface InputFact {
+  path: string
+  digest: string
+  since: number
+}
+export async function movedInput(
+  facts: readonly InputFact[],
+  cache: CacheLayer,
+): Promise<string | undefined>
 export function computeGroupHash(upstream: TaskOutcome[]): string
 ```
 
@@ -73,7 +84,15 @@ export function computeGroupHash(upstream: TaskOutcome[]): string
   it, for the executor seam on the miss path: it re-runs the memoized
   resolution and keeps the values the key folded (env, runtime output,
   per-file digests), which `captureInto` reduces to digests because
-  its rows are persisted.
+  its rows are persisted. Its `facts` date each digest: an index OID
+  from the git enumeration's start (`GitFilesCache.enumeratedAtMs`), a
+  hashed file from the describe's own start, the `package.json` digest
+  (a per-run memo) from the enumeration.
+- `movedInput` — the post-command re-check (item 741): one `lstat` per
+  fact; a file whose ctime is not older than its fact by
+  `FILE_HASH_RACY_MS` is hashed again and compared, and a missing file
+  has moved. Returns the first moved path; execute-task then withholds
+  the save.
 - `computeGroupHash` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group.
 

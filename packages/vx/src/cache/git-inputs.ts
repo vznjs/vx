@@ -103,6 +103,13 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * be opened from a string, so `resolveFiles` refuses one it would fold.
    */
   private undecodable = new Set<string>()
+  /**
+   * When the enumeration that vouched for `oids` started (ms since the
+   * epoch): an index OID says what a file held when `git status` looked,
+   * so a file changed since may hold something else (item 741). Unset on
+   * a cache no enumeration filled; its OIDs are then re-checked by content.
+   */
+  enumeratedAtMs: number | undefined
 
   get undecodableNames(): ReadonlySet<string> {
     return this.undecodable
@@ -673,6 +680,8 @@ export interface GitEnumeration {
   dirty: boolean | null
   /** Workspace-relative paths whose names are not UTF-8 (`decodeGitZ`). */
   undecodable: readonly string[]
+  /** `Date.now()` before the spawns: what `trusted` says is true as of no earlier. */
+  startedAtMs: number
 }
 
 /**
@@ -730,6 +739,7 @@ export async function startGitEnumeration(
       return null
     }
   }
+  const startedAtMs = Date.now()
   // Four spawns at most (the rev-parse is memoized per process), one
   // worktree walk. `ls-files -s -v` reads the INDEX only
   // (~9 ms on a 1000-project tree) and answers two questions at once: every
@@ -840,7 +850,7 @@ export async function startGitEnumeration(
   if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {
     undecodable.push(...stripPrefixFromSet(parsedStatus.undecodable, gitPrefix))
   }
-  return { all, trusted, dirty: worktreeDirty, undecodable }
+  return { all, trusted, dirty: worktreeDirty, undecodable, startedAtMs }
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
@@ -853,6 +863,7 @@ export function applyGitEnumeration(
 ): void {
   const { all, trusted } = enumeration
   cache.setWorktreeDirty(enumeration.dirty)
+  cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of

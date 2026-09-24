@@ -88,6 +88,11 @@ export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
 
+// git's racy-clean window, in ms: a file changed this close to when its
+// digest was learned is hashed again rather than trusted by its stat —
+// by the file-hash memo, and by the pre-save input re-check (task-hash.md).
+export const FILE_HASH_RACY_MS = 50
+
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
   // workspace root in a run, so it shares the enumeration's `rev-parse`
