@@ -267,7 +267,9 @@ describe("the chapter's pictures and exits", () => {
       expect(links).toContain(exit)
     }
     expect(runFlags().has('--dry')).toBe(true)
-    expect(codeBlocks(inVx, 'sh')).toEqual(['vx run build test --dry'])
+    // At a workspace root a bare task name refuses ("not inside a project").
+    expect(runFlags().has('--all')).toBe(true)
+    expect(codeBlocks(inVx, 'sh')).toEqual(['vx run build test --all --dry'])
   })
 
   // Item 721's app#docs made the page run `build test docs`, so the page and
