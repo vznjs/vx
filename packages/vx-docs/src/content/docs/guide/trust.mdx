@@ -1,0 +1,10 @@
+---
+title: 'Can you trust a hit?'
+description: 'How a cache hit goes stale, the undeclared input behind it, and how a sandbox makes an undeclared read fail loudly.'
+chapter: 6
+problem: 'A hit replayed an old output and the run was green.'
+---
+
+{/* TODO(R2): the chapter. What it teaches: The stale hit; the undeclared input (a file, an env var, a tool version); declared versus inferred inputs; the sandbox, which runs a task with only its declared files so an undeclared read fails loudly. Widget: StaleHit. */}
+
+A hit replayed an old output, and the run was green. Nothing warned you. This chapter shows how that happens and how a tool can refuse to let it.

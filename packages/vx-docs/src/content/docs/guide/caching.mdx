@@ -1,0 +1,10 @@
+---
+title: 'Caching'
+description: 'Reusing a task''s result when its inputs have not changed: the cache key, a hit, and why a key folds its dependencies'' keys.'
+chapter: 5
+problem: 'You changed one line in `app`; `utils` rebuilt anyway.'
+---
+
+{/* TODO(R2): the chapter. What it teaches: A result that depends only on its inputs can be reused. The key (a hash of inputs, command, env); a hit restores outputs; why a key folds its dependencies' keys (the cascade). Widget: KeyCalculator. */}
+
+You changed one line in `app`, and `utils` rebuilt anyway, although nothing it reads had changed. This chapter shows how a tool knows a result can be reused.

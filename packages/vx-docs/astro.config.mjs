@@ -7,6 +7,7 @@ import { defineConfig } from 'astro/config'
 // index, pagination, RSS and structured data would be a second copy of
 // what it already does for this exact Starlight version.
 import starlightBlog from 'starlight-blog'
+import { SIDEBAR } from './src/nav/sections.ts'
 import remarkMermaid from './src/plugins/remark-mermaid.mjs'
 
 // GitHub Pages project site: https://vznjs.github.io/vx/
@@ -56,15 +57,24 @@ export default defineConfig({
         replacesTitle: false,
       },
       favicon: '/favicon.svg',
+      // The site's chrome: the four places in the header (and atop the phone
+      // menu), the chapter header and Next card on Guide pages, the landing's
+      // fonts, and dark as the default theme.
       components: {
         Head: './src/components/Head.astro',
+        Header: './src/components/starlight/Header.astro',
+        Sidebar: './src/components/starlight/Sidebar.astro',
+        PageTitle: './src/components/starlight/PageTitle.astro',
+        Footer: './src/components/starlight/Footer.astro',
+        ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
       customCss: ['./src/styles/theme.css'],
       plugins: [
         starlightBlog({
           title: 'Blog',
           prefix: 'blog',
-          navigation: 'header-end',
+          // The header's own nav links the blog (src/nav/sections.ts).
+          navigation: 'none',
           postCount: 10,
           recentPostCount: 5,
           authors: {
@@ -78,107 +88,11 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/vznjs/vx/edit/main/packages/vx-docs/',
       },
-      sidebar: [
-        // Before the guides: a reader who knows only `npm run build` starts
-        // with the problem (design/site-teaches-2026-09.md, roadmap track W).
-        {
-          label: 'Learn',
-          items: [
-            { label: 'What is task orchestration?', link: '/learn/what-is-task-orchestration/' },
-            { label: 'Caching, from first principles', link: '/learn/caching/' },
-            { label: 'Correctness: can you trust the cache?', link: '/learn/correctness/' },
-            { label: 'Scheduling', link: '/learn/scheduling/' },
-            { label: 'Architecture: a pipeline with seams', link: '/learn/architecture/' },
-            { label: 'Extending vx', link: '/learn/extending/' },
-            { label: 'vx, Turbo, Nx, Bazel: choosing', link: '/learn/choosing/' },
-            { label: 'Playground: run the planner', link: '/learn/playground/' },
-            { label: 'Labs: break it on purpose', link: '/learn/labs/' },
-            { label: 'Glossary', link: '/learn/glossary/' },
-          ],
-        },
-        {
-          label: 'Get started',
-          items: [
-            { label: 'Introduction', link: '/introduction/' },
-            { label: 'Quickstart', link: '/quickstart/' },
-            { label: 'Add vx to an existing repo', link: '/add-to-existing-repo/' },
-          ],
-        },
-        {
-          label: 'Build your monorepo',
-          items: [
-            { label: 'Configuring tasks', link: '/guides/tasks/' },
-            { label: 'Caching tasks', link: '/guides/caching/' },
-            { label: 'Task dependencies', link: '/guides/task-dependencies/' },
-            { label: 'Running & filtering tasks', link: '/guides/running-tasks/' },
-            { label: 'Dev & long-running tasks', link: '/guides/dev-tasks/' },
-            { label: 'Environment variables', link: '/guides/environment-variables/' },
-            { label: 'Sandboxing tasks', link: '/guides/sandboxing/' },
-            { label: 'Trusting the cache', link: '/guides/trusting-the-cache/' },
-            { label: 'Lockfile-aware caching', link: '/guides/lockfiles/' },
-            { label: 'Remote caching', link: '/guides/remote-caching/' },
-            { label: 'Remote execution', link: '/guides/remote-execution/' },
-            { label: 'Continuous integration', link: '/guides/ci/' },
-            { label: 'Workspace configuration', link: '/guides/workspace-config/' },
-          ],
-        },
-        {
-          label: 'Extending vx',
-          items: [
-            { label: 'Core is provider-neutral', link: '/guides/extensibility/' },
-            { label: 'Writing a vx plugin', link: '/guides/plugins/' },
-            { label: 'OpenTelemetry traces & metrics', link: '/guides/otel-bridge/' },
-            { label: 'vx mcp — AI agents', link: '/guides/mcp/' },
-          ],
-        },
-        {
-          label: 'Migrate to vx',
-          items: [
-            { label: 'From Turborepo', link: '/migrate/from-turborepo/' },
-            { label: 'From Nx', link: '/migrate/from-nx/' },
-          ],
-        },
-        {
-          label: 'Concepts',
-          items: [
-            { label: 'How vx works', link: '/concepts/how-vx-works/' },
-            { label: 'Why vx is fast', link: '/concepts/why-vx-is-fast/' },
-            { label: 'Caching deep dive', link: '/caching/' },
-            { label: 'Execution lifecycle', link: '/execution/' },
-            { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
-            { label: 'Turbo / Nx parity map', link: '/parity/' },
-          ],
-        },
-        {
-          label: 'Reference',
-          items: [
-            { label: 'CLI', link: '/cli/' },
-            { label: 'Configuration', link: '/schema/' },
-            { label: 'Benchmarks', link: '/benchmarks/' },
-          ],
-        },
-        {
-          label: 'Internals',
-          collapsed: true,
-          items: [
-            { label: 'Technical overview', link: '/overview/' },
-            { label: 'Architecture', link: '/architecture/' },
-            { label: 'Optimizations', link: '/optimizations/' },
-            { label: 'Shared patterns with Turbo / Nx', link: '/patterns/' },
-            { label: 'Diagrams', link: '/flows/' },
-            {
-              label: 'Module reference',
-              collapsed: true,
-              items: [{ autogenerate: { directory: 'modules' } }],
-            },
-            {
-              label: 'Design notes',
-              collapsed: true,
-              items: [{ autogenerate: { directory: 'design' } }],
-            },
-          ],
-        },
-      ],
+      // Three sidebars (Guide, Docs, Reference) from one: src/nav/sections.ts
+      // defines them as top-level groups, and src/nav/route-data.ts shows a
+      // page only its own section's group.
+      sidebar: SIDEBAR,
+      routeMiddleware: './src/nav/route-data.ts',
     }),
   ],
 })

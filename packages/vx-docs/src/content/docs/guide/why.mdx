@@ -1,0 +1,10 @@
+---
+title: 'Why orchestrate?'
+description: 'Why a monorepo needs more than a shell loop: the loop runs builds in the wrong order, rebuilds everything, and runs one at a time.'
+chapter: 1
+problem: 'Four packages, one `build` script each; you write a shell loop.'
+---
+
+{/* TODO(R2): the chapter. What it teaches: What a monorepo is; the loop's three failures: wrong order, everything rebuilt, one at a time. The rest of the book fixes them. Diagram: one static diagram (build-time SVG, components/guide/diagram). */}
+
+Four packages sit in one repository: `utils`, `ui`, `api` and `app`. Each has a `build` script, and you write a shell loop that runs them one after another. This chapter shows the three ways that loop fails.

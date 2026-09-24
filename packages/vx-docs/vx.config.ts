@@ -53,7 +53,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/examples src/pages src/playground src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/examples src/guide src/nav src/pages src/playground src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', SIM_READ, '../vx/src/**'],
@@ -69,6 +69,8 @@ export default defineProject({
             'scripts/**',
             'src/components/**',
             'src/examples/**',
+            'src/guide/**',
+            'src/nav/**',
             'src/pages/**',
             'src/playground/**',
             'src/plugins/**',
@@ -168,7 +170,7 @@ export default defineProject({
     // this task.
     test: {
       description:
-        'bun test — the guide, sidebar, demo, Learn and site-link pins (needs the imported content and dist/)',
+        'bun test — the Guide, sidebar, redirect, demo, Learn and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
@@ -203,6 +205,10 @@ export default defineProject({
             // elements' source for the markup they query.
             'src/components/demos/playground.ts',
             'src/components/demos/checkpoint.ts',
+            // guide.test.ts and sidebar-coverage.test.ts import the Guide's
+            // chapter list and the sidebars.
+            'src/guide/**',
+            'src/nav/**',
             // The playground rows: its glob and xxh3 against Bun's, and the
             // shipped bundle against a fresh build.
             'src/playground/**',

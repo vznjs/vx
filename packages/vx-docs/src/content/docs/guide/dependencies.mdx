@@ -1,0 +1,10 @@
+---
+title: 'Dependencies'
+description: 'How tasks depend on each other, how the dependencies form a graph, and how the graph decides the order.'
+chapter: 3
+problem: '`app#build` ran before `ui#build` and failed.'
+---
+
+{/* TODO(R2): the chapter. What it teaches: A dependency between tasks; `^build` versus same-package; the task graph; waves; why a cycle has no order. Widget: GraphExplorer. */}
+
+`app#build` ran before `ui#build`, and it failed: `app` imports `ui`, and `ui` had not been built yet. This chapter shows how a tool learns which task must finish first.

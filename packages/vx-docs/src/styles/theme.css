@@ -1,167 +1,160 @@
-/* vx identity palette — violet → pink gradient wordmark. */
-:root {
-  --sl-color-accent-low: #241a4d;
-  --sl-color-accent: #7c5cff;
-  --sl-color-accent-high: #c9bdff;
+/* The docs wear the landing's palette and type (src/styles/landing.css), so
+   the site is one product (design/site-redo-2026-09.md § One look). The
+   --vx-* tokens are the only colours a Guide diagram may use
+   (components/guide/diagram/README.md); Starlight's own properties are mapped
+   onto them below. Dark is the default theme (components/starlight/
+   ThemeProvider.astro); the light theme keeps every pair readable. */
 
-  --vx-violet: #7c5cff;
-  --vx-pink: #ff5cc8;
-  --vx-grad: linear-gradient(120deg, #7c5cff 0%, #ff5cc8 100%);
+:root {
+  --vx-bg: #0a0b0d;
+  --vx-fg: #f2f5ef;
+  --vx-text: #cbd1c9;
+  --vx-muted: #8b938f;
+  --vx-surface: #14171b;
+  --vx-surface-2: #1c2127;
+  --vx-border: #2c333b;
+  --vx-accent: #c6f84e;
+  --vx-accent-soft: #1b2a0c;
+  --vx-on-accent: #14210a;
+  --vx-link: #5ee0ff;
+  --vx-danger: #ff6b6b;
+  --vx-ok: #22c55e;
+  --vx-warn: #ff9d42;
+  --vx-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --vx-font-body: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --vx-font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+
+  --sl-color-white: var(--vx-fg);
+  --sl-color-gray-1: #e2e7df;
+  --sl-color-gray-2: var(--vx-text);
+  --sl-color-gray-3: var(--vx-muted);
+  --sl-color-gray-4: #5b635f;
+  --sl-color-gray-5: var(--vx-border);
+  --sl-color-gray-6: var(--vx-surface);
+  --sl-color-black: var(--vx-bg);
+
+  --sl-color-accent-low: var(--vx-accent-soft);
+  --sl-color-accent: var(--vx-accent);
+  --sl-color-accent-high: #d8ff6b;
+  --sl-color-text-accent: var(--vx-accent);
+  --sl-color-text-invert: var(--vx-on-accent);
+  --sl-color-bg-nav: var(--vx-bg);
+  --sl-color-bg-sidebar: var(--vx-bg);
+  --sl-color-bg-inline-code: var(--vx-surface-2);
+  --sl-color-hairline: #21262d;
+  --sl-color-hairline-light: var(--vx-border);
+
+  --sl-font: var(--vx-font-body);
+  --sl-font-mono: var(--vx-mono);
 }
 
 :root[data-theme='light'] {
-  --sl-color-accent-low: #e3dcff;
-  --sl-color-accent: #6b3cf0;
-  --sl-color-accent-high: #2a1466;
+  --vx-bg: #fbfcf9;
+  --vx-fg: #14171b;
+  --vx-text: #333b44;
+  --vx-muted: #5b635f;
+  --vx-surface: #f1f4ec;
+  --vx-surface-2: #e5eadf;
+  --vx-border: #cfd6c9;
+  --vx-accent: #4d7a00;
+  --vx-accent-soft: #eaf6cf;
+  --vx-on-accent: #fbfcf9;
+  --vx-link: #0a7ea4;
+  --vx-danger: #c62828;
+  --vx-ok: #1f8a4c;
+  --vx-warn: #b35c00;
+
+  --sl-color-gray-1: #1c2127;
+  --sl-color-gray-4: #8b938f;
+  --sl-color-gray-7: #f6f8f3;
+  --sl-color-accent-high: #3a5c00;
+  --sl-color-hairline: #e1e6db;
 }
 
-/* ───────────────────────────  Splash hero  ─────────────────────────── */
+/* ───────────────────────────  Type  ─────────────────────────── */
 
-/* A futuristic, glowing backdrop behind the hero. */
-.hero {
-  position: relative;
-  isolation: isolate;
-  padding-block: clamp(2rem, 8vw, 5rem);
-}
-
-.hero::before {
-  content: '';
-  position: absolute;
-  inset: -30% -20% auto -20%;
-  height: 130%;
-  z-index: -1;
-  background:
-    radial-gradient(
-      60% 55% at 50% 18%,
-      color-mix(in srgb, var(--vx-violet) 38%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(
-      45% 45% at 78% 8%,
-      color-mix(in srgb, var(--vx-pink) 30%, transparent),
-      transparent 70%
-    );
-  filter: blur(8px);
-  opacity: 0.9;
-  animation: vx-pulse 9s ease-in-out infinite;
-}
-
-/* Faint perspective grid — the "engine" feel. */
-.hero::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--vx-violet) 9%, transparent) 1px, transparent 1px),
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--vx-violet) 9%, transparent) 1px,
-      transparent 1px
-    );
-  background-size: 44px 44px;
-  mask-image: radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 75%);
-  opacity: 0.5;
-}
-
-:root[data-theme='light'] .hero::before {
-  opacity: 0.5;
-}
-
-/* Oversized gradient wordmark. The glow comes from the hero's ::before
-   backdrop, NOT a filter on this element — `filter` on top of
-   `background-clip: text` breaks the text clip on mobile browsers (the
-   gradient renders as a filled box). */
-.hero h1 {
-  display: inline-block;
-  font-size: clamp(4rem, 15vw, 9.5rem);
-  line-height: 0.9;
-  letter-spacing: -0.04em;
-  font-weight: 800;
-  background: linear-gradient(120deg, #b9a7ff 0%, var(--vx-violet) 40%, var(--vx-pink) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.hero .tagline {
-  font-size: clamp(1.05rem, 2.1vw, 1.4rem);
-  line-height: 1.5;
-  max-width: 46ch;
-  color: var(--sl-color-white);
-  opacity: 0.92;
-}
-
-/* Action buttons — gradient primary with a glow + lift. */
-.hero .action.primary {
-  background: var(--vx-grad);
-  border: none;
-  color: #fff;
-  box-shadow: 0 8px 30px color-mix(in srgb, var(--vx-violet) 45%, transparent);
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease;
-}
-.hero .action.primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px color-mix(in srgb, var(--vx-pink) 55%, transparent);
-}
-.hero .action.secondary {
-  border: 1px solid color-mix(in srgb, var(--vx-violet) 55%, transparent);
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease;
-}
-.hero .action.secondary:hover {
-  transform: translateY(-2px);
-  border-color: var(--vx-pink);
-}
-
-/* ───────────────────────────  Landing body  ────────────────────────── */
-
-/* Section headings get a gradient accent rule. */
-.landing h2 {
-  font-size: clamp(1.6rem, 3.4vw, 2.3rem);
+h1,
+h2,
+h3,
+h4,
+.sl-markdown-content :is(h1, h2, h3, h4) {
+  font-family: var(--vx-font-display);
   letter-spacing: -0.02em;
-  margin-top: 3.5rem;
-}
-.landing h2::after {
-  content: '';
-  display: block;
-  width: 3.5rem;
-  height: 3px;
-  margin-top: 0.6rem;
-  border-radius: 2px;
-  background: var(--vx-grad);
 }
 
-/* Cards: static gradient border + glow — no motion, no lift. */
-.landing .card {
-  position: relative;
-  border: 1px solid transparent;
-  border-radius: 0.75rem;
-  /* Gradient border via padding-box bg + border-box gradient. */
-  background:
-    linear-gradient(var(--sl-color-bg), var(--sl-color-bg)) padding-box,
-    var(--vx-grad) border-box;
-  box-shadow: 0 0 26px color-mix(in srgb, var(--vx-violet) 13%, transparent);
-  transition: box-shadow 0.25s ease;
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--vx-link);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
 }
-.landing .card:hover {
-  /* Glow brightens on hover — no transform, no bump. */
-  box-shadow: 0 0 42px color-mix(in srgb, var(--vx-pink) 24%, transparent);
-}
-.landing .card .icon {
-  background: color-mix(in srgb, var(--vx-violet) 16%, transparent);
-  color: var(--vx-pink);
-  border-radius: 10px;
-  padding: 0.35rem;
+.sl-markdown-content a:hover:not(:where(.not-content *)) {
+  color: var(--vx-fg);
 }
 
-/* Benchmark visuals live in the BenchChart / BenchBar components. */
+.sl-markdown-content code:not(:where(.not-content *, pre *)) {
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+/* ───────────────────────────  Chrome  ─────────────────────────── */
+
+.site-title {
+  font-family: var(--vx-font-display);
+  font-weight: 700;
+  color: var(--vx-fg);
+  letter-spacing: -0.02em;
+}
+
+header.header {
+  border-bottom-color: #21262d;
+}
+:root[data-theme='light'] header.header {
+  border-bottom-color: var(--sl-color-hairline);
+}
+
+/* A Docs group label reads like the landing's kickers: mono, small caps. */
+.sidebar-content .group-label .large {
+  font-family: var(--vx-mono);
+  font-size: var(--sl-text-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--vx-accent);
+}
+
+/* A link at the top of a sidebar (the Guide's chapters, the Reference's
+   pages) reads as an entry, not as a group heading. */
+.sidebar-content ul.top-level > li > a {
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+}
+
+/* The Guide's sidebar numbers its chapters. */
+[data-vx-section='guide'] ul.top-level {
+  counter-reset: vx-chapter;
+}
+[data-vx-section='guide'] ul.top-level > li > a {
+  display: flex;
+  gap: 0.6em;
+}
+[data-vx-section='guide'] ul.top-level > li > a::before {
+  counter-increment: vx-chapter;
+  content: counter(vx-chapter, decimal-leading-zero);
+  font-family: var(--vx-mono);
+  font-size: 0.85em;
+  opacity: 0.6;
+  padding-top: 0.1em;
+}
+
+/* A chapter's prose keeps a readable measure (the header is PageTitle.astro). */
+main:has(.vx-chapter-head) .sl-markdown-content {
+  max-width: 68ch;
+}
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
 
+/* Mermaid renders on the client and stays on internals pages only; the Guide
+   draws with components/guide/diagram at build time. */
 pre.mermaid {
   background: transparent;
   border: none;
@@ -184,49 +177,4 @@ pre.mermaid svg {
 /* Drop the per-heading anchor ("copy link") icons. */
 .sl-markdown-content .sl-anchor-link {
   display: none;
-}
-
-/* ───────────────────────────  Responsive  ──────────────────────────── */
-
-/* Clip the hero glow so its negative-inset backdrop never causes a
-   horizontal scrollbar on narrow screens. */
-.hero {
-  overflow: hidden;
-}
-
-@media (max-width: 30rem) {
-  .hero {
-    padding-block: 2rem;
-  }
-  .hero h1 {
-    font-size: clamp(3.4rem, 24vw, 5rem);
-  }
-  .landing h2 {
-    margin-top: 2.5rem;
-  }
-}
-
-/* ───────────────────────────  Motion safety  ───────────────────────── */
-
-@keyframes vx-pulse {
-  0%,
-  100% {
-    opacity: 0.78;
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(-1.5%) scale(1.04);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hero::before {
-    animation: none;
-  }
-  .landing .card,
-  .hero .action.primary,
-  .hero .action.secondary {
-    transition: none;
-  }
 }

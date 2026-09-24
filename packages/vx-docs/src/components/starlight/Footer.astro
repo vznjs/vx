@@ -1,0 +1,99 @@
+---
+// A Guide chapter ends with one card naming the next chapter and the problem
+// it opens with (the last chapter's card goes to the quickstart), instead of
+// Starlight's prev/next pair. Every other page keeps Starlight's footer.
+import Default from '@astrojs/starlight/components/Footer.astro'
+import EditLink from '@astrojs/starlight/components/EditLink.astro'
+import LastUpdated from '@astrojs/starlight/components/LastUpdated.astro'
+import { chapterPage, problemHtml } from '../../guide/chapters.js'
+
+const page = chapterPage(Astro.locals.starlightRoute.id)
+const base = import.meta.env.BASE_URL
+---
+
+{
+  page === undefined ? (
+    <Default />
+  ) : (
+    <footer class="vx-chapter-foot">
+      <a class="vx-next" href={`${base}${page.next.href}`} rel="next">
+        <span class="vx-next-kicker">{page.next.kicker}</span>
+        <span class="vx-next-title">{page.next.title}</span>
+        <span class="vx-next-problem" set:html={problemHtml(page.next.problem)} />
+        <span class="vx-next-arrow" aria-hidden="true">
+          →
+        </span>
+      </a>
+      <div class="vx-meta">
+        <EditLink />
+        <LastUpdated />
+      </div>
+    </footer>
+  )
+}
+
+<style>
+  .vx-chapter-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-top: 3rem;
+    max-width: 68ch;
+  }
+  .vx-next {
+    position: relative;
+    display: grid;
+    gap: 0.4rem;
+    padding: 1.25rem 3.5rem 1.25rem 1.25rem;
+    border: 1px solid var(--vx-border);
+    border-left: 3px solid var(--vx-accent);
+    border-radius: 8px;
+    background: var(--vx-surface);
+    text-decoration: none;
+    transition: border-color 0.15s;
+  }
+  .vx-next:hover {
+    border-color: var(--vx-accent);
+  }
+  .vx-next-kicker {
+    font: 500 var(--sl-text-2xs) / 1.25 var(--vx-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--vx-accent);
+  }
+  .vx-next-title {
+    font-family: var(--vx-font-display);
+    font-size: var(--sl-text-2xl);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--vx-fg);
+  }
+  .vx-next-problem {
+    color: var(--vx-text);
+    line-height: 1.5;
+  }
+  .vx-next-problem :global(code) {
+    font-family: var(--vx-mono);
+    font-size: 0.9em;
+    background: var(--vx-surface-2);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  .vx-next-arrow {
+    position: absolute;
+    right: 1.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.5rem;
+    color: var(--vx-accent);
+  }
+  .vx-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem 3rem;
+    font-size: var(--sl-text-sm);
+    color: var(--vx-muted);
+  }
+</style>
