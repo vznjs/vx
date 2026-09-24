@@ -30,7 +30,28 @@ const CHOOSING_PROOFS = [
 export default defineProject({
   tasks: {
     ci: {
-      dependsOn: ['build', 'test'],
+      dependsOn: ['lint.oxfmt', 'build', 'test'],
+    },
+
+    // The site's code is formatted like every package's. Its Markdown is
+    // not: oxfmt rewrites code fragments in prose into multi-line objects
+    // and moves spaces into inline code at wrap points, so the package's
+    // `.oxfmtrc.json` ignores `.md` and `.mdx` (item 693; the root ignore
+    // named the whole package, no task checked it, and six code files had
+    // drifted).
+    'lint.oxfmt': {
+      description: 'oxfmt --check (no rewrite; CI-safe)',
+      exec: {
+        command: 'oxfmt --check .',
+        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+      },
+      dependsOn: ['install'],
+      cache: {
+        inputs: {
+          files: ['**/*'],
+        },
+        outputs: { files: [] },
+      },
     },
 
     // The Starlight collection is generated from `packages/vx/docs`. That is

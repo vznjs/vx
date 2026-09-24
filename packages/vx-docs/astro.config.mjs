@@ -72,9 +72,7 @@ export default defineConfig({
           },
         }),
       ],
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' },
-      ],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' }],
       // Hand-authored pages live here; imported pages carry their own
       // `editUrl` (scripts/import-docs.ts) pointing at packages/vx/docs/.
       editLink: {

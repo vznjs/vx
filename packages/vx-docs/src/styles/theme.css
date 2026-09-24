@@ -31,8 +31,16 @@
   height: 130%;
   z-index: -1;
   background:
-    radial-gradient(60% 55% at 50% 18%, color-mix(in srgb, var(--vx-violet) 38%, transparent), transparent 70%),
-    radial-gradient(45% 45% at 78% 8%, color-mix(in srgb, var(--vx-pink) 30%, transparent), transparent 70%);
+    radial-gradient(
+      60% 55% at 50% 18%,
+      color-mix(in srgb, var(--vx-violet) 38%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      45% 45% at 78% 8%,
+      color-mix(in srgb, var(--vx-pink) 30%, transparent),
+      transparent 70%
+    );
   filter: blur(8px);
   opacity: 0.9;
   animation: vx-pulse 9s ease-in-out infinite;
@@ -46,7 +54,11 @@
   z-index: -1;
   background-image:
     linear-gradient(color-mix(in srgb, var(--vx-violet) 9%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--vx-violet) 9%, transparent) 1px, transparent 1px);
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--vx-violet) 9%, transparent) 1px,
+      transparent 1px
+    );
   background-size: 44px 44px;
   mask-image: radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 75%);
   opacity: 0.5;
@@ -147,7 +159,6 @@
 }
 
 /* Benchmark visuals live in the BenchChart / BenchBar components. */
-
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
 

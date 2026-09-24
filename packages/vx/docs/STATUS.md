@@ -930,6 +930,26 @@ special case removed reddens two domains and two rows, and the trailing
 `/**` collapse removed reddens all four. `@vzn/vx-bench#test` now keys
 on `playground-spike/**/*.ts`, which it imports.
 
+14co. **Item 693 (2026-09-24): the site's code is format-checked.** No
+task checked `packages/vx-docs`: the root `.oxfmtrc.json` ignored the
+whole package (item 50's choice, made for its Markdown, where oxfmt
+rewrites prose code fragments and moves spaces into inline code), and
+unlike every other package it had no `lint.oxfmt`. Six code files had
+drifted (`astro.config.mjs`, `import-docs.ts`, the scheduler model,
+both stylesheets, `demo-islands.test.ts`); both W3 and W7 implementers
+found it. The package now has its own `.oxfmtrc.json` (the repo's
+options, ignoring `.md`, `.mdx` and `.astro/`), a sandboxed
+`lint.oxfmt` like the others', and its `ci` depends on it. The six files
+are formatted. Red with an unformatted line appended to a widget model,
+green after the reverse edit. Recorded from the same reports, not fixed
+here: `KeyCalculator.astro` reads `var(--sl-font-mono)`, which Starlight
+never defines, so the caching widget's keys render proportional; every
+page with a Mermaid diagram logs one uncaught non-Error object in
+Chromium; and `benchmarks.md`'s 2026-09-03 head-to-head credits Turbo's
+daemon with answering "what changed", which Turbo 2.10+ no longer uses
+for `turbo run` (check which Turbo version that row measured before
+editing it).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

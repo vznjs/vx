@@ -119,7 +119,9 @@ body:has(.vx-landing) {
   background: var(--bg-page);
   color: var(--text);
   font: var(--type-body);
-  font-feature-settings: 'ss01' on, 'cv01' on;
+  font-feature-settings:
+    'ss01' on,
+    'cv01' on;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -183,7 +185,11 @@ body:has(.vx-landing) {
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
-  transition: transform 0.14s var(--ease-out), background 0.14s, box-shadow 0.14s, border-color 0.14s;
+  transition:
+    transform 0.14s var(--ease-out),
+    background 0.14s,
+    box-shadow 0.14s,
+    border-color 0.14s;
 }
 .btn:hover {
   transform: translateY(-1px);
@@ -661,8 +667,24 @@ body:has(.vx-landing) {
 /* A bar more than ten times the next runner's is drawn at full width with a
    break at its end — the number beside it is exact; the bar is not. */
 .bench-bar.clipped .fill {
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent calc(100% - 26px), #000 calc(100% - 20px), transparent calc(100% - 18px), #000 calc(100% - 12px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent calc(100% - 26px), #000 calc(100% - 20px), transparent calc(100% - 18px), #000 calc(100% - 12px), transparent);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 28px),
+    transparent calc(100% - 26px),
+    #000 calc(100% - 20px),
+    transparent calc(100% - 18px),
+    #000 calc(100% - 12px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 28px),
+    transparent calc(100% - 26px),
+    #000 calc(100% - 20px),
+    transparent calc(100% - 18px),
+    #000 calc(100% - 12px),
+    transparent
+  );
 }
 /* The theoretical best case: a hollow, dashed bar so the gap to it reads as overhead. */
 .bench-bar.baseline .fill {
@@ -842,7 +864,6 @@ body:has(.vx-landing) {
   color: var(--text-faint);
 }
 
-
 /* ============================================================
    Page sections. Static. Three repeated primitives, each exactly the
    same everywhere it appears: the section head (kicker, h2, one line),
@@ -897,7 +918,11 @@ body:has(.vx-landing) {
 .hero {
   padding: 72px var(--gutter) 88px;
   background:
-    radial-gradient(ellipse 60% 50% at 18% 20%, color-mix(in srgb, var(--phosphor) 9%, transparent), transparent 70%),
+    radial-gradient(
+      ellipse 60% 50% at 18% 20%,
+      color-mix(in srgb, var(--phosphor) 9%, transparent),
+      transparent 70%
+    ),
     var(--bg-page);
 }
 .hero-grid {
