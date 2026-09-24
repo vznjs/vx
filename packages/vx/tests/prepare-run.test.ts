@@ -19,6 +19,7 @@ import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun } from '../src/orchestrator/index.js'
 import { pluginSource } from './helpers/plugin.js'
+import { UserError } from '../src/util/index.js'
 
 const TIMEOUT = 30_000
 
@@ -259,6 +260,92 @@ describe('scoped config loading reaches every project a run can need', () => {
       expect([...p.nodes.keys()]).toEqual(['app#build'])
       // …and its directory is still fenced out of app's globs.
       expect(p.nestedDirsByProject.get('app')).toEqual([nested])
+    },
+    TIMEOUT,
+  )
+})
+
+// nx#32779: a `^name` no project in the WHOLE workspace declares is refused.
+// A scoped run loads only its closure, so the builder cannot see the whole
+// workspace there; prepareRun loads the rest only when a `^name` has no
+// holder and nothing loaded declares it, and refuses only if the rest does
+// not declare it either.
+describe('a ^name no project declares is refused in a scoped run too', () => {
+  const refusal = async (opts: Parameters<typeof prepare>[0]): Promise<unknown> => {
+    try {
+      await prepare(opts)
+    } catch (err) {
+      return err
+    }
+    return undefined
+  }
+  /** A config that leaves `<name>.evaluated` in the workspace root when it loads. */
+  const marking = (name: string, ...tasks: string[]): string =>
+    `import { writeFileSync } from 'node:fs'\n` +
+    `writeFileSync(${JSON.stringify(path.join(root, `${name}.evaluated`))}, '')\n` +
+    cfg(...tasks)
+
+  it(
+    'refuses it when the run loads only part of the workspace',
+    async () => {
+      await pkg('app', cfg(task('typo', ['^biuld'])), ['cart'])
+      await pkg('cart', cfg(task('build')))
+      await pkg('web', cfg(task('build')))
+
+      const err = await refusal({ tasks: ['app#typo'] })
+      expect(err).toBeInstanceOf(UserError)
+      expect((err as Error).message).toBe(
+        'Task app#typo depends on ^biuld but no project in the workspace declares biuld',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'plans a ^name only a project outside the loaded closure declares',
+    async () => {
+      // app → cart, neither declares build; web does and is nobody's dep, so
+      // it is loaded only to prove the name is not a typo.
+      await pkg('app', cfg(task('test', ['^build'])), ['cart'])
+      await pkg('cart', cfg(task('lint')))
+      await pkg('web', marking('web', task('build')))
+
+      const p = await prepare({ tasks: ['app#test'] })
+      expect([...p.nodes.keys()]).toEqual(['app#test'])
+      expect(p.nodes.get('app#test')!.deps).toEqual([])
+      expect(await Bun.file(path.join(root, 'web.evaluated')).exists()).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'loads nothing more when a loaded project declares the name',
+    async () => {
+      // The control for the row above: cart declares build, so nothing is
+      // left to prove and web's config is never evaluated.
+      await pkg('app', cfg(task('test', ['^build'])), ['cart'])
+      await pkg('cart', cfg(task('build')))
+      await pkg('web', marking('web', task('build')))
+
+      const p = await prepare({ tasks: ['app#test'] })
+      expect([...p.nodes.keys()].sort()).toEqual(['app#test', 'cart#build'])
+      expect(await Bun.file(path.join(root, 'web.evaluated')).exists()).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an out-of-scope broken config leaves the name unjudged, not the run failed',
+    async () => {
+      // Proving the typo needs every config; a broken one out of scope
+      // cannot fail a scoped run (the row above this describe), so the name
+      // is let through as before.
+      await pkg('app', cfg(task('test', ['^build'])), ['cart'])
+      await pkg('cart', cfg(task('lint')))
+      await pkg('broken', 'export default { tasks: 42 }')
+
+      const p = await prepare({ tasks: ['app#test'] })
+      expect([...p.nodes.keys()]).toEqual(['app#test'])
     },
     TIMEOUT,
   )

@@ -195,6 +195,8 @@ export async function mapTurboWorkspace(
     }
     emitted.set(meta.name, set)
   }
+  const emittedAnywhere = new Set<string>()
+  for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
 
   const projects: TurboMappedProject[] = []
   for (const meta of metas) {
@@ -237,6 +239,7 @@ export async function mapTurboWorkspace(
           scriptCommand(name, script, scripts),
           own,
           emitted,
+          emittedAnywhere,
           globals,
           opts,
           relPosix(root, meta.dir),
@@ -277,6 +280,7 @@ function buildTask(
   command: string,
   own: ReadonlySet<string>,
   emitted: ReadonlyMap<string, ReadonlySet<string>>,
+  emittedAnywhere: ReadonlySet<string>,
   globals: TurboMapping['globals'],
   opts: MapTurboOptions,
   pkgDir: string,
@@ -331,7 +335,9 @@ function buildTask(
       continue
     }
     if (d.startsWith('^')) {
-      deps.push(d)
+      // A task no package runs gives `^name` no edges under turbo. Passed
+      // through, core refuses it as a typo: no project declares the name.
+      if (emittedAnywhere.has(d.slice(1))) deps.push(d)
       continue
     }
     const hashAt = d.indexOf('#')

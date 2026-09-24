@@ -222,6 +222,28 @@ export interface BuildGraphOptions {
    *                   `dependsOn.dependencies` are both filtered.
    */
   excludeDependencies?: 'all' | readonly string[]
+  /**
+   * Set when `projects` is a scoped load rather than the whole workspace. A
+   * literal `^name` no project in `projects` declares may still be declared
+   * by one that was not loaded, so the builder hands it here instead of
+   * refusing it, and the caller judges it against the rest
+   * (`undeclaredDepsError` is the refusal). Unset, `projects` is the whole
+   * workspace and the builder refuses it itself.
+   */
+  undeclaredDeps?: (taskId: string, name: string) => void
+}
+
+/**
+ * The refusal of a literal `^name` that no project in the workspace
+ * declares: it has no holder anywhere, so it can only be a typo (nx#32779
+ * ran such an edge as no edge, green). A name SOME project declares stays
+ * legal without a holder — a preset spreads `^build` over projects whose
+ * dependencies lack it.
+ */
+export function undeclaredDepsError(taskId: string, name: string): UserError {
+  return new UserError(
+    `Task ${taskId} depends on ^${name} but no project in the workspace declares ${name}`,
+  )
 }
 
 /** One task mid-expansion in `buildTaskGraph`'s walk. */
@@ -238,7 +260,7 @@ interface Frame {
 }
 
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode> {
-  const { projects, packageGraph, requested, excludeDependencies } = options
+  const { projects, packageGraph, requested, excludeDependencies, undeclaredDeps } = options
   const skipAll = excludeDependencies === 'all'
   const skipNames =
     Array.isArray(excludeDependencies) && excludeDependencies.length > 0
@@ -308,6 +330,20 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       add(node)
     }
     return true
+  }
+
+  // Every task name `projects` declares, built on the first `^name` that
+  // finds no holder and whose own project does not declare it either.
+  let declared: Set<string> | null = null
+  function declaredAnywhere(projectName: string, name: string): boolean {
+    if (declaresTask(projects, projectName, name)) return true
+    if (declared === null) {
+      declared = new Set()
+      for (const p of projects.values()) {
+        for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+      }
+    }
+    return declared.has(name)
   }
 
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
@@ -389,14 +425,14 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
       const visited = new Set<string>([projectName])
       const frontier = [...packageGraph.directDeps(projectName)]
+      let held = false
       while (frontier.length > 0) {
         const target = frontier.pop()!
         if (visited.has(target)) continue
         visited.add(target)
         if (re === null) {
-          if (!visit(frame, target, spec.task, false)) {
-            frontier.push(...packageGraph.directDeps(target))
-          }
+          if (visit(frame, target, spec.task, false)) held = true
+          else frontier.push(...packageGraph.directDeps(target))
         } else {
           const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
             re.test(n),
@@ -410,6 +446,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             frontier.push(...packageGraph.directDeps(target))
           }
         }
+      }
+      // A pattern that matches nothing stays legal, as `build.*` does.
+      if (re === null && !held && !declaredAnywhere(projectName, spec.task)) {
+        if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task)
+        undeclaredDeps(id, spec.task)
       }
     } else {
       // Cross-project edge: pkg#task. Missing target is a hard error

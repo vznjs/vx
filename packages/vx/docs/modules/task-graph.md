@@ -28,6 +28,9 @@ export interface BuildGraphOptions {
   packageGraph: PackageGraph
   requested: Array<{ project: string; task: string }>
   excludeDependencies?: 'all' | readonly string[]
+  // Set when `projects` is a scoped load: a literal `^name` nothing in
+  // `projects` declares is handed here instead of refused (see below).
+  undeclaredDeps?: (taskId: string, name: string) => void
 }
 
 export function taskId(project: string, task: string): string
@@ -37,6 +40,9 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 export function splitTaskId(id: string): [project: string, task: string]
 export function isGroupTask(node: TaskNode): boolean
 export function detectCycle(nodes: Map<string, TaskNode>): void
+// The refusal of a `^name` no project in the workspace declares; thrown by
+// the builder, or by `prepareRun` once a scoped run's other configs agree.
+export function undeclaredDepsError(taskId: string, name: string): UserError
 
 // Which `{project, task}` pairs a run's requested names resolve to, and
 // which resolve to nothing (`vx run`'s "every requested name must resolve").
@@ -72,13 +78,13 @@ depth is bounded by memory only, and the order nodes are added in (which
 `detectCycle` walks, so which cycle it names) is the recursion's. Each
 entry is parsed via [`dependency-spec.ts`](./dependency-spec.md):
 
-| Form          | Behavior                                                                                                                                                                                                                                                                               |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `'name'`      | Same-project. Missing target throws (hard error).                                                                                                                                                                                                                                      |
-| `'^name'`     | Nearest-holder frontier: walk the package dep graph from direct deps; each path stops at the first package declaring the task (edge added there). Non-declaring deps are passed through (sparse bridging); nothing past a holder is walked — its own `dependsOn` owns deeper ordering. |
-| `'pkg#name'`  | Specific cross-project edge. Missing pkg or task throws.                                                                                                                                                                                                                               |
-| `'*'`, `'^*'` | Rejected in `dependsOn` (filter-only). UserError.                                                                                                                                                                                                                                      |
-| `'!form'`     | Rejected in `dependsOn` (filter-only). UserError.                                                                                                                                                                                                                                      |
+| Form          | Behavior                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'name'`      | Same-project. Missing target throws (hard error).                                                                                                                                                                                                                                                                                                                                |
+| `'^name'`     | Nearest-holder frontier: walk the package dep graph from direct deps; each path stops at the first package declaring the task (edge added there). Non-declaring deps are passed through (sparse bridging); nothing past a holder is walked — its own `dependsOn` owns deeper ordering. No holder is legal while some project declares `name`; a name no project declares throws. |
+| `'pkg#name'`  | Specific cross-project edge. Missing pkg or task throws.                                                                                                                                                                                                                                                                                                                         |
+| `'*'`, `'^*'` | Rejected in `dependsOn` (filter-only). UserError.                                                                                                                                                                                                                                                                                                                                |
+| `'!form'`     | Rejected in `dependsOn` (filter-only). UserError.                                                                                                                                                                                                                                                                                                                                |
 
 The micro-syntax parser is shared with `cache.inputs.tasks`; the
 builder enforces the dependsOn-specific rejections.
@@ -143,6 +149,10 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 - `'^name'` frontier expansion: nearest holder, sparse bridging,
   stop-at-holder, shared-subtree dedup
 - `'pkg#name'` cross-project edge (missing throws)
+- `'^name'` no project declares throws `undeclaredDepsError`'s message;
+  the controls — declared only off the dependency path, declared by the
+  leaf itself, a `^pattern` matching nothing, an excluded name — plan;
+  a scoped caller's `undeclaredDeps` receives the name instead
 - wildcard / negation rejection in dependsOn
 - diamond dedup (shared upstream created once)
 - cross-project cycle detection
