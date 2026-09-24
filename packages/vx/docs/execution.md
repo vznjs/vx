@@ -439,6 +439,19 @@ on `exec.persistent`:
   `/dev/null` stdin is the same EOF. Turbo's stream mode draws the same
   line: its pin is named `nonpersistent_task_sees_eof_on_stdin`.
 
+A one-shot task ends when its shell exits, not when its pipes close. A
+process the task left running (`server & echo up`) keeps stdout and
+stderr open, so vx reads on for 250 ms after the shell exits and then
+stops. That bound is what keeps a leftover server from hanging the run.
+What the leftover writes after it is not captured — not in the frame,
+not in the cache entry — and the frame says so with one line on stderr:
+`[vx] output after the task's shell exited was cut: a process it left
+running still held its stdout/stderr 250 ms later`. Until 2026-09-24 the
+cut was silent (nx#35302 reproduced on vx; `tests/runner.test.ts` ›
+"output a backgrounded child writes after the drain bound is cut, and
+the frame says so"). A task whose output matters waits for what it
+starts (`wait`).
+
 Every surface uses one outcome vocabulary: task axis `success` /
 `failed` / `skipped` / `aborted` (+ `running` live), cache axis
 `miss` / `up-to-date` (fresh) / `local` / `remote`. The `--verbosity 1`

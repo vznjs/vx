@@ -240,26 +240,44 @@ export function armTimeout(
  * at once, so the readers win this race immediately and normal tasks pay
  * nothing; only a stuck reader waits out the grace. Residual buffered output is
  * bounded by the OS pipe buffer (streamToString drains continuously DURING the
- * run), so this is far longer than any real drain needs.
+ * run), so this is far longer than any real drain needs. What the leftover
+ * process writes after the bound is lost, and `POST_EXIT_CUT_LINE` says so.
  */
 const POST_EXIT_DRAIN_MS = 250
+
+/**
+ * The line a task's frame gets when the drain bound cut its pipes. The cut
+ * was silent: a backgrounded child's late output vanished from the frame and
+ * the cached replay with no word (nx#35302 reproduced on vx, 2026-09-24).
+ * The bound stays, since it is what keeps a leftover server from hanging the
+ * run; the line makes the loss visible.
+ */
+export const POST_EXIT_CUT_LINE =
+  `\n[vx] output after the task's shell exited was cut: a process it left running ` +
+  `still held its stdout/stderr ${POST_EXIT_DRAIN_MS} ms later\n`
 
 /**
  * After the direct child has exited, wait for the stdout/stderr readers to
  * reach EOF — but bound it: an orphaned grandchild holding the pipe open would
  * hang the run forever (there is no default task timeout). If the grace expires
  * first, abort the reader signal so `streamToString` cancels its read and
- * returns whatever it captured. The timer is unref'd so it can never keep
- * the CLI alive after the readers settle (the plugin-flush lesson); it is
- * not cleared, because a late resolve on a race already won by the drain
- * changes nothing (item 636 deleted the clear and nothing reddened).
+ * returns whatever it captured, and resolve true: the caller adds
+ * `POST_EXIT_CUT_LINE` to the task's stderr. The timer is unref'd so it can
+ * never keep the CLI alive after the readers settle (the plugin-flush
+ * lesson); it is not cleared, because a late resolve on a race already won
+ * by the drain changes nothing (item 636 deleted the clear and nothing
+ * reddened).
  */
-export async function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<void> {
+export async function drainOrAbort(
+  streams: Promise<unknown>,
+  ac: AbortController,
+): Promise<boolean> {
   const deadline = new Promise<'timeout'>((resolve) => {
     setTimeout(() => resolve('timeout'), POST_EXIT_DRAIN_MS).unref?.()
   })
   const winner = await Promise.race([streams.then(() => 'drained' as const), deadline])
   if (winner === 'timeout') ac.abort()
+  return winner === 'timeout'
 }
 
 /**
@@ -560,9 +578,12 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // brief grace — without this the run hangs forever.
   await proc.exited
   await timeout.settle()
+  let cut = false
   if (timeout.timedOut()) ac.abort()
-  else await drainOrAbort(streams, ac)
-  const [stdout, stderr] = await streams
+  else cut = await drainOrAbort(streams, ac)
+  const [stdout, streamed] = await streams
+  if (cut) opts.onStderr?.(POST_EXIT_CUT_LINE)
+  const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
   opts.liveChildren?.delete(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
   return {
