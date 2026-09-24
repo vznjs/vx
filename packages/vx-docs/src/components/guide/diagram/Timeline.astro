@@ -1,7 +1,9 @@
 ---
 // Workers over time: one lane per worker, one bar per task it ran, from
 // `start` to `end` in `unit`s, and an axis underneath. A bar too short for
-// its label keeps the label as a tooltip. The default slot is the caption.
+// its label keeps the label as a tooltip. A timeline is wide, so on a phone
+// it keeps 480 units of width, where its text is still readable, and
+// scrolls sideways in its frame. The default slot is the caption.
 import Diagram from './Diagram.astro'
 import { round, textWidth, type Variant } from './geometry.js'
 
@@ -27,12 +29,12 @@ interface Props {
   width?: number
 }
 
-const { lanes, unit, width = 640 } = Astro.props
+const { lanes, unit, width = 600 } = Astro.props
 const PAD = 12
-const LANE = 34
-const BAR = 24
-const AXIS = 26
-const nameCol = Math.ceil(Math.max(...lanes.map((l) => textWidth(l.name, 12))) + 16)
+const LANE = 46
+const BAR = 34
+const AXIS = 30
+const nameCol = Math.ceil(Math.max(...lanes.map((l) => textWidth(l.name, 14))) + 16)
 const total = Math.max(...lanes.flatMap((l) => l.bars.map((b) => b.end)))
 const plot = width - nameCol - PAD * 2
 const px = (t: number): number => round(PAD + nameCol + (t / total) * plot)
@@ -57,7 +59,7 @@ const label =
     .join('; ')}.`
 ---
 
-<Diagram width={width} height={height} label={label}>
+<Diagram width={width} height={height} label={label} minWidth={480}>
   {
     ticks.map((t) => (
       <line class="grid" x1={px(t)} y1={PAD - 4} x2={px(t)} y2={axisY} />
@@ -74,11 +76,11 @@ const label =
           {lane.bars.map((b) => {
             const x = px(b.start)
             const w = round(px(b.end) - x)
-            const fits = textWidth(b.label, 11) + 10 <= w
+            const fits = textWidth(b.label, 14) + 12 <= w
             return (
               <g class={`bar ${b.variant ?? 'default'}`}>
                 <title>{`${b.label}: ${b.start}–${b.end}${unit}`}</title>
-                <rect x={x} y={y + (LANE - BAR) / 2} width={w} height={BAR} rx="4" />
+                <rect x={x} y={y + (LANE - BAR) / 2} width={w} height={BAR} rx="6" />
                 {fits && (
                   <text x={round(x + w / 2)} y={y + LANE / 2}>
                     {b.label}
@@ -94,7 +96,7 @@ const label =
   <line class="axis" x1={px(0)} y1={axisY} x2={px(total)} y2={axisY}></line>
   {
     ticks.map((t) => (
-      <text class="tick" x={px(t)} y={axisY + 14}>
+      <text class="tick" x={px(t)} y={axisY + 16}>
         {`${t}${unit}`}
       </text>
     ))
@@ -114,7 +116,7 @@ const label =
   }
   .name {
     fill: var(--vx-fg);
-    font-size: 12px;
+    font-size: 14px;
   }
   .grid {
     stroke: var(--vx-border);
@@ -127,17 +129,17 @@ const label =
   }
   .tick {
     fill: var(--vx-muted);
-    font-size: 10px;
+    font-size: 13px;
     text-anchor: middle;
   }
   .bar rect {
     fill: var(--vx-surface-2);
     stroke: var(--vx-link);
-    stroke-width: 1.25;
+    stroke-width: 1.5;
   }
   .bar text {
     fill: var(--vx-fg);
-    font-size: 11px;
+    font-size: 14px;
     text-anchor: middle;
   }
   .bar.accent rect {

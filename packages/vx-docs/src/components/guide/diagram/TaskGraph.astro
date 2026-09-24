@@ -34,12 +34,12 @@ interface Props {
   nodeWidth?: number
 }
 
-const { nodes, edges, direction = 'down', nodeWidth = 140 } = Astro.props
+const { nodes, edges, direction = 'down', nodeWidth = 160 } = Astro.props
 const W = nodeWidth
-const H = nodes.some((n) => n.sub !== undefined) ? 54 : 40
+const H = nodes.some((n) => n.sub !== undefined) ? 64 : 48
 const PAD = 12
-const GAP_ALONG = direction === 'down' ? 56 : 72
-const GAP_ACROSS = direction === 'down' ? 28 : 22
+const GAP_ALONG = direction === 'down' ? 64 : 80
+const GAP_ACROSS = direction === 'down' ? 32 : 24
 
 const place = (n: GraphNode): { x: number; y: number } => {
   const along = n.wave

@@ -116,9 +116,7 @@ describe('the Guide', () => {
       it('opens with its number, its title and its problem, before the text', () => {
         const head = inner(html, 'div', 'vx-chapter-head')
         expect(head).toBeDefined()
-        expect(text(inner(head!, 'p', 'vx-chapter-number')!)).toBe(
-          `Chapter ${c.chapter} of ${CHAPTERS.length}`,
-        )
+        expect(text(inner(head!, 'p', 'vx-chapter-number')!)).toBe(`Chapter ${c.chapter}`)
         const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
         expect(h1.map((m) => text(m[1]!))).toEqual([c.title])
         expect(h1[0]![0]).toContain('id="_top"')
@@ -127,7 +125,7 @@ describe('the Guide', () => {
         expect(html).toContain(`<title>${c.title} | vx</title>`)
       })
 
-      it('ends with a Next card naming the next chapter, or the quickstart after the last', () => {
+      it('ends with a one-line Next card naming the next chapter, or the quickstart after the last', () => {
         const next = CHAPTERS[c.chapter]
         const want =
           next === undefined
@@ -140,12 +138,24 @@ describe('the Guide', () => {
         const cards = [...html.matchAll(/<a\b[^>]*class="vx-next(?: [^"]*)?"[^>]*>/g)]
         expect(cards).toHaveLength(1)
         expect(cards[0]![0]).toContain(`href="${want.href}"`)
-        const card = inner(html, 'a', 'vx-next')!
-        expect(text(inner(card, 'span', 'vx-next-title')!)).toBe(want.title)
-        expect(inner(card, 'span', 'vx-next-problem')).toBe(problemHtml(want.problem))
+        const line = inner(inner(html, 'a', 'vx-next')!, 'span', 'vx-next-line')!
+        // "Next: <title>. <problem>", with no second stop after a title's own.
+        const stop = /[.?!]$/.test(want.title) ? '' : '.'
+        expect(text(line)).toBe(`Next: ${want.title}${stop} ${want.problem.replace(/`/g, '')}`)
+        expect(line).toContain(`<strong>${want.title}</strong>`)
         // The card replaces Starlight's prev/next pair.
         expect(html).not.toContain('class="pagination-links')
         expect(html.indexOf('sl-markdown-content')).toBeLessThan(html.indexOf('vx-next'))
+      })
+
+      it('carries exactly one picture once it is written (the last chapter, one or more)', () => {
+        const src = readFileSync(path.join(GUIDE_SRC, `${c.slug}.mdx`), 'utf8')
+        // A stub has none yet; its TODO goes when the chapter is written.
+        if (src.includes('TODO(R2)')) return
+        const n = pictures(html)
+        // The last chapter is the playground and the labs.
+        if (c.chapter === CHAPTERS.length) expect(n).toBeGreaterThan(0)
+        else expect(n).toBe(1)
       })
 
       it('loads no Mermaid', () => {
@@ -162,10 +172,28 @@ describe('the Guide', () => {
     expect(mermaidScripts(html).length).toBeGreaterThan(0)
   })
 
+  // The control for the picture row: the counter sees a kit figure and a
+  // widget, and does not count a checkpoint, which is a check, not a picture.
+  it('counts a diagram figure and a widget as pictures, and a checkpoint as none', () => {
+    expect(pictures(page('internals/diagrams'))).toBe(3)
+    const caching = page('learn/caching')
+    expect(caching).toContain('<vx-checkpoint')
+    expect(pictures(caching)).toBe(1)
+    expect(pictures('<figure class="vx-diagram" role="img"><svg></svg></figure>')).toBe(1)
+  })
+
   it('renders a problem’s code spans as code, and escapes the rest', () => {
     expect(problemHtml('`a<b>` & "c"')).toBe('<code>a&lt;b&gt;</code> &amp; "c"')
   })
 })
+
+/** The pictures on a page: diagram figures (the kit's, or a hand-drawn SVG in
+ *  `<figure class="vx-diagram">`) and widgets (`<vx-*>`), but not checkpoints. */
+function pictures(html: string): number {
+  const figures = html.match(/<figure\b[^>]*\bclass="vx-diagram[ "]/g)?.length ?? 0
+  const widgets = [...html.matchAll(/<vx-([a-z-]+)[\s>]/g)].filter((m) => m[1] !== 'checkpoint')
+  return figures + widgets.length
+}
 
 /** The scripts on a page, inline or loaded from dist/, that mention Mermaid. */
 function mermaidScripts(html: string): string[] {

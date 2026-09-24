@@ -62,7 +62,7 @@ describe('the diagram kit, as built', () => {
     expect(texts(graph!, 'sub')).toEqual(['cache hit'])
     const variants = [...graph!.matchAll(/<g class="vx-box (\w+)/g)].map((m) => m[1])
     expect(variants).toEqual(['accent', 'default', 'muted', 'danger'])
-    const ys = [...graph!.matchAll(/<rect x="[\d.]+" y="([\d.]+)" width="140"/g)].map((m) =>
+    const ys = [...graph!.matchAll(/<rect x="[\d.]+" y="([\d.]+)" width="160"/g)].map((m) =>
       Number(m[1]),
     )
     expect(ys[0]).toBeLessThan(ys[1]!)

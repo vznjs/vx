@@ -146,12 +146,61 @@ header.header {
   padding-top: 0.1em;
 }
 
-/* A chapter's prose keeps a readable measure (the header is PageTitle.astro). */
+/* A chapter is read by someone with no context, so it reads large and short:
+   18px type, a short measure for the prose, room between paragraphs, and
+   the pictures across the whole content column (the header is
+   PageTitle.astro). */
 main:has(.vx-chapter-head) .sl-markdown-content {
-  max-width: 68ch;
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+main:has(.vx-chapter-head) .sl-markdown-content > :is(p, ul, ol, h2, h3, h4, blockquote, details) {
+  max-width: 60ch;
+}
+main:has(.vx-chapter-head) .sl-markdown-content > * + * {
+  margin-top: 1.4rem;
+}
+main:has(.vx-chapter-head) .sl-markdown-content > h2 {
+  margin-top: 3.5rem;
 }
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
+
+/* A Guide picture: the diagram kit's (components/guide/diagram) and a
+   chapter's hand-drawn SVG share this frame. The SVG spans the content
+   column; the kit caps its own at its natural width so a small graph is
+   not blown up. On a phone a wide picture keeps a floor it can be read at
+   and scrolls sideways within its frame. */
+.vx-diagram {
+  margin: 2.5rem 0;
+  padding: 1.5rem 1.25rem 1.25rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 10px;
+  background: var(--vx-surface);
+  overflow-x: auto;
+}
+.sl-markdown-content .vx-diagram {
+  margin-block: 2.5rem;
+}
+.vx-diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+  font-family: var(--vx-mono);
+}
+.vx-diagram figcaption {
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--vx-muted);
+  text-align: center;
+}
+@media (max-width: 30rem) {
+  .vx-diagram {
+    padding: 1rem 0.75rem 0.75rem;
+  }
+}
 
 /* Mermaid renders on the client and stays on internals pages only; the Guide
    draws with components/guide/diagram at build time. */

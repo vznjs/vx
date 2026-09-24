@@ -14,22 +14,22 @@ interface Props {
   variant?: Variant | undefined
 }
 
-const { x, y, w = 140, h = 44, label, sub, variant = 'default' } = Astro.props
+const { x, y, w = 160, h = 48, label, sub, variant = 'default' } = Astro.props
 const cx = round(x + w / 2)
 const cy = round(y + h / 2)
 ---
 
 <g class={`vx-box ${variant}`}>
-  <rect x={x} y={y} width={w} height={h} rx="6"></rect>
-  <text class="label" x={cx} y={sub === undefined ? cy : round(cy - 8)}>{label}</text>
-  {sub !== undefined && <text class="sub" x={cx} y={round(cy + 10)}>{sub}</text>}
+  <rect x={x} y={y} width={w} height={h} rx="8"></rect>
+  <text class="label" x={cx} y={sub === undefined ? cy : round(cy - 10)}>{label}</text>
+  {sub !== undefined && <text class="sub" x={cx} y={round(cy + 12)}>{sub}</text>}
 </g>
 
 <style>
   rect {
     fill: var(--vx-surface-2);
     stroke: var(--vx-border);
-    stroke-width: 1.5;
+    stroke-width: 2;
   }
   text {
     text-anchor: middle;
@@ -37,12 +37,12 @@ const cy = round(y + h / 2)
   }
   .label {
     fill: var(--vx-fg);
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 500;
   }
   .sub {
     fill: var(--vx-muted);
-    font-size: 11px;
+    font-size: 13px;
   }
   .accent rect {
     fill: color-mix(in srgb, var(--vx-accent) 16%, var(--vx-surface-2));

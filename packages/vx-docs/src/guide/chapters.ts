@@ -83,13 +83,12 @@ export const CHAPTERS: readonly Chapter[] = [
 export const AFTER_GUIDE = {
   href: 'quickstart/',
   title: 'Quickstart',
-  problem: 'The four packages were a toy. Put vx on your own repo.',
+  problem: 'Put vx on your own repo.',
 } as const
 
 interface NextCard {
   /** Under the site's base. */
   href: string
-  kicker: string
   title: string
   problem: string
 }
@@ -101,13 +100,8 @@ export function chapterPage(id: string): { chapter: Chapter; next: NextCard } | 
   const following = CHAPTERS[at + 1]
   const next: NextCard =
     following === undefined
-      ? { ...AFTER_GUIDE, kicker: 'Next: the Docs' }
-      : {
-          href: `guide/${following.slug}/`,
-          kicker: `Next: chapter ${following.chapter}`,
-          title: following.title,
-          problem: following.problem,
-        }
+      ? AFTER_GUIDE
+      : { href: `guide/${following.slug}/`, title: following.title, problem: following.problem }
   return { chapter: CHAPTERS[at]!, next }
 }
 
@@ -115,4 +109,11 @@ export function chapterPage(id: string): { chapter: Chapter; next: NextCard } | 
 export function problemHtml(problem: string): string {
   const escaped = problem.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   return escaped.replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+
+/** The Next card's one line, as HTML: "Next: <title>. <problem>", with no
+ *  second stop after a title that ends in its own ("Can you trust a hit?"). */
+export function nextLineHtml(next: NextCard): string {
+  const stop = /[.?!]$/.test(next.title) ? '' : '.'
+  return `Next: <strong>${problemHtml(next.title)}</strong>${stop} ${problemHtml(next.problem)}`
 }

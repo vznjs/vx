@@ -21,6 +21,7 @@ const PLACES: [string, string][] = [
   ['Blog', 'blog/'],
 ]
 const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Extend']
+const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
 const INTERNALS_DIRS = ['modules/', 'design/']
 
@@ -108,7 +109,8 @@ describe('the sidebars', () => {
     expect(sidebarLinks(docs).map(([, href]) => href)).toContain('quickstart/')
   })
 
-  it('the Reference ends with the internals index, which links every internals page', () => {
+  it('the Reference is the four groups, and ends with the internals index, which links every internals page', () => {
+    expect(groupLabels(reference)).toEqual(REFERENCE_GROUPS)
     const links = sidebarLinks(reference)
     expect(links.at(-1)).toEqual(['Internals (for contributors)', 'internals/'])
     expect(links.map(([, href]) => href)).toContain('cli/')

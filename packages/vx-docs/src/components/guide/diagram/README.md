@@ -2,7 +2,9 @@
 
 The Guide draws its pictures with these Astro components. Each one renders
 SVG into the page at build time: no client script, no Mermaid, readable in
-both themes and at any width. Every one is rendered on the site at
+both themes and at any width. The Guide is read by people with no context,
+so the kit draws few, large, simple shapes: text is 13 to 15px, nodes are
+160 × 48, and a picture is about 600 units wide at most. Every one is rendered on the site at
 `/internals/diagrams/` (`src/content/docs/internals/diagrams.mdx`), and
 `tests/diagram-kit.test.ts` reads that built page.
 
@@ -12,6 +14,18 @@ Colours come only from the theme's tokens (`src/styles/theme.css`):
 the font `--vx-mono`. The kit's own styles use nothing else, and the test
 holds that. A picture that needs a colour the variants do not give is a
 reason to add a variant here, not to write a hex value in a chapter.
+
+## A hand-drawn SVG
+
+A picture the kit does not fit is drawn by hand, in the same frame: put the
+`<svg>` (about 600 wide, `viewBox` set, text 14 to 16px, colours only from
+the tokens above) in a `<figure class="vx-diagram" role="img"
+aria-label="…">`, with a `<figcaption>` if it needs one. `.vx-diagram` is
+styled globally in `theme.css`, so the kit's figures and a hand-drawn one
+look the same, and `tests/guide.test.ts` counts either as the chapter's
+one picture.
+
+## Using the kit
 
 Import from a chapter (`src/content/docs/guide/<slug>.mdx`):
 
@@ -41,7 +55,7 @@ A graph of tasks on a grid. The default slot is the caption.
 | `edges`     | `{ from, to, label?, dashed? }[]`      | an arrow from node `from` to node `to`; an unknown id fails the build                    |
 | `label`     | `string`, optional                     | the `aria-label`; by default the edges in words                                          |
 | `direction` | `'down'` (default) or `'right'`        | `right` lays waves out left to right                                                     |
-| `nodeWidth` | `number`, default 140                  | widen for long labels                                                                    |
+| `nodeWidth` | `number`, default 160                  | widen for long labels                                                                    |
 
 ```mdx
 <TaskGraph
@@ -71,9 +85,11 @@ Workers over time, one lane per worker. The default slot is the caption.
 | `lanes` | `{ name, bars: { start, end, label, variant? }[] }[]`  | a bar runs from `start` to `end`, in the axis's units    |
 | `unit`  | `string`                                               | printed after each tick: `s`, `ms`, `' min'`             |
 | `label` | `string`, optional                                     | the `aria-label`; by default every bar in words          |
-| `width` | `number`, default 640                                  | the drawing's width before it scales to the column       |
+| `width` | `number`, default 600                                  | the drawing's width before it scales to the column       |
 
-A bar too short for its label drops the text and keeps it as a tooltip.
+A bar too short for its label drops the text and keeps it as a tooltip. On
+a phone a timeline keeps 480 units of width and scrolls sideways in its
+frame, so its text stays readable.
 
 ## `Diagram`, `Box` and `Arrow`
 
@@ -84,8 +100,8 @@ the diagram's own units; put the caption in `slot="caption"`.
 
 | Component | Props                                                                 |
 | --------- | --------------------------------------------------------------------- |
-| `Diagram` | `width`, `height`, `label` (the `aria-label`, required)                |
-| `Box`     | `x`, `y` (top-left), `w` = 140, `h` = 44, `label`, `sub?`, `variant?`  |
+| `Diagram` | `width`, `height`, `label` (the `aria-label`, required), `minWidth?` (the narrowest it renders; a narrower column scrolls it) |
+| `Box`     | `x`, `y` (top-left), `w` = 160, `h` = 48, `label`, `sub?`, `variant?`  |
 | `Arrow`   | `x1`, `y1`, `x2`, `y2` (head at the second point), `label?`, `dashed?`, `variant?` (`default`, `accent`, `danger`) |
 
 ```mdx

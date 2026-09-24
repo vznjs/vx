@@ -81,21 +81,41 @@ const SIDEBAR_GROUPS: Record<'Guide' | 'Docs' | 'Reference', SidebarItem[]> = {
       ],
     },
   ],
-  // "How vx works" folds into chapter 9, and the caching deep dive and the
-  // execution lifecycle into the Docs' caching page, in R3; until then they
-  // are reference.
+  // Four short groups in plain words. "How vx works" folds into chapter 9,
+  // and the caching deep dive into the Docs' caching page, in R3; until then
+  // they sit beside the page each is closest to.
   Reference: [
-    { label: 'CLI', link: '/cli/' },
-    { label: 'Configuration', link: '/schema/' },
-    { label: 'Benchmarks', link: '/benchmarks/' },
-    { label: 'Why vx is fast', link: '/concepts/why-vx-is-fast/' },
-    { label: 'vx, Turborepo, Nx, Bazel', link: '/learn/choosing/' },
-    { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
-    { label: 'Turbo / Nx parity map', link: '/parity/' },
+    {
+      label: 'CLI',
+      items: [
+        { label: 'Commands', link: '/cli/' },
+        { label: 'What a run does', link: '/execution/' },
+        { label: 'How vx works', link: '/concepts/how-vx-works/' },
+      ],
+    },
+    {
+      label: 'Config',
+      items: [
+        { label: 'vx.config.ts', link: '/schema/' },
+        { label: 'Caching in depth', link: '/caching/' },
+      ],
+    },
+    {
+      label: 'Benchmarks',
+      items: [
+        { label: 'The numbers', link: '/benchmarks/' },
+        { label: 'Why vx is fast', link: '/concepts/why-vx-is-fast/' },
+      ],
+    },
+    {
+      label: 'Compare',
+      items: [
+        { label: 'vx, Turborepo, Nx, Bazel', link: '/learn/choosing/' },
+        { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
+        { label: 'Turbo / Nx parity map', link: '/parity/' },
+      ],
+    },
     { label: 'Glossary', link: '/learn/glossary/' },
-    { label: 'How vx works', link: '/concepts/how-vx-works/' },
-    { label: 'Caching deep dive', link: '/caching/' },
-    { label: 'Execution lifecycle', link: '/execution/' },
     { label: 'Internals (for contributors)', link: '/internals/' },
   ],
 }

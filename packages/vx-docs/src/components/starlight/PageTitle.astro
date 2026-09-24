@@ -1,9 +1,9 @@
 ---
-// A Guide chapter opens with its number, its title and the problem it
-// answers, all from src/guide/chapters.ts; the chapter's own text never
-// writes them. Every other page keeps Starlight's title.
+// A Guide chapter opens with its number, its title and, on one line, the
+// problem it answers, all from src/guide/chapters.ts; the chapter's own text
+// never writes them. Every other page keeps Starlight's title.
 import Default from '@astrojs/starlight/components/PageTitle.astro'
-import { CHAPTERS, chapterPage, problemHtml } from '../../guide/chapters.js'
+import { chapterPage, problemHtml } from '../../guide/chapters.js'
 
 const page = chapterPage(Astro.locals.starlightRoute.id)
 ---
@@ -13,9 +13,7 @@ const page = chapterPage(Astro.locals.starlightRoute.id)
     <Default />
   ) : (
     <div class="vx-chapter-head">
-      <p class="vx-chapter-number">
-        Chapter {page.chapter.chapter} <span>of {CHAPTERS.length}</span>
-      </p>
+      <p class="vx-chapter-number">Chapter {page.chapter.chapter}</p>
       {/* `_top` is Starlight's page-title id, which "Overview" in the table of contents targets. */}
       <h1 id="_top">{page.chapter.title}</h1>
       <p class="vx-chapter-problem" set:html={problemHtml(page.chapter.problem)} />
@@ -25,38 +23,34 @@ const page = chapterPage(Astro.locals.starlightRoute.id)
 
 <style>
   .vx-chapter-head {
-    margin-top: 1rem;
-    max-width: 68ch;
+    margin-top: 1.5rem;
+    max-width: 60ch;
   }
   .vx-chapter-number {
     margin: 0;
-    font: 500 var(--sl-text-xs) / 1.25 var(--vx-mono);
+    font: 500 var(--sl-text-sm) / 1.25 var(--vx-mono);
     text-transform: uppercase;
     letter-spacing: 0.14em;
     color: var(--vx-accent);
   }
-  .vx-chapter-number span {
-    color: var(--vx-muted);
-  }
   h1 {
-    margin: 0.6rem 0 0;
-    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    margin: 0.5rem 0 0;
+    font-size: clamp(2.4rem, 6vw, 3.4rem);
     line-height: 1.05;
     font-weight: 700;
     letter-spacing: -0.03em;
     color: var(--vx-fg);
   }
   .vx-chapter-problem {
-    margin: 1rem 0 0;
-    padding-left: 1rem;
-    border-left: 3px solid var(--vx-accent);
-    font-size: var(--sl-text-lg);
-    line-height: 1.5;
-    color: var(--vx-text);
+    margin: 1rem 0 0.5rem;
+    font-size: 1.25rem;
+    line-height: 1.45;
+    color: var(--vx-muted);
   }
   .vx-chapter-problem :global(code) {
     font-family: var(--vx-mono);
     font-size: 0.9em;
+    color: var(--vx-fg);
     background: var(--vx-surface-2);
     border-radius: 4px;
     padding: 0.1em 0.35em;
