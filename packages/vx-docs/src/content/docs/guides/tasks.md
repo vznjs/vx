@@ -1,194 +1,87 @@
 ---
-title: Configuring tasks
-description: Write vx.config.ts — define tasks as shell commands, wire dependencies, and declare cache contracts. The practical guide to the config.
+title: Tasks and dependencies
+description: Declare a package's tasks in vx.config.ts, each one shell command, and say which tasks must finish first with dependsOn.
 ---
 
-A `vx.config.ts` lives next to a package's `package.json` and declares
-that package's tasks. This guide covers the shape you'll use day to day.
-For the exhaustive field-by-field reference, see
-[Configuration](../../schema/).
+Declare what a package can run, and what must run before it. Why? →
+[Chapter 2: Tasks](../../guide/tasks/) and
+[Chapter 3: Dependencies](../../guide/dependencies/)
 
-## The basic shape
+## Steps
 
-```ts
-import { defineProject } from '@vzn/vx'
+1. Put a `vx.config.ts` next to the package's `package.json`.
+2. Give each task one shell command in `exec.command`. Chain steps with `&&`.
+3. List what must finish first in `dependsOn`.
+4. Add a `cache` block to skip the task when nothing changed ([Caching](../caching/)).
+5. Check the graph: `vx run build --graph` prints it as Graphviz DOT.
 
-export default defineProject({
-  tasks: {
-    build: {
-      exec: { command: 'tsc -b' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
-    },
-  },
-})
-```
-
-- `tasks` is a map of task name → task config. Names are arbitrary
-  strings, referenced by the CLI (`vx run build`) and by other tasks'
-  `dependsOn`.
-- `defineProject` is an identity function — it exists only so TypeScript
-  gives you autocomplete and validates the object. No runtime cost.
-
-## A task is one shell command
-
-```ts
-exec: { command: 'tsc -b' }
-```
-
-`command` is a single string run through the shell, from the package's
-own directory. Full POSIX semantics work — pipes, redirects, `&&`:
-
-```ts
-exec: { command: 'codegen && tsc -b && cp -r assets dist/' }
-```
-
-There's deliberately no `commands: string[]`. If you'd benefit from
-caching each step independently, split them into separate tasks linked by
-`dependsOn`. If you wouldn't, `&&` is the right tool. This "shell is the
-API" rule is why a plugin decides where a command runs and never what it
-is — there is no executor protocol to implement.
-
-Each task runs with the package's `node_modules/.bin` prepended to
-`PATH`, so local tools resolve from a bare command — no `npx`.
-
-## Declaring dependencies
-
-```ts
-test: {
-  dependsOn: ['build'],
-  exec: { command: 'bun test' },
-  cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
-}
-```
-
-`dependsOn` uses the Turborepo/Nx micro-syntax:
-
-| Form         | Meaning                                                     |
-| ------------ | ---------------------------------------------------------- |
-| `'build'`    | the `build` task **in this same package**                  |
-| `'^build'`   | `build` in each of this package's **workspace dependencies** |
-| `'api#build'`| the `build` task in the **`api` package** specifically     |
-
-Full semantics — including how `^` bridges packages that don't declare
-the task — are in [Task dependencies](../task-dependencies/).
-
-## Declaring the cache contract
-
-Caching is **opt-in**. Add a `cache` block and you must declare both what
-the task reads and what it writes:
-
-```ts
-cache: {
-  inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**'] },
-}
-```
-
-- `inputs.files` — project-relative globs of everything the task reads.
-  `!` negates (`['src/**', '!**/*.test.ts']`).
-- `outputs.files` — globs of what it produces. Use `[]` for tasks like
-  `lint`/`test` that produce no files (you still cache the success).
-
-Getting these right is the whole game — [Caching tasks](../caching/)
-covers it in depth, including the files vx folds in automatically
-(`package.json`, the lockfile) and how to handle env vars and
-root-level inputs.
-
-Omit `cache` entirely and the task simply always runs.
-
-## Group tasks (aggregators)
-
-A task with `dependsOn` but no `exec` is a **group** — running it just
-runs its dependencies. This is how you build a `ci` umbrella or a
-"build everything" entry point:
-
-```ts
-ci: {
-  description: 'format-check + lint + test',
-  dependsOn: ['format-check', 'lint', 'test'],
-}
-```
-
-Groups don't spawn anything, don't appear in the run count, and can't
-have a `cache` block — but a change anywhere beneath them still cascades
-correctly to downstream tasks.
-
-## Reusing config with presets
-
-Because the config is TypeScript, you share logic with imports — no
-special "named inputs" schema needed. A preset is just a function
-returning a task:
-
-```ts
-// presets/ts-build.ts
-import type { TaskConfig } from '@vzn/vx'
-
-export const tsBuild = (): TaskConfig => ({
-  exec: { command: 'tsc -b' },
-  cache: { inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: ['dist/**'] } },
-})
-```
+## Config
 
 ```ts
 // packages/app/vx.config.ts
 import { defineProject } from '@vzn/vx'
-import { tsBuild } from '../../presets/ts-build.ts'
 
 export default defineProject({
-  tasks: { build: tsBuild() },
+  tasks: {
+    codegen: {
+      exec: { command: 'graphql-codegen' },
+      cache: { inputs: { files: ['schema.graphql'] }, outputs: { files: ['src/gen/**'] } },
+    },
+    build: {
+      description: 'compile TypeScript to dist/',
+      dependsOn: ['codegen', '^build'],
+      exec: { command: 'tsc -b' },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+    },
+    e2e: {
+      dependsOn: ['build', 'api#build'],
+      exec: { command: 'playwright test', timeout: 600_000, retries: 1 },
+    },
+    // A group: no command, it only runs its dependencies.
+    ci: { dependsOn: ['build', 'e2e'] },
+  },
 })
 ```
 
-vx hashes the **resolved** config, so a preset change correctly
-invalidates every task that uses it — something static-JSON config in
-Turborepo and Nx can't do.
+## `dependsOn`
 
-## Describe tasks for humans
+| Form         | Runs first                                                            |
+| ------------ | --------------------------------------------------------------------- |
+| `'build'`    | `build` in this package                                               |
+| `'^build'`   | `build` in each package this one depends on (from `package.json`)     |
+| `'api#build'`| `build` in the `api` package                                          |
+| `'build.*'`  | every task in this package whose name matches                         |
 
-`description` is optional metadata shown in the interactive picker and
-`--dry` output. It has no effect on scheduling or execution, but it
-**does** reach the cache key: the key hashes the whole resolved task
-config, and carving exceptions out of that object is what invites stale
-hits — so editing a description costs one re-run.
+A task-name pattern is allowed: `dependsOn: ['build.*']` here, `'^build.*'`
+in dependencies. Bare wildcards and negation (`*`, `!task`) are not; they
+are filters, and go in `cache.inputs.tasks`. `^build` reaches through a
+package that has no `build` to the nearest one that does.
 
-```ts
-build: {
-  description: 'compile TypeScript to dist/',
-  exec: { command: 'tsc -b' },
-  // ...
-}
-```
+When a task fails, vx skips its transitive dependents and lets the rest
+run: `--continue=deps-ok`, the default. `--continue=never` stops at the
+first failure; `--continue=always` runs the dependents but saves none of
+them.
 
-## Beyond the basics
+## `exec`
 
-A task can also declare:
+| Field             | Does                                                               |
+| ----------------- | ------------------------------------------------------------------ |
+| `exec.command`    | the one shell command, run in the package's directory              |
+| `exec.env`        | what the command sees ([Environment variables](../environment-variables/)) |
+| `exec.timeout`    | kill the task after this many ms                                   |
+| `exec.retries`    | re-run a failed task this many times                               |
+| `exec.persistent` | a server or watcher that does not exit ([Dev tasks](../dev-tasks/)) |
+| `exec.sandbox`    | only the declared files and network ([Sandboxing](../sandboxing/)) |
+| `exec.remote`     | `false` keeps it here; `'only'` for a remote pool ([Remote execution](../remote-execution/)) |
 
-- **`exec.env`** — control the child's environment
-  ([Environment variables](../environment-variables/)).
-- **`exec.persistent`** — long-running dev servers and watchers
-  ([Dev & long-running tasks](../dev-tasks/)).
-- **`exec.sandbox`** — run under an OS-level allow-list of files and
-  network ([Sandboxing tasks](../sandboxing/)).
-- **`exec.timeout`** — kill a runaway task after N ms. It is folded into
-  the key: a task allowed to run longer may finish where a shorter one
-  was killed.
-- **`exec.retries`** — re-run a failing task N times before giving up,
-  folded into the key for the same reason.
-- **`exec.remote`** — placement: `false` pins the task to this machine,
-  `'only'` says it exists to run on a remote pool
-  ([Remote execution](../remote-execution/)). It is the one `exec` field
-  stripped from the key, because where a task ran says nothing about
-  what it produced.
+`exec.remote` is the one `exec` field stripped from the key: where a task
+ran says nothing about what it made. Everything else in the task is in the
+key, `description` included, so editing a description costs one re-run.
 
-Workspace-wide settings (`concurrency`, `cacheDir`, `timeout`) live in a
-root `vx.workspace.ts` — see
-[Workspace configuration](../workspace-config/).
+## Common problems
 
-## Next steps
+- **`dependsOn` only for order, not for the key.** Add `cache.inputs.tasks: []`, and the upstream's key stays out of this one's.
+- **A cycle.** vx refuses to build the graph and prints the path.
+- **A typo in `'pkg#task'`.** A missing package or task is an error, never skipped.
 
-- **[Caching tasks](../caching/)** — inputs, outputs, env, and
-  correctness.
-- **[Task dependencies](../task-dependencies/)** — `^`, `pkg#task`, and
-  cross-package graphs.
-- **[Configuration reference](../../schema/)** — every field, including
-  the full `sandbox` surface.
+Every field: [the config reference](../../schema/).

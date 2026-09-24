@@ -14,6 +14,7 @@ import remarkMermaid from './src/plugins/remark-mermaid.mjs'
 // `base` is overridable via env so a custom domain (base '/') still builds.
 const site = process.env.SITE_URL ?? 'https://vznjs.github.io'
 const base = process.env.BASE_PATH ?? '/vx'
+const root = base.replace(/\/?$/, '/')
 
 export default defineConfig({
   // Both caches under `.astro/`, not node_modules: see the `build` task's
@@ -39,6 +40,17 @@ export default defineConfig({
   site,
   base,
   trailingSlash: 'always',
+  // Docs pages merged into another page, and one that became a Guide
+  // chapter (design/site-redo-2026-09.md): the old URL lands on the new
+  // one. tests/redirects.test.ts holds every URL the old sidebar linked.
+  // Astro puts the base on the old path but not on the target.
+  redirects: {
+    '/introduction/': `${root}quickstart/`,
+    '/guides/trusting-the-cache/': `${root}guides/caching/`,
+    '/guides/task-dependencies/': `${root}guides/tasks/`,
+    '/guides/extensibility/': `${root}guides/plugins/`,
+    '/concepts/how-vx-works/': `${root}guide/inside-vx/`,
+  },
   // `remarkPlugins` runs on the `unified()` processor from
   // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the
   // site declares itself: without it the build refuses to start (CI,

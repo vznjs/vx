@@ -130,7 +130,7 @@ whose stored outputs are wrong for today's inputs, because something the
 task read was never part of the key. It reports success and serves
 yesterday's result, which makes it the worst failure a cache can have.
 
-- vx: hit, miss and stale hit ([trusting the cache](../../guides/trusting-the-cache/))
+- vx: hit, miss and stale hit ([caching](../../guides/caching/))
 - Turborepo: cache hit and cache miss ([caching](https://turborepo.com/docs/crafting-your-repository/caching))
 - Nx: cache hit and cache miss ([glossary](https://nx.dev/docs/reference/glossary#cache-hit)); a stale result is called a "false cache hit" in its [sandboxing](https://nx.dev/docs/features/ci-features/sandboxing) docs
 - Bazel: served from the [action cache](https://bazel.build/reference/glossary#action-cache); a wrong one breaks [correctness](https://bazel.build/reference/glossary#correctness)
@@ -198,7 +198,7 @@ are where a task runs, where artifacts live, who observes the run, and how
 the graph is shaped. A plugin fills one or more seams. The width of the
 seams decides what can be built on a tool without forking it.
 
-- vx: plugin stages from `config` to `telemetry` ([plugins](../../guides/plugins/), [extensibility](../../guides/extensibility/))
+- vx: plugin stages from `config` to `telemetry` ([plugins](../../guides/plugins/))
 - Turborepo: —
 - Nx: a [plugin](https://nx.dev/docs/reference/glossary#plugin), which can infer tasks and supply [executors](https://nx.dev/docs/reference/glossary#executor)
 - Bazel: [rules](https://bazel.build/reference/glossary#rule) written in [Starlark](https://bazel.build/reference/glossary#starlark)

@@ -1,4 +1,4 @@
-// The site's plugin guide and extensibility flow tabulate the hooks by
+// The site's plugin guide tabulates the hooks by
 // hand; they are held to core's one list here, so a stage added to
 // `PLUGIN_HOOKS` cannot be missing from the guide a plugin author reads
 // (the `admit` stage was, for a day, 2026-09-12).
@@ -17,8 +17,10 @@ describe('the site guides follow PLUGIN_HOOKS', () => {
     for (const hook of PLUGIN_HOOKS) expect(declared).toContain(hook)
   })
 
-  // The introduction's table lacked `admit` until 2026-09-16 (item 305).
-  for (const file of ['guides/extensibility.md', 'introduction.md']) {
+  // The introduction's table lacked `admit` until 2026-09-16 (item 305). The
+  // introduction and the extensibility page merged into the quickstart and
+  // this guide (the site redo, R3); the stage table lives here now.
+  for (const file of ['guides/plugins.md']) {
     it(`${file} tabulates every stage (the lifecycle pair is prose)`, async () => {
       const text = await Bun.file(path.join(GUIDES, '..', file)).text()
       const found = new Set<string>()

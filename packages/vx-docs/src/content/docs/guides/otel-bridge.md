@@ -1,34 +1,19 @@
 ---
 title: OpenTelemetry traces & metrics
-description: Export every vx run as OTLP traces, metrics and logs with the @vzn/vx-otel plugin. Declare otel() in vx.workspace.ts; it speaks OTLP/HTTP JSON directly with no OpenTelemetry SDK dependency.
+description: Export every vx run as OTLP traces, metrics and logs with the @vzn/vx-otel plugin. No OpenTelemetry SDK is needed.
 ---
 
-`@vzn/vx-otel` turns every `vx run` into **OTLP traces, metrics and
-logs** — one trace per run, one span per task, run/task counters, and
-each executed task's captured output as a log record linked to its span.
-It speaks the OTLP/HTTP JSON wire protocol **directly**, so there's no
-OpenTelemetry SDK dependency and nothing to keep version-matched.
+See every run in Grafana, Honeycomb, Datadog or Jaeger: one trace per run,
+one span per task. Why a plugin? → [Chapter 9: How vx is built](../../guide/inside-vx/)
 
-The export is **lossless**: every field of vx's telemetry contract rides
-the wire, so a backend reading the trace can rebuild the whole run. That
-is what makes OTLP a real integration surface rather than a summary: a
-receiver can rebuild every run record vx has, and
-[build its own analytics](#build-your-own-analytics) on them.
+## Steps
 
-It's a plugin, built on vx's observe-only [`telemetry`
-capability](/vx/guides/plugins/): it can never change, slow, or fail a
-run.
+1. Install: `bun add -d @vzn/vx-otel`.
+2. Declare `otel()` in `vx.workspace.ts` (below).
+3. Point it at your collector: `export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
+4. Run anything. Without an endpoint the plugin declines and exports nothing.
 
-## Quick start
-
-```sh
-# 1. Add the plugin
-bun add @vzn/vx-otel
-
-# 2. Point at your collector (standard OTel env vars)
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-export OTEL_SERVICE_NAME=vx
-```
+## Config
 
 ```ts
 // vx.workspace.ts
@@ -36,174 +21,35 @@ import { defineWorkspace } from '@vzn/vx'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
-  plugins: [otel()],
+  plugins: [otel({ serviceName: 'my-monorepo', headers: { authorization: 'Bearer …' } })],
 })
 ```
 
-```sh
-# 3. Run anything
-vx run lint
-```
-
-`otel()` is **zero-config**: with no `OTEL_EXPORTER_OTLP_ENDPOINT` set it
-**declines** and exports nothing, so it's safe to leave declared in every
-environment (local, CI, prod). No peer deps to install — the OTLP payload
-is built and POSTed by the plugin itself.
-
-## Configuration
-
-Every knob has a standard-OTel env-var fallback; explicit options win.
-
-| Option           | Env var                               | Default                    |
-| ---------------- | ------------------------------------- | -------------------------- |
-| `endpoint`       | `OTEL_EXPORTER_OTLP_ENDPOINT`         | — (declines if unset)      |
-| `tracesEndpoint` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`  | `<endpoint>/v1/traces`     |
-| `metricsEndpoint`| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | `<endpoint>/v1/metrics`    |
-| `logsEndpoint`   | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`    | `<endpoint>/v1/logs`       |
-| `serviceName`    | `OTEL_SERVICE_NAME`                   | `vx`                       |
-| `headers`        | `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,…`)| `{}`                       |
-| `metrics`        | —                                     | `true`                     |
-| `logs`           | `OTEL_LOGS_EXPORTER=none` disables    | `true`                     |
-| `timeoutMs`      | —                                     | `15000`                    |
-
-`timeoutMs` bounds each signal's POST: a collector that accepts the
-connection and never answers costs the run that long and no more, and the
-abort is swallowed like any other export error.
-
-"Declines if unset" is about the **traces** URL, not `endpoint` itself:
-setting `tracesEndpoint` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) alone
-is enough, and the other two signals then fall back to it. An empty value
-counts as unset everywhere — a workflow that writes an unset secret into
-one of these env vars gets a declining plugin, not a POST to `''`.
-
-```ts
-otel({
-  endpoint: 'https://collector.example.com',
-  serviceName: 'my-monorepo',
-  headers: { authorization: 'Bearer …' },
-  metrics: true,
-})
-```
+| Option            | Env var                                | Default                 |
+| ----------------- | -------------------------------------- | ----------------------- |
+| `endpoint`        | `OTEL_EXPORTER_OTLP_ENDPOINT`          | none: the plugin declines |
+| `tracesEndpoint`  | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`   | `<endpoint>/v1/traces`  |
+| `metricsEndpoint` | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`  | `<endpoint>/v1/metrics` |
+| `logsEndpoint`    | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`     | `<endpoint>/v1/logs`    |
+| `serviceName`     | `OTEL_SERVICE_NAME`                    | `vx`                    |
+| `headers`         | `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,…`) | `{}`                    |
+| `metrics`         | none                                   | `true`                  |
+| `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
+| `timeoutMs`       | none                                   | `15000`                 |
 
 ## What lands in your backend
 
-**A trace per run**, using the OTel CI/CD + VCS semantic conventions so
-it maps cleanly onto Grafana / Tempo / Honeycomb / Datadog / Jaeger:
+| Signal            | Carries                                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------------------------- |
+| `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.exit_ok`, `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
+| `vx.task` span    | `vx.cache.source`, `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready` |
+| metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.run.duration_ms`                          |
+| a log per task    | the task's output, linked to its span; `vx.log.chars_full` says when it was cut                           |
 
-- a root **`vx.run`** span — `cicd.pipeline.run.id`,
-  `vcs.ref.head.revision`, `vcs.ref.head.name`, the CI provider,
-  host/os/arch, vx version, and each `--tag k=v` as `vx.tag.<k>`;
-  The root span also carries the workspace identity
-  (`vx.workspace.id` / `vx.workspace.name`), the repository's default
-  branch (`vx.default_branch`), the run tallies (`vx.run.task_count`,
-  `vx.run.failed_count`, `vx.run.hit_local_count`,
-  `vx.run.hit_remote_count`, `vx.run.exit_ok`) and
-  `vx.telemetry.schema`, the contract version a reader should check
-  before trusting the rest;
-- a child **`vx.task`** span per task — `cicd.pipeline.task.name`,
-  `cicd.pipeline.task.run.result`, `vx.cache.source`
-  (`miss`/`local`/`remote`), `vx.task.hash`, duration, CPU ms, peak RSS,
-  retry count (`vx.task.attempts`), the sandbox violation count
-  (`vx.task.sandbox_violations`) and, on a skipped task, the id of the
-  failed task at the root of what blocked it (`vx.task.blocked_by`), and
-  on a task vx's own timeout killed, `vx.task.timed_out`, and on a
-  persistent task that never became ready, why (`vx.task.not_ready`). A
-  failed task sets the span status to `ERROR`.
+A failed task sets its span status to `ERROR`.
 
-**Metrics per run** (when `metrics` is on): `vx.tasks.total`,
-`vx.tasks.failed`, `vx.tasks.cache_hits{source=local|remote}`, and the
-`vx.run.duration_ms` gauge.
+## Common problems
 
-**A log record per executed task** (when `logs` is on): the task's
-captured output, linked to its `vx.task` span by trace and span id, so
-you open the log from the span. One record per task rather than per
-chunk — a build writes its output in thousands of tiny pieces, and the
-thing anyone reads is the tail.
-
-Capture is bounded: a per-task tail cap, a per-run budget, and failed
-tails are never dropped to keep a successful one. A cache hit ships no record — those bytes belong to the
-run that executed the task, and you find them by its cache key. Every
-truncation reports itself (`vx.log.chars_full`,
-`vx.log.truncated_head`), so a capped tail never reads as a complete
-one.
-
-Set `logs: false` (or the standard `OTEL_LOGS_EXPORTER=none`) to export
-traces and metrics only; vx then stops capturing output for export
-entirely, so the run pays nothing.
-
-## Backend pointers
-
-The exporter speaks OTLP/HTTP — every major backend accepts it. Point
-`OTEL_EXPORTER_OTLP_ENDPOINT` at the collector and pass auth via
-`OTEL_EXPORTER_OTLP_HEADERS`:
-
-```sh
-# Grafana Cloud / Tempo
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic <base64-creds>"
-
-# Honeycomb
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io
-export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=<api-key>"
-
-# Local collector (Datadog Agent, Jaeger all-in-one, otelcol, …)
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-```
-
-`OTEL_EXPORTER_OTLP_HEADERS` takes a comma-separated `key=val,key2=val2`
-list; anything you pass in the `headers` option is merged over it.
-
-A collector in the middle is expected, not merely tolerated. It batches
-across producers and re-batches by size and time, so one export can
-carry several runs and one run can be split across exports. Both are
-handled: spans are grouped by trace, so batched runs never borrow each
-other's tasks, and a task span names its own run, workspace and run
-start, so a task that arrives ahead of its header is stored anyway and
-converges on the same row when the header lands.
-
-The one thing a collector can still cost you is attribute limits: the
-task log records (`vx.log.*`) are the largest attributes and the first to
-be truncated, and each carries its full length so a cut is visible.
-
-## Build your own analytics
-
-The attributes above are the whole contract — nothing about them is
-private. A receiver reads the `vx.run` span for the invocation header and
-each `vx.task` span for a task result, checks `vx.telemetry.schema`, and
-has everything vx knows about the run. Decode them back into the canonical
-`RunSummaryRecord` / `TaskTelemetry` shapes and you have vx's own
-analytics input, from any OTLP collector.
-
-## What this gives you
-
-- **Per-task percentiles.** Aggregate `vx.task` span durations by
-  `cicd.pipeline.task.name` for p50/p99 across every run.
-- **Regression alerts.** Alert on "p99 of `lint` exceeds baseline by 3×"
-  and get pinged before the team notices.
-- **Cache-effectiveness dashboards.** Split on `vx.cache.source` to see
-  local vs remote hit rates, or filter by branch/commit/CI provider from
-  the root-span attributes.
-
-## Behavior note
-
-This replaces core's old hardcoded OTel emit, which fired automatically
-whenever `OTEL_EXPORTER_OTLP_ENDPOINT` was set. OTel is now a **plugin**:
-the env var alone no longer auto-exports — you declare `otel()` in
-`vx.workspace.ts`. Telemetry is observe-only and can never change, slow,
-or fail a run (every export is buffered, time-bounded, and swallows
-errors).
-
-Swallowed, but not silent. An export that does not land warns once per
-signal URL and says what happened: a collector that cannot be reached,
-one that refuses the request (`HTTP 401`, `404`, `500`, carrying the
-collector's own message), or one that accepts it and reports part of the
-data dropped (OTLP's `partialSuccess`). A collector that answers too
-slowly is cut off by core's end-of-run deadline
-(`VX_TEARDOWN_TIMEOUT_MS`, 3 s by default), which says the buffered
-records were lost. The run exits green through all of it — that is the
-point of the capability — but a pipeline that is exporting nothing tells
-you so.
-
-For the mechanics of the telemetry capability behind this plugin — and
-how to write your own exporter — see [Writing a vx
-plugin](/vx/guides/plugins/).
+- **Nothing arrives.** The endpoint is unset or empty, so the plugin declined. An export that fails warns once and names the reply.
+- **The run waits at the end.** A slow collector is cut off after `timeoutMs`, and the run still exits green.
+- **Log attributes are cut.** They are the largest; your collector's attribute limit truncates them first.

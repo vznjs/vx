@@ -1,219 +1,89 @@
 ---
-title: Caching tasks
-description: Declare inputs and outputs so vx caches correctly — plus what vx folds in automatically, how to track env vars, and how to debug a stale or missed cache.
+title: Caching
+description: Declare what a task reads and writes, so vx restores the result instead of running it — and ask vx why when it did not.
 ---
 
-vx's cache is **content-addressed**: it hashes everything a task depends
-on into a key, and a cache hit means "we've run this exact task on these
-exact inputs before — here's the stored result." Get the declarations
-right and every run is both correct and fast.
+Skip a task whose inputs did not change, and trust the result. Why? →
+[Chapter 5: Caching](../../guide/caching/) and
+[Chapter 6: Can you trust a hit?](../../guide/trust/)
 
-## How a cache decision is made
+## Steps
 
-Every run, for every task, vx folds the task's real dependencies into one
-key and looks it up. Nothing changed since last time → the key matches →
-vx **restores the stored outputs and replays the logs** instead of running
-the command. Change any input → the key changes → the task re-runs and the
-new result is saved under the new key. That's the whole model, and it's
-why a warm run is near-instant while staying correct:
+1. Add a `cache` block. `inputs.files`: every file the command reads. `outputs.files`: what it writes (`[]` for test or lint).
+2. The output depends on an env var? List it in `cache.inputs.env` **and** `exec.env.passThrough`.
+3. It reads a file outside the package? List it in `inputs.workspaceFiles`, from the workspace root.
+4. Run the task twice. The second run restores the outputs and replays the logs.
+5. A run surprised you? `vx why app#build` names what moved the key.
+6. Not sure the inputs are complete? Add [`exec.sandbox`](../sandboxing/): an undeclared read then fails the task.
 
-```mermaid
-flowchart LR
-  inputs["Task inputs<br/>source files · env vars<br/>package.json · deps · resolved config"] --> key["Hash everything<br/>→ one cache key"]
-  key --> lookup{"Key already<br/>in the cache?"}
-  lookup -->|"hit"| restore["Restore outputs +<br/>replay logs — no work"]
-  lookup -->|"miss"| run["Run the command"]
-  run --> save["Save outputs<br/>under the key"]
-  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
-  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
-  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
-  class inputs,key,run,save step
-  class lookup decide
-  class restore good
-```
-
-The payoff is real: on the 3,270-task benchmark a fully cached run
-answers in 510ms where Turborepo takes 760ms and Nx 3.59s
-([benchmarks](../../benchmarks/), 2026-09) — and because the key covers
-**every** input, a hit is only ever served when the result is genuinely
-identical.
-
-This is the guide that matters most. The one failure mode worth fearing
-is a **stale hit** (shipping a result built from inputs that actually
-changed), and it comes from under-declared inputs.
-
-## Inputs: what the task reads
+## Config
 
 ```ts
-cache: {
-  inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**'] },
-}
-```
+// packages/app/vx.config.ts
+import { defineProject } from '@vzn/vx'
 
-`inputs.files` is project-relative globs. Be precise — list everything
-the command actually reads:
-
-```ts
-files: ['src/**']                      // a source tree
-files: ['src/**', '!**/*.test.ts']     // exclude with !
-files: ['src/**', 'tsconfig.json', 'schema.graphql']
-files: []                              // no file inputs (still keyed on env, deps, lockfile…)
-```
-
-### What vx folds in for you
-
-You don't have to list these — they're always part of the key:
-
-- **The package's `package.json`** — so a dependency bump invalidates the
-  cache even if your globs are narrow like `['src/**']`. (Turborepo gets
-  this via the lockfile; vx folds the bytes directly, matching Nx.)
-- **The workspace lockfile fingerprint** — `bun.lock`,
-  `pnpm-lock.yaml`, etc.
-- **Upstream task hashes** — see [cascading](#cascading-through-dependencies).
-- **Plugin key material** — whatever a plugin's `key(task, ctx)` stage
-  returns for the task (a toolchain version, a container digest), folded
-  only when a plugin declares it and named in `vx why`; see
-  [Writing a vx plugin](../plugins/#shaping-the-pipeline).
-- **The resolved command + env declarations**, and any forwarded `--`
-  args.
-
-### What's always excluded
-
-`node_modules/`, `.git/`, `.vx/`, `*.tsbuildinfo`, `vx-lock.json`,
-`*.bun-build` (the transient `bun build --compile` writes into the cwd),
-gitignored files, the task's own declared outputs, and files belonging
-to a nested project.
-Inputs are enumerated through git, so anything git ignores is invisible
-to the cache. A project inside a submodule or an embedded repository is
-enumerated by that repository's own git (the workspace repository sees
-it as one entry), so its files count like any other project's.
-
-## Outputs: what the task produces
-
-```ts
-outputs: { files: ['dist/**'] }     // a build
-outputs: { files: [] }              // lint / test / typecheck — no files
-outputs: { files: ['dist/**', 'coverage/**'] }
-```
-
-On a cache **hit**, vx restores these from the artifact. On a **miss**,
-it runs the command and stores them.
-
-**Strict output ownership** is a vx guarantee Turborepo and Nx don't
-offer: declared outputs are **wiped before every build and before every
-restore**, so your output dir ends each run bit-identical to the cached
-snapshot. A stale `dist/old.js` from a previous build can never survive
-into a run that doesn't rewrite it. (Outputs are *not* gitignore-filtered
-— `dist/`, `.next/`, `coverage/` are captured even though they're
-usually gitignored.)
-
-## Environment variables
-
-If a task's behavior depends on an env var, track it so the cache knows:
-
-```ts
-build: {
-  exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
-  cache: {
-    inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-    outputs: { files: ['dist/**'] },
+export default defineProject({
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
+      cache: {
+        inputs: {
+          files: ['src/**', 'index.html', '!**/*.test.ts'],
+          env: ['NODE_ENV'],
+          workspaceFiles: ['tsconfig.base.json'],
+        },
+        outputs: { files: ['dist/**'] },
+      },
+    },
   },
-}
+})
 ```
 
-There are **two independent lists**, and a tracked var usually needs
-both:
+## What the key holds
 
-- `cache.inputs.env` — names whose **values are folded into the cache
-  key**. Change `NODE_ENV` and you get a different cache entry.
-- `exec.env.passThrough` — names whose **values reach the child
-  process**. The child env is isolated by default.
+Always in the key: the package's `package.json`, the lockfile, the keys of
+the tasks it depends on, the task's config and arguments after `--`.
 
-A var that affects the build must be in *both*: track it (so the key
-varies) and pass it through (so the command can actually see it). See
-[Environment variables](../environment-variables/) for the full model.
+What's always excluded: `node_modules`, `.git`, `.vx`, `*.tsbuildinfo`,
+`vx-lock.json`, `*.bun-build`, files git ignores, the task's own outputs
+and files of a nested project.
 
-## Cascading through dependencies
+## Outputs
 
-When a task `dependsOn`s another, the upstream's own cache key (its
-input-based task hash) is folded into the downstream's key — so any
-change to an upstream's inputs cascades a rebuild through everything that
-depends on it. This is **pure-input transitive hashing**, the same model
-Turborepo and Nx use.
+Declared outputs are wiped before every build and every restore, so `dist/`
+ends each run exactly as the cache stored it. A failed task is never saved.
 
-Because keys are derived from *inputs* alone, the whole graph's keys are
-known before anything executes — which is what lets vx fire remote-cache
-lookups in the background while earlier tasks are still running. (vx does
-*not* do "early cutoff" — an upstream that re-runs but produces identical
-output still re-runs its dependents. That was tried and deliberately
-removed; see the [caching deep dive](../../caching/).)
-
-If a `dependsOn` exists only for *ordering* and the upstream's output
-doesn't actually affect this task, decouple their keys:
-
-```ts
-e2e: {
-  dependsOn: ['build'],          // run after build
-  exec: { command: 'playwright test' },
-  cache: {
-    inputs: { files: ['e2e/**'], tasks: [] },  // …but build's hash doesn't key e2e
-    outputs: { files: ['playwright-report/**'] },
-  },
-}
-```
-
-`inputs.tasks` filters which upstream hashes participate (`[]` = none,
-`['^build']` = only that one, default = all). Same micro-syntax as
-`dependsOn`.
-
-## Inputs that live outside the package
-
-For root-level shared files (a base tsconfig, shared codegen output),
-use `workspaceFiles` — globs resolved from the **workspace root**:
-
-```ts
-inputs: {
-  files: ['src/**'],
-  workspaceFiles: ['tsconfig.base.json', 'shared/generated/**'],
-}
-```
-
-These are the Turborepo `$TURBO_ROOT$` / Nx `{workspaceRoot}` equivalent.
-There's a matching `outputs.workspaceFiles` for writing outside the
-package dir.
-
-## Debugging the cache
-
-When a task hit or missed and you didn't expect it:
+## Why did it re-run?
 
 ```bash
-vx run build --dry        # predicted hit/miss + resolved plan, no execution
-vx run build --graph      # the dependency graph as Graphviz DOT
-vx show build             # the live resolved config for the task
+vx why app#build
 ```
 
-To force a clean run while debugging (without editing config):
+```console
+app#build — run 019f5a02-…
+  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
+  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
+  verdict    cache key changed between the previous run and this one (inputs differ)
 
-```bash
-vx run build --no-cache   # ignore the cache for this run
+  what changed (1 component, 41 unchanged):
+    changed file  src/index.ts  a1b2c3… → d4e5f6…
 ```
 
-A quick checklist when a hit looks stale:
+| The verdict line says                                                                                   | It means                              |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| cache key changed between the previous run and this one (inputs differ)                                 | the lines below name what changed     |
+| cache key unchanged — this run was served from cache, nothing re-ran                                    | a hit                                 |
+| cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)                  | you forced it, or something unkeyed   |
+| cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown               | vx does not guess                     |
+| this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only | not cached at all                     |
 
-1. Ask the tool first: `vx why <pkg>#<task>` names the component that
-   moved, or says the key did not move at all
-   ([Trusting the cache](../trusting-the-cache/)).
-2. Did the changed file match `inputs.files`? If not, your globs are too
-   narrow — add it.
-3. Is the value an env var? It must be in `inputs.env`.
-4. Is it a root-level file? Use `inputs.workspaceFiles`.
+## Common problems
 
-## Next steps
+- **A hit after you changed something.** The changed thing is not declared: a file (`inputs.files`), an env var (`inputs.env`) or a root file (`inputs.workspaceFiles`).
+- **Everything downstream rebuilt.** A task's key folds its dependencies' keys. For a dependency that is only about order, set `inputs.tasks: []`.
+- **You want a clean run.** `--force` runs everything and refreshes the cache; `--no-cache` ignores it.
 
-- **[Environment variables](../environment-variables/)** — the full
-  passthrough/tracking model.
-- **[Caching deep dive](../../caching/)** — key derivation, the
-  invalidation table, the artifact format.
-- **[Remote caching](../remote-caching/)** — share the cache across
-  machines and CI.
+A fully cached 3,270-task run: vx 510ms, Turborepo 760ms, Nx 3.59s
+([benchmarks](../../benchmarks/)). The key, part by part:
+[Caching in depth](../../caching/).

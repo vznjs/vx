@@ -219,7 +219,7 @@ upstream repos.
    back as a plugin: `turboCache()` in `@vzn/vx-migrate` speaks the Turbo
    wire (self-hosted or Vercel) and `nxCache()` the Nx self-hosted
    one, both against the same `cache` seam — the recipe for any other
-   wire lives in the extensibility guide.
+   wire lives in the plugins guide.
 
 2. **`--continue=<mode>` — shipped.** `--continue[=never|deps-ok|always]`
    controls failure propagation: `never` fail-fast (stop dispatch on the

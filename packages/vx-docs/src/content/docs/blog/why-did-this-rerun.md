@@ -81,5 +81,5 @@ can call (`whyDidThisRerun`), so "why is CI rebuilding everything" is a
 question an agent can answer without reading the source of the runner.
 
 A cache is a claim that the work has been done before. `vx why` is how
-the claim is audited. The guide is [Trusting the
-cache](../../guides/trusting-the-cache/).
+the claim is audited. The guide is
+[Caching](../../guides/caching/#why-did-it-re-run).

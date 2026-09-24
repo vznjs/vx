@@ -199,8 +199,10 @@ describe('the add-to-existing-repo page states the concurrency default `vx help`
   })
 })
 
-describe('the trusting-the-cache guide quotes what vx why says', () => {
-  const guide = readFileSync(path.join(GUIDES, 'trusting-the-cache.md'), 'utf8')
+// The trusting-the-cache guide merged into the caching guide (the site redo,
+// R3); its `vx why` table and sample moved with it.
+describe('the caching guide quotes what vx why says', () => {
+  const guide = readFileSync(path.join(GUIDES, 'caching.md'), 'utf8')
   const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
   it("every verdict sentence metrics.ts can print is a row of its table, and of the post's", () => {
     const src = readFileSync(
@@ -743,16 +745,17 @@ describe('the from-nx post says how executors run, and names the servers', () =>
 // two pages — without greping the class, which is the rule it broke. The THIRD
 // copy, introduction.md, was missing `setup` and `teardown` too (item 381,
 // 2026-09-19). The page set is discovered from the table header now, so a
-// fourth copy fails this until someone decides what it says.
+// fourth copy fails this until someone decides what it says. The site redo
+// (R3) merged the introduction into the quickstart and the extensibility
+// page into the plugins guide; the one Docs table is the plugins guide's.
 describe('every page tabulating the pipeline stages names all of them', () => {
   it('each `| Stage` table is PLUGIN_HOOKS, and the set of such tables is known', () => {
     const pages = handAuthoredSitePages().filter((p) =>
       readFileSync(p, 'utf8').includes('\n| Stage '),
     )
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'extensibility.md',
-      'introduction.md',
       'pipeline-with-seams.md',
+      'plugins.md',
     ])
     for (const page of pages) {
       const text = readFileSync(page, 'utf8')
@@ -831,7 +834,7 @@ describe('every page naming the Linux sandbox binaries names all three', () => {
     })
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'correctness.mdx',
-      'introduction.md',
+      'quickstart.md',
       'sandboxing.md',
       'the-sandbox.md',
     ])
@@ -1185,7 +1188,8 @@ describe('the dev-tasks guide bounds the teardown the way signals.ts does', () =
   })
 })
 
-describe('the task-dependencies guide uses the status words the scheduler sets', () => {
+// The task-dependencies guide merged into the tasks guide (the site redo, R3).
+describe('the tasks guide uses the status words the scheduler sets', () => {
   it('a failed upstream skips its dependents; aborted is the teardown status', () => {
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
@@ -1193,10 +1197,7 @@ describe('the task-dependencies guide uses the status words the scheduler sets',
     )
     // Both words are statuses of TaskOutcome, and they are not the same one.
     for (const status of ["'skipped'", "'aborted'"]) expect(src).toContain(status)
-    const page = readFileSync(path.join(GUIDES, 'task-dependencies.md'), 'utf8').replace(
-      /\s+/g,
-      ' ',
-    )
+    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('skips its transitive dependents')
     expect(page).not.toContain('aborts its transitive dependents')
     for (const mode of ['deps-ok', 'never', 'always']) {
@@ -1279,7 +1280,7 @@ describe('the migrate-from-nx guide shows the nx-exec line the mapper writes', (
   })
 })
 
-describe('the task-dependencies guide states which wildcards dependsOn takes', () => {
+describe('the tasks guide states which wildcards dependsOn takes', () => {
   it('a task-name pattern is legal and a bare wildcard is not, as task-graph.ts rules', () => {
     // The guide said wildcards are "not allowed in dependsOn", full stop,
     // where `build.*` and `^build.*` ARE (Nx 19.5 parity) and only bare
@@ -1299,10 +1300,7 @@ describe('the task-dependencies guide states which wildcards dependsOn takes', (
     }
     // The legal case: a self pattern expands over the project's task names.
     expect(src).toContain('if (isTaskPattern(spec.task))')
-    const page = readFileSync(path.join(GUIDES, 'task-dependencies.md'), 'utf8').replace(
-      /\s+/g,
-      ' ',
-    )
+    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('A task-name pattern is allowed')
     expect(page).toContain("`dependsOn: ['build.*']`")
     expect(page).toContain('Bare wildcards and negation')

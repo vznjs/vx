@@ -1,90 +1,21 @@
 ---
 title: Writing a vx plugin
-description: A vx plugin contributes capabilities from vx.workspace.ts — decide where a task runs (executor), where artifacts live (cache), or where run records go (telemetry). Telemetry is the safe, observe-only path for Sentry, Slack, metrics, and OpenTelemetry.
+description: A plugin fills one or more stages of every run — the tasks a project has, the cache key, the order, where a task runs, where artifacts live, where run records go — from one object in vx.workspace.ts.
 ---
 
-A plugin is a small object you register in `vx.workspace.ts`. It
-contributes one or more **capabilities** to every `vx run`. Most
-integrations — forward failures to Sentry, post a summary to Slack,
-ship metrics to a timeseries DB — use the **`telemetry`** capability: a
-sink that receives immutable run records and, by construction, cannot
-change how your tasks run.
+Change every run from one place: add tasks, key material, a cache, an
+exporter or a CLI verb. Why plugins? →
+[Chapter 9: How vx is built](../../guide/inside-vx/)
 
-Everything below is real, runnable code against the types exported from
-`@vzn/vx`. Copy a block, swap the endpoint, and it works.
+## Steps
 
-## The contract
+1. Write a function that returns `definePlugin(import.meta, hooks)`. The plugin's name is its package's name.
+2. Fill only the hooks you need (the table below). A hook nobody fills costs nothing.
+3. Declare it in `vx.workspace.ts`: `plugins: [typecheck()]`. Plugins are asked in that order.
+4. Run `vx info`. It lists each plugin and the hooks it fills.
+5. Test it: call `run()` from `@vzn/vx` on a throwaway workspace and read what your hooks saw.
 
-A `VxPlugin` is a plain object with a `name` and any of the optional
-hooks below — declared in `vx.workspace.ts` via `defineWorkspace({
-plugins: [...] })`. Each hook is independent and opt-in; a stage nobody
-declares costs nothing, and declaration order is the order everywhere.
-
-```ts
-import type { VxPlugin } from '@vzn/vx'
-
-interface VxPlugin {
-  readonly name: string // your package's name — definePlugin reads it, you never set it
-
-  // PIPELINE stages — shape the run before it executes:
-  config?(workspace, ctx): void // the workspace config, before it is used
-  project?(config, ctx): void // one loaded project's tasks: add / remove / edit
-  graph?(nodes, ctx): void // the task graph: edges, requested
-  key?(task, ctx): Record<string, string> // extra cache-key material per task
-  fingerprint?: { files; affected(change, ctx) } // claim a lockfile: key it per project, not per workspace
-  schedule?(nodes, ctx): Map<string, number> // task id → priority among ready tasks
-  admit?(task, ctx): boolean // may this ready task start now, beside what runs here?
-
-  // BEHAVIOR capabilities — decide WHERE work runs and where artifacts live:
-  executor?(ctx): TaskExecutor | undefined // where ONE task's command runs
-  cache?(ctx): CacheLayer | undefined // where artifacts live
-
-  // OBSERVE-ONLY capability — cannot change behavior, by construction:
-  telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined // export run data
-
-  // CLI verbs — consulted for a word core does not know:
-  commands?: { [verb]: { description: string; run(argv, ctx): number } }
-
-  setup?(ctx): void | Promise<void> // once per run, before the executor and the first task
-  teardown?(): void | Promise<void> // end-of-run flush/close
-}
-```
-
-## Adding a verb
-
-`commands` adds words to the `vx` CLI. Core's verbs are matched first —
-nothing can shadow `vx run` — and a plugin verb runs only when the cwd
-is inside a workspace that declares the plugin. `vx help` lists them.
-
-```ts
-import { Cache, definePlugin, type VxPlugin } from '@vzn/vx'
-
-export function mcp(): VxPlugin {
-  return definePlugin(import.meta, {
-    commands: {
-      mcp: {
-        description: 'serve run history to an AI agent over stdio',
-        async run(argv, ctx) {
-          const db = new Cache(ctx.cacheDir).dbHandle() // the same queries `vx why` reads
-          // … speak MCP on stdin/stdout, reading `db` and `argv` …
-          void argv
-          void db
-          return 0 // the process exit code — resolving anything else fails the verb
-        },
-      },
-    },
-  })
-}
-```
-
-## Shaping the pipeline
-
-The stage hooks are how a plugin **adds** something to every
-project without every `vx.config.ts` repeating it. Core re-validates
-whatever a stage produced, so a plugin can only create what the loader
-would accept from you — and the cache key hashes the task config
-*after* `project` ran, so an injected task is keyed exactly like one you
-wrote by hand.
+## Config
 
 A plugin that gives every TypeScript package a `typecheck` task:
 
@@ -106,35 +37,50 @@ export function typecheck(): VxPlugin {
 }
 ```
 
-A plugin that makes every `test` wait for its project's `build`:
+## The hooks
+
+| Stage       | Hook                   | Decides                                                   |
+| ----------- | ---------------------- | --------------------------------------------------------- |
+| config      | `config(ws, ctx)`      | the workspace config, before it is used                   |
+| project     | `project(config, ctx)` | a project's tasks: add, remove, rewrite                   |
+| graph       | `graph(nodes, ctx)`    | the run's edges                                           |
+| key         | `key(task, ctx)`       | extra cache-key material, named in `vx why`               |
+| fingerprint | `fingerprint`          | a lockfile keyed per project instead of per workspace     |
+| schedule    | `schedule(nodes, ctx)` | which ready task runs first                               |
+| admit       | `admit(task, ctx)`     | whether a ready task starts now, beside what runs here    |
+| execute     | `executor(ctx)`        | where one task's command runs                             |
+| store       | `cache(ctx)`           | where artifacts live                                      |
+| observe     | `telemetry(ctx)`       | where run records go; it can never change the run         |
+| setup       | `setup(ctx)`           | once per run, before the first task                       |
+| cli         | `commands`             | which verbs `vx` has                                      |
+| teardown    | `teardown()`           | flush and close at the end of the run                     |
+
+What every plugin declines runs and is stored on this machine.
 
 ```ts
-import { definePlugin, type VxPlugin } from '@vzn/vx'
+import type { VxPlugin } from '@vzn/vx'
 
-export function testAfterBuild(): VxPlugin {
-  return definePlugin(import.meta, {
-    graph(nodes) {
-      for (const node of nodes.values()) {
-        if (node.taskName !== 'test') continue
-        const build = `${node.projectName}#build`
-        if (nodes.has(build) && !node.deps.includes(build)) node.deps.push(build)
-      }
-    },
-  })
+interface VxPlugin {
+  readonly name: string // your package's name: definePlugin reads it
+  config?(workspace, ctx): void
+  project?(config, ctx): void
+  graph?(nodes, ctx): void
+  key?(task, ctx): Record<string, string>
+  fingerprint?: { files; affected(change, ctx) }
+  schedule?(nodes, ctx): Map<string, number>
+  admit?(task, ctx): boolean
+  executor?(ctx): TaskExecutor | undefined
+  cache?(ctx): CacheLayer | undefined
+  telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined
+  commands?: { [verb]: { description: string; run(argv, ctx): number } }
+  setup?(ctx): void | Promise<void>
+  teardown?(): void | Promise<void>
 }
 ```
 
-A dep naming a task that is not in the run, or a cycle, is refused with
-the plugin's name and the stage: `plugin '@org/test-after-build' failed in
-graph: …`. `config` runs first and sees the workspace config before
-`concurrency` or `cacheDir` are read from it.
+## Keys and order
 
-### Keys and order
-
-`key` adds material the declared inputs cannot see — a tool version, a
-feature flag — to every task's cache key. It is folded only when a
-plugin contributes something, so keys without it are unchanged, and
-`vx why` names it as a `plugin` component:
+`key` adds what your inputs cannot see, like a tool version:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -145,63 +91,11 @@ export function nodeMajor(): VxPlugin {
 }
 ```
 
-A `key` hook can also take a lockfile OVER from core. Every lockfile at
-the root is folded into the workspace fingerprint that every task's key
-sees, so one `pnpm install` re-keys the whole workspace. A plugin that
-claims the file — `fingerprint: { files: ['pnpm-lock.yaml'], affected }`
-— makes core leave it out of that digest, and folds through `key` what
-the file means for each project instead. `affected` is the other half
-of the same promise: `--affected` asks it which projects a change to the
-file touches (with the bytes at the base ref and in the working tree)
-rather than selecting every project. [`@vzn/vx-lockfile`](../lockfiles/) is the
-reference — `pnpm()`, `bun()`, `npm()`, `yarn()`, each a parser over core's
-`lockfileClaim`: each project's own resolved dependency closure, so
-`pnpm update foo` re-keys only the projects that depend on `foo`.
-
-`schedule` decides which READY task runs first when more are ready than
-there are workers. Return `Map<taskId, weight>`; higher runs first, and
-the scheduler's structural baseline (how many tasks a task unblocks)
-stays the tie-break. Core ships no policy; the reference one is its own
-package — the expected remaining critical path learned from your own run
-history:
-
-```ts
-import { defineWorkspace } from '@vzn/vx'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
-
-export default defineWorkspace({
-  plugins: [scheduleHistoryPlugin()],
-})
-```
-
-It costs one history read per run, in the workspaces that declare it —
-which is why it is a plugin and not a flag. A fresh CI runner has no
-history, and there the structural order starts a long leaf task last;
-`scheduleHistoryPlugin({ assume: { 'docs#build': 30_000 } })` names the
-durations the cold run should assume until the history has its own.
-
-`admit` is asked at every local dispatch, after the worker-count gate,
-with the tasks running on this machine right now (`ctx.running`) and
-the worker count (`ctx.concurrency`). Return `false` to hold the task
-until something finishes; it is asked again then. Core gates on the
-worker count and nothing finer — it keeps no notion of what a task
-needs — so a policy that packs memory or CPU learns or declares the
-numbers itself. The same plugin is the reference: it reserves the peak
-RSS each task's past executions used (with headroom; cores only when
-declared, since a build's parallelism is a reading of contention), packs
-them against the cores and the memory this process may use, and runs a
-task over a whole budget alone. The hook must be synchronous and cheap;
-a throw is reported once and the plugin admits from then on, so a
-policy never breaks a run. Restore-tier hits and tasks on an executor's
-pool hold nothing here and are never asked. A policy need not learn
-anything — the smallest useful one serializes the tasks that share a
-resource nothing else models:
+`admit` holds a ready task back. Here, one e2e suite at a time:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 
-// The e2e suites share one database: at most one runs here at a time,
-// while everything else keeps the worker count.
 export function oneDatabase(): VxPlugin {
   return definePlugin(import.meta, {
     admit(task, ctx) {
@@ -212,124 +106,52 @@ export function oneDatabase(): VxPlugin {
 }
 ```
 
-The run says when it acted: a held task carries `admissionHeldMs` on its
-`--summarize` row and the footer's `info` row sums the waits (`admit
-held 3 tasks, 4.2s in all`).
+`schedule` ranks ready tasks. This one learns from your run history:
 
-- **`executor`** returns a `TaskExecutor` — the thing that actually runs
-  one task's command — or `undefined` to decline. Executors form a
-  **list** in declaration order, and per task the first one whose
-  `accepts(task)` returns true gets it. That is how `@vzn/vx-reapi` can
-  run most tasks on a remote worker while a task marked
-  `exec: { remote: false }` still falls to the local executor in the
-  same run. The local executor is the TAIL of every list — core's floor,
-  not a plugin — so a task every plugin declines runs here.
-- **`cache`** returns a `CacheLayer` or `undefined`. Layers **chain**
-  rather than compete: a lookup walks them in order and a save reaches
-  all of them, and the local store is the tail of the chain — a remote
-  plugin composes with it instead of replacing it. (A layer that wraps
-  the local handle it is given subsumes it, so the local store is never
-  written twice.) Core ships no wire client of its own.
-- **`telemetry`** returns one or more `TelemetrySink`s that receive versioned
-  `RunSummaryRecord` / `TelemetryRecord` values. A sink holds NO run handle, so
-  it provably can't change a run; ALL plugins' sinks run (additive), each
-  crash-isolated and deadline-bounded. This is the export contract
-  `@vzn/vx-otel`, `@vzn/vx-github` and any custom exporter all speak.
+```ts
+import { defineWorkspace } from '@vzn/vx'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
-The plugins that ship alongside vx are ordinary consumers of these same
-seams: `@vzn/vx-reapi` fills `executor` and `cache` against any Bazel
-REAPI server, `turboCache()` and `nxCache()` from `@vzn/vx-migrate` fill `cache`
-against any server speaking Turbo's or Nx's self-hosted cache API,
-`turbo()` and `nx()` from the same package fill `project` so a `turbo.json` or an Nx
-workspace runs with no `vx.config` written, `@vzn/vx-schedule-history` fills three at once — `schedule` with
-critical-path priorities learned from past runs, `admit` with the memory
-each task reserves, and `commands` with `vx history` — `@vzn/vx-otel` and
-`@vzn/vx-github` fill `telemetry`, and `@vzn/vx-mcp` adds `vx mcp` through
-`commands` (`@vzn/vx-migrate` is both: a bin that runs before a workspace
-file exists, and the plugins above). None of them is privileged — core depends on
-none, and yours plugs in the same way. What a plugin declines lands on core's floor: the local
-executor and the local cache, which sit behind every declared list.
+export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
+```
+
+## Adding a verb
+
+```ts
+import { Cache, definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function mcp(): VxPlugin {
+  return definePlugin(import.meta, {
+    commands: {
+      mcp: {
+        description: 'serve run history to an AI agent over stdio',
+        async run(argv, ctx) {
+          const db = new Cache(ctx.cacheDir).dbHandle() // the tables `vx why` reads
+          void argv
+          void db
+          return 0 // the exit code
+        },
+      },
+    },
+  })
+}
+```
 
 ## The telemetry sink
 
-A `TelemetrySink` is the observe-only surface almost every integration
-wants. It receives two record shapes:
+A sink gets each run's summary. Do network I/O in `flush()`, which vx
+awaits for up to 3 s.
 
 ```ts
-interface TelemetrySink {
-  readonly name?: string
-  // Which streaming record kinds you want. Default: everything except the
-  // large `task.log` stream. Listing kinds means the source pays nothing to
-  // project the ones you skip.
-  readonly wants?: ReadonlyArray<'run.start' | 'task.start' | 'task.end' | 'task.log' | 'run.end'>
-  // A streaming record, one per lifecycle event. MUST return promptly —
-  // buffer, do NOT await network I/O here.
-  onRecord?(record: TelemetryRecord): void
-  // ONE summary per run, at the end — the whole invocation in a single value.
-  onRunSummary?(summary: RunSummaryRecord): void
-  // Drain buffered data. AWAITED at end-of-run (time-bounded), so this is the
-  // right place for network I/O.
-  flush?(): Promise<void>
-}
-```
-
-The `RunSummaryRecord` is the one most integrations need — it arrives
-once, at run end, with every task's outcome plus git/CI context:
-
-```ts
-interface RunSummaryRecord {
-  run: {
-    runId: string
-    command: string // the invocation, e.g. 'vx run build test'
-    commitSha: string | null
-    branch: string | null
-    ci: boolean
-    ciProvider: string | null // 'github' | 'gitlab' | …
-    // …workspaceId, tags, os, arch, host, and more
-  }
-  totalDurationMs: number
-  taskCount: number
-  failedCount: number
-  hitCount: number // cache hits (local + remote)
-  exitOk: boolean
-  tasks: ReadonlyArray<{
-    taskId: string // 'project#task'
-    project: string
-    task: string
-    status: 'success' | 'failed' | 'skipped' | 'aborted' | 'cache-hit' | 'cache-hit-remote'
-    cacheSource: 'miss' | 'local' | 'remote' | 'none'
-    exitCode: number
-    durationMs: number
-    cpuMs?: number
-    peakRssBytes?: number
-    blockedBy?: string // on a skipped task: the failed task at the root of the block
-    timedOut?: true // on a failed task: vx's own timeout killed it (exit 143 is not a signal)
-    sandboxViolations?: number // on a sandboxed task: violations the sandbox recorded
-    notReady?: 'timeout' | 'exited' | 'spawn' // on a failed persistent task: why it never became ready
-  }>
-}
-```
-
-## Hello, telemetry
-
-The smallest useful plugin: print a one-line summary after every run.
-Defined in the workspace file, it is named after the workspace package;
-a plugin of its own gets its own package's name.
-
-```ts
-// vx.workspace.ts
 import { definePlugin, defineWorkspace, type VxPlugin } from '@vzn/vx'
 
 function hello(): VxPlugin {
   return definePlugin(import.meta, {
     telemetry() {
       return {
-        name: 'org/hello',
         onRunSummary(summary) {
           const { taskCount, failedCount, hitCount, totalDurationMs } = summary
-          console.log(
-            `[hello] ${taskCount} tasks · ${failedCount} failed · ${hitCount} cached · ${totalDurationMs}ms`,
-          )
+          console.log(`${taskCount} tasks · ${failedCount} failed · ${hitCount} cached · ${totalDurationMs}ms`)
         },
       }
     },
@@ -339,204 +161,12 @@ function hello(): VxPlugin {
 export default defineWorkspace({ plugins: [hello()] })
 ```
 
-Run `vx run lint` and the line prints once the run finishes.
+## Your own cache
 
-## A Sentry plugin (failed tasks → exceptions)
-
-The run summary carries every failure in one value, so you report them
-in one place — no per-task event wiring.
+Implement core's `RemoteCacheLayer` (`has`, `get`, `put`, optional
+`hasMany`) and wrap it in `LayeredCache`. A remote error is then a miss:
 
 ```ts
-// plugins/sentry.ts
-import * as Sentry from '@sentry/node'
-import { definePlugin, exitSignal, type VxPlugin } from '@vzn/vx'
-
-export function sentryPlugin(opts: { dsn: string }): VxPlugin {
-  Sentry.init({ dsn: opts.dsn })
-  return definePlugin(import.meta, {
-    telemetry() {
-      return {
-        name: 'org/sentry',
-        onRunSummary(summary) {
-          for (const t of summary.tasks) {
-            if (t.status !== 'failed') continue
-            Sentry.captureException(new Error(`vx task failed: ${t.taskId}`), {
-              tags: {
-                project: t.project,
-                task: t.task,
-                branch: summary.run.branch ?? 'unknown',
-                ci: summary.run.ciProvider ?? 'local',
-              },
-              extra: {
-                exitCode: t.exitCode,
-                // 137 is a number; the signal it stands for is the story.
-                signal: exitSignal(t.exitCode) ?? null,
-                durationMs: t.durationMs,
-                commit: summary.run.commitSha,
-              },
-            })
-          }
-        },
-        // flush() is awaited at end-of-run — give the transport time to ship.
-        flush: () => Sentry.flush(2000).then(() => undefined),
-      }
-    },
-  })
-}
-
-// vx.workspace.ts — `import { sentryPlugin } from './plugins/sentry'`
-import { defineWorkspace } from '@vzn/vx'
-
-export default defineWorkspace({
-  plugins: [sentryPlugin({ dsn: process.env['SENTRY_DSN']! })],
-})
-```
-
-## What the façade gives a sink
-
-Every sink faces the same four questions, and each has one answer on
-`@vzn/vx` so sinks do not drift from core's own rendering:
-
-- **Did it pass, and was it a hit?** `isPassStatus(status)` and
-  `isCacheHit(status)` — the `TaskStatus` union grows, and a hand-rolled
-  `Set` of literals silently answers "no" for the new member.
-  `TASK_STATUSES` is the union at runtime.
-- **What does exit 137 mean?** `exitSignal(exitCode)` decodes an exit
-  above 128 to the signal it stands for (`'SIGKILL'`), the way the
-  frame, `vx last` and the GitHub job summary say it — the shell's
-  convention, so a command that exits 137 on its own reads the same.
-- **Is this task name safe in a markdown table?** `escapeMarkdownCell`.
-  Task names are the same unvalidated strings core renders.
-- **How much output do I keep?** `TaskLogBuffer` bounds captured logs
-  per task and per run with the retention rules core uses (failures
-  never evicted by successes).
-
-```ts
-// plugins/failure-lines.ts — one line per failure, as core would say it
-import {
-  definePlugin,
-  escapeMarkdownCell,
-  exitSignal,
-  isPassStatus,
-  type VxPlugin,
-} from '@vzn/vx'
-
-export function failureLines(): VxPlugin {
-  return definePlugin(import.meta, {
-    telemetry() {
-      return {
-        name: 'org/failure-lines',
-        onRunSummary(summary) {
-          for (const t of summary.tasks) {
-            if (isPassStatus(t.status) || t.status !== 'failed') continue
-            const signal = exitSignal(t.exitCode)
-            const why = signal === undefined ? '' : ` (128 + ${signal})`
-            console.log(`| ${escapeMarkdownCell(t.taskId)} | exit ${t.exitCode}${why} |`)
-          }
-        },
-      }
-    },
-  })
-}
-```
-
-## A Slack-summary plugin
-
-Capture the message in `onRunSummary` (which must return promptly), then
-do the network POST in `flush()` (which vx awaits). This buffer-then-flush
-split is the pattern for any sink that talks to the network.
-
-```ts
-// plugins/slack-summary.ts
-import { definePlugin, type VxPlugin } from '@vzn/vx'
-
-export function slackSummary(opts: { webhookUrl: string }): VxPlugin {
-  return definePlugin(import.meta, {
-    telemetry() {
-      let text: string | undefined
-      return {
-        name: 'org/slack-summary',
-        onRunSummary(summary) {
-          const { failedCount, taskCount, hitCount, totalDurationMs } = summary
-          const secs = Math.round(totalDurationMs / 1000)
-          text =
-            failedCount === 0
-              ? `:white_check_mark: vx: ${taskCount} tasks passed (${hitCount} cached) in ${secs}s`
-              : `:x: vx: ${failedCount}/${taskCount} tasks failed on ${summary.run.branch ?? 'HEAD'}`
-        },
-        async flush() {
-          if (text === undefined) return
-          await fetch(opts.webhookUrl, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ text }),
-          })
-        },
-      }
-    },
-  })
-}
-```
-
-## A metrics plugin (timeseries DB)
-
-For per-task points, stream the `task.end` records. Declaring `wants:
-['task.end']` skips every other kind (including the large `task.log`
-stream) at the source, so you pay nothing for what you don't read.
-
-```ts
-// plugins/timeseries.ts
-import { definePlugin, type VxPlugin, type TelemetryRecord } from '@vzn/vx'
-
-export function timeseriesPlugin(opts: { url: string }): VxPlugin {
-  return definePlugin(import.meta, {
-    telemetry() {
-      const points: Array<Record<string, unknown>> = []
-      return {
-        name: 'org/timeseries',
-        wants: ['task.end'],
-        onRecord(record: TelemetryRecord) {
-          if (record.kind !== 'task.end') return // narrows the union
-          points.push({
-            ts: record.ts,
-            project: record.project,
-            task: record.task,
-            status: record.status,
-            cache: record.cacheSource, // 'miss' | 'local' | 'remote' | 'none'
-            durationMs: record.durationMs,
-            cpuMs: record.cpuMs,
-          })
-        },
-        async flush() {
-          if (points.length === 0) return
-          await fetch(opts.url, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ points }),
-          })
-          points.length = 0
-        },
-      }
-    },
-  })
-}
-```
-
-Prefer `onRunSummary` when you want the whole run in one payload;
-`onRecord` when you want a live stream of per-task events.
-
-## Bring your own cache
-
-The remote cache is a plugin capability, so you can back it with **anything** —
-your own server, a Turbo-compatible cache, S3/R2, Redis — with no cloud
-platform involved. The easiest path implements core's `RemoteCacheLayer`
-seam — `has`, `get`, `put` and the optional batch probe `hasMany` — and
-wraps the local cache in `LayeredCache`, which
-then owns policy gating, deduplication, provenance, and the never-fail
-degradation for you:
-
-```ts
-// vx.workspace.ts
 import { definePlugin, defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 class AcmeRemote implements RemoteCacheLayer {
@@ -547,240 +177,45 @@ class AcmeRemote implements RemoteCacheLayer {
   async get(hash: string) {
     const res = await fetch(`${this.url}/artifacts/${hash}`)
     if (res.status === 404) return null
-    if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`) // throws degrade to a miss
-    // The Response itself: core streams its body to disk, never whole in memory.
-    return { body: res, durationMs: undefined }
+    if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`) // a throw is a miss
+    return { body: res, durationMs: undefined } // streamed to disk
   }
   async put(hash: string, body: Blob) {
-    // A file-backed Blob over the local artifact: fetch uploads it as a stream.
     await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body })
   }
 }
 
-function myCache(): VxPlugin {
+function acmeCache(): VxPlugin {
   return definePlugin(import.meta, {
     cache(ctx) {
       const url = process.env.ACME_CACHE_URL
-      if (!url) return undefined // decline → core falls back to the local cache
-      // ctx.localCache is the on-disk cache; ctx.policy carries the run's
-      // read/write axes. LayeredCache reads local → remote → hydrates local.
-      return new LayeredCache(ctx.localCache, new AcmeRemote(url), {
-        policy: ctx.policy,
-        onRemoteError: (e) => ctx.warn(`acme cache: ${e.message}`),
-      })
+      if (!url) return undefined // decline: the local cache alone
+      return new LayeredCache(ctx.localCache, new AcmeRemote(url), { policy: ctx.policy })
     },
   })
 }
 
-export default defineWorkspace({ plugins: [myCache()] })
+export default defineWorkspace({ plugins: [acmeCache()] })
 ```
 
-Bodies stream both ways, so no artifact sits whole in memory. `get`
-resolves `{ body: Blob | Response, durationMs }`: an HTTP wire returns
-its `fetch` `Response`, a chunked wire `new Response(readableStream)`,
-bytes already in hand `new Blob([bytes])`. `put` receives a `Blob` — a
-file-backed one (`Bun.file`) over the local artifact, so handing it to
-`fetch` uploads it as a stream; a wire that needs a digest before it
-sends reads `body.stream()` twice. Any other `body` (an `ArrayBuffer`
-or `Uint8Array` included) is refused as a plugin bug and read as a miss.
+## Plugins that ship
 
-`turboCache()` is exactly this shape with `/v8/artifacts/:hash`
-URLs and `x-artifact-*` headers inside the class, and `nxCache()`
-the same with Nx's `/v1/cache/:hash`; both are declared explicitly and
-decline when unconfigured. For a fully custom
-layering (not just a different wire), implement the `CacheLayer` interface
-directly — `key`, `get`, `save`, `has`, `prefetch`, … — and return your own
-object instead of `LayeredCache`. `CacheLayer`, `RemoteCacheLayer`,
-`LayeredCache`, and `Cache` are all exported from `@vzn/vx`. The first-party
-cloud plugin is exactly this pattern; yours sits alongside it as an equal.
+| Package                     | Hooks it fills                             |
+| --------------------------- | ------------------------------------------ |
+| `@vzn/vx-reapi`             | `cache`, `executor`                        |
+| `@vzn/vx-migrate`           | `project` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) |
+| `@vzn/vx-lockfile`          | `fingerprint`, `key`                       |
+| `@vzn/vx-schedule-history`  | `schedule`, `admit`, `commands`            |
+| `@vzn/vx-otel`              | `telemetry`                                |
+| `@vzn/vx-github`            | `telemetry`                                |
+| `@vzn/vx-mcp`               | `commands`                                 |
 
-## Testing your plugin
-
-Drive a real run against a throwaway workspace with `run()` from
-`@vzn/vx` — the same call the CLI makes — and assert on what your sink
-received. The fixture lives in a temp dir where nothing resolves
-`@vzn/vx`, so its workspace file imports plugins by absolute path:
-the plugin under test resolved from its source next to the test file.
-
-```ts
-// my-plugin.test.ts
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { definePlugin, run, type RunSummaryRecord, type VxPlugin } from '@vzn/vx'
-
-const summaries: RunSummaryRecord[] = []
-export function myPlugin(): VxPlugin {
-  return definePlugin(import.meta, { telemetry: () => ({ onRunSummary: (s) => summaries.push(s) }) })
-}
-
-let root: string
-beforeEach(async () => {
-  root = await mkdtemp(path.join(os.tmpdir(), 'my-plugin-'))
-  await writeFile(path.join(root, 'package.json'), '{"name":"fixture","workspaces":["packages/*"]}')
-  await mkdir(path.join(root, 'packages/app'), { recursive: true })
-  await writeFile(path.join(root, 'packages/app/package.json'), '{"name":"app"}')
-  await writeFile(
-    path.join(root, 'packages/app/vx.config.mjs'),
-    "export default { tasks: { build: { exec: { command: 'echo built' } } } }\n",
-  )
-  const abs = (spec: string) => JSON.stringify(Bun.fileURLToPath(import.meta.resolve(spec)))
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
-    [
-      `import { myPlugin } from ${abs('./my-plugin.test.ts')}`,
-      'export default { plugins: [myPlugin()] }',
-    ].join('\n'),
-  )
-  Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
-})
-afterEach(() => rm(root, { recursive: true, force: true }))
-
-it('receives one summary with the task outcome', async () => {
-  const r = await run({ cwd: root, projects: ['app'], tasks: ['build'], handleSignals: false })
-  expect(r.ok).toBe(true)
-  expect(summaries).toHaveLength(1)
-  expect(summaries[0]!.tasks.map((t) => [t.taskId, t.status])).toEqual([['app#build', 'success']])
-})
-```
-
-`handleSignals: false` keeps the run from installing process-wide
-signal handlers inside the test runner. An embedder that needs to stop
-a run itself passes `signal` (an `AbortSignal`): on abort every child is
-SIGTERMed, SIGKILLed after the kill grace, nothing further is dispatched,
-and `run()` returns with those tasks `aborted` — the same teardown the
-CLI's own Ctrl-C runs, minus the exit. Every telemetry record, the
-cache, and the task outcomes are the real thing; a second `run()` in
-the same fixture is a cache hit, which is how you test what your sink
-sees on one.
-
-## Publishing a plugin package
-
-A plugin is an ordinary package with a peer on `@vzn/vx`. Three things
-the first-party packages do that yours should too:
-
-- **Ship source, name it in `exports`, and add a root shim.** vx runs on
-  Bun, so `src/index.ts` is the published entry — no build step. A
-  compiled `vx` binary (the release download) resolves an on-disk
-  package by `<pkg>/index.ts` and ignores `exports` and `main`
-  (Bun 1.4.0, measured), so a root `index.ts` that re-exports the same
-  module is what makes your package load for binary users:
-
-```json
-{
-  "name": "@acme/vx-thing",
-  "type": "module",
-  "exports": { ".": { "types": "./src/index.ts", "import": "./src/index.ts" } },
-  "files": ["index.ts", "src", "README.md"],
-  "peerDependencies": { "@vzn/vx": "*" }
-}
-```
-
-```js
-// index.ts — the root shim, one line, same module as `exports` names
-export * from './src/index.js'
-```
-
-- **The name is the package name.** `definePlugin(import.meta, { … })`
-  reads it from the nearest `package.json` above your module; there is
-  no field to set, and a `name` on the hooks object — or one spread over
-  the result — is refused when the workspace loads. It heads every
-  warning core prints about the plugin and every `vx info` line, and a
-  `key` part is folded into the cache key under it. A plugin defined
-  inside `vx.workspace.ts` itself carries the workspace package's name.
-- **Import core only from `@vzn/vx`.** Everything a plugin needs is on
-  the façade; a deep import into `@vzn/vx/src/...` breaks on the next
-  file move and never resolves through a compiled binary at all.
-
-## Crash isolation
-
-Plugins are **isolated from execution by design**:
-
-- If **`setup()`** throws, the run aborts with a `UserError` naming the
-  plugin. A broken plugin fails loudly, before any work starts.
-- Core tells a user's mistake from its own bug by the error's **name**:
-  anything named `UserError` prints as one line (`vx: <message>`), anything
-  else prints a stack. Throw `UserError` from `@vzn/vx`, or your own class
-  with `name = 'UserError'` — a compiled `vx` and a plugin's `@vzn/vx` can
-  be two copies of core, and the name is what survives that boundary.
-- If an **`executor`** or **`cache`** factory throws, the run aborts the same
-  way — these are load-bearing, so a silent degrade would be worse than a
-  clean failure.
-- If a **telemetry sink** throws — from `onRecord`, `onRunSummary`, or
-  `flush()` — it is **disabled for the rest of the run** and a warning
-  prints. Other sinks keep receiving records; the run itself is never
-  affected. A sink cannot fail a build.
-- `onRecord` / `onRunSummary` **must return promptly** — buffer the data,
-  don't `await` network I/O there. `flush()` is the awaited drain point,
-  and it's **time-bounded** (3s per plugin) so a wedged sink can't hold the
-  run's exit hostage.
-
-A sink that catches its OWN failure owes a warning. Core cannot see an
-error you handled, so an export that quietly returns turns the whole
-integration into a pipeline that reports nothing and says nothing —
-the one failure an adopter cannot notice, because a working sink is
-silent too. Both shipped exporters got this wrong in the same way and on
-the same day: a collector that REFUSES an export answers rather than
-throwing (`401` from a wrong token, `404` from a wrong path), so
-`await fetch(…)` resolved and nothing was ever said. Read the status,
-and warn through `ctx.warn` with what the far side replied — once per
-destination, not once per task.
-
-The telemetry guarantee is **structural, not a policy**: a `TelemetrySink`
-is handed immutable records and a read-only context (`workspaceRoot`,
-`cacheDir`, `warn`) — no bus, no cache handle, no run request. There is no
-API path from a sink back into scheduling, caching, or execution.
+One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 
 ## What core refuses
 
-A plugin that could never do what it says is refused at load, by
-name, rather than left quietly "on":
+- A `cache` or `executor` hook that returns something without the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
+- A `name` on the hooks object: the name is the package's.
+- A verb that names a core verb, or one two plugins both declare.
 
-- A `cache` or `executor` hook returning something without the
-  contract's methods (the fifteen `CacheLayer` methods, `key` and `get`
-  through `close`; `execute` and a `name` for an executor) — `plugin 'x'
-  returned from cache something that is not a cache layer: missing …`.
-- A `key` hook returning anything but a record of strings, or a
-  `schedule` hook returning anything but a `Map` — a string used to
-  fold its characters into the key, or match no task at all.
-- A `project` edit the loader would refuse from you — refused after
-  the plugin that made it: `vx.config.ts (after plugin 'x'): …`.
-- A `commands` verb that names a core verb (core matches first, so it
-  could never run), or one two plugins both declare (the first would
-  win and hide the second).
-- A telemetry sink with neither `onRecord` nor `onRunSummary` — disabled
-  for the run with the same warning a throwing hook gets, never a
-  failed build.
-
-## What a plugin can and can't change
-
-- **Decide where a task runs** — yes, via `executor` (this machine, a
-  remote worker pool, a container).
-- **Swap the cache** — yes, via `cache` (your own server, S3, Redis).
-- **Export run data** — yes, via `telemetry` (observe-only).
-- **Change how a task's command runs** — no. Shell is the API
-  (architecture principle #3); a plugin never rewrites a task's `exec`.
-- **Skip a cache lookup from a hook** — not today. A write-capable
-  `onCacheLookup` hook is reserved for a future revision.
-- **Register custom MCP/RPC methods** — not today; plugins observe and
-  route, they don't extend the inspector surface yet.
-
-Precedence, and it differs per seam — this is the part worth reading
-twice. `executor` is a **list**: per task, the first executor that
-`accepts` it wins. `cache` layers **chain**: a lookup walks them in
-declaration order, a save reaches all. `telemetry` sinks are
-**additive**: every plugin's sinks run.
-
-## Reference
-
-- `src/index.ts` — the façade: everything a plugin may import from
-  `@vzn/vx`, each runtime export with the demonstrated need that put it
-  there; the export set is snapshot-pinned.
-- `src/orchestrator/plugin.ts` — the `VxPlugin` interface + capability contexts.
-- `src/orchestrator/telemetry.ts` — `TelemetrySink`, `TelemetryRecord`,
-  `RunSummaryRecord`, and the versioned schema (`TELEMETRY_SCHEMA_VERSION`).
-- `src/orchestrator/plugin-host.ts` — how core consults each capability.
-- `tests/telemetry.test.ts`, `tests/plugin-capabilities.test.ts` — worked examples.
-- `docs/design/observability-architecture-2026-06.md` — why telemetry is a
-  separate, observe-only capability.
+A sink that throws is switched off for the run, with a warning.

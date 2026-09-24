@@ -551,7 +551,7 @@ interior** is the local cache's own format — one `stdout` entry plus
 `outputs/<rel>` — shipped verbatim; local and remote layers transport
 the same tar.zst bytes end-to-end. The Turbo wire and the Nx wire
 (`turboCache()` and `nxCache()` in `@vzn/vx-migrate`) are plugins against the same seam,
-as is any other — the recipe lives in the extensibility guide.
+as is any other — the recipe lives in the plugins guide.
 
 ## Run-history analytics
 

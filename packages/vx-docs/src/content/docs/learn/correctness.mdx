@@ -131,7 +131,7 @@ tasks all hit the cache never needs the sandbox and does not start it
 - **Declaring is work, twice.** You list each task's inputs, and a
   sandboxed task also lists what it may read. vx derives neither list from
   the other: the inputs say what moves the key, and the grant says what the
-  task may touch ([why they are separate](../../guides/sandboxing/#why-it-makes-caching-trustworthy)).
+  task may touch ([Sandboxing tasks](../../guides/sandboxing/)).
 - **The check is only as narrow as the grant.** The sandbox denies what
   the grant leaves out, not what the inputs leave out. A task granted
   `read: ['.']`, the whole package, can read `banner.txt` with no error

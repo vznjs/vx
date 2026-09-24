@@ -1,114 +1,35 @@
 ---
 title: Running & filtering tasks
-description: Run tasks across your monorepo — scope with --filter, select changed packages and their dependents with --affected, forward args after --, and preview runs with --dry.
+description: Choose which packages a run covers with --all, --filter and --affected, pass arguments after --, and preview a run with --dry.
 ---
 
-`vx run <task>` is the command you'll type most. By default it runs the
-task in the **current package** plus its dependency graph. Flags let you
-widen, narrow, and target the run.
+Run a task in the packages you mean, and see the plan first. Why only
+what changed → [Chapter 7: Only what changed](../../guide/affected/)
 
-## Scope: where the task runs
+## Steps
 
-```bash
-vx run build            # current package (by cwd) + its deps
-vx run build --all      # every package that declares build
-vx run build --filter "@app/*"        # packages matching a filter
-vx run test --affected          # changed vs the base branch, and what depends on it
-```
+1. `vx run build` runs `build` in the package you are in, and what it depends on.
+2. Add `--all` for every package, `--filter` for some, `--affected` for what changed.
+3. Add `--dry` to see the plan and the predicted hits without running.
+4. Put extra arguments after `--`. They reach the command and the cache key.
+5. `vx watch test` re-runs a task whenever its files change.
 
-`--all`, `--filter`, and `--affected` switch vx into a **broad** run;
-with none of them, it's a **focused** run on the current package and
-streams that task's output live.
-
-## Multiple tasks at once
-
-Pass several task names and vx runs them in one shared graph (so shared
-dependencies build only once):
+## Commands
 
 ```bash
-vx run lint test build --all
+vx run build --all                     # every package that has build
+vx run build --filter "@app/*"         # packages whose name matches
+vx run build --filter "...@app/ui"     # a package and everything that depends on it
+vx run test --affected                 # changed since the base branch, and dependents
+vx run test --affected=origin/main     # changed since that ref
+vx run app#build api#test              # exact tasks, from anywhere
+vx run lint test build --all           # several tasks, one graph
+vx run test -- --bail                  # the child runs: bun test "--bail"
+vx run build --all --dry               # the plan, nothing runs
+vx run build --graph=g.dot             # the task graph as Graphviz DOT
 ```
 
-## Targeting a specific package's task
-
-Use `pkg#task` to address one package directly, regardless of cwd:
-
-```bash
-vx run app#build
-vx run app#build api#test
-```
-
-## Filtering with `--filter`
-
-vx speaks the pnpm/Turborepo filter DSL:
-
-```bash
-vx run build --filter "@app/web"      # one package by name
-vx run build --filter "@app/*"        # a glob over package names
-vx run build --filter "./packages/ui" # by path
-vx run build --filter "...@app/web"   # a package and its dependency graph
-vx run build --filter "[origin/main]" # packages changed since a git ref
-```
-
-The `...` expansion pulls in related packages across the dependency
-graph; see the [CLI reference](../../cli/) for the exact table. Combine
-multiple `--filter` flags to union selections.
-
-## Selecting what changed, and what depends on it: `--affected`
-
-```bash
-vx run test --affected                  # vs the default base branch
-vx run test --affected=origin/main      # vs an explicit ref
-```
-
-vx asks git which files changed, maps them to packages, and runs the
-task only for those packages (and the ones that depend on them). This is
-the flag that keeps CI fast — pair it with remote caching and most PRs
-touch a handful of packages.
-
-**How `--affected` narrows the run:** it starts from git, not from your
-task graph. A PR that touches one file in `@acme/web` selects only
-`@acme/web` plus anything that depends on it — the rest of the monorepo
-is skipped entirely, never even scheduled. On a big repo that's the
-difference between building 3 packages and building 300:
-
-```mermaid
-flowchart LR
-  base["git diff vs base<br/>(origin/main)"] --> changed["Changed files"]
-  changed --> owners["Map each file<br/>to its package"]
-  owners --> dependents["+ packages that<br/>depend on those"]
-  dependents --> scope["Run the task only<br/>in this set"]
-  skipped["Every other package"] -.->|"never scheduled"| scope
-  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
-  classDef skip fill:#1f2328,stroke:#6b7280,color:#9ca3af
-  class base,changed,owners,dependents,scope step
-  class skipped skip
-```
-
-## Forwarding arguments with `--`
-
-Everything after `--` is appended to the task's command:
-
-```bash
-vx run test -- --bail --testNamePattern auth
-# the child sees:   bun test "--bail" "--testNamePattern" "auth"
-```
-
-Forwarded args are part of the cache key, so different args form distinct
-cache entries — no stale hits across argument changes.
-
-## Preview without executing
-
-```bash
-vx run build --all --dry        # predicted hits/misses + the plan
-vx run build --all --dry=json   # same, as JSON
-vx run build --graph            # the task graph as Graphviz DOT, to stdout
-vx run build --graph=g.dot      # Graphviz DOT
-```
-
-`--dry` is the fastest way to answer "what will this run do, and what's
-already cached?" before committing to it. It prints the plan and the
-predicted cache verdict per task, then exits without running anything:
+`--dry` prints what would run and where each result would come from:
 
 ```text
 would run:
@@ -119,42 +40,22 @@ would run:
 3 task(s) planned, 3 cache hits (3 local).
 ```
 
-## Useful run flags
+## Flags you will use
 
-| Flag                       | Effect                                                       |
-| -------------------------- | ------------------------------------------------------------ |
-| `--no-cache`               | Ignore the cache for this run: no reads, no writes, outputs left alone. |
-| `--force`                  | Re-execute everything (no reads) but still refresh the cache (writes on). |
-| `--concurrency <n>`        | Cap parallel tasks (default: the cores this process may use, capped by a cgroup quota). |
-| `--output-logs <mode>`     | `full` · `errors-only` · `hash-only` · `none` — control per-task logging. |
-| `--summarize[=<path>]`     | Write a per-run JSON summary.                                |
-| `--profile[=<path>]`       | Write a Chrome-trace timeline of the run.                    |
-| `--frozen`                 | Run from the committed `vx-lock.json` (CI; see below).       |
+| Flag                | Does                                                        |
+| ------------------- | ----------------------------------------------------------- |
+| `--no-cache`        | ignore the cache: no reads, no writes                       |
+| `--force`           | run everything, then refresh the cache                      |
+| `--concurrency <n>` | at most n tasks at once (default: the cores you may use)    |
+| `--continue`        | keep going after a failure ([modes](../tasks/#dependson))   |
+| `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
+| `--summarize`       | write a JSON summary of the run                             |
+| `--frozen`          | run the graph in `vx-lock.json` ([CI](../ci/))             |
 
-## Re-run on change: `vx watch`
+## Common problems
 
-```bash
-vx watch test           # initial run, then re-run on every file change
-```
+- **`--affected` needs history.** In a shallow clone it has no base: fetch with `fetch-depth: 0`.
+- **Nothing ran.** `--affected` found no change since the base: vx says `nothing affected since <ref>`.
+- **Only one package ran.** Without `--all`, `--filter` or `--affected`, vx runs the package you are in.
 
-`vx watch` runs the task, then watches the relevant files and re-runs on
-change (debounced, with bursty edits collapsed into one run). Great for a
-test or typecheck loop. See [Dev & long-running tasks](../dev-tasks/) for
-dev servers, which are a different mechanism (`persistent`).
-
-## Other handy commands
-
-```bash
-vx show                 # list projects and their tasks
-vx show app#build       # the live resolved config for one task
-vx info                 # doctor printout: versions, cache size, run stats
-vx cache prune --older-than 7d --max-size 5gb
-```
-
-## Next steps
-
-- **[Continuous integration](../ci/)** — `--affected` + remote cache in
-  CI.
-- **[Caching tasks](../caching/)** — why a run hit or missed.
-- **[CLI reference](../../cli/)** — every flag, exit code, and the full
-  filter table.
+Every flag: [the CLI reference](../../cli/).

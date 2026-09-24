@@ -35,14 +35,13 @@ type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
 /** Each sidebar section's items, keyed by the label its top-level group carries. */
 const SIDEBAR_GROUPS: Record<'Guide' | 'Docs' | 'Reference', SidebarItem[]> = {
   Guide: CHAPTERS.map((c) => ({ label: c.title, link: `/guide/${c.slug}/` })),
-  // One page per job. Pages that say the same thing sit side by side until
-  // R3 merges them (the design's Docs list).
+  // One page per job, each page the goal, the steps, the config and its
+  // common problems. The Guide teaches why; a Docs page links its chapter.
   Docs: [
     {
       label: 'Get started',
       items: [
         { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Introduction', link: '/introduction/' },
         { label: 'Add vx to an existing repo', link: '/add-to-existing-repo/' },
         { label: 'From Turborepo', link: '/migrate/from-turborepo/' },
         { label: 'From Nx', link: '/migrate/from-nx/' },
@@ -51,10 +50,8 @@ const SIDEBAR_GROUPS: Record<'Guide' | 'Docs' | 'Reference', SidebarItem[]> = {
     {
       label: 'Configure',
       items: [
-        { label: 'Configuring tasks', link: '/guides/tasks/' },
-        { label: 'Task dependencies', link: '/guides/task-dependencies/' },
-        { label: 'Caching tasks', link: '/guides/caching/' },
-        { label: 'Trusting the cache', link: '/guides/trusting-the-cache/' },
+        { label: 'Tasks and dependencies', link: '/guides/tasks/' },
+        { label: 'Caching', link: '/guides/caching/' },
         { label: 'Environment variables', link: '/guides/environment-variables/' },
         { label: 'Sandboxing tasks', link: '/guides/sandboxing/' },
         { label: 'Dev & long-running tasks', link: '/guides/dev-tasks/' },
@@ -74,23 +71,20 @@ const SIDEBAR_GROUPS: Record<'Guide' | 'Docs' | 'Reference', SidebarItem[]> = {
     {
       label: 'Extend',
       items: [
-        { label: 'Core is provider-neutral', link: '/guides/extensibility/' },
         { label: 'Writing a vx plugin', link: '/guides/plugins/' },
         { label: 'OpenTelemetry traces & metrics', link: '/guides/otel-bridge/' },
         { label: 'vx mcp — AI agents', link: '/guides/mcp/' },
       ],
     },
   ],
-  // Four short groups in plain words. "How vx works" folds into chapter 9,
-  // and the caching deep dive into the Docs' caching page, in R3; until then
-  // they sit beside the page each is closest to.
+  // Four short groups in plain words. The caching deep dive and "What a run
+  // does" are reference only; the Docs' caching page links the first.
   Reference: [
     {
       label: 'CLI',
       items: [
         { label: 'Commands', link: '/cli/' },
         { label: 'What a run does', link: '/execution/' },
-        { label: 'How vx works', link: '/concepts/how-vx-works/' },
       ],
     },
     {

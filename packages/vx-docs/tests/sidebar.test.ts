@@ -36,10 +36,12 @@ function text(html: string): string {
     .trim()
 }
 
-/** Every built page, as its path under the base (`guide/why/`). */
+/** Every built page, as its path under the base (`guide/why/`); not the
+ *  redirect pages astro writes for a moved URL, which carry no chrome. */
 function pages(): string[] {
   return readdirSync(DIST, { recursive: true, encoding: 'utf8' })
     .filter((f) => f.endsWith('index.html'))
+    .filter((f) => !/<meta http-equiv="refresh"/.test(readFileSync(path.join(DIST, f), 'utf8')))
     .map((f) =>
       f
         .split(path.sep)
