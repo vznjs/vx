@@ -743,8 +743,9 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     expect(guide).toContain('Executor targets keep running as executors')
     // The mapper agrees: no executor maps to a bare command any more.
     expect(src).not.toMatch(/'@nx\/[^']+': \{ command:/)
+    // Every executor line is `nxExecCommand`'s (its `.env` files appended).
     expect(src).toContain(
-      'return nxExecCommand(executor, projectName, targetName, configuration, options)',
+      'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
