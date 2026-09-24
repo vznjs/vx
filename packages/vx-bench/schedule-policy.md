@@ -19,9 +19,13 @@ types, and the report below runs only under `import.meta.main`.
 bun packages/vx-bench/schedule-policy.ts --md [--seeds N]
 ```
 
-The question (parity row N-M7): Nx runs a task with NO history before
-every task with one (`tasks-schedule.spec.ts:497`); the plugin gives it
-the workspace median. Four policies over the same graphs, true durations
+The question (parity row N-M7): should a task with NO history run
+first? Nx does so only as a tie-break: its ready queue sorts by the
+tasks waiting on each, then by the projects depending on its project,
+and only among tasks equal on both does one with no recorded time go
+first (`tasks-schedule.ts` `sortScheduledTasks`, spec line 497). The
+plugin gives such a task the workspace median. `unknown-first` below
+asks the stronger version of Nx's rule, over the whole ranking. Four policies over the same graphs, true durations
 (log-normal, median 1 s, clamped to 10 ms–60 s) and history masks, 30
 seeds per cell:
 

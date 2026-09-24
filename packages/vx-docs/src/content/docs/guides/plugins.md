@@ -45,7 +45,7 @@ interface VxPlugin {
   // CLI verbs — consulted for a word core does not know:
   commands?: { [verb]: { description: string; run(argv, ctx): number } }
 
-  setup?(ctx): void | Promise<void> // one-time validation before any capability
+  setup?(ctx): void | Promise<void> // once per run, before the executor and the first task
   teardown?(): void | Promise<void> // end-of-run flush/close
 }
 ```

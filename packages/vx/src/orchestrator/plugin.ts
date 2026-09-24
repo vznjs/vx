@@ -187,9 +187,13 @@ export interface VxPlugin {
     | Promise<TelemetrySink | TelemetrySink[] | undefined>
 
   /**
-   * Optional one-time setup before any capability is consulted (validate the
-   * workspace, open a connection, read a token). Throwing aborts the run with
-   * a clean UserError naming the plugin — same contract as the old setup().
+   * Optional one-time setup per run (validate the workspace, open a
+   * connection, read a token). Throwing aborts the run with a clean
+   * UserError naming the plugin. It is not a guard over the pipeline: the
+   * config, project, cache, graph, key and schedule stages have run by the
+   * time it is called, and a plan (`--dry`, `planRun`) never calls it. It
+   * precedes the executors, the telemetry sinks, admission and the first
+   * task (tests/plugin-e2e.test.ts).
    */
   setup?(ctx: PluginSetupContext): void | Promise<void>
 
