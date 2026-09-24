@@ -349,6 +349,22 @@ test is telling the truth.
       asks the graph instead of the manifest. Graph build at 1,000 × 30
       deps 7.0 → 8.7 ms.
 
+735.  DONE (2026-09-24, owner: "find out why Nx is so slow"). Two things,
+      both per task (`benchmarks.md` § Why Nx is slower). Nx's
+      `nx:run-script` forks a Node process per task that loads Nx
+      (~270 ms of CPU each). On four cores that saturates the CPU and
+      stretches the critical path: 21.4 s cold at 46 packages against
+      11.7 s with `nx:run-commands`, which runs in-process. And the
+      harness gave Nx npm: the workspace has no lockfile, so Nx fell back
+      to `npm run` (202 ms of CPU a task) while Turbo ran `bun run` (4 ms).
+      That was 28.8 → 21.4 s at 46 packages and 20m 39s → 7m 22s at 1,090.
+      `compare.ts` now sets `cli.packageManager: 'bun'` in `nx.json`. The
+      harness keeps `CI=1`, so Nx's daemon stays off (owner: "we simulate
+      ci env"); the docs that said "daemon on" were wrong. Refuted: the
+      PTY, the TUI or output style, the daemon (22.25 s on, 22.08 s off),
+      and capped parallelism. CLAUDE.md principle 3 gains the line that
+      nothing boots between the scheduler and the shell.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -566,6 +582,18 @@ next?".
 
 16. **The site, short (owner, 2026-09-24, after 728).** Shipped as item
     729 (`design/site-short-2026-09.md`). Left: the owner's read.
+17. **Turbo 2.11 wins warm at 476 packages on the Linux box (item 735).**
+    Two one-rep runs read Turbo at 255 and 303 ms against vx's 334 and
+    376 (restore: 436 and 446 against 524 and 478). Measure it min-of-N
+    with interleaved arms, find where vx's warm path spends it at that
+    size, and fix it or say so on the site. The 3,270-task run on the
+    same box reads the same way: Turbo 496 ms warm against vx's 678.
+18. **Re-run the site's benchmark with the fixed harness (item 735).**
+    The landing's Nx numbers (34m 44s cold, 3,270 tasks, macOS) come
+    from the harness that gave Nx npm; npm was two thirds of Nx's cold
+    run at that size on the Linux box. OWNER: re-run `compare.ts 100 11
+1` on the macOS machine and `update-site.ts`, or take the Linux run
+    in `benchmarks.md` (where Turbo wins warm, Next 17) for the site.
 
 ## Decisions (this arc)
 
