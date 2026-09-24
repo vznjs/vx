@@ -434,6 +434,20 @@ false`, the first failure failing the task; `commands: []` a no-op;
       fix of the batch, `--exclude-dependencies` keying on the dependency it
       skips (nx#35234), conflicts with item 737's graph builder and is being
       ported.
+740.  DONE (2026-09-24, upstream survey: process lifecycle). Eight
+      Turbo and Nx signal and teardown bugs reproduced on vx and fixed.
+      `vx watch` keeps a requested dev server up until the next cycle
+      starts (turborepo#9421). Both teardowns SIGKILL every task group
+      with a member left at the grace, not only the shell
+      (nx#8286), and so does an `exec.timeout` (nx#11782). A persistent
+      task gets a stdin pipe vx holds, so a server that exits on EOF
+      stays up (turborepo#8915). The signal vx received is the one
+      forwarded, SIGINT for Ctrl-C (turborepo#444, nx#23585). A run lock
+      naming our own pid, or on Linux a recycled one, is stale
+      (nx#36473). The post-exit drain bound says when it cut output
+      (nx#35302). `kill -9` of vx leaving persistent tasks is a
+      documented limit: `PR_SET_PDEATHSIG` needs a pre-exec hook Bun
+      lacks, and an ffi wrapper cost 9.8 ms per spawn (turborepo#9666).
 
 ## In flight
 
