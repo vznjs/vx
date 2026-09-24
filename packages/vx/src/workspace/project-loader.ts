@@ -49,8 +49,17 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
  * than that: `loadWorkspaceConfig` measured 0.3 ms slower served (40
  * interleaved runs, 2026-09-24). Bun reads it a second time instead.
  */
-const heldSources = new Map<string, string>()
+//
+// Held by the bytes' hash, not the specifier: Bun hands `onLoad` the path
+// it RESOLVED, which is the real path, so a config reached through a
+// symlinked directory (macOS's `/var` → `/private/var`, every temp root
+// there) came back under a key nobody set, and every such load failed.
+// Equal hashes are equal sources, so two loads of the same bytes share an
+// entry; `uses` keeps it until the last of them has imported.
+const heldSources = new Map<string, { source: string; uses: number }>()
 let serving = false
+
+const HELD_QUERY = /\?vx-held=([0-9a-f]+)$/
 
 function serveHeldSources(): void {
   if (serving) return
@@ -58,12 +67,23 @@ function serveHeldSources(): void {
   Bun.plugin({
     name: 'vx-config-bytes',
     setup(build) {
-      build.onLoad({ filter: /\?vx-held=[0-9a-f]+$/ }, (args) => ({
-        contents: heldSources.get(args.path)!,
+      build.onLoad({ filter: HELD_QUERY }, (args) => ({
+        contents: heldSources.get(HELD_QUERY.exec(args.path)![1]!)!.source,
         loader: /\.[cm]?ts\?/.test(args.path) ? 'ts' : 'js',
       }))
     },
   })
+}
+
+function holdSource(hash: string, source: string): void {
+  const held = heldSources.get(hash)
+  if (held === undefined) heldSources.set(hash, { source, uses: 1 })
+  else held.uses++
+}
+
+function releaseSource(hash: string): void {
+  const held = heldSources.get(hash)!
+  if (--held.uses === 0) heldSources.delete(hash)
 }
 
 const utf8 = new TextDecoder('utf-8', { fatal: true })
@@ -103,10 +123,11 @@ async function loadDefaultExport(
   // (`loadedConfigs`, item 678).
   const source =
     kind === 'Project' ? servableSource(bytes, /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js') : null
-  const specifier = `${configPath}?vx-${source !== null ? 'held' : 'bust'}=${xxh3hex(bytes)}`
+  const hash = xxh3hex(bytes)
+  const specifier = `${configPath}?vx-${source !== null ? 'held' : 'bust'}=${hash}`
   if (source !== null) {
     serveHeldSources()
-    heldSources.set(specifier, source)
+    holdSource(hash, source)
   }
   let ns: { default?: unknown }
   try {
@@ -114,11 +135,11 @@ async function loadDefaultExport(
   } catch (err) {
     // A served module's frames name its specifier; the user wrote the path.
     if (err instanceof Error && err.stack !== undefined) {
-      err.stack = err.stack.replaceAll(specifier, configPath)
+      err.stack = err.stack.replaceAll(specifier, configPath).replace(BUST_QUERY, '')
     }
     throw configLoadError(err, configPath, kind) ?? err
   } finally {
-    heldSources.delete(specifier)
+    if (source !== null) releaseSource(hash)
   }
   const mod = ns?.default
   assertDefaultObject(mod, kind, configPath)
