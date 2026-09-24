@@ -165,6 +165,33 @@ function acquireWorker(): Worker {
 }
 
 /**
+ * Hold the round open across evaluations the caller runs one after another.
+ * `loadProjectConfigs` awaits each repeat load in turn, so without this the
+ * in-flight count reached zero after every config and each one paid for a
+ * worker of its own: a round of 5 configs made 5 workers (item 694). The
+ * worker is still created lazily, so a round that evaluates nothing costs
+ * nothing, and it is retired when the round ends, so the next round starts
+ * from an empty registry.
+ */
+export function beginEvalRound(): () => void {
+  inFlight++
+  let ended = false
+  return () => {
+    if (ended) return
+    ended = true
+    retireIfIdle()
+  }
+}
+
+function retireIfIdle(): void {
+  inFlight--
+  if (inFlight === 0 && worker !== null) {
+    worker.terminate()
+    worker = null
+  }
+}
+
+/**
  * Evaluate `configPath` against a fresh module registry and return its
  * default export, JSON round-tripped. `null` means the module had no
  * object default export — the caller owns that error message so it
@@ -208,10 +235,6 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     // message naming a budget nobody set for it.
     clearTimeout(timer)
     pending.delete(id)
-    inFlight--
-    if (inFlight === 0 && worker !== null) {
-      worker.terminate()
-      worker = null
-    }
+    retireIfIdle()
   }
 }

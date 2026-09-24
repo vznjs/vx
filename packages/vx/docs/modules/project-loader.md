@@ -93,10 +93,15 @@ Two properties make the swap safe:
   re-read through a Worker derives the **same** cache key as the
   in-process first load — which is why this needed no `CACHE_VERSION`
   bump.
-- **Round sharing.** Loads that are in flight at the same moment share
-  one Worker, retired when the last settles. A `Promise.all` round (what
-  `prepareRun` does) therefore costs one Worker, not one per project,
-  and the next round still starts from an empty registry. Sharing within
+- **Round sharing.** A round is one `loadProjectConfigs` call, the path
+  `loadProjects` takes for a run and for every watch cycle. It evaluates
+  its repeat loads one after another inside `beginEvalRound()`, which
+  holds the Worker open until the round ends, so a round costs one
+  Worker, not one per project, and the next round still starts from an
+  empty registry. Loads in flight at the same moment from separate calls
+  also share one. Before item 694 nothing held the round: the in-flight
+  count reached zero between configs, so 5 repeat configs made 5 Workers,
+  and a 50-config repeat round took 148 ms against 10.5 ms now. Sharing within
   a round is also the more faithful semantics: two configs importing the
   same preset evaluate it once, exactly as in a fresh `vx run` process.
 
