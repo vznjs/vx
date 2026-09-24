@@ -76,7 +76,13 @@ import type { CacheKeyInput } from './layer.js'
 // input sets could share a key; `xxh3` now feeds the seed forward. The
 // old keys were wrong, not their bytes, so this is self-healing; the bump
 // is for the first run's notice, since every entry misses once.
-export const CACHE_VERSION = 'vx-cache-v29'
+// v30: stored bytes wrong under an unchanged key (item 720). npm and Yarn
+// link every workspace package at the root, the task's own included, and
+// the sandbox granted that link's target whole: a sandboxed task read an
+// undeclared file of its own project unreported and saved what it built.
+// The fix withholds the self-link, but the key never saw the file, so an
+// entry saved before it hits forever when only that file changes.
+export const CACHE_VERSION = 'vx-cache-v30'
 
 /**
  * Fold one task's key inputs into its 16-hex cache key. `hashFile` answers

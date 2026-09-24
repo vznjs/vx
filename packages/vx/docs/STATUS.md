@@ -103,6 +103,28 @@ test is telling the truth.
       recap a CI log needed). Next trim when the entries below reach
       twenty.
 
+720.  DONE (2026-09-24, Next 17 step 1). A sandboxed task no longer gets
+      its own project back through a `node_modules` link. npm and Yarn
+      link every workspace package at the root, the task's own included,
+      and `linkedDeps` granted that target whole: the correctness demo
+      (grant = inputs = `src/**`, `cat banner.txt`) passed unreported and
+      an edit to `banner.txt` hit, replaying the old banner. It now drops
+      a target that is the task's canonical project directory or holds
+      it, both sides realpath'd (a symlinked root, macOS `/var`, kept the
+      grant otherwise). Rows: `sandbox-request.test.ts` (exact grant set,
+      canonical and symlinked root) and `sandbox-runtime.unsafe.test.ts`
+      (the demo in an npm layout fails with one `banner.txt` line, before
+      and after an edit; symlinked root; control: a sibling's link still
+      reads); five mutations, each caught. `CACHE_VERSION` v30: an entry
+      saved before the fix sits under a key that never saw the file, so
+      it would hit for as long as only that file changes. Fallout:
+      `@vzn/vx#check.bun` passed only through the root `@vzn/vx` link (Bun
+      probes `bunfig.toml`) and now grants it. This repo's seven
+      root-declared packages are self-linked under a fresh Bun install
+      too, so the bug was live on CI for them. Refuted along the way: "this
+      box's sandbox does not enforce read denies" — it does; the
+      cross-project read that succeeded was re-allowed by the link grant.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -360,7 +382,12 @@ the architect before it merges; then Next 17. Never end with "what next?".
     report such a read as a violation, deny it, or fold the linked
     package's inputs, each against this repo's own `source` tasks (item
     687), which already key what the suites import; item 717's pin row
-    is the repro.
+    is the repro. Design: `design/linked-sibling-reads-2026-09.md`
+    (deny, bounded by the key). Step 1, the self-link, shipped as item 720. Step 2 is next: grant a sibling's link only when the task's key
+    covers that package (rules 2–6; rows R1's keyed parts, R3–R6, R8, R9;
+    the cost on vx-bench's 1,000-package workspace and a gate A/B), with
+    a Decisions entry: declaring `cache` may narrow core's own grant,
+    never widen it, a bounded departure from 2026-09-05.
 
 ## Decisions (this arc)
 
