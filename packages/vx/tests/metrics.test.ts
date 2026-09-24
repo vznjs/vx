@@ -12,6 +12,7 @@ import {
   listRuns,
   whyDidThisRerunQuery,
 } from '../src/orchestrator/index.js'
+import { diffKeyComponents } from '../src/orchestrator/metrics.js'
 
 function mkRun(
   args: Partial<RunRecord> & { hash: string; project: string; task: string },
@@ -572,13 +573,11 @@ describe('cacheKeyDiff', () => {
       cache.recordRun(
         mkRun({ hash: 'hN2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
-      // MIXED CASE on purpose. `entry_inputs` is keyed PRIMARY KEY
-      // (entry_hash, kind, name), so a `WHERE entry_hash = ?` scan already
-      // returns rows in kind-then-name order — but in SQLite's BINARY
-      // collation, while the sort is `localeCompare`. Measured: the scan
-      // gives [Banana, Zed, apple] and localeCompare gives [apple, Banana,
-      // Zed]. All-lowercase kinds make the two agree, and the sort could
-      // then be deleted outright with the row still green.
+      // MIXED CASE on purpose: the order a reader of `vx why` sees is
+      // code-unit order (item 707), uppercase first. `entry_inputs` is keyed
+      // PRIMARY KEY (entry_hash, kind, name), so the scan already returns
+      // SQLite's BINARY order, the same one; the sort itself is held by the
+      // `diffKeyComponents` rows below, whose input arrives unsorted.
       seedEntryInputs(cache, 'hO2', [
         { kind: 'Zed', name: 'a', hash: 'z-old' },
         { kind: 'apple', name: 'm', hash: 'a-old' },
@@ -591,17 +590,16 @@ describe('cacheKeyDiff', () => {
       ])
       const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
       expect(diff.entries.map((e) => `${e.kind}/${e.name}`)).toEqual([
-        'apple/m',
         'Banana/z',
         'Zed/a',
+        'apple/m',
       ])
     })
   })
 
   it('orders entries of one kind by name, in the same collation', () => {
     // The row above holds the kind order; this one the name order within a
-    // kind, which it never reaches (its kinds are distinct). Mixed case for
-    // the same reason: the scan's BINARY order is [Z.ts, a.ts, b.ts].
+    // kind, which it never reaches (its kinds are distinct).
     withCache((cache) => {
       cache.recordRun(
         mkRun({ hash: 'hO3', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
@@ -620,7 +618,54 @@ describe('cacheKeyDiff', () => {
         { kind: 'file', name: 'a.ts', hash: 'a-new' },
       ])
       const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
-      expect(diff.entries.map((e) => e.name)).toEqual(['a.ts', 'b.ts', 'Z.ts'])
+      expect(diff.entries.map((e) => e.name)).toEqual(['Z.ts', 'a.ts', 'b.ts'])
+    })
+  })
+
+  // The join alone (item 703), as the playground runs it on components the
+  // key fold captured in fold order, not sorted. Code-unit order (item 707):
+  // `Z` before `a`, and `f` before `é`, which `localeCompare` reverses in
+  // every locale, so either the old collation or no sort at all goes red.
+  it('diffKeyComponents orders by kind, then name, in code units, whatever order it is given', () => {
+    const before = [
+      { kind: 'file', name: 'é.ts', hash: '1' },
+      { kind: 'env', name: 'B', hash: '1' },
+      { kind: 'file', name: 'a.ts', hash: '1' },
+      { kind: 'file', name: 'Z.ts', hash: '1' },
+      { kind: 'file', name: 'f.ts', hash: '1' },
+      { kind: 'Upstream', name: 'x#build', hash: '1' },
+    ]
+    const after = before.map((c) => ({ ...c, hash: '2' })).reverse()
+    const { entries, unchangedCount } = diffKeyComponents(before, after)
+    expect(entries.map((e) => `${e.kind}/${e.name}`)).toEqual([
+      'Upstream/x#build',
+      'env/B',
+      'file/Z.ts',
+      'file/a.ts',
+      'file/f.ts',
+      'file/é.ts',
+    ])
+    expect(unchangedCount).toBe(0)
+  })
+
+  it('diffKeyComponents names changed, added and removed, and counts the rest', () => {
+    const before = [
+      { kind: 'file', name: 'gone.ts', hash: 'g' },
+      { kind: 'file', name: 'same.ts', hash: 's' },
+      { kind: 'file', name: 'edit.ts', hash: 'e1' },
+    ]
+    const after = [
+      { kind: 'file', name: 'new.ts', hash: 'n' },
+      { kind: 'file', name: 'edit.ts', hash: 'e2' },
+      { kind: 'file', name: 'same.ts', hash: 's' },
+    ]
+    expect(diffKeyComponents(before, after)).toEqual({
+      entries: [
+        { kind: 'file', name: 'edit.ts', change: 'changed', before: 'e1', after: 'e2' },
+        { kind: 'file', name: 'gone.ts', change: 'removed', before: 'g', after: null },
+        { kind: 'file', name: 'new.ts', change: 'added', before: null, after: 'n' },
+      ],
+      unchangedCount: 1,
     })
   })
 
