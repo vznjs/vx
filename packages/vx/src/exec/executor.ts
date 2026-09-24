@@ -26,6 +26,13 @@ export interface ExecuteSandbox {
    * that is the wall doing its job, not a finding to fail a run over.
    */
   readonly reportWithin: string
+  /**
+   * Canonical directories of the workspace packages core withheld from
+   * this task's `node_modules` grant (its key does not answer for them).
+   * A denial under one is reported too: the task reached for a dependency,
+   * which is the finding, not the wall.
+   */
+  readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
 }
 

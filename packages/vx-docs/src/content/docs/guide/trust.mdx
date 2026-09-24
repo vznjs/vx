@@ -80,7 +80,7 @@ export default defineProject({
 - [A failed sandboxed task is not saved](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'failed sandboxed task is NOT cached (re-runs next invocation)')
 - [A run of hits never starts the sandbox](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'a run whose sandboxed tasks are all hits never starts the sandbox')
 - [`node_modules` is readable without being listed](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'installed dependencies are readable without being declared inputs')
-- [So is a linked package of your own](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-request.test.ts 'a SCOPED link is found too: the scan descends one level into `@scope/`')
+- [A linked package of your own is readable only when the key covers it](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'an unkeyed sibling is withheld and the read reported, with the hint (root link)')
 - [An environment variable is in the key only when listed](../../guides/environment-variables/#the-two-lists)
 - [Where the sandbox runs](../../guides/sandboxing/#requirements--platform-support)
 

@@ -55,7 +55,7 @@ you will read it to understand cache invalidation history.
 
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
-was retired 2026-09-02). Current: `vx-cache-v30`, core `SCHEMA_VERSION`
+was retired 2026-09-02). Current: `vx-cache-v31`, core `SCHEMA_VERSION`
 `v27` (bumped 2026-09-16 for the four reason columns on `runs`; a
 `SCHEMA_VERSION` bump drops the whole index, so it is taken only when a
 stored shape changes).

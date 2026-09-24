@@ -14,6 +14,7 @@ import {
   thrownReason,
   type ExecuteRequest,
   isMountableLiteral,
+  type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { grantPrefix, UserError } from '../util/index.js'
@@ -135,24 +136,28 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
  * The sandbox half of an `ExecuteRequest` for one task, shared by the
  * cached path (through the executor) and the persistent path (spawned here).
  *
- * The sandbox derives NOTHING from `cache` (owner, 2026-09-05). Those are
- * two different questions: `cache.inputs` says what INVALIDATES the task,
- * `sandbox.allow` says what it may TOUCH. Deriving one from the other
+ * The user's grants derive NOTHING from `cache` (owner, 2026-09-05). Those
+ * are two different questions: `cache.inputs` says what INVALIDATES the
+ * task, `sandbox.allow` says what it may TOUCH. Deriving one from the other
  * coupled them in both directions — a declaration added for caching
  * silently widened the sandbox, and a path the task needed had to be
  * laundered through the cache key to get it. A sandboxed task declares
  * its own reads and writes.
  *
- * `node_modules` is the one grant core still makes, and it is not
- * cache-derived: it is where the task's own PATH gets its `.bin` entries,
- * and denying it made the sandbox unusable for anything that imports a
- * dependency (`bun build --compile` died with only `error: An unknown
- * error occurred (Unexpected)`; owner call 2026-09-04).
+ * `node_modules` is the one grant core still makes: it is where the task's
+ * own PATH gets its `.bin` entries, and denying it made the sandbox
+ * unusable for anything that imports a dependency (`bun build --compile`
+ * died with only `error: An unknown error occurred (Unexpected)`; owner
+ * call 2026-09-04). Declaring `cache` may NARROW that grant, never widen
+ * anyone's (2026-09-24): `keyed` is the set of project directories the
+ * task's key answers for (keyed-projects.ts), and `undefined` for a task
+ * with no `cache`, which has no key to be stale.
  */
 export async function sandboxRequestFor(
   node: TaskNode,
   sandbox: NonNullable<ExecConfig['sandbox']>,
   workspaceRoot: string,
+  keyed: ReadonlySet<string> | undefined,
 ): Promise<SandboxRequest> {
   const depDirs = [
     path.join(node.projectDir, 'node_modules'),
@@ -162,8 +167,10 @@ export async function sandboxRequestFor(
   // sibling project, so granting `node_modules` grants a link whose
   // target is outside it. That target is a dependency, not a reach-out:
   // no project config should have to name a sibling to import what its
-  // own `package.json` depends on (owner, 2026-09-05).
-  depDirs.push(...(await linkedDeps(depDirs, node.projectDir)))
+  // own `package.json` depends on (owner, 2026-09-05) — when the key
+  // moves with it.
+  const links = await linkedDeps(depDirs, node.projectDir, workspaceRoot, keyed)
+  depDirs.push(...links.granted)
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
   // Pre-create what the task said it will write.
@@ -186,20 +193,27 @@ export async function sandboxRequestFor(
     // project's own files — that is the one that breaks the cache key,
     // because the key folds this project's inputs.
     reportWithin: node.projectDir,
+    // …and of a dependency withheld above: the task reached for it
+    // through its own `node_modules`, and that read is the stale hit the
+    // withholding exists to stop, not the wall.
+    reportLinked: links.withheld.map((w) => w.dir),
     config: resolveSandboxConfig(sandbox, node.projectDir),
   }
-  return { sandbox: request, placeholders }
+  return { sandbox: request, placeholders, withheld: links.withheld }
 }
 
 /**
  * The sandbox half of the request, plus the empty files vx created so a
  * literal write grant had something to bind (`placeholders`). They are
  * vx's, not the task's, until the task writes them: `sweepPlaceholders`
- * takes back the ones it never touched.
+ * takes back the ones it never touched. `withheld` names the linked
+ * dependencies a cached task was denied, for the hint a denial under one
+ * earns (`withheldLinkLine`).
  */
 export interface SandboxRequest {
   sandbox: NonNullable<ExecuteRequest['sandbox']>
   placeholders: Placeholder[]
+  withheld: WithheldLink[]
 }
 
 /** An empty file vx created for a bind, and its mtime at creation. */
@@ -208,8 +222,20 @@ export interface Placeholder {
   mtimeMs: number
 }
 
+/** A workspace link whose target the task's key does not answer for. */
+export interface WithheldLink {
+  /** The canonical target, inside the workspace root. */
+  dir: string
+  /** The name it is installed under (`@x/ui`). */
+  name: string
+  /** The target and the link, workspace-relative POSIX, for the hint. */
+  target: string
+  link: string
+}
+
 /**
- * Where the workspace links in `dirs` actually point.
+ * Where the workspace links in `dirs` actually point, split into what the
+ * task is granted and what it is not.
  *
  * One level deep, plus one level inside a `@scope/` directory — the shape
  * a package manager writes. Anything already inside a granted directory
@@ -220,28 +246,92 @@ export interface Placeholder {
  * root, the task's own included, and granting that target handed the
  * project back whole whatever its `allow.read` said — an undeclared read
  * of its own file ran unreported, and an edit to it was a stale hit.
- * Both sides are canonical: a target always is, and the project directory
- * is not under a root reached through a link (macOS's `/var`).
+ *
+ * With `keyed` given (a cached task), a target inside the workspace root
+ * is granted only when it IS a keyed project's directory; every other one
+ * is withheld, since an edit there would not move the key. A target
+ * outside the root lies outside the deny anchor, so granting it is a no-op
+ * either way. Every side of every comparison is canonical: a target always
+ * is, and a directory under a root reached through a link (macOS's `/var`)
+ * is not.
  */
-async function linkedDeps(dirs: readonly string[], projectDir: string): Promise<string[]> {
-  const self = await realpath(projectDir)
-  const out = new Set<string>()
-  const scan = async (dir: string, depth: number): Promise<void> => {
+async function linkedDeps(
+  dirs: readonly string[],
+  projectDir: string,
+  workspaceRoot: string,
+  keyed: ReadonlySet<string> | undefined,
+): Promise<{ granted: string[]; withheld: WithheldLink[] }> {
+  const [self, root] = await Promise.all([realpath(projectDir), realpath(workspaceRoot)])
+  const scan = async (dir: string, scope: string): Promise<Array<[string, string, string]>> => {
+    const found: Array<[target: string, link: string, name: string]> = []
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
     for (const e of entries) {
       const full = path.join(dir, e.name)
       if (e.isSymbolicLink()) {
         const target = await realpath(full).catch(() => undefined)
         if (target !== undefined && !dirs.some((d) => within(target, d)) && !within(self, target)) {
-          out.add(target)
+          found.push([target, full, scope + e.name])
         }
-      } else if (depth === 0 && e.isDirectory() && e.name.startsWith('@')) {
-        await scan(full, 1)
+      } else if (scope === '' && e.isDirectory() && e.name.startsWith('@')) {
+        found.push(...(await scan(full, `${e.name}/`)))
       }
     }
+    return found
   }
-  await Promise.all(dirs.map((d) => scan(d, 0)))
-  return [...out]
+  // Merged in `dirs` order, so the link a hint names is the project's own
+  // when both have one.
+  const targets = new Map<string, { link: string; name: string }>()
+  for (const found of await Promise.all(dirs.map((d) => scan(d, '')))) {
+    for (const [target, link, name] of found) {
+      if (!targets.has(target)) targets.set(target, { link, name })
+    }
+  }
+  if (keyed === undefined) return { granted: [...targets.keys()], withheld: [] }
+  const keyedDirs = new Set(await Promise.all([...keyed].map((d) => realpath(d))))
+  const granted: string[] = []
+  const withheld: WithheldLink[] = []
+  for (const [target, { link, name }] of targets) {
+    if (!within(target, root) || keyedDirs.has(target)) granted.push(target)
+    else
+      withheld.push({
+        dir: target,
+        name,
+        target: posixRel(root, target),
+        link: posixRel(workspaceRoot, link),
+      })
+  }
+  return { granted, withheld }
+}
+
+/**
+ * The line a task denied a withheld dependency gets beside the denial:
+ * what it reached, through which link, and the two ways to make the key
+ * answer for it. Added only when a violation already sits under the
+ * target, so it never reddens a pass.
+ */
+export function withheldLinkLine(taskId: string, w: WithheldLink): string {
+  return (
+    `vx: ${taskId} read \`${w.target}\` through \`${w.link}\`, and its key folds no task of ` +
+    `${w.name}, so an edit there would not re-run it. Add a \`dependsOn\` edge that ` +
+    `reaches one (\`^build\` where ${w.name}#build keys its sources, or a \`source\` task: ` +
+    `\`${w.name}#source\`), or grant and key the files yourself (\`allow.read\` plus ` +
+    `\`cache.inputs.workspaceFiles\`).`
+  )
+}
+
+/** The withheld dependencies a reported denial lies under: each earns its hint. */
+export function reachedWithheld(
+  withheld: readonly WithheldLink[],
+  violations: readonly SandboxViolation[],
+): WithheldLink[] {
+  return withheld.filter((w) =>
+    violations.some((v) => v.path !== undefined && within(v.path, w.dir)),
+  )
+}
+
+/** `p` relative to `from`, with `/` separators. */
+function posixRel(from: string, p: string): string {
+  return path.relative(from, p).split(path.sep).join('/')
 }
 
 /**

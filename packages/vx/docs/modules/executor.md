@@ -32,6 +32,13 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `outputs` is the DECLARED output globs (`files` project-relative,
   `workspaceFiles` root-relative) — what an executor running elsewhere has
   to bring back.
+- `ExecuteSandbox` — `baseAllowRead`, `baseAllowWrite`, `baseDenyRead`,
+  `reportWithin` (the project: denials there are reported), `reportLinked`
+  (the canonical directories of the linked workspace packages core
+  withheld from a cached task because its key does not answer for them:
+  denials there are reported too), `config`. An executor that ships the
+  sandbox elsewhere receives the narrowed `baseAllowRead`; enforcing it
+  is its own.
 - `TaskInputs` — everything the cache key folds, WITH values: `files`
   (workspace-relative path + git-blob digest of the worktree bytes, or of
   a symlink's target string, own outputs excluded), `env` (declared names + resolved values), `runtime` /

@@ -17,6 +17,7 @@ import {
   sandboxRunUnion,
   sweepPlaceholders,
   untouchedPlaceholderLine,
+  withheldLinkLine,
 } from '../src/orchestrator/sandbox-request.js'
 import type { ExecConfig } from '../src/config.js'
 
@@ -53,7 +54,8 @@ function node(): TaskNode {
   }
 }
 
-const requestFor = (write: string[]) => sandboxRequestFor(node(), { allow: { write } }, root)
+const requestFor = (write: string[]) =>
+  sandboxRequestFor(node(), { allow: { write } }, root, undefined)
 
 const kind = async (p: string): Promise<'file' | 'dir' | 'none'> => {
   const st = await stat(p).catch(() => undefined)
@@ -225,7 +227,7 @@ describe('the request derives nothing from cache', () => {
         },
       },
     }
-    const { sandbox } = await sandboxRequestFor(n, {}, root)
+    const { sandbox } = await sandboxRequestFor(n, {}, root, new Set())
     expect(sandbox.baseAllowWrite).toEqual([])
     // …and the read baseline is dependencies, never the declared inputs.
     expect(sandbox.baseAllowRead.some((p) => p.includes('src'))).toBe(false)
@@ -255,7 +257,7 @@ describe('a workspace link is granted by its real path, not by a string prefix',
     await mkdir(path.join(dir, 'node_modules'), { recursive: true })
     await symlink(sibling, path.join(dir, 'node_modules', 'dep'))
 
-    const { sandbox } = await sandboxRequestFor(node(), {}, root)
+    const { sandbox } = await sandboxRequestFor(node(), {}, root, undefined)
     const granted = await Promise.all(sandbox.baseAllowRead.map((p) => realpath(p).catch(() => p)))
     expect(granted).toContain(await realpath(sibling))
   })
@@ -271,7 +273,7 @@ describe('a workspace link is granted by its real path, not by a string prefix',
     await mkdir(path.join(dir, 'node_modules', '@acme'), { recursive: true })
     await symlink(sibling, path.join(dir, 'node_modules', '@acme', 'pkg'))
 
-    const { sandbox } = await sandboxRequestFor(node(), {}, root)
+    const { sandbox } = await sandboxRequestFor(node(), {}, root, undefined)
     const granted = await Promise.all(sandbox.baseAllowRead.map((p) => realpath(p).catch(() => p)))
     expect(granted).toContain(await realpath(sibling))
   })
@@ -283,7 +285,7 @@ describe('a workspace link is granted by its real path, not by a string prefix',
     await mkdir(inside, { recursive: true })
     await symlink(inside, path.join(dir, 'node_modules', 'alias'))
 
-    const { sandbox } = await sandboxRequestFor(node(), {}, root)
+    const { sandbox } = await sandboxRequestFor(node(), {}, root, undefined)
     const granted = await Promise.all(sandbox.baseAllowRead.map((p) => realpath(p).catch(() => p)))
     expect(granted).not.toContain(await realpath(inside))
   })
@@ -310,10 +312,12 @@ describe("a link to the task's own project, or to a directory holding it, is not
   const npmLayout = async (ws: string): Promise<string> => {
     const app = path.join(ws, 'packages', 'app')
     await mkdir(path.join(ws, 'packages', 'ui'), { recursive: true })
+    await mkdir(path.join(ws, 'packages', 'lib'), { recursive: true })
     await mkdir(path.join(app, 'node_modules'), { recursive: true })
     await mkdir(path.join(ws, 'node_modules', '@x'), { recursive: true })
     await symlink('../../packages/app', path.join(ws, 'node_modules', '@x', 'app'))
     await symlink('../../packages/ui', path.join(ws, 'node_modules', '@x', 'ui'))
+    await symlink('../../packages/lib', path.join(ws, 'node_modules', '@x', 'lib'))
     await symlink('..', path.join(ws, 'node_modules', 'whole-root'))
     await symlink('../packages', path.join(ws, 'node_modules', 'all-packages'))
     await symlink('/', path.join(ws, 'node_modules', 'fs-root'))
@@ -324,17 +328,24 @@ describe("a link to the task's own project, or to a directory holding it, is not
 
   const appNode = (app: string): TaskNode => ({ ...node(), id: 'app#build', projectDir: app })
 
-  it('grants the sibling and the target outside the root; withholds self and every ancestor', async () => {
+  it('grants the siblings and the target outside the root; withholds self and every ancestor', async () => {
     const app = await npmLayout(root)
-    const { sandbox } = await sandboxRequestFor(appNode(app), { allow: { read: ['src/**'] } }, root)
+    const { sandbox } = await sandboxRequestFor(
+      appNode(app),
+      { allow: { read: ['src/**'] } },
+      root,
+      undefined,
+    )
     expect(sandbox.baseAllowRead.slice().sort()).toEqual(
       [
         path.join(app, 'node_modules'),
         path.join(root, 'node_modules'),
         path.join(root, 'packages', 'ui'),
+        path.join(root, 'packages', 'lib'),
         outside,
       ].sort(),
     )
+    expect(sandbox.reportLinked).toEqual([])
   })
 
   it('the same set when the root is reached through a symlink (the macOS `/var` shape)', async () => {
@@ -351,8 +362,78 @@ describe("a link to the task's own project, or to a directory holding it, is not
         appNode(app),
         { allow: { read: ['src/**'] } },
         link,
+        undefined,
       )
       expect(sandbox.baseAllowRead.slice().sort()).toEqual(
+        [
+          path.join(app, 'node_modules'),
+          path.join(link, 'node_modules'),
+          path.join(root, 'packages', 'ui'),
+          path.join(root, 'packages', 'lib'),
+          outside,
+        ].sort(),
+      )
+    } finally {
+      await rm(link, { force: true })
+    }
+  })
+
+  // A task that declares `cache` is granted a sibling only when its key
+  // answers for it (`keyed`, the directories keyed-projects.ts computes);
+  // every other target inside the root is withheld and reported, since an
+  // edit there would not move the key (design rules 2–6, R1 and R2).
+  it('a cached task: the keyed sibling and the outside target granted; the unkeyed sibling withheld', async () => {
+    const app = await npmLayout(root)
+    const r = await sandboxRequestFor(
+      appNode(app),
+      { allow: { read: ['src/**'] } },
+      root,
+      new Set([path.join(root, 'packages', 'ui')]),
+    )
+    expect(r.sandbox.baseAllowRead.slice().sort()).toEqual(
+      [
+        path.join(app, 'node_modules'),
+        path.join(root, 'node_modules'),
+        path.join(root, 'packages', 'ui'),
+        outside,
+      ].sort(),
+    )
+    expect(r.sandbox.reportLinked).toEqual([path.join(root, 'packages', 'lib')])
+    expect(r.withheld).toEqual([
+      {
+        dir: path.join(root, 'packages', 'lib'),
+        name: '@x/lib',
+        target: 'packages/lib',
+        link: 'node_modules/@x/lib',
+      },
+    ])
+  })
+
+  it('a cached task keyed on nothing: every sibling inside the root withheld, the outside target kept', async () => {
+    const app = await npmLayout(root)
+    const r = await sandboxRequestFor(appNode(app), {}, root, new Set())
+    expect(r.sandbox.baseAllowRead.slice().sort()).toEqual(
+      [path.join(app, 'node_modules'), path.join(root, 'node_modules'), outside].sort(),
+    )
+    expect(r.sandbox.reportLinked.slice().sort()).toEqual(
+      [path.join(root, 'packages', 'lib'), path.join(root, 'packages', 'ui')].sort(),
+    )
+  })
+
+  it('the same split through a symlinked root, with the keyed set as vx holds it (not canonical)', async () => {
+    // Both sides of the keyed comparison: the target is canonical, the
+    // project directory keyed-projects.ts hands over is the link path.
+    const link = `${root}-link`
+    await symlink(root, link, 'dir')
+    try {
+      const app = await npmLayout(link)
+      const r = await sandboxRequestFor(
+        appNode(app),
+        { allow: { read: ['src/**'] } },
+        link,
+        new Set([path.join(link, 'packages', 'ui')]),
+      )
+      expect(r.sandbox.baseAllowRead.slice().sort()).toEqual(
         [
           path.join(app, 'node_modules'),
           path.join(link, 'node_modules'),
@@ -360,9 +441,29 @@ describe("a link to the task's own project, or to a directory holding it, is not
           outside,
         ].sort(),
       )
+      expect(r.sandbox.reportLinked).toEqual([path.join(root, 'packages', 'lib')])
+      expect(r.withheld.map((w) => [w.target, w.link])).toEqual([
+        ['packages/lib', 'node_modules/@x/lib'],
+      ])
     } finally {
       await rm(link, { force: true })
     }
+  })
+
+  it('the hint names the package, the link it went through, and both ways to key it', () => {
+    const line = withheldLinkLine('@x/app#test', {
+      dir: '/ws/packages/ui',
+      name: '@x/ui',
+      target: 'packages/ui',
+      link: 'node_modules/@x/ui',
+    })
+    expect(line).toBe(
+      'vx: @x/app#test read `packages/ui` through `node_modules/@x/ui`, and its key folds no task ' +
+        'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
+        'reaches one (`^build` where @x/ui#build keys its sources, or a `source` task: ' +
+        '`@x/ui#source`), or grant and key the files yourself (`allow.read` plus ' +
+        '`cache.inputs.workspaceFiles`).',
+    )
   })
 })
 

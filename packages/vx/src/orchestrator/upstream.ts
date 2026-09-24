@@ -4,6 +4,7 @@ import {
   isTaskPattern,
   parseDependencySpec,
   type DependencySpec,
+  type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
 import { UserError } from '../util/index.js'
@@ -17,6 +18,44 @@ import { UserError } from '../util/index.js'
  * output-content folding: an upstream that re-runs but emits identical
  * output still re-runs its dependents (early cutoff was removed —
  * rare in practice, not worth the cascade complexity).
+ *
+ * The selection itself is `selectFoldedDeps`, which the sandbox's keyed
+ * set (keyed-projects.ts) walks over the graph before any hash exists:
+ * one matcher, so what the key folds and what the sandbox believes it
+ * folds cannot drift.
+ *
+ * Returns `[upstreamTaskId, hash]` pairs. The hash is the only thing
+ * folded into the cache key (the fold sorts by hash, so ordering here
+ * doesn't affect derivation); the task id rides along so Tier-3's
+ * `entry_inputs` rows can NAME which upstream a hash came from. An
+ * upstream with no hash (a persistent task) folds nothing.
+ */
+export function filterUpstreamHashes(
+  upstream: TaskOutcome[],
+  filter: readonly string[] | undefined,
+  selfProjectName: string,
+  selfTaskId: string,
+): Array<[upstreamTaskId: string, hash: string]> {
+  const candidates: FoldCandidate[] = []
+  for (const u of upstream) if (u.hash) candidates.push({ node: u.node, unit: u.hash })
+  return selectFoldedDeps(candidates, filter, selfProjectName, selfTaskId).map((c) => [
+    c.node.id,
+    c.unit,
+  ])
+}
+
+/**
+ * One dependency as the key fold sees it: the task, and the value the
+ * fold dedups by — its hash on the hash path, a structural stand-in for
+ * the hash on the graph (`foldUnit` in keyed-projects.ts).
+ */
+export interface FoldCandidate {
+  node: TaskNode
+  unit: string
+}
+
+/**
+ * The dependencies a task's key folds, per its `cache.inputs.tasks`.
  *
  * Patterns (Turbo/Nx micro-syntax + filter extensions):
  *   '*'         all same-project upstream
@@ -36,28 +75,21 @@ import { UserError } from '../util/index.js'
  * `['*', '^*', '!^noisy']` reads as "all minus deps' noisy".
  *
  * Defaults:
- *   - `filter === undefined` → all upstream contribute.
- *   - `filter === []`        → none contribute (fully decoupled).
+ *   - `filter === undefined` → every candidate, as given.
+ *   - `filter === []`        → none (fully decoupled).
  *
- * Returns `[upstreamTaskId, hash]` pairs. The hash is the only thing
- * folded into the cache key (the fold sorts by hash, so ordering here
- * doesn't affect derivation); the task id rides along so Tier-3's
- * `entry_inputs` rows can NAME which upstream a hash came from. The
- * filter dedups by hash, as before — two upstream tasks with identical
- * hashes contribute one pair (first id wins; their key contribution is
- * identical anyway).
+ * Otherwise deduped by `unit`, first candidate kept. The unit is the
+ * fold's own identity, not the task's: two groups over the same members
+ * share one hash, so excluding either excludes both, and a selection by
+ * task id would keep the other while the key folded neither.
  */
-export function filterUpstreamHashes(
-  upstream: TaskOutcome[],
+export function selectFoldedDeps(
+  deps: readonly FoldCandidate[],
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
-): Array<[upstreamTaskId: string, hash: string]> {
-  if (filter === undefined) {
-    const out: Array<[string, string]> = []
-    for (const u of upstream) if (u.hash) out.push([u.node.id, u.hash])
-    return out
-  }
+): FoldCandidate[] {
+  if (filter === undefined) return [...deps]
 
   const specs: DependencySpec[] = filter.map((raw) => {
     try {
@@ -73,21 +105,18 @@ export function filterUpstreamHashes(
   // Per-spec predicate, compiled once (exact compares + patterns).
   const matchers = specs.map((spec) => specMatcher(spec))
 
-  // Dedup by hash (the key fold's unit), but remember the first task id
-  // seen for each hash so the diff row can name the upstream.
-  const selected = new Map<string, string>()
+  const selected = new Map<string, FoldCandidate>()
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i]!
     const matches = matchers[i]!
-    for (const u of upstream) {
-      if (!u.hash) continue
-      const isSelf = u.node.projectName === selfProjectName
-      if (!matches(u, isSelf)) continue
-      if (spec.negated) selected.delete(u.hash)
-      else if (!selected.has(u.hash)) selected.set(u.hash, u.node.id)
+    for (const d of deps) {
+      const isSelf = d.node.projectName === selfProjectName
+      if (!matches(d.node, isSelf)) continue
+      if (spec.negated) selected.delete(d.unit)
+      else if (!selected.has(d.unit)) selected.set(d.unit, d)
     }
   }
-  return [...selected].map(([hash, id]) => [id, hash])
+  return [...selected.values()]
 }
 
 /**
@@ -139,24 +168,24 @@ function nameMatcher(name: string): (candidate: string) => boolean {
  * so a package pattern is unambiguous here — unlike dependsOn, which must
  * materialize concrete edges and therefore rejects it.
  */
-function specMatcher(spec: DependencySpec): (u: TaskOutcome, isSelf: boolean) => boolean {
+function specMatcher(spec: DependencySpec): (n: TaskNode, isSelf: boolean) => boolean {
   switch (spec.kind) {
     case 'wildcardSelf':
-      return (_u, isSelf) => isSelf
+      return (_n, isSelf) => isSelf
     case 'wildcardDeps':
-      return (_u, isSelf) => !isSelf
+      return (_n, isSelf) => !isSelf
     case 'self': {
       const task = nameMatcher(spec.task)
-      return (u, isSelf) => isSelf && task(u.node.taskName)
+      return (n, isSelf) => isSelf && task(n.taskName)
     }
     case 'deps': {
       const task = nameMatcher(spec.task)
-      return (u, isSelf) => !isSelf && task(u.node.taskName)
+      return (n, isSelf) => !isSelf && task(n.taskName)
     }
     case 'cross': {
       const project = nameMatcher(spec.project)
       const task = nameMatcher(spec.task)
-      return (u) => project(u.node.projectName) && task(u.node.taskName)
+      return (n) => project(n.projectName) && task(n.taskName)
     }
   }
 }

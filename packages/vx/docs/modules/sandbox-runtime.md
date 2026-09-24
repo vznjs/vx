@@ -24,8 +24,9 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
 
 - `sandbox-violations.ts` — the Linux strace pass (`deniedCalls`,
   `parseStraceViolations`), the seatbelt record description, and the
-  report filters (`reportableViolations`: inside the project, minus
-  loopback noise, minus the task's `ignore`).
+  report filters (`reportableViolations`: inside the project or a
+  withheld linked package, minus loopback noise, minus the task's
+  `ignore`).
 - `sandbox-binds.ts` — write grants as bwrap can honour them
   (`bindableWrites`), read grants punched around the write grants
   inside them (`punchWritePaths`), and the SRT custom config.
@@ -126,6 +127,7 @@ export interface SandboxedRunArgs {
   baseAllowWrite: readonly string[] // empty — writes are declared, never derived
   baseDenyRead: readonly string[] // [workspaceRoot] — the task may not leave its project
   reportWithin: string // projectDir — only denials in here are worth reporting
+  reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
   config: ResolvedSandboxConfig
 }
 
@@ -211,10 +213,12 @@ export function isMountableLiteral(grant: string): boolean
      the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`.
 4. **Filtering.** Enforcement anchors at the workspace root, but only
-   denials on a path inside `reportWithin` (the project) are reported —
-   every process walks from `/` down to its own cwd, and being stopped at
-   the wall is the sandbox working. A record with no path (a `system-info`
-   probe) is kept. The task's `ignore` patterns are applied last.
+   denials on a path inside `reportWithin` (the project) or one of
+   `reportLinked` (the linked packages a cached task was denied because
+   its key does not answer for them) are reported — every process walks
+   from `/` down to its own cwd, and being stopped at the wall is the
+   sandbox working. A record with no path (a `system-info` probe) is
+   kept. The task's `ignore` patterns are applied last.
 5. **`resetSandbox`** tears down SRT's proxy servers + (on macOS) the
    log monitor at the end of `vx run`.
 

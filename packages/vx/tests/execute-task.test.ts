@@ -115,6 +115,7 @@ function baseArgs(b: Bench, n: TaskNode, log: Logger) {
     executor: localExecutor(),
     nestedProjectDirs: [] as string[],
     runStartHrTimeNs: process.hrtime.bigint(),
+    keyedProjects: () => new Set<string>(),
   }
 }
 

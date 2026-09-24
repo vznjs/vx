@@ -54,7 +54,6 @@ const GUIDE_PROOFS = [
   'packages/vx/tests/playground-parity.unsafe.test.ts',
   'packages/vx/tests/plugin-capabilities.test.ts',
   'packages/vx/tests/plugin-pipeline.test.ts',
-  'packages/vx/tests/sandbox-request.test.ts',
   'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
   'packages/vx/tests/scheduler.test.ts',
   'packages/vx/tests/show-info.test.ts',

@@ -24,6 +24,17 @@ export function filterUpstreamHashes(
   selfTaskId: string,
 ): Array<[upstreamTaskId: string, hash: string]>
 
+export interface FoldCandidate {
+  node: TaskNode
+  unit: string // what the fold dedups by: the hash, or a stand-in equal exactly when the hashes are
+}
+export function selectFoldedDeps(
+  deps: readonly FoldCandidate[],
+  filter: readonly string[] | undefined,
+  selfProjectName: string,
+  selfTaskId: string,
+): FoldCandidate[]
+
 export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[]
 ```
 
@@ -33,6 +44,15 @@ task seen at that hash (for `entry_inputs` row naming — the id is
 never folded). Order is the iteration order of the internal `Map` —
 the caller of `cache.key` sorts before folding, so order doesn't
 affect identity.
+
+`selectFoldedDeps` is the selection itself, over nodes, split out on
+2026-09-24 so the sandbox's keyed set (`keyed-projects.ts`) walks the
+graph through the SAME matcher the hash path applies — one copy of the
+rule, so what the key folds and what the sandbox believes it folds
+cannot drift. The hash path passes each upstream with its hash as the
+unit; the graph walk passes a structural stand-in (a task's id, which
+its key folds; a group's sorted member ids, since two groups over the
+same members hash alike and excluding either excludes both).
 
 ## Groups are transparent to the input closure
 

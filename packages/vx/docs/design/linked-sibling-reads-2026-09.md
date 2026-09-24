@@ -1,10 +1,22 @@
 # A sandboxed task reads a linked sibling unseen (2026-09-24)
 
-> **Status:** proposal (architect, 2026-09-24), for STATUS Next 17.
-> Step 1 (rule 1, the self-link) is implemented; steps 2 on are not.
-> Touches the owner decision of 2026-09-05
-> ("the sandbox derives nothing from `cache`"). § Open questions asks
-> for a sign-off.
+> **Status:** implemented (2026-09-24). Step 1 (rule 1, the self-link)
+> shipped as item 720, step 2 (rules 2–6) as item 723, with
+> `CACHE_VERSION` v31. Open question 1 is decided: declaring `cache` may
+> narrow core's own grant, never widen one (a bounded departure from the
+> 2026-09-05 decision, which still holds for the user's grants).
+>
+> **Corrected by step 2's key-level rows (R4):** rule 5's "where U
+> declares `cache`" rested on the claim below that an uncached task's
+> hash "folds no files". It folds every file of its project: no `cache`
+> means no `inputs.files`, and the default is `**/*`
+> (`cache/inputs.ts`'s `DEFAULT_FILE_GLOBS`). An edge to an uncached
+> `ui#bare` with no dependencies moved the dependent's key on an edit to
+> `ui/README.md`, on both key paths. So K(T) counts every exec task the
+> fold reaches, cached or not; R4 holds it to the key in both directions.
+> A persistent task stays excluded: the live path gives it no hash (the
+> local classify pass does — `stable-keys.ts` — so a key there moves with
+> more than K(T), never less).
 
 ## What we're solving
 

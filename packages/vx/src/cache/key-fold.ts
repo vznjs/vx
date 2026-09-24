@@ -82,7 +82,12 @@ import type { CacheKeyInput } from './layer.js'
 // undeclared file of its own project unreported and saved what it built.
 // The fix withholds the self-link, but the key never saw the file, so an
 // entry saved before it hits forever when only that file changes.
-export const CACHE_VERSION = 'vx-cache-v30'
+// v31: the same shape for a sibling (item 723). A cached sandboxed task was
+// granted every linked workspace package, so it read a sibling its key
+// never folded and saved what it built. The fix withholds that link unless
+// the key answers for the package, but an entry saved before it still hits
+// after the sibling changes (probed: the old output replayed).
+export const CACHE_VERSION = 'vx-cache-v31'
 
 /**
  * Fold one task's key inputs into its 16-hex cache key. `hashFile` answers

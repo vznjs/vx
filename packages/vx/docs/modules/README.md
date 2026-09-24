@@ -52,53 +52,54 @@ group.
 
 ## Orchestrator
 
-| File                                               | Topic                                                                                                                                 |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| [`orchestrator.md`](./orchestrator.md)             | `src/orchestrator/{index,run}.ts` — module contract + `run()` / `planRun()` entry.                                                    |
-|                                                    | `src/orchestrator/run-records.ts` — the runs rows, invocation header and telemetry mirror from one pass (see orchestrator.md).        |
-|                                                    | `src/orchestrator/persistent.ts` — keep-alive selection and bounded shutdown of persistent children (see orchestrator.md).            |
-|                                                    | `src/orchestrator/run-lock.ts` — one run at a time per workspace on this machine; runs in one process share it (see orchestrator.md). |
-| [`options.md`](./options.md)                       | `src/orchestrator/options.ts` — `RunOptions` / `RunSummary` declarations.                                                             |
-| [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.                                                    |
-| [`sandbox-request.md`](./sandbox-request.md)       | `src/orchestrator/sandbox-request.ts` — arming the runtime for a run; the sandbox half of an ExecuteRequest: grants, binds.           |
-| [`execute-task.md`](./execute-task.md) § Verdict   | `src/orchestrator/shell-verdict.ts` — the frame line for exit 126, 127 and 128 + n: the PATH rule, the file, the signal.              |
-| [`miss-save.md`](./miss-save.md)                   | `src/orchestrator/miss-save.ts` — what a miss leaves behind: resolve outputs, save, mark git.                                         |
-| [`miss-save.md`](./miss-save.md) § The save lane   | `src/orchestrator/save-lane.ts` — the bounded off-slot save queue `run()` drains before the upload drain.                             |
-| [`lockfile-claim.md`](./lockfile-claim.md)         | `src/orchestrator/lockfile-claim.ts` — the claimant's shell a lockfile plugin wraps its parser in, and `reachDigests`.                |
-| [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/hit-restore.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay stdout.               |
-| [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).                                                     |
-| [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — filter upstream cache hashes by `cache.inputs.tasks`.                                                |
-| [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (flow-aware policy, frames, replay).                                                    |
-| [`status-line.md`](./status-line.md)               | `src/orchestrator/status-line.ts` — serialized writer + dynamic bottom status line.                                                   |
-| [`framed-output.md`](./framed-output.md)           | `src/orchestrator/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                                       |
-| [`failure-recap.md`](./failure-recap.md)           | `src/orchestrator/failure-recap.ts` — the bounded tail the run's last block repeats for each failed task.                             |
-| [`colors.md`](./colors.md)                         | `src/orchestrator/colors.ts` — ANSI gate + truecolor helpers.                                                                         |
-| [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — tail `Tasks / Cached / Time` block.                                                                   |
-| [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                                                                  |
-| [`placement.md`](./placement.md)                   | `src/orchestrator/placement.ts` — where each task runs: pins, executor order, `'only'`, pools, the `--dry` view.                      |
-| [`signals.md`](./signals.md)                       | `src/orchestrator/signals.ts` — SIGINT/SIGTERM/SIGHUP forwarded, as a group signal, to every child, then exit 128+signo.              |
-| [`admission.md`](./admission.md)                   | `src/orchestrator/admission.ts` — between scheduler and task: in-flight dedup (an embedder's registry) and continue-taint.            |
-| [`run-artifacts.md`](./run-artifacts.md)           | `src/orchestrator/run-artifacts.ts` — `--summarize` JSON + `--profile` trace writers.                                                 |
-| [`prepare.md`](./prepare.md)                       | `src/orchestrator/prepare.ts` — shared run / planRun setup (workspace, graph, cache).                                                 |
-| [`projects.md`](./projects.md)                     | `src/orchestrator/projects.ts` — the staged project-config load runs and `vx show` share.                                             |
-| [`tally.md`](./tally.md)                           | `src/orchestrator/tally.ts` — shared outcome tally for summary + summarize JSON.                                                      |
-| [`events.md`](./events.md)                         | `src/orchestrator/events.ts` — run event bus + serializable `WireEvent` contract.                                                     |
-| [`plugin.md`](./plugin.md)                         | `src/orchestrator/plugin.ts` — `VxPlugin` capabilities + installer.                                                                   |
-| [`plugin-host.md`](./plugin-host.md)               | `src/orchestrator/plugin-host.ts` — capability consultation + end-of-run teardown/flush.                                              |
-| [`telemetry.md`](./telemetry.md)                   | `src/orchestrator/telemetry.ts` — versioned telemetry export contract.                                                                |
-| [`telemetry-host.md`](./telemetry-host.md)         | `src/orchestrator/telemetry-host.ts` — sink consultation (zero-sink = zero cost).                                                     |
-| [`run-context.md`](./run-context.md)               | `src/orchestrator/run-context.ts` — git / CI / host capture (≤1 spawn).                                                               |
-| [`stable-keys.md`](./stable-keys.md)               | `src/orchestrator/stable-keys.ts` — shared stable-key derivation + stability gate.                                                    |
-| [`download-policy.md`](./download-policy.md)       | `src/orchestrator/download-policy.ts` — `--download` modes + the deferral eligibility gate.                                           |
-| [`deferred-outputs.md`](./deferred-outputs.md)     | `src/orchestrator/deferred-outputs.ts` — deferred-output registry + lazy materialise/converge.                                        |
-| [`local-shortcircuit.md`](./local-shortcircuit.md) | `src/orchestrator/local-shortcircuit.ts` — restore-ahead classify (two-tier schedule).                                                |
-| [`remote-prefetch.md`](./remote-prefetch.md)       | `src/orchestrator/remote-prefetch.ts` — background remote GETs (LayeredCache only).                                                   |
-| [`history.md`](./history.md)                       | `src/orchestrator/history.ts` — per-task duration history behind `--dry` predictions.                                                 |
-|                                                    | `src/orchestrator/failure-mode.ts` — the flakiness verdict, in one place (see history.md).                                            |
-| [`metrics.md`](./metrics.md)                       | `src/orchestrator/metrics.ts` — run-history queries behind `vx last` / `vx why` / the MCP.                                            |
-| [`doctor.md`](./doctor.md)                         | `src/orchestrator/doctor.ts` — the workspace doctor's facts behind `vx info` and the MCP's `getWorkspaceInfo`.                        |
-| [`task-log-buffer.md`](./task-log-buffer.md)       | `src/orchestrator/task-log-buffer.ts` — bounded per-task log capture for telemetry sinks.                                             |
-| [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                                                                         |
+| File                                               | Topic                                                                                                                                  |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [`orchestrator.md`](./orchestrator.md)             | `src/orchestrator/{index,run}.ts` — module contract + `run()` / `planRun()` entry.                                                     |
+|                                                    | `src/orchestrator/run-records.ts` — the runs rows, invocation header and telemetry mirror from one pass (see orchestrator.md).         |
+|                                                    | `src/orchestrator/persistent.ts` — keep-alive selection and bounded shutdown of persistent children (see orchestrator.md).             |
+|                                                    | `src/orchestrator/run-lock.ts` — one run at a time per workspace on this machine; runs in one process share it (see orchestrator.md).  |
+| [`options.md`](./options.md)                       | `src/orchestrator/options.ts` — `RunOptions` / `RunSummary` declarations.                                                              |
+| [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.                                                     |
+| [`sandbox-request.md`](./sandbox-request.md)       | `src/orchestrator/sandbox-request.ts` — arming the runtime for a run; the sandbox half of an ExecuteRequest: grants, binds.            |
+| [`keyed-projects.md`](./keyed-projects.md)         | `src/orchestrator/keyed-projects.ts` — the projects a task's key answers for, which bound a cached task's linked-package grant.        |
+| [`execute-task.md`](./execute-task.md) § Verdict   | `src/orchestrator/shell-verdict.ts` — the frame line for exit 126, 127 and 128 + n: the PATH rule, the file, the signal.               |
+| [`miss-save.md`](./miss-save.md)                   | `src/orchestrator/miss-save.ts` — what a miss leaves behind: resolve outputs, save, mark git.                                          |
+| [`miss-save.md`](./miss-save.md) § The save lane   | `src/orchestrator/save-lane.ts` — the bounded off-slot save queue `run()` drains before the upload drain.                              |
+| [`lockfile-claim.md`](./lockfile-claim.md)         | `src/orchestrator/lockfile-claim.ts` — the claimant's shell a lockfile plugin wraps its parser in, and `reachDigests`.                 |
+| [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/hit-restore.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay stdout.                |
+| [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).                                                      |
+| [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — which upstream a key folds, by `cache.inputs.tasks` (`selectFoldedDeps`, one matcher for both paths). |
+| [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (flow-aware policy, frames, replay).                                                     |
+| [`status-line.md`](./status-line.md)               | `src/orchestrator/status-line.ts` — serialized writer + dynamic bottom status line.                                                    |
+| [`framed-output.md`](./framed-output.md)           | `src/orchestrator/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                                        |
+| [`failure-recap.md`](./failure-recap.md)           | `src/orchestrator/failure-recap.ts` — the bounded tail the run's last block repeats for each failed task.                              |
+| [`colors.md`](./colors.md)                         | `src/orchestrator/colors.ts` — ANSI gate + truecolor helpers.                                                                          |
+| [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — tail `Tasks / Cached / Time` block.                                                                    |
+| [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                                                                   |
+| [`placement.md`](./placement.md)                   | `src/orchestrator/placement.ts` — where each task runs: pins, executor order, `'only'`, pools, the `--dry` view.                       |
+| [`signals.md`](./signals.md)                       | `src/orchestrator/signals.ts` — SIGINT/SIGTERM/SIGHUP forwarded, as a group signal, to every child, then exit 128+signo.               |
+| [`admission.md`](./admission.md)                   | `src/orchestrator/admission.ts` — between scheduler and task: in-flight dedup (an embedder's registry) and continue-taint.             |
+| [`run-artifacts.md`](./run-artifacts.md)           | `src/orchestrator/run-artifacts.ts` — `--summarize` JSON + `--profile` trace writers.                                                  |
+| [`prepare.md`](./prepare.md)                       | `src/orchestrator/prepare.ts` — shared run / planRun setup (workspace, graph, cache).                                                  |
+| [`projects.md`](./projects.md)                     | `src/orchestrator/projects.ts` — the staged project-config load runs and `vx show` share.                                              |
+| [`tally.md`](./tally.md)                           | `src/orchestrator/tally.ts` — shared outcome tally for summary + summarize JSON.                                                       |
+| [`events.md`](./events.md)                         | `src/orchestrator/events.ts` — run event bus + serializable `WireEvent` contract.                                                      |
+| [`plugin.md`](./plugin.md)                         | `src/orchestrator/plugin.ts` — `VxPlugin` capabilities + installer.                                                                    |
+| [`plugin-host.md`](./plugin-host.md)               | `src/orchestrator/plugin-host.ts` — capability consultation + end-of-run teardown/flush.                                               |
+| [`telemetry.md`](./telemetry.md)                   | `src/orchestrator/telemetry.ts` — versioned telemetry export contract.                                                                 |
+| [`telemetry-host.md`](./telemetry-host.md)         | `src/orchestrator/telemetry-host.ts` — sink consultation (zero-sink = zero cost).                                                      |
+| [`run-context.md`](./run-context.md)               | `src/orchestrator/run-context.ts` — git / CI / host capture (≤1 spawn).                                                                |
+| [`stable-keys.md`](./stable-keys.md)               | `src/orchestrator/stable-keys.ts` — shared stable-key derivation + stability gate.                                                     |
+| [`download-policy.md`](./download-policy.md)       | `src/orchestrator/download-policy.ts` — `--download` modes + the deferral eligibility gate.                                            |
+| [`deferred-outputs.md`](./deferred-outputs.md)     | `src/orchestrator/deferred-outputs.ts` — deferred-output registry + lazy materialise/converge.                                         |
+| [`local-shortcircuit.md`](./local-shortcircuit.md) | `src/orchestrator/local-shortcircuit.ts` — restore-ahead classify (two-tier schedule).                                                 |
+| [`remote-prefetch.md`](./remote-prefetch.md)       | `src/orchestrator/remote-prefetch.ts` — background remote GETs (LayeredCache only).                                                    |
+| [`history.md`](./history.md)                       | `src/orchestrator/history.ts` — per-task duration history behind `--dry` predictions.                                                  |
+|                                                    | `src/orchestrator/failure-mode.ts` — the flakiness verdict, in one place (see history.md).                                             |
+| [`metrics.md`](./metrics.md)                       | `src/orchestrator/metrics.ts` — run-history queries behind `vx last` / `vx why` / the MCP.                                             |
+| [`doctor.md`](./doctor.md)                         | `src/orchestrator/doctor.ts` — the workspace doctor's facts behind `vx info` and the MCP's `getWorkspaceInfo`.                         |
+| [`task-log-buffer.md`](./task-log-buffer.md)       | `src/orchestrator/task-log-buffer.ts` — bounded per-task log capture for telemetry sinks.                                              |
+| [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                                                                          |
 
 ## Workspace + discovery
 

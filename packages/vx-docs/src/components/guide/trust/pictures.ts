@@ -175,7 +175,7 @@ function sandboxNarrow(): Layout {
 export const UNCHECKED: [label: string, sub: string][] = [
   ['env variables', 'list in inputs.env'],
   ['your tools', 'e.g. Node version'],
-  ['node_modules', 'even a linked ui'],
+  ['node_modules', 'but a linked ui is'],
   ['Windows', 'only under WSL'],
 ]
 

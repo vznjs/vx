@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v30'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v31'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -583,6 +583,22 @@ directories (projects rooted inside this one) once per `vx run`, and
 adds them to the ignore list passed to every glob pass. The only way
 for project A to depend on project B's state via project-relative
 globs is `dependsOn` + upstream-hash propagation (step 10).
+
+For a task with `exec.sandbox` and `cache`, the sandbox enforces that
+"only". A workspace package reached through a `node_modules` link is
+granted only when the task's key folds a task of that package, walking
+the same selection `cache.inputs.tasks` applies at hash time
+(`orchestrator/keyed-projects.ts`, over `upstream.ts`'s
+`selectFoldedDeps`); every other link target inside the root is
+withheld, so an import of a sibling the key never sees fails and is
+reported instead of caching a result an edit there would not re-run.
+Any exec task counts, cached or not: a task with no `cache` declares no
+`inputs.files`, so its key folds every file of its project. A persistent
+task is folded by no one on the live path, so nothing beneath it counts.
+The coverage is per package, not per file: an edge to `ui#source`
+(inputs `src/**`) also admits a read of `ui/README.md`, whose edit moves
+no key — the same limit a grant wider than a task's own inputs already
+has. A task with no `cache` keeps every link, having no key to be stale.
 
 **Exception:** `cache.inputs.workspaceFiles` /
 `cache.outputs.workspaceFiles` are workspace-root-anchored and apply
@@ -1156,6 +1172,18 @@ version — the decision log it once named was retired 2026-09-02),
 was not), and the cache tests.
 
 ### History
+
+- **v30 → v31**: stored bytes wrong under a key the fix does not change
+  (item 723), v30's shape for a sibling. A sandboxed task that declared
+  `cache` was granted every workspace package linked in its
+  `node_modules`, so it could import a sibling its key never folded and
+  save what it built. The fix withholds that link unless the key answers
+  for the package (§ Cross-project boundaries), so the next miss fails
+  on the read; but an entry saved before it still hits when only the
+  sibling changes. Probed, not argued: an entry saved by the previous
+  commit, `@x/ui` edited, then this commit's run under v30 reported
+  `up-to-date` and left the old `ui` in `dist/`; under v31 the same run
+  misses and fails on the read, with the hint.
 
 - **v29 → v30**: stored bytes wrong under a key the fix does not change
   (item 720). npm and Yarn link every workspace package at the root, the

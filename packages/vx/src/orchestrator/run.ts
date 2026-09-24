@@ -30,6 +30,7 @@ import {
   UserError,
   machineParallelism,
 } from '../util/index.js'
+import { keyedProjects } from './keyed-projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -503,6 +504,7 @@ async function runOnBus(
     }
 
     const sandboxArmer = prepareSandbox(nodes.values())
+    const keyed = keyedProjects(nodes)
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
     // each pack holds an artifact's bytes); a failed save is a miss next
@@ -638,6 +640,7 @@ async function runOnBus(
         ...(probe !== undefined ? { preProbed: probe } : {}),
         ...(taint ? { taintedUpstream: true } : {}),
         ...(sandboxArmer !== null ? { armSandbox: () => sandboxArmer.arm() } : {}),
+        keyedProjects: keyed,
         outputDirSnapshots,
         deferSave: saveLane.defer,
         deferredSaves,
