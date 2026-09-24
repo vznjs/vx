@@ -64,9 +64,13 @@ export function outputsOverlap(a: string, b: string): boolean
 
 ## Construction rules
 
-Starting from `requested`, the builder recursively expands
-`dependsOn`. Each entry is parsed via
-[`dependency-spec.ts`](./dependency-spec.md):
+Starting from `requested`, the builder expands `dependsOn` depth-first
+— each target's subtree before the next target — on its own stack, not
+the call stack: the recursion it replaced threw `RangeError: Maximum
+call stack size exceeded` at a chain ~20,000 deep (nx#28788's shape). A
+depth is bounded by memory only, and the order nodes are added in (which
+`detectCycle` walks, so which cycle it names) is the recursion's. Each
+entry is parsed via [`dependency-spec.ts`](./dependency-spec.md):
 
 | Form          | Behavior                                                                                                                                                                                                                                                                               |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -143,6 +147,8 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 - diamond dedup (shared upstream created once)
 - cross-project cycle detection
 - self-cycle detection
+- a 50,000-deep chain plans and a 50,000-deep ring is refused as that
+  cycle (the recursive builder overflowed the stack on both)
 - empty `requested` → empty graph
 - `excludeDependencies: 'all'` skips everything but requested
 - `excludeDependencies: [...]` drops named edges only
