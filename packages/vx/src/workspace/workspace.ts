@@ -257,7 +257,7 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
   const segments = pattern.split('/')
   const at = segments.findIndex((s) => /^!\([^()]*\)$/.test(s))
   const names = at === -1 ? [] : segments[at]!.slice(2, -1).split('|')
-  const plain = names.every((n) => n !== '' && !/[*?[\]{}()!@+]/.test(n))
+  const plain = names.every((n) => n !== '' && !BUN_GLOB_WILDCARDS.test(n) && !/[()!@+]/.test(n))
   const rest = segments.filter((_s, i) => i !== at).join('/')
   if (at === -1 || !plain || EXTGLOB.test(rest)) {
     return new UserError(
