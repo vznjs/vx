@@ -23,6 +23,10 @@ export function unprovidedBareImports(
   loader: 'ts' | 'js',
 ): string[]
 
+// Whether Bun's parser finds an ESM `export` in `source` — the loader
+// serves only such a config from the bytes it read (project-loader.md).
+export function hasEsmExport(source: string, loader: 'ts' | 'js'): boolean
+
 export interface ConfigImportOwnersArgs {
   /* workspaceRoot, projects, changed paths */
 }
