@@ -1,0 +1,184 @@
+/* The one look of every widget (Demo.astro), taken from the Guide's pictures
+   (guide/diagram/diagram.css) so a widget reads as one more picture: the
+   same frame, the landing's mono for everything a reader acts on or reads
+   as data, the body's sans for sentences and the caption, one 8-unit
+   corner, 1.5 and 2.5 strokes, and the theme's --vx-* tokens only
+   (tests/diagram-kit.test.ts holds the tokens). A widget's own stylesheet
+   adds layout, never a colour of its own.
+
+   The tones are the pictures' tones: accent is what the widget is about,
+   ok a hit or a right answer, warn a miss, danger a wrong or stale result,
+   muted what is not involved. */
+
+.vx-demo {
+  margin: 2.5rem 0;
+  padding: 1.5rem 1.25rem 1.25rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 10px;
+  background: var(--vx-surface);
+  font-family: var(--vx-font-body);
+  font-size: 0.95rem;
+}
+.sl-markdown-content .vx-demo {
+  margin-block: 2.5rem;
+}
+.vx-demo > figcaption {
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--vx-muted);
+  text-align: center;
+}
+@media (max-width: 40rem) {
+  .vx-demo {
+    margin-inline: -0.5rem;
+    padding: 1rem 0.75rem 0.75rem;
+  }
+}
+
+/* Controls: a row of mono chips, the pictures' boxes as buttons. */
+.vx-demo :is(button, select, input[type='text'], input[type='number'], textarea) {
+  font-family: var(--vx-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--vx-fg);
+  background: var(--vx-surface-2);
+  border: 1.5px solid var(--vx-border);
+  border-radius: 8px;
+}
+.vx-demo :is(button, select, input[type='text'], input[type='number']) {
+  padding: 0.3rem 0.7rem;
+}
+.vx-demo button {
+  cursor: pointer;
+}
+.vx-demo button[aria-pressed='true'],
+.vx-demo button.primary {
+  border-color: var(--vx-accent);
+  background: color-mix(in srgb, var(--vx-accent) 12%, var(--vx-surface-2));
+  box-shadow: inset 0 0 0 1px var(--vx-accent);
+}
+.vx-demo button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.vx-demo :is(button, select, input, textarea, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--vx-link);
+  outline-offset: 2px;
+}
+.vx-demo select option {
+  background: var(--vx-surface);
+}
+.vx-demo .vx-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+.vx-demo .vx-row[hidden] {
+  display: none;
+}
+/* Starlight spaces a Markdown column's siblings apart; a row of chips is not
+   prose. */
+.vx-demo .vx-row > * {
+  margin: 0;
+}
+.vx-demo .vx-label {
+  font-family: var(--vx-mono);
+  font-size: 13px;
+  color: var(--vx-muted);
+}
+
+/* The live sentence under the controls. */
+.vx-demo .vx-say {
+  min-height: 1.5em;
+  margin: 0.75rem 0 0;
+  color: var(--vx-fg);
+  text-align: center;
+}
+.vx-demo .vx-say[hidden] {
+  display: none;
+}
+
+/* The frame is `.not-content`, so Starlight's prose styles stop at it and
+   the rules below are all a widget's text gets. */
+.vx-demo p {
+  margin: 0 0 0.5rem;
+}
+.vx-demo a {
+  color: var(--vx-link);
+}
+.vx-demo code {
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+  background: var(--vx-surface-2);
+  font-family: var(--vx-mono);
+  font-size: 0.9em;
+}
+.vx-demo pre code {
+  padding: 0;
+  background: none;
+}
+
+/* Tables are data: mono, small, the pictures' hairlines. */
+.vx-demo table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-family: var(--vx-mono);
+  font-size: 13px;
+}
+.vx-demo :is(th, td) {
+  padding: 0.4rem 0.75rem 0.4rem 0;
+  border-bottom: 1px solid var(--vx-border);
+  text-align: start;
+  vertical-align: top;
+}
+.vx-demo thead th {
+  color: var(--vx-muted);
+  font-weight: 400;
+}
+.vx-demo tbody th {
+  font-weight: 600;
+}
+.vx-demo caption {
+  font-family: var(--vx-font-body);
+  font-size: 0.95rem;
+  color: var(--vx-muted);
+  text-align: start;
+  padding-block: 0 0.5rem;
+}
+.vx-demo pre {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1.5px solid var(--vx-border);
+  border-radius: 8px;
+  background: var(--vx-surface-2);
+  font-family: var(--vx-mono);
+  font-size: 12.5px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* The tones, as text. */
+.vx-demo .is-accent {
+  color: var(--vx-accent);
+}
+.vx-demo .is-ok {
+  color: var(--vx-ok);
+}
+.vx-demo .is-warn {
+  color: var(--vx-warn);
+}
+.vx-demo .is-danger {
+  color: var(--vx-danger);
+  font-weight: 700;
+}
+.vx-demo .is-muted {
+  color: var(--vx-muted);
+}

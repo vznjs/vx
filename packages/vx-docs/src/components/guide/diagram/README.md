@@ -34,7 +34,7 @@ monorepo) computes its data from that model in `pictures.ts`, never by hand.
 | `label`         | the `aria-label`: what the picture says, for a reader who cannot see it         |
 | `caption`       | one short sentence under the drawing                                            |
 | `width`, `height` | the canvas, default 600 × 260; the viewBox keeps the width and crops to what is drawn, so every picture shares one scale |
-| `boxes`         | `{ id, x, y, w?, h?, label, sub?, tone?, title? }`; `w` × `h` default 130 × 52 (60 high with a `sub`) |
+| `boxes`         | `{ id, x, y, w?, h?, label, sub?, tone?, title?, data? }`; `w` × `h` default 130 × 52 (60 high with a `sub`); `data` becomes `data-*` attributes |
 | `arrows`        | `{ from, to, label?, tone?, dashed?, via? }`; `via` lists corners to pass       |
 | `notes`         | `{ x, y, text, tone?, anchor? }`; loose text, muted by default                  |
 | `frames`        | `{ x, y, w, h, label, tone? }`; a dashed group, titled at its top left          |
@@ -60,3 +60,18 @@ tone here, not to write a colour in a chapter.
 
 On a phone the whole drawing shows, scaled to the column: a cropped one
 that scrolls sideways hides boxes a reader does not know to look for.
+
+## Widgets
+
+`Diagram.astro` is `DiagramSvg.astro` (the drawing) in a figure with its
+caption. A widget that draws with the kit, the graph explorer, puts
+`<DiagramSvg {...picture} live />` inside a `<div class="vx-diagram inset">`:
+`inset` drops the picture's own frame, since the widget sits in the same
+frame already, and `live` defines an arrowhead for every tone, so the
+widget's element can change a box's or an arrow's tone class. A box's
+`data` names what the element finds it by.
+
+Every widget takes this look through `demos/widget.css`: the same frame and
+caption, mono for what a reader acts on or reads as data, sans for
+sentences, the 8-unit corner, the two strokes and these tones.
+`tests/diagram-kit.test.ts` holds the widgets to the same tokens.

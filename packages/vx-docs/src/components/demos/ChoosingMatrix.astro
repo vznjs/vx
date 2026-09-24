@@ -125,11 +125,17 @@ const title = new Map(CHOICES.map((c) => [c.id, c.title]))
 </Demo>
 
 <style>
-  table {
+  /* Its cells are sentences, not data: the body's face, at full width. */
+  table:is(.needs, .choices) {
     margin-top: 1rem;
+    font-family: var(--vx-font-body);
     font-size: var(--sl-text-sm);
     display: table;
     width: 100%;
+  }
+  th,
+  td {
+    padding-inline-end: 0.75rem;
   }
   caption {
     text-align: start;
