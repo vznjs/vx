@@ -378,19 +378,37 @@ export class Cache implements CacheLayer {
     // sees them (rows first, then the file), the next save of the same
     // key renames over them, and `prune()`'s orphan sweep unlinks the
     // rest.
-    const meta = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as
-      | { value: string }
-      | undefined
-    if (meta && meta.value !== SCHEMA_VERSION) {
-      this.schemaReset = { from: meta.value, to: SCHEMA_VERSION }
-      this.db.exec(
-        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals;',
-      )
-      this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
-    } else if (!meta) {
-      this.db
-        .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
-        .run(SCHEMA_VERSION)
+    //
+    // The write half runs under the write lock and reads the row again: two
+    // processes opening one NEW cache both read no row, and the second
+    // insert died on the primary key (upstream survey, nx#28608). A warm
+    // open reads the current version and takes no lock.
+    const readVersion = (): string | undefined =>
+      (
+        this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as
+          | { value: string }
+          | undefined
+      )?.value
+    if (readVersion() !== SCHEMA_VERSION) {
+      this.schemaReset = this.db
+        .transaction((): SchemaReset | null => {
+          const found = readVersion()
+          if (found === undefined) {
+            this.db
+              .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
+              .run(SCHEMA_VERSION)
+            return null
+          }
+          if (found === SCHEMA_VERSION) return null
+          this.db.exec(
+            'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals;',
+          )
+          this.db
+            .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
+            .run(SCHEMA_VERSION)
+          return { from: found, to: SCHEMA_VERSION }
+        })
+        .immediate()
     }
 
     // Cached config evaluations (workspace/config-cache.ts): the validated
