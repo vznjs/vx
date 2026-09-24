@@ -30,6 +30,7 @@ import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { executeTask, restoreHit } from '../src/orchestrator/execute-task.js'
+import { computeTaskHash } from '../src/orchestrator/task-hash.js'
 
 const TIMEOUT = 30_000
 
@@ -1279,23 +1280,41 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     getSpy.mockRestore()
   })
 
-  it('a preProbed MISS skips the probe and saves under the up-front hash VERBATIM', async () => {
-    // The up-front key is authoritative for a classified task: it was derived
-    // from a provably stable input set. Recomputing it here would re-derive
-    // against the live (possibly incomplete) upstream, so the entry would be
-    // written under a key no later run reproduces — a cache that always misses
-    // and grows forever. The hash below is deliberately not derivable from
-    // this fixture, so only verbatim reuse can produce it.
+  it('a preProbed MISS skips the probe and keeps the up-front hash VERBATIM', async () => {
+    // The up-front key is authoritative for a classified task: dependents
+    // fold it, and it is the key a later run's classify reproduces. The hash
+    // below is deliberately not derivable from this fixture, so only verbatim
+    // reuse can produce it — and since the key the describe re-derives before
+    // the command then differs, the entry is withheld (item 743): a key that
+    // does not describe the inputs the command ran over files no bytes.
     const getSpy = spyOn(b.cache, 'get')
+    const status: string[] = []
     const o = await executeTask({
-      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+      ...baseArgs(b, node(b, CACHEABLE), {
+        ...capturingLogger({ root: '', out: [], err: [] }),
+        status: (l) => status.push(l),
+      }),
       preProbed: { hash: 'deadbeefdeadbeef', hit: null },
     })
     expect(getSpy).toHaveBeenCalledTimes(0)
     expect(o.status).toBe('success')
     expect(o.hash).toBe('deadbeefdeadbeef')
+    expect(b.cache.loadOutputFilesBatch(['deadbeefdeadbeef']).size).toBe(0)
+    expect(status).toEqual([
+      '[vx] proj#build: its inputs changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+    ])
+    getSpy.mockRestore()
+  })
+
+  it('a preProbed MISS saves under the up-front hash when the describe re-derives it', async () => {
+    const args = baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] }))
+    const upFront = await computeTaskHash(args)
+    const getSpy = spyOn(b.cache, 'get')
+    const o = await executeTask({ ...args, preProbed: { hash: upFront, hit: null } })
+    expect(getSpy).toHaveBeenCalledTimes(0)
+    expect(o.hash).toBe(upFront)
     // The save landed under that exact key — `output_files` rows exist for it.
-    const rows = b.cache.loadOutputFilesBatch(['deadbeefdeadbeef']).get('deadbeefdeadbeef')
+    const rows = b.cache.loadOutputFilesBatch([upFront]).get(upFront)
     expect(rows?.map((r) => r.path)).toEqual(['out.txt'])
     getSpy.mockRestore()
   })

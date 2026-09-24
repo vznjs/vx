@@ -518,7 +518,42 @@ false`, the first failure failing the task; `commands: []` a no-op;
       is refused by name, with the exact `!` rewrite for a whole-segment
       `!(a|b)` (npm, yarn and pnpm all take `!` entries).
 
-743.  DONE (2026-09-24, Next 17: why Turbo won warm at size). Not the
+743.  DONE (2026-09-24, upstream survey, turborepo#13788). A task with no
+      `cache` block declares no outputs, yet writes: an uncached `gen`
+      copying a seed into a same-project `build`'s declared `config.json`
+      replayed seed B's build under seed A on the fourth run of A,B,B,A,
+      silently. Two facts were stale. The stability gate classed `build`
+      stable, so the short-circuit keyed it before `gen` ran; an uncached
+      producer now counts where `undeclaredWriteReach` says it may write
+      (its project; a sandbox narrows that to its write grants, none to
+      nothing). And the run-start git listing, index OIDs and
+      `package.json` digest outlived `gen`'s writes, so a tracked
+      `config.json` keyed its committed OID even on the lazy path: they are
+      dropped once an uncached command exits, pass or fail, and once a
+      persistent task is ready. Rule: an unsandboxed write into ANOTHER
+      project is out of contract, as for a cached task. This repo's
+      `check.bun` is sandboxed with no write grant, so the gate's shards
+      stay in the restore tier. Then turborepo#10111 and #1146: a key is
+      taken before the command, so a formatter rewriting its own input, or
+      a user's edit mid-run, filed bytes built from one state under the key
+      of another, and restoring the old state replayed them as up-to-date.
+      A miss now re-checks before it saves: the key re-derived just before
+      the command must match, and one `lstat` per input (and the
+      `package.json`) finds any file changed since its digest was learned
+      (the enumeration's start for an index OID, the describe for a hashed
+      file), which is hashed again. A move withholds the save with one
+      status line and drops the project's facts. A hit checks nothing
+      (warm A/B within noise); a miss pays ~1.8 µs per input file on the
+      main thread (`miss: recheck inputs`: 16 ms per 1,000 misses of two
+      inputs, 55 ms per 100 misses of 302; cold wall min-of-11 on a loaded
+      4-core box 624 → 667 ms at 30,200 inputs). Not seen: an input
+      changed and changed back before the check, a file added under a
+      glob. `CACHE_VERSION` v32 → v33: an entry the old code poisoned sits
+      under the key the fixed code derives when the tree is back in that
+      state (probed: the fixed code under v32 replayed a formatter's
+      poisoned entry as up-to-date), so it is not self-healing.
+
+744.  DONE (2026-09-24, Next 17: why Turbo won warm at size). Not the
       cache: `deriveStableKeys` built each task's transitive set of
       upstream output producers by copying every dep's string `Set`,
       tasks × deps × projects inserts — 101 ms of CPU self time in a
@@ -748,7 +783,7 @@ next?".
 
 16. **The site, short (owner, 2026-09-24, after 728).** Shipped as item
     729 (`design/site-short-2026-09.md`). Left: the owner's read.
-17. DONE as item 743 — **Turbo 2.11 won warm at 476 packages on the Linux box (item 735).**
+17. DONE as item 744 — **Turbo 2.11 won warm at 476 packages on the Linux box (item 735).**
     Two one-rep runs read Turbo at 255 and 303 ms against vx's 334 and
     376 (restore: 436 and 446 against 524 and 478). Measure it min-of-N
     with interleaved arms, find where vx's warm path spends it at that

@@ -32,13 +32,14 @@ import {
   PersistentReadyError,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { span } from '../util/index.js'
+import { relPosix, span } from '../util/index.js'
 import {
   type Placeholder,
   placeholderSweeper,
   reachedWithheld,
   sandboxRequestFor,
   sweepPlaceholders,
+  undeclaredWriteReach,
   untouchedPlaceholderLine,
   type WithheldLink,
   withheldLinkLine,
@@ -55,6 +56,7 @@ import {
   computeTaskHash,
   describeTaskInputs,
   type HashCache,
+  movedInput,
   type TaskInputComponent,
 } from './task-hash.js'
 
@@ -341,6 +343,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   args.persistentRegistry?.set(node.id, spawn.child)
+  forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   return {
     node,
     status: 'success',
@@ -728,9 +731,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Pass or fail, the command may have written where its project's
+  // run-start facts describe; a remote executor wrote on its own disk.
+  const writeReach =
+    args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
   for (;;) {
     attempt++
     const a = await runAttempt()
+    forgetUndeclaredWrites(args, writeReach)
     result = a.result
     effectiveExitCode = a.exitCode
 
@@ -818,7 +826,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         },
       })
     }
-  } else if (effectiveExitCode === 0 && willSave) {
+  } else if (effectiveExitCode === 0 && willSave && (await keyStillTrue())) {
     const ownOutputFiles =
       additive && stampedBefore !== undefined
         ? await ownOutputsSince(cleanArgs, stampedBefore)
@@ -846,6 +854,32 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     args.deferredSaves?.set(node.id, landed)
   }
 
+  /**
+   * Does the key still describe the inputs the command ran over? It was
+   * taken before the command — up front, or before `describeTaskInputs` —
+   * and a save files the outputs under it. A user's edit mid-run, or a
+   * task rewriting its own input (a formatter), saved bytes built from one
+   * state under the key of another: restore the old state and the next run
+   * replayed them as up-to-date (turborepo#10111, #1146, item 743). The
+   * result stands; only the entry is withheld, and the facts about the
+   * project go, since something wrote there.
+   */
+  async function keyStillTrue(): Promise<boolean> {
+    const endCheck = span('miss: recheck inputs')
+    // The describe re-derived the key just before the command: a different
+    // answer means an input moved between the two, the file unnamed.
+    const moved = described!.hash !== hash ? null : await movedInput(described!.facts, cache)
+    endCheck()
+    if (moved === undefined) return true
+    const what = moved === null ? 'its inputs' : `\`${relPosix(args.workspaceRoot, moved)}\``
+    log.status(
+      `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
+        `but is not saved under a key that no longer describes it`,
+    )
+    forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
+    return false
+  }
+
   const finalViolations = violations
 
   return {
@@ -871,6 +905,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
       : {}),
   }
+}
+
+/**
+ * Drop the run's facts about files a task may have written without
+ * declaring them (`undeclaredWriteReach`): the project's git snapshot and
+ * its index OIDs, and its `package.json` digest. The next reader
+ * re-enumerates the project (one `git ls-files`) and hashes its files by
+ * content; the per-declaration file-list memos are keyed on the snapshot
+ * array, so they miss with it (item 743).
+ */
+function forgetUndeclaredWrites(args: ExecuteArgs, reach: 'none' | 'project' | 'workspace'): void {
+  if (reach === 'none') return
+  if (reach === 'workspace') {
+    args.gitFilesCache?.clear()
+    args.hashCache?.packageJson.clear()
+    return
+  }
+  args.gitFilesCache?.delete(args.node.projectDir)
+  args.gitFilesCache?.invalidateWorkspacePartition()
+  args.hashCache?.packageJson.delete(args.node.projectDir)
 }
 
 /**

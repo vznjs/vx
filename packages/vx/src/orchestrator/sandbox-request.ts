@@ -459,3 +459,33 @@ export function untouchedPlaceholderLine(projectDir: string, placeholder: string
 function expandHome(p: string): string {
   return p.startsWith('~') ? path.join(homedir(), p.slice(1)) : p
 }
+
+/**
+ * Where a task that ran a command may have written files no declaration
+ * names — the files whose run-start facts (the git snapshot, its index
+ * OIDs, the `package.json` digest) a later key must not reuse (item 743).
+ *
+ * A cached task declares its outputs and is held to them. A task with no
+ * `cache` block can declare none, so it may have written anywhere in its
+ * own project (`'project'`), unless a sandbox bounds it: no write grant
+ * writes nothing a key reads (`'none'`), and a grant that leaves the
+ * project for elsewhere in the workspace reaches every project
+ * (`'workspace'`). A grant outside the workspace reaches no input. An
+ * unsandboxed write into another project crosses a project boundary and
+ * is out of contract, as it is for a cached task.
+ */
+export function undeclaredWriteReach(
+  node: TaskNode,
+  workspaceRoot: string,
+): 'none' | 'project' | 'workspace' {
+  const exec = node.config.exec
+  if (exec === undefined || node.config.cache !== undefined) return 'none'
+  if (exec.sandbox === undefined) return 'project'
+  let reach: 'none' | 'project' = 'none'
+  for (const grant of exec.sandbox.allow?.write ?? []) {
+    const abs = path.resolve(node.projectDir, expandHome(grantPrefix(grant)))
+    if (within(abs, node.projectDir)) reach = 'project'
+    else if (within(abs, workspaceRoot) || within(workspaceRoot, abs)) return 'workspace'
+  }
+  return reach
+}

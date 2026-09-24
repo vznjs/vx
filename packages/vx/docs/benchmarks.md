@@ -197,7 +197,7 @@ the fixed harness, median of 1; ideal schedule 1m 36s):
 Read it honestly: on this box Turbo 2.11 wins both warm columns at 476
 packages (two runs of one rep each: 255 and 303 ms against vx's 334 and
 376), where vx won them on the macOS machine against Turbo 2.10. Item
-743 found the cost in vx's stable-key pass; after it, warm reads vx 0.35 s against Turbo 0.35 here (min of 9, interleaved), a tie.
+744 found the cost in vx's stable-key pass; after it, warm reads vx 0.35 s against Turbo 0.35 here (min of 9, interleaved), a tie.
 
 ### Why Nx is slower
 
@@ -254,7 +254,7 @@ schedule 3m 38s):
 | turbo       | 5m 2s (1.4×)  | **496 ms** (0.7×) | **856 ms** (0.9×) | 29.87 s (1.7×)  |
 | nx          | 7m 18s (2.0×) | 6.19 s (9.1×)     | 6.11 s (6.3×)     | 22m 59s (78.7×) |
 
-Here too Turbo 2.11 won the warm columns. Item 743 found why: vx's
+Here too Turbo 2.11 won the warm columns. Item 744 found why: vx's
 stable-key pass copied a string set per task per dep; as bitsets, vx's
 warm run on this box is 0.56 s against Turbo's 0.71 (min of 7), and
 0.35 s against 0.35 at 476 packages (min of 9).

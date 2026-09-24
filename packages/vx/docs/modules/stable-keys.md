@@ -23,7 +23,13 @@ can never drift on the stability gate.
   `cache.inputs.workspaceFiles` (boundary-free) and ANY upstream declares
   outputs — `outputs.files` in any project OR `outputs.workspaceFiles`.
   Transitive because a producer reached through a no-output intermediate
-  still poisons the key.
+  still poisons the key. A task with no `cache` block is a producer too,
+  where `undeclaredWriteReach` (`sandbox-request.md`) says it may write:
+  its own project counts as an `outputs.files` project, the rest of the
+  workspace as an `outputs.workspaceFiles` producer, and a sandboxed one
+  with no write grant as nothing (item 743: an uncached `gen` writing a
+  same-project `build`'s declared input was classed stable, and seeds
+  A,B,B,A replayed B on the fourth run, turborepo#13788).
 
 The helpers (`synthUpstream`, `topoOrder`) are internal and not exported.
 

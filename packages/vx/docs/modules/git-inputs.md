@@ -21,11 +21,13 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
+  clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
   get undecodableNames(): ReadonlySet<string> // listed paths whose names are not UTF-8 (lossy spelling)
   markUndecodable(absPaths: readonly string[]): void
+  enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
 }
 
 export interface GitEnumeration {
@@ -33,6 +35,7 @@ export interface GitEnumeration {
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   dirty: boolean | null
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
+  startedAtMs: number // Date.now() before the spawns
 }
 export function gitPathspecs(
   workspaceRoot: string,

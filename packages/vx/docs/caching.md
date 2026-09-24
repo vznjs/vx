@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v32'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v33'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -153,6 +153,21 @@ over (in order):
     and that no fingerprints say which. Ignore the outputs in git, or
     declare the block (`tests/uncached-upstream-key.test.ts` pins both
     arms).
+
+    Declaring nothing, such a task may also have **written** anywhere
+    in its project, so what the run learned about that project at its
+    start — the git listing, the index OIDs, the `package.json` digest
+    — is dropped once its command exits, pass or fail, and a later key
+    re-lists and hashes by content. For the same reason a task after it
+    in the same project (`dependsOn`, even with `tasks: []`) is never
+    keyed up front by the local short-circuit or the remote prefetch.
+    Without both, an uncached `gen` that copies a seed into a `build`'s
+    declared `config.json` replayed seed B's build under seed A
+    (turborepo#13788, item 743). A sandbox narrows the reach to its
+    write grants: none reaches nothing, and a grant elsewhere in the
+    workspace reaches every project. An unsandboxed write into another
+    project crosses a project boundary and is not tracked, as for a
+    cached task's undeclared write (`tests/undeclared-writes.test.ts`).
 
     A file whose name is **not valid UTF-8** (Linux allows any byte
     but `/` and NUL) cannot be opened from a string, so it cannot be
@@ -468,6 +483,29 @@ is on):
    exit code, duration, size, stdout, timestamps), the `output_files`
    fingerprint rows, and the `entry_inputs` component rows
    (`INSERT OR IGNORE`).
+
+**The key is re-checked before the save** (item 743). It was taken
+before the command ran — at the task's start, or up front by the local
+short-circuit — and the save files the outputs under it, so the inputs
+must still be what it describes. Two checks, in order. The key
+re-derived just before the command (`describeTaskInputs`, which the
+executor seam needs anyway) must equal it. Then each input file and the
+project's `package.json` is `lstat`ed once: a file whose ctime falls
+after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
+learned — the enumeration's start for an index OID, the describe for a
+hashed file — is hashed again and compared, and a file that is gone has
+moved. When one moved, the task's result stands but no entry is saved,
+one status line names the file (``[vx] app#format: `packages/app/a.ts`
+changed after its key was taken — …``), and the run forgets what it
+knew about the project, as after an uncached task (§ Cache key
+derivation, step 12). This covers a formatter rewriting its own input
+(turborepo#10111) and a user's edit mid-run (turborepo#1146); a
+formatter converges, since its next run rewrites the same bytes and
+saves. Not seen: an input changed and changed BACK before the check
+(content is compared, not writes), and a file ADDED under an input glob
+mid-run (the listing is not taken again; the next run's key holds the
+file, so a stale hit needs it to vanish again). Cost: one `lstat` per
+input on a miss that saves; a hit runs no command and checks nothing.
 
 A declared set that resolves to **nothing** is said on the run's
 status line, once, on the miss that saved: `cache.inputs matched no
@@ -1240,6 +1278,17 @@ was not), and the cache tests.
 
 ### History
 
+- **v32 → v33**: stored bytes wrong under a key a CORRECT derivation now
+  produces (item 743). The three stale-hit fixes of that item stop new
+  poisoned entries, but not the ones already saved: a formatter's entry
+  sits under the key of its unformatted input, an uncached `gen`'s
+  consumer's under the key of the seed before `gen` ran, an edit-mid-run's
+  under the key of the file before the edit — and each of those keys is
+  exactly what the fixed code derives when the tree is back in that
+  state. Not self-healing, unlike a fix whose old key no correct run
+  derives. Probed, not argued: an entry saved by the previous commit's
+  formatter, the input checked out unformatted, and the fixed code under
+  v32 reported `up-to-date` and left it unformatted; under v33 it runs.
 - **v31 → v32**: stored bytes wrong under a key the fix does not change
   (item 739). A declared output whose name is not UTF-8 (`x\xffy`) came
   back from `Bun.Glob` decoded lossily as `x�y`, which names no file, so

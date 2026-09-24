@@ -100,8 +100,14 @@ caches.
      cached stdout) is the last attempt's; `TaskOutcome.attempts` is
      set when > 1.
    - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
-5. **If exit 0 + caching enabled**: `resolveOutputs(...)` →
-   `cache.save({ hash, projectDir, outputFiles, entry })`.
+5. **If exit 0 + caching enabled**: the key is re-checked
+   (`keyStillTrue`, item 743): the key the describe re-derived before
+   the command must equal it, and no input may have moved since its
+   fact (`movedInput`). A move withholds the save, says so on the
+   status line, and drops the project's facts as an uncached command
+   does (every partition when the task declares workspace outputs,
+   whose save would have marked them). Otherwise `resolveOutputs(...)`
+   → `cache.save({ hash, projectDir, outputFiles, entry })`.
 6. Return outcome with hash, status (`success` / `failed`),
    exitCode, durationMs, captured stdout/stderr, hrtime spans, and
    (when Bun's resourceUsage returned them) `cpuMs` / `peakRssBytes` —
@@ -127,6 +133,19 @@ output prefixes recorded, git snapshot marked — is
 [`miss-save.md`](./miss-save.md); `execute-task.ts` calls it under the
 `exitCode === 0 && willSave` gate and keeps the deferred-download
 branch beside it.
+
+## What a command may have written
+
+A task with no `cache` block declares no outputs, so after its command
+exits — pass or fail — and after a persistent task becomes ready, the
+run drops the facts it holds about where `undeclaredWriteReach`
+(`sandbox-request.md`) says the task may have written: `'project'`
+deletes the project's git snapshot and its index OIDs, the
+workspace-wide partition and the project's `package.json` digest memo;
+`'workspace'` clears every partition and every digest. The next reader
+re-enumerates (one `git ls-files`) and hashes by content. A task on a
+remote executor wrote on its own disk and drops nothing (item 743:
+turborepo#13788, `tests/undeclared-writes.test.ts`).
 
 ## Sandbox request
 

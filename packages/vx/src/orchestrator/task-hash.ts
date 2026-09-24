@@ -1,9 +1,11 @@
+import { lstatSync } from 'node:fs'
 import path from 'node:path'
 import type { TaskConfig, CacheConfig } from '../config.js'
 import type { ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
   type CacheKeyInput,
   type CacheLayer,
+  FILE_HASH_RACY_MS,
   resolveInputs,
   type GitFilesCache,
   WORKSPACE_OUTPUT_PREFIX,
@@ -107,6 +109,18 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
 }
 
 /**
+ * One file the key folded: the digest it folded, and since when (ms since
+ * the epoch) that digest is known to be the file's content — the
+ * enumeration's start for an index OID (`git status` vouched for it then),
+ * the describe's start for a digest hashed from the file.
+ */
+export interface InputFact {
+  path: string
+  digest: string
+  since: number
+}
+
+/**
  * The key AND the structured input set behind it, for the executor seam.
  * Miss path only: it re-runs the (memoized) resolution `computeTaskHash`
  * did for the probe and retains the VALUES the key folded — env, runtime
@@ -117,7 +131,8 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
  */
 export async function describeTaskInputs(
   args: ComputeHashArgs,
-): Promise<{ hash: string; inputs: TaskInputs }> {
+): Promise<{ hash: string; inputs: TaskInputs; facts: InputFact[] }> {
+  const hashedAt = Date.now()
   const input = await resolveKeyInput(args)
   const hash = await args.cache.key(input)
   const sorted = [...input.inputFiles].sort()
@@ -128,6 +143,22 @@ export async function describeTaskInputs(
     path: relPosix(input.workspaceRoot, f),
     digest: digests[i]!,
   }))
+  // The package.json digest is a per-run memo that may predate this
+  // describe, so it is dated from the enumeration, the earliest a run
+  // learns anything.
+  const indexedAt = args.gitFilesCache?.enumeratedAtMs ?? 0
+  const facts: InputFact[] = sorted.map((f, i) => ({
+    path: f,
+    digest: digests[i]!,
+    since: input.fileHashes?.has(f) === true ? indexedAt : hashedAt,
+  }))
+  if (input.projectPackageJsonHash !== '') {
+    facts.push({
+      path: path.join(args.node.projectDir, 'package.json'),
+      digest: input.projectPackageJsonHash,
+      since: indexedAt,
+    })
+  }
   // Groups expanded: this list describes the INPUT ROOT, not the key, and a
   // group produces nothing of its own (see `CacheKeyInput.upstreamGraft`).
   // Sorted by hash so the list — and any action digest derived from it — is
@@ -148,6 +179,7 @@ export async function describeTaskInputs(
   })
   return {
     hash,
+    facts,
     inputs: {
       files,
       env: input.envValues.map(([name, value]) => ({ name, value })),
@@ -162,6 +194,37 @@ export async function describeTaskInputs(
       workspaceFingerprint: input.workspaceFingerprint,
     },
   }
+}
+
+/**
+ * The first input whose content may no longer be the digest the key folded
+ * (item 743), or undefined when every one still is. One `lstat` per file:
+ * a file whose ctime is older than its fact (by the racy window, as git
+ * judges its index) has not been written since, and one that is not gets
+ * hashed again and compared. ctime, because no writer can set it back. A
+ * file that is gone has moved. An input changed and changed BACK before
+ * the check is not seen: its content is the key's again, though the
+ * command may have read the other.
+ */
+export async function movedInput(
+  facts: readonly InputFact[],
+  cache: CacheLayer,
+): Promise<string | undefined> {
+  const suspects: InputFact[] = []
+  for (const f of facts) {
+    let ctimeMs: number
+    try {
+      ctimeMs = lstatSync(f.path).ctimeMs
+    } catch {
+      return f.path
+    }
+    if (ctimeMs >= f.since - FILE_HASH_RACY_MS) suspects.push(f)
+  }
+  for (const f of suspects) {
+    const now = await cache.hashFile(f.path).catch(() => undefined)
+    if (now !== f.digest) return f.path
+  }
+  return undefined
 }
 
 async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {

@@ -54,6 +54,11 @@ export function reachedWithheld(
   violations: readonly SandboxViolation[],
 ): WithheldLink[]
 export function withheldLinkLine(taskId: string, w: WithheldLink): string
+
+export function undeclaredWriteReach(
+  node: TaskNode,
+  workspaceRoot: string,
+): 'none' | 'project' | 'workspace'
 ```
 
 - `prepareSandbox` prepares the runtime for a run when any task opts
@@ -90,6 +95,15 @@ export function withheldLinkLine(taskId: string, w: WithheldLink): string
   under; execute-task appends `withheldLinkLine` for each, beside the
   denial (so never on a pass): the package, the link the task went
   through, and the two ways to make the key answer for it.
+- `undeclaredWriteReach` says where a task that ran a command may have
+  written files no declaration names (item 743): `'none'` for a cached
+  task (held to its declared outputs), a group, or a sandboxed task with
+  no write grant; `'project'` for an unsandboxed task with no `cache`,
+  or a sandboxed one whose grants stay in its project; `'workspace'`
+  for a grant elsewhere in the workspace (a grant outside the workspace
+  reaches no input). The stability gate (`stable-keys.md`) and
+  execute-task's fact drop (`execute-task.md`) both read it, so the up-
+  front key and the live one agree on what a producer can contradict.
 
 ## Rules
 
@@ -131,4 +145,6 @@ export function withheldLinkLine(taskId: string, w: WithheldLink): string
 job runs them with `VX_REQUIRE_SANDBOX=1`); `tests/sandbox-request.test.ts`
 for the pre-created paths, the sweep and the exact link grant (uncached,
 keyed, keyed on nothing, each through a symlinked root);
-`tests/execute-task*.test.ts` for the request shape.
+`tests/execute-task*.test.ts` for the request shape;
+`tests/undeclared-writes.test.ts` for `undeclaredWriteReach`, each
+grant shape.
