@@ -8,11 +8,11 @@ Send tasks to a pool of workers; keep the graph here. Why? →
 
 ## Steps
 
-1. Get a server that executes: NativeLink, BuildBuddy or Buildfarm. bazel-remote only caches.
+1. Get a server that executes: NativeLink, BuildBuddy or Buildfarm (bazel-remote only caches).
 2. Declare `reapi()` with `execute: true` (below). Remote execution is never on by default.
 3. Pick a worker image with `/bin/sh` and your toolchain.
 4. Run `vx run build --all --dry`: each line says where the task runs (`@vx/reapi` or `@local`).
-5. A task that talks to this machine (Docker, a device, a secret)? Set `exec.remote: false`.
+5. A task needs this machine (Docker, a device, a secret)? Set `exec.remote: false`.
 
 ## Config
 
@@ -38,7 +38,7 @@ export default defineWorkspace({
 - A task with no `cache` block: it has no declared inputs to send.
 - `exec.remote: false`, sandboxed and persistent tasks, and what depends on them.
 
-`node_modules` is not on a worker: make the install a task with
+Workers have no `node_modules`: make the install a task with
 `remote: 'only'`, and let the others depend on it.
 
 ## It proves your declared inputs
@@ -54,6 +54,6 @@ there and passes here reads a file it never declared.
 
 ## Common problems
 
-- **`No such file or directory` on every task.** The worker image has no `/bin/sh`. Use one with a shell.
+- **`No such file or directory` on every task.** The worker image has no `/bin/sh`.
 - **Hundreds of type errors on the worker only.** `tsconfig.json` is not in `cache.inputs.files`.
-- **A secret is missing on the worker.** `exec.env.passThrough` never leaves this machine: keep the task local.
+- **A secret is missing on the worker.** `exec.env.passThrough` stays on this machine: keep the task local.

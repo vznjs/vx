@@ -9,12 +9,11 @@ Skip a task whose inputs did not change, and trust the result. Why? →
 
 ## Steps
 
-1. Add a `cache` block. `inputs.files`: every file the command reads. `outputs.files`: what it writes (`[]` for test or lint).
-2. The output depends on an env var? List it in `cache.inputs.env` **and** `exec.env.passThrough`.
-3. It reads a file outside the package? List it in `inputs.workspaceFiles`, from the workspace root.
-4. Run the task twice. The second run restores the outputs and replays the logs.
-5. A run surprised you? `vx why app#build` names what moved the key.
-6. Not sure the inputs are complete? Add [`exec.sandbox`](../sandboxing/): an undeclared read then fails the task.
+1. Add a `cache` block: `inputs.files` is every file the command reads, `outputs.files` what it writes (`[]` for test or lint).
+2. Reads an env var? List it in `cache.inputs.env` **and** `exec.env.passThrough`.
+3. Reads a file outside the package? List it in `inputs.workspaceFiles`, from the root.
+4. Run it twice. The second run restores the outputs and replays the logs.
+5. Unsure the list is complete? Add [`exec.sandbox`](../sandboxing/): an undeclared read fails the task.
 
 ## Config
 
@@ -42,17 +41,17 @@ export default defineProject({
 
 ## What the key holds
 
-Always in the key: the package's `package.json`, the lockfile, the keys of
-the tasks it depends on, the task's config and arguments after `--`.
+Always in the key: the package's `package.json`, the lockfile, the keys of the
+tasks it depends on, the task's config and arguments after `--`.
 
 What's always excluded: `node_modules`, `.git`, `.vx`, `*.tsbuildinfo`,
 `vx-lock.json`, `*.bun-build`, files git ignores, the task's own outputs
-and files of a nested project.
+and a nested project's files.
 
 ## Outputs
 
-Declared outputs are wiped before every build and every restore, so `dist/`
-ends each run exactly as the cache stored it. A failed task is never saved.
+Declared outputs are wiped before every run and every restore, so `dist/`
+ends as the cache stored it. A failed task is never saved.
 
 ## Why did it re-run?
 
@@ -80,8 +79,8 @@ app#build — run 019f5a02-…
 
 ## Common problems
 
-- **A hit after you changed something.** The changed thing is not declared: a file (`inputs.files`), an env var (`inputs.env`) or a root file (`inputs.workspaceFiles`).
-- **Everything downstream rebuilt.** A task's key folds its dependencies' keys. For a dependency that is only about order, set `inputs.tasks: []`.
+- **A hit after you changed something.** What changed is not declared: a file (`inputs.files`), an env var (`inputs.env`) or a root file (`inputs.workspaceFiles`).
+- **Everything downstream rebuilt.** A key folds its dependencies' keys. For a dependency that is only about order, set `inputs.tasks: []`.
 - **You want a clean run.** `--force` runs everything and refreshes the cache; `--no-cache` ignores it.
 
 A fully cached 3,270-task run: vx 510ms, Turborepo 760ms, Nx 3.59s

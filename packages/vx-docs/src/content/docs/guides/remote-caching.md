@@ -6,15 +6,15 @@ description: Share cache results between machines with a cache plugin — @vzn/v
 Let CI and your team reuse what another machine already built. Why? →
 [Chapter 8: Many machines](../../guide/many-machines/)
 
-The local cache needs no setup. A shared one is a plugin.
+The local cache needs no setup; a shared one is a plugin.
 
 ## Steps
 
 1. Pick a server: any Bazel REAPI server, a Turborepo cache, or an Nx cache.
 2. Install its plugin and declare it in `vx.workspace.ts` (below).
 3. Give it the endpoint, inline or from the environment (`VX_REAPI_ENDPOINT`).
-4. Run anything. vx looks here first, then asks the remote, and uploads new results in the background.
-5. On a fresh clone, `vx run build --all --dry` now predicts remote hits.
+4. Run anything. vx looks locally, then asks the remote, and uploads new results in the background.
+5. On a fresh clone, `vx run build --all --dry` predicts remote hits.
 
 ## Config
 
@@ -30,8 +30,8 @@ export default defineWorkspace({
 
 ## The first-party shared cache
 
-`@vzn/vx-reapi` speaks Bazel's Remote Execution API, so NativeLink,
-BuildBuddy, Buildbarn and bazel-remote all work. The same plugin can also
+`@vzn/vx-reapi` speaks Bazel's Remote Execution API: NativeLink,
+BuildBuddy, Buildbarn and bazel-remote all work. It can also
 [run tasks](../remote-execution/) on their workers.
 
 ## A hosted cache in three commands
@@ -56,12 +56,11 @@ optional `hasMany`, and wrap it in `LayeredCache`:
 
 ## Artifact integrity
 
-`@vzn/vx-reapi` re-hashes every blob it reads and refuses one that does not
-match its digest. A corrupt or truncated download is a miss, never wrong
-bytes.
+`@vzn/vx-reapi` re-hashes every blob it reads. A corrupt or truncated
+download is a miss, never wrong bytes.
 
 ## Common problems
 
-- **The remote is down.** A 500, a timeout, a refused token or a corrupt artifact is a local miss, and the run goes on.
-- **The plugin does nothing.** Without an endpoint it declines. Check the variable in the job's environment.
-- **A laptop should read the shared cache, never write it.** Run with `--cache=local:rw,remote:r`.
+- **The remote is down.** A 500, a timeout, a refused token or a corrupt artifact is a miss; the run goes on.
+- **The plugin does nothing.** With no endpoint it declines. Check the job's environment.
+- **A laptop should read, never write.** Run with `--cache=local:rw,remote:r`.
