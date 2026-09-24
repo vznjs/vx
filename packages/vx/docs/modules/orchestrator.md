@@ -207,4 +207,8 @@ when the reason is the temp directory itself (missing, a file, not
 writable), the warning adds `point TMPDIR at a writable directory`.
 Runs inside ONE process share the lock (a count; the last release
 removes the directory): an embedder that runs two at once coordinates
-them itself through `RunOptions.inflight`.
+them itself through `RunOptions.inflight`. The release reads the pid
+file back before it removes anything — that read is the proof no later
+run reclaimed the directory, not a repeat of the write — and then
+removes exactly what it made, the pid file and the directory, one call
+each (`tests/syscall-repeats.unsafe.test.ts`).

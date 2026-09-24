@@ -26,7 +26,7 @@
 // serialize what it chose to overlap. The directory is taken by the first
 // of them and removed by the last to release.
 
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { isTmpdirRefusal, TMPDIR_HINT, xxh3hex } from '../util/index.js'
@@ -94,9 +94,14 @@ export async function acquireRunLock(
     }
     heldHere.delete(lockDir)
     // Only the holder removes it: a reclaim by a later run must not be
-    // undone by the run that lost the directory.
+    // undone by the run that lost the directory. The read is that proof,
+    // not a repeat of the write: another run may have rewritten the file.
+    // What this run made holds the pid file and nothing else, so it goes
+    // as two calls where `rm -r` spent an unlink that fails EISDIR, an
+    // open and a listing first.
     if ((await holderPid(lockDir)) === process.pid) {
-      await rm(lockDir, { recursive: true, force: true })
+      await unlink(pidFile)
+      await rmdir(lockDir)
     }
   }
   for (;;) {
