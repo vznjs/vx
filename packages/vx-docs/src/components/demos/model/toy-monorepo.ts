@@ -130,7 +130,7 @@ export const TOY_INPUTS: string[] = [
 
 /** The inputs the reader may stop declaring. Source files stay declared, so
  *  every key keeps a file of its own. */
-export const TOY_OPTIONAL_INPUTS: string[] = TOY_INPUTS.filter((i) => !i.endsWith(TOY_SOURCE))
+const TOY_OPTIONAL_INPUTS: string[] = TOY_INPUTS.filter((i) => !i.endsWith(TOY_SOURCE))
 
 /** What a task reads, apart from the outputs of the tasks it depends on. This
  *  decides its output, whatever it declares. */
@@ -279,18 +279,18 @@ export function toyRuns(changes: readonly ToyChange[]): ToyRun[] {
 }
 
 /** Seven hex digits, the way `git log --oneline` shortens a commit. */
-export function shortKey(key: string): string {
+function shortKey(key: string): string {
   return key.slice(0, 7)
 }
 
 /** How the run treats a task, in the words the tables use. */
-export function outcomeOf(t: ToyTaskRun): string {
+function outcomeOf(t: ToyTaskRun): string {
   if (t.hit) return t.stale ? 'stale hit' : 'hit'
   return t.stale ? 'runs, on a stale input' : 'runs'
 }
 
 /** What happened to a task's key, in the words the tables use. */
-export function movedOf(t: ToyTaskRun): string {
+function movedOf(t: ToyTaskRun): string {
   if (t.before === undefined) return 'new'
   if (t.moved === 'input') return 'moved: own input'
   if (t.moved === 'upstream') return 'moved: upstream key'
