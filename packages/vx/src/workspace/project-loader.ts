@@ -3,7 +3,7 @@ import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { beginEvalRound, evaluateConfigFresh } from './config-eval.js'
-import { unprovidedBareImports } from './config-imports.js'
+import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import { configEvalKey, configEvalKeyFromClosure, type ConfigEvalStore } from './config-cache.js'
 import { readOnce } from './load-reads.js'
 
@@ -28,6 +28,60 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
   }
 }
 
+/**
+ * The source a load already holds, by the specifier it imports it under.
+ * Bun's loader would open and read a project config a second time; the
+ * `vx-config-bytes` plugin hands it this instead, so the evaluation runs
+ * exactly the bytes the eval-cache key and the import gate saw. It is also
+ * the cheaper load: 1,000 configs imported this way took 80–100 ms against
+ * 180 ms read by Bun (measured 2026-09-24).
+ *
+ * Handed over as a string: `onLoad` reads a byte array as Latin-1, and a
+ * `ü` in a description came back as `Ã¼`. So only UTF-8 is served, and
+ * only ESM (`hasEsmExport`): source handed to `onLoad` is always evaluated
+ * as a module, and a CommonJS config's `module.exports` would vanish. Any
+ * other config takes Bun's own path, which reads the file and decides its
+ * format as it always did. The two paths carry different queries because
+ * `onLoad` cannot decline a path it matched.
+ *
+ * The workspace config is never served. Proving it ESM is the parser's
+ * first use in a warm run, ~0.27 ms, and serving the one file saves less
+ * than that: `loadWorkspaceConfig` measured 0.3 ms slower served (40
+ * interleaved runs, 2026-09-24). Bun reads it a second time instead.
+ */
+const heldSources = new Map<string, string>()
+let serving = false
+
+function serveHeldSources(): void {
+  if (serving) return
+  serving = true
+  Bun.plugin({
+    name: 'vx-config-bytes',
+    setup(build) {
+      build.onLoad({ filter: /\?vx-held=[0-9a-f]+$/ }, (args) => ({
+        contents: heldSources.get(args.path)!,
+        loader: /\.[cm]?ts\?/.test(args.path) ? 'ts' : 'js',
+      }))
+    },
+  })
+}
+
+const utf8 = new TextDecoder('utf-8', { fatal: true })
+
+/** `bytes` as the source `onLoad` may stand in for Bun's read with, or null (see `heldSources`). */
+function servableSource(bytes: Uint8Array, loader: 'ts' | 'js'): string | null {
+  let source: string
+  try {
+    source = utf8.decode(bytes)
+  } catch {
+    return null
+  }
+  return hasEsmExport(source, loader) ? source : null
+}
+
+/** vx's module-cache query, which no user wrote: stripped from anything shown to them. */
+const BUST_QUERY = /\?vx-(?:bust|held)=[^'"\s]*/g
+
 // Bun has native TS / ESM execution — no transpiler dep needed. We fold
 // a short content hash into the import URL as a cache-bust key so that:
 //   same content   → same URL → Bun's module cache hits (fast)
@@ -47,11 +101,24 @@ async function loadDefaultExport(
   // URL yet, and a repeat load (the one that could replay an evaluation
   // made under earlier env values) re-evaluates in a worker instead
   // (`loadedConfigs`, item 678).
+  const source =
+    kind === 'Project' ? servableSource(bytes, /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js') : null
+  const specifier = `${configPath}?vx-${source !== null ? 'held' : 'bust'}=${xxh3hex(bytes)}`
+  if (source !== null) {
+    serveHeldSources()
+    heldSources.set(specifier, source)
+  }
   let ns: { default?: unknown }
   try {
-    ns = (await import(`${configPath}?vx-bust=${xxh3hex(bytes)}`)) as { default?: unknown }
+    ns = (await import(specifier)) as { default?: unknown }
   } catch (err) {
+    // A served module's frames name its specifier; the user wrote the path.
+    if (err instanceof Error && err.stack !== undefined) {
+      err.stack = err.stack.replaceAll(specifier, configPath)
+    }
     throw configLoadError(err, configPath, kind) ?? err
+  } finally {
+    heldSources.delete(specifier)
   }
   const mod = ns?.default
   assertDefaultObject(mod, kind, configPath)
@@ -118,8 +185,7 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   if (typeof message !== 'string') return null
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
-    const what =
-      spec === undefined ? message.replace(/\?vx-bust=[^'"\s]*/g, '') : `cannot find '${spec}'`
+    const what = spec === undefined ? message.replace(BUST_QUERY, '') : `cannot find '${spec}'`
     const hint =
       spec?.startsWith('@vzn/vx') === true
         ? `; install it in the workspace: bun add -d @vzn/vx`

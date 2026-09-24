@@ -52,9 +52,11 @@ readers that reach it here.
   to a native `await import()`. Bun resolves TypeScript natively —
   no transpile step, no separate loader, no `jiti`.
 - On a first load the import specifier is
-  `<absolutePath>?vx-bust=<xxh3-of-bytes>`. Content changes produce a
-  different query string → different ESM module identity → fresh
-  evaluation. Same content → cached module (the no-op fast path).
+  `<absolutePath>?vx-bust=<xxh3-of-bytes>`, or `?vx-held=` for a
+  project config evaluated from the bytes the loader read (below).
+  Content changes produce a different query string → different ESM
+  module identity → fresh evaluation. Same content → cached module (the
+  no-op fast path).
 - On a repeat load the path is evaluated in a Worker instead, and the
   resolved object comes back as JSON.
 - The default export must be a non-null object. Anything else throws
@@ -70,6 +72,43 @@ readers that reach it here.
   replies with the paths instead of the JSON, and `evaluateConfigFresh`
   throws the `UserError`. The compiled binary's Worker is held to it by
   `scripts/check-binary.ts` (`check.binary`).
+
+## Evaluated from the bytes it read
+
+The loader reads a project config's bytes to key it (config-cache.ts)
+and to refuse an unprovided import; `import()` then opened and read the
+file again. A first load of a project config is now served those bytes
+by the `vx-config-bytes` onLoad (`Bun.plugin`), under `?vx-held=`: one
+read of the config per run, and the evaluation runs exactly the bytes
+the key saw. It is also the cheaper import — 1,000 configs took 80–100
+ms served against 180 ms read by Bun, and the cold `load configs` stage
+of a 1,000-package `vx run --dry` dropped from 256 to 181 ms (min of 7,
+interleaved, 2026-09-24; 100 packages: 51 to 33).
+
+What `onLoad` source cannot be, it is not handed:
+
+- **Only ESM.** Source from `onLoad` is always evaluated as a module;
+  a file Bun would run as CommonJS (no `export`, and `module.exports`,
+  `exports`, `require`, `this` or `__dirname` at the top) would lose its
+  exports. `hasEsmExport` (config-imports.ts) asks Bun's own parser for
+  an ESM `export`; without one, the config takes Bun's path, `?vx-bust=`.
+- **Only UTF-8.** Bun's loader reads invalid UTF-8 as Latin-1 and a
+  decoder would repair it to U+FFFD, a different string; a strict decode
+  that fails sends the config down Bun's path. And the source goes over
+  as a string: `onLoad` reads a byte array as Latin-1 (a `ü` came back
+  `Ã¼`, caught by config-eval's JSON-data row).
+- **The query never reaches the user.** A served module's stack frames
+  name its specifier, rewritten to the path; a `ResolveMessage` has
+  either query stripped.
+- **Not the workspace config.** Proving it ESM is the parser's first
+  use in a warm run (~0.27 ms) and `loadWorkspaceConfig` measured 0.3 ms
+  slower served, so Bun reads it a second time.
+
+A repeat load (the Worker, below) reads the file in the Worker's own
+registry; nothing is served there. What stays read twice in a cold run,
+and why — the project's `package.json` and directory, which Bun's
+resolver visits for the importer whatever vx hands it — is pinned with
+strace in `tests/read-once.unsafe.test.ts`.
 
 ## Why a Worker on a repeat load
 
@@ -169,6 +208,10 @@ the shipped standalone binary fail with `ModuleNotFound`.
   group task).
 - `loadWorkspaceConfig` returns null when no `vx.workspace.*` file
   exists, validates `concurrency` and `cacheDir`.
+- The served first load (`a project config is evaluated from the bytes
+vx read`): a CommonJS config keeps its exports, non-UTF-8 bytes
+  evaluate as Bun reads them, and neither a runtime throw's stack nor
+  an unresolvable import names the query.
 
 ## Replacing this module
 

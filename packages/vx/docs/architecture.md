@@ -424,6 +424,10 @@ transpile-on-load step. We append a content-hash query string
 - Same content → same URL → Bun's module cache hits (fast).
 - Changed content → new URL → fresh re-evaluation (correct).
 
+A project config's first load is served the bytes the loader already
+read (`?vx-held=`, a `Bun.plugin` onLoad) instead of letting Bun read
+the file again — ESM and UTF-8 only; see `docs/modules/project-loader.md`.
+
 The loader validates each task's shape at load time and surfaces a
 `UserError` (clean output, no stack) on malformed configs. Among the
 rules enforced: `exec.persistent` rejects malformed shapes; a
