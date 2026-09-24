@@ -853,7 +853,8 @@ default locally, not always on; Nx's plugins infer tasks and add graph
 data, generators, migrations and executors, first-party for Gradle, Maven
 and .NET (Rust is community). Found, not fixed: `benchmarks.md`'s
 2026-09-03 head-to-head says Turbo's daemon answers "what changed"
-without a walk, but Turbo 2.10 no longer uses its daemon for `turbo run`;
+without a walk, but Turbo 2.10 no longer uses its daemon for `turbo run`
+(fixed in item 698, which dates the change to 2.9);
 and Turborepo's own docs link to turborepo.dev, while this site links
 turborepo.com.
 
@@ -947,9 +948,8 @@ never defines, so the caching widget's keys render proportional (fixed
 in item 696); every
 page with a Mermaid diagram logs one uncaught non-Error object in
 Chromium (fixed in item 697); and `benchmarks.md`'s 2026-09-03 head-to-head credits Turbo's
-daemon with answering "what changed", which Turbo 2.10+ no longer uses
-for `turbo run` (check which Turbo version that row measured before
-editing it).
+daemon with answering "what changed", which Turbo no longer uses for
+`turbo run` (fixed in item 698).
 
 14cp. **Item 694 (2026-09-24): a repeat-load round costs one config
 worker, as documented.** `vx watch` (and any second load in one process)
@@ -1006,6 +1006,22 @@ hand-written and widget-generated, and requires that no node id is one
 of the flowchart grammar's keywords. Red with `graph` restored, naming
 `guides/extensibility`; a control row checks the id reader on a known
 source.
+
+14ct. **Item 698 (2026-09-24): the benchmarks stop crediting Turbo's
+daemon.** `benchmarks.md` said Turbo's daemon answered "what changed"
+without a walk in the 2026-09-03 head-to-head (Turbo 2.10.12), that
+Turbo "with its daemon on would close part of the no-op gap" in the
+solidjs rows (Turbo 2.10.10, run with `--no-daemon`), and counted
+"Turbo's" daemon out of the CPU column; the honest-benchmarks post
+repeated two of those. Checked against Turbo's own docs at each tag:
+`reference/run.mdx` at v2.8.0 still documents the daemon for
+`turbo run`, and from v2.9.0 (and at v2.10.0, v2.10.10, v2.10.12) says
+it "is no longer used for `turbo run`" and the flags "are ignored". So
+every Turbo row here ran daemonless whatever the flags; the numbers
+stand, the explanations are corrected (both tools work out what changed
+per invocation; the `--no-daemon` the solidjs script passes is a no-op;
+only Nx's daemon is outside the CPU column). `comparison.md` said
+"since 2.10" (from W7's reading) and now says 2.9.
 
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
