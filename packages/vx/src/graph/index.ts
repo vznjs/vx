@@ -8,7 +8,13 @@ export {
   parseDependencySpec,
   type DependencySpec,
 } from './dependency-spec.js'
-export { type ContinueMode, runGraph, type TaskOutcome, type TaskStatus } from './scheduler.js'
+export {
+  type ContinueMode,
+  RestoreDemoted,
+  runGraph,
+  type TaskOutcome,
+  type TaskStatus,
+} from './scheduler.js'
 export {
   buildTaskGraph,
   detectCycle,

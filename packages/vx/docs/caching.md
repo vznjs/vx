@@ -742,6 +742,20 @@ either way (a restore renames into place only once the whole archive
 has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
+An eviction can still land between a hit's probe and its restore: a
+`vx cache prune` in another shell, or the `cacheRetention` of another
+workspace that shares the `--cache-dir` (a different workspace, so a
+different lock), which cannot see this run's pending `accessed_at`
+bumps and reads its fresh hits as old. The restore then finds no
+artifact, and that entry is a **miss**: the run says `[vx] <id>: its
+cache artifact <hash> vanished before the restore … — running it`,
+runs the task, and saves it again. It failed every such task as an
+internal error until 2026-09-24 (upstream survey: nx#36688, nx#34032).
+A hit the local short-circuit was restoring ahead of its dependencies
+goes back to the schedule and runs once they are done, never in the
+restore's slot: built before them, its bytes would be saved under the
+healthy key (`tests/vanished-artifact.test.ts`).
+
 ## Storage layout
 
 The run must be able to write here — it records its history at the

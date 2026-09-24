@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import {
+  ArtifactVanishedError,
   type CacheEntry,
   type CacheLayer,
   type CachePolicy,
@@ -30,7 +31,7 @@ import {
   type TaskInputs,
   PersistentReadyError,
 } from '../exec/index.js'
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
 import {
   type Placeholder,
@@ -480,9 +481,28 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // to the run path as a known stable miss. No second cache.get.
   if (willRead) {
     const cacheOpStart = performance.now()
+    // A hit whose artifact was removed after the probe (a prune, another
+    // workspace's retention on a shared cache directory) is a miss. The
+    // restore has wiped the declared outputs by then; the run path cleans
+    // them again and the task writes them.
+    const restoreOrMiss = async (hit: CacheEntry): Promise<TaskOutcome | null> => {
+      try {
+        return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
+      } catch (err) {
+        if (!(err instanceof ArtifactVanishedError)) throw err
+        log.status(`[vx] ${node.id}: ${err.message} — running it`)
+        return null
+      }
+    }
     if (preProbed !== undefined) {
       if (preProbed.hit !== null) {
-        return restoreHit({ args, hash, hit: preProbed.hit, cacheOpStart, taskStartNs })
+        const restored = await restoreOrMiss(preProbed.hit)
+        if (restored !== null) return restored
+        // The up-front probe's hit may be restoring AHEAD of this task's
+        // deps, and a command run now would build from outputs they have
+        // not written yet and save that under the good key. The scheduler
+        // runs it again once they are done (admission drops the probe).
+        throw new RestoreDemoted(node.id)
       }
       // Confirmed stable miss — skip the probe, fall through to run.
     } else {
@@ -490,7 +510,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const hit = await cache.get(hash, { taskId: node.id, command: step.command })
       endProbe()
       if (hit) {
-        return restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
+        const restored = await restoreOrMiss(hit)
+        if (restored !== null) return restored
       }
     }
   }

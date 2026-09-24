@@ -57,6 +57,11 @@ deps) is never deduped: it restores rather than executes, and its live
 `upstream` is incomplete, so a key recompute would be wrong. A task
 that joins a sibling drops its up-front probe (`reuseProbe: false`) —
 the probe predates the sibling's save and would report a stable miss.
+A task whose probed hit vanished before its restore rejects with
+`RestoreDemoted` (execute-task.md); admission deletes its `preProbed`
+entry on the way to the scheduler, so the second dispatch probes afresh
+instead of restoring the same gone artifact again. It stays in the
+restore-tier set, so that dispatch still skips dedup.
 
 The executor registers its barrier with no `await` between `get` and
 `set`, so at most one executor exists per hash. The barrier is lifted in

@@ -70,6 +70,15 @@ caches.
      `cache-hit` (or `cache-hit-remote` if `hit.source === 'remote'`)
      outcome with `durationMs = performance.now() - cacheOpStart` —
      the user-perceived restore time.
+   - A restore that throws `ArtifactVanishedError` (the artifact was
+     removed after the probe: a `vx cache prune` in another shell,
+     another workspace's retention on a shared cache directory) is a
+     miss: one status line naming the task and the artifact, ending
+     `— running it`, then step 4. A hit the
+     up-front probe found (`preProbed`) may be restoring ahead of its
+     deps, so it throws `RestoreDemoted` instead and the scheduler
+     runs it once they are done (scheduler.md; admission drops the
+     probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
      `dist/` doesn't survive into a fresh exec.

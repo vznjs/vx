@@ -5,6 +5,7 @@
 // re-exported through cache.ts.
 
 export {
+  ArtifactVanishedError,
   Cache,
   type CacheEntry,
   type CacheKeyInput,

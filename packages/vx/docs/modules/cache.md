@@ -10,7 +10,8 @@ and key derivation logic live here.
 
 - `layer.ts` — the CONTRACT (`CacheLayer`) and every shape that crosses
   it: `CacheKeyInput`, `CacheEntry`, `RunRecord`, `InvocationRecord`,
-  output fingerprint rows, stats and prune options, `CorruptArtifactError`.
+  output fingerprint rows, stats and prune options, `CorruptArtifactError`,
+  `ArtifactVanishedError`.
   No implementation.
 - `key-fold.ts` — `foldKey`, the whole key derivation as a function of
   `CacheKeyInput`, a file hasher and a relativizer, and `CACHE_VERSION`,
@@ -80,6 +81,12 @@ export type SaveArgs = {
 // path; workspace rows store the full `workspace-outputs/<rel-to-root>`
 // archive entry name.
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
+
+// `restoreOutputs` found no artifact where the probe found one: a MISS
+// (execute-task.ts runs the task), not a corrupt cache.
+export class ArtifactVanishedError extends Error {
+  readonly hash: string
+}
 
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
@@ -352,10 +359,13 @@ Reads via `get()` are non-blocking thanks to WAL.
   moment of absence.
 - Artifacts above 4 MiB compressed are decoded as a stream; smaller
   ones in one call. Same reader, same extractor, same 2 GiB ceiling.
-- Throws (`CorruptArtifactError`) when the artifact vanished, is not
-  a readable archive, or lacks an output the index recorded; throws
-  `ArchiveSecurityError` on an unsafe name or an escape. Either way
-  nothing was renamed into place.
+- Throws `ArtifactVanishedError` when the artifact is gone (removed
+  after the probe: a `vx cache prune` in another shell, another
+  workspace's retention on a shared `--cache-dir`) — the caller treats
+  that entry as a miss and runs the task. Throws `CorruptArtifactError`
+  when the artifact is not a readable archive or lacks an output the
+  index recorded, and `ArchiveSecurityError` on an unsafe name or an
+  escape. Either way nothing was renamed into place.
 
 `get(hash)`:
 
