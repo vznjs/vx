@@ -317,75 +317,35 @@ config is JSON data on every path (701), the run's `Failed:` recap
 (694); the site's prerender runs under Bun (708); the 0.1.0 notes run
 through 710 (713). WHAT STANDS: entries 14bw–14di and loop item 677 are
 in the next-log file (§ Entries 14bw–14di); the loop holds 719 alone.
-The monorepo.tools audit (`design/capability-audit-2026-09.md`) plans
-714–718 (Next 16). IN FLIGHT: 714 (the Learn page kinds and their law,
-glossary links) and 716 (scheduling's workers on other machines) from
-implementers; the design for Next 17 (a sandboxed task reads a linked
-sibling package unseen) from an architect. OWNER, unchanged: cut 0.1.0
-(the tag, then delete `NPM_TOKEN`), the site's address, the scope list
-(roadmap 2.4), the soak length. NEXT, in order: land 714 and 716; 715;
-717 (with its sandbox pin row, which is Next 17's repro); 718; then
-Next 17 on the architect's design. Never end with "what next?".
+The owner then judged the site "very bad": pages were added to the old
+structure instead of redoing it, and nothing tells one story. The redo
+is `design/site-redo-2026-09.md` (Next 16): one Guide of ten chapters on
+one toy monorepo (why, tasks, dependencies, concurrency, caching, trust,
+affected, many machines, inside vx, try it), Docs and Reference around
+it, internals out of the sidebar, one look, build-time SVG diagrams.
+The audit's 714–718 are dropped; their substance feeds chapters 3, 7, 8
+and the "vx, Turborepo, Nx, Bazel" page. IN FLIGHT: R1 (the skeleton)
+and R2 (the chapters, three implementers); the design for Next 17 (a
+sandboxed task reads a linked sibling package unseen) from an
+architect. OWNER, unchanged: cut 0.1.0 (the tag, then delete
+`NPM_TOKEN`), the site's address, the scope list (roadmap 2.4), the
+soak length. NEXT: R1–R4 in the design's order, each chapter edited by
+the architect before it merges; then Next 17. Never end with "what next?".
 
-16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
-    site so it explains task orchestration before it sells vx: a Learn
-    section with one diagram and one interactive element per page
-    (a graph explorer, a key calculator, the scheduler simulator in the
-    browser, a pipeline explorer, worked plugins), and a choosing page
-    that states what each design choice costs. Plan and order:
-    `design/site-teaches-2026-09.md`. The bar is monorepo.tools, "1000×"
-    better on education: mechanisms instead of checkmarks, the real
-    planner running in the browser (W9), labs where the reader breaks a
-    build (W10), checkpoints (W11) and a glossary (W12). W0, the
-    skeleton and the island pattern, is DONE (item 675, entry 14bw).
-    W1, the first real Learn page and the graph explorer, is DONE (item
-    681, entry 14cc), and so is W12, the glossary (item 683, entry 14ce).
-    W2, caching and the key calculator, is DONE (item 684, entry 14cf).
-    W4, the scheduling page and the scheduler simulator on vx's own
-    ranking code, is DONE (item 685, entry 14cg). W5 and W6, the
-    architecture page with its pipeline explorer and the worked plugins,
-    are DONE (item 686, entry 14ch). W3, the correctness page and its
-    stale-hit demo, is DONE (item 688, entry 14cj). W7, the choosing page and its
-    matrix, is DONE (item 689, entry 14ck). W9, the playground, is
-    DONE: P1 (item 691, entry 14cm), the exact glob port (item 692,
-    entry 14cn), the bundle, its task and the parity rows (item 695,
-    entry 14cq), config editing (item 699, entry 14cu) and the page
-    itself (item 700, entry 14cx): `learn/playground` runs the real
-    planner on the toy monorepo, and core's parity rows hold the page's
-    Run to the CLI. The playground names why a key moved, by `vx why`'s
-    rule (item 703, entry 14cy). W10, the labs, is DONE (item 704,
-    entry 14dd): `learn/labs` runs three labs in the playground (a file
-    no config mentions, an undeclared read and its stale hit, two tasks
-    writing one output), each held to the CLI by core's parity rows, and
-    a bad order on the scheduling page's simulator; the bundle's plans
-    are serialized in `entry.ts` (item 705's finding). W11, the
-    checkpoints, is DONE (item 705, entry 14dc): the what-is, caching,
-    correctness and playground pages ask questions the reader ticks and
-    the live planner marks, and each no-JavaScript answer is computed by
-    that planner at build time. W8, the landing page, is DONE (item
-    709, entry 14df): the problem and the three ideas first, each linked
-    to its Learn page, the numbers after, the generator's anchors
-    untouched. The track, W0–W12, is DONE. Of the plan's "Done means",
-    met: the playground's parity with the CLI (core's parity rows),
-    comparisons that state vx's costs and name a better pick (the
-    choosing page, which the landing links), the site-wide link check
-    (item 711, entry 14dh), and on the landing page every figure from
-    its source (item 712, entry 14di). Decided (architect, 2026-09-24):
-    scheduling, choosing, architecture and extending keep their static
-    `<details>` checkpoints, because their questions are not planner
-    questions; the glossary is a reference, not a lesson, so it carries
-    no checkpoint. The monorepo.tools audit is done
-    (`design/capability-audit-2026-09.md`): of its twelve capabilities
-    three were taught, nine were not; the glossary is a reference and
-    exempt from the diagram-and-element rule, and the Learn section gets
-    three kinds (lessons, tools, reference) a law holds. Planned, in
-    order: 714 the page kinds and the missing glossary links, 715
-    what-is's graph source, graph pictures and what `--affected` cannot
-    see, 716 scheduling's workers on other machines, 717 a new lesson
-    "Around the runner" (shared code, generators, constraints), 718 the
-    twelve capabilities mapped on choosing. Not yet met besides those:
-    the landing's cards link docs pages, not tests; no row holds the
-    figures on pages other than the landing.
+16. **The site, redone as one story (owner, 2026-09-24).** Track W
+    (entries 14bw–14di in the next-log file) built working widgets and
+    ten Learn pages, but inside the old eight-group sidebar, as reference
+    text with a competitor tour on every page; the owner: "I told you to
+    redo it not add sections. It should tell a coherent story and teach
+    about tasks, dependencies, sandbox, caching, concurrency, and other
+    concepts to understand why you need task orchestration." The redo is
+    `design/site-redo-2026-09.md`: a ten-chapter Guide read in order on
+    the toy monorepo, Docs (one page per job) and Reference around it,
+    internals out of the sidebar, the landing's look site-wide,
+    build-time SVG instead of client Mermaid, the landing as the book's
+    cover. The widgets and their CLI parity rows survive; the pages
+    around them go. Order: R1 skeleton, R2 chapters (three in parallel),
+    R3 docs consolidation and landing, R4 the old Learn pages redirect.
 
 17. **A sandboxed task reads a linked sibling package unseen (found by
     the capability audit, 2026-09-24).** `sandbox-request.ts` grants
