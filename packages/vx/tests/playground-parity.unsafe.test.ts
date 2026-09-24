@@ -10,10 +10,12 @@
 //   CLI    — `vx run build ci --all --dry=json` in a subprocess over the
 //            fixture committed to a fresh git repository: the real planner,
 //            real git, real disk, real Bun;
-//   bundle — `planPlayground` over the same files held in memory, with the
-//            host's Bun APIs and `node:fs` TRAPPED (each replaced by a
-//            function that counts and throws) for the whole call, so a
-//            reach past the shim fails loudly instead of quietly agreeing.
+//   bundle — `planPlayground` over the same files held in memory, each
+//            config the bundle's `evaluateConfig` of the same
+//            `vx.config.mjs` text (item 699), with the host's Bun APIs and
+//            `node:fs` TRAPPED (each replaced by a function that counts and
+//            throws) for the whole call, so a reach past the shim fails
+//            loudly instead of quietly agreeing.
 // Keys, cache statuses and deps must be equal, and so must the bundled
 // scheduler's priorities and dispatch order against core's scheduler run
 // on the CLI's graph. Unsafe: the CLI half needs git, and the rows read
@@ -28,6 +30,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { computeReverseDepCount } from '../src/graph/priorities.js'
 import { runGraph } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/index.js'
+import { evaluateConfigFresh } from '../src/workspace/config-eval.js'
 
 const REPO = path.resolve(import.meta.dir, '../../..')
 const DOCS = path.join(REPO, 'packages/vx-docs')
@@ -58,16 +61,33 @@ type PlanPlayground = (input: {
   tasks: string[]
 }) => Promise<BundlePlan>
 
+type Evaluated = { ok: true; config: unknown } | { ok: false; error: string }
+type EvaluateConfig = (text: string, deadlineMs: number) => Promise<Evaluated>
+
 // Imported by path, not by specifier: core's type-check and its lint key
 // stay its own, and the site's files are this suite's inputs through
 // `test.bun.unsafe`'s `packages/*/**`.
 const { buildPlayground } = (await import(path.join(DOCS, 'scripts/build-playground.ts'))) as {
   buildPlayground: () => Promise<{ bytes: Uint8Array }>
 }
-const { CONFIGS, ENV, FILES } = (await import(path.join(DOCS, 'src/playground/fixture.ts'))) as {
-  CONFIGS: Record<string, unknown>
+const { CONFIG_TEXTS, ENV, FILES } = (await import(
+  path.join(DOCS, 'src/playground/fixture.ts')
+)) as {
+  CONFIG_TEXTS: Record<string, string>
   ENV: Record<string, string>
   FILES: Record<string, string>
+}
+const { NOT_AN_OBJECT } = (await import(path.join(DOCS, 'src/playground/config-eval.ts'))) as {
+  NOT_AN_OBJECT: string
+}
+
+const ONLY_VX = 'the playground evaluates a config on its own: it can import only @vzn/vx'
+const CONFIG_FILE: Record<string, string> = {
+  '@pg/utils': 'packages/utils/vx.config.mjs',
+  '@pg/core': 'packages/core/vx.config.mjs',
+  '@pg/ui': 'packages/ui/vx.config.mjs',
+  '@pg/app': 'packages/app/vx.config.mjs',
+  '@pg/docs': 'packages/docs/vx.config.mjs',
 }
 
 // `ci` is a group task (no exec): its key is `computeGroupHash` over its deps.
@@ -97,6 +117,98 @@ const SCENARIOS: Array<{
   },
 ]
 
+// `@pg/core`'s config, written three other ways. Each text is the file on
+// disk for the CLI and the text the page evaluates; `moved` is what it moves
+// against the fixture's own text, in both planners.
+const CORE_TEST_DOWNSTREAM = ['@pg/app#build', '@pg/app#ci', '@pg/core#test']
+const CORE_VARIANTS: Array<{ name: string; text: string; moved: string[] }> = [
+  {
+    // Computed, and equal to the literal: it moves nothing.
+    name: 'a config computed with a loop and spreads',
+    text: `import { defineProject } from '@vzn/vx'
+
+const SOURCES = ['src/**']
+const inputs = {}
+for (const [task, extra] of [['build', 'package.json'], ['test', 'test/**']]) {
+  inputs[task] = { files: [...SOURCES, extra] }
+}
+
+export default defineProject({
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'mkdir -p dist && cp src/*.ts dist/' },
+      cache: { inputs: { ...inputs.build, env: ['API_URL'] }, outputs: { files: ['dist'] } },
+    },
+    test: {
+      dependsOn: ['build'],
+      exec: { command: 'true' },
+      cache: { inputs: inputs.test, outputs: { files: [] } },
+    },
+  },
+})
+`,
+    moved: [],
+  },
+  {
+    // JSON drops an \`undefined\` property, and so does the key.
+    name: 'properties whose value is undefined',
+    text: `import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: {
+      description: undefined,
+      dependsOn: ['^build'],
+      exec: { command: 'mkdir -p dist && cp src/*.ts dist/', timeout: undefined },
+      cache: {
+        inputs: { files: ['src/**', 'package.json'], env: ['API_URL'], workspaceFiles: undefined },
+        outputs: { files: ['dist'] },
+      },
+    },
+    test: {
+      dependsOn: ['build'],
+      exec: { command: 'true' },
+      cache: { inputs: { files: ['src/**', 'test/**'] }, outputs: { files: [] } },
+    },
+  },
+})
+`,
+    moved: [],
+  },
+  {
+    // \`test\` now also waits on the upstream builds.
+    name: 'dependsOn built from a constant',
+    text: `import { defineProject } from '@vzn/vx'
+
+const UPSTREAM = ['^build']
+
+export default defineProject({
+  tasks: {
+    build: {
+      dependsOn: UPSTREAM,
+      exec: { command: 'mkdir -p dist && cp src/*.ts dist/' },
+      cache: {
+        inputs: { files: ['src/**', 'package.json'], env: ['API_URL'] },
+        outputs: { files: ['dist'] },
+      },
+    },
+    test: {
+      dependsOn: [...UPSTREAM, 'build'],
+      exec: { command: 'true' },
+      cache: { inputs: { files: ['src/**', 'test/**'] }, outputs: { files: [] } },
+    },
+  },
+})
+`,
+    moved: CORE_TEST_DOWNSTREAM,
+  },
+]
+
+// The negative control's variant: one folded field (`@pg/core#test`'s
+// command) differs from the text the page evaluates.
+const CONTROL_TEXT = CONFIG_TEXTS['@pg/core']!.replace("command: 'true'", "command: 'exit 0'")
+
 // A root through no symlink (macOS's temp dir is one), so neither planner
 // sees a path the other would canonicalize.
 const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-pg-')))
@@ -118,13 +230,18 @@ function git(...args: string[]): void {
 const baseEnv = { ...process.env }
 delete baseEnv['API_URL']
 
-function cliPlan(env: Record<string, string>): PlanTask[] {
+function cliRun(env: Record<string, string>): { exitCode: number; stdout: string; stderr: string } {
   const r = Bun.spawnSync(
     [process.execPath, BIN, 'run', ...TASKS, '--all', '--dry=json', `--cache-dir=${cacheDir}`],
     { cwd: ws, env: { ...baseEnv, ...env, NO_COLOR: '1' }, stdout: 'pipe', stderr: 'pipe' },
   )
-  if (r.exitCode !== 0) throw new Error(`CLI exited ${r.exitCode}: ${r.stderr.toString()}`)
-  return (JSON.parse(r.stdout.toString()) as { tasks: PlanTask[] }).tasks
+  return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
+}
+
+function cliPlan(env: Record<string, string>): PlanTask[] {
+  const r = cliRun(env)
+  if (r.exitCode !== 0) throw new Error(`CLI exited ${r.exitCode}: ${r.stderr}`)
+  return (JSON.parse(r.stdout) as { tasks: PlanTask[] }).tasks
 }
 
 // ---- traps: the host's platform, made to throw while the bundle runs ----
@@ -175,13 +292,36 @@ function disarm(): void {
 }
 
 let planPlayground: PlanPlayground
+let evaluateConfig: EvaluateConfig
+
+async function evaluate(text: string, deadlineMs = 10_000): Promise<Evaluated> {
+  arm()
+  try {
+    return await evaluateConfig(text, deadlineMs)
+  } finally {
+    disarm()
+  }
+}
+
+/** Each project's config, evaluated by the page from its text. */
+async function evaluateAll(texts: Record<string, string>): Promise<Record<string, unknown>> {
+  const configs: Record<string, unknown> = {}
+  for (const [name, text] of Object.entries(texts)) {
+    const r = await evaluate(text)
+    if (!r.ok) throw new Error(`${name}: ${r.error}`)
+    configs[name] = r.config
+  }
+  return configs
+}
+
 async function bundlePlan(
   files: Record<string, string>,
   env: Record<string, string>,
+  configs: Record<string, unknown>,
 ): Promise<BundlePlan> {
   arm()
   try {
-    return await planPlayground({ root: '/ws', files, configs: CONFIGS, env, tasks: TASKS })
+    return await planPlayground({ root: '/ws', files, configs, env, tasks: TASKS })
   } finally {
     disarm()
   }
@@ -236,12 +376,24 @@ interface Outcome {
 const outcomes = new Map<string, Outcome>()
 let wrongEnv: BundlePlan
 let bundleTrapHits: Record<string, number>
+const variants = new Map<string, { cli: PlanTask[]; bundle: BundlePlan }>()
+let control: { cli: PlanTask[]; bundle: BundlePlan }
+const NOT_OBJECT_TEXTS: Record<string, string> = {
+  'a number': 'export default 42\n',
+  'no default export':
+    "import { defineProject } from '@vzn/vx'\nexport const config = defineProject({})\n",
+}
+const notObject = new Map<string, { cli: ReturnType<typeof cliRun>; page: Evaluated }>()
 
 beforeAll(async () => {
   const bundleFile = path.join(scratch, 'planner.js')
   writeFileSync(bundleFile, (await buildPlayground()).bytes)
   // Loaded BEFORE any trap is armed: loading reads the file through the host.
-  ;({ planPlayground } = (await import(bundleFile)) as { planPlayground: PlanPlayground })
+  ;({ planPlayground, evaluateConfig } = (await import(bundleFile)) as {
+    planPlayground: PlanPlayground
+    evaluateConfig: EvaluateConfig
+  })
+  const configs = await evaluateAll(CONFIG_TEXTS)
 
   write(FILES)
   git('init', '-q')
@@ -260,10 +412,34 @@ beforeAll(async () => {
   for (const sc of SCENARIOS) {
     write({ ...FILES, ...sc.edits })
     const cli = cliPlan(sc.env)
-    const bundle = await bundlePlan({ ...FILES, ...sc.edits }, sc.env)
+    const bundle = await bundlePlan({ ...FILES, ...sc.edits }, sc.env, configs)
     outcomes.set(sc.name, { cli, bundle, native: await nativeSchedule(cli) })
   }
-  wrongEnv = await bundlePlan(FILES, { API_URL: 'https://wrong.example.test' })
+  wrongEnv = await bundlePlan(FILES, { API_URL: 'https://wrong.example.test' }, configs)
+
+  for (const v of CORE_VARIANTS) {
+    const files = { ...FILES, [CONFIG_FILE['@pg/core']!]: v.text }
+    write(files)
+    const cli = cliPlan(ENV)
+    const bundle = await bundlePlan(
+      files,
+      ENV,
+      await evaluateAll({ ...CONFIG_TEXTS, '@pg/core': v.text }),
+    )
+    variants.set(v.name, { cli, bundle })
+  }
+
+  // Both planners read the same files; only the page's config is evaluated
+  // from the fixture's own text.
+  const controlFiles = { ...FILES, [CONFIG_FILE['@pg/core']!]: CONTROL_TEXT }
+  write(controlFiles)
+  control = { cli: cliPlan(ENV), bundle: await bundlePlan(controlFiles, ENV, configs) }
+
+  for (const [name, text] of Object.entries(NOT_OBJECT_TEXTS)) {
+    write({ ...FILES, [CONFIG_FILE['@pg/docs']!]: text })
+    notObject.set(name, { cli: cliRun(ENV), page: await evaluate(text) })
+  }
+  write(FILES)
   bundleTrapHits = { ...trapHits }
 }, 60_000)
 
@@ -324,5 +500,86 @@ describe('the playground bundle plans what the CLI plans', () => {
     }
     expect(trapHits['Bun.hash.xxHash3']).toBe(1)
     expect(fs.existsSync(ws)).toBe(true)
+  })
+})
+
+describe("the page evaluates a config's text as the CLI does (item 699)", () => {
+  for (const v of CORE_VARIANTS) {
+    it(`${v.name}: every task's key, cache status and deps`, () => {
+      const { cli, bundle } = variants.get(v.name)!
+      expect(cli.length).toBe(8)
+      expect(comparable(bundle.tasks)).toEqual(comparable(cli))
+    })
+
+    it(`${v.name}: moves exactly ${v.moved.length} keys, in both planners`, () => {
+      const base = outcomes.get(SCENARIOS[0]!.name)!
+      const { cli, bundle } = variants.get(v.name)!
+      expect(movedFrom(base.cli, cli)).toEqual(v.moved)
+      expect(movedFrom(base.bundle.tasks, bundle.tasks)).toEqual(v.moved)
+    })
+  }
+
+  it("negative control: the page's config against the CLI's one-field variant differs on exactly the tasks it reaches", () => {
+    expect(movedFrom(control.cli, control.bundle.tasks)).toEqual(CORE_TEST_DOWNSTREAM)
+  })
+
+  for (const name of Object.keys(NOT_OBJECT_TEXTS)) {
+    it(`a default export that is not an object (${name}): the CLI's message, with the page's file name`, () => {
+      const { cli, page } = notObject.get(name)!
+      const file = path.join(ws, CONFIG_FILE['@pg/docs']!)
+      expect(cli.exitCode).toBe(1)
+      expect(cli.stderr).toBe(`vx: Project config at ${file} did not export a default object\n`)
+      expect(page).toEqual({ ok: false, error: NOT_AN_OBJECT })
+      expect(cli.stderr.replace(file, 'vx.config.mjs')).toBe(`vx: ${NOT_AN_OBJECT}\n`)
+    })
+  }
+
+  // `vx run` evaluates a config in-process; a repeat load (`vx watch`)
+  // evaluates it in a worker and JSON-round-trips it BEFORE validation, as
+  // the page does. The page equals that path on what JSON drops.
+  const WORKER_PATH_TEXTS: Record<string, string> = {
+    'a function-valued property': `export default {
+  tasks: { build: { exec: { command: 'true' }, description: () => 'built' } },
+}
+`,
+    'an undefined property': `export default {
+  tasks: { build: { exec: { command: 'true', timeout: undefined } } },
+}
+`,
+  }
+  for (const [name, text] of Object.entries(WORKER_PATH_TEXTS)) {
+    it(`${name}: the page's object is the CLI worker's`, async () => {
+      const file = path.join(scratch, `${name.replaceAll(' ', '-')}.mjs`)
+      writeFileSync(file, text)
+      const page = await evaluate(text)
+      // Strict: a property kept with the value `undefined` is not a dropped one.
+      expect(page).toStrictEqual({
+        ok: true,
+        config: { tasks: { build: { exec: { command: 'true' } } } },
+      })
+      expect(page).toStrictEqual({ ok: true, config: await evaluateConfigFresh(file) })
+    })
+  }
+
+  it('an import of node:fs is refused by name', async () => {
+    expect(await evaluate("import { readFileSync } from 'node:fs'\nexport default {}\n")).toEqual({
+      ok: false,
+      error: `cannot import 'node:fs': ${ONLY_VX}`,
+    })
+  })
+
+  it('an import of a relative file is refused by name', async () => {
+    expect(
+      await evaluate(
+        "import { defineProject } from '@vzn/vx'\nimport preset from './preset.mjs'\nexport default defineProject(preset)\n",
+      ),
+    ).toEqual({ ok: false, error: `cannot import './preset.mjs': ${ONLY_VX}` })
+  })
+
+  it('a config that never finishes is terminated at the deadline', async () => {
+    expect(await evaluate('while (true) {}\nexport default {}\n', 200)).toEqual({
+      ok: false,
+      error: 'the config did not finish evaluating within 200 ms',
+    })
   })
 })
