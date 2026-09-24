@@ -7,7 +7,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { runLockPath } from '../src/orchestrator/run-lock.js'
+import { acquireRunLock, runLockPath } from '../src/orchestrator/run-lock.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -114,6 +114,55 @@ describe('two runs on one workspace', () => {
         expect((await Array.fromAsync(new Bun.Glob('out*.txt').scan({ cwd: dist }))).length).toBe(
           200,
         )
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`vx cache prune` waits for a run on the workspace before it evicts',
+    async () => {
+      // A prune beside a run deleted the artifacts the run had just probed
+      // as hits (upstream survey, nx#36688); the run now re-runs such a task,
+      // but a prune on the same workspace need not make it. Held here by
+      // this process, as a run holds it.
+      await addProject(root, 'app', { config: MANY, files: { 'src/index.js': 'export {}\n' } })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+      const cacheDir = path.join(root, '.vx', 'cache')
+      const artifacts = (): string[] =>
+        Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
+      expect(artifacts()).toHaveLength(1)
+      await new Promise((r) => setTimeout(r, 1100))
+
+      const release = await acquireRunLock(root, { log: () => {} })
+      let released = false
+      try {
+        const proc = Bun.spawn([process.execPath, BIN, 'cache', 'prune', '--older-than', '1s'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, NO_COLOR: '1' },
+        })
+        const out = new Response(proc.stdout).text()
+        const reader = (proc.stderr as ReadableStream<Uint8Array>).getReader()
+        let err = ''
+        while (!err.includes('waiting for another vx run')) {
+          const chunk = await reader.read()
+          if (chunk.done) throw new Error(`prune never waited: ${err}${await out}`)
+          err += new TextDecoder().decode(chunk.value)
+        }
+        expect(err).toContain(`waiting for another vx run (pid ${process.pid}) on this workspace`)
+        expect(artifacts()).toHaveLength(1)
+        await release()
+        released = true
+        expect(await proc.exited).toBe(0)
+        expect(await out).toContain('Pruned 1 entry')
+        expect(artifacts()).toEqual([])
+      } finally {
+        if (!released) await release()
       }
     },
     TIMEOUT,

@@ -1253,6 +1253,14 @@ orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside).
 
+A prune that deletes waits for a `vx run` on the same workspace to
+finish first (the run's lock; it says `[vx] waiting for another vx run
+(pid N) on this workspace to finish…` after a second), so it never
+evicts what that run is restoring. A run it cannot see — another
+workspace sharing the `--cache-dir` — survives a prune anyway: an
+artifact that vanishes before its restore is a miss, and the task runs
+([caching](./caching.md#concurrent-runs)).
+
 Exit codes:
 
 - `0` — pruning completed (zero or more entries evicted).

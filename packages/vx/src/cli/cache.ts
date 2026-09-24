@@ -1,6 +1,7 @@
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { seeHelp } from './help.js'
 import { nearest, parseDuration, parseSize } from '../util/index.js'
+import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
@@ -148,6 +149,13 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   // run only reads, and reads a read-only cache fine.
   if (!parsed.dryRun) cache.assertWritable()
   noteSchemaReset(cache, warnToStderr)
+  // A prune beside a run on this workspace evicts what the run has just
+  // probed as hits, whose `accessed_at` bumps it has not flushed yet; the
+  // run then re-runs those tasks (upstream survey, nx#36688). So a prune
+  // takes the run's lock and waits its turn. A dry run deletes nothing.
+  const releaseRunLock = parsed.dryRun
+    ? async (): Promise<void> => {}
+    : await acquireRunLock(root, { log: warnToStderr })
   try {
     const opts: { olderThanMs?: number; maxBytes?: number; dryRun?: boolean } = {}
     if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
@@ -164,6 +172,7 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     )
   } finally {
     cache.close()
+    await releaseRunLock()
   }
   return 0
 }

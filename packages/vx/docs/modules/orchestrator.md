@@ -35,6 +35,11 @@ for the extension seams.
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
 export function shouldShortCircuit(nodes, policy, cache): boolean
+// The workspace's run lock (below); `vx cache prune` takes it too.
+export function acquireRunLock(
+  workspaceRoot: string,
+  opts: { log: (line: string) => void; signal?: AbortSignal; dir?: string },
+): Promise<() => Promise<void>>
 
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
@@ -230,4 +235,9 @@ them itself through `RunOptions.inflight`. The release reads the pid
 file back before it removes anything — that read is the proof no later
 run reclaimed the directory, not a repeat of the write — and then
 removes exactly what it made, the pid file and the directory, one call
-each (`tests/syscall-repeats.unsafe.test.ts`).
+each (`tests/syscall-repeats.unsafe.test.ts`). `vx cache prune` (not
+`--dry-run`) takes the same lock before it evicts: a prune beside a run
+removed the artifacts the run had just probed as hits, whose
+`accessed_at` bumps were not flushed yet (nx#36688). The run survives
+that now (a vanished artifact is a miss), but only by re-running the
+task.
