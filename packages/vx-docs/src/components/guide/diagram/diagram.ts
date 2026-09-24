@@ -74,6 +74,33 @@ export interface Picture {
   arrows?: Arrow[]
   notes?: Note[]
   frames?: Frame[]
+  /** The same picture laid out for a phone: every box, arrow, note and
+   *  frame of the wide one (a note may break across lines), placed to fit
+   *  `NARROW` units across, so its type draws near full size where the wide
+   *  one would shrink below reading size. */
+  narrow?: Layout
+}
+
+/** A picture's drawing without its words for the page: what `narrow` holds. */
+export interface Layout {
+  width: number
+  height?: number
+  boxes: Box[]
+  arrows?: Arrow[]
+  notes?: Note[]
+  frames?: Frame[]
+}
+
+/** The widest a phone layout may be: a 360-pixel phone's column is about 340
+ *  pixels, so a layout this wide draws at about nine tenths of its size. */
+export const NARROW = 360
+
+/** A picture's phone layout as a picture of its own, named apart so its
+ *  arrowheads' ids do not collide with the wide one's. */
+export function narrowOf(p: Picture): Picture | undefined {
+  if (p.narrow === undefined) return undefined
+  const { narrow: _, ...wide } = p
+  return { ...wide, ...p.narrow, name: `${p.name}-narrow` }
 }
 
 const BOX = { w: 130, h: 52, hSub: 60 }
@@ -186,12 +213,15 @@ export interface Lane {
  * Timelines as boxes: one row per lane, one box per bar, `scale` units of
  * width per unit of time, the lane's name to the left of its row. A bar too
  * narrow for its label prints none (give it a `title`), and one too narrow
- * for its sub line drops the sub.
+ * for its sub line drops the sub. With `down`, time runs down the page
+ * instead: one column per lane, `h` wide, `row` apart, its name above it,
+ * which is how a timeline fits a phone.
  */
 export function lanes(
   rows: Lane[],
-  at: { x: number; y: number; scale: number; row: number; h?: number },
+  at: { x: number; y: number; scale: number; row: number; h?: number; down?: boolean },
 ): { boxes: Box[]; notes: Note[] } {
+  if (at.down === true) return columns(rows, at)
   const h = at.h ?? 40
   const boxes: Box[] = []
   const notes: Note[] = []
@@ -210,6 +240,38 @@ export function lanes(
         h,
         label: labelFits ? bar.label : '',
         ...(bar.sub !== undefined && labelFits && fits(bar.sub, FONT.sub) ? { sub: bar.sub } : {}),
+        ...(bar.tone === undefined ? {} : { tone: bar.tone }),
+        ...(bar.title === undefined ? {} : { title: bar.title }),
+      })
+    })
+  })
+  return { boxes, notes }
+}
+
+function columns(
+  rows: Lane[],
+  at: { x: number; y: number; scale: number; row: number; h?: number },
+): { boxes: Box[]; notes: Note[] } {
+  const w = at.h ?? 40
+  const boxes: Box[] = []
+  const notes: Note[] = []
+  rows.forEach((lane, i) => {
+    const x = at.x + i * at.row
+    notes.push({ x: x + w / 2, y: at.y - 10, text: lane.name })
+    lane.bars.forEach((bar, j) => {
+      const h = (bar.end - bar.start) * at.scale - 3
+      const fits = (s: string, size: number): boolean => textWidth(s, size) + 6 <= w
+      const labelFits = fits(bar.label, FONT.label) && h >= FONT.label + 6
+      boxes.push({
+        id: bar.id ?? `${lane.name}/${j}`,
+        x,
+        y: at.y + bar.start * at.scale,
+        w,
+        h,
+        label: labelFits ? bar.label : '',
+        ...(bar.sub !== undefined && labelFits && fits(bar.sub, FONT.sub) && h >= 40
+          ? { sub: bar.sub }
+          : {}),
         ...(bar.tone === undefined ? {} : { tone: bar.tone }),
         ...(bar.title === undefined ? {} : { title: bar.title }),
       })

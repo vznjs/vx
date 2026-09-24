@@ -29,12 +29,26 @@
   color: var(--vx-muted);
   text-align: center;
 }
-/* A phone shows the whole drawing, smaller, rather than a cropped one a
-   reader would have to know to scroll: a box out of view reads as absent. */
+/* A phone shows the whole drawing rather than a cropped one a reader would
+   have to know to scroll (a box out of view reads as absent), and a picture
+   with a phone layout shows that one: the wide drawing, shrunk to a phone's
+   column, sets its type at about eight pixels. 32rem is where the wide one
+   drops below four fifths of its size. */
+.vx-diagram svg[data-layout='narrow'] {
+  display: none;
+}
 @media (max-width: 40rem) {
   .vx-diagram {
     margin-inline: -0.5rem;
     padding: 0.75rem 0.25rem 0.75rem;
+  }
+}
+@media (max-width: 32rem) {
+  .vx-diagram svg[data-layout='wide'] {
+    display: none;
+  }
+  .vx-diagram svg[data-layout='narrow'] {
+    display: block;
   }
 }
 
