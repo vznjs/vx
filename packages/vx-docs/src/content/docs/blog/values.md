@@ -6,7 +6,7 @@ authors:
 tags:
   - values
   - design
-excerpt: "Every design decision in vx is settled by three drivers in a fixed order, and eight principles that follow from them. This is the list, with what each one has already cost and what it has bought."
+excerpt: "Every design decision in vx is settled by three drivers in a fixed order, and nine principles that follow from them. This is the list, with what each one has already cost and what it has bought."
 ---
 
 Most projects have values in the sense of a paragraph on the README.
@@ -25,7 +25,7 @@ millisecond on the warm path when no plugin fills it is not added; the
 zero-cost gate is added first. A module boundary that would force a
 copy of a hot loop is redrawn rather than crossed.
 
-## The eight principles
+## The nine principles
 
 **Perf first.** Measure before and after. A/B arms interleaved,
 min-of-N, the "before" arm in an immutable git worktree, one workspace
@@ -67,6 +67,12 @@ anything to grow a business model around.
 **Seam over special case.** When core grows a branch for one consumer,
 the seam is too narrow. `vx prune` and the history-based scheduler both
 left core for their own packages once the seam they needed existed.
+
+**Once per run.** Within a run, nothing outside vx changes the files it
+reads, so each fact is learned once: a file read once, a path looked up
+once, a process asked once. Only vx's own writes, or its tasks' runs,
+make it ask again. A test traces a run and fails on a repeat that has no
+written reason.
 
 ## The rejected list
 

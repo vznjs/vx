@@ -296,6 +296,39 @@ test is telling the truth.
       Reference. The roadmap marks the site's address as settled (1.5, and
       the timeline row) and Track W as superseded by item 729.
 
+732.  DONE (2026-09-24, owner: "never do anything twice"). Once per run,
+      first two slices. A strace of a 100-package run (200 tasks) found
+      each task spawn looking `sh` up on the PATH again (2,800 stats cold),
+      git looked up per spawn, two `rev-parse` spawns where one answers,
+      `pnpm-workspace.yaml` read three times, each `vx.config.mjs` twice,
+      and redundant cache-dir, run-lock and `.gitignore` calls. Now: `sh`,
+      `git` and `strace` resolve once, on vx's OWN PATH (`util/which.ts`;
+      a project's `node_modules/.bin/sh` had been parsing every command of
+      that project, sandboxed ones included, `tests/task-shell.test.ts`);
+      one `rev-parse` answers the enumeration and the hasher; a load's
+      root files go through one `LoadReads` map per load (a watch cycle
+      reads fresh); a project config is evaluated from the bytes the
+      loader read, through a `Bun.plugin` onLoad, ESM and UTF-8 only
+      (`project-loader.ts`). vx's own cold syscalls 6,274 → 3,456; cold
+      `load configs` at 1,000 projects 256 → 181 ms (min of 7, loaded
+      box); warm unchanged within noise. Held by
+      `syscall-repeats.unsafe.test.ts`, `read-once.unsafe.test.ts`,
+      `load-reads.test.ts` and `git-spawns-once.test.ts`. The output side
+      (the third slice) is in flight.
+
+733.  DONE (2026-09-24, upstream survey, nx#36415 class). A root
+      devDependency bump moved no project's lockfile key: `taskBinDirs`
+      puts the root `.bin` on every task's PATH and Node resolution walks
+      up to the root `node_modules`, but a project's key folded only its
+      own importer. With `pnpm()`, `bun()`, `npm()` or `yarn()` berry, a
+      tool bump replayed the old tool's output as up to date, in this repo
+      too (an `oxlint` bump selected 0 of 10 projects). `digestFor`
+      (`orchestrator/lockfile-claim.ts`, the one shared implementation)
+      now folds the root importer into every project's digest. Of this
+      repo's 714 package bumps, the holes that selected nothing go 48 → 0
+      and 624 still select exactly one project. Self-healing, no
+      `CACHE_VERSION` bump.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -515,6 +548,16 @@ next?".
     729 (`design/site-short-2026-09.md`). Left: the owner's read.
 
 ## Decisions (this arc)
+
+- **Once per run (owner, 2026-09-24, item 733).** Within a run nothing
+  outside vx changes the files it reads; what vx learns once (a read, a
+  stat, a PATH lookup, a spawn's answer) it reuses, and only vx's own
+  writes or its tasks' runs invalidate a fact. A repeat that stays has a
+  measured reason in a comment and in the strace laws that pin it.
+- **Tools resolve on vx's own PATH (item 733).** The task's PATH decides
+  what its command runs, never which shell parses it.
+- **Every project's lockfile key folds the root importer (item 734).**
+  What the root declares is reachable from every task.
 
 - **Declaring `cache` may narrow core's own grant, never widen one
   (owner-delegated, 2026-09-24, item 726).** The user's `sandbox.allow`
