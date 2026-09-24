@@ -775,8 +775,14 @@ arm from a worktree). No `CACHE_VERSION` bump: no key moved.
     W4, the scheduling page and the scheduler simulator on vx's own
     ranking code, is DONE (item 685, entry 14cg). W5 and W6, the
     architecture page with its pipeline explorer and the worked plugins,
-    are DONE (item 686, entry 14ch). Next step: W3 (correctness) and W7
-    (choosing).
+    are DONE (item 686, entry 14ch). W3 (correctness) and W7 (choosing)
+    are in flight. W9, the playground, has started: its first core
+    change, P1, is DONE (item 691, entry 14cm), and its three open
+    questions are decided in `design/playground-spike-2026-09.md` § W9
+    decisions (parity rows in core's unsafe suite, `vx.config.mjs`
+    evaluated in a Worker, a Bun-built bundle from a vx task). The exact
+    glob port (item 692) is in flight; the bundle, its task and the
+    parity rows follow.
 
 ## Decisions (this arc)
 

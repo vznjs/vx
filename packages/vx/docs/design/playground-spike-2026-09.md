@@ -299,6 +299,41 @@ work.
   The second is the real thing, and it needs a parity row of its own over
   TS configs. Choose at the start of W9.
 
+## W9 decisions (2026-09-24)
+
+The three questions the spike left open are decided. They bind the W9
+work that follows.
+
+- **The parity rows live in core's unsafe suite.** No new unsandboxed
+  task. `test.bun.unsafe` already runs without a sandbox and with git,
+  for the same reason the parity rows need them (the CLI half runs
+  `vx run --dry=json` over a fixture repository). The rows build the
+  playground bundle from `packages/vx-docs/src/playground/` with
+  `Bun.build`, load it in Bun with the host APIs trapped, and compare it
+  with the CLI. The unsafe task's inputs already cover the packages its
+  laws read, so a playground edit re-keys it. The repo keeps exactly two
+  tasks without `exec.sandbox`.
+- **The reader edits `vx.config.mjs`, not `vx.config.ts`.** Core loads
+  both, and a JavaScript config needs no type stripping, so the page adds
+  no dependency. The page rewrites the one import it allows
+  (`@vzn/vx`) to a module whose `defineProject` is the identity, and
+  evaluates the text as a module from a Blob URL inside a Worker. The
+  Worker keeps the reader's code off the page's DOM and bounds a
+  runaway loop (the page terminates it after a deadline). The evaluated
+  object crosses back by structured clone. A config holding a function
+  or another value that clone refuses is reported as an error, not
+  approximated. A parity row evaluates the same text both ways (the
+  CLI's loader and the page's rewrite) and requires the same keys.
+- **The bundle is built by a vx task with Bun, not by the site's
+  Vite.** `@vzn/vx-docs#build.playground` runs `Bun.build` with the
+  spike's aliases into `public/playground/`, and the site's `build`
+  depends on it. The artifact the parity rows test is the one the site
+  ships. The island loads it with a dynamic `import()` on first use.
+
+Order: P1 (item 691), the exact glob port (item 692), then the bundle
+and its task with the parity rows, then config editing, then the UI.
+W10 and W11 build on the finished playground.
+
 ## Risks
 
 1. **The oracle is Bun's behaviour, not a spec.** The 32-bit seed and
