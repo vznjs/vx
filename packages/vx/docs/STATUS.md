@@ -244,7 +244,15 @@ state of each:
    has its own number since 2026-09-23 (item 615): 1,000 projects,
    `.vx` removed, 2,938–3,420 ms before against 2,680–2,997 after, the
    `load configs` stage 507–607 → 207–272; a cold arm is five reps with
-   the cache removed before each, no A/A needed at that size.
+   the cache removed before each, no A/A needed at that size. 2026-09-24 (items
+   690–702, the day's run-path changes being the key fold's move to
+   `key-fold.ts`, one config worker per repeat round and the JSON-data
+   walk): base 39294a8d against head, compiled binaries, 1,000 projects
+   warm, interleaved, n=25 — medians 266.5 ms before and 266.4 after,
+   mins 245.1 and 230.8; A/A 270.4 against 264.8 (mins 238.5, 238.1).
+   A tie; a first n=15 pass read the mins the other way round (225.9
+   before, 251.8 after) with the same tied medians, which is the box's
+   min-of-N noise, not a cost.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
