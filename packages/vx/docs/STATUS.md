@@ -836,20 +836,20 @@ next?".
     10.7 s building the graph. Index the output prefixes so each task is
     compared only with the ones that can overlap it, and pin the time
     at 4,000.
-22. **Yarn 4 catalogs make `yarn()` keys stale (found in 744,
+22. **Yarn 4 catalogs make `yarn()` keys stale (found in 745,
     turborepo#12635).** A real Yarn 4.18.1 install records a catalog
     dependency as `"catalog:"`, and `resolveDescriptor` folds that
     literal: bumping the catalog `^6 → ^7` left every importer digest
     byte-identical, a stale hit under `yarn()` and a miss for
     `--affected`. Resolve the catalog entry through `.yarnrc.yml` (or
     the lockfile's resolution), with the ledger's row as the pin.
-23. **A remote-cache warning names nothing (found in 744).** An upload
+23. **A remote-cache warning names nothing (found in 745).** An upload
     timeout warns `vx/<plugin>: The operation timed out.` with no PUT,
     hash or server; an unreachable server repeats the bare runtime
     message once per request (3 lines for `turboCache`, 2 for
     `nxCache` on a one-task run; a 401 is already deduplicated). Name
     the operation and endpoint, and say it once per run.
-24. **A dangling output-root link fails a hit (found in 744, confirmed
+24. **A dangling output-root link fails a hit (found in 745, confirmed
     on main after 742).** `dist -> real-out` inside the project with
     `real-out` deleted: the next hit exits 1, "blocked by what is on
     disk (EEXIST mkdir …/dist) … a path the output globs do not
