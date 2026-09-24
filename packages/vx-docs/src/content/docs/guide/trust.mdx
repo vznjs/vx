@@ -19,7 +19,7 @@ list only `src/**`. You edit `banner.txt` and run the build.
 
 The key did not change, so vx handed back the old file. The run passed, and
 the file is wrong. This is a
-[stale hit](../../learn/glossary/#cache-hit-miss-and-stale-hit).
+[stale hit](../../glossary/#cache-hit-miss-and-stale-hit).
 
 A stale hit comes from something the task reads but the key never sees. It
 can be a file, an environment variable, or a tool on your machine. A slow
@@ -29,15 +29,15 @@ run is easy to notice. A wrong result on a passing run is not.
 
 <Diagram {...P.listNotGuess} />
 
-A guess can only see what one run happened to read. It also comes after the
-run, too late to look anything up. So vx asks you for the list, and then
-checks it.
+A guess sees only what one run happened to read. And it comes after the
+run, but vx needs the key before the run. So vx asks you for the list, and
+then checks it.
 
 ## The sandbox turns a forgotten file into an error
 
 <Diagram {...P.sandbox} />
 
-The [sandbox](../../learn/glossary/#hermeticity-and-sandboxing) runs the
+The [sandbox](../../glossary/#hermeticity-and-sandboxing) runs the
 task where only the files you listed exist. Reading `banner.txt` fails, and
 the error names it. A failed task is never saved.
 
@@ -47,12 +47,7 @@ Step through the five runs: the edit, the stale hit, then the sandbox.
 
 ## Four things the sandbox does not check
 
-- **Environment variables.** List them in `cache.inputs.env`.
-- **Tools on your machine**, such as the Node version.
-- **Installed packages in `node_modules`**, including your own linked
-  packages such as `ui`. This is a known gap.
-- **Other systems.** It runs on Linux and macOS, and on Windows only under
-  WSL.
+<Diagram {...P.unchecked} />
 
 ## In vx
 

@@ -1,4 +1,4 @@
-// The Learn pages' checkpoints (roadmap W11, item 705;
+// The chapters' checkpoints (roadmap W11, item 705;
 // design/labs-checkpoints-2026-09.md § W11). A checkpoint's answer is computed
 // by vx's planner, never written into the page, so the truth below is written
 // out by hand: each question, and each task the answer holds with the reason
@@ -32,7 +32,7 @@ import {
 import type { Planner, PlaygroundTask } from '../src/components/demos/model/playground-view.js'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
-const LEARN = path.resolve(import.meta.dir, '../src/content/docs/learn')
+const GUIDE = path.resolve(import.meta.dir, '../src/content/docs/guide')
 const ELEMENT = path.resolve(import.meta.dir, '../src/components/demos/checkpoint.ts')
 
 /** The toy workspace's tasks, in the playground's order. */
@@ -124,13 +124,17 @@ const TRUTH: Record<string, Truth> = {
   },
 }
 
-/** Which page places which checkpoints, in order. */
+/** Which chapter places which checkpoints, in order. */
 const PAGES: Record<string, string[]> = {
   caching: ['caching'],
-  correctness: ['correctness'],
-  playground: ['playground-edit', 'playground-env'],
-  'what-is-task-orchestration': ['what-is-run', 'what-is-edit'],
+  trust: ['correctness'],
+  'try-it': ['playground-env'],
 }
+
+/** The checkpoints the old Learn pages asked, which no chapter places now:
+ *  the model still defines them, and every row below but placement holds
+ *  them, until they are placed or dropped. */
+const UNPLACED = ['playground-edit', 'what-is-edit', 'what-is-run']
 
 const NO_REASON = { edit: 'key unchanged', run: 'not needed by what you asked for' }
 const VERB = {
@@ -355,17 +359,17 @@ describe('the marking', () => {
 })
 
 describe('the checkpoints', () => {
-  it('are the ones written out here, each placed by exactly one page', () => {
+  it('are the ones written out here, each placed by one chapter at most', () => {
     const placed: Record<string, string[]> = {}
-    for (const f of readdirSync(LEARN).filter((n) => n.endsWith('.mdx'))) {
+    for (const f of readdirSync(GUIDE).filter((n) => n.endsWith('.mdx'))) {
       const ids = [
-        ...readFileSync(path.join(LEARN, f), 'utf8').matchAll(/<Checkpoint id="([^"]+)"/g),
+        ...readFileSync(path.join(GUIDE, f), 'utf8').matchAll(/<Checkpoint id="([^"]+)"/g),
       ]
       if (ids.length > 0) placed[f.replace(/\.mdx$/, '')] = ids.map((m) => m[1]!)
     }
     expect(placed).toEqual(PAGES)
     const onPages = Object.values(PAGES).flat()
-    expect([...onPages].sort()).toEqual(Object.keys(TRUTH).sort())
+    expect([...onPages, ...UNPLACED].sort()).toEqual(Object.keys(TRUTH).sort())
     expect(Object.keys(CHECKPOINTS).sort()).toEqual(Object.keys(TRUTH).sort())
   })
 
@@ -423,7 +427,7 @@ describe('the checkpoints on the built pages', () => {
   const elements = Object.fromEntries(
     Object.keys(PAGES).map((slug) => [
       slug,
-      [...page(`learn/${slug}`).matchAll(/<vx-checkpoint\b[^>]*>([\s\S]*?)<\/vx-checkpoint>/g)].map(
+      [...page(`guide/${slug}`).matchAll(/<vx-checkpoint\b[^>]*>([\s\S]*?)<\/vx-checkpoint>/g)].map(
         (m) => m[1]!,
       ),
     ]),
@@ -510,7 +514,7 @@ describe('the checkpoints on the built pages', () => {
     const MARKERS = ['Duplicate package name', 'did not export a default object']
     expect(MARKERS.map((m) => planner.includes(m))).toEqual([true, true])
     for (const slug of Object.keys(PAGES)) {
-      const html = page(`learn/${slug}`)
+      const html = page(`guide/${slug}`)
       const scripts = [...html.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/g)].map((m) => m[0])
       const entry = scripts.flatMap((s) =>
         [...s.matchAll(/\/_astro\/([\w.-]+\.js)/g)].map((m) => m[1]!),

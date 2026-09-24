@@ -106,3 +106,58 @@ export const chain: Picture = {
     { x: 300, y: 106, text: 'each one waits for the one before, however many workers you have' },
   ],
 }
+
+/** The simulator's default graph on two workers, once under each rule: vx's
+ *  own (the most tasks waiting first) and the history plugin's (the longest
+ *  chain ahead first). Only app#docs, the long task nothing waits on, is
+ *  named; every other bar keeps its id as its title. */
+export const ORDERS = (['count', 'median'] as const).map((policy) =>
+  schedule(SIM_TASKS, new Set(), policy, 2),
+)
+const LONG = 'app#docs'
+const ORDER_SCALE = (600 - GUTTER - 50) / (Math.max(...ORDERS.map((o) => o.makespan)) / 1000)
+const ORDER_LANE = 40
+const ORDER_TITLE = ['vx: most tasks waiting first', 'plugin: longest chain first']
+const orderPanels = ORDERS.map((run, i) => {
+  const top = 30 + i * (2 * ORDER_LANE + 40)
+  const drawn = lanes(
+    [1, 2].map((l) => ({
+      name: `worker ${l}`,
+      bars: run.bars
+        .filter((b) => b.lane === l)
+        .map((b) => ({
+          id: `${run.policy}/${b.id}`,
+          start: b.start / 1000,
+          end: b.end / 1000,
+          label: b.id === LONG ? LONG : '',
+          title: b.id,
+          ...(b.id === LONG ? { tone: 'accent' as const } : {}),
+        })),
+    })),
+    { x: GUTTER, y: top + 4, scale: ORDER_SCALE, row: ORDER_LANE, h: ORDER_LANE - 8 },
+  )
+  const notes: Note[] = [
+    { x: 4, y: top - 8, text: ORDER_TITLE[i]!, anchor: 'start' },
+    ...drawn.notes,
+    {
+      x: GUTTER + (run.makespan / 1000) * ORDER_SCALE + 8,
+      y: top + ORDER_LANE + 5,
+      text: secs(run.makespan),
+      anchor: 'start',
+      tone: 'default',
+    },
+  ]
+  return { boxes: drawn.boxes, notes }
+})
+
+export const order: Picture = {
+  name: 'start-order',
+  label: `${ORDERS.map((run, i) => {
+    const docs = run.bars.find((b) => b.id === LONG)!
+    return `${ORDER_TITLE[i]}: ${LONG} starts at ${secs(docs.start)}, and the run ends at ${secs(run.makespan)}`
+  }).join('. ')}.`,
+  caption: `Same tasks, same two workers. Starting the long ${LONG} first ends the run sooner.`,
+  height: 250,
+  boxes: orderPanels.flatMap((p): Box[] => p.boxes),
+  notes: orderPanels.flatMap((p) => p.notes),
+}

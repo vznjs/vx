@@ -4,13 +4,14 @@ description: Four short labs in which you break a build on purpose, watch what v
 ---
 
 import Playground from '../../../components/demos/Playground.astro'
+import SchedulerSim from '../../../components/demos/SchedulerSim.astro'
 
-The pages before this one explain how a task runner can go wrong. In these
-labs you make it go wrong yourself. Each of the first three starts the
-[playground](../playground/) from the toy workspace with one change, and
-gives you a few steps to follow. The fourth uses the scheduling page's
-simulator. Each lab ends with what stopped the failure in vx, and whether
-Turborepo, Nx or Bazel would stop it too.
+The Guide showed how a task runner can go wrong. In these labs you make it
+go wrong yourself. Labs 1 to 3 start the [playground](../try-it/) from the
+four packages with one change, and give you a few steps to follow. Lab 4
+uses the scheduler simulator from [chapter 4](../concurrency/). Each lab
+ends with what stopped the failure in vx, and whether Turborepo, Nx or
+Bazel would stop it too.
 
 The playground plans. It does not run commands. It computes every task's
 key and asks a simulated cache for it, so it shows which tasks would hit
@@ -44,7 +45,7 @@ This workspace has one file more than the playground's:
 Explicit inputs. `cache.inputs.files` has no default, and apart from the
 package's `package.json`, a task's key folds only the files of its
 package that the list names
-([how vx does it](../caching/#how-vx-does-it),
+([caching](../caching/),
 [why caching is opt-in](../../caching/#why-caching-is-opt-in)). Here that
 is right: no command reads `notes.md`, so an edit to it should not
 rebuild anything. Once `build` declares it, the file is an input like any
@@ -103,10 +104,9 @@ The sandbox, `exec.sandbox`. Declared inputs are a claim, and nothing in
 step 2 checks it. A sandbox that grants only what the inputs declare turns
 the claim into a check: the first run that reads an undeclared file fails
 and names it, and a failed task is never cached
-([the sandbox turns the claim into a check](../correctness/#the-sandbox-turns-the-claim-into-a-check)).
-The correctness page's demo runs this failure step by step, with a
-command of the same shape
-([a stale hit, then the sandbox that catches it](../correctness/#try-it-a-stale-hit-then-the-sandbox-that-catches-it)).
+([the sandbox](../trust/#the-sandbox-turns-a-forgotten-file-into-an-error)).
+Chapter 6's demo runs this failure step by step, with a command of the
+same shape ([Can you trust a hit?](../trust/)).
 
 ### Would Turborepo, Nx or Bazel?
 
@@ -188,10 +188,51 @@ cleans and writes only those. `ui#build` still owns all of `dist/**`, and
 
 ## Lab 4: a bad order
 
-The fourth lab is on the [Scheduling](../scheduling/#lab-a-bad-order)
-page, in its simulator. You make `app#docs` long, watch the critical
-path grow, and see how much a run loses when the scheduler starts the
-long task late.
+In this simulator, a long task that starts late makes the whole run late.
+Use the Workers menu, the two chart menus and the Takes fields. Reset puts
+everything back.
+
+<SchedulerSim />
+
+1. **Press Reset.** On 2 workers, the first chart is tasks waiting, vx
+   with no plugin. It starts `app#docs` at 8 seconds and finishes at
+   27. The second chart, learned durations, finishes at 24.
+2. **Make `app#docs` take 20 seconds.** The critical path is still
+   `utils#build`, `api#build`, `app#build` and `app#test`, 24 seconds.
+   But 58 seconds of work on 2 workers takes at least 29, and that is the
+   bound now. Tasks waiting finishes at 30, and learned durations at 29.
+3. **Make it take 30 seconds.** The critical path grows: `app#docs`
+   alone takes 30 seconds, longer than the chain. The bound is 34. Tasks
+   waiting still starts `app#docs` at 8 seconds, because nothing waits
+   on it, so it ranks with the lints and after every task that something
+   waits on. The run finishes at 38. Learned durations starts it at once
+   and finishes at 34, on the bound.
+4. **Set the workers to 3.** Tasks waiting starts `app#docs` at 2
+   seconds, after `ui#lint`, and finishes at 32. Learned durations
+   finishes at 30, the length of the critical path. The spare worker
+   helped, but the order still costs 2 seconds.
+
+### What stopped it
+
+Nothing in vx's core. Its default order counts the tasks waiting on each
+task, and cannot see that `app#docs` is long. The history plugin,
+`@vzn/vx-schedule-history`, ranks by the work still ahead of each task,
+learned from past runs, and its `assume` option names a duration for a
+task with no history yet
+([start the longest chain first](../concurrency/#start-the-longest-chain-first)).
+
+### Would Turborepo, Nx or Bazel?
+
+- **Turborepo's** docs say how many tasks it runs at once, but not which
+  ready task it starts first
+  ([`turbo run`](https://turborepo.com/docs/reference/run#--concurrency-number--percentage)).
+- **Nx's** docs say that Nx Agents, on Nx Cloud, pick up tasks by their
+  processing time from historical data and by their dependencies
+  ([Nx Agents](https://nx.dev/docs/features/ci-features/distribute-task-execution)),
+  but not how a local run orders ready tasks.
+- **Bazel's** docs do not say how it orders ready actions. Its profiler
+  shows the critical path of a finished build
+  ([JSON trace profile](https://bazel.build/advanced/performance/json-trace-profile)).
 
 ## Checkpoint
 

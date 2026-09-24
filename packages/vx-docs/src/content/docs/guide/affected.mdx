@@ -30,7 +30,7 @@ no package folder.
 
 `app` uses `ui`, so a change to `ui` can break `app`. Add every package
 that uses a changed package, directly or through another one. The result
-is the [affected](../../learn/glossary/#affected) set.
+is the [affected](../../glossary/#affected) set.
 
 Pick a package below and see which tasks a change to it runs.
 
@@ -53,9 +53,6 @@ This file sits in no package, so nothing is affected. No task declares it,
 so no cache sees it either. The builds pass, and they never checked your
 change. The fix is to declare the file as an input of the tasks that read
 it.
-
-A missing entry in `package.json` hides a package the same way: if `app`
-does not list `ui`, a change to `ui` never reaches `app`.
 
 ## In vx
 

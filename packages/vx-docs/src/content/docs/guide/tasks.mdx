@@ -21,7 +21,7 @@ the loop, that is one line. It runs all of it, or none of it.
 
 <Diagram {...P.taskName} />
 
-A [task](../../learn/glossary/#task) is one command, run in one package.
+A [task](../../glossary/#task) is one command, run in one package.
 Its name joins the two with `#`. So the build of `api` is `api#build`, and
 the tests of `ui` are `ui#test`. Four packages with `build` and `test`
 make eight tasks.
@@ -30,9 +30,9 @@ make eight tasks.
 
 <Diagram {...P.readsWrites} />
 
-What a task reads are its [inputs](../../learn/glossary/#inputs): files,
+What a task reads are its [inputs](../../glossary/#inputs): files,
 settings, environment variables. What it writes are its
-[outputs](../../learn/glossary/#outputs). If the inputs did not change,
+[outputs](../../glossary/#outputs). If the inputs did not change,
 the outputs will not change either. Later chapters use that to skip work.
 
 ## One command per task lets you skip the rest

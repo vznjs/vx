@@ -9,10 +9,10 @@ exporter or a CLI verb. Why plugins? →
 
 ## Steps
 
-1. Write a function that returns `definePlugin(import.meta, hooks)`. The plugin's name is its package's name.
-2. Fill only the hooks you need (the table below). A hook nobody fills costs nothing.
+1. Write a function that returns `definePlugin(import.meta, hooks)`. Its name is its package's name.
+2. Fill only the hooks you need (below). An unfilled hook costs nothing.
 3. Declare it in `vx.workspace.ts`: `plugins: [typecheck()]`. Plugins are asked in that order.
-4. Run `vx info`. It lists each plugin and the hooks it fills.
+4. Run `vx info`: it lists each plugin and its hooks.
 5. Test it: call `run()` from `@vzn/vx` on a throwaway workspace and read what your hooks saw.
 
 ## Config
@@ -214,7 +214,7 @@ One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 
 ## What core refuses
 
-- A `cache` or `executor` hook that returns something without the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
+- A `cache` or `executor` hook whose return breaks the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
 - A `name` on the hooks object: the name is the package's.
 - A verb that names a core verb, or one two plugins both declare.
 

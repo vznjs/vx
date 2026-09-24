@@ -22,14 +22,14 @@ Each machine keeps its results to itself, so each one repeats the work.
 A cache key is a fingerprint of what a task reads: its files, its command
 and its settings. Nothing in it names a machine. So a result stored under a
 key is right for that key anywhere. Put the store where every machine can
-reach it, and you have a [shared cache](../../learn/glossary/#remote-cache).
+reach it, and you have a [shared cache](../../glossary/#remote-cache).
 
 ## Only CI writes to the shared cache
 
 <Diagram {...P.whoWrites} />
 
-A shared cache shares mistakes too. A laptop has leftovers: a file no
-commit holds, a tool you patched by hand. A wrong result from it would be
+A shared cache shares mistakes too. A laptop has leftovers: a file you
+never committed, a tool you patched by hand. A wrong result from it would be
 replayed on every machine. CI builds from a clean checkout every time, so
 let CI write and laptops read.
 
@@ -38,20 +38,14 @@ let CI write and laptops read.
 <Diagram {...P.worker} />
 
 You can also send a task to another machine, a worker, and get the output
-back. That is [remote execution](../../learn/glossary/#remote-execution).
+back. That is [remote execution](../../glossary/#remote-execution).
 The worker has only the files the task declares. A file the task reads but
 never declared is missing, so the task fails loudly instead of passing by
 luck.
 
 ## Both cost something
 
-- **Download time.** A hit is a download. For a tiny task, building can be
-  faster.
-- **A server.** Someone runs it or rents it.
-- **The same tools on every worker.** Your runtime and compilers, in the
-  same versions.
-- **Some tasks cannot leave.** A dev server or a test that needs your own
-  machine stays local.
+<Diagram {...P.costs} />
 
 ## In vx
 

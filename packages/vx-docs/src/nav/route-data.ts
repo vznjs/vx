@@ -1,7 +1,7 @@
 // Starlight's route middleware: each page sees the sidebar of its own section
 // only, and its prev/next links stay inside that section. The section is the
 // top-level group that lists the page; a page no group lists goes by its
-// path: the Learn pages the Guide replaces (R4 redirects them) belong to the
+// path: one under guide/ (the labs, which chapter 10 links) belongs to the
 // Guide, and every other one, internals included, to the Reference, which is
 // where the internals index is linked from.
 
@@ -19,7 +19,7 @@ function links(entries: Entry[]): Link[] {
 function sectionByPath(id: string): SectionId {
   const first = id.split('/')[0]
   if (first === 'blog') return 'blog'
-  if (first === 'guide' || first === 'learn') return 'guide'
+  if (first === 'guide') return 'guide'
   return 'reference'
 }
 

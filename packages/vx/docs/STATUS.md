@@ -155,6 +155,22 @@ test is telling the truth.
       names four packages. Gate: `ci --all` 56/56 and a Node build of 255
       pages, 587 site tests.
 
+722.  DONE (2026-09-24, Next 16 a, d, e, f). The old Learn pages are
+      gone: seven redirect to the chapter that teaches the same idea, the
+      labs move whole to `guide/labs` (a tool page chapter 10 links, lab 4
+      with its own simulator), the choosing page is the Reference's "vx,
+      Turborepo, Nx, Bazel" at `compare/`, the glossary is `glossary/`;
+      `redirects.test.ts` holds all ten targets. Old rows went only where a
+      chapter row already holds the same widget. Chapters 4, 6 and 8 draw
+      their last text sections (the start order from the simulator's
+      model, 27 s against 24 s; four things outside the sandbox's wall;
+      the four costs). Ch 9's problem no longer says "vendor", ch 3 lost
+      its forward reference and `chapterShape` refuses a chapter that
+      names another by number, ch 7 keeps one idea per section. Six Docs
+      pages trimmed with every pinned fact kept. Gate: `ci --all` 56/56;
+      the unsafe doc laws pass with the generated pages hidden (darwin's
+      shape).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -385,21 +401,14 @@ soak length. NEXT: R1–R4 in the design's order, each chapter edited by
 the architect before it merges; then Next 17. Never end with "what next?".
 
 16. **The site, redone as one story (owner, 2026-09-24).** R1–R3
-    shipped as item 721 (`design/site-redo-2026-09.md`). Left, in order:
-    (a) R4: the old `learn/*` pages redirect to their chapters (repoint
-    their Docs anchors first, e.g. `sandboxing#fail-on-violation`), and
-    the glossary moves to Reference with every `../../learn/glossary/`
-    link; (b) the widgets (graph explorer, key calculator, scheduler
-    simulator, stale-hit demo, checkpoints) take the pictures' look and
-    lose their dense tables and jargon setup sentences — the key
-    calculator's two tables are the worst; (c) the playground runs
-    `build test` again, with `app#docs` outside the default, so chapter
-    10's command matches; (d) the four sections still without a picture
-    (ch 4 "Start the longest chain first", ch 6 "Four things the sandbox
-    does not check", ch 8 "Both cost something", ch 9's plugin code) get
-    one or become the picture's caption; (e) plain-word fixes: ch 9's
-    "vendor", ch 3's forward reference, ch 7's second idea in its last
-    section; (f) the six Docs pages still over 250 prose words.
+    shipped as item 721 (`design/site-redo-2026-09.md`), R4 and the prose
+    polish as item 722. Left: the widgets (graph explorer, key
+    calculator, scheduler simulator, stale-hit demo, checkpoints) take
+    the pictures' look and lose their dense tables and jargon setup
+    sentences, and the playground runs `build test` again with `app#docs`
+    outside the default (in flight); then the site plan's "Done means" is
+    rewritten for the Guide.
+
 17. **A sandboxed task reads a linked sibling package unseen (found by
     the capability audit, 2026-09-24).** `sandbox-request.ts` grants
     every `node_modules` link from the project and the workspace root

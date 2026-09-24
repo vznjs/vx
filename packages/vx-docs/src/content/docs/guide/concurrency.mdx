@@ -32,18 +32,20 @@ per CPU core. Two workers finish the same tasks sooner.
 
 These four tasks each wait for the one before. Extra workers cannot run
 them side by side. This chain is the
-[critical path](../../learn/glossary/#critical-path), and no run is
+[critical path](../../glossary/#critical-path), and no run is
 shorter than it.
 
 ## Start the longest chain first
+
+<Diagram {...P.order} />
 
 When more tasks are ready than there are workers, the one that starts first
 changes when the run ends. vx starts the task that the most others wait
 on. The `@vzn/vx-schedule-history` plugin starts the one with the longest
 chain ahead, learned from past runs.
 
-The simulator adds a `lint` task to each package and a slow `app#docs`.
-Change the workers and watch when each rule finishes.
+These runs add a `lint` task to each package and a slow `app#docs`.
+Change the workers below and watch when each rule finishes.
 
 <SchedulerSim />
 

@@ -4,7 +4,7 @@
 // two tasks the example never declared, a type error in the IDE that the
 // page had carried since the typed `dependsOn` arrived (item 284). The
 // plugins guide has its own pin (plugins-guide-snippets.test.ts); this one
-// takes every other page, `.md` and `.mdx` alike (a Learn page with a widget
+// takes every other page, `.md` and `.mdx` alike (a chapter with a widget
 // is MDX, item 680). A block is a config when it calls one of the two
 // and imports only `@vzn/*` packages; fragments (no import, a relative
 // preset path, a signature sketch) are illustrations and stay out.
@@ -21,7 +21,7 @@ const OXLINT = path.join(ROOT, 'node_modules/.bin/oxlint')
 /** The plugin packages a page may import for illustration. The pin is about
  *  core's config types, so they are ambient-typed as `any`, like the Sentry
  *  SDK in the plugins guide's pin. (The site links most of them for
- *  learn-architecture.test.ts, which holds their hooks; this pin does not
+ *  guide-inside-vx.test.ts, which holds their hooks; this pin does not
  *  depend on that.) */
 const AMBIENT = [
   '@vzn/vx-reapi',

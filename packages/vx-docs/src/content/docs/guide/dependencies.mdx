@@ -16,7 +16,7 @@ You run `app#build` first. It fails.
 <Diagram {...P.order} />
 
 `app` imports `ui`, so `ui#build` must finish first. That is a
-[dependency](../../learn/glossary/#task-dependency): one task waits for
+[dependency](../../glossary/#task-dependency): one task waits for
 another.
 
 ## Two rules draw every arrow
@@ -33,9 +33,8 @@ Here are both rules applied to all four packages:
 
 <GraphExplorer />
 
-This is the [task graph](../../learn/glossary/#task-graph). Each row is a
+This is the [task graph](../../glossary/#task-graph). Each row is a
 wave: its tasks do not need each other, so they can run at the same time.
-The buttons and the table come back in chapter 7.
 
 ## A loop has no first task
 

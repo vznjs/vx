@@ -104,12 +104,12 @@ const SIDEBAR_GROUPS: Record<'Guide' | 'Docs' | 'Reference', SidebarItem[]> = {
     {
       label: 'Compare',
       items: [
-        { label: 'vx, Turborepo, Nx, Bazel', link: '/learn/choosing/' },
+        { label: 'vx, Turborepo, Nx, Bazel', link: '/compare/' },
         { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
         { label: 'Turbo / Nx parity map', link: '/parity/' },
       ],
     },
-    { label: 'Glossary', link: '/learn/glossary/' },
+    { label: 'Glossary', link: '/glossary/' },
     { label: 'Internals (for contributors)', link: '/internals/' },
   ],
 }

@@ -167,7 +167,7 @@ chapterShape({
     'The longest chain sets the finish line',
     'Start the longest chain first',
   ],
-  pictures: [P.together, P.workers, P.chain],
+  pictures: [P.together, P.workers, P.chain, P.order],
   rows: {
     'packages/vx/tests/scheduler.test.ts': [
       'respects the concurrency cap',
@@ -234,6 +234,28 @@ describe('guide/concurrency', () => {
     // The chain is what the picture highlights.
     const highlighted = P.workers.boxes.filter((b) => b.tone === 'accent').map((b) => b.title)
     expect([...new Set(highlighted)]).toEqual(CRITICAL)
+  })
+
+  // The same hand-traced schedules the simulator's two charts hold: vx
+  // starts app#docs at 8 s and ends at 27 s, the plugin starts it at once
+  // and ends at 24 s.
+  it('draws the two rules the simulator compares, on the hand-traced schedules', () => {
+    expect(P.ORDERS.map((o) => [o.policy, asRows(o.bars)])).toEqual([
+      ['count', COUNT_ON_2],
+      ['median', MEDIAN_ON_2],
+    ])
+    const docs = P.order.boxes.filter((b) => b.title === 'app#docs')
+    expect(docs.map((b) => [b.id, b.label, b.tone])).toEqual([
+      ['count/app#docs', 'app#docs', 'accent'],
+      ['median/app#docs', 'app#docs', 'accent'],
+    ])
+    expect(P.order.boxes.filter((b) => b.label !== '').map((b) => b.label)).toEqual([
+      'app#docs',
+      'app#docs',
+    ])
+    expect(P.order.boxes).toHaveLength(2 * SIM_TASKS.length)
+    const notes = P.order.notes!.map((n) => n.text)
+    expect([notes.includes('27 s'), notes.includes('24 s')]).toEqual([true, true])
   })
 
   it('draws the chain the model finds, and the two builds that start together', () => {

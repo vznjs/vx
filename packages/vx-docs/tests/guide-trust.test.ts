@@ -342,7 +342,7 @@ chapterShape({
     'The sandbox turns a forgotten file into an error',
     'Four things the sandbox does not check',
   ],
-  pictures: [P.oldBanner, P.listNotGuess, P.sandbox],
+  pictures: [P.oldBanner, P.listNotGuess, P.sandbox, P.unchecked],
   rows: {
     'packages/vx/tests/config.test.ts': [
       'requires cache.inputs.files — the one declaration vx will not infer',
@@ -514,18 +514,26 @@ describe('guide/trust', () => {
     expect(prose).toContain('Reading banner.txt fails, and the error names it.')
   })
 
-  it('names four things the sandbox does not check, in plain words', () => {
-    const section = only(
-      main,
-      /<h2\b[^>]*>Four things the sandbox does not check<\/h2>[\s\S]*?(<ul>[\s\S]*?<\/ul>)/g,
-    )
-    const items = [...section.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
-    expect(items).toEqual([
-      'Environment variables. List them in cache.inputs.env.',
-      'Tools on your machine, such as the Node version.',
-      'Installed packages in node_modules, including your own linked packages such as ui. This is a known gap.',
-      'Other systems. It runs on Linux and macOS, and on Windows only under WSL.',
+  it('draws four things the sandbox does not check, outside its wall, in plain words', () => {
+    expect(P.UNCHECKED).toEqual([
+      ['env variables', 'list in inputs.env'],
+      ['your tools', 'e.g. Node version'],
+      ['node_modules', 'even a linked ui'],
+      ['Windows', 'only under WSL'],
     ])
+    // Each outside the sandbox's frame, inside the "not checked" one.
+    const [wall, outside] = P.unchecked.frames!
+    const four = P.unchecked.boxes.filter((b) => b.tone === 'warn')
+    expect(four.map((b) => [b.label, b.sub])).toEqual(P.UNCHECKED)
+    for (const b of four) {
+      expect(b.x).toBeGreaterThan(wall!.x + wall!.w)
+      expect([b.x >= outside!.x, b.x + b.w! <= outside!.x + outside!.w]).toEqual([true, true])
+    }
+    // The picture is the section: no list beside it.
+    expect(section(main, 'four-things-the-sandbox-does-not-check')).not.toContain('<ul>')
+    // The claims it draws are the ones the proof list links.
+    expect(prose).toContain('node_modules is readable without being listed')
+    expect(prose).toContain('An environment variable is in the key only when listed')
   })
 
   it('places the correctness checkpoint as its one check', () => {

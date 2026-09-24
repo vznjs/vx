@@ -108,3 +108,28 @@ export const worker: Picture = {
   ],
   notes: [{ x: 100, y: 240, text: 'stays behind', tone: 'danger' }],
 }
+
+/** What a shared cache and remote workers cost, one box each. */
+export const COSTS: [label: string, sub: string][] = [
+  ['Download time', 'a hit downloads'],
+  ['A server', 'someone runs it'],
+  ['Same tools', 'on every worker'],
+  ['Some stay local', 'a dev server'],
+]
+
+export const costs: Picture = {
+  name: 'costs',
+  label: `What sharing costs: ${COSTS.map(([l, s]) => `${l.toLowerCase()} (${s})`).join('; ')}.`,
+  caption:
+    'For a tiny task, building can beat the download. A dev server, or a test that needs your machine, stays local.',
+  height: 100,
+  boxes: COSTS.map(([label, sub], i) => ({
+    id: `cost-${i + 1}`,
+    x: 1 + i * 150,
+    y: 20,
+    w: 142,
+    label,
+    sub,
+    tone: 'warn' as const,
+  })),
+}

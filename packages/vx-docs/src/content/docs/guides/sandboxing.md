@@ -8,9 +8,9 @@ Prove a task reads only what it declares. Why? →
 
 ## Steps
 
-1. Add `sandbox` to the task's `exec`. `sandbox: {}` alone allows nothing, not even the package.
-2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` and the workspace packages linked there are readable already, except a link back to the package itself: its own files need your grant.
-3. Grant each output directory in `write`, and any hosts in `network`. The sandbox reads nothing from `cache`: declare both.
+1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing, not even the package.
+2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` and linked workspace packages are readable already; a link back to the package itself is not.
+3. Grant each output directory in `write`, and each host in `network`. The sandbox does not read `cache`: declare both.
 4. Run the task. An undeclared read or write fails it and names the path.
 5. Declare that path, or silence a noisy tool's path with `ignore`.
 
@@ -60,27 +60,24 @@ export default defineProject({
 ## The boundary is the project
 
 A task never reaches another package or a root file you did not grant.
-That wall is silent; an undeclared touch of the task's own files fails it.
-
-## Fail on violation
-
-A violation fails the task, and a failed task is never cached.
+That wall is silent. An undeclared touch of the task's own files fails the
+task, and a failed task is never cached.
 
 ## Requirements & platform support
 
-- **Linux:** `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`). `vx info` says if your host can sandbox.
+- **Linux:** `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`). `vx info` says if your host can.
 - **macOS:** the system sandbox. Its report can miss a record under load; the denial never does.
 - **Windows:** under WSL.
 
 ## What can't be sandboxed
 
-- A group task: there is no command.
+- A group task: it has no command.
 - A task that itself sandboxes, on macOS. vx's own sandbox tests are one
   of exactly two tasks in this repository that do not declare a sandbox;
   the other, `@vzn/vx-reapi#test`, dials servers on the host.
 
 ## Common problems
 
-- **`write /proc/self/uid_map: Operation not permitted`.** You are root inside a container. Run as a normal user, or set `weakerWhenNested: true`.
-- **`File exists` from the task's own `mkdir`.** A write grant without a trailing slash is a file. Write `'coverage/'`.
-- **On Linux a file created during the run is denied.** A glob is expanded when the task starts: grant its directory.
+- **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true`.
+- **`File exists` from the task's own `mkdir`.** A write grant with no trailing slash is a file. Write `'coverage/'`.
+- **On Linux a file made during the run is denied.** A glob expands when the task starts: grant its directory.

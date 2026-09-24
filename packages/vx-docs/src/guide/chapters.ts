@@ -69,7 +69,7 @@ export const CHAPTERS: readonly Chapter[] = [
     slug: 'inside-vx',
     chapter: 9,
     title: 'How vx is built',
-    problem: 'How does one tool hold every idea without a special case for each vendor?',
+    problem: "How does one tool fit every team's setup without special code for each?",
   },
   {
     slug: 'try-it',

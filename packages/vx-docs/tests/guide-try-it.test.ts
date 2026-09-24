@@ -253,9 +253,9 @@ describe("the chapter's pictures and exits", () => {
   })
 
   it('draws one card per lab the labs page holds', () => {
-    const labs = readFileSync(path.join(SITE, 'src/content/docs/learn/labs.mdx'), 'utf8')
+    const labs = readFileSync(path.join(SITE, 'src/content/docs/guide/labs.mdx'), 'utf8')
     expect(P.labs.boxes).toHaveLength(labs.match(/^## Lab \d+:/gm)!.length)
-    expect(hrefs(chapter)).toContain('../../learn/labs/')
+    expect(hrefs(chapter)).toContain('../labs/')
   })
 
   it('shows the loop before the playground it describes', () => {
