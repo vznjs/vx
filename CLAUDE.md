@@ -176,7 +176,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
    where vx or its own tasks write; each fact (a read, a stat, a PATH
    lookup, a spawn's answer) is learned once and reused. A repeat needs a
    measured reason, pinned by `tests/syscall-repeats.unsafe.test.ts` /
-   `read-once.unsafe.test.ts`.
+   `read-once.unsafe.test.ts`. The limit: an unsandboxed task may write
+   anywhere, so a fact about a file a task could write is not reused
+   across task runs, and a refusal is never decided from a memo (item 738).
 
 ## Rules learned the hard way
 
