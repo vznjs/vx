@@ -29,14 +29,12 @@
   color: var(--vx-muted);
   text-align: center;
 }
-/* A phone keeps the drawing at a size its text can be read at, and the
-   frame scrolls sideways instead. */
+/* A phone shows the whole drawing, smaller, rather than a cropped one a
+   reader would have to know to scroll: a box out of view reads as absent. */
 @media (max-width: 40rem) {
   .vx-diagram {
-    padding: 1rem 0.75rem 0.75rem;
-  }
-  .vx-diagram svg {
-    min-width: 30rem;
+    margin-inline: -0.5rem;
+    padding: 0.75rem 0.25rem 0.75rem;
   }
 }
 

@@ -94,7 +94,7 @@ describe('the diagram kit, as built', () => {
       expect(svgs).toHaveLength(1)
       expect(svgs[0]![1]).toContain('role="img"')
       expect(svgs[0]![1]).toMatch(/aria-label="[^"]+"/)
-      expect(svgs[0]![1]).toMatch(/viewBox="0 0 \d+ \d+"/)
+      expect(svgs[0]![1]).toMatch(/viewBox="0 \d+ \d+ \d+"/)
       expect(f).toMatch(/<figcaption\b[^>]*>[\s\S]*\S[\s\S]*<\/figcaption>/)
       expect(f).not.toContain('<script')
     }

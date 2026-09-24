@@ -52,10 +52,11 @@ export const whoWrites: Picture = {
   name: 'who-writes',
   label: 'CI writes results to the shared cache. Your laptop reads from it and never writes to it.',
   caption: 'CI builds from a clean checkout, so CI writes. Laptops only read.',
+  height: 190,
   boxes: [
-    { id: 'laptop', x: 20, y: 90, w: 140, label: 'Your laptop', sub: 'reads only' },
-    { id: 'cache', x: 230, y: 90, w: 140, label: 'Shared cache', tone: 'accent' },
-    { id: 'ci', x: 440, y: 90, w: 140, label: 'CI', sub: 'clean checkout' },
+    { id: 'laptop', x: 8, y: 30, w: 144, label: 'Your laptop', sub: 'reads only' },
+    { id: 'cache', x: 228, y: 34, w: 144, label: 'Shared cache', tone: 'accent' },
+    { id: 'ci', x: 448, y: 30, w: 144, label: 'CI', sub: 'clean checkout' },
   ],
   arrows: [
     { from: 'ci', to: 'cache', label: 'writes', tone: 'accent' },
@@ -67,8 +68,8 @@ export const whoWrites: Picture = {
       tone: 'danger',
       dashed: true,
       via: [
-        [90, 210],
-        [300, 210],
+        [80, 150],
+        [300, 150],
       ],
     },
   ],

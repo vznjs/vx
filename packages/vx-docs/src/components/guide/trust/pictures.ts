@@ -75,14 +75,17 @@ export const sandbox: Picture = {
       to: 'banner',
       tone: 'danger',
       dashed: true,
+      label: '✕ denied',
+      // Four corners, so the labelled middle stretch is centred on the wall.
       via: [
         [101, 60],
+        [300, 60],
+        [472, 60],
         [515, 60],
       ],
     },
   ],
   notes: [
-    { x: 386, y: 65, text: '✕', tone: 'danger' },
     { x: 300, y: 214, text: 'task fails: denied banner.txt — nothing saved', tone: 'danger' },
   ],
 }

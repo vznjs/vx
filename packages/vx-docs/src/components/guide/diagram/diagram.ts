@@ -138,6 +138,31 @@ export function route(p: Picture, a: Arrow): Route {
   }
 }
 
+/**
+ * The vertical stretch a picture draws in, padded: every picture's viewBox
+ * is its full width but only this stretch, so none carries a blank band
+ * above or below and all of them share one scale on the page.
+ */
+export function extent(p: Picture): { top: number; height: number } {
+  const PAD = 14
+  const text = (y: number, size: number): [number, number] => [y - size * 0.8, y + size * 0.3]
+  const spans: [number, number][] = [
+    ...p.boxes.map((b): [number, number] => [b.y, b.y + boxSize(b).h]),
+    ...(p.notes ?? []).map((n) => text(n.y, FONT.note)),
+    ...(p.frames ?? []).map((f): [number, number] => [f.y, f.y + f.h]),
+    ...(p.arrows ?? []).flatMap((a) => {
+      const r = route(p, a)
+      return [
+        ...(a.via ?? []).map(([, y]): [number, number] => [y, y]),
+        ...(a.label === undefined ? [] : [text(r.ly, FONT.arrow)]),
+      ]
+    }),
+  ]
+  const top = Math.max(0, Math.min(...spans.map((s) => s[0])) - PAD)
+  const bottom = Math.min(p.height ?? 260, Math.max(...spans.map((s) => s[1])) + PAD)
+  return { top: Math.round(top), height: Math.round(bottom - top) }
+}
+
 export interface Lane {
   name: string
   bars: {

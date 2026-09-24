@@ -4,7 +4,7 @@
 // It ships no script. Every picture on the site is this component, and its
 // look is `diagram.css` alone, so they read as one hand drew them.
 import './diagram.css'
-import { boxSize, route, type Picture, type Tone } from './diagram.js'
+import { boxSize, extent, route, type Picture, type Tone } from './diagram.js'
 
 type Props = Picture
 
@@ -13,7 +13,6 @@ const {
   label,
   caption,
   width = 600,
-  height = 260,
   boxes,
   arrows = [],
   notes = [],
@@ -22,11 +21,12 @@ const {
 
 const lines = arrows.map((a) => ({ ...a, tone: a.tone ?? 'default', ...route(Astro.props, a) }))
 const tones: Tone[] = [...new Set(lines.map((l) => l.tone))]
+const { top, height } = extent(Astro.props)
 ---
 
 <figure class="vx-diagram not-content" data-picture={name}>
   <svg
-    viewBox={`0 0 ${width} ${height}`}
+    viewBox={`0 ${top} ${width} ${height}`}
     role="img"
     aria-label={label}
     style={`max-width: ${width}px`}

@@ -33,7 +33,7 @@ monorepo) computes its data from that model in `pictures.ts`, never by hand.
 | `name`          | unique on its page; the figure's `data-picture` and the arrowheads' ids         |
 | `label`         | the `aria-label`: what the picture says, for a reader who cannot see it         |
 | `caption`       | one short sentence under the drawing                                            |
-| `width`, `height` | the viewBox, default 600 × 260; the drawing scales down to the column, never up |
+| `width`, `height` | the canvas, default 600 × 260; the viewBox keeps the width and crops to what is drawn, so every picture shares one scale |
 | `boxes`         | `{ id, x, y, w?, h?, label, sub?, tone?, title? }`; `w` × `h` default 130 × 52 (60 high with a `sub`) |
 | `arrows`        | `{ from, to, label?, tone?, dashed?, via? }`; `via` lists corners to pass       |
 | `notes`         | `{ x, y, text, tone?, anchor? }`; loose text, muted by default                  |
@@ -58,5 +58,5 @@ timeline); a bar too narrow for its label prints none and keeps its
 A picture that needs a look the tones do not give is a reason to add a
 tone here, not to write a colour in a chapter.
 
-On a phone the drawing keeps 30rem of width, where its text is still
-readable, and scrolls sideways in its frame.
+On a phone the whole drawing shows, scaled to the column: a cropped one
+that scrolls sideways hides boxes a reader does not know to look for.
