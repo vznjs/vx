@@ -151,6 +151,20 @@ describe('every internal link in the built site', () => {
     expect(statSync(path.join(DIST, 'pagefind/pagefind.js')).isFile()).toBe(true)
   })
 
+  // `modules/README.md` and `modules/index.md` both wrote the collection's
+  // `modules/index.md`, and the directory scan's order chose the page the
+  // site kept: this machine kept `src/index.ts`'s page, CI kept the module
+  // index, whose link to the other one was then dead. import-docs.ts now
+  // refuses two sources on one output; this row holds that both pages ship.
+  it('ships the module index and the src/index.ts page, each at its own URL', () => {
+    const title = (page: string): string | undefined =>
+      /<title>([^<|]*?)\s*\|/.exec(readFileSync(path.join(DIST, page), 'utf8'))?.[1]
+    expect([title('modules/index.html'), title('modules/public-surface/index.html')]).toEqual([
+      'Module reference',
+      'src/index.ts — public package surface',
+    ])
+  })
+
   it('reports each kind of dead link, and passes the ones that land', () => {
     const fixture = `
       <a href="${BASE}learn/caching/">page</a>

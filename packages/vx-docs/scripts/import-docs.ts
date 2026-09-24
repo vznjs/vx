@@ -37,6 +37,7 @@ function normalize(p: string): string {
 function cleanUrlFor(srcRel: string): string {
   if (srcRel === 'README.md') return 'overview/'
   if (srcRel === 'modules/README.md') return 'modules/'
+  if (srcRel === 'modules/index.md') return 'modules/public-surface/'
   // Astro slugs each path segment (github-slugger), which lowercases and
   // drops punctuation: `design/roadmap-1.0.md` is served at
   // `design/roadmap-10/`. tests/site-links.test.ts holds the two to agree.
@@ -51,6 +52,9 @@ function cleanUrlFor(srcRel: string): string {
 function outRelFor(srcRel: string): string {
   if (srcRel === 'README.md') return 'overview.md'
   if (srcRel === 'modules/README.md') return 'modules/index.md'
+  // `src/index.ts`'s page would be the directory's index too: both wrote
+  // `modules/index.md`, and the scan's order chose which page the site kept.
+  if (srcRel === 'modules/index.md') return 'modules/public-surface.md'
   return srcRel
 }
 
@@ -232,6 +236,15 @@ ${items}
 }
 
 // ---- run ----
+
+// Two sources on one output keep whichever the scan wrote last, silently.
+const outputs = new Map<string, string>()
+for (const srcRel of sources) {
+  const outRel = outRelFor(srcRel)
+  const other = outputs.get(outRel)
+  if (other) throw new Error(`import-docs: ${other} and ${srcRel} both write ${outRel}`)
+  outputs.set(outRel, srcRel)
+}
 
 // Every generated page goes first, so a source deleted from docs/ does not
 // keep a stale page on the site (differentiators.md outlived its source by

@@ -1514,7 +1514,20 @@ dead. Differentials, each reversed: `../playground/` →
 exactly that link; `../glossary/#inputs` → `#inputz` reddens it with
 exactly that anchor; the old `cleanUrlFor` reddens it with the two
 design links; the checker's id test dropped reddens the fixture row
-only. The file runs in 0.4 s (the scan 0.33–0.39 s).
+only. The file runs in 0.4 s (the scan 0.33–0.39 s). CI found one
+more, and it was a lost page: `modules/README.md` (the module index)
+and `modules/index.md` (`src/index.ts`'s page) both wrote the
+collection's `modules/index.md`, so the directory scan's order chose
+which page the site kept. This machine kept `src/index.ts`'s; CI's
+runner kept the index, whose link to the other page was then dead.
+`src/index.ts`'s page is now `modules/public-surface/`, and
+`import-docs.ts` refuses two sources on one output before it clears a
+page; a row holds both pages by title. Differentials: the new mapping
+dropped, the import exits 1 naming both sources; the collision this
+machine built (the index lost) reddens the title row. And a gap in item
+706's recap: `bun test` prints a failure's diff where the test ran and
+only its name at the end, so the recap's last 30 lines named the row
+but not the dead link; the diff came from the job log's tail.
 
 14di. **Item 712 (2026-09-24): the landing page's figures come from
 their sources.** Every figure on `index.astro` that `update-site.ts`
