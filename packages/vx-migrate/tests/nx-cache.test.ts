@@ -1,7 +1,9 @@
 // The wire against a strict in-memory server implementing Nx's self-hosted
 // remote cache OpenAPI spec: GET/PUT /v1/cache/{hash}, Bearer auth, 404 for
 // a missing record, 409 for a write over an existing one (the spec's
-// cache-poisoning guard), 401 for a bad token, 403 for a read-only one.
+// cache-poisoning guard), 401 for a bad token, 403 for a read-only one. Its
+// GET behaves like an API gateway in front of one (nx#33092): a request that
+// does not ask for `application/octet-stream` gets the body base64-encoded.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -42,12 +44,16 @@ function nxServer() {
       }
       if (req.method === 'GET') {
         const s = store.get(hash)
-        return s
+        if (!s) return new Response('not found', { status: 404 })
+        return req.headers.get('accept') === 'application/octet-stream'
           ? new Response(s, {
               status: 200,
               headers: { 'Content-Type': 'application/octet-stream' },
             })
-          : new Response('not found', { status: 404 })
+          : new Response(Buffer.from(s).toString('base64'), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
       }
       return new Response('method', { status: 405 })
     },
@@ -116,6 +122,8 @@ describe('NxRemoteCache against the spec server', () => {
     expect(put.headers['content-type']).toBe('application/octet-stream')
     expect(put.headers['content-length']).toBe(String(body.byteLength))
     const got = await c.get('aa11')
+    // Nx's own client asks for the binary type; `*/*` behind a gateway reads base64.
+    expect(srv.seen.at(-1)!.headers['accept']).toBe('application/octet-stream')
     expect(await got!.body.bytes()).toEqual(body)
     expect(got!.durationMs).toBeUndefined()
     expect(await c.get('bb22')).toBeNull()

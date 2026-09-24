@@ -96,6 +96,11 @@ export class NxRemoteCache implements RemoteCacheLayer {
     if (body !== undefined) {
       headers['Content-Type'] = 'application/octet-stream'
       headers['Content-Length'] = String(body.size)
+    } else {
+      // Nx's own client asks for the binary type. A gateway that keys binary
+      // media on Accept (AWS API Gateway) base64-encodes a `*/*` response, and
+      // every hit read as a corrupt artifact (nx#33092).
+      headers['Accept'] = 'application/octet-stream'
     }
     const res = await this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
       method,
