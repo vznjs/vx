@@ -1,0 +1,95 @@
+---
+title: Many machines
+description: Share results between machines, and send tasks to other machines. Who may write, and what it costs.
+chapter: 8
+problem: 'Your laptop and CI build the same thing twice.'
+---
+
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/many-machines/pictures.js'
+
+You build `utils` in the morning. CI builds it again. A teammate builds it
+a third time.
+
+<Diagram {...P.threeBuilds} />
+
+Each machine keeps its results to itself, so each one repeats the work.
+
+## Same inputs give the same key on every machine
+
+<Diagram {...P.sameKey} />
+
+A cache key is a fingerprint of what a task reads: its files, its command
+and its settings. Nothing in it names a machine. So a result stored under a
+key is right for that key anywhere. Put the store where every machine can
+reach it, and you have a [shared cache](../../learn/glossary/#remote-cache).
+
+## Only CI writes to the shared cache
+
+<Diagram {...P.whoWrites} />
+
+A shared cache shares mistakes too. A laptop has leftovers: a file no
+commit holds, a tool you patched by hand. A wrong result from it would be
+replayed on every machine. CI builds from a clean checkout every time, so
+let CI write and laptops read.
+
+## A worker gets only what the task declares
+
+<Diagram {...P.worker} />
+
+You can also send a task to another machine, a worker, and get the output
+back. That is [remote execution](../../learn/glossary/#remote-execution).
+The worker has only the files the task declares. A file the task reads but
+never declared is missing, so the task fails loudly instead of passing by
+luck.
+
+## Both cost something
+
+- **Download time.** A hit is a download. For a tiny task, building can be
+  faster.
+- **A server.** Someone runs it or rents it.
+- **The same tools on every worker.** Your runtime and compilers, in the
+  same versions.
+- **Some tasks cannot leave.** A dev server or a test that needs your own
+  machine stays local.
+
+## In vx
+
+A plugin in `vx.workspace.ts` adds a shared cache and workers; vx itself
+runs no server:
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { reapi } from '@vzn/vx-reapi'
+
+export default defineWorkspace({
+  plugins: [reapi({ endpoint: 'grpcs://cache.example.com:443', execute: true })],
+})
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [The shared-cache plugin, and why it is safe to leave declared](../../guides/remote-caching/#the-first-party-shared-cache)
+- [A key depends only on the task's inputs](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-hash-derive.test.ts)
+- [A remote error or a broken download becomes a miss, and a laptop can read without writing](https://github.com/vznjs/vx/blob/main/packages/vx/tests/layered-cache.test.ts)
+- [Read-only for laptops: `--cache=local:rw,remote:r`](../../cli/#cache-control---cache---no-cache---force)
+- [A worker gets only declared inputs](../../guides/remote-execution/#it-proves-your-declared-inputs)
+- [Only tasks with declared inputs go to a worker](https://github.com/vznjs/vx/blob/main/packages/vx-reapi/tests/executor.test.ts)
+- Keeping a cache you already run for Turborepo or Nx: `turboCache()` and `nxCache()` from `@vzn/vx-migrate` ([remote caching](../../guides/remote-caching/#a-hosted-cache-in-three-commands))
+
+</details>
+
+## Check yourself
+
+<details>
+<summary>Your laptop has a tool you patched by hand. Should it write to the shared cache?</summary>
+
+No. Its results could be wrong under a key that looks right, and every
+machine would replay them.
+
+</details>
+
+You now know every idea a task runner needs. How does one tool hold them
+all without a special case for each?

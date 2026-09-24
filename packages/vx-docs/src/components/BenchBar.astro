@@ -54,7 +54,7 @@ const style = `--pct:${pct}%;--dur:${dur}s`
     color: var(--sl-color-gray-3);
   }
   .hero .value {
-    color: var(--vx-pink);
+    color: var(--vx-accent);
     font-weight: 700;
   }
 
@@ -74,8 +74,8 @@ const style = `--pct:${pct}%;--dur:${dur}s`
     background: color-mix(in srgb, var(--sl-color-gray-4) 24%, transparent);
   }
   .hero .bar {
-    background: color-mix(in srgb, var(--vx-violet) 18%, transparent);
-    box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 45%, transparent);
+    background: color-mix(in srgb, var(--vx-accent) 18%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--vx-accent) 45%, transparent);
   }
 
   /* The realtime progress fill, sweeping inside the bar. */
@@ -87,7 +87,7 @@ const style = `--pct:${pct}%;--dur:${dur}s`
     background: color-mix(in srgb, var(--sl-color-gray-2) 68%, transparent);
   }
   .hero .prog {
-    background: var(--vx-grad);
+    background: var(--vx-accent);
   }
   /* bright leading edge — the moving "now" front */
   .prog::after {
@@ -100,7 +100,7 @@ const style = `--pct:${pct}%;--dur:${dur}s`
     background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 75%, transparent));
   }
   .hero .prog::after {
-    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vx-pink) 95%, transparent));
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vx-accent) 95%, transparent));
   }
 
   /* JS-ready: collapse the fill to the start line, waiting to run.

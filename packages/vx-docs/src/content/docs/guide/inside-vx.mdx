@@ -1,0 +1,87 @@
+---
+title: How vx is built
+description: One pipeline of stages. A plugin can fill any stage. This machine is always the last stop. A whole plugin in 20 lines.
+chapter: 9
+problem: 'How does one tool hold every idea without a special case for each vendor?'
+---
+
+import { Code } from '@astrojs/starlight/components'
+import PipelineExplorer from '../../../components/demos/PipelineExplorer.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/inside-vx/pictures.js'
+import summaryLine from '../../../examples/summary-line.ts?raw'
+
+Teams want different things. One wants a shared cache on one server,
+another on a different one. One wants traces, another wants none. A tool
+that adds a special case for each grows slow and fragile.
+
+## Every run passes the same stages
+
+<Diagram {...P.pipeline} />
+
+Every run does the same steps in the same order. It reads the config,
+builds the graph, computes keys, then runs, stores and reports. vx names
+each step a stage.
+
+## A plugin fills one stage
+
+<Diagram {...P.plugins} />
+
+A [plugin](../../learn/glossary/#seam-and-plugin) is a small piece of code
+that makes the choice at one stage. vx adds no plugin unless you list it.
+
+Pick a stage below to see the code a plugin writes there.
+
+<PipelineExplorer />
+
+## With no plugins, vx still runs and caches
+
+<Diagram {...P.floor} />
+
+Running on this machine and caching on this machine are built in. They sit
+under every plugin. A plugin that says no hands the task back.
+
+## A whole plugin fits in 20 lines
+
+<Code code={summaryLine} lang="ts" title="plugins/summary-line.ts" />
+
+This plugin prints one line after every run. It only watches, so it cannot
+break a run.
+
+## In vx
+
+List the plugin in `vx.workspace.ts`:
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { summaryLine } from './plugins/summary-line.ts'
+
+export default defineWorkspace({ plugins: [summaryLine()] })
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [The stages, in core's order](../../cli/#vx-info)
+- [A task a plugin adds is keyed like one you wrote](https://github.com/vznjs/vx/blob/main/packages/vx/tests/plugin-pipeline.test.ts)
+- [Core refuses a bad plugin by name](../../guides/plugins/#what-core-refuses)
+- [Core ships and imports no plugin](https://github.com/vznjs/vx/blob/main/packages/vx/tests/package-boundaries.unsafe.test.ts)
+- [No plugins: this machine runs and caches; a plugin that says no is the same as none](https://github.com/vznjs/vx/blob/main/packages/vx/tests/local-fallbacks.test.ts)
+- [A declining worker plugin falls through; a broken one stops the run by name](https://github.com/vznjs/vx/blob/main/packages/vx/tests/plugin-capabilities.test.ts)
+- [A watcher that throws is cut off](https://github.com/vznjs/vx/blob/main/packages/vx/tests/telemetry.test.ts)
+- [A watcher that hangs does not hold the run](https://github.com/vznjs/vx/blob/main/packages/vx/tests/telemetry-lifecycle.test.ts)
+- [The full plugin contract](../../guides/plugins/)
+
+</details>
+
+## Check yourself
+
+<details>
+<summary>Your worker plugin says no to <code>app#test</code>. Where does it run?</summary>
+
+On this machine: the floor takes every task a plugin hands back.
+
+</details>
+
+Now try every idea yourself, on the same four packages.

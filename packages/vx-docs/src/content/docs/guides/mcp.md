@@ -1,85 +1,48 @@
 ---
 title: vx mcp — AI agents
-description: Expose vx to AI coding agents (Claude Code, Cursor, Continue.dev, GitHub Copilot) through the Model Context Protocol — cache stats, run history and cache-key explanations, read-only, over stdio. A plugin, not core.
+description: Let an AI coding agent read your workspace's tasks, cache stats and run history through the Model Context Protocol, read-only, over stdio.
 ---
 
-`@vzn/vx-mcp` is a plugin that adds `vx mcp`: a Model Context Protocol
-server over stdio, so AI coding agents can ask your workspace about its
-build state through the standard agent-tool protocol. No HTTP, no auth —
-stdio is process-private — and nothing it exposes can run a task or
-write the cache.
+Let Claude Code, Cursor, Continue.dev or Copilot ask your workspace why a
+task re-ran. Nothing it exposes can run a task or write the cache.
 
-## Install and declare
+## Steps
 
-```sh
-npm install -D @vzn/vx-mcp   # or pnpm add -D · bun add -d
-```
+1. Install: `npm install -D @vzn/vx-mcp`.
+2. Declare `mcp()` in `vx.workspace.ts` (below). `vx help` now lists `vx mcp`.
+3. Point your agent at `vx mcp`: `claude mcp add vx -- vx mcp`, or the JSON below.
+4. Start the agent inside the workspace, and ask it: "Why did `app#test` re-run?"
+
+## Config
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
 import { mcp } from '@vzn/vx-mcp'
 
-export default defineWorkspace({
-  plugins: [mcp()],
-})
+export default defineWorkspace({ plugins: [mcp()] })
 ```
-
-That is the whole setup: the plugin contributes one CLI verb through
-the [`commands` seam](/vx/guides/plugins/#adding-a-verb), and `vx help`
-lists it under "Plugin commands" from any directory inside the
-workspace.
-
-## Point your agent at it
 
 ```jsonc
-// Claude Code: ~/.claude/mcp.json — or: claude mcp add vx -- vx mcp
-{
-  "mcpServers": {
-    "vx": { "command": "vx", "args": ["mcp"] }
-  }
-}
+// ~/.claude/mcp.json; Cursor, Continue.dev and Copilot take the same shape
+{ "mcpServers": { "vx": { "command": "vx", "args": ["mcp"] } } }
 ```
-
-Cursor, Continue.dev and VS Code Copilot take the same `command + args`
-shape in their own config files. Run the agent from inside the
-workspace: `vx mcp` finds the workspace and its cache from the current
-directory, exactly like `vx run`.
 
 ## Tools
 
-| Tool              | What it answers                                                                                                                                                                                                                          |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `listTasks`       | "What can I run here?" — every project and the tasks a run would see (command, `dependsOn`, whether it caches, persistent), resolved like `vx run` resolves them — plugin stages included. `project` narrows to one.                       |
-| `getCacheStats`   | "What's the state of my cache right now?" — entries, total size, task runs and hits in the last 24h, hit rate. `scope: { project }` narrows every number to that project rather than echoing the workspace's.                                 |
-| `getRunHistory`   | "Which tasks have I been running, and how fast?" — recent runs plus per-task p50 / p99 / success rate / hit rate, and the largest peak RSS and CPU parallelism the executions showed (`maxPeakRssBytes`, `maxCpuParallelism`; the peak is what `@vzn/vx-schedule-history` reserves from). `failureMode` calls a task flaky only on a real nondeterminism signal (a within-run retry, or one key that both failed and succeeded) — repeated failures on their own keys are a break, not flake. `limit` (1..500) is clamped rather than refused, and the answer carries the limit it applied, so a truncated list cannot read as an exhausted one. |
-| `explainCacheKey` | "What's the cache identity of `pkg#build`?" — the latest entry's hash, command, exit code, duration and size. The per-component breakdown is `vx why`.                                                                                     |
-| `whyDidThisRerun` | "Why did `pkg#test` re-execute in run X instead of hitting?" — the run's key against the previous run's for the same task, and whether it changed; `runId` defaults to the task's latest run, as `vx why` does.                                                                                       |
-| `getWorkspaceInfo` | "What is this workspace, and what will a run use?" — `vx info --format json` over the wire: vx, bun and git versions, projects and tasks, plugins and the seams each fills, the worker count and memory budget and where each comes from, cache versions, entries, orphans, flaky tasks, whether this host can run a task's `exec.sandbox` and how many tasks declare one — the facts a bug report needs. |
+| Tool               | Answers                                                          |
+| ------------------ | ---------------------------------------------------------------- |
+| `listTasks`        | What can I run here?                                             |
+| `getCacheStats`    | How big is the cache, and what is today's hit rate?              |
+| `getRunHistory`    | Which tasks run, how fast, how often they fail or flake?         |
+| `explainCacheKey`  | What is the cache identity of `pkg#build`?                       |
+| `whyDidThisRerun`  | Why did `pkg#test` re-run instead of hitting?                    |
+| `getWorkspaceInfo` | What `vx info` says: versions, plugins, cache, sandbox           |
 
-The four history tools read the local `cache.db` — the same tables `vx why`, `vx last`
-and `vx info` read. Ask things like:
+The server speaks MCP over stdio in about 150 lines, with no dependencies.
 
-- "What's my cache hit rate today?"
-- "Why did `pkg-a#test` re-run in the last build?"
-- "Which tasks miss the cache most often?"
+## Common problems
 
-## How it works
-
-MCP over stdio is newline-delimited JSON-RPC 2.0 and the three methods
-an agent needs — `initialize`, `tools/list`, `tools/call` — plus
-`ping`; a notification is acknowledged by silence. The plugin speaks it
-natively in about 150 lines with no dependencies (the reference SDK
-pulls in an HTTP stack this transport never uses). A tool's own refusal
-("taskId must be `project#task`") comes back as an `isError` result the
-agent can read and correct, not as a protocol error.
-
-## Troubleshooting
-
-- **The agent lists no vx tools.** Most clients read their MCP config
-  only at launch — restart the agent, and check `vx help` shows `vx mcp`
-  from the directory the agent runs in.
-- **`unknown command: mcp`.** The cwd is outside a workspace whose
-  `vx.workspace.ts` declares `mcp()`; the verb exists only there.
-- **Empty stats.** No `vx run` has happened in this workspace yet, or
-  the agent runs from another workspace.
+- **The agent lists no vx tools.** Most agents read their MCP config at launch: restart it.
+- **`unknown command: mcp`.** The agent runs outside a workspace whose `vx.workspace.ts` declares `mcp()`.
+- **The stats are empty.** No `vx run` has happened in this workspace yet.

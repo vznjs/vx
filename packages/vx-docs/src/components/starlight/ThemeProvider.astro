@@ -1,0 +1,18 @@
+---
+// Dark is the site's default, as the landing is always dark. Starlight falls
+// back to the system's preference when no choice is stored, so a first visit
+// stores "dark" before Starlight reads it. The seed runs once per browser: a
+// reader who picks "auto" later stores an empty value, and the marker keeps
+// that choice from being overwritten.
+import Default from '@astrojs/starlight/components/ThemeProvider.astro'
+---
+
+<script is:inline>
+  try {
+    if (!localStorage.getItem('vx-theme-seeded')) {
+      localStorage.setItem('vx-theme-seeded', '1')
+      if (!localStorage.getItem('starlight-theme')) localStorage.setItem('starlight-theme', 'dark')
+    }
+  } catch {}
+</script>
+<Default />

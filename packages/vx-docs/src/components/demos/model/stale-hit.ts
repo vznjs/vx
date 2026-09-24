@@ -1,12 +1,12 @@
-// The stale-hit demo on learn/correctness: one package, `web`, whose `build`
-// reads a file it does not declare. The static render (the no-JS fallback)
+// The stale-hit demo (guide/trust): `app#build`, one task of the toy
+// monorepo's `app` taken alone, reads a file it does not declare. The static render (the no-JS fallback)
 // and the element that enhances it both read this model, and
 // tests/learn-correctness.test.ts holds it to real vx runs and to core's own
 // report formatter.
 
 import { digest, shortKey } from './toy-monorepo.js'
 
-export const STALE_PROJECT = 'web'
+export const STALE_PROJECT = 'app'
 export const STALE_TASK = `${STALE_PROJECT}#build`
 export const STALE_SOURCE = 'src/index.ts'
 export const STALE_BANNER = 'banner.txt'

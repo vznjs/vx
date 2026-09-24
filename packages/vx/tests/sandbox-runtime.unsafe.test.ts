@@ -1376,13 +1376,13 @@ describe.skipIf(!available || process.platform !== 'linux')(
 )
 
 describe.skipIf(!available || process.platform !== 'linux')(
-  "learn/correctness's stale-hit demo, run for real",
+  "the site's stale-hit demo, run for real",
   () => {
-    // The site's stale-hit demo shows the frame vx prints when `web#build`
-    // reads `banner.txt` without declaring it. The site's suite runs inside a
-    // sandbox and cannot start another, so it holds the demo's text to
-    // `formatTaskBlock` over the line `parseStraceViolations` writes for a
-    // SYNTHETIC trace (packages/vx-docs/tests/learn-correctness.test.ts).
+    // The site's stale-hit demo (guide/trust) shows the frame vx prints when
+    // `app#build` reads `banner.txt` without declaring it. The site's suite
+    // runs inside a sandbox and cannot start another, so it holds the demo's
+    // text to `formatTaskBlock` over the line `parseStraceViolations` writes
+    // for a SYNTHETIC trace (packages/vx-docs/tests/guide-trust.test.ts).
     // This is the half it cannot run: a real trace of the same task yields
     // exactly that one line, and declaring the file lets the task pass.
     let fixture: Fixture
@@ -1411,7 +1411,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
     it(
       'the undeclared read fails with one line naming banner.txt; declaring it passes',
       async () => {
-        const dir = await addProject(fixture.root, 'web', {
+        const dir = await addProject(fixture.root, 'app', {
           config: config(['src/**']),
           files: {
             'src/index.ts': 'export default 2\n',

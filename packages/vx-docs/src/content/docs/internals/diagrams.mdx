@@ -1,0 +1,76 @@
+---
+title: The diagram kit
+description: The one build-time SVG component every Guide picture is drawn with, and the data it draws from, each part rendered with the toy monorepo.
+---
+
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { lanes } from '../../../components/guide/diagram/diagram.js'
+
+Every picture in the Guide is one component, `Diagram`, drawing one value
+of `Picture`: boxes, arrows between them, notes and frames. It renders SVG
+into the page when the site is built, so the picture is there with no
+script, in both themes, and at any width. The data is documented in
+`packages/vx-docs/src/components/guide/diagram/README.md`; this page renders
+each part, and `packages/vx-docs/tests/diagram-kit.test.ts` reads what it
+built.
+
+## Boxes and arrows
+
+<Diagram
+  name="kit-graph"
+  label="The toy monorepo's builds: utils#build before ui#build and api#build, both before app#build."
+  caption="Tones: accent is the one the text is about, muted is skipped, danger is wrong."
+  height={250}
+  boxes={[
+    { id: 'utils', x: 225, y: 10, w: 150, label: 'utils#build', tone: 'accent' },
+    { id: 'ui', x: 60, y: 100, w: 150, label: 'ui#build' },
+    { id: 'api', x: 390, y: 100, w: 150, label: 'api#build', sub: 'cache hit', tone: 'muted' },
+    { id: 'app', x: 225, y: 190, w: 150, label: 'app#build', tone: 'danger' },
+  ]}
+  arrows={[
+    { from: 'utils', to: 'ui' },
+    { from: 'utils', to: 'api' },
+    { from: 'ui', to: 'app', label: '^build' },
+    { from: 'api', to: 'app', dashed: true },
+  ]}
+/>
+
+## Timelines
+
+<Diagram
+  name="kit-timeline"
+  label="Two workers: worker 1 runs utils#build from 0 to 2 s, ui#build to 5 s and app#build to 7 s; worker 2 runs api#build from 2 to 4 s."
+  caption="lanes() turns workers and their bars into boxes, one row per worker."
+  height={130}
+  {...lanes(
+    [
+      {
+        name: 'worker 1',
+        bars: [
+          { start: 0, end: 2, label: 'utils', sub: 'build', tone: 'accent' },
+          { start: 2, end: 5, label: 'ui', sub: 'build' },
+          { start: 5, end: 7, label: 'app', sub: 'build' },
+        ],
+      },
+      { name: 'worker 2', bars: [{ start: 2, end: 4, label: 'api', sub: 'build' }] },
+    ],
+    { x: 100, y: 16, scale: 68, row: 56, h: 48 },
+  )}
+/>
+
+## Notes and frames
+
+<Diagram
+  name="kit-frame"
+  label="Inside a frame, app#build reads src/index.ts. banner.txt sits outside it."
+  caption="A frame groups boxes; a note says what a picture cannot draw."
+  height={200}
+  frames={[{ x: 6, y: 10, w: 380, h: 150, label: 'a frame', tone: 'link' }]}
+  boxes={[
+    { id: 'app', x: 26, y: 80, w: 150, label: 'app#build', tone: 'accent' },
+    { id: 'src', x: 216, y: 80, w: 150, label: 'src/index.ts' },
+    { id: 'banner', x: 440, y: 80, w: 150, label: 'banner.txt', tone: 'ok' },
+  ]}
+  arrows={[{ from: 'app', to: 'src', label: 'reads', tone: 'link' }]}
+  notes={[{ x: 300, y: 188, text: 'a note, in the tone it needs', tone: 'danger' }]}
+/>

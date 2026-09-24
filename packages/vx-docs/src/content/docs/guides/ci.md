@@ -1,107 +1,45 @@
 ---
 title: Continuous integration
-description: Run vx in CI — install the binary, build what changed and what depends on it with --affected, share a cache by connecting a remote-cache backend, and (optionally) pin a reproducible run with vx lock + --frozen.
+description: Run only what a change affects in CI, share the cache between runs, and get a job summary and a PR check from @vzn/vx-github.
+# The job summary sample below carries its own headings; a table of contents
+# would list them as this page's sections.
+tableOfContents: false
 ---
 
-vx is built for CI: a content-addressed cache plus `--affected` selection
-means most pull requests run only the packages they touched and the ones
-that depend on them, restoring from a previous build whatever those did
-not change. This guide is a working setup you can copy, plus the lockfile
-workflow and when to reach for it.
+Build only what a change touched, and reuse what another run already built.
+Why? → [Chapter 7: Only what changed](../../guide/affected/) and
+[Chapter 8: Many machines](../../guide/many-machines/)
 
-## The shape of a fast CI run
+## Steps
 
-1. **Install vx** (a single binary) and your workspace dependencies.
-2. **Connect a shared cache** so this run reuses what previous runs and
-   teammates already built. Sharing is a plugin — `@vzn/vx-reapi` connects
-   any Bazel REAPI server (NativeLink, BuildBuddy, Buildbarn,
-   bazel-remote), and any other backend plugs in the same way (see
-   [Remote caching](../remote-caching/)). (No server? The local cache still
-   makes warm runs instant; a shared cache is only needed to reuse work
-   *across* machines.)
-3. Run with **`--affected`** so only changed packages and their dependents
-   are scheduled.
+1. Check out with `fetch-depth: 0`: `--affected` needs the history.
+2. Install a pinned vx: `npm install -g @vzn/vx@<version>`.
+3. Run `vx run ci --affected=<base>`: the target branch on a PR, the commit before the push on a push.
+4. To reuse results across machines, declare a [remote cache](../remote-caching/).
+5. For a job summary and a PR check, declare `github()` from `@vzn/vx-github`.
 
-## GitHub Actions
+## Config
 
 ```yaml
 # .github/workflows/ci.yml
-name: CI
-on:
-  pull_request:
-  push:
-    branches: [main]
-
+on: [pull_request, push]
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
-    # Connecting a shared cache is optional — the local cache already makes
-    # warm runs fast. To reuse artifacts across machines, add the shared
-    # cache plugin's connection secrets here.
+    permissions:
+      checks: write # the PR check; the job summary needs nothing
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # --affected diffs against a base ref → needs history
-
-      # Install the vx binary onto PATH. Pin the version for reproducible CI.
-      - name: Install vx
-        run: npm install -g @vzn/vx
-
-      # Install workspace dependencies with your package manager.
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+          fetch-depth: 0
+      - run: npm install -g @vzn/vx
       - run: bun install --frozen-lockfile
-
-      - name: Lint, test, build what changed
-        # A PR diffs against its target branch. A push has no target: its
-        # base is the commit the branch was on before the push — `main`
-        # itself would be HEAD, and "nothing affected since origin/main".
-        run: >
-          vx run lint test build
+      - run: >
+          vx run ci
           --affected=${{ github.event_name == 'pull_request'
             && format('origin/{0}', github.base_ref)
             || github.event.before }}
 ```
-
-Notes:
-
-- **`fetch-depth: 0`** — `--affected` diffs against a base ref, which
-  needs real git history. A shallow clone can't compute it, and vx says
-  so rather than guessing: with no `origin/HEAD` and no parent commit
-  the run fails with `--affected has no base here … a shallow clone?`,
-  and a base that turns out to be the commit under test is named as
-  `HEAD itself` in the `nothing affected since <ref>` note.
-- **The base** — on a PR, the target branch (`origin/<base_ref>`); on a
-  push, `github.event.before`, the commit the branch was on before the
-  push, so a three-commit push selects all three commits' changes.
-  `origin/main` on a push to `main` is HEAD itself and selects nothing —
-  vx names that case in its note. After a force-push `before` may be
-  gone from history; vx says the ref did not resolve, and `--all` is the
-  honest fallback for that run. Changed packages (and their dependents)
-  run; the rest are never scheduled — nothing to restore, nothing to
-  probe — and within the selection, a task whose inputs the change did
-  not reach is a cache hit.
-- **`vx` is the npm-installed binary** on `PATH` — no wrapper needed. (Or
-  install it as a dependency with `bun add -d @vzn/vx` and invoke it
-  through your package manager.)
-- **Pin the version** with `npm install -g @vzn/vx@<version>` for
-  byte-stable CI.
-- **Shared cache** — connect a remote-cache backend to reuse artifacts
-  built on other branches and machines (unchanged packages restore instead
-  of executing). `@vzn/vx-reapi` connects any Bazel REAPI server; any other
-  backend plugs in through a cache plugin — see
-  [Remote caching](../remote-caching/) and
-  [Core is provider-neutral](../extensibility/).
-
-## A job summary and a PR check
-
-`@vzn/vx-github` is a telemetry plugin that writes every `vx run` as a
-**job summary** on the workflow run page — verdict, stats, failures called
-out above the per-task table — and, with `GITHUB_TOKEN` in the environment,
-one completed **check run** on the built commit so the verdict shows in the
-PR's checks list. Declare it once; anywhere but a GitHub runner it declines
-and costs nothing.
 
 ```ts
 // vx.workspace.ts
@@ -111,122 +49,12 @@ import { github } from '@vzn/vx-github'
 export default defineWorkspace({ plugins: [github()] })
 ```
 
-```yaml
-permissions:
-  checks: write # the check run; the job summary needs nothing
-```
+Outside GitHub Actions, `github()` declines and costs nothing.
 
-Without the token the check is skipped and the summary still writes;
-`github({ checks: true })` warns instead, `checks: false` opts out. A
-refused POST warns with the status (a `403` names the missing
-`permissions: checks: write`) and never fails the run, and an API that
-stalls is cut off by core's end-of-run deadline. Both artifacts are
-bounded by GitHub's own limits — the check output at 65 535 characters,
-the job summary at 1 MiB, roughly 19 000 task rows — because past either
-GitHub drops the whole thing rather than the tail; what is written then
-ends with a line saying so. The plugin's README has the options and the
-rest.
+## What `@vzn/vx-github` writes
 
-## Without `--affected`
-
-Prefer to always run the whole workspace and lean entirely on the cache
-(simpler, still fast once warm)?
-
-```yaml
-      - run: vx run lint test build --all
-```
-
-With remote caching an unchanged package is a cache hit even here — it
-enumerates and restores instead of executing.
-
-## One entry point: a `ci` group task
-
-Declare the gate in config, not the workflow, with a group task:
-
-```ts
-ci: {
-  description: 'format-check + lint + test',
-  dependsOn: ['format-check', 'lint', 'test'],
-}
-```
-
-```yaml
-      - run: vx run ci --all
-```
-
-## The lockfile: `vx lock` + `--frozen`
-
-vx config is real TypeScript — it can `import` shared presets and read
-`process.env`. That power means a config's *evaluated* result can, in
-principle, differ between machines. The lockfile makes a run **frozen and
-reproducible**: `vx lock` evaluates every project config once and writes
-the fully-resolved task graph to `vx-lock.json`; `vx run --frozen` then
-executes from that file with **zero config evaluation**.
-
-```bash
-vx lock                    # freeze the resolved graph → vx-lock.json (commit it)
-vx lock --check            # re-evaluate and assert nothing drifted (exit 1 if it did)
-vx run ci --all --frozen   # execute exactly the locked graph, no eval
-```
-
-Three commands, three jobs:
-
-- **`vx lock`** — regenerate the lockfile. Run it whenever you change a
-  `vx.config.ts` (or a preset it imports) and **commit `vx-lock.json`**
-  alongside the change.
-- **`vx lock --check`** — an audit. It re-evaluates every config in the
-  current environment and compares against the committed lock, catching
-  drift a file-hash can't see (e.g. a config that reads `process.env`).
-  Great as a CI step or a pre-commit hook.
-- **`vx run --frozen`** — load configs straight from `vx-lock.json` and
-  run, with no staleness check of its own: a config edited since
-  `vx lock` runs as locked, which is why `vx lock --check` comes first in
-  the recipe. A missing lock or entry is a hard error, never a silent
-  fall back to live evaluation.
-
-### When should you use it?
-
-- **In CI: yes, when you want determinism.** `--frozen` guarantees the run
-  executes the exact graph you committed — no eval-time surprises from a
-  different Node/Bun, env, or a transitively-imported preset. Take it for
-  that guarantee, not for speed: measured on the 1,000-project bench
-  (2026-09-12, 12 interleaved reps) plain runs at a median of 177 ms
-  against frozen's 165 — about 5%, and that 5% is the per-config identity
-  stat, not evaluation, because the config-evaluation cache already
-  serves a pure config without evaluating it. `--frozen` still parses
-  and re-validates the whole lock. Where it does save is a config the
-  purity gate cannot prove pure, which evaluates live on every plain run.
-  Pair it with a `vx lock --check` step so CI fails loudly if someone
-  forgot to re-lock.
-- **Locally: no — keep evaluating live.** Day-to-day `vx run` always reads
-  your configs fresh, so edits take effect immediately. `--frozen` is for
-  the reproducible/CI path, not the inner loop.
-- **Skip it entirely** if you don't need bit-for-bit reproducibility — the
-  cache makes runs fast without it, and plain `vx run` is the default.
-
-Turborepo and Nx have no equivalent: their static-JSON configs dodge the
-problem by being less expressive. vx keeps code-as-config **and**
-reproducibility.
-
-## Run summaries and profiles
-
-For dashboards or debugging a slow pipeline:
-
-```bash
-vx run build --all --summarize=summary.json   # per-task JSON
-vx run build --all --profile=trace.json       # Chrome-trace timeline
-```
-
-## GitHub Actions job summary
-
-vx can append a per-task result table to the job's summary page, so a red
-build tells you *which* task failed without opening the raw log. Failures
-are called out **above** the table, each with its exit code — and, for an
-exit above 128, the signal it stands for (`exit 137 (128 + SIGKILL)`) —
-so the one thing you opened the summary to find is the first thing you
-see. The table's status word says what each task did: ran, restored from
-the local or the remote cache, or skipped. What `@vzn/vx-github` writes,
-byte for byte (a test renders this run and checks it against this page):
+The job summary, failures first (a test renders this run and checks it
+against this page):
 
 > ## ❌ vx run
 >
@@ -246,54 +74,23 @@ byte for byte (a test renders this run and checks it against this page):
 >
 > <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 2 restored</sub>
 
-Every task is in exactly one bucket: `cache hits + executed + skipped` is
-the task count. A **skipped** task is one whose dependency failed — under
-the default `--continue=deps-ok` a single broken leaf skips everything
-downstream — so it is counted and named, never folded into "executed".
-`skipped` and `aborted` appear only when non-zero.
-
-Two ways to get it:
-
-- **Core, one flag.** `vx run ci --report-file="$GITHUB_STEP_SUMMARY"`
-  writes the plainer run report from the run's own outcomes — a totals
-  line and a Task / Status / Cache / Duration table, `failed (exit 2)`
-  in the status cell — no plugin, no server.
-  Use `--report-file`, not `--report=markdown >> …`: the report is
-  machine-clean but stdout is shared with vx's own run output, so a
-  redirect puts the whole log in the summary above the table.
-- **A plugin, no workflow step.** [`@vzn/vx-github`](../../introduction/)
-  is a telemetry plugin that appends a richer summary (verdict, stats,
-  failures first) on every `vx run` inside Actions and declines
-  everywhere else, so `plugins: [github()]` is safe to declare
-  unconditionally.
-
-## PR checks (GitHub Checks API)
-
-`@vzn/vx-github` also posts the run as a check run on the PR when the
-job grants `checks: write` and `GITHUB_TOKEN` is set; without the token
-the check is skipped and the job summary stays.
-
-## Flaky tasks, without a service
-
-vx knows every task's cache key and every outcome, so it finds flaky
-tasks itself: the same key both passing and failing on record, or a
-retry within a run. A red CI run whose failure has passed on these exact
-inputs before says so under its footer —
+A failure on inputs that passed before is named under the run's footer:
 
 ```
   Flaky:    1 task with the same inputs both passing and failing on record
     ✗ web#test — failed on inputs that passed 3× before
 ```
 
-— `--summarize` types it per task (`flaky: { passes, failures,
-attempts }`, present only then), and `vx info` keeps the standing list
-over the last 30 days of history. A failure on a key that never passed
-is a break, not a flake, and is not listed. Nx sells this as Nx Cloud;
-here it is a query over `.vx/cache`.
+## A frozen graph
 
-## Next steps
+`vx lock` writes the resolved task graph to `vx-lock.json`; commit it.
+In CI, `vx lock --check` fails if a config drifted, and
+`vx run ci --frozen` runs exactly the locked graph. Take `--frozen` for
+determinism, not speed: on the 1,000-project bench a plain run's median
+of 177 ms against frozen's 165 is a tie.
 
-- **[Remote caching](../remote-caching/)** — set up the shared cache.
-- **[Running & filtering tasks](../running-tasks/)** — `--affected`,
-  filters, and `--frozen` in depth.
-- **[CLI reference](../../cli/)** — every flag and exit code.
+## Common problems
+
+- **`--affected has no base here … a shallow clone?`** The checkout has no history. Set `fetch-depth: 0`.
+- **`nothing affected since <ref>` on every push.** `origin/main` on a push to `main` is the commit itself. Use `github.event.before`.
+- **The whole log lands in the job summary.** Use `--report-file="$GITHUB_STEP_SUMMARY"`, not a `>>` redirect.

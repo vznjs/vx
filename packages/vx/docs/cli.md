@@ -1957,7 +1957,7 @@ logged via `onRemoteError` but never fail the build.
 
 For any OTHER cache server (a Turbo-wire deployment, S3-direct, …),
 implement core's `RemoteCacheLayer` interface in a plugin's `cache`
-capability — the recipe lives in the extensibility guide. Embedders
+capability — the recipe lives in the plugins guide. Embedders
 holding a wire client can inject it per-run via
 `RunOptions.remoteCache` (explicit injection wins over the plugin
 consult). The retired `VX_REMOTE_CACHE_*` env vars are gone.

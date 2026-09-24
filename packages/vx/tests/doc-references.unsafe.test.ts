@@ -80,6 +80,11 @@ const CORE_DOCS = path.join(pkg, 'docs')
 function siteSource(urlPath: string): string | undefined {
   const page = urlPath.replace(/^\/vx\//, '/').replace(/^\/|\/$/g, '')
   const core = page === 'overview' ? 'README' : page
+  // A section index the import script writes from a core docs directory:
+  // `modules/` from its README, `design/` from the directory's pages. The
+  // generated page is absent until the site's import runs (darwin CI).
+  if (page === 'modules') return path.join(CORE_DOCS, 'modules', 'README.md')
+  if (page === 'design') return path.join(CORE_DOCS, 'design')
   for (const candidate of [
     path.join(CORE_DOCS, `${core}.md`),
     path.join(CONTENT, `${page}.md`),

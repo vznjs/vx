@@ -128,7 +128,7 @@ command of the same shape
 
 Here `ui` has a third task, `bundle`, which writes `dist/**` as
 `ui#build` does. Nothing orders the two. The task field asks for
-`build test bundle`.
+`build test docs bundle`.
 
 <Playground lab="shared-output" />
 
@@ -189,7 +189,7 @@ cleans and writes only those. `ui#build` still owns all of `dist/**`, and
 ## Lab 4: a bad order
 
 The fourth lab is on the [Scheduling](../scheduling/#lab-a-bad-order)
-page, in its simulator. You make `docs#build` long, watch the critical
+page, in its simulator. You make `app#docs` long, watch the critical
 path grow, and see how much a run loses when the scheduler starts the
 long task late.
 

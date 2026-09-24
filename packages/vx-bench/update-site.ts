@@ -141,8 +141,8 @@ function rewrite(text: string, re: RegExp, to: string, what: string): string {
   if (!re.test(text)) throw new Error(`index.astro: ${what} not found`)
   return text.replace(re, to)
 }
-// The graph's size, where the page names it: the panel's kicker and the
-// first card.
+// The graph's size, where the page names it: the panel's kicker and its
+// sub.
 landing = rewrite(
   landing,
   /\/\/ [\d,]+ tasks · [\d,]+ packages · \d+ layers ·/,
@@ -153,7 +153,7 @@ landing = rewrite(
   landing,
   /synthetic [\d,]+-task graph/,
   `synthetic ${nodes.toLocaleString('en-US')}-task graph`,
-  "the first card's graph size",
+  "the benchmark panel's graph size",
 )
 
 // ---- landing page: the real-repo panel, from benchmarks.md ----

@@ -39,8 +39,8 @@ does.
 The workspace is the toy monorepo from
 [What is task orchestration?](../what-is-task-orchestration/): `utils`;
 `ui` and `api`, which use `utils`; and `app`, which uses `ui` and `api`.
-Each has a `build` and a `test`, wired by `^build` and `build`. A `docs`
-package adds `docs#build`, which nothing waits for. That makes nine tasks.
+Each has a `build` and a `test`, wired by `^build` and `build`. `app` also
+has `app#docs`, which nothing waits for. That makes nine tasks.
 
 Every task declares the files it reads. Each `build` reads `src/**`, and
 each `test` reads `src/**` and `test/**`. `api#build` also declares the

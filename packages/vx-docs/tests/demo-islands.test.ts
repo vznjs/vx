@@ -534,7 +534,7 @@ const COUNT_ON_2 = [
   'app#lint 2 4 6',
   'ui#build 1 6 8',
   'api#build 2 6 12',
-  'docs#build 1 8 18',
+  'app#docs 1 8 18',
   'app#build 2 12 18',
   'utils#test 1 18 21',
   'ui#test 2 18 19',
@@ -543,7 +543,7 @@ const COUNT_ON_2 = [
 ]
 const MEDIAN_ON_2 = [
   'utils#build 1 0 6',
-  'docs#build 2 0 10',
+  'app#docs 2 0 10',
   'api#build 1 6 12',
   'ui#build 2 10 12',
   'utils#test 1 12 15',
@@ -566,7 +566,7 @@ const FINISH = [
 ]
 const NO_HISTORY = [
   ['Every task has history', '27 s', '24 s', '24 s', '24 s'],
-  ['docs#build is new', '27 s', '26 s', '24 s', '24 s'],
+  ['app#docs is new', '27 s', '26 s', '24 s', '24 s'],
   ['ui#lint is new', '27 s', '24 s', '26 s', '24 s'],
 ]
 
@@ -598,7 +598,7 @@ describe('the scheduler simulator model', () => {
     ).toEqual(FINISH)
     for (const [label, unknown] of [
       ['Every task has history', []],
-      ['docs#build is new', ['docs#build']],
+      ['app#docs is new', ['app#docs']],
       ['ui#lint is new', ['ui#lint']],
     ] as const) {
       expect([
@@ -661,7 +661,7 @@ describe('the scheduler simulator on learn/scheduling', () => {
     // A screen reader gets the chart as one sentence per worker.
     expect(only(charts[0]![2]!, /<svg\b[^>]*aria-label="([^"]*)"/g)).toBe(
       'Tasks waiting on 2 workers finishes at 27 s: worker 1 runs utils#build 0–6 s, ' +
-        'ui#build 6–8 s, docs#build 8–18 s, utils#test 18–21 s, app#test 21–27 s; worker 2 ' +
+        'ui#build 6–8 s, app#docs 8–18 s, utils#test 18–21 s, app#test 21–27 s; worker 2 ' +
         'runs utils#lint 0–1 s, ui#lint 1–3 s, api#lint 3–4 s, app#lint 4–6 s, api#build ' +
         '6–12 s, app#build 12–18 s, ui#test 18–19 s, api#test 19–21 s.',
     )
@@ -755,12 +755,12 @@ describe('the scheduler simulator on learn/scheduling', () => {
     expect(prose).toContain('utils#build has seven tasks waiting on it')
     const ahead = pluginPriorities('oracle', SIM_TASKS, none)!
     expect(
-      ['utils#build', 'docs#build', 'utils#lint', 'ui#lint', 'api#lint', 'app#lint'].map(
+      ['utils#build', 'app#docs', 'utils#lint', 'ui#lint', 'api#lint', 'app#lint'].map(
         (id) => ahead.get(id)! / 1000,
       ),
     ).toEqual([24, 10, 1, 2, 1, 2])
     expect(prose).toContain(
-      'utils#build has 24 seconds ahead of it, docs#build 10, and each lint 1 or 2',
+      'utils#build has 24 seconds ahead of it, app#docs 10, and each lint 1 or 2',
     )
   })
 

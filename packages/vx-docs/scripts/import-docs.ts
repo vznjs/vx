@@ -5,7 +5,7 @@
  * this script adds frontmatter and rewrites internal `.md` links to
  * Starlight clean URLs. It is idempotent and runs before every dev/build.
  *
- * Hand-authored pages (introduction, quickstart, guides/, concepts/, migrate/) are never touched —
+ * Hand-authored pages (quickstart, guides/, concepts/, migrate/) are never touched —
  * this script only writes the generated set listed in GENERATED below.
  */
 import { Glob } from 'bun'

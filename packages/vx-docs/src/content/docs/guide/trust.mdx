@@ -1,0 +1,99 @@
+---
+title: Can you trust a hit?
+description: A forgotten input makes the cache hand back a wrong result. The sandbox turns that into an error.
+chapter: 6
+problem: 'A hit replayed an old output, and the run was green.'
+---
+
+import StaleHit from '../../../components/demos/StaleHit.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/trust/pictures.js'
+
+`app#build` joins `src/index.ts` and `banner.txt` into one file. Its inputs
+list only `src/**`. You edit `banner.txt` and run the build.
+
+## A forgotten input makes a wrong hit
+
+<Diagram {...P.oldBanner} />
+
+The key did not change, so vx handed back the old file. The run passed, and
+the file is wrong. This is a
+[stale hit](../../learn/glossary/#cache-hit-miss-and-stale-hit).
+
+A stale hit comes from something the task reads but the key never sees. It
+can be a file, an environment variable, or a tool on your machine. A slow
+run is easy to notice. A wrong result on a passing run is not.
+
+## You list the inputs; vx never guesses
+
+<Diagram {...P.listNotGuess} />
+
+A guess can only see what one run happened to read. It also comes after the
+run, too late to look anything up. So vx asks you for the list, and then
+checks it.
+
+## The sandbox turns a forgotten file into an error
+
+<Diagram {...P.sandbox} />
+
+The [sandbox](../../learn/glossary/#hermeticity-and-sandboxing) runs the
+task where only the files you listed exist. Reading `banner.txt` fails, and
+the error names it. A failed task is never saved.
+
+Step through the five runs: the edit, the stale hit, then the sandbox.
+
+<StaleHit />
+
+## Four things the sandbox does not check
+
+- **Environment variables.** List them in `cache.inputs.env`.
+- **Tools on your machine**, such as the Node version.
+- **Installed packages in `node_modules`**, including your own linked
+  packages such as `ui`. This is a known gap.
+- **Other systems.** It runs on Linux and macOS, and on Windows only under
+  WSL.
+
+## In vx
+
+Add `exec.sandbox` and grant the same files your inputs list.
+
+```ts
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: {
+        command: 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt',
+        sandbox: { allow: { read: ['src/**', 'banner.txt'], write: ['dist/'] } },
+      },
+      cache: {
+        inputs: { files: ['src/**', 'banner.txt'] },
+        outputs: { files: ['dist/**'] },
+      },
+    },
+  },
+})
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [vx never guesses a task's input files](https://github.com/vznjs/vx/blob/main/packages/vx/tests/config.test.ts 'requires cache.inputs.files — the one declaration vx will not infer')
+- [This chapter's build fails on banner.txt in a real sandbox, and passes once it is listed](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'the undeclared read fails with one line naming banner.txt; declaring it passes')
+- [A failed sandboxed task is not saved](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'failed sandboxed task is NOT cached (re-runs next invocation)')
+- [A run of hits never starts the sandbox](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'a run whose sandboxed tasks are all hits never starts the sandbox')
+- [`node_modules` is readable without being listed](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-runtime.unsafe.test.ts 'installed dependencies are readable without being declared inputs')
+- [So is a linked package of your own](https://github.com/vznjs/vx/blob/main/packages/vx/tests/sandbox-request.test.ts 'a SCOPED link is found too: the scan descends one level into `@scope/`')
+- [An environment variable is in the key only when listed](../../guides/environment-variables/#the-two-lists)
+- [Where the sandbox runs](../../guides/sandboxing/#requirements--platform-support)
+
+</details>
+
+## Check yourself
+
+<Checkpoint id="correctness" />
+
+Every hit can now be trusted. But CI still builds all four packages for a
+README change.

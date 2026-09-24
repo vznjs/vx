@@ -180,7 +180,7 @@ export default defineProject({
 - **The graph.** vx reads which packages use which from the `package.json`
   files, so `^build` needs no list of packages. The
   [`dependsOn` reference](../../schema/#dependson-optional) has every form
-  it accepts, and [Task dependencies](../../guides/task-dependencies/)
+  it accepts, and [Tasks and dependencies](../../guides/tasks/#dependson)
   walks through them.
 - **The order.** `vx run build test --all` runs the whole graph. vx
   starts each task as soon as its dependencies finish, up to

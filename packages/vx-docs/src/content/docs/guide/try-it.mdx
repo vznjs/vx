@@ -1,0 +1,59 @@
+---
+title: Try it
+description: Every idea from this book, on the same four packages, in your browser. Then the labs, and your own repository.
+chapter: 10
+problem: 'See every idea work on the four packages, in your browser.'
+---
+
+import Playground from '../../../components/demos/Playground.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/try-it/pictures.js'
+
+Try every idea from this book yourself, without installing anything.
+
+<Diagram {...P.loop} />
+
+## Edit, run, and read what moved
+
+This is vx's own planner, running in your page on the same four packages.
+
+<Playground />
+
+## One file moves four keys
+
+<Diagram {...P.ripple} />
+
+Run once, edit `packages/ui/src/button.tsx`, and run again. Only these four
+tasks miss.
+
+## Break it on purpose in the labs
+
+<Diagram {...P.labs} />
+
+Each [lab](../../learn/labs/) starts with one thing wrong and shows how vx
+catches it.
+
+## In vx
+
+On your own repository, after the [quickstart](../../quickstart/) (or
+[from Turborepo](../../migrate/from-turborepo/), or
+[from Nx](../../migrate/from-nx/)), the same plan is one command:
+
+```sh
+vx run build test --dry
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [`--dry` prints the plan without running it](../../cli/#planning-mode---dry---graph)
+- [This planner and the `vx` command give every task the same key](https://github.com/vznjs/vx/blob/main/packages/vx/tests/playground-parity.unsafe.test.ts)
+
+</details>
+
+## Check yourself
+
+<Checkpoint id="playground-env" />
+
+That is the whole book. The next problem is your own repository.

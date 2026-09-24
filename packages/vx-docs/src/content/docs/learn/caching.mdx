@@ -239,7 +239,7 @@ is a stale hit waiting to happen. In return, an edit to a file the task
 does not read, such as a README, does not rerun it. The opt-in
 [sandbox](../../guides/sandboxing/) closes the gap: a sandboxed task that
 reads a file it never declared fails and names the file. When a key does
-move and you want to know why, [`vx why`](../../guides/trusting-the-cache/)
+move and you want to know why, [`vx why`](../../guides/caching/#why-did-it-re-run)
 names the input that moved it.
 
 Folding upstream keys, vx knows a task's key before anything runs, as long

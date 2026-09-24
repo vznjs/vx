@@ -1,0 +1,85 @@
+---
+// A Guide chapter ends with one line naming the next chapter and the problem
+// it opens with ("Next: Concurrency. The graph is right but…"; the last
+// chapter's goes to the quickstart), instead of Starlight's prev/next pair.
+// Every other page keeps Starlight's footer.
+import Default from '@astrojs/starlight/components/Footer.astro'
+import EditLink from '@astrojs/starlight/components/EditLink.astro'
+import LastUpdated from '@astrojs/starlight/components/LastUpdated.astro'
+import { chapterPage, nextLineHtml } from '../../guide/chapters.js'
+
+const page = chapterPage(Astro.locals.starlightRoute.id)
+const base = import.meta.env.BASE_URL
+---
+
+{
+  page === undefined ? (
+    <Default />
+  ) : (
+    <footer class="vx-chapter-foot">
+      <a class="vx-next" href={`${base}${page.next.href}`} rel="next">
+        <span class="vx-next-line" set:html={nextLineHtml(page.next)} />
+        <span class="vx-next-arrow" aria-hidden="true">
+          →
+        </span>
+      </a>
+      <div class="vx-meta">
+        <EditLink />
+        <LastUpdated />
+      </div>
+    </footer>
+  )
+}
+
+<style>
+  .vx-chapter-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    margin-top: 4rem;
+  }
+  .vx-next {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--vx-border);
+    border-left: 3px solid var(--vx-accent);
+    border-radius: 10px;
+    background: var(--vx-surface);
+    font-size: 1.125rem;
+    line-height: 1.5;
+    color: var(--vx-muted);
+    text-decoration: none;
+    transition: border-color 0.15s;
+  }
+  .vx-next:hover {
+    border-color: var(--vx-accent);
+  }
+  .vx-next-line :global(strong) {
+    color: var(--vx-fg);
+    font-weight: 600;
+  }
+  .vx-next-line :global(code) {
+    font-family: var(--vx-mono);
+    font-size: 0.9em;
+    color: var(--vx-fg);
+    background: var(--vx-surface-2);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  .vx-next-arrow {
+    flex-shrink: 0;
+    font-size: 1.5rem;
+    color: var(--vx-accent);
+  }
+  .vx-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem 3rem;
+    font-size: var(--sl-text-sm);
+    color: var(--vx-muted);
+  }
+</style>

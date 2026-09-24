@@ -1,5 +1,5 @@
 // learn/correctness teaches the stale hit with a model of one task
-// (demos/model/stale-hit.ts): `web#build` reads `banner.txt` without
+// (demos/model/stale-hit.ts): `app#build` reads `banner.txt` without
 // declaring it. The page may call the model a model; it may not be wrong.
 // This file holds it three ways:
 //
@@ -12,7 +12,7 @@
 //
 // Step 4 is not run for real here. It needs a sandbox, this suite runs in
 // the site's sandboxed `test` task, and a sandbox cannot start inside
-// another. Core's tests/sandbox-runtime.unsafe.test.ts ("learn/correctness's
+// another. Core's tests/sandbox-runtime.unsafe.test.ts ("the site's
 // stale-hit demo, run for real") runs it and pins the same line from a real
 // trace.
 //
@@ -208,7 +208,7 @@ interface Seen {
   output: string | undefined
 }
 
-/** A real run of `web#build`. */
+/** A real run of `app#build`. */
 async function runOnce(root: string, cached: boolean): Promise<Seen> {
   const r = await run({
     cwd: root,
@@ -439,7 +439,7 @@ describe('the stale-hit demo on learn/correctness', () => {
     }
     expect(pre(reports[0]![1]!)).toContain(`SANDBOX VIOLATIONS (1)`)
     expect(pre(reports[0]![1]!)).toContain(
-      `openat(banner.txt) = -1 ENOENT  [/repo/packages/web/banner.txt]`,
+      `openat(banner.txt) = -1 ENOENT  [/repo/packages/app/banner.txt]`,
     )
   })
 

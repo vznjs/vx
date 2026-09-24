@@ -1,0 +1,57 @@
+---
+// Starlight's sidebar, marked with its section (route-data.ts filtered it to
+// that section's group) so the Guide's can number its chapters. On a phone the
+// sidebar is the menu, and the header has no room for the four places, so
+// they head the menu instead.
+import Default from '@astrojs/starlight/components/Sidebar.astro'
+import { SECTIONS } from '../../nav/sections.js'
+
+const base = import.meta.env.BASE_URL
+const current = Astro.locals.vxSection
+---
+
+<nav class="vx-places-menu" aria-label="Sections">
+  {
+    SECTIONS.map((s) => (
+      <a href={`${base}${s.href}`} aria-current={s.id === current ? 'true' : undefined}>
+        {s.label}
+      </a>
+    ))
+  }
+</nav>
+<div class="vx-sidebar" data-vx-section={current}>
+  <Default />
+</div>
+
+<style>
+  .vx-sidebar {
+    display: contents;
+  }
+  .vx-places-menu {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-bottom: 1rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--vx-border);
+  }
+  .vx-places-menu a {
+    font: 500 var(--sl-text-sm) / 1 var(--vx-mono);
+    text-transform: lowercase;
+    color: var(--vx-muted);
+    text-decoration: none;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 999px;
+  }
+  @media (min-width: 50rem) {
+    .vx-places-menu {
+      display: none;
+    }
+  }
+  .vx-places-menu a[aria-current='true'] {
+    color: var(--vx-on-accent);
+    background: var(--vx-accent);
+    border-color: var(--vx-accent);
+  }
+</style>

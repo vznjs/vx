@@ -1,0 +1,82 @@
+---
+title: Concurrency
+description: Tasks that do not need each other run at the same time. Workers, the longest chain, and which task to start first.
+chapter: 4
+problem: 'The graph is right, but the run takes as long as the loop.'
+---
+
+import SchedulerSim from '../../../components/demos/SchedulerSim.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/concurrency/pictures.js'
+
+Your tasks now run in the right order. But if they run one at a time, the
+eight of them take as long as the shell loop did.
+
+## Tasks that don't need each other run together
+
+<Diagram {...P.together} />
+
+`ui#build` and `api#build` both need only `utils#build`. Once it is done,
+both can start at once.
+
+## Each worker runs one task at a time
+
+<Diagram {...P.workers} />
+
+A worker is one slot that runs one task. Your machine has a few, about one
+per CPU core. Two workers finish the same tasks sooner.
+
+## The longest chain sets the finish line
+
+<Diagram {...P.chain} />
+
+These four tasks each wait for the one before. Extra workers cannot run
+them side by side. This chain is the
+[critical path](../../learn/glossary/#critical-path), and no run is
+shorter than it.
+
+## Start the longest chain first
+
+When more tasks are ready than there are workers, the one that starts first
+changes when the run ends. vx starts the task that the most others wait
+on. The `@vzn/vx-schedule-history` plugin starts the one with the longest
+chain ahead, learned from past runs.
+
+The simulator adds a `lint` task to each package and a slow `app#docs`.
+Change the workers and watch when each rule finishes.
+
+<SchedulerSim />
+
+## In vx
+
+`--concurrency` sets how many workers run, by default one per CPU core:
+
+```sh
+vx run build test --concurrency 4
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [At most `--concurrency` tasks run at once](https://github.com/vznjs/vx/blob/main/packages/vx/tests/scheduler.test.ts 'respects the concurrency cap')
+- [The default is the CPU cores, capped by a container's quota](https://github.com/vznjs/vx/blob/main/packages/vx/tests/cgroup.test.ts 'parallelism: the cores capped by the quota, rounded UP, never below one')
+- [`vx info` shows the worker count and where it came from](https://github.com/vznjs/vx/blob/main/packages/vx/tests/show-info.test.ts 'names where the worker count comes from')
+- [vx starts the task the most others wait on](https://github.com/vznjs/vx/blob/main/packages/vx/tests/scheduler.test.ts 'prefers the task that blocks the most downstream work')
+- [It counts everything waiting, not only the next task](https://github.com/vznjs/vx/blob/main/packages/vx/tests/scheduler.test.ts 'counts TRANSITIVE dependents, deduplicated across a diamond')
+- [A tie goes to graph order](https://github.com/vznjs/vx/blob/main/packages/vx/tests/scheduler.test.ts 'ties break in graph-insertion order (topo from buildTaskGraph)')
+- [The plugin ranks by the longest chain ahead](https://github.com/vznjs/vx/blob/main/packages/vx-schedule-history/tests/schedule-history.test.ts 'a node with dependents folds the max downstream chain')
+- [The simulator matches vx's own scheduler](https://github.com/vznjs/vx/blob/main/packages/vx-bench/tests/schedule-policy.test.ts 'reproduces the real dispatch order, start times and makespan')
+
+</details>
+
+## Check yourself
+
+<details>
+<summary>You add a third worker. Does the run of the eight tasks finish sooner?</summary>
+
+No. The longest chain still runs one task after another.
+
+</details>
+
+The run is now as fast as the chain allows. But change one line in `app`,
+and `utils` still builds again.

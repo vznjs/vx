@@ -1,24 +1,21 @@
 ---
 title: Migrate from Turborepo
-description: Move a Turborepo monorepo to vx. What maps 1:1, what's better, and how `bunx @vzn/vx-migrate` converts your turbo.json into vx.config.ts files automatically.
+description: Run a Turborepo repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files from turbo.json.
 ---
 
-vx is shaped like Turborepo on purpose, so this is the easy migration.
-Same per-package model, same `dependsOn` micro-syntax, same `--filter`
-DSL, same `--affected` selection. The main change
-is that config moves from one `turbo.json` to per-package `vx.config.ts`
-files — and `bunx @vzn/vx-migrate` writes them for you.
+Run your Turborepo repo under vx today. Move its config to TypeScript
+when you are ready.
 
-## Try it first, without writing a file
+## Steps
 
-`turbo()` from `@vzn/vx-migrate` runs a `turbo.json` workspace under vx as it is: the
-plugin fills vx's `project` stage from your `turbo.json` and each
-package's scripts, using the same mapper `bunx @vzn/vx-migrate` renders files from.
-One file, and the repo runs:
+1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
+2. Add the `vx.workspace.ts` below. It is the only new file.
+3. Run `vx run build --all`. It runs what `turbo run build` ran, under vx's cache.
+4. Preview the configs: `bunx @vzn/vx-migrate --dry`.
+5. Write them: `bunx @vzn/vx-migrate`. It never overwrites a file without `--force`.
+6. Review each `TODO(vx-migrate)` comment. A package with its own `vx.config.ts` keeps it; `turbo()` fills only the rest.
 
-```bash
-bun add -d @vzn/vx @vzn/vx-migrate
-```
+## Config
 
 ```ts
 // vx.workspace.ts
@@ -28,159 +25,38 @@ import { turbo } from '@vzn/vx-migrate'
 export default defineWorkspace({ plugins: [turbo()] })
 ```
 
-```bash
-vx run build --all      # what `turbo run build` ran, under vx's cache
-```
+## What maps to what
 
-Whatever the mapping cannot express is a warning on every run — the same
-list `bunx @vzn/vx-migrate --dry` prints once. A package that writes its own
-`vx.config.ts` keeps it (the plugin fills, never overwrites), so you can
-migrate one package at a time and leave the rest on `turbo.json`.
+| Turborepo (`turbo.json`)                                    | vx (`vx.config.ts`)                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `tasks` / `pipeline`                                        | `tasks`                                                                  |
+| `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
+| `inputs`                                                    | `cache.inputs.files`                                                     |
+| `outputs`                                                   | `cache.outputs.files`                                                    |
+| `env`                                                       | `cache.inputs.env` **and** `exec.env.passThrough`                        |
+| `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
+| `cache: false`                                              | no `cache` block: the task always runs                                   |
+| `persistent: true`                                          | `exec.persistent: { … }`                                                 |
+| `outputLogs`                                                | `"new-only"` is the default; other values are the run's `--output-logs` |
+| `extends`                                                   | nothing: a package task merges over the root's, field by field           |
+| `$TURBO_ROOT$/file`                                         | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
+| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` | a generated `vx-preset.ts` you import                                    |
 
-## Let `@vzn/vx-migrate` do it
+The command itself comes from your `package.json` script, with its
+`pre<name>` / `post<name>` hooks folded in.
 
-```bash
-bun add -d @vzn/vx
-bunx @vzn/vx-migrate --dry   # preview the generated files + a report
-bunx @vzn/vx-migrate         # write them (won't overwrite without --force)
-```
+| Turborepo                         | vx                                                     |
+| --------------------------------- | ------------------------------------------------------ |
+| `turbo run build`                 | `vx run build --all`                                   |
+| `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
+| `turbo run build --affected`      | `vx run build --affected`                              |
+| `turbo run build --continue`      | `vx run build --continue` (the default is `deps-ok`)   |
+| `TURBO_TOKEN` remote cache        | [`turboCache()`](../../guides/remote-caching/#a-hosted-cache-in-three-commands) reads the same variables |
 
-`vx-migrate` is its own package, so it runs before any vx file exists. It detects your `turbo.json`, reads the root pipeline and any
-per-package `extends`, inlines the matching `package.json` scripts as task
-commands, and emits a `vx.config.ts` per package. It only emits a task
-where the script actually exists, and any value it can't infer becomes a
-`TODO(vx-migrate)` **comment** — never a silent wrong value. Review the
-output, fill in the TODOs, and run.
+## Common problems
 
-## What maps directly
+- **A task always runs.** vx caches only a task with a `cache` block that names its inputs and outputs. `vx-migrate` fills them from `turbo.json`.
+- **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough`. [Environment variables](../../guides/environment-variables/)
+- **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
 
-| Turborepo (`turbo.json`)        | vx (`vx.config.ts`)                              |
-| ------------------------------- | ------------------------------------------------ |
-| `tasks` / `pipeline`            | `tasks`                                          |
-| a task's `dependsOn`            | `dependsOn` — identical `'build'`, `'^build'`, `'pkg#build'` syntax |
-| `outputs`                       | `cache.outputs.files`                            |
-| `inputs`                        | `cache.inputs.files`                             |
-| `env`                           | `cache.inputs.env` **and** `exec.env.passThrough` |
-| `passThroughEnv`                | `exec.env.passThrough`                           |
-| `cache: false`                  | omit the `cache` block (the task always runs)    |
-| `persistent: true`              | `exec.persistent: { … }`                         |
-| `outputLogs: "new-only"`        | vx's default flow (nothing to write); other values are the run's `--output-logs <mode>` |
-| `extends`                       | nothing to write — a package task MERGES over the root's, field by field; `extends: false` alone opts the package out of the task, and `extends: false` beside other keys runs on those keys alone |
-| `$TURBO_ROOT$/file`             | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles` |
-| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` | a generated root `vx-preset.ts` you import and spread |
-
-The command itself comes from your `package.json` script (Turborepo runs
-the script of the same name; vx makes the command explicit in `exec`).
-
-### Before / after
-
-`bunx @vzn/vx-migrate` reads your `turbo.json` and writes a `vx.config.ts` per
-package — scripts inlined as `exec.command`, everything it can't infer
-left as a `TODO` comment. Here's the same `build`/`test` pipeline before
-and after:
-
-```jsonc
-// turbo.json  (before)
-{
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["src/**", "tsconfig.json"],
-      "outputs": ["dist/**"],
-      "env": ["NODE_ENV"]
-    },
-    "test": { "dependsOn": ["build"], "outputs": [] }
-  }
-}
-```
-
-```ts
-// packages/app/vx.config.ts  (after — generated, then reviewed)
-import { defineProject } from '@vzn/vx'
-
-export default defineProject({
-  tasks: {
-    build: {
-      exec: { command: 'tsc -b', env: { passThrough: ['NODE_ENV'] } },
-      dependsOn: ['^build'],
-      cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'], env: ['NODE_ENV'] },
-        outputs: { files: ['dist/**'] },
-      },
-    },
-    test: {
-      dependsOn: ['build'],
-      exec: { command: 'bun test' },
-      // No `inputs` in turbo.json is Turbo's whole-package default; narrow it on review.
-      cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
-    },
-  },
-})
-```
-
-Note `env` becomes **two** entries: `inputs.env` (so a change busts the
-cache) and `exec.env.passThrough` (so the command can see it). vx isolates
-the child environment — [Environment variables](../../guides/environment-variables/)
-explains why.
-
-## What you'll notice is better
-
-- **Your config is TypeScript.** Share presets with imports instead of
-  copy-pasting JSON across packages — and because vx hashes the *resolved*
-  config, a preset change correctly invalidates the cache.
-- **No stale files after a restore.** Turborepo restores additively;
-  vx wipes declared outputs before restore, so `dist/` is exactly the
-  cached snapshot.
-- **Sparse `^task` bridging.** `^build` reaches *through* packages that
-  don't declare the task to the nearest one that does — no more no-op
-  tasks scattered across the repo. Turborepo stops at direct deps.
-- **Faster.** vx's warm, fully-cached runs lead Turborepo in the repo's
-  head-to-head benchmark (`bun packages/vx-bench/compare.ts`, results in
-  [Benchmarks](../../benchmarks/)).
-
-## Commands you already know
-
-| Turborepo                         | vx                              |
-| --------------------------------- | ------------------------------- |
-| `turbo run build`                 | `vx run build --all`            |
-| `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`      |
-| `turbo run build --affected`      | `vx run build --affected`       |
-| `turbo run build --dry`           | `vx run build --dry`            |
-| `turbo run build -- --flag`       | `vx run build -- --flag`        |
-| `turbo run build --continue`      | `vx run build --continue` (bare `--continue` is Turbo's `always`; the default with no flag is `deps-ok`) |
-| `turbo run build --output-logs=hash-only` | `vx run build --output-logs hash-only` |
-| `TURBO_TOKEN` / remote cache      | `turboCache()` from `@vzn/vx-migrate` reads the same variables |
-
-The remote cache is plugin-driven: `turboCache()` from `@vzn/vx-migrate`
-keeps the Turbo-wire server you have (Vercel's Remote Cache included),
-and `@vzn/vx-reapi` connects any Bazel REAPI server (NativeLink,
-BuildBuddy, Buildbarn, bazel-remote). See
-[Remote caching](../../guides/remote-caching/).
-
-## A couple of differences to expect
-
-- **Caching is opt-in and explicit.** Where Turborepo caches by default,
-  vx requires a `cache` block with both `inputs` and `outputs`. This is
-  deliberate: a forgotten cache miss costs a re-run; a stale hit ships a
-  broken artifact. `bunx @vzn/vx-migrate` fills these in from your `turbo.json`.
-- **One command per task.** The command is the script body itself, with
-  its `pre<name>` / `post<name>` hooks folded in the way npm and pnpm run
-  them — one process less per task than `pnpm run <name>`. Chain with
-  `&&`, or split into `dependsOn`-linked tasks so each step caches.
-- **Default scope is the current package**, not the whole workspace. A bare
-  `vx run build` inside a package runs that package (like running its
-  script directly); use `--all` for Turborepo's run-everything default, or
-  `--filter` / `--affected` to select.
-- **No Bun needed to run vx** — `npm install -g @vzn/vx` ships a standalone
-  binary. Bun (≥ 1.4) is only required when running vx from source.
-
-Every row a Turbo user relies on, spelled in vx and pinned by a test, is
-the [parity map](../../parity/).
-
-## Next steps
-
-- **[Quickstart](../../quickstart/)** — verify a cached run works.
-- **[Caching tasks](../../guides/caching/)** — confirm your inputs/outputs
-  are right.
-- **[vx vs Turborepo vs Nx](../../comparison/)** — the full feature
-  comparison.
+Every Turborepo behaviour, spelled in vx and pinned by a test: the [parity map](../../parity/).

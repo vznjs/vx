@@ -1,0 +1,86 @@
+---
+// Starlight's header with the site's four places beside the title. The
+// current section is marked from route-data.ts. Below 50rem the links move
+// into the menu (Sidebar.astro), where there is room for them.
+import Search from '@astrojs/starlight/components/Search.astro'
+import SiteTitle from '@astrojs/starlight/components/SiteTitle.astro'
+import SocialIcons from '@astrojs/starlight/components/SocialIcons.astro'
+import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro'
+import { SECTIONS } from '../../nav/sections.js'
+
+const base = import.meta.env.BASE_URL
+const current = Astro.locals.vxSection
+---
+
+<div class="vx-header">
+  <div class="vx-title">
+    <SiteTitle />
+    <nav class="vx-places sl-hidden md:sl-flex" aria-label="Sections">
+      {
+        SECTIONS.map((s) => (
+          <a href={`${base}${s.href}`} aria-current={s.id === current ? 'true' : undefined}>
+            {s.label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+  <div class="vx-search sl-flex print:hidden">
+    <Search />
+  </div>
+  <div class="vx-right sl-hidden md:sl-flex print:hidden">
+    <SocialIcons />
+    <ThemeSelect />
+  </div>
+</div>
+
+<style>
+  .vx-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    height: 100%;
+  }
+  .vx-title {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    min-width: 0;
+    overflow: clip;
+    padding: 0.25rem;
+    margin: -0.25rem;
+  }
+  .vx-places {
+    gap: 1.5rem;
+    align-items: center;
+  }
+  .vx-places a {
+    font: 500 var(--sl-text-sm) / 1 var(--vx-mono);
+    text-transform: lowercase;
+    color: var(--vx-muted);
+    text-decoration: none;
+    padding-block: 0.4rem;
+    border-bottom: 2px solid transparent;
+  }
+  .vx-places a:hover {
+    color: var(--vx-fg);
+  }
+  .vx-places a[aria-current='true'] {
+    color: var(--vx-fg);
+    border-bottom-color: var(--vx-accent);
+  }
+  .vx-search {
+    flex: 1;
+    justify-content: flex-end;
+  }
+  .vx-right {
+    gap: 1rem;
+    align-items: center;
+  }
+  @media (min-width: 50rem) {
+    .vx-search {
+      max-width: 22rem;
+    }
+  }
+</style>

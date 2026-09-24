@@ -1,66 +1,24 @@
 ---
 title: Quickstart
-description: Install vx, write your first vx.config.ts, and run a cached, parallel task graph in about five minutes.
+description: Install vx, describe one task, and run it from the cache the second time.
 ---
 
-This guide takes you from nothing to a cached, parallel task graph. It
-assumes a workspace under **git** (vx hashes inputs via git's index, so
-a repo is required) on Linux or macOS (Windows: under WSL). vx itself
-is one self-contained binary — no Node, no Bun to install.
+Run your first cached task in five minutes. Why a task runner at all? →
+[Chapter 1: Why orchestrate?](../guide/why/)
 
-Already have a monorepo with Turborepo or Nx? Jump to
-[Add vx to an existing repo](../add-to-existing-repo/) or the migration
-guides ([Turborepo](../migrate/from-turborepo/),
-[Nx](../migrate/from-nx/)).
+You need a git repository on Linux or macOS (on Windows, use WSL). vx is
+one binary: there is no Node or Bun to install.
 
-## 1. Install
+## Steps
 
-```bash
-# Any package manager — ships the prebuilt standalone binary (no Bun to run):
-npm install -D @vzn/vx    # or: pnpm add -D @vzn/vx · yarn add -D @vzn/vx · bun add -d @vzn/vx
+1. Install it in the repo: `npm install -D @vzn/vx` (or `npm install -g @vzn/vx`).
+2. Run `vx init`. It writes one `vx.config.ts` per package from your `package.json` scripts.
+3. Or write the config by hand, next to a package's `package.json` (below).
+4. Run `vx run build`. It runs the command and stores the result.
+5. Run it again. Nothing changed, so vx restores the result instead of running.
+6. Run `vx run build --all` to build every package, in dependency order.
 
-# …or globally, so `vx` is on your PATH everywhere:
-npm install -g @vzn/vx
-```
-
-This puts the `vx` binary in your workspace. vx prepends each package's
-`node_modules/.bin` to `PATH` per task, so `tsc`, `vite`, `eslint`, etc.
-resolve from a bare command — no `npx` needed.
-
-Using the standalone binary from a release instead? Still add
-`@vzn/vx` to the workspace's devDependencies: your `vx.workspace.ts`
-and `vx.config.ts` import it, and the binary resolves that import from
-your `node_modules` (it also gives you the types).
-
-## 2. The workspace file (optional)
-
-Running a command on this machine and caching its result in `.vx/cache`
-is what vx does with no configuration at all — a workspace with no
-`vx.workspace.ts` runs and caches. The file exists to add plugins: a
-remote cache, a remote executor, telemetry, extra CLI verbs. Each one is
-a line in a list, consulted in order, with the local executor and cache
-as the floor under all of them:
-
-```ts
-// vx.workspace.ts (next to your root package.json)
-import { defineWorkspace } from '@vzn/vx'
-
-export default defineWorkspace({
-  plugins: [], // e.g. reapi({ endpoint: 'cache.example.com:443' })
-})
-```
-
-Let vx write it: `vx init` scaffolds this file and one `vx.config.ts`
-per package from your `package.json` scripts (`bunx @vzn/vx-migrate` does
-the same from a `turbo.json` or an Nx graph). Steps 3–5 show what it generates —
-the generated files type themselves with `satisfies ProjectConfig` /
-`satisfies WorkspaceConfig` and a type-only import instead of
-`defineProject` / `defineWorkspace`, which is the same checking without
-a runtime import of core (worth ~17 ms per run on a small workspace).
-
-## 3. Describe a task
-
-Drop a `vx.config.ts` next to any package's `package.json`:
+## Config
 
 ```ts
 // packages/app/vx.config.ts
@@ -69,56 +27,15 @@ import { defineProject } from '@vzn/vx'
 export default defineProject({
   tasks: {
     build: {
+      dependsOn: ['^build'], // my dependencies' build first
       exec: { command: 'tsc -b' },
       cache: {
         inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/**'] },
       },
     },
-  },
-})
-```
-
-Two things to internalize early:
-
-- **Caching is opt-in and explicit.** When you add a `cache` block, both
-  `inputs` and `outputs` are required. No hidden globs — you say exactly
-  what the task reads and produces. (Omit `cache` entirely and the task
-  always runs.)
-- **One command per task.** `exec.command` is a single shell command.
-  Chain steps with `&&`, or split them into separate tasks wired with
-  `dependsOn` so each step caches independently.
-
-`defineProject` is just an identity function for TypeScript autocomplete
-and validation — it has zero runtime effect.
-
-## 4. Run it
-
-```bash
-vx run build
-```
-
-The first run executes `tsc` and stores the result. Run it again:
-
-```bash
-vx run build          # ⇢ success local — the cache hit, restored in milliseconds
-```
-
-vx restored `dist/**` and the captured logs from cache without running
-`tsc`. Change a file under `src/` and re-run — vx detects the changed
-input and rebuilds, then caches the new result.
-
-## 5. Add a second task and a dependency
-
-```ts
-export default defineProject({
-  tasks: {
-    build: {
-      exec: { command: 'tsc -b' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
-    },
     test: {
-      dependsOn: ['build'], // build must succeed first
+      dependsOn: ['build'], // my own build first
       exec: { command: 'bun test' },
       cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
     },
@@ -126,49 +43,32 @@ export default defineProject({
 })
 ```
 
-```bash
-vx run test           # runs build → test, in order, then caches both
-```
-
-`outputs: { files: [] }` is correct for tasks like `test` and `lint` that
-produce no files — you still cache the successful no-op so the next run
-is instant.
-
-## 6. Go wide across packages
-
-Use the `^` prefix to depend on the *same task in your workspace
-dependencies* — the universal monorepo pattern:
-
-```ts
-build: {
-  dependsOn: ['^build'],          // build my deps before me
-  exec: { command: 'tsc -b' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
-}
-```
-
-Now run across the whole workspace:
+## Run
 
 ```bash
-vx run build --all              # every package, in dependency order
-vx run build --filter "@app/*"  # only packages matching a filter
-vx run test --affected          # changed vs the base branch, and what depends on it
+vx run build --all        # every package, in dependency order
+vx run build              # ⇢ success local — a cache hit
+vx run test --affected    # what changed, and its dependents
+vx run build --all --dry  # the plan; runs nothing
+vx run build --graph      # the task graph as Graphviz DOT
 ```
 
-## 7. See what vx will do (without doing it)
+## Common problems
 
-```bash
-vx run build --all --dry        # predicted cache hits/misses, no execution
-vx run build --graph            # the task graph as Graphviz DOT
-```
+- **Only one package ran.** Plain `vx run build` runs the package you are in. Add `--all`.
+- **A config cannot import `@vzn/vx`.** Add it as a devDependency, even when `vx` itself is a release download.
+- **`vx requires git`.** vx reads your files through git. Run `git init` at the workspace root.
 
-## Where to go next
+## Known limits
 
-- **[Configuring tasks](../guides/tasks/)** — the full shape of
-  `vx.config.ts`.
-- **[Caching tasks](../guides/caching/)** — get inputs and outputs right
-  so runs are always correct.
-- **[Running & filtering tasks](../guides/running-tasks/)** — filters,
-  `--affected`, argument forwarding, watch mode.
-- **[Continuous integration](../guides/ci/)** — wire vx into CI with
-  remote caching.
+- Running from source needs Bun ≥ 1.4. The published binary needs nothing.
+- The Linux sandbox needs `bubblewrap`, `socat` and `ripgrep`, and cannot
+  run as root inside a container: run as a non-root user or set
+  `sandbox.weakerWhenNested: true`. `vx info` reports your host.
+  [Sandboxing](../guides/sandboxing/#requirements--platform-support)
+- There is no native Windows build: use WSL.
+- On macOS the sandbox's violation report can miss records when the system
+  log is busy. Enforcement is not affected.
+- A cache hit replays the first and last 8 MiB of a task's output.
+- A `workspaceFiles` glob stops at the edge of a git submodule.
+

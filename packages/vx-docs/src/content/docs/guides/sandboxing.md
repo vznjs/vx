@@ -1,260 +1,86 @@
 ---
 title: Sandboxing tasks
-description: Run a task in an OS-level sandbox with one capability-shaped allow-list — opt-in per task, fail-on-violation, no hidden escapes.
+description: Run a task where only the files and network you declared exist, so an undeclared read fails the task instead of hiding in the cache.
 ---
 
-A task can declare an **OS-level sandbox** that restricts what it may read,
-write, and reach. It's opt-in per task and deliberately strict: the task
-gets exactly what you declare and nothing else, and a run that touches
-anything undeclared **fails** rather than silently succeeding.
+Prove a task reads only what it declares. Why? →
+[Chapter 6: Can you trust a hit?](../../guide/trust/)
 
-Use it to catch under-declared inputs (a build secretly reading a file
-outside its `inputs`), to stop a tool from phoning home, or to enforce
-hermetic builds in CI.
+## Steps
 
-## Why it makes caching trustworthy
+1. Add `sandbox` to the task's `exec`. `sandbox: {}` alone allows nothing, not even the package.
+2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` and the workspace packages linked there are readable already, except a link back to the package itself: its own files need your grant.
+3. Grant each output directory in `write`, and any hosts in `network`. The sandbox reads nothing from `cache`: declare both.
+4. Run the task. An undeclared read or write fails it and names the path.
+5. Declare that path, or silence a noisy tool's path with `ignore`.
 
-A cache is only correct if the declared `inputs` are the *complete* set of
-files the task reads. The sandbox turns that assumption into an enforced
-boundary. A build that secretly reads a file vx never hashed is denied the
-read and the run fails, naming the path. Without the sandbox that build
-would pass and cache a result that silently depends on an unlisted file:
-the classic **stale-hit** bug.
-
-The sandbox derives nothing from `cache`, and that is deliberate.
-`cache.inputs` says what INVALIDATES a task; `sandbox.allow` says what it
-may TOUCH. When one was derived from the other, a path added for caching
-silently widened the sandbox, and a path the task genuinely needed had to
-be laundered through the cache key to get it. Declare both; a sandboxed
-task that reads a file its `cache.inputs` never named fails on the
-denial, which is where the two declarations meet.
-
-```mermaid
-flowchart LR
-  decl["exec.sandbox.allow<br/>read: ['src/**']"] --> allow["The task's whole<br/>permission surface"]
-  allow --> read{"Task touches<br/>a path"}
-  read -->|"granted"| ok["Allowed → runs normally"]
-  read -->|"undeclared, inside the project"| deny["Denied → run FAILS<br/>+ names the path"]
-  read -->|"undeclared, outside the project"| wall["Denied silently<br/>(the wall, not a finding)"]
-  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
-  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
-  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
-  classDef bad fill:#2a1416,stroke:#ef4444,color:#fecaca
-  class decl,allow step
-  class read decide
-  class ok good
-  class deny bad
-  class wall step
-```
-
-## Turn it on
-
-Add a `sandbox` block to any `exec`:
+## Config
 
 ```ts
-lint: {
-  exec: {
-    command: 'eslint .',
-    sandbox: { allow: { read: ['.'] } },
+// packages/app/vx.config.ts
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: {
+        command: 'vite build',
+        sandbox: {
+          allow: {
+            read: ['.', '~/.cache/ms-playwright'],
+            write: ['dist/**'],
+            network: ['registry.npmjs.org'],
+          },
+          deny: { network: ['telemetry.example.com'] },
+          ignore: { write: ['*.bun-build'] },
+        },
+      },
+      cache: { inputs: { files: ['src/**', 'index.html'] }, outputs: { files: ['dist/**'] } },
+    },
   },
-  cache: { inputs: { files: ['src/**', '.eslintrc'] }, outputs: { files: [] } },
-}
+})
 ```
 
-- **Omitted** → the command runs unsandboxed (the default).
-- **`sandbox: {}`** → opts in with the baseline: reads nothing, writes
-  nothing, no network. Not even the project's own directory — which is
-  why `read: ['.']` is the first line of almost every real block.
-- **`sandbox: { allow: … }`** → the baseline plus what you grant.
+## What you can grant
 
-There is no inheritance, no workspace-wide default, and no built-in
-escapes. One `vx.config.ts` describes a task's full permission surface.
+`allow`, `deny` and `ignore` take the same keys.
 
-## The one grant vx makes for you
-
-Dependencies. `node_modules` is readable, and so is the real path of every
-workspace package linked into it — a project never has to name a sibling
-to import what its own `package.json` already depends on. Everything else
-is yours to declare.
-
-The one link vx does not follow leads back to the task's own project, or
-to a directory that holds it. npm and Yarn link every workspace package
-at the root, the task's own included, so following that link would grant
-the whole project whatever `allow.read` says, and a read of a file the
-inputs leave out would pass unreported. The task's own project is
-governed by its grants alone.
-
-## Capabilities
-
-`allow`, `deny` and `ignore` share one shape, so the vocabulary that
-grants a thing is the vocabulary that silences it:
-
-```ts
-sandbox: {
-  allow: {
-    read: ['.', '~/.cache/ms-playwright', '/etc/ssl/certs'],
-    write: ['dist/**', 'coverage/'],
-    network: ['registry.npmjs.org', '*.sentry.io'],
-    systemInfo: ['vfs.disk-space'],
-    unixSockets: ['/var/run/docker.sock'],
-    localBinding: true,
-    machLookup: ['com.apple.FSEvents'],
-    pty: false,
-    gitConfig: false,
-  },
-  deny: { network: ['telemetry.example.com'] },
-}
-```
-
-- **`read` / `write`** — paths or globs, project-relative, absolute, or
-  `~`-expanded. A write grant is readable too (`tsc --incremental`
-  re-reads its own `.tsbuildinfo`), and on Linux it reads wider than it
-  looks: a grant is a mount, bwrap cannot rename onto an active file
-  mount, so a file-shaped grant is bound as its whole DIRECTORY —
-  readable and writable. `write: ['out.txt']` in the project root makes
-  every root file readable, undeclared and unreported; `write:
-  ['dist/out.txt']` widens `dist/` only and leaves the root denied. Keep
-  declared outputs in a subdirectory. A write path that does not exist
-  yet is created before the task starts, and a literal is a **file**
-  (`'dist/vx'`); a directory the task will create ends in a slash
-  (`'coverage/'`) or is a glob (`'dist/**'`). Spell a directory as a
-  bare literal and the task's own `mkdir` fails with "File exists" —
-  the failure names the `dir/` spelling.
-- **`network`** — `true` for anywhere, or an allowlist of domains
-  (wildcards allowed). `deny.network` is evaluated first. Domain lists
-  are enforced by one filtering proxy per run, so the effective allowlist
-  is the union of what every sandboxed task in the graph declared; a task
-  that declares no network still reaches nothing, because it is never
-  given the proxy's port.
-- **`systemInfo`** — sysctl names a tool probes, like `vfs.disk-space`.
-- **`unixSockets`** — `true`, or the socket paths to allow.
-- **`localBinding`** — bind and reach localhost ports, for a test that
-  boots its own server. A port **list** (`localBinding: [3000]`) also
-  makes those ports reachable from outside the sandbox — the developer's
-  browser, a downstream task's fetch. On Linux a sandboxed task lives in
-  its own network namespace, so each listed port is bridged out to the
-  host's loopback (a `socat` pair over a unix socket, the same mechanism
-  the runtime's own proxy uses; the run lifts the unix-socket filter for
-  its sandboxed tasks to allow it). On macOS the host already sees the
-  ports and the list means `true`. `true` alone binds ports the host
-  cannot reach on Linux.
-- **`machLookup`** — macOS mach global-names, e.g. `com.apple.FSEvents`
-  for a watcher.
-- **`pty`** — the task needs a TTY (rare in CI).
-- **`gitConfig`** — most build tools shouldn't reconfigure git, so writes
-  to `.git/config` are blocked unless you set this.
-
-### Globs
-
-`read` and `write` accept patterns, with one platform difference worth
-knowing: on macOS the pattern reaches the policy itself and matches files
-created *during* the run; on Linux a grant is a mount, so the pattern is
-expanded when the task starts and a file created later is not covered —
-grant its directory instead.
-
-On both platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`. That
-matters more than it sounds: `**/*` matches everything *under* the
-directory and never the directory itself, so without the collapse a task
-granted `read: ['**/*']` could not list its own cwd.
+| Key            | Grants                                                            |
+| -------------- | ----------------------------------------------------------------- |
+| `read`         | paths or globs: package-relative, absolute or `~/`                |
+| `write`        | paths or globs; a directory ends in `/` or is a glob (`dist/**`)  |
+| `network`      | `true`, or a list of domains (`*.sentry.io`)                      |
+| `localBinding` | bind localhost ports; a list (`[3000]`) makes them reachable from outside |
+| `unixSockets`  | `true`, or socket paths                                           |
+| `systemInfo`   | sysctl names a tool probes (`vfs.disk-space`)                     |
+| `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
+| `pty`          | a terminal                                                        |
+| `gitConfig`    | writes to `.git/config`                                           |
 
 ## The boundary is the project
 
-A task may not leave its own project. Every sibling project and every
-workspace-root file is denied, and that denial is **not reported** —
-being stopped at the wall is the sandbox working, not a finding. Every
-process walks from `/` down to its own cwd, and no config can declare
-that away.
-
-What *is* reported is an undeclared touch of the project's own files,
-because that is the read that makes a cache key wrong — as far as the
-grants leave it undeclared. A read the policy allows is not a violation,
-and on Linux a file-shaped write grant allows its whole directory (see
-`read` / `write` above), so outputs in a subdirectory are what keep the
-rest of the project provable.
-
-To reach a path outside the project on purpose — `~/.npmrc`, `/etc/ssl`,
-a workspace-level fixture — declare it and it is granted.
+A task never reaches another package or a root file you did not grant.
+That wall is silent; an undeclared touch of the task's own files fails it.
 
 ## Fail on violation
 
-- **macOS** — a log monitor records undeclared reads and writes; any
-  violation fails the task and the report lists the unique lines.
-- **Linux** — bwrap structurally denies undeclared paths, so the child
-  typically sees `ENOENT` and fails on its own; `strace`, when present,
-  turns that into the same structured report.
-
-A failed task is **never cached**, so a violation can't poison the cache.
-When a tool is legitimately noisy, silence the specific pattern with
-`ignore` instead of granting it:
-
-```ts
-sandbox: {
-  allow: { read: ['.'], write: ['dist/vx'] },
-  ignore: { write: ['*.bun-build'] },
-}
-```
-
-## Weaker modes
-
-```ts
-sandbox: {
-  weakerWhenNested: true,      // Linux: a sandboxed task that itself sandboxes
-  weakerNetworkIsolation: true, // macOS: route via host proxy, lower overhead
-}
-```
-
-Both trade isolation for compatibility; leave them off unless a task
-genuinely needs them.
+A violation fails the task, and a failed task is never cached.
 
 ## Requirements & platform support
 
-The sandbox uses [`@anthropic-ai/sandbox-runtime`](https://www.npmjs.com/package/@anthropic-ai/sandbox-runtime),
-started lazily — on the first task that actually executes inside a
-sandbox. A run whose sandboxed tasks are all cache hits never starts it
-(that probe cost every warm run 300–400 ms on Linux until 2026-09-10). On a platform where it isn't available, a task that needs it
-fails fast with a clear message (it never runs unsandboxed by accident).
-
-- **Linux** — needs `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`)
-  installed (`apt install bubblewrap socat ripgrep`); a sandboxed task on a
-  host missing one fails in 0 ms naming it and the install. Some
-  hosts (Ubuntu 24+) restrict unprivileged user namespaces and need an
-  AppArmor/sysctl tweak. See `.github/workflows/ci.yml` for the exact CI
-  setup. **Not as root inside a container**: the runtime's seccomp
-  helper needs a nested user namespace, which root in a container
-  (a devcontainer, a CI image, an agent sandbox) usually cannot create,
-  and vx refuses every sandboxed task with `write /proc/self/uid_map:
-  Operation not permitted`. Run vx as an unprivileged user there —
-  `bwrap` works for one — or set `weakerWhenNested: true` on every
-  sandboxed task and accept the weaker wall. `vx info` says which case
-  a host is before a run does: its `sandbox` row carries the runtime
-  probe's verdict and how many tasks declare `exec.sandbox`.
-- **macOS** — uses the system sandbox (seatbelt) plus a log monitor. The
-  unified log feeding that monitor is lossy under load, so a violation
-  can go unreported; enforcement is unaffected, since the OS denied the
-  operation either way.
-- **Windows** — under WSL, where the Linux sandbox applies. There is no native Windows build.
+- **Linux:** `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`). `vx info` says if your host can sandbox.
+- **macOS:** the system sandbox. Its report can miss a record under load; the denial never does.
+- **Windows:** under WSL.
 
 ## What can't be sandboxed
 
-- **Group tasks** (no `exec`) — there's no command to wrap.
-- **Persistent tasks** (dev servers) ARE sandboxed — the same grants and
-  walls — but get no violation *report*: the report reads the trace after
-  the child exits, and a server exits only when the run tears it down.
-  A denied read fails inside the server the way it would anywhere else.
-- **A task that itself sandboxes, on macOS.** `sandbox_apply` is refused
-  inside a sandboxed process, so seatbelt cannot nest at any permission
-  level. `weakerWhenNested` covers the Linux case; there is no macOS
-  equivalent. It is why the part of vx's own suite that tests the
-  sandbox (`test.bun.unsafe`) declares no sandbox block — one of the
-  exactly two tasks in this repository that do not, the other being
-  `@vzn/vx-reapi#test`, which dials service containers on the host's
-  loopback that a network namespace cannot reach.
+- A group task: there is no command.
+- A task that itself sandboxes, on macOS. vx's own sandbox tests are one
+  of exactly two tasks in this repository that do not declare a sandbox;
+  the other, `@vzn/vx-reapi#test`, dials servers on the host.
 
-## Next steps
+## Common problems
 
-- **[Caching tasks](../caching/)** — what invalidates a task, as opposed
-  to what it may touch.
-- **[Environment variables](../environment-variables/)** — the child env
-  is isolated too.
-- **[Configuration reference](../../schema/)** — every `SandboxConfig`
-  field.
+- **`write /proc/self/uid_map: Operation not permitted`.** You are root inside a container. Run as a normal user, or set `weakerWhenNested: true`.
+- **`File exists` from the task's own `mkdir`.** A write grant without a trailing slash is a file. Write `'coverage/'`.
+- **On Linux a file created during the run is denied.** A glob is expanded when the task starts: grant its directory.

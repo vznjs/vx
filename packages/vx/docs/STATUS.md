@@ -127,6 +127,34 @@ test is telling the truth.
       box's sandbox does not enforce read denies" — it does; the
       cross-project read that succeeded was re-allowed by the link grant.
 
+721.  DONE (2026-09-24, the site redo R1–R3, `design/site-redo-2026-09.md`).
+      The site is one story now. Four places (Guide, Docs, Reference,
+      Blog), each with its own sidebar (`src/nav/sections.ts`, filtered
+      per page by a Starlight route middleware); internals leave every
+      sidebar for one `internals/` page; the landing's lime look site-wide
+      through `--vx-*` tokens, dark by default. The Guide is ten written
+      chapters on the four toy packages (why, tasks, dependencies,
+      concurrency, caching, trust, affected, many machines, inside vx, try
+      it), 80–260 words each, three to five pictures each, a chapter
+      header and a one-line Next card from `src/guide/chapters.ts`. Every
+      picture is one build-time component (`components/guide/diagram/`,
+      data per chapter, tokens only, no script, whole on a phone), and
+      `diagram-kit.test.ts` holds each label to fit its box.
+      `tests/guide-page.ts` holds every chapter's shape (titles, pictures,
+      ≤350 prose words, "In vx" as one sentence plus one block plus a
+      collapsed proof list, one question, the four packages only, no
+      competitor outside "In vx"), and each picture that states a fact is
+      held to vx's own model. The Docs are one short page per job (goal,
+      steps, config, common problems, a link to the chapter that says
+      why; prose cut 70–90%), five pages merged with redirects
+      (introduction, trusting-the-cache, task-dependencies, extensibility,
+      concepts/how-vx-works). The landing is the Guide's cover: one
+      question, a picture of the shell loop failing three ways, "Read the
+      guide", the ten chapters as contents, then the numbers. The
+      playground's fifth package is the task `app#docs`, so every page
+      names four packages. Gate: `ci --all` 56/56 and a Node build of 255
+      pages, 587 site tests.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -356,21 +384,22 @@ architect. OWNER, unchanged: cut 0.1.0 (the tag, then delete
 soak length. NEXT: R1–R4 in the design's order, each chapter edited by
 the architect before it merges; then Next 17. Never end with "what next?".
 
-16. **The site, redone as one story (owner, 2026-09-24).** Track W
-    (entries 14bw–14di in the next-log file) built working widgets and
-    ten Learn pages, but inside the old eight-group sidebar, as reference
-    text with a competitor tour on every page; the owner: "I told you to
-    redo it not add sections. It should tell a coherent story and teach
-    about tasks, dependencies, sandbox, caching, concurrency, and other
-    concepts to understand why you need task orchestration." The redo is
-    `design/site-redo-2026-09.md`: a ten-chapter Guide read in order on
-    the toy monorepo, Docs (one page per job) and Reference around it,
-    internals out of the sidebar, the landing's look site-wide,
-    build-time SVG instead of client Mermaid, the landing as the book's
-    cover. The widgets and their CLI parity rows survive; the pages
-    around them go. Order: R1 skeleton, R2 chapters (three in parallel),
-    R3 docs consolidation and landing, R4 the old Learn pages redirect.
-
+16. **The site, redone as one story (owner, 2026-09-24).** R1–R3
+    shipped as item 721 (`design/site-redo-2026-09.md`). Left, in order:
+    (a) R4: the old `learn/*` pages redirect to their chapters (repoint
+    their Docs anchors first, e.g. `sandboxing#fail-on-violation`), and
+    the glossary moves to Reference with every `../../learn/glossary/`
+    link; (b) the widgets (graph explorer, key calculator, scheduler
+    simulator, stale-hit demo, checkpoints) take the pictures' look and
+    lose their dense tables and jargon setup sentences — the key
+    calculator's two tables are the worst; (c) the playground runs
+    `build test` again, with `app#docs` outside the default, so chapter
+    10's command matches; (d) the four sections still without a picture
+    (ch 4 "Start the longest chain first", ch 6 "Four things the sandbox
+    does not check", ch 8 "Both cost something", ch 9's plugin code) get
+    one or become the picture's caption; (e) plain-word fixes: ch 9's
+    "vendor", ch 3's forward reference, ch 7's second idea in its last
+    section; (f) the six Docs pages still over 250 prose words.
 17. **A sandboxed task reads a linked sibling package unseen (found by
     the capability audit, 2026-09-24).** `sandbox-request.ts` grants
     every `node_modules` link from the project and the workspace root

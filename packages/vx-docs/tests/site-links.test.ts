@@ -118,7 +118,10 @@ describe('every internal link in the built site', () => {
     expect(used).toEqual(Object.values(EXCUSED).flatMap((l) => Object.keys(l)))
   })
 
-  it('scans exactly the pages the sitemap lists, and the 404 page', () => {
+  // A redirect page (astro.config.mjs `redirects`) is built but is no page
+  // of the site's own, so the sitemap leaves it out; its one link is still
+  // checked above, which is what makes a redirect to nowhere fail.
+  it('scans exactly the pages the sitemap lists, the 404 page and the redirects', () => {
     const xml = readdirSync(DIST).filter((f) => /^sitemap-\d+\.xml$/.test(f))
     expect(xml.length).toBeGreaterThan(0)
     const listed = xml
@@ -127,7 +130,11 @@ describe('every internal link in the built site', () => {
         const rel = unescape(m[1]!).slice(SITE.length)
         return rel === '' || rel.endsWith('/') ? `${rel}index.html` : rel
       })
-    expect(all).toEqual([...listed, '404.html'].sort())
+    const redirects = all.filter((p) =>
+      /<meta http-equiv="refresh"/.test(readFileSync(path.join(DIST, p), 'utf8')),
+    )
+    expect(redirects.length).toBeGreaterThan(0)
+    expect(all).toEqual([...listed, '404.html', ...redirects].sort())
   })
 
   it('names only built files in its feeds and sitemaps', () => {

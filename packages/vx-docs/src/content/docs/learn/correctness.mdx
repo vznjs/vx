@@ -10,7 +10,7 @@ import Checkpoint from '../../../components/demos/Checkpoint.astro'
 how a hit goes wrong when the task reads something the key never saw. This
 page is about that failure: why it is the worst one, where a list of inputs
 can come from, and how a runner can prove the list is complete instead of
-trusting it. It uses one small package, `web`, with one task, `build`. It
+trusting it. It uses one package, `app`, with one task, `build`. It
 explains the idea first, then shows how vx does it, and how Turborepo, Nx
 and Bazel do it.
 
@@ -81,7 +81,7 @@ declare, and a read of anything else fails:
 
 ```mermaid
 graph TD
-  read["web#build reads banner.txt"] -->|declared| folded["the key folds banner.txt: an edit moves the key, and the task runs"]
+  read["app#build reads banner.txt"] -->|declared| folded["the key folds banner.txt: an edit moves the key, and the task runs"]
   read -->|not declared, no sandbox| blind["the key never sees banner.txt: an edit hits and replays the old output"]
   read -->|not declared, sandboxed| denied["the read is denied: the task fails, names banner.txt, and stores nothing"]
 ```
@@ -93,7 +93,7 @@ cache never holds an entry built from a read its key did not see.
 
 ## Try it: a stale hit, then the sandbox that catches it
 
-`web#build` runs `mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt`. Its inputs
+`app#build` runs `mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt`. Its inputs
 declare `src/**`, so the key sees `src/index.ts` and not `banner.txt`.
 Step through five runs:
 
@@ -131,7 +131,7 @@ tasks all hit the cache never needs the sandbox and does not start it
 - **Declaring is work, twice.** You list each task's inputs, and a
   sandboxed task also lists what it may read. vx derives neither list from
   the other: the inputs say what moves the key, and the grant says what the
-  task may touch ([why they are separate](../../guides/sandboxing/#why-it-makes-caching-trustworthy)).
+  task may touch ([Sandboxing tasks](../../guides/sandboxing/)).
 - **The check is only as narrow as the grant.** The sandbox denies what
   the grant leaves out, not what the inputs leave out. A task granted
   `read: ['.']`, the whole package, can read `banner.txt` with no error

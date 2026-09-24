@@ -29,6 +29,42 @@ const CHOOSING_PROOFS = [
   'packages/vx-migrate/tests/turbo.test.ts',
 ]
 
+// The Guide's chapters link each claim about vx to the test row that holds
+// it, in each chapter's "How we know this is true" list, and
+// tests/guide-page.ts reads each linked file for the row's title, as the
+// choosing page's rows do. Every file the ten chapters link, granted by name
+// and keyed, like the lists above.
+const GUIDE_PROOFS = [
+  'packages/vx-bench/tests/schedule-policy.test.ts',
+  'packages/vx-reapi/tests/executor.test.ts',
+  'packages/vx-schedule-history/tests/schedule-history.test.ts',
+  'packages/vx/tests/affected-base-notes.test.ts',
+  'packages/vx/tests/affected-dependents.test.ts',
+  'packages/vx/tests/affected-workspace-files.test.ts',
+  'packages/vx/tests/affected.test.ts',
+  'packages/vx/tests/cgroup.test.ts',
+  'packages/vx/tests/config.test.ts',
+  'packages/vx/tests/execute-task.test.ts',
+  'packages/vx/tests/git-oid.test.ts',
+  'packages/vx/tests/git-subdir-workspace.test.ts',
+  'packages/vx/tests/layered-cache.test.ts',
+  'packages/vx/tests/local-fallbacks.test.ts',
+  'packages/vx/tests/package-boundaries.unsafe.test.ts',
+  'packages/vx/tests/package-graph.test.ts',
+  'packages/vx/tests/playground-parity.unsafe.test.ts',
+  'packages/vx/tests/plugin-capabilities.test.ts',
+  'packages/vx/tests/plugin-pipeline.test.ts',
+  'packages/vx/tests/sandbox-request.test.ts',
+  'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
+  'packages/vx/tests/scheduler.test.ts',
+  'packages/vx/tests/show-info.test.ts',
+  'packages/vx/tests/task-graph.test.ts',
+  'packages/vx/tests/task-hash-derive.test.ts',
+  'packages/vx/tests/telemetry-lifecycle.test.ts',
+  'packages/vx/tests/telemetry.test.ts',
+]
+const PROOFS = [...new Set([...CHOOSING_PROOFS, ...GUIDE_PROOFS])]
+
 export default defineProject({
   tasks: {
     ci: {
@@ -53,7 +89,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/examples src/pages src/playground src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/examples src/guide src/nav src/pages src/playground src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', SIM_READ, '../vx/src/**'],
@@ -69,6 +105,8 @@ export default defineProject({
             'scripts/**',
             'src/components/**',
             'src/examples/**',
+            'src/guide/**',
+            'src/nav/**',
             'src/pages/**',
             'src/playground/**',
             'src/plugins/**',
@@ -168,7 +206,7 @@ export default defineProject({
     // this task.
     test: {
       description:
-        'bun test — the guide, sidebar, demo, Learn and site-link pins (needs the imported content and dist/)',
+        'bun test — the Guide, sidebar, redirect, diagram, demo, Learn and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
@@ -185,7 +223,7 @@ export default defineProject({
               '../vx-otel/src/**',
               '../vx-reapi/src/**',
               '../vx-schedule-history/src/**',
-              ...CHOOSING_PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
+              ...PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -203,6 +241,13 @@ export default defineProject({
             // elements' source for the markup they query.
             'src/components/demos/playground.ts',
             'src/components/demos/checkpoint.ts',
+            // guide.test.ts and sidebar-coverage.test.ts import the Guide's
+            // chapter list and the sidebars; diagram-kit.test.ts reads the
+            // kit's styles and the theme's tokens.
+            'src/guide/**',
+            'src/nav/**',
+            'src/components/guide/**',
+            'src/styles/theme.css',
             // The playground rows: its glob and xxh3 against Bun's, and the
             // shipped bundle against a fresh build.
             'src/playground/**',
@@ -212,7 +257,7 @@ export default defineProject({
             '.gitignore',
             'package.json',
           ],
-          workspaceFiles: [...SIM_SOURCES, ...CHOOSING_PROOFS],
+          workspaceFiles: [...SIM_SOURCES, ...PROOFS],
         },
         outputs: { files: [] },
       },

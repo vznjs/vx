@@ -1,0 +1,65 @@
+---
+// The client-side Mermaid renderer. Head.astro includes it on every page but
+// a Guide chapter: the Guide draws its diagrams at build time
+// (components/guide/diagram), so a chapter ships no Mermaid at all.
+---
+
+<script>
+  // Self-hosted, lazy mermaid rendering. mermaid is only fetched on pages
+  // that actually contain a <pre class="mermaid"> block (dynamic import =
+  // its own chunk), and re-renders when Starlight toggles the theme.
+  const sources = new WeakMap<Element, string>()
+
+  async function renderMermaid() {
+    const blocks = Array.from(
+      document.querySelectorAll<HTMLElement>('pre.mermaid'),
+    )
+    if (blocks.length === 0) return
+
+    const { default: mermaid } = await import('mermaid')
+    const dark = document.documentElement.dataset.theme === 'dark'
+
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'loose',
+      theme: dark ? 'dark' : 'neutral',
+      fontFamily: 'inherit',
+    })
+
+    for (const el of blocks) {
+      if (!sources.has(el)) sources.set(el, el.textContent ?? '')
+      el.removeAttribute('data-processed')
+      // Restore the raw definition as TEXT, not innerHTML — the source can
+      // contain `<br/>` in labels, and innerHTML would parse those into real
+      // <br> elements, corrupting the definition mermaid reads (→ "Syntax
+      // error"). textContent keeps `<br/>` literal so mermaid renders it.
+      el.textContent = sources.get(el) ?? ''
+    }
+
+    await mermaid.run({ nodes: blocks })
+  }
+
+  // One render at a time. The first render and the theme observer both
+  // fire on load (Starlight sets `data-theme` as it starts), and two
+  // `mermaid.run` calls over the same blocks tear each other's DOM down:
+  // every page with a diagram threw "Cannot read properties of null
+  // (reading 'firstChild')" as an uncaught non-Error (item 697). A failed
+  // render is reported with mermaid's own message, not thrown into the page.
+  let rendering: Promise<void> = Promise.resolve()
+  function scheduleRender(): void {
+    rendering = rendering.then(renderMermaid).catch((err: unknown) => {
+      const message = (err as { message?: unknown } | null)?.message
+      console.error(`[vx] a diagram did not render: ${String(message ?? err)}`)
+    })
+  }
+
+  scheduleRender()
+  // Re-render after Starlight's view-transition navigations.
+  document.addEventListener('astro:after-swap', scheduleRender)
+
+  // Re-render on light/dark toggle so diagram colors track the theme.
+  const observer = new MutationObserver((records) => {
+    if (records.some((r) => r.attributeName === 'data-theme')) scheduleRender()
+  })
+  observer.observe(document.documentElement, { attributes: true })
+</script>

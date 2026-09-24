@@ -1,89 +1,25 @@
 ---
 title: Remote caching
-description: A local cache makes your own runs instant with zero setup. To share results across machines, a remote-cache plugin fills core's RemoteCacheLayer seam — @vzn/vx-reapi speaks Bazel's ActionCache + CAS, and any other backend plugs in the same way.
+description: Share cache results between machines with a cache plugin — @vzn/vx-reapi for any Bazel REAPI server, turboCache() or nxCache() for a Turbo or Nx cache, or your own.
 ---
 
-A local cache makes *your* repeat runs instant, and it needs **no setup** —
-it's on by default for every `vx run`. A **shared** cache extends that
-across machines: CI restores what a teammate already built, and a fresh
-clone is fast on its first run.
+Let CI and your team reuse what another machine already built. Why? →
+[Chapter 8: Many machines](../../guide/many-machines/)
 
-## How a shared cache resolves a result
+The local cache needs no setup. A shared one is a plugin.
 
-The key point is that the same content-addressed key works on *every*
-machine: if your teammate built a task, its result is stored under a key
-that your CI runner computes identically. So a fresh clone with an empty
-local cache doesn't rebuild — it looks the key up **remotely**, downloads
-the artifact once, and hydrates its local cache so the next run is
-instant too. Reads are local-first (never pay the network for something
-you already have); writes upload in the background and never block or
-fail the build:
+## Steps
 
-```mermaid
-flowchart LR
-  need["Task needs a result"] --> local{"In local<br/>cache?"}
-  local -->|"hit"| lrestore["Restore locally — instant"]
-  local -->|"miss"| remote{"In remote<br/>cache?"}
-  remote -->|"hit"| pull["Download once +<br/>hydrate local"]
-  remote -->|"miss"| run["Run it, then upload<br/>in the background"]
-  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
-  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
-  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
-  class need,pull,run step
-  class local,remote decide
-  class lrestore good
-```
+1. Pick a server: any Bazel REAPI server, a Turborepo cache, or an Nx cache.
+2. Install its plugin and declare it in `vx.workspace.ts` (below).
+3. Give it the endpoint, inline or from the environment (`VX_REAPI_ENDPOINT`).
+4. Run anything. vx looks here first, then asks the remote, and uploads new results in the background.
+5. On a fresh clone, `vx run build --all --dry` now predicts remote hits.
 
-The payoff: pair a shared cache with [`--affected`](../running-tasks/#selecting-what-changed-and-what-depends-on-it---affected)
-and a typical PR schedules only the few packages it changed and the ones
-that depend on them — the rest are never scheduled — and within that set
-**downloads whatever another machine already built**. CI that would take
-minutes finishes in seconds, on a machine that never ran most of the code.
-
-Sharing is the only part that needs a server. A solo developer needs
-nothing here — the [local cache](../caching/) is automatic.
-
-## Sharing is a plugin
-
-Core ships **no HTTP cache client**. Sharing a cache is a **plugin
-concern**: core defines a small `RemoteCacheLayer` seam — `has`, `get`
-and `put`, plus an optional `hasMany` that answers N key probes in one
-round trip (a remote that cannot batch omits it and the layer probes
-per hash) — and a `cache` plugin capability, and everything else —
-read-through with local hydration, at-most-once in-flight deduplication,
-background write-through uploads, and the never-fail contract — is core's
-`LayeredCache`. A plugin provides the wire; `LayeredCache` provides the
-behavior.
-
-Reads try local first, then remote (hydrating local on a remote hit), with
-a background prefetch pass that overlaps remote GETs with execution. Writes
-go to local immediately; the remote upload is a fire-and-forget background
-task drained at end of run — failures are logged but never fail the build.
-
-Artifacts stream both ways, so a large one never sits whole in memory. A
-remote hit's body — the HTTP `Response` itself, or a stream over a
-chunked wire — is written straight to the local cache's temp file and
-validated there; an upload hands the plugin a file-backed `Blob` over the
-local artifact, which `fetch` sends as a stream. Measured on one
-150 MiB artifact saved, uploaded, wiped and pulled back: the process's
-peak RSS rose about 45 MiB over the round trip, against about 500 MiB
-before the seam streamed (`packages/vx-bench/stream-remote-bench.ts`). The
-one exception is
-`--cache=local:,remote:rw`: with no local artifact to read, the upload's
-bytes are packed in memory.
-
-## The first-party shared cache
-
-`@vzn/vx-reapi` fills the seam with Bazel's Remote Execution API: an
-`ActionCache` entry per task key, artifacts in the `ContentAddressableStorage`.
-That means NativeLink, BuildBuddy, Buildbarn and bazel-remote all work as a
-vx remote cache with one endpoint of configuration — four mature server
-implementations, none of them written by us, because the REAPI server is
-deliberately dumb. The same plugin can also RUN your tasks on that pool —
-see [Remote execution](../remote-execution/).
+## Config
 
 ```ts
-// vx.workspace.ts — the local store is the floor under every declared cache.
+// vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
 import { reapi } from '@vzn/vx-reapi'
 
@@ -92,98 +28,40 @@ export default defineWorkspace({
 })
 ```
 
-Configure it inline, or from `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE`. With no
-endpoint the plugin **declines** and costs nothing, so it is safe to leave
-declared everywhere — the same contract every vx plugin follows.
+## The first-party shared cache
 
-**How a vx key becomes a REAPI entry.** A CAS digest is the sha256 of the
-content, so it cannot be known before the bytes exist and `has(key)` could
-never answer. The ActionCache supplies the indirection: a synthetic action
-digest, `sha256("vx-reapi-v1\0" + key)`, addresses an ActionResult whose one
-output file points at the artifact blob. The version prefix keeps vx keys out
-of the address space of real Bazel actions on a shared server, and makes a
-future change to the mapping miss cleanly instead of misreading.
-
-**It needs the Bun runtime the vx binary embeds (≥ 1.4)**, and says so rather than misbehaving on an older one.
-Bun's HTTP/2 client hangs on chunked uploads above a version-dependent size;
-the plugin chunks at 128 KB and refuses to start on a Bun where that is unsafe.
-An artifact past the batch limit (about 4 MiB) is uploaded from the file in those
-chunks as the connection drains and read back as a stream, its digest
-checked as the bytes pass.
+`@vzn/vx-reapi` speaks Bazel's Remote Execution API, so NativeLink,
+BuildBuddy, Buildbarn and bazel-remote all work. The same plugin can also
+[run tasks](../remote-execution/) on their workers.
 
 ## A hosted cache in three commands
 
-You do not have to run a server to share a cache. `turboCache()` from `@vzn/vx-migrate`
-speaks Turborepo's `/v8/artifacts` wire, and Vercel's hosted Remote
-Cache serves that wire to any client with a token — vx included. The
-artifacts are vx's own, under vx's own keys; the service is storage.
+`turboCache()` from `@vzn/vx-migrate` speaks Turborepo's `/v8/artifacts`
+wire, which Vercel's Remote Cache serves:
 
 ```sh
 bun add -d @vzn/vx-migrate
-npx turbo login && npx turbo link        # a token and a team, stored by Turbo's CLI
-export TURBO_TOKEN=… TURBO_TEAM=…        # the plugin reads Turbo's own variables
+npx turbo login && npx turbo link        # stores a token and a team
+export TURBO_TOKEN=… TURBO_TEAM=…        # the plugin reads Turbo's variables
 ```
 
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { turboCache } from '@vzn/vx-migrate'
+Then declare `plugins: [turboCache()]`. `nxCache()` does the same for a
+self-hosted Nx cache.
 
-export default defineWorkspace({ plugins: [turboCache()] })
-```
+## Your own backend
 
-With `TURBO_TOKEN` and `TURBO_TEAM` set, `turboCache()` points at
-Vercel's cache by default; a self-hosted `/v8/artifacts` server is
-`apiUrl`. `nxCache()` does the same for any Nx-wire server. Both
-wires, the options and the signature key are in the package's README.
-
-## Bring your own backend
-
-Because the wire is a plugin, you can back the shared cache with
-**anything** — your own server, a Turborepo-compatible cache, S3/R2, Redis
-— with no platform involved. Implement core's `RemoteCacheLayer` seam and
-wrap the local cache in `LayeredCache`; the runnable recipe (including a
-Turbo-wire variant that speaks `/v8/artifacts/:hash`) is in
-[Core is provider-neutral](../extensibility/#bring-your-own-remote-cache).
-Embedders that already hold a client can inject it per-run via
-`RunOptions.remoteCache` (explicit injection wins over the plugin consult).
-
-## It never breaks your build
-
-Whatever backend fills the seam, the remote cache is **fully optional at
-runtime**. Any failure — a 500, a timeout, an auth error, a corrupt
-artifact — degrades to a local cache miss and the run continues. A remote
-outage slows you down; it never fails you.
-
-That is a tested promise, not a hope: `@vzn/vx-migrate` points both
-shipped wires at a server that is hostile in each of those four ways and
-pins that every task still runs and the run still exits 0. A refused
-token costs exactly one warning for the whole run, however many projects
-are in flight when it lands.
+Implement core's `RemoteCacheLayer` seam, `has`, `get` and `put` plus an
+optional `hasMany`, and wrap it in `LayeredCache`:
+[Writing a plugin](../plugins/#your-own-cache).
 
 ## Artifact integrity
 
-Every blob `@vzn/vx-reapi` reads — ByteStream and batch alike, compressed
-or not — is re-hashed with the negotiated digest function and
-length-checked against the digest it was requested under. Bytes that don't
-match are refused with a named integrity error instead of being written
-into the local content-addressed store, so a corrupt store or a truncating
-proxy degrades to a **miss**, never to wrong bytes under a trusted name.
-That is the same check Bazel's own client performs, and a bring-your-own
-backend filling the `cache` seam should hold to it.
+`@vzn/vx-reapi` re-hashes every blob it reads and refuses one that does not
+match its digest. A corrupt or truncated download is a miss, never wrong
+bytes.
 
-## In CI
+## Common problems
 
-Set the connection as CI secrets and you're done — see
-[Continuous integration](../ci/) for a complete GitHub Actions example.
-Pair the shared cache with `--affected` and most PRs schedule only the
-packages they changed and the ones that depend on them; within that set,
-what another machine already built restores instead of running.
-
-## Next steps
-
-- **[Continuous integration](../ci/)** — the full CI recipe.
-- **[Core is provider-neutral](../extensibility/)** — the seam and a
-  bring-your-own recipe.
-- **[Caching deep dive](../../caching/)** — the artifact format and the
-  layered cache.
+- **The remote is down.** A 500, a timeout, a refused token or a corrupt artifact is a local miss, and the run goes on.
+- **The plugin does nothing.** Without an endpoint it declines. Check the variable in the job's environment.
+- **A laptop should read the shared cache, never write it.** Run with `--cache=local:rw,remote:r`.

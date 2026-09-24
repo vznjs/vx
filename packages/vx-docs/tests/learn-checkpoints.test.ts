@@ -45,7 +45,7 @@ const ALL = [
   'api#test',
   'app#build',
   'app#test',
-  'docs#build',
+  'app#docs',
 ]
 
 interface Truth {
@@ -71,7 +71,7 @@ const TRUTH: Record<string, Truth> = {
   'what-is-edit': {
     form: 'edit',
     question:
-      'You run `vx run build test` once. Then you edit `packages/utils/src/index.ts` and run it again. Which tasks rerun?',
+      'You run `vx run build test docs` once. Then you edit `packages/utils/src/index.ts` and run it again. Which tasks rerun?',
     yes: {
       'utils#build': 'packages/utils/src/index.ts changed',
       'utils#test': 'packages/utils/src/index.ts changed, upstream utils#build moved',
@@ -87,7 +87,7 @@ const TRUTH: Record<string, Truth> = {
   caching: {
     form: 'edit',
     question:
-      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, and its inputs declare the file: `files: ['src/**', 'tsconfig.json']`. You run `vx run build test` once. Then you edit `packages/ui/vx.config.mjs` to stop declaring it and run it again. Which tasks rerun?",
+      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, and its inputs declare the file: `files: ['src/**', 'tsconfig.json']`. You run `vx run build test docs` once. Then you edit `packages/ui/vx.config.mjs` to stop declaring it and run it again. Which tasks rerun?",
     yes: {
       'ui#build': 'config changed, file removed: packages/ui/tsconfig.json',
       'ui#test': 'upstream ui#build moved',
@@ -99,21 +99,21 @@ const TRUTH: Record<string, Truth> = {
   correctness: {
     form: 'edit',
     question:
-      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, but its inputs declare only `files: ['src/**']`. You run `vx run build test` once. Then you edit `packages/ui/tsconfig.json` and run it again. Which tasks rerun?",
+      "`ui#build` runs `vite build`, which reads `packages/ui/tsconfig.json`, but its inputs declare only `files: ['src/**']`. You run `vx run build test docs` once. Then you edit `packages/ui/tsconfig.json` and run it again. Which tasks rerun?",
     yes: {},
     summary: 'No task reruns.',
   },
   'playground-edit': {
     form: 'edit',
     question:
-      'Start from Reset. You run `vx run build test` once. Then you edit `packages/utils/test/index.test.ts` and run it again. Which tasks rerun?',
+      'Start from Reset. You run `vx run build test docs` once. Then you edit `packages/utils/test/index.test.ts` and run it again. Which tasks rerun?',
     yes: { 'utils#test': 'packages/utils/test/index.test.ts changed' },
     summary: '1 of the 9 tasks reruns.',
   },
   'playground-env': {
     form: 'edit',
     question:
-      'Start from Reset. You run `vx run build test` once. Then you change `API_URL` to another value and run it again. Which tasks rerun?',
+      'Start from Reset. You run `vx run build test docs` once. Then you change `API_URL` to another value and run it again. Which tasks rerun?',
     yes: {
       'api#build': 'env API_URL changed',
       'api#test': 'upstream api#build moved',

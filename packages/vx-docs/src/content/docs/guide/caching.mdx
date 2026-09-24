@@ -1,0 +1,90 @@
+---
+title: Caching
+description: A task that gets the same inputs gives the same result, so vx keeps the result and reuses it.
+chapter: 5
+problem: 'You changed one line in `app`, and `utils` rebuilt anyway.'
+---
+
+import KeyCalculator from '../../../components/demos/KeyCalculator.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/caching/pictures.js'
+
+You fix a typo in `app` and run the build again. All eight tasks run.
+
+<Diagram {...P.rerun} />
+
+Six of them read nothing that changed. They did the same work twice.
+
+## Same inputs give the same result
+
+<Diagram {...P.sameInputs} />
+
+A task's inputs are everything it reads: its files, its command and its
+settings. If none of them changed, the result will not change either. So
+vx keeps the result and hands it back next time.
+
+## A short key tells vx if anything changed
+
+<Diagram {...P.key} />
+
+vx turns all of a task's inputs into one short code, the
+[cache key](../../learn/glossary/#cache-key). Change any input and the key
+changes. If vx has seen the key before, that is a hit: it puts the saved
+files back and shows the saved log. The task does not run.
+
+## A change in utils changes every key above it
+
+<Diagram {...P.cascade} />
+
+`ui#build` uses what `utils#build` made. So `ui#build`'s key includes
+`utils#build`'s key. Change `utils`, and every key above it changes. Change
+`app`, and only `app`'s keys change.
+
+Try each change in the calculator below.
+
+<KeyCalculator />
+
+## In vx
+
+Add a `cache` block that lists the files a task reads and the files it
+writes.
+
+```ts
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'tsc -b' },
+      cache: {
+        inputs: { files: ['src/**', 'tsconfig.json'] },
+        outputs: { files: ['dist/**'] },
+      },
+    },
+  },
+})
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- [A cache block must list its input files](https://github.com/vznjs/vx/blob/main/packages/vx/tests/config.test.ts 'requires cache.inputs.files — the one declaration vx will not infer')
+- [The command is in the key](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-hash-derive.test.ts 'the command folds in')
+- [The task's settings are in the key](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-hash-derive.test.ts 'every exec and task field but the stripped one moves the key')
+- [The package's `package.json` is in the key](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-hash-derive.test.ts 'SENSITIVITY: changing package.json moves the key even with narrow globs')
+- [The lockfile is in the key](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-hash-derive.test.ts 'the workspace fingerprint folds in — a lockfile bump invalidates everything')
+- [A dependency's key is in the key](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-hash-derive.test.ts 'SENSITIVITY: an upstream key change cascades into the dependent')
+- [A hit puts the saved files back](https://github.com/vznjs/vx/blob/main/packages/vx/tests/git-subdir-workspace.test.ts 'a first run misses and saves, a second hits and restores, an edit re-keys')
+- [A hit shows the saved log](https://github.com/vznjs/vx/blob/main/packages/vx/tests/execute-task.test.ts 'replays the entry stdout and reports the SKIPPED exec time apart from the restore cost')
+- [Undoing an edit brings the old key back](https://github.com/vznjs/vx/blob/main/packages/vx/tests/git-oid.test.ts 'edit changes the key; reverting restores the ORIGINAL key before any commit')
+- [The calculator does what vx does](https://github.com/vznjs/vx/blob/main/packages/vx-docs/tests/key-model-core.test.ts 'the key model moves, hits and goes stale where vx does, step by step')
+
+</details>
+
+## Check yourself
+
+<Checkpoint id="caching" />
+
+A key only sees what you list. What if a task reads a file you forgot?
