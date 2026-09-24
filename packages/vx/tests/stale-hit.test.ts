@@ -752,7 +752,9 @@ describe('stale cache hits', () => {
       const bunMut = Bun as unknown as { spawn: typeof Bun.spawn }
       bunMut.spawn = ((...a: Parameters<typeof Bun.spawn>) => {
         const opt = a[0] as { cmd?: readonly string[] } | undefined
-        if (opt && Array.isArray(opt.cmd) && opt.cmd[0] === 'git') seen.push([...opt.cmd])
+        // Spawned by its absolute path (util/which.ts).
+        if (opt && Array.isArray(opt.cmd) && path.basename(opt.cmd[0] ?? '') === 'git')
+          seen.push([...opt.cmd])
         return origSpawn(...a)
       }) as typeof Bun.spawn
       try {

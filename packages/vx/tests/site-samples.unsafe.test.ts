@@ -570,7 +570,8 @@ describe('the keys-from-git post counts the parts the key folds', () => {
           .filter((t) => t !== '-z' && t !== '--'),
       ].join(' '),
     )
-    expect(spawned.length).toBeGreaterThan(3)
+    // ls-files, status and the config read; the rev-parse is `repoFacts`.
+    expect(spawned.length).toBeGreaterThanOrEqual(3)
     for (const named of [
       'git ls-files -s -v',
       'git status --porcelain -uall',
@@ -1462,9 +1463,9 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
       'utf8',
     )
     const numbered = [...memory.matchAll(/^\d\. \*\*/gm)].length
-    expect(numbered).toBe(8)
+    expect(numbered).toBe(9)
     const page = readFileSync(path.join(DOCS, 'blog', 'values.md'), 'utf8')
-    const section = /## The eight principles\n([\s\S]*?)\n## /.exec(page)
+    const section = /## The nine principles\n([\s\S]*?)\n## /.exec(page)
     expect(section).not.toBeNull()
     expect([...section![1]!.matchAll(/^\*\*[^*]+\*\*/gm)].length).toBe(numbered)
   })

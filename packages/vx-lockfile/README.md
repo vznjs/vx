@@ -24,14 +24,14 @@ That is the whole setup. The plugin **claims** its lockfile (`VxPlugin.fingerpri
 
 ## What a project's digest covers
 
-Every package the project can reach, by resolved identity (name, version, integrity), plus the install-wide material every project folds. Per manager:
+Every package the project can reach, by resolved identity (name, version, integrity), plus the install-wide material every project folds — and **the root package's own closure**. The root's `dependencies` and `devDependencies` reach every task: their bins run from the root `node_modules/.bin`, which vx puts on every task's PATH, and Node's resolution walks up to the root `node_modules` (`@types/*`, a plugin a root tool's config names). So a root devDependency bump (`pnpm add -Dw oxlint@next`) re-keys every project and `--affected` selects every project; a package only project A reaches still moves only A. A root `workspace:` dependency folds that package's closure into every project too. Per manager:
 
 - **pnpm** (`pnpm-lock.yaml`, lockfile v5, v6, v9): importers → snapshots, transitively; each package by name, version **and resolved peers** (`foo@1(react@18)` is not `foo@1(react@19)`), resolution and any `patchedDependencies` entry; `link:` folds the linked importer's reach; `settings`, `overrides`, `packageExtensionsChecksum`, `pnpmfileChecksum` into every project.
 - **bun** (`bun.lock`): Bun's hoisted layout — a dependency `d` of the package at path `p` is `p/d` when that key exists, else the nearest ancestor's, else the root's, so a nested version counts for the package it is nested under and no other; `workspace:` entries fold the linked package's reach; `overrides`, `patchedDependencies`, catalogs into every project.
 - **npm** (`package-lock.json`, lockfileVersion 2 and 3): the `packages` map — `p/node_modules/d`, then the ancestors, then `node_modules/d`; a `link: true` entry folds its target workspace's reach; root `overrides` into every project. Version 1 (npm 6) has no `packages` map and is refused.
 - **yarn** (`yarn.lock`): berry (yarn 2+) resolves `name@npm:range` descriptors to entries, workspaces included, `__metadata` into every project. Classic (yarn 1) records no workspaces, so it yields one digest for the root that every project folds — coarse, and honest about what the file records.
 
-A project the lockfile has no entry for folds the root's digest — the only `node_modules` it can resolve from. A phantom dependency (imported, never declared) is not in any closure; declare it.
+A project the lockfile has no entry for folds the root's digest alone — the only `node_modules` it can resolve from. A phantom dependency (imported, never declared by the project or the root — a sibling's package hoisted to the root) is not in any closure; declare it.
 
 A lockfile the parser cannot read **refuses the run**, naming the file, the reason and the install that regenerates it. That is deliberate: the alternative to reading the lockfile is keying on nothing, and a key that is missing material is a stale hit waiting to happen. Under `--affected` the refusal also says which side could not be read — the working tree's copy, or the one at the base ref (a lockfile-migration commit hits the second).
 

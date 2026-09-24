@@ -82,7 +82,10 @@ export type SaveArgs = {
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
 export class Cache implements CacheLayer {
-  constructor(cacheDir: string)
+  // repoDir: where the file hasher asks git for the object format — the
+  // workspace root in a run, so it shares the enumeration's `rev-parse`
+  // (git-inputs.md). Absent, the directory of the first file hashed.
+  constructor(cacheDir: string, localPolicy?: { read: boolean; write: boolean }, repoDir?: string)
   // ... CacheLayer methods
 }
 

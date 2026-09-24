@@ -8,6 +8,7 @@ import { seeHelp } from './help.js'
 import {
   applyMigration,
   findWorkspaceRoot,
+  type LoadReads,
   listProjects,
   loadWorkspace,
   migrateScripts,
@@ -39,8 +40,9 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx init: ${parsed.error}\n`)
     return 1
   }
-  const root = await findWorkspaceRoot(process.cwd())
-  const metas = await listProjects(await loadWorkspace(root))
+  const reads: LoadReads = new Map()
+  const root = await findWorkspaceRoot(process.cwd(), reads)
+  const metas = await listProjects(await loadWorkspace(root, reads))
   // `init` reads scripts only; a runner's own config beside them is the
   // richer source (dependsOn, inputs, outputs) and was ignored without a
   // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'

@@ -105,7 +105,7 @@ group.
 
 | File                                       | Topic                                                                                                                                           |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`workspace.md`](./workspace.md)           | `src/workspace/workspace.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir.                                                                   |
+| [`workspace.md`](./workspace.md)           | `src/workspace/{workspace,load-reads}.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir; the root files a load reads once.                    |
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.                                                                |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                          |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader, the config worker and the playground run (see config-schema.md). |
@@ -174,6 +174,7 @@ group.
 | [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                      |
 | [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                   |
 | [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                   |
+| [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.              |
 | [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.              |
 |                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration` (cli-cache.md) and the core verb list (cli.md). |
 |                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                 |

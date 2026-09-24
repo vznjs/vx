@@ -43,6 +43,21 @@ function scanner(loader: 'ts' | 'js'): Bun.Transpiler {
   return (transpilers[loader] ??= new Bun.Transpiler({ loader }))
 }
 
+/**
+ * Whether Bun's own parser finds an ESM `export` in `source` — the one
+ * syntax that makes Bun evaluate a file as a module whatever else it says.
+ * Without one, a file that touches `module`, `exports`, `require`, `this`
+ * or `__dirname` at the top level is CommonJS to Bun. False on source the
+ * parser refuses: the evaluation names that error.
+ */
+export function hasEsmExport(source: string, loader: 'ts' | 'js'): boolean {
+  try {
+    return scanner(loader).scan(source).exports.length > 0
+  } catch {
+    return false
+  }
+}
+
 /** The package a bare specifier names: `@scope/name` or the first segment. */
 function packageOf(spec: string): string {
   const parts = spec.split('/')

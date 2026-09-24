@@ -163,7 +163,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
    task proves what it touches; `--verify` was removed 2026-09-04).
 3. **One command per task; shell is the API.** A plugin changes WHERE a
    command runs, never what it is. Nothing boots between the scheduler
-   and the shell: Nx's Node fork per task is ~270 ms of CPU (item 732).
+   and the shell: Nx's Node fork per task is ~270 ms of CPU (item 735).
 4. **Resolved-config hashing.** The key sees the evaluated config object.
 5. **Cascade through deps** by folding upstream INPUT keys, never outputs.
 6. **Project boundaries are hard.** Globs never cross into another project.
@@ -172,6 +172,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
    declared in `vx.workspace.ts` or it does not exist.
 8. **Seam over special case.** When core grows a branch for one consumer,
    the seam is too narrow.
+9. **Once per run.** A run treats the files it reads as fixed except
+   where vx or its own tasks write; each fact (a read, a stat, a PATH
+   lookup, a spawn's answer) is learned once and reused. A repeat needs a
+   measured reason, pinned by `tests/syscall-repeats.unsafe.test.ts` /
+   `read-once.unsafe.test.ts`.
 
 ## Rules learned the hard way
 

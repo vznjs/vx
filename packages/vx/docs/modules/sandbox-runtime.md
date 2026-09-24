@@ -204,7 +204,10 @@ export function isMountableLiteral(grant: string): boolean
      and the workspace-root deny anchor) with the user's resolved
      sandbox block, then appends the rules SRT's config cannot carry.
    - Calls `SandboxManager.wrapWithSandbox` to get the wrapped command
-     string, spawns it via `Bun.spawn(['sh', '-c', wrapped])`, and
+     string, spawns it via `sh -c wrapped` — under `strace -f … --` on
+     Linux — with `sh` and `strace` resolved on vx's own PATH
+     (`util/which.ts`), so neither Bun nor strace walks the task's PATH,
+     whose `node_modules/.bin` comes first, for the shell; and
      captures stdout/stderr + resource usage exactly like
      `runner.ts:runCommand`.
    - After `proc.exited`, reads back any violations from the macOS

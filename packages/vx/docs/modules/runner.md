@@ -78,8 +78,16 @@ export function execWord(command: string): string | undefined
 
 ## Spawning rules
 
-- **Shell:** `Bun.spawn(['sh', '-c', command], ...)`. POSIX-shell only;
-  Windows is unsupported (no `cmd.exe` branch).
+- **Shell:** `Bun.spawn([executablePath('sh'), '-c', command], { argv0: 'sh', ... })`.
+  POSIX-shell only; Windows is unsupported (no `cmd.exe` branch). The
+  shell is resolved ONCE per process on vx's own PATH
+  (`util/which.ts`), never the task's: the task's PATH leads with its
+  project's `node_modules/.bin`, and Bun resolving the bare `sh`
+  against it let a dependency's `sh` bin parse every command in the
+  project (`tests/task-shell.test.ts`). It also walked that PATH with a
+  stat per entry on every spawn. The task's PATH still decides what
+  the command resolves, inside the shell; `argv0` keeps `$0` the `sh`
+  it always was.
 - **stdio:** `stdin: 'ignore'` (no interactive prompts);
   `stdout: 'pipe'`, `stderr: 'pipe'`.
 - **forwardArgs** are appended to `command` after a single space, each

@@ -11,6 +11,7 @@ import {
   applyFilters,
   buildPackageGraph,
   findWorkspaceRoot,
+  type LoadReads,
   type FingerprintClaims,
   FROZEN_WITHOUT_LOCK,
   listProjects,
@@ -106,9 +107,9 @@ async function workspaceFingerprintClaims(
 }
 
 async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
-  const root = await findWorkspaceRoot(cwd)
-  const ws = await loadWorkspace(root)
-  return await listProjects(ws)
+  const reads: LoadReads = new Map()
+  const root = await findWorkspaceRoot(cwd, reads)
+  return await listProjects(await loadWorkspace(root, reads))
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {

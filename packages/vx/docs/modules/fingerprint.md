@@ -16,12 +16,20 @@ export interface WorkspaceFingerprints {
   readonly unclaimed: string // over the files no plugin claims
 }
 
-export function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string>
+export function computeWorkspaceFingerprint(
+  workspaceRoot: string,
+  reads?: LoadReads,
+): Promise<string>
 export function computeWorkspaceFingerprints(
   workspaceRoot: string,
   claimed: ReadonlySet<string>,
+  reads?: LoadReads,
 ): Promise<WorkspaceFingerprints>
 ```
+
+Every file goes through the load's `reads` (workspace.md), so the
+`pnpm-workspace.yaml` discovery already read is folded from those bytes
+rather than probed and read a third time.
 
 Both return 16 hex characters of seed-chained xxh3. The second reads each
 file once and folds two digests: `all` over every file present, and
@@ -80,7 +88,7 @@ other side. A per-task input that genuinely varies belongs in
 ```ts
 let h = 0n
 for (const f of FILES) {
-  if (file at <root>/<f> exists) {
+  if (read <root>/<f> succeeds) {
     h = xxh3(`${f}\0`, h)
     h = xxh3(<bytes>, h)
   }
@@ -89,7 +97,11 @@ return h.toString(16).padStart(16, '0')
 ```
 
 The filename prefix prevents collisions between two files that happen
-to have the same byte content but different roles.
+to have the same byte content but different roles. Each candidate costs
+one `open`: the read's ENOENT (or EISDIR, for a directory by the name)
+is the absence, where an `exists()` stat before the read doubled the
+calls for every file present
+(`tests/syscall-repeats.unsafe.test.ts`).
 
 ## What this does NOT do
 

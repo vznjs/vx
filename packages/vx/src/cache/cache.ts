@@ -222,22 +222,69 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
 }
 
 /**
- * Why a process cannot write into `cacheDir`, or `null` when it can: the
- * directory must take new files (the WAL, the artifacts) and `cache.db`,
- * when it exists, must take pages. The file system's answer, not a trial
- * write — under WAL a rolled-back write never reaches the disk, so
- * `BEGIN IMMEDIATE … ROLLBACK` passes on a handle SQLite opened read-only
- * (proven as an unprivileged user, 2026-09-16). Two `access` calls, 1.8 µs.
+ * Make `cacheDir` exist and say why this process cannot write into it, or
+ * `null` when it can: the directory must take new files (the WAL, the
+ * artifacts) and `cache.db`, when it exists, must take pages. The file
+ * system's answer, not a trial write — under WAL a rolled-back write never
+ * reaches the disk, so `BEGIN IMMEDIATE … ROLLBACK` passes on a handle
+ * SQLite opened read-only (proven as an unprivileged user, 2026-09-16).
+ *
+ * Every verb opens the cache, so each question here is one call whose
+ * failure is another question's answer: `access` on the directory is also
+ * "does it exist" (made only on ENOENT), `access` on the database also "is
+ * it there", and the ignore file is created exclusively instead of probed
+ * first. An existing cache costs three calls; it cost six.
  */
-function writeBlocked(cacheDir: string): string | null {
+function openCacheDir(cacheDir: string): string | null {
+  const ignore = path.join(cacheDir, '.gitignore')
   try {
     accessSync(cacheDir, constants.W_OK)
-    const db = path.join(cacheDir, 'cache.db')
-    if (existsSync(db)) accessSync(db, constants.W_OK)
-    return null
   } catch (err) {
-    return err instanceof Error ? err.message : String(err)
+    makeCacheDir(cacheDir)
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
+    writeFileSync(ignore, IGNORE_ALL)
+    return null
   }
+  try {
+    accessSync(path.join(cacheDir, 'cache.db'), constants.W_OK)
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    // A FILE at `cacheDir` passed the `access` above; mkdir names it.
+    if (code === 'ENOTDIR') makeCacheDir(cacheDir)
+    if (code !== 'ENOENT') return errorText(err)
+  }
+  try {
+    writeFileSync(ignore, IGNORE_ALL, { flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  return null
+}
+
+// Make the cache dir invisible to git, every time it is created: a `*`
+// .gitignore inside it (the Cargo / Nx convention). Two reasons, both
+// measured. A cache nobody ignored gets COMMITTED by the next `git add -A`;
+// and vx's own `git status -uall` walks it — 1000 artifacts doubled the
+// enumeration on the bench workspace before its generator ignored `.vx`. An
+// ignored directory is skipped by the walk entirely. Only written when
+// absent, so a user's own file wins.
+const IGNORE_ALL = '*\n'
+
+function makeCacheDir(cacheDir: string): void {
+  try {
+    mkdirSync(cacheDir, { recursive: true })
+  } catch (err) {
+    // A read-only checkout with no cache yet: every verb opens the cache,
+    // so this is the first thing any of them says there.
+    throw new UserError(
+      `cannot create cache directory ${cacheDir} (${errorText(err)}) — vx keeps its cache there; make ` +
+        `the workspace writable, set \`cacheDir\` in vx.workspace.ts, or pass --cache-dir <path>`,
+    )
+  }
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 export class Cache implements CacheLayer {
@@ -288,41 +335,20 @@ export class Cache implements CacheLayer {
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
+    /** The workspace root, where the file hasher asks git for the object format (file-hashes.ts). */
+    repoDir?: string,
   ) {
     this.read = localPolicy.read
-    this.write = localPolicy.write
-    // Ensure the directory exists before opening the DB — bun:sqlite
-    // won't create parent dirs for us. The constructor stays sync
-    // because callers use `new Cache(...)` directly; `mkdirSync` keeps
-    // that property without a subprocess fork.
-    try {
-      mkdirSync(cacheDir, { recursive: true })
-    } catch (err) {
-      // A read-only checkout with no cache yet: every verb opens the cache,
-      // so this is the first thing any of them says there.
-      const message = err instanceof Error ? err.message : String(err)
-      throw new UserError(
-        `cannot create cache directory ${cacheDir} (${message}) — vx keeps its cache there; make ` +
-          `the workspace writable, set \`cacheDir\` in vx.workspace.ts, or pass --cache-dir <path>`,
-      )
-    }
-    // A directory this user cannot write into is a read-only cache for
-    // every reader (`vx show`, `why`, `last`, the doctor, the watch sweep):
-    // the write axis goes off, so the config-evaluation store and the
-    // file-hash memo skip their upserts instead of dying in SQLite on the
-    // first miss (an unprivileged user on a root-owned `.vx`, 2026-09-16).
-    // A run wants more than a quiet read-only cache — `assertWritable()`.
-    this.writeBlocked = writeBlocked(cacheDir)
+    // The directory exists before the DB opens — bun:sqlite won't create
+    // parent dirs for us. A directory this user cannot write into is a
+    // read-only cache for every reader (`vx show`, `why`, `last`, the
+    // doctor, the watch sweep): the write axis goes off, so the
+    // config-evaluation store and the file-hash memo skip their upserts
+    // instead of dying in SQLite on the first miss (an unprivileged user on
+    // a root-owned `.vx`, 2026-09-16). A run wants more than a quiet
+    // read-only cache — `assertWritable()`.
+    this.writeBlocked = openCacheDir(cacheDir)
     this.write = localPolicy.write && this.writeBlocked === null
-    // Make the cache dir invisible to git, every time it is created: a
-    // `*` .gitignore inside it (the Cargo / Nx convention). Two reasons,
-    // both measured. A cache nobody ignored gets COMMITTED by the next
-    // `git add -A`; and vx's own `git status -uall` walks it — 1000
-    // artifacts doubled the enumeration on the bench workspace before
-    // its generator ignored `.vx`. An ignored directory is skipped by the
-    // walk entirely. Only written when absent, so a user's own file wins.
-    const ignore = path.join(cacheDir, '.gitignore')
-    if (this.writeBlocked === null && !existsSync(ignore)) writeFileSync(ignore, '*\n')
     this.db = new Database(path.join(cacheDir, 'cache.db'), { create: true })
     // busy_timeout makes concurrent writers wait for the lock instead of
     // failing immediately with SQLITE_BUSY. Two parallel `vx run`
@@ -596,7 +622,7 @@ export class Cache implements CacheLayer {
     `)
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
-    this.files = new FileHashStore(this.db, cacheDir, this.write)
+    this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
     this.configEvals = new ConfigEvalTable(this.db, { read: this.read, write: this.write })
     this.outputs = new OutputIndex(this.db)
     this.history = new RunHistory(this.db)

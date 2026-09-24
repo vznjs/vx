@@ -12,6 +12,7 @@ import { PLUGIN_HOOKS } from '../config.js'
 import {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,
+  executablePath,
   isUnsupportedBun,
   machineMemoryBytes,
   machineParallelism,
@@ -22,6 +23,7 @@ import {
   buildPackageGraph,
   computeWorkspaceFingerprint,
   findWorkspaceRoot,
+  type LoadReads,
   listProjects,
   loadProjectConfig,
   loadWorkspace,
@@ -110,8 +112,9 @@ export interface CollectInfoOptions {
 
 export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): Promise<InfoFacts> {
   const warn = opts.warn ?? warnToStderr
-  const root = await findWorkspaceRoot(cwd)
-  const metas = await listProjects(await loadWorkspace(root))
+  const reads: LoadReads = new Map()
+  const root = await findWorkspaceRoot(cwd, reads)
+  const metas = await listProjects(await loadWorkspace(root, reads))
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(root, warn)
   const cacheDir =
     opts.cacheDir === undefined
@@ -143,7 +146,10 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
         seeds: 'all',
         closure: false,
         lock: null,
-        evalCache: { store: cache, workspaceFingerprint: await computeWorkspaceFingerprint(root) },
+        evalCache: {
+          store: cache,
+          workspaceFingerprint: await computeWorkspaceFingerprint(root, reads),
+        },
         warn,
       })
       for (const p of loaded.projects.values()) {
@@ -283,7 +289,7 @@ function memoryFact(): InfoFacts['memory'] {
 function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
   try {
     const p = Bun.spawnSync({
-      cmd: ['git', 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
+      cmd: [executablePath('git'), 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -301,7 +307,11 @@ function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
 
 function gitVersion(): string | null {
   try {
-    const p = Bun.spawnSync({ cmd: ['git', '--version'], stdout: 'pipe', stderr: 'pipe' })
+    const p = Bun.spawnSync({
+      cmd: [executablePath('git'), '--version'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
     if (p.exitCode !== 0) return null
     return new TextDecoder()
       .decode(p.stdout)

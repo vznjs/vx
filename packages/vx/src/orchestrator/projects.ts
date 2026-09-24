@@ -10,6 +10,7 @@ import {
   loadProjectConfigs,
   validateProjectConfig,
   type LoadProjectConfigOptions,
+  type LoadReads,
   type Lockfile,
   type PackageGraph,
   type ProjectEntry,
@@ -231,10 +232,11 @@ export async function loadResolvedProjects(
   opts: { scope?: 'all' | readonly string[]; warn?: (message: string) => void } = {},
 ): Promise<Map<string, ProjectEntry>> {
   const warn = opts.warn ?? ((): void => {})
-  const metas = await listProjects(await loadWorkspace(workspaceRoot))
+  const reads: LoadReads = new Map()
+  const metas = await listProjects(await loadWorkspace(workspaceRoot, reads))
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warn)
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
-  const cache = new Cache(cacheDir)
+  const cache = new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
   noteSchemaReset(cache, warn)
   try {
     const loaded = await loadProjects({
@@ -248,7 +250,7 @@ export async function loadResolvedProjects(
       lock: null,
       evalCache: {
         store: cache,
-        workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot),
+        workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot, reads),
       },
       warn,
     })

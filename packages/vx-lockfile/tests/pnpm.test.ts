@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
 import { importerDigests, parseLockfile } from '../src/pnpm.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
@@ -34,9 +35,10 @@ const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'
  * two peer resolutions. `bar` is the knob the tests turn.
  */
 function v9(
-  opts: { bar?: string; baz?: string; patchBar?: boolean; pnpmfile?: string } = {},
+  opts: { bar?: string; baz?: string; patchBar?: boolean; pnpmfile?: string; ts?: string } = {},
 ): string {
   const bar = opts.bar ?? '2.0.0'
+  const ts = opts.ts ?? '5.0.0'
   const baz = opts.baz ?? '3.0.0'
   return `lockfileVersion: '9.0'
 
@@ -57,7 +59,7 @@ importers:
     devDependencies:
       typescript:
         specifier: ^5
-        version: 5.0.0
+        version: ${ts}
 
   packages/a:
     dependencies:
@@ -105,8 +107,8 @@ packages:
   react@19.0.0:
     resolution: {integrity: sha512-react19}
 
-  typescript@5.0.0:
-    resolution: {integrity: sha512-ts}
+  typescript@${ts}:
+    resolution: {integrity: sha512-ts${ts}}
 
 snapshots:
 
@@ -130,7 +132,7 @@ snapshots:
 
   react@19.0.0: {}
 
-  typescript@5.0.0: {}
+  typescript@${ts}: {}
 `
 }
 
@@ -349,11 +351,13 @@ describe('pnpm()', () => {
       expect([...(await affected(pnpm(), v9(), v9()))!]).toEqual([])
     })
 
-    it('a project outside the lockfile follows the root importer', async () => {
-      const rootBump = v9()
-        .replace('version: 5.0.0', 'version: 5.1.0')
-        .replace(/typescript@5\.0\.0/g, 'typescript@5.1.0')
-      expect([...(await affected(pnpm(), v9(), rootBump))!]).toEqual(['tools'])
+    it('a root importer bump names every project, the one outside the lockfile included', async () => {
+      expect([...(await affected(pnpm(), v9(), v9({ ts: '5.1.0' })))!]).toEqual([
+        'a',
+        'b',
+        'c',
+        'tools',
+      ])
     })
 
     it('cannot tell when the file appeared or went, or under scope: workspace', async () => {
@@ -441,6 +445,26 @@ describe('vx run with pnpm() declared', () => {
     expect(after['a#build']).toBe(before['a#build'])
     expect(after['b#build']).not.toBe(before['b#build'])
     expect(after['c#build']).not.toBe(before['c#build'])
+  })
+
+  it('a root devDependency bump re-keys and selects every project: the root `.bin` is on every PATH', async () => {
+    // The root package's tools run from the root `node_modules/.bin`,
+    // which core puts on every task's PATH, and Node resolution walks up
+    // to the root `node_modules`: a bump that moved no project's key
+    // replayed the old tool's output (nx#36415 class, 2026-09-24).
+    const plan = async () => {
+      const p = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      return Object.fromEntries(p.tasks.map((t) => [t.node.id, t.hash]))
+    }
+    commitAll(root)
+    const before = await plan()
+    // CONTROL: a package only `a` reaches still moves only a's key.
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ bar: '2.0.1' }))
+    expect(moved(before, await plan())).toEqual(['a#build'])
+    expect(affectedIds(root, 'build')).toEqual(['a#build'])
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ ts: '5.1.0' }))
+    expect(moved(before, await plan())).toEqual(['a#build', 'b#build', 'c#build'])
+    expect(affectedIds(root, 'build')).toEqual(['a#build', 'b#build', 'c#build'])
   })
 
   it('`vx why` names the plugin part; the workspace fingerprint no longer moves', async () => {

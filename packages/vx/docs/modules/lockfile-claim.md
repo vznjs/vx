@@ -53,9 +53,22 @@ Both are on the `@vzn/vx` façade.
 - **Once per process.** The file's size + mtime gate the read within a
   process (a `vx watch` cycle); the content hash decides whether the
   digests are current.
+- **Every project folds the root importer's digest** beside its own
+  (one xxh3 over both; the root project folds the root's alone). The
+  root package's dependencies reach every task: their bins through the
+  root `node_modules/.bin` that core puts on every task's PATH, their
+  modules through Node's resolution walking up to the root
+  `node_modules` (`@types/*` under tsc's default `typeRoots`, a plugin
+  a root tool's config names). Without it a root devDependency bump
+  moved no project's key, `--affected` selected nothing, and the task
+  replayed the old tool's output (nx#36415 class, 2026-09-24). A bin
+  alone is not narrower-and-sound: `@types/node` has no bin. The cost is
+  every project on a root-dependency bump, the root's `workspace:`
+  devDependencies' closures included.
 - **A project the file does not list** (outside the workspace's
-  `packages`) folds the root importer's digest — the only installed
-  tree it can resolve from; a file with neither folds a constant.
+  `packages`) folds the root importer's digest alone — the only
+  installed tree it can resolve from; a file with neither folds a
+  constant.
 - **`affected`** digests both sides and names the projects whose digest
   moved; a side that is absent (the file appeared or went) answers
   `undefined`, and so does `scope: 'workspace'`.
@@ -81,7 +94,11 @@ took 400.
 
 `tests/lockfile-claim.test.ts` — the memo (served across instances, a
 planted memo keys the task, a changed file or version ignores it), the
-per-run gate (one parse for two tasks), the root fallback, `scope:
-'workspace'`, the `affected` diff, and `reachDigests` (reach moves a
+per-run gate (one parse for two tasks), the root folded into every
+project and the root fallback, `scope: 'workspace'`, the `affected` diff
+(a root move names every project), and `reachDigests` (reach moves a
 digest, numbering does not, a cycle shares a component). The formats
-are pinned in `packages/vx-lockfile/tests`, one file per manager.
+are pinned in `packages/vx-lockfile/tests`, one file per manager, each
+with a row that bumps a root devDependency and asserts every project
+re-keyed and selected by `--affected`, beside a control that a package
+one project reaches moves only that project.

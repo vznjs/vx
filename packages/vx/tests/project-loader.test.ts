@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -931,6 +931,118 @@ describe('loadProjectConfig', () => {
   })
 })
 
+// A project config's first load is evaluated from the bytes the loader
+// already read (the `vx-config-bytes` onLoad), not read again by Bun. That
+// source is always evaluated as ESM and carries vx's query in its frames,
+// so each row below is a way the served path could differ from Bun's own.
+describe('a project config is evaluated from the bytes vx read', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-loader-held-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('a CommonJS config keeps its module.exports (no ESM export, so Bun reads it)', async () => {
+    // Served as ESM, `module` is undefined and the object never arrives.
+    const file = path.join(dir, 'vx.config.js')
+    await writeFile(
+      file,
+      `module.exports = {
+  tasks: { build: { exec: { command: 'tsc' } } },
+}
+`,
+    )
+    const cfg = await loadProjectConfig(file)
+    expect(cfg.tasks?.build?.exec?.command).toBe('tsc')
+  })
+
+  it('bytes that are not UTF-8 evaluate as Bun reads them, not as a decoder repairs them', async () => {
+    // Bun's loader takes 0xff 0xfe as U+00FF U+00FE; a lenient decode would
+    // hand it two U+FFFD — a different description, so a different key.
+    const file = path.join(dir, 'vx.config.mjs')
+    const enc = new TextEncoder()
+    await writeFile(
+      file,
+      new Uint8Array([
+        ...enc.encode("export default { tasks: { build: { description: '"),
+        0xff,
+        0xfe,
+        ...enc.encode("A', exec: { command: 'tsc' } } } }\n"),
+      ]),
+    )
+    const cfg = await loadProjectConfig(file)
+    expect(cfg.tasks?.build?.description).toBe('ÿþA')
+  })
+
+  it("a served config's runtime throw names the file the user wrote, not vx's query", async () => {
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(
+      file,
+      `function preset() {
+  throw new RangeError('preset out of range')
+}
+preset()
+export default { tasks: {} }
+`,
+    )
+    const err = await loadProjectConfig(file).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.name).toBe('RangeError')
+    expect(err?.stack).toContain(`${file}:2:`)
+    expect(err?.stack).not.toContain('?vx-')
+  })
+
+  it("a served config's unresolvable relative import names the file without vx's query (control)", async () => {
+    // Bun 1.4 says `Cannot find module … imported from <specifier>`, which
+    // the loader rewrites to the specifier alone; the query-strip arm for
+    // other shapes is held by the configLoadError rows below.
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(
+      file,
+      `import { preset } from './missing-preset.mjs'
+export default { tasks: preset }
+`,
+    )
+    const err = await loadProjectConfig(file).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.name).toBe('UserError')
+    expect(err?.message).toBe(`Project config ${file}: cannot find './missing-preset.mjs'`)
+  })
+  it('a served config reached through a symlinked directory loads (macOS temp roots are one)', async () => {
+    // Bun hands onLoad the RESOLVED path; a held source looked up by the
+    // specifier vx imported came back undefined for every config whose
+    // directory is reached through a link (every macOS mkdtemp root).
+    const real = path.join(dir, 'real')
+    await mkdir(real)
+    await symlink(real, path.join(dir, 'link'))
+    await writeFile(
+      path.join(real, 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'linked' } } } }",
+    )
+    const cfg = await loadProjectConfig(path.join(dir, 'link', 'vx.config.mjs'))
+    expect(cfg.tasks?.build?.exec?.command).toBe('linked')
+  })
+
+  it('two configs with the same bytes load together, each from its own path', async () => {
+    const text = "export default { tasks: { build: { exec: { command: 'same' } } } }"
+    const files = ['a', 'b', 'c'].map((n) => path.join(dir, n, 'vx.config.mjs'))
+    for (const f of files) {
+      await mkdir(path.dirname(f))
+      await writeFile(f, text)
+    }
+    const cfgs = await Promise.all(files.map((f) => loadProjectConfig(f)))
+    expect(cfgs.map((c) => c.tasks?.build?.exec?.command)).toEqual(['same', 'same', 'same'])
+  })
+})
+
 describe('loadWorkspaceConfig', () => {
   let dir: string
 
@@ -1026,6 +1138,13 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     expect(user?.message).toBe(
       "project config /w/p/vx.config.ts: Could not resolve: './missing.js' from '/w/p/vx.config.ts'",
     )
+    // The served path's query (`vx-held`, the bytes vx read) is vx's too.
+    const held = configLoadError(
+      { ...err, message: err.message.replace('vx-bust', 'vx-held') },
+      '/w/p/vx.config.ts',
+      'project',
+    )
+    expect(held?.message).toBe(user?.message)
   })
 
   it('a BuildMessage whose position names an EMPTY file falls back to the config', () => {

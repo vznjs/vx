@@ -43,8 +43,8 @@ export interface ProjectMeta {
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs}
 }
 
-export function findWorkspaceRoot(start: string): Promise<string>
-export function loadWorkspace(root: string): Promise<Workspace>
+export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
+export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
 
@@ -64,6 +64,26 @@ export function unreachedHint(unreached: readonly string[]): string
 // The directories a recursive watch must cover to see every member.
 export function memberBaseDirs(workspace: Workspace): string[]
 ```
+
+From `src/workspace/load-reads.ts`, what one load has read of the root:
+
+```ts
+// Absolute path → the bytes, or null when no file is there.
+export type LoadReads = Map<string, Promise<Uint8Array | null>>
+// `file`'s bytes through `reads`: probed and read at most once per map.
+export function readOnce(reads: LoadReads | undefined, file: string): Promise<Uint8Array | null>
+```
+
+A run reads the root manifest once. `findWorkspaceRoot`, `loadWorkspace`
+and `computeWorkspaceFingerprints` each read `pnpm-workspace.yaml` for
+themselves until 2026-09-24 — three probes and three reads per run;
+`prepareRun` now hands all three one `LoadReads`, and so do the verbs
+that pair the first two (`show`, `lock`, `init`, `watch`, the
+selection pass, the doctor). The map is the load's and dies with it:
+a `vx watch` cycle is a new run and reads the file afresh
+(`tests/load-reads.test.ts` holds both). The probe stays ahead of the
+read — most names asked about are absent, and a failed read costs
+90–200 µs building its error where `exists()` answers in 15–40 µs.
 
 ## Discovery rules
 
@@ -94,9 +114,10 @@ skipped) for the `package.json` files the missing globs never reach, and
 `unreachedHint` is the line `vx init` and `vx run` print for them —
 the cause, the packages, the `workspaces` entry to add.
 
-### `loadWorkspace(root)`
+### `loadWorkspace(root, reads?)`
 
-Reads the package-glob list:
+Reads the package-glob list (through `reads`, so the manifest
+`findWorkspaceRoot` just read is not read again):
 
 | Manager                | Source                                                           |
 | ---------------------- | ---------------------------------------------------------------- |

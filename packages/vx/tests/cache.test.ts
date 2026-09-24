@@ -757,6 +757,24 @@ describe('Cache storage (v10)', () => {
     },
   )
 
+  // The open asks `access` of the directory before anything makes it, and a
+  // FILE passes that; it is still refused as the directory it cannot be.
+  it('a file where the cache directory goes is refused with its remedies', async () => {
+    const file = path.join(projectDir, 'not-a-dir')
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(file, 'x')
+    let thrown: unknown
+    try {
+      new Cache(file).close()
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(UserError)
+    expect((thrown as Error).message).toBe(
+      `cannot create cache directory ${file} (EEXIST: file already exists, mkdir '${file}') — vx keeps its cache there; make the workspace writable, set \`cacheDir\` in vx.workspace.ts, or pass --cache-dir <path>`,
+    )
+  })
+
   it('a restore whose staged files another process removes is named an interruption, not a corrupt artifact', async () => {
     // Two runs on one workspace: the other one's clean of `dist/**` takes
     // the `.vx-tmp-*` files this restore staged, and its commit meets

@@ -14,13 +14,21 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { isLiteralPattern, normalizeGlob, staticPrefix, taskGlob, xxh3 } from '../util/index.js'
+import {
+  executablePath,
+  isLiteralPattern,
+  normalizeGlob,
+  staticPrefix,
+  taskGlob,
+  xxh3,
+} from '../util/index.js'
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
   buildPackageGraph,
   findWorkspaceRoot,
+  type LoadReads,
   listProjects,
   loadProjectConfig,
   loadWorkspace,
@@ -151,7 +159,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
   let proc: ReturnType<typeof Bun.spawnSync>
   try {
     proc = Bun.spawnSync({
-      cmd: ['git', 'check-ignore', '-z', '--stdin'],
+      cmd: [executablePath('git'), 'check-ignore', '-z', '--stdin'],
       cwd: workspaceRoot,
       stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
       stdout: 'pipe',
@@ -427,8 +435,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // closure `--filter 'app...'` walks, computed below once the initial
   // run has staged the configs. Plus the workspace root, for lockfile
   // changes.
-  const workspaceRoot = await findWorkspaceRoot(cwd)
-  const workspace = await loadWorkspace(workspaceRoot)
+  const reads: LoadReads = new Map()
+  const workspaceRoot = await findWorkspaceRoot(cwd, reads)
+  const workspace = await loadWorkspace(workspaceRoot, reads)
   const allProjects = await listProjects(workspace)
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
     opts.projects === undefined ? [...all] : all.filter((p) => opts.projects!.includes(p.name))

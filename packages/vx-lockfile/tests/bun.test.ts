@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { bun } from '../src/index.js'
 import { importerDigests, parseLockfile } from '../src/bun.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
@@ -33,9 +34,10 @@ function silent(): Logger {
  * `b`. `bar` at the root is the knob the tests turn.
  */
 function lock(
-  opts: { bar?: string; baz?: string; nestedBar?: string; override?: string } = {},
+  opts: { bar?: string; baz?: string; nestedBar?: string; override?: string; ts?: string } = {},
 ): string {
   const bar = opts.bar ?? '2.0.0'
+  const ts = opts.ts ?? '5.0.0'
   const baz = opts.baz ?? '3.0.0'
   const nested = opts.nestedBar ?? '1.0.0'
   return `{
@@ -75,7 +77,7 @@ ${opts.override === undefined ? '' : `  "overrides": { "zod": "${opts.override}"
     "b/bar": ["bar@${nested}", "", {}, "sha512-bar${nested}"],
     "baz": ["baz@${baz}", "", {}, "sha512-baz${baz}"],
     "foo": ["foo@1.0.0", "", { "dependencies": { "bar": "^2" } }, "sha512-foo"],
-    "typescript": ["typescript@5.0.0", "", { "bin": "bin/tsc" }, "sha512-ts"],
+    "typescript": ["typescript@${ts}", "", { "bin": "bin/tsc" }, "sha512-ts${ts}"],
   }
 }
 `
@@ -230,6 +232,26 @@ describe('vx run with bun() declared', () => {
       'b#build': 'cache-hit',
       'c#build': 'cache-hit',
     })
+  })
+
+  it('a root devDependency bump re-keys and selects every project: the root `.bin` is on every PATH', async () => {
+    // The root package's tools run from the root `node_modules/.bin`,
+    // which core puts on every task's PATH, and Node resolution walks up
+    // to the root `node_modules`: a bump that moved no project's key
+    // replayed the old tool's output (nx#36415 class, 2026-09-24).
+    const plan = async () => {
+      const p = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      return Object.fromEntries(p.tasks.map((t) => [t.node.id, t.hash]))
+    }
+    commitAll(root)
+    const before = await plan()
+    // CONTROL: a package only `a` reaches still moves only a's key.
+    await writeFile(path.join(root, 'bun.lock'), lock({ bar: '2.0.1' }))
+    expect(moved(before, await plan())).toEqual(['a#build'])
+    expect(affectedIds(root, 'build')).toEqual(['a#build'])
+    await writeFile(path.join(root, 'bun.lock'), lock({ ts: '5.1.0' }))
+    expect(moved(before, await plan())).toEqual(['a#build', 'b#build', 'c#build'])
+    expect(affectedIds(root, 'build')).toEqual(['a#build', 'b#build', 'c#build'])
   })
 
   it('`--affected` selects the projects the bump reaches', async () => {

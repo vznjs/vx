@@ -11,7 +11,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { ulid, xxh3hex } from '../util/index.js'
+import { executablePath, ulid, xxh3hex } from '../util/index.js'
 
 export interface GitContext {
   /** `git rev-parse HEAD`, or null outside a repo / on failure. */
@@ -65,7 +65,15 @@ export function captureGitContext(
   }
   try {
     const proc = Bun.spawnSync({
-      cmd: ['git', '-C', workspaceRoot, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD'],
+      cmd: [
+        executablePath('git'),
+        '-C',
+        workspaceRoot,
+        'rev-parse',
+        'HEAD',
+        '--abbrev-ref',
+        'HEAD',
+      ],
       stdout: 'pipe',
       stderr: 'ignore',
     })
@@ -205,7 +213,14 @@ export function captureDefaultBranch(
 
   try {
     const proc = Bun.spawnSync({
-      cmd: ['git', '-C', workspaceRoot, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+      cmd: [
+        executablePath('git'),
+        '-C',
+        workspaceRoot,
+        'symbolic-ref',
+        '--short',
+        'refs/remotes/origin/HEAD',
+      ],
       stdout: 'pipe',
       stderr: 'ignore',
     })
@@ -310,7 +325,7 @@ export function captureWorkspaceIdentity(workspaceRoot: string): WorkspaceIdenti
       // rewrites, so two developers mirroring the same repo through
       // different proxies would derive different workspace ids. The raw
       // configured URL is the identity.
-      cmd: ['git', '-C', workspaceRoot, 'config', '--get', 'remote.origin.url'],
+      cmd: [executablePath('git'), '-C', workspaceRoot, 'config', '--get', 'remote.origin.url'],
       stdout: 'pipe',
       stderr: 'ignore',
     })

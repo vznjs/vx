@@ -154,7 +154,7 @@ the restore case and ties the cold one; Nx is 7× off. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
 The same 46-package run on the four-core Linux container (2026-09-24,
-item 732, the fixed harness: Nx runs its scripts with bun as Turbo does;
+item 735, the fixed harness: Nx runs its scripts with bun as Turbo does;
 `CI=1`, so Nx's daemon is off; a different machine, so only the ratios compare
 with the table above). Turbo 2.11.3 (no daemon for `turbo run`) and Nx
 23.2.1, vx as its compiled binary, median of 3. The CPU column is user +
@@ -184,7 +184,7 @@ point — the committed `packages/vx-bench/RESULTS.md` is the 3,270-task run bel
 | turbo       | 1m 40s       | 342 ms (1.2×)     | 612 ms (1.5×)  |
 | nx          | 3m 23s       | 1.38 s (4.7×)     | 1.33 s (3.2×)  |
 
-The same size on the four-core Linux container (2026-09-24, item 732,
+The same size on the four-core Linux container (2026-09-24, item 735,
 the fixed harness, median of 1; ideal schedule 1m 36s):
 
 | Runner      | Fresh (cold) | Warm (no restore) | Warm (restore)    | CPU, cold |
@@ -203,7 +203,7 @@ the graph" again.
 ### Why Nx is slower
 
 Two things, both per task, and both measured on the 46-package workspace
-(cold, 138 tasks, min of 3 interleaved arms, 2026-09-24, item 732):
+(cold, 138 tasks, min of 3 interleaved arms, 2026-09-24, item 735):
 
 | Arm                                             | Wall    | CPU     |
 | ----------------------------------------------- | ------- | ------- |

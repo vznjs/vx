@@ -160,13 +160,22 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 }
 
 /**
- * A project's digest: its own importer's, or — for a project the lockfile
- * has no importer for (outside the workspace's `packages`) — the root
- * importer's, the only installed tree it can resolve from. A file with
- * neither folds a constant.
+ * A project's digest: its own importer's AND the root importer's. The
+ * root package's dependencies reach every task — their bins through the
+ * root `node_modules/.bin` core puts on every PATH, their modules through
+ * Node's resolution walking up to the root `node_modules` (`@types/*`,
+ * a config's plugins) — so a root devDependency bump that moved only the
+ * root's digest replayed the old tool's output (nx#36415 class,
+ * 2026-09-24). A project the lockfile has no importer for (outside the
+ * workspace's `packages`) folds the root's alone; a file with neither
+ * folds a constant.
  */
 function digestFor(importers: ReadonlyMap<string, string>, importer: string): string {
-  return importers.get(importer) ?? importers.get('.') ?? 'no-importer'
+  const own = importers.get(importer)
+  const root = importers.get('.')
+  if (own === undefined) return root ?? 'no-importer'
+  if (root === undefined || importer === '.') return own
+  return xxh3hex(`${own}\0${root}`)
 }
 
 /** The lockfile's importer path for a project directory: `.` for the root, POSIX otherwise. */

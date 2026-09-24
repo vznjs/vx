@@ -10,6 +10,7 @@ import { statSync } from 'node:fs'
 import path from 'node:path'
 import {
   asTrees,
+  executablePath,
   UserError,
   gitSpawnRefusal,
   isExecutableMissing,
@@ -32,7 +33,7 @@ function spawnGitSync(
   stderr: 'pipe' | 'ignore' = 'pipe',
 ): ReturnType<typeof Bun.spawnSync> {
   try {
-    return Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr })
+    return Bun.spawnSync({ cmd: [executablePath('git'), ...args], cwd, stdout: 'pipe', stderr })
   } catch (err) {
     if (isExecutableMissing(err)) throw gitSpawnRefusal(cwd)
     throw err
@@ -41,7 +42,7 @@ function spawnGitSync(
 
 function spawnGit(args: string[], cwd: string): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
   try {
-    return Bun.spawn({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
+    return Bun.spawn({ cmd: [executablePath('git'), ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
   } catch (err) {
     if (isExecutableMissing(err)) throw gitSpawnRefusal(cwd)
     throw err

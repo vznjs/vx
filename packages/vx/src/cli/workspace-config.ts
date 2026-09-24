@@ -101,7 +101,7 @@ export async function loadCliProjects(
   // glob could select live what the run then treats otherwise.
   const lock = opts.frozen === true ? await readLockfile(workspaceRoot) : null
   if (opts.frozen === true && lock === null) throw new UserError(FROZEN_WITHOUT_LOCK)
-  const cache = new Cache(cacheDir)
+  const cache = new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
   noteSchemaReset(cache, warnToStderr)
   try {
     const loaded = await loadProjects({

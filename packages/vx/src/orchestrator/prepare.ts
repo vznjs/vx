@@ -28,6 +28,7 @@ import {
   computeNestedProjectDirs,
   computeWorkspaceFingerprints,
   findWorkspaceRoot,
+  type LoadReads,
   listProjects,
   loadWorkspace,
   FROZEN_WITHOUT_LOCK,
@@ -143,7 +144,10 @@ export interface PreparedRun {
  */
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
   mark('startup')
-  const workspaceRoot = await findWorkspaceRoot(options.cwd)
+  // The root manifest is read once for the root, the globs and the
+  // fingerprint. A watch cycle is a new run and reads it afresh.
+  const reads: LoadReads = new Map()
+  const workspaceRoot = await findWorkspaceRoot(options.cwd, reads)
   // An UNSCOPED run (no explicit scope, at least one bare task name)
   // enumerates the whole tree whatever the configs say, so git starts
   // HERE — the walk needs only the root — and overlaps the workspace
@@ -160,7 +164,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // handler keeps that from surfacing as an unhandled rejection (the real
   // await further down still sees the error).
   earlyGit?.catch(() => {})
-  const workspace = await loadWorkspace(workspaceRoot)
+  const workspace = await loadWorkspace(workspaceRoot, reads)
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, (m) =>
     log.status(m),
   )
@@ -205,7 +209,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
-  const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
+  const localCache = new Cache(
+    cacheDir,
+    { read: policy.localRead, write: policy.localWrite },
+    workspaceRoot,
+  )
   localCache.assertWritable()
   noteSchemaReset(localCache, (m) => log.status(m))
   // Two digests from one read: the config-evaluation cache keys on every
@@ -214,6 +222,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const fingerprints = await computeWorkspaceFingerprints(
     workspaceRoot,
     new Set(fingerprintClaims(plugins).keys()),
+    reads,
   )
   const workspaceFingerprint = fingerprints.unclaimed
   mark('open cache')
