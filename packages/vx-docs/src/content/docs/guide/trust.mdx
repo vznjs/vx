@@ -19,7 +19,7 @@ list only `src/**`. You edit `banner.txt` and run the build.
 
 The key did not change, so vx handed back the old file. The run passed, and
 the file is wrong. This is a
-[stale hit](../../learn/glossary/#cache-hit-miss-and-stale-hit).
+[stale hit](../../glossary/#cache-hit-miss-and-stale-hit).
 
 A stale hit comes from something the task reads but the key never sees. It
 can be a file, an environment variable, or a tool on your machine. A slow
@@ -37,7 +37,7 @@ checks it.
 
 <Diagram {...P.sandbox} />
 
-The [sandbox](../../learn/glossary/#hermeticity-and-sandboxing) runs the
+The [sandbox](../../glossary/#hermeticity-and-sandboxing) runs the
 task where only the files you listed exist. Reading `banner.txt` fails, and
 the error names it. A failed task is never saved.
 

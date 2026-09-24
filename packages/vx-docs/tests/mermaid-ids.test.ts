@@ -2,9 +2,9 @@
 // the extensibility guide's pipeline read `graph["graph()"]`, and the page
 // showed mermaid's error graphic where the diagram belonged (item 697).
 // Mermaid's parser needs a DOM, so this reads what the build shipped instead:
-// every flowchart on every page, the hand-written ones and the ones the
-// Learn widgets generate, and no node id may be a keyword. It holds that
-// class, not the whole grammar.
+// every flowchart on every page, and no node id may be a keyword. It holds
+// that class, not the whole grammar. Only internals pages draw with Mermaid
+// since the Guide's pictures became build-time SVG (design/site-redo-2026-09.md).
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -75,7 +75,8 @@ describe('every flowchart the site ships', () => {
   const charts = flowcharts()
 
   it('finds the diagrams and reads their ids', () => {
-    expect(charts.length).toBeGreaterThan(10)
+    // The internals' flowcharts: five on flows/, one on architecture/.
+    expect(charts.length).toBeGreaterThanOrEqual(6)
     expect(ids('flowchart LR\n  a["x"] --> graph["y"]\n  b -.-> end')).toEqual([
       'a',
       'graph',

@@ -16,7 +16,7 @@
 // Starlight route middleware, whose `onRequest` Starlight imports), and the
 // site's worked examples (`packages/vx-docs/src/examples/`): code a reader
 // copies, where the export is the lesson, each imported by path and
-// type-checked by the site's `learn-architecture.test.ts` (item 686).
+// type-checked by the site's `guide-inside-vx.test.ts` (item 686).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'

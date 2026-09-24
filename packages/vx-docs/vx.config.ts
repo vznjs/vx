@@ -1,11 +1,11 @@
 import { defineProject } from '@vzn/vx'
 
-// The Learn page's scheduler simulator (item 685) runs vx-bench's simulator
-// over vx's own ranking code, so the site's build bundles, and its test
-// imports, three files outside this project. Core and the history plugin are
-// devDependencies, whose directories the sandbox grants by itself; vx-bench
-// is not, so its file is granted by name. All three are inputs: an edit to
-// any of them changes the schedules the page draws.
+// The scheduler simulator (item 685; chapter 4 and lab 4) runs vx-bench's
+// simulator over vx's own ranking code, so the site's build bundles, and its
+// test imports, three files outside this project. Core and the history plugin
+// are devDependencies, whose directories the sandbox grants by itself;
+// vx-bench is not, so its file is granted by name. All three are inputs: an
+// edit to any of them changes the schedules the page draws.
 const SIM_SOURCES = [
   'packages/vx-bench/schedule-policy.ts',
   'packages/vx/src/graph/priorities.ts',
@@ -14,7 +14,7 @@ const SIM_SOURCES = [
 const SIM_READ = '../vx-bench/schedule-policy.ts'
 
 // The choosing page (item 689) links each vx guarantee to the test row that
-// holds it, and learn-choosing.test.ts reads each file for that row's title,
+// holds it, and compare.test.ts reads each file for that row's title,
 // so a renamed row or a moved file fails the site's test instead of leaving
 // a dead link. Granted by name and keyed as inputs, like the sim sources.
 // The landing page's one guarantee (item 709) cites the sandbox file, and
@@ -189,13 +189,13 @@ export default defineProject({
       },
     },
 
-    // `build` because the demo pin (tests/demo-islands.test.ts) reads what
+    // `build` because the chapter pins (tests/guide-<slug>.test.ts) read what
     // the site shipped: whether a widget's no-JavaScript fallback is there is
     // a fact about the built HTML, not about any source file.
     // `dist/` is not an input here; `build`'s key reaches this one through
     // `dependsOn`, and a hit on `build` restores `dist/` before this runs.
     //
-    // learn-architecture.test.ts reads across project boundaries, and says
+    // guide-inside-vx.test.ts reads across project boundaries, and says
     // so here: it type-checks src/examples/ against core's types, reads
     // `VxPlugin`'s source for the hook declarations the explorer shows, and
     // calls every first-party plugin factory to hold the explorer's
@@ -206,7 +206,7 @@ export default defineProject({
     // this task.
     test: {
       description:
-        'bun test — the Guide, sidebar, redirect, diagram, demo, Learn and site-link pins (needs the imported content and dist/)',
+        'bun test — the Guide, sidebar, redirect, diagram, widget, labs, compare and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
@@ -234,10 +234,10 @@ export default defineProject({
           files: [
             'tests/**',
             'src/content/docs/**',
-            // demo-islands.test.ts and learn-architecture.test.ts import the
-            // widgets' model to hold the built pages to it.
+            // demo-islands.test.ts and the chapter pins import the widgets'
+            // model to hold the built pages to it.
             'src/components/demos/model/**',
-            // learn-playground.test.ts and learn-checkpoints.test.ts read the
+            // guide-try-it.test.ts and learn-checkpoints.test.ts read the
             // elements' source for the markup they query.
             'src/components/demos/playground.ts',
             'src/components/demos/checkpoint.ts',
@@ -352,7 +352,7 @@ export default defineProject({
       },
     },
 
-    // A Learn page's checkpoint computes its answer as the page renders, with
+    // A chapter's checkpoint computes its answer as the page renders, with
     // the playground's bundle (Checkpoint.astro), so the dev server needs it
     // as the build does.
     dev: {

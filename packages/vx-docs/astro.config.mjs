@@ -40,8 +40,8 @@ export default defineConfig({
   site,
   base,
   trailingSlash: 'always',
-  // Docs pages merged into another page, and one that became a Guide
-  // chapter (design/site-redo-2026-09.md): the old URL lands on the new
+  // Docs pages merged into another page, and the old Learn pages the Guide
+  // replaced (design/site-redo-2026-09.md): the old URL lands on the new
   // one. tests/redirects.test.ts holds every URL the old sidebar linked.
   // Astro puts the base on the old path but not on the target.
   redirects: {
@@ -50,6 +50,16 @@ export default defineConfig({
     '/guides/task-dependencies/': `${root}guides/tasks/`,
     '/guides/extensibility/': `${root}guides/plugins/`,
     '/concepts/how-vx-works/': `${root}guide/inside-vx/`,
+    '/learn/what-is-task-orchestration/': `${root}guide/dependencies/`,
+    '/learn/caching/': `${root}guide/caching/`,
+    '/learn/correctness/': `${root}guide/trust/`,
+    '/learn/scheduling/': `${root}guide/concurrency/`,
+    '/learn/architecture/': `${root}guide/inside-vx/`,
+    '/learn/extending/': `${root}guide/inside-vx/`,
+    '/learn/playground/': `${root}guide/try-it/`,
+    '/learn/labs/': `${root}guide/labs/`,
+    '/learn/choosing/': `${root}compare/`,
+    '/learn/glossary/': `${root}glossary/`,
   },
   // `remarkPlugins` runs on the `unified()` processor from
   // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the

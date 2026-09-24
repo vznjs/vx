@@ -11,7 +11,7 @@
 // It reads `dist/`, which the `build` task writes; the `test` task depends
 // on `build` for that reason.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS, type VxPlugin } from '@vzn/vx'
@@ -204,6 +204,16 @@ describe('the pipeline model follows PLUGIN_HOOKS', () => {
 })
 
 describe('the examples the chapter shows', () => {
+  // A file here that no page shows is code nobody reads and the site still
+  // type-checks: the extending page's four other plugins went with it.
+  it('are every file under src/examples/: one per stage, and the worked plugin', () => {
+    const files = readdirSync(EXAMPLES, { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.ts'))
+      .map((f) => f.split(path.sep).join('/'))
+      .sort()
+    expect(files).toEqual([...STAGES.map((s) => stageExample(s.hook)), WORKED].sort())
+  })
+
   it('type-check against @vzn/vx: every stage example, the worked plugin, and its workspace', async () => {
     await typeCheck({
       ...Object.fromEntries(

@@ -1,12 +1,13 @@
-// The labs (learn/labs, item 704; design/labs-checkpoints-2026-09.md § W10).
+// The labs (guide/labs, item 704; design/labs-checkpoints-2026-09.md § W10),
+// a tool page after the Guide's last chapter.
 // Each of labs 1 to 3 is a `<vx-playground data-lab="<id>">` opened on a
 // state from src/playground/labs.ts, with numbered steps the reader runs in
 // it. These rows hold the page to the model and the model to hand-written
 // truth: what every step moves, and the words each cell says, are written
 // out below, never computed from labs.ts. Core's parity rows hold the same
 // steps to `vx run --dry=json` (packages/vx/tests/playground-parity.unsafe.test.ts).
-// Lab 4 is a guided exercise in the scheduling page's simulator, and its
-// numbers are held here to the simulator's model.
+// Lab 4 is a guided exercise in the scheduler simulator on the same page,
+// and its numbers are held here to the simulator's model.
 //
 // It reads `dist/`, which the `build` task writes; the `test` task depends
 // on `build` for that reason.
@@ -269,8 +270,8 @@ async function walk(lab: LabId): Promise<{ said: string; moved: Record<string, s
   return out
 }
 
-describe('the labs on learn/labs', () => {
-  const html = page('learn/labs')
+describe('the labs on guide/labs', () => {
+  const html = page('guide/labs')
 
   for (const lab of LAB_IDS) {
     it(`${lab}: every state its steps reach evaluates`, async () => {
@@ -540,12 +541,12 @@ describe('<vx-playground data-lab>', () => {
     }
   })
 
-  it('without the attribute, opens on the workspace, as the playground page does', () => {
+  it('without the attribute, opens on the workspace, as chapter 10’s playground does', () => {
     const el = mount()
     expect(fileList(el)).toEqual(Object.keys(FILES))
     reset(el)
     expect(el.querySelector('.tasks').value).toBe('build test docs')
-    const tag = only(page('learn/playground'), /<vx-playground\b([^>]*)>/g)
+    const tag = only(page('guide/try-it'), /<vx-playground\b([^>]*)>/g)
     expect([...tag.matchAll(/\s([\w-]+)=/g)].map((m) => m[1])).toEqual(['data-vx-demo', 'class'])
   })
 
@@ -554,10 +555,10 @@ describe('<vx-playground data-lab>', () => {
   })
 })
 
-// ---- lab 4, on learn/scheduling ----
+// ---- lab 4, in the simulator on the same page ----
 
-describe('lab 4 on learn/scheduling', () => {
-  const html = page('learn/scheduling')
+describe('lab 4 on guide/labs', () => {
+  const html = page('guide/labs')
   const none = new Set<string>()
   const docsAt = (seconds: number): SimTask[] =>
     SIM_TASKS.map((t) => (t.id === 'app#docs' ? { ...t, dur: seconds * 1000 } : t))
@@ -581,7 +582,7 @@ describe('lab 4 on learn/scheduling', () => {
       { chain: ['app#docs'], path: 30, bound: 34, count: 38, docsStarts: 8, median: 34 },
       { chain: ['app#docs'], path: 30, bound: 30, count: 32, docsStarts: 2, median: 30 },
     ])
-    const said = steps(section(html, 'lab-a-bad-order'))
+    const said = steps(section(html, 'lab-4-a-bad-order'))
     expect(said).toHaveLength(4)
     const PROSE = [
       ['starts app#docs at 8 seconds and finishes at 27', 'finishes at 24'],
@@ -602,7 +603,8 @@ describe('lab 4 on learn/scheduling', () => {
     expect(said[2]).toContain('finishes at 34, on the bound')
   })
 
-  it('the labs page links to it', () => {
-    expect(page('learn/labs')).toContain('href="../scheduling/#lab-a-bad-order"')
+  it('holds the simulator it steps through, in its own section', () => {
+    expect(section(html, 'lab-4-a-bad-order').match(/<vx-scheduler-sim\b/g)).toHaveLength(1)
+    expect(html.match(/<vx-scheduler-sim\b/g)).toHaveLength(1)
   })
 })

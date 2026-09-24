@@ -7,9 +7,10 @@
 // sidebar cannot drift silently.
 //
 // Kept out on purpose (design/site-redo-2026-09.md): the internals, reached
-// through the internals index at the end of the Reference; the old Learn
-// pages, which the Guide replaces and R4 redirects (the glossary and the
-// choosing page stay, as Reference); and the blog, which has its own.
+// through the internals index at the end of the Reference; the labs, a tool
+// page after the Guide's last chapter, which that chapter links (the Guide's
+// sidebar is the ten chapters and nothing else); and the blog, which has its
+// own.
 //
 // It reads only THIS project: the site's sidebar module, its `.gitignore`,
 // and the generated content collection. The generated set is what the
@@ -25,7 +26,8 @@ const SITE = path.resolve(import.meta.dir, '..')
 const CONTENT = path.join(SITE, 'src/content/docs')
 
 const INTERNALS = ['/overview/', '/architecture/', '/optimizations/', '/patterns/', '/flows/']
-const OUT_OF_SIDEBAR = /^\/(?:modules|design|internals|learn|blog)\//
+const OUT_OF_SIDEBAR = /^\/(?:modules|design|internals|blog)\//
+const LABS = '/guide/labs/'
 
 /**
  * Top-level pages the last `import` generated, as file names. A generated
@@ -68,24 +70,30 @@ describe('docs site sidebar coverage', () => {
     expect(ignored).toEqual(importedPages())
   })
 
-  it('names every page but the internals, the old Learn pages and the blog', () => {
+  it('names every page but the internals, the labs and the blog', () => {
     const orphans = collectionPages()
       .map((p) => `/${p}`)
-      .filter((u) => !listed.includes(u) && !INTERNALS.includes(u) && !OUT_OF_SIDEBAR.test(u))
+      .filter(
+        (u) =>
+          !listed.includes(u) && !INTERNALS.includes(u) && u !== LABS && !OUT_OF_SIDEBAR.test(u),
+      )
     expect(orphans).toEqual([])
   })
 
   // The control for the row above: each kind it excuses exists, so the
-  // excuse is not true of an empty set; and the two Learn pages the
-  // Reference keeps are listed.
-  it('excuses only kinds of page that exist, and lists the two Learn pages it keeps', () => {
+  // excuse is not true of an empty set; the two pages the Reference took
+  // from the old Learn section are listed; and no Learn page is left.
+  it('excuses only kinds of page that exist, and lists the glossary and the comparison', () => {
     const pages = collectionPages().map((p) => `/${p}`)
     expect(INTERNALS.filter((u) => !pages.includes(u))).toEqual([])
-    for (const dir of ['modules', 'design', 'internals', 'learn', 'blog']) {
+    for (const dir of ['modules', 'design', 'internals', 'blog']) {
       expect(pages.some((u) => u.startsWith(`/${dir}/`))).toBe(true)
     }
-    expect(listed).toContain('/learn/glossary/')
-    expect(listed).toContain('/learn/choosing/')
+    expect(pages).toContain(LABS)
+    expect(listed).not.toContain(LABS)
+    expect(listed).toContain('/glossary/')
+    expect(listed).toContain('/compare/')
+    expect(pages.filter((u) => u.startsWith('/learn/'))).toEqual([])
   })
 
   it('links only to pages that exist, each once', () => {

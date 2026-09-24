@@ -68,6 +68,10 @@ function frontmatter(file: string): Record<string, string> {
 
 const stripEnd = (s: string): string => s.replace(/[.?]$/, '')
 
+/** The one page under guide/ that is no chapter: the labs, after the last
+ *  chapter and linked from it (a tool page, not a lesson). */
+const LABS = 'labs'
+
 describe('the Guide', () => {
   it('has the design’s ten chapters, in its order, with its titles and problems', () => {
     const rows = designRows()
@@ -84,8 +88,12 @@ describe('the Guide', () => {
     )
   })
 
-  it('has one source file per chapter, whose frontmatter agrees with the list', () => {
-    expect(readdirSync(GUIDE_SRC).sort()).toEqual(CHAPTERS.map((c) => `${c.slug}.mdx`).sort())
+  it('has one source file per chapter, and the labs, whose frontmatter agrees with the list', () => {
+    expect(readdirSync(GUIDE_SRC).sort()).toEqual(
+      [...CHAPTERS.map((c) => `${c.slug}.mdx`), `${LABS}.mdx`].sort(),
+    )
+    const labs = frontmatter(path.join(GUIDE_SRC, `${LABS}.mdx`))
+    expect([labs['chapter'], labs['problem']]).toEqual([undefined, undefined])
     const wrong: string[] = []
     for (const c of CHAPTERS) {
       const fm = frontmatter(path.join(GUIDE_SRC, `${c.slug}.mdx`))
@@ -101,12 +109,12 @@ describe('the Guide', () => {
     expect(wrong).toEqual([])
   })
 
-  it('builds exactly the ten chapter pages under guide/', () => {
+  it('builds exactly the ten chapter pages and the labs under guide/', () => {
     const built = readdirSync(path.join(DIST, 'guide'), { withFileTypes: true })
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
       .sort()
-    expect(built).toEqual(CHAPTERS.map((c) => c.slug).sort())
+    expect(built).toEqual([...CHAPTERS.map((c) => c.slug), LABS].sort())
   })
 
   for (const c of CHAPTERS) {
@@ -177,9 +185,10 @@ describe('the Guide', () => {
   // widget, and does not count a checkpoint, which is a check, not a picture.
   it('counts a diagram figure and a widget as pictures, and a checkpoint as none', () => {
     expect(pictures(page('internals/diagrams'))).toBe(3)
-    const caching = page('learn/caching')
+    // Chapter 5: four figures, the key calculator and a checkpoint.
+    const caching = page('guide/caching')
     expect(caching).toContain('<vx-checkpoint')
-    expect(pictures(caching)).toBe(1)
+    expect(pictures(caching)).toBe(5)
     expect(pictures('<figure class="vx-diagram" role="img"><svg></svg></figure>')).toBe(1)
   })
 

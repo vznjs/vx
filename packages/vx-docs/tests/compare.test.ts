@@ -1,9 +1,10 @@
-// The choosing page (Learn W7, item 689): the model's data, the filter
-// against hand-written truth, and the built page against both. The page's
-// promise is that every claim is sourced, so the data rows hold the sources
-// too: a cell per tool, a link per cell, other tools' links to their own
-// docs, vx's links to a built page or to the test row that holds the claim,
-// and every performance figure to benchmarks.md.
+// "vx, Turborepo, Nx, Bazel" (compare/, the Reference's choosing page; Learn
+// W7, item 689): the model's data, the filter against hand-written truth,
+// and the built page against both. The page's promise is that every claim is
+// sourced, so the data rows hold the sources too: a cell per tool, a link per
+// cell, other tools' links to their own docs, vx's links to a built page or
+// to the test row that holds the claim, and every performance figure to
+// benchmarks.md.
 //
 // It reads `dist/`, which the `build` task writes, and the imported
 // benchmarks page, which the `import` task writes; the `test` task depends
@@ -210,7 +211,7 @@ describe('the choosing model', () => {
 })
 
 describe('the choosing page', () => {
-  const html = page('learn/choosing')
+  const html = page('compare')
   const main = only(html, /<main\b[^>]*>([\s\S]*?)<\/main>/g)
   const element = only(html, /<vx-choosing-matrix\b[^>]*>([\s\S]*?)<\/vx-choosing-matrix>/g)
 
