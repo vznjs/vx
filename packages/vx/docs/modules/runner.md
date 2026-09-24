@@ -103,6 +103,14 @@ The promise from `runCommand` always resolves (never rejects) with a
   128 + signo convention (SIGTERM → 143, SIGKILL → 137), falling back
   to 130 for signal names missing from `os.constants.signals`. The
   sandboxed runner (`sandbox-runtime.ts`) uses the same helper.
+- Timed out (`exec.timeout`) → `armTimeout` SIGTERMs the task's group
+  and SIGKILLs it after the kill grace. Once the leader has exited,
+  `settle()` waits the rest of that grace for the GROUP and SIGKILLs
+  whoever is left: the escalation used to be cleared with the shell's
+  exit, so a backgrounded process that ignored SIGTERM ran on under init
+  after vx exited (2026-09-24, `tests/task-tree-kill.test.ts` › "a
+  timeout reaps a grandchild that ignores SIGTERM"). Both runners
+  settle before the drain.
 - `Bun.spawn` itself throwing → `exitCode = 127`, and the reason goes
   through `onStderr` (the task's frame) as well as onto `stderr`: a
   missing `sh` says `vx runs each task with sh -c: failed to spawn 'sh'

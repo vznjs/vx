@@ -60,7 +60,8 @@ groups are polled every 20 ms, and only while one is left.
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
-shell's own `$$`); every case fails on a pid-only kill. A persistent
+shell's own `$$`); every case fails on a pid-only kill. A timeout
+reaps a grandchild that ignores SIGTERM after its shell has died. A persistent
 dependency whose server ignores SIGTERM behind `& wait` does not hang
 vx's exit; a grandchild's SIGTERM cleanup gets the grace after its shell
 exits, and the teardown ends when the group is gone (under 1.2 s; the

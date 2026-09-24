@@ -35,6 +35,12 @@ const CONFIG = `
       forever: {
         exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60" },
       },
+      timedTrap: {
+        exec: {
+          command: "sh -c 'trap \\"\\" TERM; echo $$ > gc.pid; exec sleep 60' & sleep 60",
+          timeout: 2000,
+        },
+      },
       graceful: {
         exec: {
           command: "sh -c 'trap \\"sleep 0.3; echo done > cleanup.txt; exit 0\\" TERM; echo $$ > gc.pid; while :; do sleep 0.05; done' & sleep 60",
@@ -111,6 +117,28 @@ describe('a task dies with everything it forked', () => {
       expect(code).toBe(1)
       expect(out + err).toContain('timed out after 2000ms')
       expect(await waitForDead(gc, 3000)).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a timeout reaps a grandchild that ignores SIGTERM',
+    async () => {
+      // The shell dies on the timeout's SIGTERM; the grandchild ignores it.
+      // The SIGKILL escalation was cleared with the shell's exit, so vx
+      // exited 1 and the grandchild ran on under init (nx#11782's sibling,
+      // reproduced on vx 2026-09-24).
+      const proc = spawnVx(root, 'timedTrap')
+      const gc = await grandchildPid(root)
+      leaked.push(gc)
+      const [out, err, code] = await Promise.all([
+        new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
+        new Response(proc.stderr as ReadableStream<Uint8Array>).text(),
+        proc.exited,
+      ])
+      expect(code).toBe(1)
+      expect(out + err).toContain('timed out after 2000ms')
+      expect(await waitForDead(gc, 1000)).toBe(true)
     },
     TIMEOUT,
   )

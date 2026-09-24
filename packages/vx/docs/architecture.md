@@ -287,7 +287,8 @@ never branches on layering.
   exit. On exit, calls `resourceUsage()` for `cpuMs` + `peakRssBytes`.
   Stdin is `'ignore'` — no TTY input. Forwarded args (`--`) are
   shell-quoted and appended. `exec.timeout` arms a SIGTERM timer
-  (`armTimeout`); an overrun is a real `failed`, never cached.
+  (`armTimeout`); past the kill grace every process left in the task's
+  group is SIGKILLed; an overrun is a real `failed`, never cached.
 - **`runPersistent`** — for dev servers + watchers. Spawns the command
   but does NOT await exit. Returns `{ ready, child, readyMs() }`.
   `ready` resolves when a regex match appears in stdout/stderr (or
