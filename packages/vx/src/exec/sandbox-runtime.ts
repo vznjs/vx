@@ -399,6 +399,8 @@ export interface SandboxedRunArgs {
    * that is the wall doing its job, not a finding to fail a run over.
    */
   readonly reportWithin: string
+  /** Canonical directories whose denials are reported too (`ExecuteSandbox.reportLinked`). */
+  readonly reportLinked: readonly string[]
   /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
@@ -804,6 +806,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // to be applied here, after read-back.
   const violations = reportableViolations([...macViolations, ...linuxViolations], {
     within: args.reportWithin,
+    linked: args.reportLinked,
     config: args.config,
   })
 

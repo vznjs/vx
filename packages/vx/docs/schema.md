@@ -983,6 +983,18 @@ followed: npm and Yarn link every workspace package at the root, the
 task's own included, and following it would grant the whole project
 past its `allow.read`.
 
+A task that declares `cache` gets a linked workspace package only when
+its key already answers for it: some task of that package is folded into
+the key through `dependsOn` (as `cache.inputs.tasks` selects it, groups
+passing everything through). Every other link inside the workspace root
+is withheld, and a read through one fails the task with the denial plus
+one line naming the package and the edge that would key it. Declaring
+`cache` can only narrow this grant, never widen one: a task with no
+`cache` keeps it whole, having no key to be stale, and your own `allow`
+grants never depend on it. The key answers for the package, not the
+file: an edge to `ui#source` (inputs `src/**`) covers a read of
+`ui/README.md` too.
+
 **How a missing write grant FAILS depends on the layout.** In a
 multi-package workspace the task's write is refused outright and the
 task fails. In a single-package workspace — where the project directory

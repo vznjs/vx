@@ -199,14 +199,15 @@ function describeMacViolation(line: string): Partial<SandboxViolation> {
 }
 
 /**
- * The violations a task's report should carry: inside the project,
- * minus the loopback denial no config can avoid, minus what the task
- * chose to ignore. Exported so a test can drive it with either
- * platform's line shape without needing that platform.
+ * The violations a task's report should carry: inside the project or
+ * under a withheld dependency (`linked`), minus the loopback denial no
+ * config can avoid, minus what the task chose to ignore. Exported so a
+ * test can drive it with either platform's line shape without needing
+ * that platform.
  */
 export function reportableViolations(
   violations: readonly SandboxViolation[],
-  opts: { within: string; config: ResolvedSandboxConfig },
+  opts: { within: string; linked?: readonly string[]; config: ResolvedSandboxConfig },
 ): SandboxViolation[] {
   // A record the producer did not describe is a seatbelt one, straight
   // from SRT's store — parse it here so the filters below never see a
@@ -215,7 +216,7 @@ export function reportableViolations(
     v.target === undefined ? { ...v, ...describeMacViolation(v.line) } : v,
   )
   return filterIgnored(
-    loopbackNoise(withinReported(described, opts.within), opts.config),
+    loopbackNoise(withinReported(described, opts.within, opts.linked ?? []), opts.config),
     opts.config.ignore,
   )
 }
@@ -247,7 +248,7 @@ function loopbackNoise(
 }
 
 /**
- * Keep only denials on a path inside `within`.
+ * Keep only denials on a path inside `within`, or inside one of `linked`.
  *
  * A task may not leave its project — that is enforced by the deny anchor at
  * the workspace root — but being STOPPED at the wall is the sandbox
@@ -260,14 +261,26 @@ function loopbackNoise(
  * that makes a cached artifact wrong. A record with no path at all — a
  * `system-info` probe — is kept, since it is not a boundary crossing and
  * the task can grant it.
+ *
+ * `linked` are the workspace packages core withheld from a cached task's
+ * `node_modules` grant because its key does not answer for them. A denial
+ * there is the task reaching for a dependency through its own link — the
+ * read that would have been a stale hit, a finding and not the wall.
+ * Canonical already: sandbox-request.ts takes them from link targets.
  */
-function withinReported(violations: SandboxViolation[], within: string): SandboxViolation[] {
-  const root = toRealPath(within)
+function withinReported(
+  violations: SandboxViolation[],
+  within: string,
+  linked: readonly string[],
+): SandboxViolation[] {
+  const roots = [toRealPath(within), ...linked]
   // `root === '/'` would otherwise compare against `'//'` and drop
   // everything — the one prefix that needs no separator appended.
-  const prefix = root.endsWith(path.sep) ? root : root + path.sep
+  const prefixes = roots.map((root) => (root.endsWith(path.sep) ? root : root + path.sep))
   return violations.filter(
-    (v) => v.path === undefined || v.path === root || v.path.startsWith(prefix),
+    (v) =>
+      v.path === undefined ||
+      roots.some((root, i) => v.path === root || v.path!.startsWith(prefixes[i]!)),
   )
 }
 

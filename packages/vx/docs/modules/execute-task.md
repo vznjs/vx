@@ -124,7 +124,12 @@ branch beside it.
 The `sandbox` half of the `ExecuteRequest` (grants, denials, the paths a
 bind needs pre-created) is built by
 [`sandbox-request.md`](./sandbox-request.md); `execute-task.ts` only
-asks for it when the task declares `exec.sandbox`.
+asks for it when the task declares `exec.sandbox`, passing the run's
+keyed set for the task when it declares `cache`
+([`keyed-projects.md`](./keyed-projects.md)) and nothing otherwise (the
+persistent path never does). A reported denial under a linked package
+the request withheld gets one more line beside it
+(`withheldLinkLine`): the package, the link, and the two ways to key it.
 
 ## Verdict
 
@@ -210,8 +215,10 @@ extensions:
   approach (CLAUDE.md § Rejected): inputs stay declared and explicit.
   A task that wants its reads confined to the paths it declared asks
   for that with `exec.sandbox`, which enforces rather than infers.
-  The sandbox derives NOTHING from `cache`: `cache.inputs` says what
-  invalidates a task, `exec.sandbox.allow` says what it may touch.
+  The user's grants derive NOTHING from `cache`: `cache.inputs` says
+  what invalidates a task, `exec.sandbox.allow` says what it may touch.
+  Declaring `cache` only narrows core's own `node_modules` link grant to
+  the packages the key answers for (`keyed-projects.md`).
 - **Conditional output capture.** Compress / dedupe before save.
   Hook between `resolveOutputs` and `cache.save`.
 - **Pre-spawn hooks.** Run a setup script (e.g. cgroup/limits

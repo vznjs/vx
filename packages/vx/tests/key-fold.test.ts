@@ -4,7 +4,7 @@
 // fold runs. The expected digest and capture were recorded from
 // `Cache.key` before the fold left the class (item 691): the move is
 // behaviour-neutral only if both stay exactly these. The digest folds
-// `CACHE_VERSION` first, so a bump re-pins it (v30, item 720) while the
+// `CACHE_VERSION` first, so a bump re-pins it (v31, item 726) while the
 // capture, which omits the version, stays byte for byte.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -49,7 +49,7 @@ describe('the key fold (item 691)', () => {
     try {
       const captured: Array<{ kind: string; name: string; hash: string }> = []
       const key = await cache.key(input(captured))
-      expect(key).toBe('6c1020915249aec8')
+      expect(key).toBe('05720d7cb84b11bd')
       expect(captured.map((c) => `${c.kind} ${c.name} ${c.hash}`)).toEqual([
         'workspace fingerprint fp00112233445566',
         'package package.json pkgjson0123456789',
@@ -85,7 +85,7 @@ describe('the key fold (item 691)', () => {
       },
       (f) => relPosix(root, f),
     )
-    expect(key).toBe('6c1020915249aec8')
+    expect(key).toBe('05720d7cb84b11bd')
     expect(asked).toEqual(['a.ts'])
   })
 })

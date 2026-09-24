@@ -1543,22 +1543,178 @@ describe.skipIf(!available || process.platform !== 'linux')(
       },
       TIMEOUT,
     )
+  },
+)
+
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a cached task reads a linked sibling only when its key answers for it',
+  () => {
+    // `app#test` reads `@x/ui`'s source through its `node_modules` link.
+    // With no edge to a task of ui, its key never moved with ui: the read
+    // ran unreported and an edit to ui was a stale hit, replaying the old
+    // file (docs/design/linked-sibling-reads-2026-09.md, P1). The link is
+    // now withheld from a cached task whose key does not answer for ui, so
+    // the read fails, is reported, and names the edge that would key it.
+    // Both layouts: npm and Yarn link at the root, pnpm and Bun under the
+    // project. Linux-only for the strace line.
+    let fixture: Fixture
+
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    type Layout = 'root' | 'project'
+    const linkPath: Record<Layout, string> = {
+      root: '../../node_modules/@x/ui',
+      project: 'node_modules/@x/ui',
+    }
+
+    const appConfig = (layout: Layout, opts: { cache: boolean; dependsOn: string[] }): string => `
+      export default {
+        tasks: {
+          test: {
+            exec: {
+              command: 'mkdir -p dist && cat ${linkPath[layout]}/src/index.js > dist/out.txt',
+              sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+            },
+            dependsOn: ${JSON.stringify(opts.dependsOn)},
+            ${opts.cache ? "cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }," : ''}
+          },
+        },
+      }
+    `
+
+    /** `@x/app` depending on `@x/ui`, linked as `layout` lays it out; returns both dirs. */
+    const workspace = async (
+      layout: Layout,
+      opts: { cache: boolean; dependsOn: string[] },
+    ): Promise<{ app: string; ui: string }> => {
+      const ui = await addProject(fixture.root, '@x/ui', {
+        files: { 'src/index.js': 'export const ui = 1\n' },
+        config: `
+          export default {
+            tasks: {
+              source: {
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      const app = await addProject(fixture.root, '@x/app', {
+        deps: { '@x/ui': 'workspace:*' },
+        files: { 'src/index.js': 'export const app = 1\n' },
+        config: appConfig(layout, opts),
+      })
+      if (layout === 'root') {
+        await mkdir(path.join(fixture.root, 'node_modules', '@x'), { recursive: true })
+        await symlink('../../packages/x-app', path.join(fixture.root, 'node_modules', '@x', 'app'))
+        await symlink('../../packages/x-ui', path.join(fixture.root, 'node_modules', '@x', 'ui'))
+      } else {
+        await mkdir(path.join(app, 'node_modules', '@x'), { recursive: true })
+        await symlink('../../../x-ui', path.join(app, 'node_modules', '@x', 'ui'))
+      }
+      return { app, ui }
+    }
+
+    const runTest = (cwd = fixture.root) =>
+      run({ cwd, tasks: ['@x/app#test'], log: collectingLogger(fixture) })
+    const testOutcome = (r: RunSummary) => r.outcomes.find((o) => o.node.id === '@x/app#test')
+
+    const withheldAndReported = async (layout: Layout): Promise<void> => {
+      const { ui } = await workspace(layout, { cache: true, dependsOn: [] })
+      const link = layout === 'root' ? 'node_modules/@x/ui' : 'packages/x-app/node_modules/@x/ui'
+      const expected = [
+        `openat(${linkPath[layout]}/src/index.js) = -1 ENOENT  [${realpathSync(ui)}/src/index.js]`,
+        `vx: @x/app#test read \`packages/x-ui\` through \`${link}\`, and its key folds no task ` +
+          'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
+          'reaches one (`^build` where @x/ui#build keys its sources, or a `source` task: ' +
+          '`@x/ui#source`), or grant and key the files yourself (`allow.read` plus ' +
+          '`cache.inputs.workspaceFiles`).',
+      ]
+      const first = testOutcome(await runTest())
+      expect(first?.status).toBe('failed')
+      expect(first?.sandboxViolationLines).toEqual(expected)
+      // The edit that was a stale hit is a run that fails the same way.
+      await writeFile(path.join(ui, 'src', 'index.js'), 'export const ui = 2\n')
+      const second = testOutcome(await runTest())
+      expect(second?.status).toBe('failed')
+      expect(second?.sandboxViolationLines).toEqual(expected)
+    }
+
+    // Titles spelled out: the site's proof list links the first by name.
+    it(
+      'an unkeyed sibling is withheld and the read reported, with the hint (root link)',
+      () => withheldAndReported('root'),
+      TIMEOUT,
+    )
+    it(
+      'an unkeyed sibling is withheld and the read reported, with the hint (project link)',
+      () => withheldAndReported('project'),
+      TIMEOUT,
+    )
 
     it(
-      "CONTROL: a sibling's link is still granted",
+      'CONTROL: with an edge to a keyed task of the sibling, the read passes and an edit re-runs it',
       async () => {
-        // Withholding the self-link must not take the dependencies with it.
-        // Narrowing THIS grant to what the key covers is the design's next
-        // step; until then an undeclared sibling read through its link runs.
-        const dir = await npmWorkspace(
-          'mkdir -p dist && cat ../../node_modules/@x/ui/index.js > dist/out.txt',
-        )
-        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        const { app, ui } = await workspace('project', { cache: true, dependsOn: ['^source'] })
+        const out = path.join(app, 'dist', 'out.txt')
+        const r1 = await runTest()
+        expectOk(r1, fixture)
+        expect(testOutcome(r1)?.sandboxViolations).toBeUndefined()
+        expect(await readFile(out, 'utf8')).toBe('export const ui = 1\n')
+
+        await writeFile(path.join(ui, 'src', 'index.js'), 'export const ui = 2\n')
+        const r2 = await runTest()
+        expectOk(r2, fixture)
+        expect(testOutcome(r2)?.status).toBe('success')
+        expect(await readFile(out, 'utf8')).toBe('export const ui = 2\n')
+
+        await writeFile(path.join(ui, 'src', 'index.js'), 'export const ui = 1\n')
+        const r3 = await runTest()
+        expect(testOutcome(r3)?.status).toBe('cache-hit')
+        expect(await readFile(out, 'utf8')).toBe('export const ui = 1\n')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'CONTROL: a task with no `cache` keeps the grant, having no key to be stale',
+      async () => {
+        const { app } = await workspace('root', { cache: false, dependsOn: [] })
+        const r = await runTest()
         expectOk(r, fixture)
-        expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
-        expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe(
+        expect(testOutcome(r)?.sandboxViolations).toBeUndefined()
+        expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe(
           'export const ui = 1\n',
         )
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'the same split through a symlinked workspace root (the macOS `/var` shape)',
+      async () => {
+        const link = path.join(path.dirname(fixture.root), `${path.basename(fixture.root)}-link`)
+        await symlink(fixture.root, link, 'dir')
+        try {
+          await workspace('root', { cache: true, dependsOn: [] })
+          const denied = testOutcome(await runTest(link))
+          expect(denied?.status).toBe('failed')
+          expect(denied?.sandboxViolations).toBe(2)
+          await writeFile(
+            path.join(fixture.root, 'packages', 'x-app', 'vx.config.mjs'),
+            appConfig('root', { cache: true, dependsOn: ['^source'] }),
+          )
+          const keyed = await runTest(link)
+          expectOk(keyed, fixture)
+        } finally {
+          await rm(link, { force: true })
+        }
       },
       TIMEOUT,
     )
@@ -2152,6 +2308,28 @@ describe('reportableViolations', () => {
     ])
   })
 
+  it('keeps a denial under a withheld dependency (`linked`), in both line shapes', () => {
+    // A cached task denied a sibling its key does not answer for reaches
+    // it through its own `node_modules`: that denial is the finding, not
+    // the wall. An unrelated sibling, and one merely sharing the withheld
+    // directory's name as a prefix, are still the wall.
+    const UI = path.join(ROOT, 'packages', 'ui')
+    const cfg = resolveSandboxConfig({}, PROJ)
+    const kept = reportableViolations(
+      [
+        mac('file-read-data', `${UI}/src/index.js`),
+        linux(`${UI}/src/index.js`),
+        mac('file-read-data', path.join(ROOT, 'packages', 'other', 'b.ts')),
+        linux(path.join(ROOT, 'packages', 'ui-extra', 'c.ts')),
+      ],
+      { within: PROJ, linked: [UI], config: cfg },
+    )
+    expect(lines(kept)).toEqual([
+      `bun(1) deny(1) file-read-data ${UI}/src/index.js`,
+      `openat(x) = -1 ENOENT  [${UI}/src/index.js]`,
+    ])
+  })
+
   it('keeps a record with no path at all — the task can grant it', () => {
     const cfg = resolveSandboxConfig({}, PROJ)
     const kept = reportableViolations([mac('system-info', 'vfs.disk-space')], {
@@ -2353,6 +2531,7 @@ describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
           baseAllowWrite: [dir],
           baseDenyRead: [],
           reportWithin: dir,
+          reportLinked: [],
           config: resolveSandboxConfig({ allow: { read: ['.'] } }, dir),
         })
         expect(r.stdout).toBe('')
@@ -2567,6 +2746,7 @@ describe('sandbox probe', () => {
           baseAllowWrite: [dir],
           baseDenyRead: [],
           reportWithin: dir,
+          reportLinked: [],
           config: resolveSandboxConfig({}, dir),
         })
         expect([r.exitCode, r.stderr]).toEqual([0, ''])
@@ -3058,6 +3238,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     baseAllowWrite: [],
     baseDenyRead: [],
     reportWithin: dir,
+    reportLinked: [],
     config: resolveSandboxConfig({}, dir),
     ...extra,
   })
@@ -3224,7 +3405,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         `await initSandbox()`,
         `const dir = ${JSON.stringify(dir)}`,
         `const outs = []`,
-        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseAllowWrite: [], baseDenyRead: [], reportWithin: dir, config: resolveSandboxConfig({}, dir) })).stdout)`,
+        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseAllowWrite: [], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })).stdout)`,
         `console.log(JSON.stringify({ outs, calls }))`,
         `await resetSandbox()`,
       ].join('\n')

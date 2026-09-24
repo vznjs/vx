@@ -351,9 +351,7 @@ chapterShape({
       'failed sandboxed task is NOT cached (re-runs next invocation)',
       'a run whose sandboxed tasks are all hits never starts the sandbox',
       'installed dependencies are readable without being declared inputs',
-    ],
-    'packages/vx/tests/sandbox-request.test.ts': [
-      'a SCOPED link is found too: the scan descends one level into `@scope/`',
+      'an unkeyed sibling is withheld and the read reported, with the hint (root link)',
     ],
   },
 })
@@ -515,7 +513,7 @@ describe('guide/trust', () => {
     expect(P.UNCHECKED).toEqual([
       ['env variables', 'list in inputs.env'],
       ['your tools', 'e.g. Node version'],
-      ['node_modules', 'even a linked ui'],
+      ['node_modules', 'but a linked ui is'],
       ['Windows', 'only under WSL'],
     ])
     // Each outside the sandbox's frame, inside the "not checked" one.

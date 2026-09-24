@@ -216,8 +216,10 @@ Owner: `exec/sandbox-runtime.ts` (SRT wrapper). Activation is
 per-task (`exec.sandbox`), no workspace inheritance. Baseline policy:
 read and write nothing, deny-read = workspace root; core adds
 `node_modules` and the workspace packages linked there (never a link to
-the task's own project or above it), and the task's own `allow` grants
-add the rest. Reporting is scoped to the project.
+the task's own project or above it; for a task that declares `cache`,
+only the packages its key folds a task of —
+`orchestrator/keyed-projects.ts`), and the task's own `allow` grants add
+the rest. Reporting is scoped to the project and the withheld packages.
 
 ```mermaid
 flowchart TD
@@ -226,7 +228,7 @@ flowchart TD
     C --> D{platform}
     D -->|macOS| E[seatbelt denies; the unified log<br/>records each violation]
     D -->|Linux| F[bwrap structural deny;<br/>an strace pass records each denied call]
-    E --> G{violations inside the<br/>project after exit?}
+    E --> G{violations inside the project<br/>or a withheld package?}
     F --> G
     G -->|yes| H[force exit code 1 +<br/>violation lines in the frame]
     G -->|no| I[normal outcome]

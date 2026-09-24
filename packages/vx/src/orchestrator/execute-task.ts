@@ -35,9 +35,12 @@ import { span } from '../util/index.js'
 import {
   type Placeholder,
   placeholderSweeper,
+  reachedWithheld,
   sandboxRequestFor,
   sweepPlaceholders,
   untouchedPlaceholderLine,
+  type WithheldLink,
+  withheldLinkLine,
 } from './sandbox-request.js'
 import { saveMiss, type OutputDirSnapshot } from './miss-save.js'
 import { restoreHit } from './hit-restore.js'
@@ -141,6 +144,12 @@ export interface ExecuteArgs {
    * sandbox. A cache hit never calls it: a hit needs no sandbox.
    */
   armSandbox?: () => Promise<void>
+  /**
+   * The run's keyed-set lookup (keyed-projects.ts): the project directories
+   * a task's key answers for. A sandboxed task that declares `cache` is
+   * granted a linked workspace package only when it is in this set.
+   */
+  keyedProjects: (node: TaskNode) => ReadonlySet<string>
   /**
    * Run-scoped list the miss path appends its output-directory snapshot
    * request to, taken at run end (run.ts) instead of right after the save:
@@ -250,7 +259,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let placeholders: Placeholder[] = []
   if (step.sandbox !== undefined) {
     await args.armSandbox?.()
-    const sb = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot)
+    // A persistent task never declares `cache` (the loader refuses it), so
+    // it keeps the whole linked grant: no key of its can be stale.
+    const sb = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot, undefined)
     placeholders = sb.placeholders
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
@@ -533,6 +544,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The empty files the sandbox request created for a literal write grant;
   // swept after the attempt (`sweepPlaceholders`).
   let placeholders: Placeholder[] = []
+  // The linked workspace packages the request withheld: the key does not
+  // answer for them.
+  let withheld: WithheldLink[] = []
 
   // Cache miss path (or caching disabled), up to `1 + retries` attempts.
   // Explicit config wins over the run-level `--retry` default, including
@@ -605,6 +619,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
     endExec()
     violations = [...res.violations]
+    // A denial under a dependency the key does not answer for says only
+    // ENOENT; the line beside it names the package and how to key it. Only
+    // with a denial there, so it never reddens a pass.
+    for (const w of reachedWithheld(withheld, violations)) {
+      violations.push({ timestamp: new Date(), line: withheldLinkLine(node.id, w) })
+    }
     // A placeholder the task never wrote is not its output: take it back
     // before the outputs are collected. On a failure it is also the one
     // clue to a grant that meant a directory — say so beside the failure.
@@ -743,8 +763,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     if (!userSandbox) return base
     await args.armSandbox?.()
-    const sb = await sandboxRequestFor(node, step.sandbox!, args.workspaceRoot)
+    const sb = await sandboxRequestFor(
+      node,
+      step.sandbox!,
+      args.workspaceRoot,
+      cfgCacheable ? args.keyedProjects(node) : undefined,
+    )
     placeholders = sb.placeholders
+    withheld = sb.withheld
     return { ...base, sandbox: sb.sandbox }
   }
 
