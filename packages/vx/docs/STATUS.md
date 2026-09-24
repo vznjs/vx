@@ -950,6 +950,26 @@ daemon with answering "what changed", which Turbo 2.10+ no longer uses
 for `turbo run` (check which Turbo version that row measured before
 editing it).
 
+14cp. **Item 694 (2026-09-24): a repeat-load round costs one config
+worker, as documented.** `vx watch` (and any second load in one process)
+re-evaluates a config in a Worker so its imports are read fresh, and the
+module page promised one Worker per round. The real round is one
+`loadProjectConfigs` call, which awaits each evaluation in turn, so the
+in-flight count reached zero after every config and the Worker was
+retired and re-created: 5 repeat configs, 5 Workers. The row meant to hold
+the promise drove three concurrent single-file calls instead, whose
+sharing depended on their file reads landing before the first evaluation
+settled; a loaded gate shard counted 7 where 6 was expected, which is how
+this was found. `beginEvalRound()` in `config-eval.ts` holds the round
+open for the whole call (still lazy, so a round that evaluates nothing
+starts no Worker). The row now drives `loadProjectConfigs`: exactly one
+Worker for three repeat configs and one more for the next round. Red with
+the round neutralised (7 for 5) and with its end dropped (the second
+round reuses the registry, 1 for 2). A repeat round of 50 configs, min of
+5, interleaved, before arm from a worktree: 148 ms before, 10.5 ms after.
+The module page's claim that `prepareRun` loads with `Promise.all` was
+wrong and is corrected.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

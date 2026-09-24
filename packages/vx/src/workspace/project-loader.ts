@@ -2,7 +2,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
-import { evaluateConfigFresh } from './config-eval.js'
+import { beginEvalRound, evaluateConfigFresh } from './config-eval.js'
 import { unprovidedBareImports } from './config-imports.js'
 import { configEvalKey, configEvalKeyFromClosure, type ConfigEvalStore } from './config-cache.js'
 
@@ -243,6 +243,8 @@ export async function loadProjectConfigs(
   // evaluation.
   const evals: Array<readonly [string, string]> = []
   const learnedClosures: Array<readonly [string, readonly string[]]> = []
+  // One worker for every repeat load in this round, however many there are.
+  const endRound = beginEvalRound()
   try {
     for (const entry of prepared) {
       const { configPath, cacheKey } = entry
@@ -299,6 +301,7 @@ export async function loadProjectConfigs(
       out.push(mod as ProjectConfig)
     }
   } finally {
+    endRound()
     if (store !== undefined) {
       if (evals.length > 0) {
         if (store.putConfigEvals !== undefined) store.putConfigEvals(evals)

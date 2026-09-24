@@ -25,7 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
-import { loadProjectConfig } from '../src/workspace/project-loader.js'
+import { loadProjectConfig, loadProjectConfigs } from '../src/workspace/project-loader.js'
 import { configEvalWorkerCount } from '../src/workspace/config-eval.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
 
@@ -205,18 +205,29 @@ describe('worker-evaluated repeat loads', () => {
     expect(configEvalWorkerCount()).toBe(before + 1)
   })
 
-  it('share ONE worker across a concurrent round, then retire it', async () => {
+  // The round is one `loadProjectConfigs` call, the path `loadProjects` and
+  // so every watch cycle takes. It evaluates its repeat loads one after
+  // another, and each used to retire the worker as it settled: 5 configs,
+  // 5 workers (item 694). This row once drove three concurrent single-file
+  // calls instead, whose sharing depended on their file reads landing before
+  // the first evaluation settled; a loaded gate shard counted 7 for 6.
+  it('share ONE worker across a round of repeat loads, then retire it', async () => {
     const files = await Promise.all([write(RICH), write(RICH), write(RICH)])
     // Mark them loaded, so the rounds below are all repeat loads.
     for (const f of files) await loadProjectConfig(f)
 
     const before = configEvalWorkerCount()
-    await Promise.all(files.map((f) => loadProjectConfig(f)))
+    const configs = await loadProjectConfigs(files)
+    expect(configs.map((c) => JSON.stringify(c).includes('"retries":2'))).toEqual([
+      true,
+      true,
+      true,
+    ])
     expect(configEvalWorkerCount()).toBe(before + 1)
 
     // A later round must NOT reuse the first round's registry, or a
     // preset edited between watch cycles would replay stale.
-    await Promise.all(files.map((f) => loadProjectConfig(f)))
+    await loadProjectConfigs(files)
     expect(configEvalWorkerCount()).toBe(before + 2)
   })
 
