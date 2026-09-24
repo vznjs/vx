@@ -7,20 +7,19 @@ problem: 'A hit replayed an old output, and the run was green.'
 
 import StaleHit from '../../../components/demos/StaleHit.astro'
 import Checkpoint from '../../../components/demos/Checkpoint.astro'
-import OldBanner from '../../../components/guide/trust/OldBanner.astro'
-import ListNotGuess from '../../../components/guide/trust/ListNotGuess.astro'
-import Sandbox from '../../../components/guide/trust/Sandbox.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/trust/pictures.js'
 
 `app#build` joins `src/index.ts` and `banner.txt` into one file. Its inputs
 list only `src/**`. You edit `banner.txt` and run the build.
 
-<OldBanner />
+## A forgotten input makes a wrong hit
+
+<Diagram {...P.oldBanner} />
 
 The key did not change, so vx handed back the old file. The run passed, and
 the file is wrong. This is a
 [stale hit](../../learn/glossary/#cache-hit-miss-and-stale-hit).
-
-## A forgotten input makes a wrong hit
 
 A stale hit comes from something the task reads but the key never sees. It
 can be a file, an environment variable, or a tool on your machine. A slow
@@ -28,7 +27,7 @@ run is easy to notice. A wrong result on a passing run is not.
 
 ## You list the inputs; vx never guesses
 
-<ListNotGuess />
+<Diagram {...P.listNotGuess} />
 
 A guess can only see what one run happened to read. It also comes after the
 run, too late to look anything up. So vx asks you for the list, and then
@@ -36,7 +35,7 @@ checks it.
 
 ## The sandbox turns a forgotten file into an error
 
-<Sandbox />
+<Diagram {...P.sandbox} />
 
 The [sandbox](../../learn/glossary/#hermeticity-and-sandboxing) runs the
 task where only the files you listed exist. Reading `banner.txt` fails, and

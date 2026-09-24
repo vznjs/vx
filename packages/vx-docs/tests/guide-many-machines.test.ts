@@ -1,7 +1,6 @@
 // Chapter 8, guide/many-machines: a shared cache, who may write to it, and
-// remote workers. Its pictures are drawn by Sketch.astro, which every Guide
-// picture shares, so the row that holds Sketch to the theme's tokens lives
-// here; its "In vx" config is type-checked against the real plugin.
+// remote workers. Its "In vx" config is type-checked against the real
+// plugin.
 //
 // It reads `dist/`, which the `build` task writes; the `test` task depends
 // on `build` for that reason.
@@ -17,27 +16,11 @@ import {
   content,
   only,
   page,
-  sections,
+  section,
   typeCheck,
-} from './guide-page-late.js'
+} from './guide-page.js'
 
 const SLUG = 'many-machines'
-const SKETCH = path.join(SITE, 'src/components/guide/Sketch.astro')
-
-/** The theme's tokens, the only colours a Guide picture may use. */
-const TOKENS = [
-  '--vx-accent',
-  '--vx-link',
-  '--vx-fg',
-  '--vx-muted',
-  '--vx-surface',
-  '--vx-surface-2',
-  '--vx-border',
-  '--vx-danger',
-  '--vx-ok',
-  '--vx-warn',
-  '--vx-mono',
-]
 
 // Expressive Code turns the block's `// vx.workspace.ts` line into its title.
 const IN_VX = `import { defineWorkspace } from '@vzn/vx'
@@ -83,21 +66,10 @@ describe('the pictures on guide/many-machines', () => {
   it('sends the worker only the declared input', () => {
     expect(P.worker.arrows!.filter((a) => a.to === 'worker').map((a) => a.from)).toEqual(['src'])
   })
-
-  it("colours every Guide picture only with the theme's tokens, and ships no script", () => {
-    const source = readFileSync(SKETCH, 'utf8')
-    const style = only(source, /<style>([\s\S]*?)<\/style>/g)
-    expect(style.match(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/gi) ?? []).toEqual([])
-    const used = [...new Set([...style.matchAll(/var\((--[\w-]+)\)/g)].map((m) => m[1]!))]
-    // Positive first: the reader found the tokens.
-    expect(used).toContain('--vx-accent')
-    expect(used.filter((v) => !TOKENS.includes(v) && !v.startsWith('--sl-text-'))).toEqual([])
-    expect(source).not.toMatch(/<script\b/)
-  })
 })
 
 describe('"In vx" on guide/many-machines', () => {
-  const inVx = sections(content(page(`guide/${SLUG}`))).find((s) => s.id === 'in-vx')!.html
+  const inVx = section(content(page(`guide/${SLUG}`)), 'in-vx')
 
   it('names the read-only spec the CLI documents for a laptop', () => {
     const cli = readFileSync(path.join(SITE, 'src/content/docs/cli.md'), 'utf8')

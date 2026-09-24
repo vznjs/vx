@@ -15,28 +15,18 @@ import {
   type ToyChange,
   type ToyRun,
 } from '../src/components/demos/model/toy-monorepo.js'
+import * as P from '../src/components/guide/caching/pictures.js'
 import {
-  TOY,
-  article,
-  codeBlocks,
-  competitorMentions,
+  chapterShape,
+  content,
   defining,
-  diagram,
-  diagrams,
-  missingPage,
-  missingRow,
   only,
-  packagesNamed,
   page,
-  proofs,
-  proseWords,
-  repoLinks,
-  sectionTitles,
-  siteLinks,
+  prose as authored,
+  section,
+  sourceBlocks,
   tableRows,
   text,
-  withoutCheckpoints,
-  words,
 } from './guide-page.js'
 
 // The calculator's truth, by hand: per change, the last run's moved keys
@@ -164,9 +154,43 @@ describe('the key model', () => {
   })
 })
 
+chapterShape({
+  slug: 'caching',
+  titles: [
+    'Same inputs give the same result',
+    'A short key tells vx if anything changed',
+    'A change in utils changes every key above it',
+  ],
+  pictures: [P.rerun, P.sameInputs, P.key, P.cascade],
+  rows: {
+    'packages/vx/tests/config.test.ts': [
+      'requires cache.inputs.files — the one declaration vx will not infer',
+    ],
+    'packages/vx/tests/task-hash-derive.test.ts': [
+      'the command folds in',
+      'every exec and task field but the stripped one moves the key',
+      'SENSITIVITY: changing package.json moves the key even with narrow globs',
+      'the workspace fingerprint folds in — a lockfile bump invalidates everything',
+      'SENSITIVITY: an upstream key change cascades into the dependent',
+    ],
+    'packages/vx/tests/git-subdir-workspace.test.ts': [
+      'a first run misses and saves, a second hits and restores, an edit re-keys',
+    ],
+    'packages/vx/tests/execute-task.test.ts': [
+      'replays the entry stdout and reports the SKIPPED exec time apart from the restore cost',
+    ],
+    'packages/vx/tests/git-oid.test.ts': [
+      'edit changes the key; reverting restores the ORIGINAL key before any commit',
+    ],
+    'packages/vx-docs/tests/key-model-core.test.ts': [
+      'the key model moves, hits and goes stale where vx does, step by step',
+    ],
+  },
+})
+
 describe('guide/caching', () => {
   const html = page('guide/caching')
-  const main = article(html)
+  const main = content(html)
   const prose = text(main)
   const element = only(main, /<vx-key-calculator\b[^>]*>([\s\S]*?)<\/vx-key-calculator>/g)
   const scenarios = only(element, /<div class="scenarios\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g)
@@ -174,42 +198,11 @@ describe('guide/caching', () => {
   const runOf = (id: string): ToyRun =>
     toyRuns(TOY_SCENARIOS.find((s) => s.id === id)!.changes).at(-1)!
 
-  it('tells the story in its section titles', () => {
-    expect(sectionTitles(main)).toEqual([
-      'Same inputs give the same result',
-      'A short key tells vx if anything changed',
-      'A change in utils changes every key above it',
-      'In vx',
-      'Check yourself',
-    ])
-  })
-
-  it('draws four small pictures, and hosts the calculator and its checkpoint', () => {
-    expect(diagrams(main)).toEqual(['rerun', 'same-inputs', 'key', 'cascade'])
-    for (const name of diagrams(main)) {
-      const figure = diagram(main, name)
-      expect(figure).toMatch(/<svg\b[^>]*role="img"[^>]*aria-label="[^"]+"/)
-      expect(text(only(figure, /<figcaption>([\s\S]*?)<\/figcaption>/g))).not.toBe('')
-    }
+  it('hosts the calculator and its checkpoint, and no other widget', () => {
     expect([...main.matchAll(/<vx-[\w-]+\b/g)].map((m) => m[0])).toEqual([
       '<vx-key-calculator',
       '<vx-checkpoint',
     ])
-    expect(main).not.toContain('class="mermaid"')
-  })
-
-  it('keeps its prose short', () => {
-    const n = proseWords(main)
-    expect(n).toBeGreaterThan(100)
-    expect(n).toBeLessThanOrEqual(350)
-  })
-
-  it('names only the four packages, and no other tool', () => {
-    const named = packagesNamed(words(withoutCheckpoints(main)))
-    expect(named.filter((n) => !TOY.includes(n))).toEqual([])
-    // Positive first: the reader found the chapter's own names.
-    expect(named).toEqual([...TOY].sort())
-    expect(competitorMentions(main)).toEqual([])
   })
 
   it('ships one static table per scenario, each row saying what the key and the run did', () => {
@@ -311,28 +304,21 @@ describe('guide/caching', () => {
   // The pictures and the prose say which tasks a change reruns; each is held
   // to the model's run of the same change.
   it('draws and says which tasks each change reruns, as the model does', () => {
-    const rerun = diagram(main, 'rerun')
-    expect(
-      [...rerun.matchAll(/<g data-task="([^"]+)" data-needed="(yes|no)"/g)].map(
-        (m) => `${m[1]} ${m[2]}`,
-      ),
-    ).toEqual(
-      ALL.map((id) => `${id} ${Object.keys(SCENARIO['app']!.moved).includes(id) ? 'yes' : 'no'}`),
+    expect(P.rerun.boxes.map((b) => `${b.id} ${b.tone}`)).toEqual(
+      ALL.map((id) => `${id} ${id in SCENARIO['app']!.moved ? 'accent' : 'danger'}`),
     )
-    const words6 = words(only(rerun, /(<svg\b[\s\S]*<\/svg>)/g))
-    expect([words6.includes('needed: 2 tasks'), words6.includes('for nothing: 6 tasks')]).toEqual([
-      true,
-      true,
-    ])
+    const notes = P.rerun.notes!.map((n) => n.text)
+    expect(notes).toContain('needed: 2 tasks')
+    expect(notes).toContain('ran again for nothing: 6 tasks')
     expect(SCENARIO['app']!.hit).toHaveLength(6)
     expect(prose).toContain('Six of them read nothing that changed.')
 
-    const cascade = diagram(main, 'cascade')
-    expect(
-      [...cascade.matchAll(/<g data-task="([^"]+)" data-moved="(yes|no)"/g)].map(
-        (m) => `${m[1]} ${m[2]}`,
-      ),
-    ).toEqual(['utils#build yes', 'ui#build yes', 'api#build yes', 'app#build yes'])
+    expect(P.cascade.boxes.map((b) => `${b.id} ${b.tone}`)).toEqual([
+      'utils#build accent',
+      'ui#build accent',
+      'api#build accent',
+      'app#build accent',
+    ])
     expect(Object.keys(SCENARIO['utils']!.moved)).toEqual(ALL)
     expect(Object.keys(SCENARIO['app']!.moved)).toEqual(['app#build', 'app#test'])
     expect(prose).toContain('Change utils, and every key above it changes.')
@@ -344,35 +330,12 @@ describe('guide/caching', () => {
     expect(only(checkpoint, /<fieldset class="form\b[^"]*"[^>]*data-checkpoint="([^"]+)"/g)).toBe(
       'caching',
     )
-    const { rest } = proofs(main)
     // No other check than the checkpoint.
-    expect([...withoutCheckpoints(rest).matchAll(/<details>/g)]).toEqual([])
-  })
-
-  it('keeps test links out of the prose, in one collapsed list that stands on real rows', () => {
-    const { list, rest } = proofs(main)
-    expect(repoLinks(rest)).toEqual([])
-    const claims = repoLinks(list)
-    expect(claims.map((c) => c.label)).toEqual([
-      'A cache block must list its input files',
-      'The command is in the key',
-      'The task’s settings are in the key',
-      'The package’s package.json is in the key',
-      'The lockfile is in the key',
-      'A dependency’s key is in the key',
-      'A hit puts the saved files back',
-      'A hit shows the saved log',
-      'Undoing an edit brings the old key back',
-      'The calculator does what vx does',
-    ])
-    expect(claims.map(missingRow).filter((m) => m !== undefined)).toEqual([])
-    const site = siteLinks(main, 'guide/caching')
-    expect(site).toEqual(['learn/glossary/#cache-key'])
-    expect(site.map(missingPage).filter((m) => m !== undefined)).toEqual([])
+    expect(authored(section(main, 'check-yourself'))).not.toContain('<details')
   })
 
   it('shows a cache block the schema defines', () => {
-    expect(codeBlocks('caching')).toEqual([
+    expect(sourceBlocks('caching')).toEqual([
       [
         "import { defineProject } from '@vzn/vx'",
         '',

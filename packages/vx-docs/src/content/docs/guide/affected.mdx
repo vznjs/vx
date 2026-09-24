@@ -2,23 +2,23 @@
 title: Only what changed
 description: Find the packages a change touches and the packages that use them. Check only those.
 chapter: 7
-problem: 'CI builds and tests all four packages for a one-line README fix.'
+problem: 'CI builds all four packages for a README edit.'
 ---
 
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
-import Sketch from '../../../components/guide/Sketch.astro'
-import * as P from '../../../components/guide/affected/pictures.ts'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/affected/pictures.js'
 
 You fix a typo in the README and push. CI builds and tests everything.
 
-<Sketch {...P.everything} />
+<Diagram {...P.everything} />
 
 Eight tasks ran for a file that no task reads. CI starts on a fresh
 machine, so its cache is empty and cannot help.
 
 ## Find the package each file belongs to
 
-<Sketch {...P.owners} />
+<Diagram {...P.owners} />
 
 Git lists the files that changed since your branch started. Each file sits
 in one package's folder, so it belongs to that package. The README sits in
@@ -26,7 +26,7 @@ no package folder.
 
 ## Add every package that uses it
 
-<Sketch {...P.dependents} />
+<Diagram {...P.dependents} />
 
 `app` uses `ui`, so a change to `ui` can break `app`. Add every package
 that uses a changed package, directly or through another one. The result
@@ -38,7 +38,7 @@ Pick a package below and see which tasks a change to it runs.
 
 ## Affected picks packages, the cache skips work
 
-<Sketch {...P.considerThenRun} />
+<Diagram {...P.considerThenRun} />
 
 These are two different filters. The affected set works on whole packages,
 before anything runs. The cache works on single tasks: it skips a task
@@ -47,7 +47,7 @@ so nothing runs.
 
 ## A file no task declares is invisible
 
-<Sketch {...P.invisible} />
+<Diagram {...P.invisible} />
 
 This file sits in no package, so nothing is affected. No task declares it,
 so no cache sees it either. The builds pass, and they never checked your
@@ -80,11 +80,8 @@ vx run build test --affected=origin/main
 
 ## Check yourself
 
-You edit `packages/ui/README.md`, and no task reads it. Which packages are
-affected, and how many tasks run on a warm cache?
-
 <details>
-<summary>Answer</summary>
+<summary>You edit <code>packages/ui/README.md</code>, and no task reads it. Which packages are affected, and how many tasks run on a warm cache?</summary>
 
 `ui` and `app` are affected, but no task runs: nothing any task reads has
 changed.

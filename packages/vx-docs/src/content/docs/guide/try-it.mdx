@@ -7,12 +7,12 @@ problem: 'See every idea work on the four packages, in your browser.'
 
 import Playground from '../../../components/demos/Playground.astro'
 import Checkpoint from '../../../components/demos/Checkpoint.astro'
-import Sketch from '../../../components/guide/Sketch.astro'
-import * as P from '../../../components/guide/try-it/pictures.ts'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/try-it/pictures.js'
 
 Try every idea from this book yourself, without installing anything.
 
-<Sketch {...P.loop} />
+<Diagram {...P.loop} />
 
 ## Edit, run, and read what moved
 
@@ -22,14 +22,14 @@ This is vx's own planner, running in your page on the same four packages.
 
 ## One file moves four keys
 
-<Sketch {...P.ripple} />
+<Diagram {...P.ripple} />
 
 Run once, edit `packages/ui/src/button.tsx`, and run again. Only these four
 tasks miss.
 
 ## Break it on purpose in the labs
 
-<Sketch {...P.labs} />
+<Diagram {...P.labs} />
 
 Each [lab](../../learn/labs/) starts with one thing wrong and shows how vx
 catches it.

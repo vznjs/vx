@@ -1,6 +1,6 @@
 // Chapter 8's pictures (guide/many-machines). tests/guide-many-machines.test.ts
 // holds the rendered SVGs to these values.
-import type { Picture } from '../sketch.js'
+import type { Picture } from '../diagram/diagram.js'
 
 const machines = ['Your laptop', 'CI', 'A teammate']
 

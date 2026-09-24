@@ -1,7 +1,7 @@
 // Chapter 10's pictures (guide/try-it). tests/guide-try-it.test.ts holds
 // the rendered SVGs to these values, and the ripple to the playground's
 // own answer for the same edit.
-import type { Picture } from '../sketch.js'
+import type { Picture } from '../diagram/diagram.js'
 
 export const loop: Picture = {
   name: 'loop',

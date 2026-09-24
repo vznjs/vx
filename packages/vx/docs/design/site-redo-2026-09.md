@@ -43,18 +43,18 @@ command the idea becomes. There is no competitor tour inside a chapter.
 helpers, `ui` and `api` use `utils`, and `app` uses both. Every chapter
 talks about these four packages and nothing else.
 
-| #   | Chapter (URL under `guide/`)    | The problem it opens with                                                                      | What it teaches                                                                                                                                                                                            | Widget (existing)           |
-| --- | ------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| 1   | `why/`: Why orchestrate?        | Four packages, one `build` script each; you write a shell loop                                 | What a monorepo is; the loop's three failures: wrong order, everything rebuilt, one at a time. The rest of the book fixes them.                                                                            | none (one static diagram)   |
-| 2   | `tasks/`: Tasks                 | The loop runs "scripts"; what exactly is one unit of work?                                     | A task: one command, in one package, that reads inputs and writes outputs. Why one command per task (so each can be ordered, skipped, cached). `package#task` names.                                       | none                        |
-| 3   | `dependencies/`: Dependencies   | `app#build` ran before `ui#build` and failed                                                   | A dependency between tasks; `^build` versus same-package; the task graph; waves; why a cycle has no order.                                                                                                 | GraphExplorer               |
-| 4   | `concurrency/`: Concurrency     | The graph is right but the run takes as long as the loop                                       | Independent tasks run at once; workers; the critical path; why the choice of which ready task starts first changes the finish time.                                                                        | SchedulerSim                |
-| 5   | `caching/`: Caching             | You changed one line in `app`; `utils` rebuilt anyway                                          | A result that depends only on its inputs can be reused. The key (a hash of inputs, command, env); a hit restores outputs; why a key folds its dependencies' keys (the cascade).                            | KeyCalculator               |
-| 6   | `trust/`: Can you trust a hit?  | A hit replayed an old output and the run was green                                             | The stale hit; the undeclared input (a file, an env var, a tool version); declared versus inferred inputs; the sandbox, which runs a task with only its declared files so an undeclared read fails loudly. | StaleHit                    |
-| 7   | `affected/`: Only what changed  | CI builds all four packages for a README edit                                                  | From a changed file to the packages it touches, then to their dependents; `--affected`; what a change cannot be traced to (a root file no input names).                                                    | GraphExplorer (change mode) |
-| 8   | `many-machines/`: Many machines | Your laptop and CI build the same thing twice                                                  | A shared remote cache (and why only trusted writers push); remote execution, where the worker holds only the declared inputs; what each costs.                                                             | none (one static diagram)   |
-| 9   | `inside-vx/`: How vx is built   | You now know the ideas; how does one tool hold them without growing a branch for every vendor? | The pipeline (config, project, graph, key, schedule, executor, cache, telemetry) with a seam at each stage; the local floor; a plugin in 20 lines.                                                         | PipelineExplorer            |
-| 10  | `try-it/`: Try it               | —                                                                                              | The playground on the same four packages: edit a file, the env or a config and read which tasks run and why. Then the labs, then the quickstart.                                                           | Playground, labs            |
+| #   | Chapter (URL under `guide/`)    | The problem it opens with                                                            | What it teaches                                                                                                                                                                                            | Widget (existing)           |
+| --- | ------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 1   | `why/`: Why orchestrate?        | Four packages have a build script each, and you write a shell loop to build them all | What a monorepo is; the loop's three failures: wrong order, everything rebuilt, one at a time. The rest of the book fixes them.                                                                            | none (one static diagram)   |
+| 2   | `tasks/`: Tasks                 | The loop runs "scripts", but what exactly is one unit of work?                       | A task: one command, in one package, that reads inputs and writes outputs. Why one command per task (so each can be ordered, skipped, cached). `package#task` names.                                       | none                        |
+| 3   | `dependencies/`: Dependencies   | `app#build` ran before `ui#build` and failed                                         | A dependency between tasks; `^build` versus same-package; the task graph; waves; why a cycle has no order.                                                                                                 | GraphExplorer               |
+| 4   | `concurrency/`: Concurrency     | The graph is right, but the run takes as long as the loop                            | Independent tasks run at once; workers; the critical path; why the choice of which ready task starts first changes the finish time.                                                                        | SchedulerSim                |
+| 5   | `caching/`: Caching             | You changed one line in `app`, and `utils` rebuilt anyway                            | A result that depends only on its inputs can be reused. The key (a hash of inputs, command, env); a hit restores outputs; why a key folds its dependencies' keys (the cascade).                            | KeyCalculator               |
+| 6   | `trust/`: Can you trust a hit?  | A hit replayed an old output, and the run was green                                  | The stale hit; the undeclared input (a file, an env var, a tool version); declared versus inferred inputs; the sandbox, which runs a task with only its declared files so an undeclared read fails loudly. | StaleHit                    |
+| 7   | `affected/`: Only what changed  | CI builds all four packages for a README edit                                        | From a changed file to the packages it touches, then to their dependents; `--affected`; what a change cannot be traced to (a root file no input names).                                                    | GraphExplorer (change mode) |
+| 8   | `many-machines/`: Many machines | Your laptop and CI build the same thing twice                                        | A shared remote cache (and why only trusted writers push); remote execution, where the worker holds only the declared inputs; what each costs.                                                             | none (one static diagram)   |
+| 9   | `inside-vx/`: How vx is built   | How does one tool hold every idea without a special case for each vendor?            | The pipeline (config, project, graph, key, schedule, executor, cache, telemetry) with a seam at each stage; the local floor; a plugin in 20 lines.                                                         | PipelineExplorer            |
+| 10  | `try-it/`: Try it               | —                                                                                    | The playground on the same four packages: edit a file, the env or a config and read which tasks run and why. Then the labs, then the quickstart.                                                           | Playground, labs            |
 
 A chapter is pictures first (owner, 2026-09-24: "simple language, as
 little text as possible and as visual as possible … people read that
@@ -111,9 +111,11 @@ product.
   answers, then the prose at a readable measure (about 68ch), and at the
   foot a "Next: <the next chapter's question>" card instead of Starlight's
   plain prev/next.
-- **Diagrams are build-time SVG, never client Mermaid.** A small set of
-  Astro components (box, arrow, graph-of-tasks, timeline) draws each
-  chapter's picture into the HTML. Mermaid stays only on internals pages.
+- **Diagrams are build-time SVG, never client Mermaid.** One Astro
+  component, `Diagram`, draws every chapter's pictures from data (boxes,
+  arrows, notes, frames, and timelines as boxes) into the HTML, with one
+  stylesheet, so they look drawn by one hand. Mermaid stays only on
+  internals pages.
 
 ## The landing
 
@@ -145,9 +147,8 @@ The landing is the story's cover, not a second story.
 - **New laws:**
   - `guide.test.ts` holds the chapter order. Each chapter opens with its
     problem, ends with a "Next" card naming the next chapter, uses only
-    the four toy packages, and carries exactly one teaching widget or
-    SVG. No chapter mentions Turborepo, Nx or Bazel outside "In vx" and
-    the check.
+    the four toy packages, and draws at least three pictures. No chapter
+    mentions Turborepo, Nx or Bazel outside "In vx".
   - `sidebar.test.ts` holds the three sidebars and that no internals
     page is in them.
   - `redirects.test.ts` holds that every URL the old sidebar linked

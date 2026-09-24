@@ -42,7 +42,7 @@ import {
   tableRows,
   text,
   typeCheck,
-} from './guide-page-late.js'
+} from './guide-page.js'
 
 const SLUG = 'inside-vx'
 const EXAMPLES = path.join(SITE, 'src/examples')

@@ -5,19 +5,19 @@ chapter: 8
 problem: 'Your laptop and CI build the same thing twice.'
 ---
 
-import Sketch from '../../../components/guide/Sketch.astro'
-import * as P from '../../../components/guide/many-machines/pictures.ts'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/many-machines/pictures.js'
 
 You build `utils` in the morning. CI builds it again. A teammate builds it
 a third time.
 
-<Sketch {...P.threeBuilds} />
+<Diagram {...P.threeBuilds} />
 
 Each machine keeps its results to itself, so each one repeats the work.
 
 ## Same inputs give the same key on every machine
 
-<Sketch {...P.sameKey} />
+<Diagram {...P.sameKey} />
 
 A cache key is a fingerprint of what a task reads: its files, its command
 and its settings. Nothing in it names a machine. So a result stored under a
@@ -26,7 +26,7 @@ reach it, and you have a [shared cache](../../learn/glossary/#remote-cache).
 
 ## Only CI writes to the shared cache
 
-<Sketch {...P.whoWrites} />
+<Diagram {...P.whoWrites} />
 
 A shared cache shares mistakes too. A laptop has leftovers: a file no
 commit holds, a tool you patched by hand. A wrong result from it would be
@@ -35,7 +35,7 @@ let CI write and laptops read.
 
 ## A worker gets only what the task declares
 
-<Sketch {...P.worker} />
+<Diagram {...P.worker} />
 
 You can also send a task to another machine, a worker, and get the output
 back. That is [remote execution](../../learn/glossary/#remote-execution).
@@ -83,11 +83,8 @@ export default defineWorkspace({
 
 ## Check yourself
 
-Your laptop has a tool you patched by hand. Should it write to the shared
-cache?
-
 <details>
-<summary>Answer</summary>
+<summary>Your laptop has a tool you patched by hand. Should it write to the shared cache?</summary>
 
 No. Its results could be wrong under a key that looks right, and every
 machine would replay them.

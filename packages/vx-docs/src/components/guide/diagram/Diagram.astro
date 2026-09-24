@@ -1,44 +1,109 @@
 ---
-// The frame every kit diagram draws into: a figure holding one responsive SVG
-// (its viewBox is `width` × `height`; it scales down to the column, never up
-// past its own width) and an optional caption. The frame's look is global
-// (`.vx-diagram` in src/styles/theme.css), so a chapter's hand-drawn SVG in a
-// `<figure class="vx-diagram">` matches it. Put Box and Arrow inside it;
-// TaskGraph and Timeline use it themselves.
-interface Props {
-  width: number
-  height: number
-  /** What the picture says, for a reader who cannot see it. */
-  label: string
-  /** The narrowest the SVG may render; a narrower column scrolls it sideways. */
-  minWidth?: number
-}
+// Draws one Guide picture (`diagram.ts`) as build-time SVG: frames, arrows,
+// boxes and notes, in that order, so a box sits on the arrows that reach it.
+// It ships no script. Every picture on the site is this component, and its
+// look is `diagram.css` alone, so they read as one hand drew them.
+import './diagram.css'
+import { boxSize, route, type Picture, type Tone } from './diagram.js'
 
-const { width, height, label, minWidth } = Astro.props
-const style = [
-  `max-width: ${width}px`,
-  minWidth === undefined ? '' : `min-width: ${Math.min(minWidth, width)}px`,
-]
-  .filter((s) => s !== '')
-  .join('; ')
+type Props = Picture
+
+const {
+  name,
+  label,
+  caption,
+  width = 600,
+  height = 260,
+  boxes,
+  arrows = [],
+  notes = [],
+  frames = [],
+} = Astro.props
+
+const lines = arrows.map((a) => ({ ...a, tone: a.tone ?? 'default', ...route(Astro.props, a) }))
+const tones: Tone[] = [...new Set(lines.map((l) => l.tone))]
 ---
 
-<figure class="vx-diagram not-content">
+<figure class="vx-diagram not-content" data-picture={name}>
   <svg
     viewBox={`0 0 ${width} ${height}`}
-    width={width}
-    height={height}
     role="img"
     aria-label={label}
-    style={style}
+    style={`max-width: ${width}px`}
   >
-    <slot />
+    {
+      tones.length > 0 && (
+        <defs>
+          {tones.map((t) => (
+            <marker
+              id={`vx-dg-${name}-${t}`}
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path class={`head ${t}`} d="M0 0 L10 5 L0 10 z" />
+            </marker>
+          ))}
+        </defs>
+      )
+    }
+    {
+      frames.map((f) => (
+        <g class={`frame ${f.tone ?? 'default'}`}>
+          <rect x={f.x} y={f.y} width={f.w} height={f.h} rx="12" />
+          <text x={f.x + 12} y={f.y + 20}>
+            {f.label}
+          </text>
+        </g>
+      ))
+    }
+    {
+      lines.map((l) => (
+        <g class={`arrow ${l.tone}`} data-from={l.from} data-to={l.to}>
+          <path
+            d={l.d}
+            class:list={{ dashed: l.dashed === true }}
+            marker-end={`url(#vx-dg-${name}-${l.tone})`}
+          />
+          {l.label !== undefined && (
+            <text x={l.lx} y={l.ly} text-anchor={l.anchor}>
+              {l.label}
+            </text>
+          )}
+        </g>
+      ))
+    }
+    {
+      boxes.map((b) => {
+        const { w, h } = boxSize(b)
+        const cx = b.x + w / 2
+        const cy = b.y + h / 2
+        return (
+          <g class={`box ${b.tone ?? 'default'}`} data-box={b.id}>
+            {b.title !== undefined && <title>{b.title}</title>}
+            <rect x={b.x} y={b.y} width={w} height={h} rx="8" />
+            <text class="label" x={cx} y={b.sub === undefined ? cy : cy - 9}>
+              {b.label}
+            </text>
+            {b.sub !== undefined && (
+              <text class="sub" x={cx} y={cy + 11}>
+                {b.sub}
+              </text>
+            )}
+          </g>
+        )
+      })
+    }
+    {
+      notes.map((n) => (
+        <text class={`note ${n.tone ?? 'muted'}`} x={n.x} y={n.y} text-anchor={n.anchor ?? 'middle'}>
+          {n.text}
+        </text>
+      ))
+    }
   </svg>
-  {
-    Astro.slots.has('caption') && (
-      <figcaption>
-        <slot name="caption" />
-      </figcaption>
-    )
-  }
+  <figcaption>{caption}</figcaption>
 </figure>

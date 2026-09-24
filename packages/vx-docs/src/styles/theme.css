@@ -166,41 +166,8 @@ main:has(.vx-chapter-head) .sl-markdown-content > h2 {
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
 
-/* A Guide picture: the diagram kit's (components/guide/diagram) and a
-   chapter's hand-drawn SVG share this frame. The SVG spans the content
-   column; the kit caps its own at its natural width so a small graph is
-   not blown up. On a phone a wide picture keeps a floor it can be read at
-   and scrolls sideways within its frame. */
-.vx-diagram {
-  margin: 2.5rem 0;
-  padding: 1.5rem 1.25rem 1.25rem;
-  border: 1px solid var(--vx-border);
-  border-radius: 10px;
-  background: var(--vx-surface);
-  overflow-x: auto;
-}
-.sl-markdown-content .vx-diagram {
-  margin-block: 2.5rem;
-}
-.vx-diagram svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 0 auto;
-  font-family: var(--vx-mono);
-}
-.vx-diagram figcaption {
-  margin-top: 1rem;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  color: var(--vx-muted);
-  text-align: center;
-}
-@media (max-width: 30rem) {
-  .vx-diagram {
-    padding: 1rem 0.75rem 0.75rem;
-  }
-}
+/* A Guide picture's look is components/guide/diagram/diagram.css, beside
+   the one component that draws every picture. */
 
 /* Mermaid renders on the client and stays on internals pages only; the Guide
    draws with components/guide/diagram at build time. */

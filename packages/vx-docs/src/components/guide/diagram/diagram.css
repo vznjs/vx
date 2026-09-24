@@ -1,0 +1,211 @@
+/* The one look of every Guide picture (Diagram.astro): the landing's mono
+   for everything inside the drawing, the body's sans for the caption, one
+   corner radius, two stroke widths and the theme's --vx-* tokens only
+   (tests/diagram-kit.test.ts holds that). */
+
+.vx-diagram {
+  margin: 2.5rem 0;
+  padding: 1.5rem 1.25rem 1.25rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 10px;
+  background: var(--vx-surface);
+  overflow-x: auto;
+}
+.sl-markdown-content .vx-diagram {
+  margin-block: 2.5rem;
+}
+.vx-diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+  font-family: var(--vx-mono);
+}
+.vx-diagram figcaption {
+  margin-top: 1rem;
+  font-family: var(--vx-font-body);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--vx-muted);
+  text-align: center;
+}
+/* A phone keeps the drawing at a size its text can be read at, and the
+   frame scrolls sideways instead. */
+@media (max-width: 40rem) {
+  .vx-diagram {
+    padding: 1rem 0.75rem 0.75rem;
+  }
+  .vx-diagram svg {
+    min-width: 30rem;
+  }
+}
+
+.vx-diagram text {
+  fill: var(--vx-fg);
+}
+
+.vx-diagram .box rect {
+  fill: var(--vx-surface-2);
+  stroke: var(--vx-border);
+  stroke-width: 1.5;
+}
+.vx-diagram .box text {
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.vx-diagram .box .label {
+  font-size: 15px;
+  font-weight: 600;
+}
+.vx-diagram .box .sub {
+  font-size: 13px;
+  fill: var(--vx-muted);
+}
+.vx-diagram .box.accent rect {
+  fill: color-mix(in srgb, var(--vx-accent) 12%, var(--vx-surface-2));
+  stroke: var(--vx-accent);
+  stroke-width: 2.5;
+}
+.vx-diagram .box.link rect {
+  stroke: var(--vx-link);
+  stroke-width: 2.5;
+}
+.vx-diagram .box.ok rect {
+  stroke: var(--vx-ok);
+  stroke-width: 2.5;
+}
+.vx-diagram .box.ok .sub {
+  fill: var(--vx-ok);
+}
+.vx-diagram .box.warn rect {
+  stroke: var(--vx-warn);
+  stroke-width: 2.5;
+}
+.vx-diagram .box.warn .sub {
+  fill: var(--vx-warn);
+}
+.vx-diagram .box.danger rect {
+  fill: color-mix(in srgb, var(--vx-danger) 10%, var(--vx-surface-2));
+  stroke: var(--vx-danger);
+  stroke-width: 2.5;
+}
+.vx-diagram .box.danger .sub {
+  fill: var(--vx-danger);
+}
+.vx-diagram .box.muted rect {
+  fill: var(--vx-surface);
+  stroke-dasharray: 5 4;
+}
+.vx-diagram .box.muted text {
+  fill: var(--vx-muted);
+}
+
+.vx-diagram .frame rect {
+  fill: none;
+  stroke: var(--vx-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+.vx-diagram .frame text {
+  font-size: 13px;
+  fill: var(--vx-muted);
+}
+.vx-diagram .frame.link rect {
+  stroke: var(--vx-link);
+  stroke-width: 2.5;
+}
+.vx-diagram .frame.accent rect {
+  stroke: var(--vx-accent);
+}
+.vx-diagram .frame.ok rect {
+  stroke: var(--vx-ok);
+}
+.vx-diagram .frame.danger rect {
+  stroke: var(--vx-danger);
+}
+
+.vx-diagram .arrow path {
+  fill: none;
+  stroke-width: 2;
+}
+.vx-diagram .arrow path.dashed {
+  stroke-dasharray: 5 4;
+}
+.vx-diagram .arrow text {
+  font-size: 13px;
+  fill: var(--vx-muted);
+  paint-order: stroke;
+  stroke: var(--vx-surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.vx-diagram .arrow.default path {
+  stroke: var(--vx-muted);
+}
+.vx-diagram .arrow.accent path {
+  stroke: var(--vx-accent);
+}
+.vx-diagram .arrow.link path {
+  stroke: var(--vx-link);
+}
+.vx-diagram .arrow.ok path {
+  stroke: var(--vx-ok);
+}
+.vx-diagram .arrow.warn path {
+  stroke: var(--vx-warn);
+}
+.vx-diagram .arrow.danger path {
+  stroke: var(--vx-danger);
+}
+.vx-diagram .arrow.danger text {
+  fill: var(--vx-danger);
+}
+.vx-diagram .arrow.muted path {
+  stroke: var(--vx-border);
+}
+.vx-diagram .head.default {
+  fill: var(--vx-muted);
+}
+.vx-diagram .head.accent {
+  fill: var(--vx-accent);
+}
+.vx-diagram .head.link {
+  fill: var(--vx-link);
+}
+.vx-diagram .head.ok {
+  fill: var(--vx-ok);
+}
+.vx-diagram .head.warn {
+  fill: var(--vx-warn);
+}
+.vx-diagram .head.danger {
+  fill: var(--vx-danger);
+}
+.vx-diagram .head.muted {
+  fill: var(--vx-border);
+}
+
+.vx-diagram .note {
+  font-size: 14px;
+}
+.vx-diagram .note.default {
+  fill: var(--vx-fg);
+}
+.vx-diagram .note.muted {
+  fill: var(--vx-muted);
+}
+.vx-diagram .note.accent {
+  fill: var(--vx-accent);
+}
+.vx-diagram .note.link {
+  fill: var(--vx-link);
+}
+.vx-diagram .note.ok {
+  fill: var(--vx-ok);
+}
+.vx-diagram .note.warn {
+  fill: var(--vx-warn);
+}
+.vx-diagram .note.danger {
+  fill: var(--vx-danger);
+}

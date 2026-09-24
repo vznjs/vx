@@ -6,30 +6,29 @@ problem: 'The graph is right, but the run takes as long as the loop.'
 ---
 
 import SchedulerSim from '../../../components/demos/SchedulerSim.astro'
-import Together from '../../../components/guide/concurrency/Together.astro'
-import Workers from '../../../components/guide/concurrency/Workers.astro'
-import Chain from '../../../components/guide/concurrency/Chain.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/concurrency/pictures.js'
 
 Your tasks now run in the right order. But if they run one at a time, the
 eight of them take as long as the shell loop did.
 
 ## Tasks that don't need each other run together
 
-<Together />
+<Diagram {...P.together} />
 
 `ui#build` and `api#build` both need only `utils#build`. Once it is done,
 both can start at once.
 
 ## Each worker runs one task at a time
 
-<Workers />
+<Diagram {...P.workers} />
 
 A worker is one slot that runs one task. Your machine has a few, about one
 per CPU core. Two workers finish the same tasks sooner.
 
 ## The longest chain sets the finish line
 
-<Chain />
+<Diagram {...P.chain} />
 
 These four tasks each wait for the one before. Extra workers cannot run
 them side by side. This chain is the
@@ -50,8 +49,7 @@ Change the workers and watch when each rule finishes.
 
 ## In vx
 
-`--concurrency` sets how many workers run. By default it is your CPU
-cores.
+`--concurrency` sets how many workers run, by default one per CPU core:
 
 ```sh
 vx run build test --concurrency 4
@@ -73,10 +71,8 @@ vx run build test --concurrency 4
 
 ## Check yourself
 
-You add a third worker. Does the run of the eight tasks finish sooner?
-
 <details>
-<summary>Answer</summary>
+<summary>You add a third worker. Does the run of the eight tasks finish sooner?</summary>
 
 No. The longest chain still runs one task after another.
 

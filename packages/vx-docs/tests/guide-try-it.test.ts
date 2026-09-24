@@ -42,7 +42,7 @@ import {
   sections,
   tableRows,
   text,
-} from './guide-page-late.js'
+} from './guide-page.js'
 
 const SLUG = 'try-it'
 const ELEMENT = path.join(SITE, 'src/components/demos/playground.ts')

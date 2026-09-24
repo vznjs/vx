@@ -121,7 +121,10 @@ describe('the Guide', () => {
         expect(h1.map((m) => text(m[1]!))).toEqual([c.title])
         expect(h1[0]![0]).toContain('id="_top"')
         expect(inner(head!, 'p', 'vx-chapter-problem')).toBe(problemHtml(c.problem))
-        expect(html.indexOf('vx-chapter-head')).toBeLessThan(html.indexOf('sl-markdown-content'))
+        // By class attribute: the page's inlined styles name both classes first.
+        expect(html.indexOf('class="vx-chapter-head')).toBeLessThan(
+          html.indexOf('class="sl-markdown-content"'),
+        )
         expect(html).toContain(`<title>${c.title} | vx</title>`)
       })
 
@@ -145,17 +148,15 @@ describe('the Guide', () => {
         expect(line).toContain(`<strong>${want.title}</strong>`)
         // The card replaces Starlight's prev/next pair.
         expect(html).not.toContain('class="pagination-links')
-        expect(html.indexOf('sl-markdown-content')).toBeLessThan(html.indexOf('vx-next'))
+        expect(html.indexOf('class="sl-markdown-content"')).toBeLessThan(
+          html.indexOf('class="vx-next'),
+        )
       })
 
-      it('carries exactly one picture once it is written (the last chapter, one or more)', () => {
+      it('is written, and pictures first: three or more', () => {
         const src = readFileSync(path.join(GUIDE_SRC, `${c.slug}.mdx`), 'utf8')
-        // A stub has none yet; its TODO goes when the chapter is written.
-        if (src.includes('TODO(R2)')) return
-        const n = pictures(html)
-        // The last chapter is the playground and the labs.
-        if (c.chapter === CHAPTERS.length) expect(n).toBeGreaterThan(0)
-        else expect(n).toBe(1)
+        expect(src).not.toContain('TODO')
+        expect(pictures(html)).toBeGreaterThanOrEqual(3)
       })
 
       it('loads no Mermaid', () => {

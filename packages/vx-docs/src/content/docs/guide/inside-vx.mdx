@@ -7,8 +7,8 @@ problem: 'How does one tool hold every idea without a special case for each vend
 
 import { Code } from '@astrojs/starlight/components'
 import PipelineExplorer from '../../../components/demos/PipelineExplorer.astro'
-import Sketch from '../../../components/guide/Sketch.astro'
-import * as P from '../../../components/guide/inside-vx/pictures.ts'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/inside-vx/pictures.js'
 import summaryLine from '../../../examples/summary-line.ts?raw'
 
 Teams want different things. One wants a shared cache on one server,
@@ -17,7 +17,7 @@ that adds a special case for each grows slow and fragile.
 
 ## Every run passes the same stages
 
-<Sketch {...P.pipeline} />
+<Diagram {...P.pipeline} />
 
 Every run does the same steps in the same order. It reads the config,
 builds the graph, computes keys, then runs, stores and reports. vx names
@@ -25,7 +25,7 @@ each step a stage.
 
 ## A plugin fills one stage
 
-<Sketch {...P.plugins} />
+<Diagram {...P.plugins} />
 
 A [plugin](../../learn/glossary/#seam-and-plugin) is a small piece of code
 that makes the choice at one stage. vx adds no plugin unless you list it.
@@ -36,7 +36,7 @@ Pick a stage below to see the code a plugin writes there.
 
 ## With no plugins, vx still runs and caches
 
-<Sketch {...P.floor} />
+<Diagram {...P.floor} />
 
 Running on this machine and caching on this machine are built in. They sit
 under every plugin. A plugin that says no hands the task back.
@@ -77,10 +77,8 @@ export default defineWorkspace({ plugins: [summaryLine()] })
 
 ## Check yourself
 
-Your worker plugin says no to `app#test`. Where does it run?
-
 <details>
-<summary>Answer</summary>
+<summary>Your worker plugin says no to <code>app#test</code>. Where does it run?</summary>
 
 On this machine: the floor takes every task a plugin hands back.
 

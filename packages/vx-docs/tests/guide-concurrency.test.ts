@@ -27,29 +27,18 @@ import {
   SHAPES,
   simulate,
 } from '../../vx-bench/schedule-policy.js'
+import * as P from '../src/components/guide/concurrency/pictures.js'
 import {
   DIST,
-  TOY,
-  article,
-  codeBlocks,
-  competitorMentions,
+  chapterShape,
+  content,
   defining,
-  diagram,
-  diagrams,
-  missingPage,
-  missingRow,
   only,
-  packagesNamed,
   page,
-  proofs,
-  proseWords,
-  repoLinks,
-  sectionTitles,
-  siteLinks,
+  section,
+  sourceBlocks,
   tableRows,
   text,
-  withoutCheckpoints,
-  words,
 } from './guide-page.js'
 
 // The schedules below were traced by hand, one completion at a time, under
@@ -170,9 +159,38 @@ describe('the scheduler simulator model', () => {
   })
 })
 
+chapterShape({
+  slug: 'concurrency',
+  titles: [
+    'Tasks that don’t need each other run together',
+    'Each worker runs one task at a time',
+    'The longest chain sets the finish line',
+    'Start the longest chain first',
+  ],
+  pictures: [P.together, P.workers, P.chain],
+  rows: {
+    'packages/vx/tests/scheduler.test.ts': [
+      'respects the concurrency cap',
+      'prefers the task that blocks the most downstream work',
+      'counts TRANSITIVE dependents, deduplicated across a diamond',
+      'ties break in graph-insertion order (topo from buildTaskGraph)',
+    ],
+    'packages/vx/tests/cgroup.test.ts': [
+      'parallelism: the cores capped by the quota, rounded UP, never below one',
+    ],
+    'packages/vx/tests/show-info.test.ts': ['names where the worker count comes from'],
+    'packages/vx-schedule-history/tests/schedule-history.test.ts': [
+      'a node with dependents folds the max downstream chain',
+    ],
+    'packages/vx-bench/tests/schedule-policy.test.ts': [
+      'reproduces the real dispatch order, start times and makespan',
+    ],
+  },
+})
+
 describe('guide/concurrency', () => {
   const html = page('guide/concurrency')
-  const main = article(html)
+  const main = content(html)
   const prose = text(main)
   const element = only(main, /<vx-scheduler-sim\b[^>]*>([\s\S]*?)<\/vx-scheduler-sim>/g)
   const charts = [
@@ -187,75 +205,47 @@ describe('guide/concurrency', () => {
   const critical = (chart: string): string[] =>
     [...chart.matchAll(/<g class="bar is-critical[^"]*" data-task="([^"]+)"/g)].map((m) => m[1]!)
 
-  it('tells the story in its section titles', () => {
-    expect(sectionTitles(main)).toEqual([
-      'Tasks that don’t need each other run together',
-      'Each worker runs one task at a time',
-      'The longest chain sets the finish line',
-      'Start the longest chain first',
-      'In vx',
-      'Check yourself',
-    ])
-  })
-
-  it('draws three small pictures, and hosts the simulator', () => {
-    expect(diagrams(main)).toEqual(['together', 'workers', 'chain'])
-    for (const name of diagrams(main)) {
-      const figure = diagram(main, name)
-      expect(figure).toMatch(/<svg\b[^>]*role="img"[^>]*aria-label="[^"]+"/)
-      expect(text(only(figure, /<figcaption>([\s\S]*?)<\/figcaption>/g))).not.toBe('')
-    }
+  it('hosts the simulator and no other widget', () => {
     expect([...main.matchAll(/<vx-[\w-]+\b/g)].map((m) => m[0])).toEqual(['<vx-scheduler-sim'])
-    expect(main).not.toContain('class="mermaid"')
-  })
-
-  it('keeps its prose short', () => {
-    const n = proseWords(main)
-    expect(n).toBeGreaterThan(100)
-    expect(n).toBeLessThanOrEqual(350)
-  })
-
-  it('names only the four packages, and no other tool', () => {
-    const named = packagesNamed(words(withoutCheckpoints(main)))
-    expect(named.filter((n) => !TOY.includes(n))).toEqual([])
-    // Positive first: the reader found the chapter's own names.
-    expect(named).toEqual([...TOY].sort())
-    expect(competitorMentions(main)).toEqual([])
   })
 
   // The chapter's one comparison: the eight build and test tasks on one
   // worker, then on two. The picture computes it from the model; the truth
   // is written here, and the model is held to it.
   it('draws its one comparison from the model: one worker, then two', () => {
-    const figure = diagram(main, 'workers')
-    expect(only(figure, /data-finish="([^"]+)"/g)).toBe('32000 24000')
-    const drawn = [
-      ...figure.matchAll(
-        /<g data-task="([^"]+)" data-lane="(\d+)" data-start="(\d+)" data-end="(\d+)"/g,
-      ),
-    ].map((m) => `${m[1]} ${m[2]} ${Number(m[3]) / 1000} ${Number(m[4]) / 1000}`)
     const runs = [1, 2].map((w) => schedule(EIGHT, none, 'count', w))
     expect(runs.map((r) => r.makespan)).toEqual([32_000, 24_000])
-    expect(drawn).toEqual(runs.flatMap((r) => asRows(r.bars)))
+    expect(P.RUNS).toEqual(runs)
+    // One box per task per run, in the lane the model put it, in time order.
+    const x0 = P.workers.boxes[0]!.x
+    const scale = (P.workers.boxes[1]!.x - x0) / (runs[0]!.bars[1]!.start / 1000)
+    const drawn = P.workers.boxes.map((b) => {
+      const [workers, id] = b.id.split('/') as [string, string]
+      return `${workers} ${id} ${b.title} ${Math.round((b.x - x0) / scale)}`
+    })
+    expect(drawn.sort()).toEqual(
+      runs
+        .flatMap((r) => r.bars.map((b) => `${r.workers} ${b.id} ${b.id} ${b.start / 1000}`))
+        .sort(),
+    )
     expect(drawn).toHaveLength(16)
-    const svgText = words(only(figure, /(<svg\b[\s\S]*<\/svg>)/g))
-    expect([svgText.includes('32 s'), svgText.includes('24 s')]).toEqual([true, true])
+    const notes = P.workers.notes!.map((n) => n.text)
+    expect([notes.includes('32 s'), notes.includes('24 s')]).toEqual([true, true])
     // The chain is what the picture highlights.
-    const highlighted = [
-      ...figure.matchAll(/<g data-task="([^"]+)"[^>]*>\s*<rect class="box accent"/g),
-    ].map((m) => m[1]!)
+    const highlighted = P.workers.boxes.filter((b) => b.tone === 'accent').map((b) => b.title)
     expect([...new Set(highlighted)]).toEqual(CRITICAL)
   })
 
   it('draws the chain the model finds, and the two builds that start together', () => {
     expect(criticalPath(EIGHT)).toEqual({ length: 24_000, chain: CRITICAL })
-    expect(only(diagram(main, 'chain'), /data-chain="([^"]+)"/g)).toBe(CRITICAL.join(' '))
+    expect(P.chain.boxes.map((b) => b.id)).toEqual(CRITICAL)
     for (const id of ['ui#build', 'api#build']) {
       expect(SIM_TASKS.find((t) => t.id === id)!.deps).toEqual(['utils#build'])
     }
-    expect(only(diagram(main, 'together'), /aria-label="([^"]+)"/g)).toBe(
-      'utils#build runs first. When it is done, ui#build and api#build both start, at the same time.',
-    )
+    expect(P.together.arrows!.map((a) => `${a.from}→${a.to}`)).toEqual([
+      'utils#build→ui#build',
+      'utils#build→api#build',
+    ])
   })
 
   it('draws two Gantt charts of the default graph, with the hand-traced bars', () => {
@@ -344,44 +334,22 @@ describe('guide/concurrency', () => {
   })
 
   it('answers its one check as the model does', () => {
-    const { rest } = proofs(main)
-    const answers = [...rest.matchAll(/<details>([\s\S]*?)<\/details>/g)].map((m) => words(m[1]!))
-    expect(answers).toEqual(['Answer No. The longest chain still runs one task after another.'])
+    expect(text(section(main, 'check-yourself'))).toContain(
+      'No. The longest chain still runs one task after another.',
+    )
     for (const p of DEFAULT_PAIR) expect(schedule(EIGHT, none, p, 3).makespan).toBe(24_000)
     expect(criticalPath(EIGHT).length).toBe(24_000)
   })
 
-  it('keeps test links out of the prose, in one collapsed list that stands on real rows', () => {
-    const { list, rest } = proofs(main)
-    expect(repoLinks(rest)).toEqual([])
-    const claims = repoLinks(list)
-    expect(claims.map((c) => c.label)).toEqual([
-      'At most --concurrency tasks run at once',
-      'The default is the CPU cores, capped by a container’s quota',
-      'vx info shows the worker count and where it came from',
-      'vx starts the task the most others wait on',
-      'It counts everything waiting, not only the next task',
-      'A tie goes to graph order',
-      'The plugin ranks by the longest chain ahead',
-      'The simulator matches vx’s own scheduler',
-    ])
-    expect(claims.map(missingRow).filter((m) => m !== undefined)).toEqual([])
-    const site = siteLinks(main, 'guide/concurrency')
-    expect(site).toEqual(['learn/glossary/#critical-path'])
-    expect(site.map(missingPage).filter((m) => m !== undefined)).toEqual([])
-  })
-
   it('shows the flag the CLI defines', () => {
-    expect(codeBlocks('concurrency')).toEqual(['vx run build test --concurrency 4\n'])
+    expect(sourceBlocks('concurrency')).toEqual(['vx run build test --concurrency 4\n'])
     const flag = [...page('cli').matchAll(/<tr>([\s\S]*?)<\/tr>/g)]
       .map((r) => [...r[1]!.matchAll(/<td>([\s\S]*?)<\/td>/g)].map((c) => text(c[1]!)))
       .filter((cells) => cells[0] === '--concurrency <n>')
     expect(flag.map((cells) => cells.slice(0, 3))).toEqual([
       ['--concurrency <n>', 'int or <n>%', 'cores, capped by the cgroup quota'],
     ])
-    expect(prose).toContain(
-      '--concurrency sets how many workers run. By default it is your CPU cores.',
-    )
+    expect(prose).toContain('--concurrency sets how many workers run, by default one per CPU core:')
   })
 
   // The element's chunk must be the bench's simulator over vx's ranking, and

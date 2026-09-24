@@ -53,31 +53,21 @@ import {
   type StaleRun,
   type StaleState,
 } from '../src/components/demos/model/stale-hit.js'
+import * as P from '../src/components/guide/trust/pictures.js'
 import {
   DIST,
-  TOY,
-  article,
-  codeBlocks,
-  competitorMentions,
+  chapterShape,
+  content,
   defining,
-  diagram,
-  diagrams,
-  missingPage,
-  missingRow,
   only,
-  packagesNamed,
   page,
   pre,
-  proofs,
-  proseWords,
+  prose as authored,
   reachableScripts,
-  repoLinks,
-  sectionTitles,
-  siteLinks,
+  section,
+  sourceBlocks,
   tableRows,
   text,
-  withoutCheckpoints,
-  words,
 } from './guide-page.js'
 
 const SILENT: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
@@ -344,52 +334,49 @@ describe('the report at step 4', () => {
 
 const flat = (s: string): string => s.replace(/\s+/g, ' ').trim()
 
+chapterShape({
+  slug: 'trust',
+  titles: [
+    'A forgotten input makes a wrong hit',
+    'You list the inputs; vx never guesses',
+    'The sandbox turns a forgotten file into an error',
+    'Four things the sandbox does not check',
+  ],
+  pictures: [P.oldBanner, P.listNotGuess, P.sandbox],
+  rows: {
+    'packages/vx/tests/config.test.ts': [
+      'requires cache.inputs.files — the one declaration vx will not infer',
+    ],
+    'packages/vx/tests/sandbox-runtime.unsafe.test.ts': [
+      'the undeclared read fails with one line naming banner.txt; declaring it passes',
+      'failed sandboxed task is NOT cached (re-runs next invocation)',
+      'a run whose sandboxed tasks are all hits never starts the sandbox',
+      'installed dependencies are readable without being declared inputs',
+    ],
+    'packages/vx/tests/sandbox-request.test.ts': [
+      'a SCOPED link is found too: the scan descends one level into `@scope/`',
+    ],
+  },
+})
+
 describe('guide/trust', () => {
   const html = page('guide/trust')
-  const main = article(html)
+  const main = content(html)
   const prose = text(main)
   const element = only(main, /<vx-stale-hit\b[^>]*>([\s\S]*?)<\/vx-stale-hit>/g)
   const staticPart = only(element, /<div class="static\b[^"]*"[^>]*>([\s\S]*)<\/div>\s*$/g)
   const table = only(staticPart, /(<table class="runs\b[\s\S]*?<\/table>)/g)
 
-  it('tells the story in its section titles', () => {
-    expect(sectionTitles(main)).toEqual([
-      'A forgotten input makes a wrong hit',
-      'You list the inputs; vx never guesses',
-      'The sandbox turns a forgotten file into an error',
-      'Four things the sandbox does not check',
-      'In vx',
-      'Check yourself',
-    ])
-  })
-
-  it('draws three small pictures, and hosts the demo and its checkpoint', () => {
-    expect(diagrams(main)).toEqual(['old-banner', 'list-not-guess', 'sandbox'])
-    for (const name of diagrams(main)) {
-      const figure = diagram(main, name)
-      expect(figure).toMatch(/<svg\b[^>]*role="img"[^>]*aria-label="[^"]+"/)
-      expect(text(only(figure, /<figcaption>([\s\S]*?)<\/figcaption>/g))).not.toBe('')
-    }
+  it('hosts the demo and its checkpoint, and no other widget', () => {
     expect([...main.matchAll(/<vx-[\w-]+\b/g)].map((m) => m[0])).toEqual([
       '<vx-stale-hit',
       '<vx-checkpoint',
     ])
-    expect(main).not.toContain('class="mermaid"')
   })
 
-  it('keeps its prose short', () => {
-    const n = proseWords(main)
-    expect(n).toBeGreaterThan(100)
-    expect(n).toBeLessThanOrEqual(350)
-  })
-
-  it('names only the four packages, and no other tool', () => {
+  it('draws the demo’s task in its one package', () => {
     expect(STALE_PROJECT).toBe('app')
-    const named = packagesNamed(words(withoutCheckpoints(main)))
-    expect(named.filter((n) => !TOY.includes(n))).toEqual([])
-    // Positive first: the reader found the chapter's own names.
-    expect(named).toEqual(['app'])
-    expect(competitorMentions(main)).toEqual([])
+    expect(P.sandbox.boxes.map((b) => b.label)).toContain(`${STALE_PROJECT}#build`)
   })
 
   it('opens on the stale hit the demo shows at step 3', () => {
@@ -399,9 +386,12 @@ describe('guide/trust', () => {
     expect(staleConfig(STALE_START)).toMatchObject({ cache: { inputs: { files: ['src/**'] } } })
     expect(prose).toContain('Its inputs list only src/**. You edit banner.txt')
     expect(prose).toContain('The key did not change, so vx handed back the old file.')
-    const svg = words(only(diagram(main, 'old-banner'), /(<svg\b[\s\S]*<\/svg>)/g))
+    const drawn = [
+      ...P.oldBanner.boxes.map((b) => b.label),
+      ...P.oldBanner.notes!.map((n) => n.text),
+    ].join(' ')
     for (const said of ['hit: old banner', 'run passes', 'but the output is wrong']) {
-      expect({ said, drawn: svg.includes(said) }).toEqual({ said, drawn: true })
+      expect({ said, drawn: drawn.includes(said) }).toEqual({ said, drawn: true })
     }
   })
 
@@ -518,8 +508,9 @@ describe('guide/trust', () => {
   it('draws the denial the demo reports at step 4', () => {
     const step4 = staleRuns()[3]!
     expect([step4.verdict, step4.denied]).toEqual(['failed', [STALE_BANNER]])
-    const svg = words(only(diagram(main, 'sandbox'), /(<svg\b[\s\S]*<\/svg>)/g))
-    expect(svg).toContain('task fails: denied banner.txt — nothing saved')
+    expect(P.sandbox.notes!.map((n) => n.text)).toContain(
+      `task fails: denied ${STALE_BANNER} — nothing saved`,
+    )
     expect(prose).toContain('Reading banner.txt fails, and the error names it.')
   })
 
@@ -542,39 +533,12 @@ describe('guide/trust', () => {
     expect(only(checkpoint, /<fieldset class="form\b[^"]*"[^>]*data-checkpoint="([^"]+)"/g)).toBe(
       'correctness',
     )
-    const { rest } = proofs(main)
     // No other check than the checkpoint.
-    expect([...withoutCheckpoints(rest).matchAll(/<details>/g)]).toEqual([])
-  })
-
-  it('keeps test links out of the prose, in one collapsed list that stands on real rows', () => {
-    const { list, rest } = proofs(main)
-    expect(repoLinks(rest)).toEqual([])
-    const claims = repoLinks(list)
-    expect(claims.map((c) => c.label)).toEqual([
-      'vx never guesses a task’s input files',
-      'This chapter’s build fails on banner.txt in a real sandbox, and passes once it is listed',
-      'A failed sandboxed task is not saved',
-      'A run of hits never starts the sandbox',
-      'node_modules is readable without being listed',
-      'So is a linked package of your own',
-    ])
-    expect(claims.map(missingRow).filter((m) => m !== undefined)).toEqual([])
-    expect(siteLinks(rest, 'guide/trust')).toEqual([
-      'learn/glossary/#cache-hit-miss-and-stale-hit',
-      'learn/glossary/#hermeticity-and-sandboxing',
-    ])
-    const inList = siteLinks(list, 'guide/trust')
-    expect(inList).toEqual([
-      'guides/environment-variables/#the-two-lists',
-      'guides/sandboxing/#requirements--platform-support',
-    ])
-    const site = siteLinks(main, 'guide/trust')
-    expect(site.map(missingPage).filter((m) => m !== undefined)).toEqual([])
+    expect(authored(section(main, 'check-yourself'))).not.toContain('<details')
   })
 
   it('shows the last step of the demo as a config the schema defines', () => {
-    const blocks = codeBlocks('trust')
+    const blocks = sourceBlocks('trust')
     expect(blocks).toHaveLength(1)
     const declared = staleRuns().at(-1)!.state
     expect(blocks[0]).toBe(

@@ -4,28 +4,30 @@
 // explorer. tests/guide-dependencies.test.ts holds every arrow to the graph
 // vx plans for the chapter's config, and the cycle to the message vx prints.
 
-import type { Picture } from '../diagram.js'
+import type { Picture } from '../diagram/diagram.js'
 
-export const ORDER: Picture = {
-  id: 'order',
+export const order: Picture = {
+  name: 'order',
   label: 'app#build alone fails: it cannot find ui. After ui#build, app#build builds.',
+  caption: 'Same two tasks, different order.',
   boxes: [
-    { id: 'app-alone', x: 20, y: 40, w: 170, label: 'app#build', sub: 'fails', variant: 'danger' },
+    { id: 'app-alone', x: 20, y: 40, w: 170, label: 'app#build', sub: 'fails', tone: 'danger' },
     { id: 'ui#build', x: 20, y: 170, w: 170, label: 'ui#build', sub: 'builds' },
-    { id: 'app#build', x: 330, y: 170, w: 170, label: 'app#build', sub: 'builds', variant: 'ok' },
+    { id: 'app#build', x: 330, y: 170, w: 170, label: 'app#build', sub: 'builds', tone: 'ok' },
   ],
-  arrows: [{ from: 'ui#build', to: 'app#build', variant: 'ok' }],
+  arrows: [{ from: 'ui#build', to: 'app#build', tone: 'ok' }],
   notes: [
     { x: 20, y: 28, text: 'wrong order', anchor: 'start' },
-    { x: 210, y: 70, text: "Cannot find module 'ui'", anchor: 'start', variant: 'danger' },
+    { x: 210, y: 70, text: "Cannot find module 'ui'", anchor: 'start', tone: 'danger' },
     { x: 20, y: 158, text: 'right order', anchor: 'start' },
   ],
 }
 
-export const RULES: Picture = {
-  id: 'rules',
+export const rules: Picture = {
+  name: 'rules',
   label:
     'Rule ^build: utils#build before ui#build, because ui uses utils. Rule build: ui#build before ui#test, in the same package.',
+  caption: 'An arrow means "must finish first".',
   boxes: [
     { id: 'utils#build', x: 20, y: 40, w: 150, label: 'utils#build' },
     { id: 'ui#build', x: 300, y: 40, w: 150, label: 'ui#build' },
@@ -33,8 +35,8 @@ export const RULES: Picture = {
     { id: 'ui#test', x: 300, y: 170, w: 150, label: 'ui#test' },
   ],
   arrows: [
-    { from: 'utils#build', to: 'ui#build', label: '^build', variant: 'accent' },
-    { from: 'ui#build/2', to: 'ui#test', label: 'build', variant: 'accent' },
+    { from: 'utils#build', to: 'ui#build', label: '^build', tone: 'accent' },
+    { from: 'ui#build/2', to: 'ui#test', label: 'build', tone: 'accent' },
   ],
   notes: [
     { x: 470, y: 67, text: 'ui uses utils', anchor: 'start' },
@@ -42,19 +44,20 @@ export const RULES: Picture = {
   ],
 }
 
-export const CYCLE: Picture = {
-  id: 'cycle',
+export const cycle: Picture = {
+  name: 'cycle',
   label:
     'A loop: utils#build waits for app#build, app#build waits for api#build, api#build waits for utils#build. No task can go first.',
+  caption: 'Every task waits for another.',
   boxes: [
-    { id: 'utils#build', x: 225, y: 20, w: 150, label: 'utils#build', variant: 'danger' },
-    { id: 'api#build', x: 40, y: 190, w: 150, label: 'api#build', variant: 'danger' },
-    { id: 'app#build', x: 410, y: 190, w: 150, label: 'app#build', variant: 'danger' },
+    { id: 'utils#build', x: 225, y: 20, w: 150, label: 'utils#build', tone: 'danger' },
+    { id: 'api#build', x: 40, y: 190, w: 150, label: 'api#build', tone: 'danger' },
+    { id: 'app#build', x: 410, y: 190, w: 150, label: 'app#build', tone: 'danger' },
   ],
   arrows: [
-    { from: 'app#build', to: 'utils#build', variant: 'danger' },
-    { from: 'utils#build', to: 'api#build', variant: 'danger' },
-    { from: 'api#build', to: 'app#build', variant: 'danger' },
+    { from: 'app#build', to: 'utils#build', tone: 'danger' },
+    { from: 'utils#build', to: 'api#build', tone: 'danger' },
+    { from: 'api#build', to: 'app#build', tone: 'danger' },
   ],
-  notes: [{ x: 300, y: 140, text: 'no task can go first', variant: 'danger' }],
+  notes: [{ x: 300, y: 165, text: 'no task can go first', tone: 'danger' }],
 }

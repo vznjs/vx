@@ -20,13 +20,14 @@ export const CHAPTERS: readonly Chapter[] = [
     slug: 'why',
     chapter: 1,
     title: 'Why orchestrate?',
-    problem: 'Four packages, one `build` script each; you write a shell loop.',
+    problem:
+      'Four packages have a build script each, and you write a shell loop to build them all.',
   },
   {
     slug: 'tasks',
     chapter: 2,
     title: 'Tasks',
-    problem: 'The loop runs "scripts"; what exactly is one unit of work?',
+    problem: 'The loop runs "scripts", but what exactly is one unit of work?',
   },
   {
     slug: 'dependencies',
@@ -38,19 +39,19 @@ export const CHAPTERS: readonly Chapter[] = [
     slug: 'concurrency',
     chapter: 4,
     title: 'Concurrency',
-    problem: 'The graph is right but the run takes as long as the loop.',
+    problem: 'The graph is right, but the run takes as long as the loop.',
   },
   {
     slug: 'caching',
     chapter: 5,
     title: 'Caching',
-    problem: 'You changed one line in `app`; `utils` rebuilt anyway.',
+    problem: 'You changed one line in `app`, and `utils` rebuilt anyway.',
   },
   {
     slug: 'trust',
     chapter: 6,
     title: 'Can you trust a hit?',
-    problem: 'A hit replayed an old output and the run was green.',
+    problem: 'A hit replayed an old output, and the run was green.',
   },
   {
     slug: 'affected',
@@ -68,14 +69,13 @@ export const CHAPTERS: readonly Chapter[] = [
     slug: 'inside-vx',
     chapter: 9,
     title: 'How vx is built',
-    problem:
-      'You now know the ideas; how does one tool hold them without growing a branch for every vendor?',
+    problem: 'How does one tool hold every idea without a special case for each vendor?',
   },
   {
     slug: 'try-it',
     chapter: 10,
     title: 'Try it',
-    problem: 'Reading about a planner is not the same as watching one decide.',
+    problem: 'See every idea work on the four packages, in your browser.',
   },
 ]
 

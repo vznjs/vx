@@ -30,33 +30,38 @@ const CHOOSING_PROOFS = [
 ]
 
 // The Guide's chapters link each claim about vx to the test row that holds
-// it, inside each chapter's "How we know this is true", and
+// it, in each chapter's "How we know this is true" list, and
 // tests/guide-page.ts reads each linked file for the row's title, as the
-// choosing page's rows do. Granted by name and keyed, like the lists above.
+// choosing page's rows do. Every file the ten chapters link, granted by name
+// and keyed, like the lists above.
 const GUIDE_PROOFS = [
-  'packages/vx/tests/config.test.ts',
-  'packages/vx/tests/package-graph.test.ts',
-  'packages/vx/tests/task-graph.test.ts',
-  'packages/vx/tests/scheduler.test.ts',
-  'packages/vx/tests/cgroup.test.ts',
-  'packages/vx/tests/show-info.test.ts',
-  'packages/vx/tests/git-subdir-workspace.test.ts',
-  'packages/vx/tests/execute-task.test.ts',
-  'packages/vx/tests/git-oid.test.ts',
-  'packages/vx/tests/sandbox-request.test.ts',
-  'packages/vx-schedule-history/tests/schedule-history.test.ts',
   'packages/vx-bench/tests/schedule-policy.test.ts',
-  'packages/vx/tests/affected-dependents.test.ts',
+  'packages/vx-reapi/tests/executor.test.ts',
+  'packages/vx-schedule-history/tests/schedule-history.test.ts',
   'packages/vx/tests/affected-base-notes.test.ts',
+  'packages/vx/tests/affected-dependents.test.ts',
   'packages/vx/tests/affected-workspace-files.test.ts',
   'packages/vx/tests/affected.test.ts',
-  'packages/vx/tests/package-boundaries.unsafe.test.ts',
+  'packages/vx/tests/cgroup.test.ts',
+  'packages/vx/tests/config.test.ts',
+  'packages/vx/tests/execute-task.test.ts',
+  'packages/vx/tests/git-oid.test.ts',
+  'packages/vx/tests/git-subdir-workspace.test.ts',
+  'packages/vx/tests/layered-cache.test.ts',
   'packages/vx/tests/local-fallbacks.test.ts',
-  'packages/vx/tests/plugin-capabilities.test.ts',
-  'packages/vx/tests/telemetry.test.ts',
-  'packages/vx/tests/telemetry-lifecycle.test.ts',
+  'packages/vx/tests/package-boundaries.unsafe.test.ts',
+  'packages/vx/tests/package-graph.test.ts',
   'packages/vx/tests/playground-parity.unsafe.test.ts',
-  'packages/vx-reapi/tests/executor.test.ts',
+  'packages/vx/tests/plugin-capabilities.test.ts',
+  'packages/vx/tests/plugin-pipeline.test.ts',
+  'packages/vx/tests/sandbox-request.test.ts',
+  'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
+  'packages/vx/tests/scheduler.test.ts',
+  'packages/vx/tests/show-info.test.ts',
+  'packages/vx/tests/task-graph.test.ts',
+  'packages/vx/tests/task-hash-derive.test.ts',
+  'packages/vx/tests/telemetry-lifecycle.test.ts',
+  'packages/vx/tests/telemetry.test.ts',
 ]
 const PROOFS = [...new Set([...CHOOSING_PROOFS, ...GUIDE_PROOFS])]
 

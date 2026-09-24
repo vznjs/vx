@@ -5,21 +5,15 @@ chapter: 1
 problem: 'Four packages have a build script each, and you write a shell loop to build them all.'
 ---
 
-import Diagram from '../../../components/guide/Diagram.astro'
-import {
-  ORCHESTRATED,
-  ONE_AT_A_TIME,
-  PACKAGES,
-  REBUILD_ALL,
-  WRONG_ORDER,
-} from '../../../components/guide/why/pictures.js'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/why/pictures.js'
 
 You have four packages in one repository. Each one builds with
 `npm run build`. How do you build them all?
 
 ## Four packages, one loop
 
-<Diagram {...PACKAGES}>ui and api use utils. app uses ui and api.</Diagram>
+<Diagram {...P.packages} />
 
 You write a loop that builds each package in turn:
 
@@ -31,28 +25,28 @@ It works. It also goes wrong in three ways.
 
 ## The wrong order breaks the build
 
-<Diagram {...WRONG_ORDER}>In alphabetical order, three of the four builds fail.</Diagram>
+<Diagram {...P.wrongOrder} />
 
 The right order lives only in your head. Loop over `packages/*` instead,
 and it runs in alphabetical order. `api` builds before `utils`, and fails.
 
 ## Every run rebuilds everything
 
-<Diagram {...REBUILD_ALL}>One line changed. Four builds ran.</Diagram>
+<Diagram {...P.rebuildAll} />
 
 You change one line in `app`. The loop rebuilds all four packages. Three
 of them make the same files as last time.
 
 ## One build at a time leaves cores idle
 
-<Diagram {...ONE_AT_A_TIME}>Four cores. The loop uses one.</Diagram>
+<Diagram {...P.oneAtATime} />
 
 `ui` and `api` do not need each other. They could build at the same time.
 The loop runs one command, waits, then runs the next.
 
 ## An orchestrator fixes all three
 
-<Diagram {...ORCHESTRATED}>Same builds. Right order, two at once, and only what changed.</Diagram>
+<Diagram {...P.orchestrated} />
 
 A task orchestrator is a tool that does three things. It builds in the
 right order. It runs builds side by side when they do not need each other.
@@ -71,9 +65,9 @@ vx run build --all
 <details>
 <summary>How we know this is true</summary>
 
-- `--all` runs the task in every package that has it: [`vx run` selection](../../cli/#selection)
-- vx knows no order until you declare one: [`dependsOn`](../../schema/#dependson-optional)
-- vx skips nothing until you declare a cache: [caching is opt-in](../../schema/#cache-optional)
+- [`--all` runs the task in every package that has it](../../cli/#selection)
+- [vx knows no order until you declare one](../../schema/#dependson-optional)
+- [vx skips nothing until you declare a cache](../../schema/#cache-optional)
 
 </details>
 

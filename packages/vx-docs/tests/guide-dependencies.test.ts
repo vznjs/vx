@@ -1,5 +1,4 @@
-// Chapter 3 of the Guide, "Dependencies" (design/site-redo-2026-09.md, and
-// the owner's "simple, visual" brief): a dependency, `^build` against
+// Chapter 3 of the Guide, "Dependencies": a dependency, `^build` against
 // `build`, the task graph, waves, and why a cycle has no order. It hosts the
 // graph explorer, so the explorer's page rows live here (moved from
 // demo-islands.test.ts, where they held the old Learn page). The "In vx"
@@ -7,8 +6,6 @@
 // graph the explorer draws, the pictures' arrows are in it, and the cycle
 // the chapter draws is refused with the message it prints.
 
-import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import {
   TOY_PACKAGES,
@@ -19,33 +16,26 @@ import {
   rerunBy,
   waves,
 } from '../src/components/demos/model/toy-monorepo.js'
+import type { Picture } from '../src/components/guide/diagram/diagram.js'
+import * as P from '../src/components/guide/dependencies/pictures.js'
 import {
-  COMPETITORS,
-  DIST,
-  TOY,
-  codeBlocks,
+  TOY_USES,
+  chapterShape,
   content,
-  expectDiagrams,
-  expectOnlyToyPackages,
-  missing,
+  defining,
   only,
   page,
-  pictures,
   plan,
   projectObject,
-  proofLinks,
-  proseWords,
   removeWorkspaces,
-  sectionTitles,
-  summaries,
+  sourceBlocks,
+  tableRows,
   text,
   toyWorkspace,
-} from './guide-opening.js'
-import type { Picture } from '../src/components/guide/diagram.js'
-import { CYCLE, ORDER, RULES } from '../src/components/guide/dependencies/pictures.js'
+} from './guide-page.js'
 
-const SLUG = 'guide/dependencies'
-const html = page(SLUG)
+const SLUG = 'dependencies'
+const html = page(`guide/${SLUG}`)
 const main = content(html)
 const prose = text(main)
 
@@ -69,35 +59,6 @@ const EDGES = [
   'utils#build→ui#build',
   'utils#build→utils#test',
 ]
-
-/** The rows of a table's body: each row's cells as text, header cell first. */
-function tableRows(table: string): string[][] {
-  const body = only(table, /<tbody\b[^>]*>([\s\S]*?)<\/tbody>/g)
-  return [...body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].map((row) =>
-    [...row[1]!.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => text(c[1]!)),
-  )
-}
-
-/** Every `_astro/*.js` the page loads, followed through the chunks' own
- *  static and dynamic imports. The loader imports an element only on
- *  demand, so "the page references the element" means reachable. */
-function reachableScripts(page: string): Set<string> {
-  const scripts = [...page.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/g)].map((m) => m[0])
-  const seen = new Set<string>()
-  const queue = scripts.flatMap((s) =>
-    [...s.matchAll(/\/_astro\/([\w.-]+\.js)/g)].map((m) => m[1]!),
-  )
-  while (queue.length > 0) {
-    const name = queue.pop()!
-    const file = path.join(DIST, '_astro', name)
-    // mermaid's chunks name files it never emits (`./elk-worker.min.js`).
-    if (seen.has(name) || !existsSync(file)) continue
-    seen.add(name)
-    const body = readFileSync(file, 'utf8')
-    for (const m of body.matchAll(/["'`]\.\/([\w.-]+\.js)["'`]/g)) queue.push(m[1]!)
-  }
-  return seen
-}
 
 /** A plan's edges as `from→to`, and its tasks grouped by wave. */
 function shape(tasks: { node: { id: string; deps: readonly string[] } }[]): {
@@ -217,37 +178,31 @@ describe('the graph explorer on guide/dependencies', () => {
   })
 
   it("loads the element's module from the page's own scripts", () => {
-    const defining = [...reachableScripts(html)].filter((name) =>
-      /customElements\.define\(\s*["'`]vx-graph-explorer["'`]/.test(
-        readFileSync(path.join(DIST, '_astro', name), 'utf8'),
-      ),
-    )
-    expect(defining).toHaveLength(1)
+    expect(defining(html, 'vx-graph-explorer')).toHaveLength(1)
   })
 })
 
+chapterShape({
+  slug: SLUG,
+  titles: [
+    'Build ui before app',
+    'Two rules draw every arrow',
+    'The rules draw the whole graph',
+    'A loop has no first task',
+  ],
+  pictures: [P.order, P.rules, P.cycle],
+  rows: {
+    'packages/vx/tests/package-graph.test.ts': [
+      'reads all four dependency fields: a workspace peer orders a build too',
+      'records direct workspace deps only when the dep is in the workspace',
+    ],
+    'packages/vx/tests/task-graph.test.ts': ['a task cycle through every project is refused'],
+  },
+})
+
 describe('chapter 3, dependencies', () => {
-  it('tells the story in its section titles', () => {
-    expect(sectionTitles(main)).toEqual([
-      'Build ui before app',
-      'Two rules draw every arrow',
-      'The rules draw the whole graph',
-      'A loop has no first task',
-      'In vx',
-      'Check yourself',
-    ])
-  })
-
-  it('draws its pictures around the graph explorer, and nothing else', () => {
-    expectDiagrams(main, [ORDER, RULES, CYCLE])
+  it('hosts the graph explorer and no other widget', () => {
     expect([...main.matchAll(/<vx-([a-z-]+)\b/g)].map((m) => m[1])).toEqual(['graph-explorer'])
-    const svgs = pictures(main)
-    expect(svgs).toHaveLength(4)
-    expect(svgs.filter((s) => s.includes('data-task="utils#build"'))).toHaveLength(1)
-  })
-
-  it('keeps the prose to the budget', () => {
-    expect(proseWords(main)).toBeLessThanOrEqual(350)
   })
 
   it('draws only arrows the graph has, each rule with its own', () => {
@@ -255,18 +210,18 @@ describe('chapter 3, dependencies', () => {
       const label = (id: string): string => p.boxes.find((b) => b.id === id)!.label
       return `${label(a.from)}→${label(a.to)}`
     }
-    expect(ORDER.arrows!.map((a) => arrow(ORDER, a))).toEqual(['ui#build→app#build'])
-    expect(RULES.arrows!.map((a) => [arrow(RULES, a), a.label])).toEqual([
+    expect(P.order.arrows!.map((a) => arrow(P.order, a))).toEqual(['ui#build→app#build'])
+    expect(P.rules.arrows!.map((a) => [arrow(P.rules, a), a.label])).toEqual([
       ['utils#build→ui#build', '^build'],
       ['ui#build→ui#test', 'build'],
     ])
-    for (const a of [...ORDER.arrows!.map((x) => arrow(ORDER, x)), 'utils#build→ui#build']) {
+    for (const a of [...P.order.arrows!.map((x) => arrow(P.order, x)), 'utils#build→ui#build']) {
       expect(EDGES).toContain(a)
     }
     // ^build crosses packages; build stays in one.
-    const [cross, same] = RULES.arrows!.map((a) => arrow(RULES, a).split('→'))
+    const [cross, same] = P.rules.arrows!.map((a) => arrow(P.rules, a).split('→'))
     expect(cross!.map((t) => t.split('#')[0])).toEqual(['utils', 'ui'])
-    expect(TOY['ui']).toContain('utils')
+    expect(TOY_USES['ui']).toContain('utils')
     expect(same!.map((t) => t.split('#')[0])).toEqual(['ui', 'ui'])
   })
 
@@ -275,38 +230,12 @@ describe('chapter 3, dependencies', () => {
     expect(waves()).toEqual(WAVES)
   })
 
-  it("names only the four packages, the widgets' own, and no other task runner", () => {
-    expect(TOY_PACKAGES.map((p) => [p.id, p.dependsOn])).toEqual(Object.entries(TOY))
-    expectOnlyToyPackages(main)
-    expect(prose).not.toMatch(COMPETITORS)
-  })
-
-  it('keeps its proofs in one collapsed list, each one landing', () => {
-    const { proofs, elsewhere } = proofLinks(main)
-    expect(proofs.map((l) => l.href)).toEqual([
-      '../../schema/#dependson-optional',
-      'https://github.com/vznjs/vx/blob/main/packages/vx/tests/package-graph.test.ts',
-      'https://github.com/vznjs/vx/blob/main/packages/vx/tests/package-graph.test.ts',
-      'https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-graph.test.ts',
-    ])
-    expect(elsewhere.map((l) => l.href)).toEqual([
-      '../../learn/glossary/#task-dependency',
-      '../../learn/glossary/#task-graph',
-    ])
-    expect(
-      [...proofs, ...elsewhere].map((l) => missing(SLUG, l)).filter((m) => m !== undefined),
-    ).toEqual([])
-  })
-
-  it('asks one question', () => {
-    expect(summaries(main)).toEqual([
-      'How we know this is true',
-      'You run vx run app#build on an empty cache. Which tasks run?',
-    ])
+  it("draws the widgets' four packages", () => {
+    expect(TOY_PACKAGES.map((p) => [p.id, p.dependsOn])).toEqual(Object.entries(TOY_USES))
   })
 
   describe('the config in "In vx", planned by vx over the four packages', () => {
-    const ts = codeBlocks(SLUG, 'ts')
+    const ts = sourceBlocks(SLUG, 'ts')
     const object = projectObject(ts[0]!)
 
     it('is the one config block, with the two rules', () => {
@@ -335,7 +264,7 @@ describe('chapter 3, dependencies', () => {
     })
 
     it('refuses the cycle utils → app with the message the chapter prints, around the loop it draws', async () => {
-      const root = await toyWorkspace(() => object, { ...TOY, utils: ['app'] })
+      const root = await toyWorkspace(() => object, { ...TOY_USES, utils: ['app'] })
       const message = await plan(root, ['build', 'test']).then(
         () => 'planned',
         (e: Error) => e.message,
@@ -343,11 +272,11 @@ describe('chapter 3, dependencies', () => {
       expect(message).toBe(
         'Cycle detected in task graph: api#build -> utils#build -> app#build -> api#build',
       )
-      expect(codeBlocks(SLUG, '')).toEqual([`${message}\n`])
+      expect(sourceBlocks(SLUG, '')).toEqual([`${message}\n`])
       // "a -> b" reads "a waits for b", so the picture's arrow runs b → a.
       const loop = message.slice(message.indexOf(': ') + 2).split(' -> ')
       const waits = loop.slice(1).map((b, i) => `${b}→${loop[i]}`)
-      expect(CYCLE.arrows!.map((a) => `${a.from}→${a.to}`).sort()).toEqual(waits.sort())
+      expect(P.cycle.arrows!.map((a) => `${a.from}→${a.to}`).sort()).toEqual(waits.sort())
     })
   })
 

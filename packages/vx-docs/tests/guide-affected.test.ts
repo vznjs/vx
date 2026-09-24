@@ -30,7 +30,7 @@ import {
   runFlags,
   sections,
   tableRows,
-} from './guide-page-late.js'
+} from './guide-page.js'
 
 const SLUG = 'affected'
 

@@ -1,12 +1,12 @@
 // Chapter 7's pictures (guide/affected). tests/guide-affected.test.ts
 // holds the rendered SVGs to these values and the values to the model.
-import type { Picture } from '../sketch.js'
+import type { Picture } from '../diagram/diagram.js'
 
 const pkg = (id: string, x: number, y: number, tone?: 'accent' | 'muted' | 'danger') => ({
   id,
   x,
   y,
-  w: 100,
+  w: 104,
   label: id,
   ...(tone === undefined ? {} : { tone }),
 })
@@ -45,7 +45,7 @@ export const everything: Picture = {
       ],
     },
   ],
-  notes: [{ x: 478, y: 226, text: '8 tasks run', tone: 'danger' }],
+  notes: [{ x: 150, y: 226, text: '8 tasks run', tone: 'danger' }],
 }
 
 export const owners: Picture = {
@@ -100,7 +100,7 @@ export const considerThenRun: Picture = {
     { from: 'affected', to: 'run', tone: 'ok' },
   ],
   notes: [
-    { x: 300, y: 40, text: 'You edit packages/ui/README.md', tone: 'mono' },
+    { x: 300, y: 40, text: 'You edit packages/ui/README.md', tone: 'default' },
     { x: 300, y: 186, text: 'picks the packages', tone: 'accent' },
     { x: 500, y: 186, text: 'no task reads it: skip', tone: 'ok' },
   ],
@@ -123,7 +123,7 @@ export const invisible: Picture = {
     { from: 'base', to: 'app', tone: 'danger', dashed: true },
   ],
   notes: [
-    { x: 445, y: 135, text: 'read, never declared', tone: 'danger', anchor: 'start' },
+    { x: 426, y: 135, text: 'read, never declared', tone: 'danger', anchor: 'start' },
     { x: 300, y: 252, text: 'affected: nothing', tone: 'danger' },
   ],
 }

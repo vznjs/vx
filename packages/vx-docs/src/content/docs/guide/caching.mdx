@@ -2,25 +2,23 @@
 title: Caching
 description: A task that gets the same inputs gives the same result, so vx keeps the result and reuses it.
 chapter: 5
-problem: 'You changed one line in app, and utils rebuilt anyway.'
+problem: 'You changed one line in `app`, and `utils` rebuilt anyway.'
 ---
 
 import KeyCalculator from '../../../components/demos/KeyCalculator.astro'
 import Checkpoint from '../../../components/demos/Checkpoint.astro'
-import Rerun from '../../../components/guide/caching/Rerun.astro'
-import SameInputs from '../../../components/guide/caching/SameInputs.astro'
-import Key from '../../../components/guide/caching/Key.astro'
-import Cascade from '../../../components/guide/caching/Cascade.astro'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import * as P from '../../../components/guide/caching/pictures.js'
 
 You fix a typo in `app` and run the build again. All eight tasks run.
 
-<Rerun />
+<Diagram {...P.rerun} />
 
 Six of them read nothing that changed. They did the same work twice.
 
 ## Same inputs give the same result
 
-<SameInputs />
+<Diagram {...P.sameInputs} />
 
 A task's inputs are everything it reads: its files, its command and its
 settings. If none of them changed, the result will not change either. So
@@ -28,7 +26,7 @@ vx keeps the result and hands it back next time.
 
 ## A short key tells vx if anything changed
 
-<Key />
+<Diagram {...P.key} />
 
 vx turns all of a task's inputs into one short code, the
 [cache key](../../learn/glossary/#cache-key). Change any input and the key
@@ -37,7 +35,7 @@ files back and shows the saved log. The task does not run.
 
 ## A change in utils changes every key above it
 
-<Cascade />
+<Diagram {...P.cascade} />
 
 `ui#build` uses what `utils#build` made. So `ui#build`'s key includes
 `utils#build`'s key. Change `utils`, and every key above it changes. Change
