@@ -62,22 +62,27 @@ describe('git absent from PATH', () => {
     await rm(bin, { recursive: true, force: true })
   })
 
-  for (const args of [
-    ['run', 'build', '--affected'],
-    ['run', 'build', '--affected=HEAD'],
-    ['run', 'build', '--all'],
-  ]) {
-    it(`\`vx ${args.join(' ')}\` is one line naming the install`, () => {
-      const r = vx(root, bin, args)
-      expect(r.code).toBe(1)
-      expect(r.text).toContain("vx requires git: failed to spawn 'git'")
-      expect(r.text).toContain('Install git and re-run')
-      // The stack Bun's ENOENT carried, and the "not a work tree" guess.
-      expect(r.text).not.toContain('Executable not found')
-      expect(r.text).not.toContain('at spawnSync')
-      expect(r.text).not.toContain('git init')
-    })
+  // One row per invocation, each title a literal: the upstream ledger
+  // (docs/upstream-ledger.md) cites them by their exact text.
+  const oneLine = (args: string[]) => () => {
+    const r = vx(root, bin, args)
+    expect(r.code).toBe(1)
+    expect(r.text).toContain("vx requires git: failed to spawn 'git'")
+    expect(r.text).toContain('Install git and re-run')
+    // The stack Bun's ENOENT carried, and the "not a work tree" guess.
+    expect(r.text).not.toContain('Executable not found')
+    expect(r.text).not.toContain('at spawnSync')
+    expect(r.text).not.toContain('git init')
   }
+  it(
+    '`vx run build --affected` is one line naming the install',
+    oneLine(['run', 'build', '--affected']),
+  )
+  it(
+    '`vx run build --affected=HEAD` is one line naming the install',
+    oneLine(['run', 'build', '--affected=HEAD']),
+  )
+  it('`vx run build --all` is one line naming the install', oneLine(['run', 'build', '--all']))
 
   it('the watch judge ignores nothing and keeps going', async () => {
     const saved = process.env['PATH']
