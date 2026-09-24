@@ -14,7 +14,14 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { isLiteralPattern, normalizeGlob, staticPrefix, taskGlob, xxh3 } from '../util/index.js'
+import {
+  executablePath,
+  isLiteralPattern,
+  normalizeGlob,
+  staticPrefix,
+  taskGlob,
+  xxh3,
+} from '../util/index.js'
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
@@ -152,7 +159,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
   let proc: ReturnType<typeof Bun.spawnSync>
   try {
     proc = Bun.spawnSync({
-      cmd: ['git', 'check-ignore', '-z', '--stdin'],
+      cmd: [executablePath('git'), 'check-ignore', '-z', '--stdin'],
       cwd: workspaceRoot,
       stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
       stdout: 'pipe',

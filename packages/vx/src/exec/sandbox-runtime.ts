@@ -38,7 +38,14 @@ import {
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
-import { grantPrefix, isTmpdirRefusal, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
+import {
+  executablePath,
+  grantPrefix,
+  isTmpdirRefusal,
+  TMPDIR_HINT,
+  UserError,
+  xxh3hex,
+} from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
 import {
   isMountableLiteral,
@@ -175,7 +182,8 @@ async function trySandboxedTrue(
       undefined,
       weakerNested ? { enableWeakerNestedSandbox: true } : undefined,
     )
-    const proc = Bun.spawn(['sh', '-c', wrapped], {
+    const proc = Bun.spawn([executablePath('sh'), '-c', wrapped], {
+      argv0: 'sh',
       stdout: 'ignore',
       stderr: 'pipe',
       stdin: 'ignore',
@@ -692,25 +700,29 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // it taxed every other sandboxed task the same way. With the flag the
   // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
-  const spawnArgv = straceLog
-    ? [
-        'strace',
-        '-f',
-        ...(useStrace === 'seccomp' ? ['--seccomp-bpf'] : []),
-        '-e',
-        'trace=openat',
-        '-o',
-        straceLog,
-        '--',
-        'sh',
-        '-c',
-        wrapped,
-      ]
-    : ['sh', '-c', wrapped]
-
   let proc: ReturnType<typeof Bun.spawn>
   try {
+    // Both tools resolved on vx's own PATH (util/which.ts): strace would
+    // otherwise walk the task's PATH for `sh`, where a project's
+    // node_modules/.bin comes first.
+    const sh = executablePath('sh')
+    const spawnArgv = straceLog
+      ? [
+          executablePath('strace'),
+          '-f',
+          ...(useStrace === 'seccomp' ? ['--seccomp-bpf'] : []),
+          '-e',
+          'trace=openat',
+          '-o',
+          straceLog,
+          '--',
+          sh,
+          '-c',
+          wrapped,
+        ]
+      : [sh, '-c', wrapped]
     proc = Bun.spawn(spawnArgv, {
+      argv0: straceLog ? 'strace' : 'sh',
       cwd: args.cwd,
       env: args.env as Record<string, string>,
       stdin: 'ignore',
@@ -1100,7 +1112,10 @@ async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
   if (process.platform !== 'linux') return false
   if (straceAvailableCache !== undefined) return straceAvailableCache
   try {
-    const p = Bun.spawn(['strace', '--version'], { stdout: 'pipe', stderr: 'ignore' })
+    const p = Bun.spawn([executablePath('strace'), '--version'], {
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
     const out = await new Response(p.stdout).text()
     await p.exited
     if (p.exitCode !== 0) straceAvailableCache = false

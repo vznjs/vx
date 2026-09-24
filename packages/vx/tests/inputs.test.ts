@@ -924,7 +924,8 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     let spawnCount = 0
     const countGit = (args: unknown[]): void => {
       const opt = args[0] as { cmd?: readonly string[] } | undefined
-      if (opt && Array.isArray(opt.cmd) && opt.cmd[0] === 'git') spawnCount++
+      // Spawned by its absolute path (util/which.ts).
+      if (opt && Array.isArray(opt.cmd) && path.basename(opt.cmd[0] ?? '') === 'git') spawnCount++
     }
     const bunMut = Bun as unknown as {
       spawnSync: typeof Bun.spawnSync

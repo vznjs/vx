@@ -7,7 +7,7 @@
 
 import path from 'node:path'
 import { existsSync } from 'node:fs'
-import { UserError, gitSpawnRefusal } from '../util/index.js'
+import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
 
 export class GitFilesCache extends Map<string, readonly string[]> {
   private changed = new Map<string, string[]>()
@@ -192,7 +192,7 @@ export function runGitLsFiles(cwd: string): GitLsResult {
   let proc
   try {
     proc = Bun.spawnSync({
-      cmd: ['git', 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
+      cmd: [executablePath('git'), 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -526,7 +526,7 @@ export async function startGitEnumeration(
   const spawnGit = async (args: string[], stdin?: string): Promise<GitRun | null> => {
     try {
       const proc = Bun.spawn({
-        cmd: ['git', ...args],
+        cmd: [executablePath('git'), ...args],
         cwd: workspaceRoot,
         stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
         stdout: 'pipe',

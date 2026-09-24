@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
-import { isExecutableMissing, killGraceMs } from '../util/index.js'
+import { executablePath, isExecutableMissing, killGraceMs } from '../util/index.js'
 import { killTree } from './kill-tree.js'
 
 export interface RunResult {
@@ -327,7 +327,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   let child: ReturnType<typeof Bun.spawn>
   try {
-    child = Bun.spawn(['sh', '-c', execWrap(opts.command)], {
+    child = Bun.spawn([executablePath('sh'), '-c', execWrap(opts.command)], {
+      argv0: 'sh',
       cwd: opts.cwd,
       env: opts.env as Record<string, string>,
       stdin: 'ignore',
@@ -511,7 +512,8 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
 
   let proc: ReturnType<typeof Bun.spawn>
   try {
-    proc = Bun.spawn(['sh', '-c', execWrap(fullCommand)], {
+    proc = Bun.spawn([executablePath('sh'), '-c', execWrap(fullCommand)], {
+      argv0: 'sh',
       cwd: opts.cwd,
       env: opts.env as Record<string, string>,
       stdin: 'ignore',
