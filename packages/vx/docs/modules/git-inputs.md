@@ -55,6 +55,15 @@ export async function populateGitFilesCache(
 ): Promise<void> // start + apply in one call
 
 export function runGitLsFiles(cwd: string): GitLsResult // the synchronous per-project fallback
+
+// One `git rev-parse --show-prefix --git-common-dir --show-object-format` per
+// directory per process; null (not remembered) when git fails.
+export interface RepoFacts {
+  prefix: string
+  commonDir: string
+  objectFormat: 'sha1' | 'sha256'
+}
+export function repoFacts(dir: string): RepoFacts | null
 export function parseCheckAttrOutput(out: string): Set<string>
 export function autocrlfConverts(coreConfig: string): boolean
 ```
@@ -67,8 +76,16 @@ git"), never a stack; a directory outside a work tree is the same
 refusal with `git init` as the remedy.
 
 `startGitEnumeration` is what `prepareRun` kicks off before the configs
-load (the spawn overlaps evaluation); `applyGitEnumeration` folds the
-result into the run's `GitFilesCache`, which `inputs.ts`'s `resolveFiles`
+load (the spawn overlaps evaluation). It spawns `ls-files`, `status` and
+the `core.*` config read concurrently and asks `repoFacts` for the
+prefix and the common dir while they run; the file hasher
+(`file-hashes.ts`) asks the same memo for the object format at the same
+directory (the workspace root, `new Cache(dir, policy, workspaceRoot)`),
+so a cold run spawns ONE `rev-parse` whichever asks first — the
+enumeration on an unscoped run, the config load on a scoped one
+(`tests/git-spawns-once.test.ts` holds both as exact lists). The config
+read stays a spawn of its own: `rev-parse` prints no config value.
+`applyGitEnumeration` folds the result into the run's `GitFilesCache`, which `inputs.ts`'s `resolveFiles`
 reads: a tracked-clean path carries a trusted OID and skips both the
 existence probe and the hash; a dirty or untracked path falls back to a
 content hash. The OID trust is pruned for merge-conflict stages,
@@ -105,7 +122,8 @@ see: `workspaceFiles` globs reaching into the nested repository.
 ## Tests
 
 `tests/git-oid.test.ts` (ls-files parsing, OID trust, symlinks,
-renames), `tests/nested-repo-inputs.test.ts` (a project inside a
+renames), `tests/git-spawns-once.test.ts` (every git a cold run spawns,
+scoped and unscoped), `tests/nested-repo-inputs.test.ts` (a project inside a
 gitlink or an untracked embedded repository: its own git enumerates it,
 and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
 (through the resolver), `tests/restore-git-spawns.test.ts` (spawn

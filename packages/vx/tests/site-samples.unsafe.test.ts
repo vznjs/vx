@@ -570,7 +570,8 @@ describe('the keys-from-git post counts the parts the key folds', () => {
           .filter((t) => t !== '-z' && t !== '--'),
       ].join(' '),
     )
-    expect(spawned.length).toBeGreaterThan(3)
+    // ls-files, status and the config read; the rev-parse is `repoFacts`.
+    expect(spawned.length).toBeGreaterThanOrEqual(3)
     for (const named of [
       'git ls-files -s -v',
       'git status --porcelain -uall',

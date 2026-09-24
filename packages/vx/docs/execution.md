@@ -62,15 +62,19 @@ terminal and a task succeeding or failing. Read it alongside
  │       those per project). Computed once; reused for every task's
  │       cache key.
  │    9. expandRequested → buildTaskGraph (see below).
- │   10. Cache open: new Cache(cacheDir, { read, write }) with the
+ │   10. Cache open: new Cache(cacheDir, { read, write }, root) with the
  │       policy's local slice. An injected RunOptions.remoteCache is
  │       composed into a LayeredCache (it wins); else a plugin's
  │       `cache` capability may wrap or replace it; else bare local.
- │   11. Bulk git populate — FOUR concurrent spawns at the root
+ │   11. Bulk git populate — FOUR spawns at the root, three concurrent
+ │       and the rev-parse asked while they run
  │       (`ls-files -s -v -z` for the index: every tracked path's OID
  │       and its cache-state flag; `status --porcelain -z -uall` for
  │       the dirty AND untracked sets, the one worktree walk;
- │       `rev-parse --show-prefix --git-dir`; a `core.*` config read)
+ │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
+ │       memoized per process and shared with the file hasher, which
+ │       would otherwise spawn it again for the object format; a
+ │       `core.*` config read)
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice

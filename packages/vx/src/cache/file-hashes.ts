@@ -9,7 +9,7 @@
 import type { Database } from 'bun:sqlite'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
-import { executablePath } from '../util/index.js'
+import { repoFacts } from './git-inputs.js'
 import { FILE_HASH_RACY_MS } from './layer.js'
 
 export class FileHashStore {
@@ -19,10 +19,17 @@ export class FileHashStore {
 
   constructor(
     private readonly db: Database,
-    /** Where `git rev-parse --show-object-format` is asked, once, when a file misses the memo. */
+    /** Where the object format is asked when no `repoDir` is given and no file is named. */
     private readonly cacheDir: string,
     /** The local WRITE axis: off, and a miss is hashed but not remembered (a read-only cache). */
     private readonly write: boolean = true,
+    /**
+     * The directory whose repository answers the object format — the
+     * workspace root, in a run: the enumeration asks git there too, and
+     * `repoFacts` answers both from one spawn. Absent, the directory of the
+     * first file hashed answers.
+     */
+    private readonly repoDir?: string,
   ) {
     this.selectFileHash = this.db.prepare(
       'SELECT mtime_ms, size_bytes, ctime_ms, ino, content_hash FROM file_hashes WHERE path = ?',
@@ -256,26 +263,13 @@ export class FileHashStore {
 
   /**
    * Repo object format — sha1 unless the repo was created with
-   * `--object-format=sha256`. One `git rev-parse` spawn per Cache
-   * lifetime, and only when at least one file misses the mtime+size
-   * memo. Outside a repo (unit fixtures) we default to sha1, which is
-   * still a deterministic blob-OID domain.
+   * `--object-format=sha256`. Asked once per store, and only when at least
+   * one file misses the mtime+size memo; `repoFacts` shares the spawn with
+   * the input enumeration. Outside a repo (unit fixtures), or with no git,
+   * sha1, which is still a deterministic blob-OID domain.
    */
   private detectObjectFormat(nearPath: string): 'sha1' | 'sha256' {
-    let detected: 'sha1' | 'sha256' = 'sha1'
-    try {
-      const proc = Bun.spawnSync({
-        cmd: [executablePath('git'), 'rev-parse', '--show-object-format'],
-        cwd: path.dirname(nearPath),
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
-      if (proc.exitCode === 0 && new TextDecoder().decode(proc.stdout).trim() === 'sha256') {
-        detected = 'sha256'
-      }
-    } catch {
-      // git unavailable → sha1 default keeps hashing deterministic.
-    }
+    const detected = repoFacts(this.repoDir ?? path.dirname(nearPath))?.objectFormat ?? 'sha1'
     this.objectFormat = detected
     return detected
   }

@@ -9,6 +9,63 @@ import path from 'node:path'
 import { existsSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
 
+/** Three facts of the repository a directory is in, from one `git rev-parse`. */
+export interface RepoFacts {
+  /** `--show-prefix`: the directory's path below the worktree root, `''` at the root. */
+  prefix: string
+  /** `--git-common-dir` as git prints it, relative to the directory asked. */
+  commonDir: string
+  /** `--show-object-format`: the hash the index's blob OIDs are in. */
+  objectFormat: 'sha1' | 'sha256'
+}
+
+const repoFactsMemo = new Map<string, RepoFacts>()
+
+/**
+ * The enumeration needs the prefix and the common dir, the file hasher the
+ * object format: one spawn answers all three, once per directory for the
+ * life of the process — none of them moves while vx runs. A failure (no
+ * git, not a repository) is not remembered; the callers degrade on null.
+ * Synchronous so a reader that cannot wait (`hashBytes`, in the config
+ * load) and the enumeration share one answer whichever asks first.
+ */
+export function repoFacts(dir: string): RepoFacts | null {
+  const hit = repoFactsMemo.get(dir)
+  if (hit !== undefined) return hit
+  let proc
+  try {
+    proc = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        'rev-parse',
+        '--show-prefix',
+        '--git-common-dir',
+        '--show-object-format',
+      ],
+      cwd: dir,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+  } catch {
+    return null
+  }
+  if (proc.exitCode !== 0) return null
+  // One line per flag, in order. A git that does not know
+  // `--show-object-format` echoes it back, as it does any unknown flag,
+  // which reads as sha1 — what the flag's own spawn answered there too.
+  const [prefix = '', commonDir = '', format = ''] = new TextDecoder()
+    .decode(proc.stdout)
+    .split('\n')
+    .map((l) => l.trim())
+  const facts: RepoFacts = {
+    prefix,
+    commonDir,
+    objectFormat: format === 'sha256' ? 'sha256' : 'sha1',
+  }
+  repoFactsMemo.set(dir, facts)
+  return facts
+}
+
 export class GitFilesCache extends Map<string, readonly string[]> {
   private changed = new Map<string, string[]>()
   /**
@@ -542,35 +599,40 @@ export async function startGitEnumeration(
       return null
     }
   }
-  // Four spawns, one worktree walk. `ls-files -s -v` reads the INDEX only
+  // Four spawns at most (the rev-parse is memoized per process), one
+  // worktree walk. `ls-files -s -v` reads the INDEX only
   // (~9 ms on a 1000-project tree) and answers two questions at once: every
   // tracked path's OID and its cache-state flag. `status -uall` is the one
   // command that walks the worktree, and it answers two as well: which
   // tracked paths are dirty AND which files are untracked. Asking
   // `ls-files --others` for the untracked set walked the same tree a second
   // time (~50 ms of CPU, concurrent with status but contending with it).
-  const [ls, status, prefixRes, coreCfg] = await Promise.all([
+  const running = Promise.all([
     spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs]),
     spawnGit(['status', '--porcelain', '-z', '-uall', '--', ...pathspecs]),
-    // Two answers from one spawn. `--show-prefix` is the repo→workspace path
-    // (empty when the workspace root IS the git root): `ls-files` prints
-    // cwd(workspace)-relative paths but `status` prints repo-root-relative
-    // ones, so when the workspace root is a SUBDIR of the git repo the two
-    // disagree; this lets us key both the same way below. `--git-common-dir`
-    // locates `info/attributes` for the filter gate: it is not always `.git/`
-    // (a linked worktree's `.git` is a FILE pointing elsewhere), and it is
-    // the COMMON dir rather than the per-worktree one because that is where
-    // git reads the file from — probed, 2026-09-20: from inside a worktree
-    // `git check-attr text` goes `unspecified` → `auto` when the rule is
-    // written to the common dir's `info/attributes`, while the per-worktree
-    // gitdir has no such file at all. `--git-dir` named the per-worktree
-    // directory, so the gate looked where the rule can never be.
-    spawnGit(['rev-parse', '--show-prefix', '--git-common-dir']),
     // Reads three config keys, no tree scan — the gate for whether a clean
     // filter can rewrite bytes between the index and the worktree. Exits 1
     // when none are set, which is the common case and means "no gate".
+    // Not foldable into the rev-parse below: rev-parse prints no config
+    // value, and the answer is git's merge of every config file.
     spawnGit(['config', '--get-regexp', '^core\\.(autocrlf|eol|attributesfile)$']),
   ])
+  // Asked while the three above run, from the memo the file hasher reads
+  // too (`repoFacts`). `prefix` is the repo→workspace path (empty when the
+  // workspace root IS the git root): `ls-files` prints cwd(workspace)-
+  // relative paths but `status` prints repo-root-relative ones, so when the
+  // workspace root is a SUBDIR of the git repo the two disagree; this lets
+  // us key both the same way below. `commonDir` locates `info/attributes`
+  // for the filter gate: it is not always `.git/` (a linked worktree's
+  // `.git` is a FILE pointing elsewhere), and it is the COMMON dir rather
+  // than the per-worktree one because that is where git reads the file
+  // from — probed, 2026-09-20: from inside a worktree `git check-attr text`
+  // goes `unspecified` → `auto` when the rule is written to the common
+  // dir's `info/attributes`, while the per-worktree gitdir has no such file
+  // at all. `--git-dir` named the per-worktree directory, so the gate
+  // looked where the rule can never be.
+  const facts = repoFacts(workspaceRoot)
+  const [ls, status, coreCfg] = await running
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
@@ -589,11 +651,8 @@ export async function startGitEnumeration(
   // a STALE cache hit serving old outputs. Empty prefix (workspace == git root,
   // the common case) is a zero-cost no-op. Paths above the workspace can't be
   // inputs, so they drop out of the set.
-  // One spawn, two lines: `--show-prefix` then `--git-common-dir`.
-  const revLines =
-    prefixRes !== null && prefixRes.exitCode === 0 ? prefixRes.stdout.split('\n') : []
-  const gitPrefix = (revLines[0] ?? '').trim()
-  const gitDir = (revLines[1] ?? '').trim()
+  const gitPrefix = facts?.prefix ?? ''
+  const gitDir = facts?.commonDir ?? ''
   const parsedStatus =
     status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
   const dirty = parsedStatus === null ? null : stripPrefixFromSet(parsedStatus.dirty, gitPrefix)

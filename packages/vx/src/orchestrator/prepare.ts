@@ -209,7 +209,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
-  const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
+  const localCache = new Cache(
+    cacheDir,
+    { read: policy.localRead, write: policy.localWrite },
+    workspaceRoot,
+  )
   localCache.assertWritable()
   noteSchemaReset(localCache, (m) => log.status(m))
   // Two digests from one read: the config-evaluation cache keys on every

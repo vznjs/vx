@@ -288,6 +288,8 @@ export class Cache implements CacheLayer {
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
+    /** The workspace root, where the file hasher asks git for the object format (file-hashes.ts). */
+    repoDir?: string,
   ) {
     this.read = localPolicy.read
     this.write = localPolicy.write
@@ -596,7 +598,7 @@ export class Cache implements CacheLayer {
     `)
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
-    this.files = new FileHashStore(this.db, cacheDir, this.write)
+    this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
     this.configEvals = new ConfigEvalTable(this.db, { read: this.read, write: this.write })
     this.outputs = new OutputIndex(this.db)
     this.history = new RunHistory(this.db)

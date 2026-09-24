@@ -912,10 +912,10 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
   })
 
   it('spawns git 5x concurrently for N projects, never once per project', async () => {
-    // The bulk populate uses async Bun.spawn (ls-files + status + a trivial
-    // rev-parse + an index-only `ls-files -v` + a three-key `config` read, all
-    // concurrent — only the first two scan anything, so the rest never gate
-    // wall-clock); the per-project fallback uses
+    // The bulk populate uses async Bun.spawn (ls-files + status + a
+    // three-key `config` read, concurrent — only the first two scan
+    // anything) and one spawnSync'd `rev-parse` asked while they run
+    // (`repoFacts`, memoized per directory); the per-project fallback uses
     // spawnSync. Count both so a regression to per-project spawning is caught
     // either way. The guard is CONCURRENCY, not the literal count: the point is
     // O(1) bulk spawns, never O(N) per-project.
@@ -946,7 +946,7 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       // One index-only `ls-files -s -v` (tracked list + index OIDs +
       // skip-worktree flags), one `status --porcelain -uall` (dirty set +
       // untracked files — the ONLY worktree walk), one `rev-parse`
-      // (repo→workspace path + git-dir), one `config --get-regexp` (the
+      // (repo→workspace path, common dir, object format), one `config --get-regexp` (the
       // clean-filter gate) — all concurrent, never per-project. `check-attr`
       // is NOT among them: this fixture declares no attributes, and paying
       // for it here would mean paying for it in every plain repo.
