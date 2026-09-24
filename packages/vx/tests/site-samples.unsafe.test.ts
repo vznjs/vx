@@ -345,9 +345,12 @@ describe('the strict-output-ownership post names what the wipe never touches', (
 })
 
 describe('the why pages name every component kind the key records', () => {
-  const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cache', 'cache.ts'), 'utf8')
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
+    'utf8',
+  )
   const kinds = [...new Set([...src.matchAll(/kind: '([\w-]+)'/g)].map((m) => m[1]!))]
-  it('cache.ts records ten kinds', () => {
+  it('key-fold.ts records ten kinds', () => {
     expect(kinds.length).toBe(10)
   })
   for (const [label, file] of [
@@ -499,11 +502,11 @@ describe('the bitsets post states what the scheduler source measured', () => {
 })
 
 describe('the keys-from-git post counts the parts the key folds', () => {
-  const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cache', 'cache.ts'), 'utf8')
-  const key = src.slice(
-    src.indexOf('async key(input: CacheKeyInput)'),
-    src.indexOf('async get(hash: string'),
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
+    'utf8',
   )
+  const key = src.slice(src.indexOf('export async function foldKey('))
   const labels = [...new Set([...key.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!))]
   const page = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8')
   it('"twelve parts" is CACHE_VERSION plus every labelled fold, and the list has twelve items', () => {

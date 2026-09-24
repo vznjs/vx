@@ -9,7 +9,7 @@ step. Diagrams are Mermaid — GitHub renders them inline.
 
 The path a task takes the first time it runs (or after any input
 changed). Owners: `orchestrator/execute-task.ts` (sequence),
-`cache/inputs.ts` (enumeration), `cache/cache.ts` (key + save),
+`cache/inputs.ts` (enumeration), `cache/key-fold.ts` (key), `cache/cache.ts` (save),
 `exec/runner.ts` (spawn).
 
 ```mermaid

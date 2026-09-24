@@ -25,7 +25,7 @@ you must bump it; otherwise stale entries can produce wrong restores.
 
 ## Files to update (in order)
 
-1. **`packages/vx/src/cache/cache.ts`** — `const CACHE_VERSION = 'vx-cache-vN'`.
+1. **`packages/vx/src/cache/key-fold.ts`** — `const CACHE_VERSION = 'vx-cache-vN'`.
    Increment N.
 2. **`docs/caching.md`** — append to the "Bumping `CACHE_VERSION`" section
    the version + reason.

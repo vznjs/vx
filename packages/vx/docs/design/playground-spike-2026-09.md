@@ -41,6 +41,7 @@ aliasing plugin.
 | ---------------------------------------------- | ------- | ------ |
 | As spiked (borrows `Cache.prototype.key`)      | 126,846 | 43,085 |
 | Borrow removed (measured), the size P1 reaches | 76,519  | 27,408 |
+| After P1 (item 691), `foldKey` imported        | 78,465  | 27,972 |
 
 About 50 KB of the spiked bundle is the local store. That is
 `src/cache/cache.ts` (26 KB) with the archive, tar, zstd, output-index,
@@ -228,6 +229,10 @@ work.
   behaviour-neutral, because the fold reads only `hashFile` and the
   `relFor` memo. It drops the spike's `Object.create(Cache.prototype)`
   borrow, and the bundle falls by about 48 KB raw (about 15 KB gzip).
+  DONE as item 691: `src/cache/key-fold.ts` holds `foldKey` and
+  `CACHE_VERSION`, `entry.ts` calls it, and the bundle measures 78,465
+  B raw and 27,972 B gzip with `compare.ts` still equal on every
+  scenario.
 - **P2. A platform-free plan preparation.** `entry.ts` is 40 lines that
   copy the plan path of `prepareRun`. A copy drifts when `prepareRun`
   gains a stage. If `prepareRun` took its git enumeration, its config

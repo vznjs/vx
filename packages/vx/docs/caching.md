@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v29'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v29'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -1148,7 +1148,7 @@ Not required when:
 
 The bump procedure has a dedicated skill at
 `.claude/skills/bump-cache-version/` (used as `/bump-cache-version`).
-Files touched, in the skill's order: `src/cache/cache.ts` (the constant),
+Files touched, in the skill's order: `src/cache/key-fold.ts` (the constant),
 this doc (history), `docs/modules/cache.md` (the quoted version, and the
 key/entry shape if it changed), `CLAUDE.md` § Live invariants (the quoted
 version — the decision log it once named was retired 2026-09-02),
