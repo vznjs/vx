@@ -1,9 +1,16 @@
 // "Never do anything twice" (owner, 2026-09-24), held as syscall COUNTS: a
-// strace of each code path, filtered to the calls vx's own process makes.
-// Each row pins a repeat that was removed:
+// strace of each code path, filtered to the calls vx's own process makes
+// on the paths it owns. Each row pins a repeat that was removed:
 //
 //   - the shell and git were looked up on PATH by every spawn (a stat per
-//     PATH entry each time; 2,800 stats for `sh` on a 200-task run).
+//     PATH entry each time; 2,800 stats for `sh` on a 200-task run);
+//   - opening the cache made the directory with `mkdir -p` and then asked
+//     `access` whether it could write it, asked whether `cache.db` existed
+//     before asking whether it was writable, and probed `.gitignore`
+//     before creating it;
+//   - releasing the run lock removed its directory with `rm -r`, an unlink
+//     that fails EISDIR, an open and a listing before the rmdir;
+//   - the workspace fingerprint stat'ed each file before reading it.
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -103,6 +110,19 @@ async function trace(dir: string, script: string): Promise<Call[]> {
   return calls
 }
 
+/** The calls on `p`, named the way the kernel's variants mean them. */
+function on(calls: readonly Call[], p: string): string[] {
+  return calls
+    .filter((c) => c.path === p)
+    .map((c) => {
+      if (c.name === 'faccessat' || c.name === 'faccessat2') return 'access'
+      if (c.name === 'unlinkat') return c.args.includes('AT_REMOVEDIR') ? 'rmdir' : 'unlink'
+      if (c.name === 'lstat' || /AT_SYMLINK_NOFOLLOW/.test(c.args)) return 'lstat'
+      if (c.name === 'newfstatat' || c.name === 'statx' || c.name === 'fstatat64') return 'stat'
+      return c.name
+    })
+}
+
 /** Lookups a PATH walk makes: a stat or access probe of `<dir>/<name>`. */
 function lookups(calls: readonly Call[], name: string): number {
   return calls.filter(
@@ -124,6 +144,82 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true })
   })
+
+  it(
+    'opening the cache: one access each for the directory and the database, one exclusive create for .gitignore',
+    async () => {
+      const cacheDir = path.join(dir, 'open', '.vx', 'cache')
+      await mkdir(path.dirname(path.dirname(cacheDir)))
+      const script = `
+        import { Cache } from '$SRC/cache/index.js'
+        new Cache(${JSON.stringify(cacheDir)}).close()
+      `
+      const cold = await trace(dir, script)
+      const warm = await trace(dir, script)
+      const vxOwn = (calls: Call[], p: string): string[] =>
+        on(calls, p).filter((n) => n !== 'lstat' && n !== 'openat' && n !== 'stat')
+      // A cold open makes the directory (the recursive mkdir asks the leaf
+      // before its parent) and knows the rest: an empty directory it made
+      // holds no database and no ignore file.
+      expect(vxOwn(cold, cacheDir)).toEqual(['access', 'mkdir', 'mkdir'])
+      expect(vxOwn(cold, path.join(cacheDir, 'cache.db'))).toEqual([])
+      expect(on(cold, path.join(cacheDir, '.gitignore'))).toEqual(['openat'])
+      // A warm open: no mkdir, no existence probe before the write probe.
+      expect(vxOwn(warm, cacheDir)).toEqual(['access'])
+      expect(vxOwn(warm, path.join(cacheDir, 'cache.db'))).toEqual(['access'])
+      const ignore = warm.filter((c) => c.path === path.join(cacheDir, '.gitignore'))
+      expect(ignore.map((c) => c.name)).toEqual(['openat'])
+      expect(ignore[0]!.args).toContain('O_EXCL')
+      expect(ignore[0]!.args).toContain('EEXIST')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'releasing the run lock: the pid file and the directory, one call each',
+    async () => {
+      const locks = path.join(dir, 'locks')
+      await mkdir(locks)
+      const calls = await trace(
+        dir,
+        `
+        import { acquireRunLock, runLockPath } from '$SRC/orchestrator/run-lock.js'
+        const release = await acquireRunLock('/ws', { dir: ${JSON.stringify(locks)}, log: () => {} })
+        await release()
+        `,
+      )
+      const { runLockPath } = await import('../src/orchestrator/run-lock.js')
+      const lockDir = runLockPath('/ws', locks)
+      expect(on(calls, lockDir)).toEqual(['mkdir', 'rmdir'])
+      // Written at acquire, read back at release: the read is the proof no
+      // other run reclaimed the lock, not a repeat (run-lock.ts).
+      expect(on(calls, path.join(lockDir, 'pid'))).toEqual(['openat', 'openat', 'unlink'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the workspace fingerprint: one call per candidate file, present or absent',
+    async () => {
+      const root = path.join(dir, 'fp')
+      await mkdir(root)
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
+      await writeFile(path.join(root, 'bun.lock'), '{}\n')
+      const calls = await trace(
+        dir,
+        `
+        import { computeWorkspaceFingerprints } from '$SRC/workspace/index.js'
+        await computeWorkspaceFingerprints(${JSON.stringify(root)}, new Set())
+        `,
+      )
+      const { WORKSPACE_FINGERPRINT_FILES } = await import('../src/workspace/fingerprint.js')
+      expect(WORKSPACE_FINGERPRINT_FILES.length).toBeGreaterThan(2)
+      for (const f of WORKSPACE_FINGERPRINT_FILES) {
+        expect([f, on(calls, path.join(root, f))]).toEqual([f, ['openat']])
+      }
+    },
+    TIMEOUT,
+  )
 
   it(
     'the task shell is looked up once per process, not once per task',

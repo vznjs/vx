@@ -88,7 +88,7 @@ other side. A per-task input that genuinely varies belongs in
 ```ts
 let h = 0n
 for (const f of FILES) {
-  if (file at <root>/<f> exists) {
+  if (read <root>/<f> succeeds) {
     h = xxh3(`${f}\0`, h)
     h = xxh3(<bytes>, h)
   }
@@ -97,7 +97,11 @@ return h.toString(16).padStart(16, '0')
 ```
 
 The filename prefix prevents collisions between two files that happen
-to have the same byte content but different roles.
+to have the same byte content but different roles. Each candidate costs
+one `open`: the read's ENOENT (or EISDIR, for a directory by the name)
+is the absence, where an `exists()` stat before the read doubled the
+calls for every file present
+(`tests/syscall-repeats.unsafe.test.ts`).
 
 ## What this does NOT do
 
