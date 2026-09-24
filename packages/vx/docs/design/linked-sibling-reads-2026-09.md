@@ -1,7 +1,7 @@
 # A sandboxed task reads a linked sibling unseen (2026-09-24)
 
 > **Status:** implemented (2026-09-24). Step 1 (rule 1, the self-link)
-> shipped as item 720, step 2 (rules 2–6) as item 723, with
+> shipped as item 720, step 2 (rules 2–6) as item 726, with
 > `CACHE_VERSION` v31. Open question 1 is decided: declaring `cache` may
 > narrow core's own grant, never widen one (a bounded departure from the
 > 2026-09-05 decision, which still holds for the user's grants).

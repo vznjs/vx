@@ -213,6 +213,35 @@ test is telling the truth.
       chart to the wide one's bars, classes, titles, lines and label, and
       the built CSS to the container query.
 
+726.  DONE (2026-09-24, Next 17 step 2). A sandboxed task that declares
+      `cache` is granted a linked workspace package only when its key
+      already answers for it. `sandboxRequestFor` takes the run's keyed
+      set (`orchestrator/keyed-projects.ts`: the projects of every exec
+      task the key folds, walked through `upstream.ts`'s
+      `selectFoldedDeps`, the one copy of the `cache.inputs.tasks`
+      matcher, memoized per run, so a run of hits walks nothing). Every
+      other link target inside the root is withheld and reported
+      (`ExecuteSandbox.reportLinked`, read by `withinReported`), with one
+      hint line naming the package, the link and the edge that would key
+      it; an uncached task keeps the whole grant. The design's rule 5
+      counted only cached tasks, on the claim that an uncached task's
+      hash folds no files; the key-level rows refuted it (no `cache`
+      means no `inputs.files`, so `**/*`: an edge to one moved the key on
+      a README edit, on both key paths), so K(T) counts every exec task
+      the fold reaches and a persistent task none. Rows:
+      `sandbox-request.test.ts` (exact grant and report sets, canonical
+      and symlinked root), `keyed-projects.test.ts` (R3 on hand-built
+      graphs; R4 against `run()`'s real keys in eight shapes),
+      `sandbox-runtime.unsafe.test.ts` (both link layouts, a symlinked
+      root, the `^source` and uncached controls, both hint shapes);
+      sixteen mutations, each caught. `CACHE_VERSION` v31, probed: an
+      entry saved before it replayed the old sibling under v30 after the
+      sibling changed. Cost: K(T) for all 2,000 exec tasks of vx-bench's
+      1,000-package workspace is 0.28 ms (18 ms with `build → ^build`);
+      the gate A/B is flat (warm min 0.49 → 0.51 s, the residue in
+      `check.bun`'s spawn). This repo went red nowhere. Found on the way:
+      Next 17.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -448,27 +477,28 @@ the architect before it merges; then Next 17. Never end with "what next?".
     "Done means" as 724, the scheduler's charts in a phone form as 725.
     Left: the owner's read.
 
-17. **A sandboxed task reads a linked sibling package unseen (found by
-    the capability audit, 2026-09-24).** `sandbox-request.ts` grants
-    every `node_modules` link from the project and the workspace root
-    (`linkedDeps`), and reports only inside the project
-    (`reportWithin`). So a task that reads a workspace package's source
-    through its link, with no `dependsOn` edge to one of that package's
-    tasks, is neither denied nor reported, and an edit there does not
-    move its key: the stale hit the sandbox exists to prove absent.
-    `learn/correctness` names `node_modules` as always readable, but a
-    reader takes that for third-party code. Design first (architect):
-    report such a read as a violation, deny it, or fold the linked
-    package's inputs, each against this repo's own `source` tasks (item
-    687), which already key what the suites import; item 717's pin row
-    is the repro. Design: `design/linked-sibling-reads-2026-09.md`
-    (deny, bounded by the key). Step 1, the self-link, shipped as item 720. Step 2 is next: grant a sibling's link only when the task's key
-    covers that package (rules 2–6; rows R1's keyed parts, R3–R6, R8, R9;
-    the cost on vx-bench's 1,000-package workspace and a gate A/B), with
-    a Decisions entry: declaring `cache` may narrow core's own grant,
-    never widen it, a bounded departure from 2026-09-05.
+17. **A task downstream of a persistent task has two keys (found by
+    item 726, 2026-09-24).** The local classify pass (`stable-keys.ts`)
+    hashes a persistent dependency and the live path (`--force`, a remote
+    cache) does not: probe `e40d7350…` locally, `442990eb…` under
+    `--force`, `e40d7350…` locally again. So a `--force` or remote run
+    writes entries a plain local run never probes: misses, not stale
+    hits. Decide which key is right (a persistent task has no output to
+    fold, so likely neither folds it), make both paths one, and hold it
+    with a row that compares the two keys for that shape.
 
 ## Decisions (this arc)
+
+- **Declaring `cache` may narrow core's own grant, never widen one
+  (owner-delegated, 2026-09-24, item 726).** The user's `sandbox.allow`
+  still derives nothing from `cache` (2026-09-05). Core's implicit
+  `node_modules` link grant is bounded by the key for a task that
+  declares `cache`: a linked workspace package is granted only when the
+  key folds a task of it, because an unkeyed read is exactly the stale
+  hit the sandbox exists to rule out. A task with no `cache` keeps the
+  whole grant, having no key to be stale. The coverage is per package,
+  not per file (an edge to `ui#source` also admits `ui/README.md`), the
+  same limit a grant wider than a task's own inputs already has.
 
 - **macOS violation reporting is lossy under load, and stays so
   (2026-09-22, item 586).** The store is fed by the unified log, which

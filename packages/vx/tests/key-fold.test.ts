@@ -4,7 +4,7 @@
 // fold runs. The expected digest and capture were recorded from
 // `Cache.key` before the fold left the class (item 691): the move is
 // behaviour-neutral only if both stay exactly these. The digest folds
-// `CACHE_VERSION` first, so a bump re-pins it (v31, item 723) while the
+// `CACHE_VERSION` first, so a bump re-pins it (v31, item 726) while the
 // capture, which omits the version, stays byte for byte.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'

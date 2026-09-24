@@ -1174,7 +1174,7 @@ was not), and the cache tests.
 ### History
 
 - **v30 → v31**: stored bytes wrong under a key the fix does not change
-  (item 723), v30's shape for a sibling. A sandboxed task that declared
+  (item 726), v30's shape for a sibling. A sandboxed task that declared
   `cache` was granted every workspace package linked in its
   `node_modules`, so it could import a sibling its key never folded and
   save what it built. The fix withholds that link unless the key answers

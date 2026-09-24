@@ -82,7 +82,7 @@ import type { CacheKeyInput } from './layer.js'
 // undeclared file of its own project unreported and saved what it built.
 // The fix withholds the self-link, but the key never saw the file, so an
 // entry saved before it hits forever when only that file changes.
-// v31: the same shape for a sibling (item 723). A cached sandboxed task was
+// v31: the same shape for a sibling (item 726). A cached sandboxed task was
 // granted every linked workspace package, so it read a sibling its key
 // never folded and saved what it built. The fix withholds that link unless
 // the key answers for the package, but an entry saved before it still hits
