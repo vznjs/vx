@@ -551,7 +551,12 @@ export function diffKeyComponents(
       entries.push({ kind: b.kind, name: b.name, change: 'removed', before: b.hash, after: null })
     }
   }
-  entries.sort((x, y) => x.kind.localeCompare(y.kind) || x.name.localeCompare(y.name))
+  // Code-unit order, not `localeCompare`: collation follows the machine's
+  // locale, and the playground runs this same join in the reader's browser,
+  // so the CLI and the page could list one diff in two orders. Code units
+  // are also SQLite's BINARY order, the `entry_inputs` scan's own.
+  const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+  entries.sort((x, y) => byCodeUnit(x.kind, y.kind) || byCodeUnit(x.name, y.name))
   return { entries, unchangedCount }
 }
 

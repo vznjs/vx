@@ -1337,6 +1337,26 @@ cut's newline count or its partial-bytes arithmetic dropped reddens
 the two-byte forty-lines row; the live stderr append dropped reddens the live
 row; whole-chunk eviction past the cap reddens its ring row.
 
+14da. **Item 707 (2026-09-24): a key diff lists in code-unit order.**
+`diffKeyComponents` (item 703) sorted its entries with `localeCompare`,
+whose order follows the machine's locale, and the playground runs the
+same join in the reader's browser, so the CLI and the page could list
+one diff in two orders (and `vx why`'s order moved with `LANG`). It
+sorts by code units now, uppercase first, which is also SQLite's BINARY
+order, the `entry_inputs` scan's own; core already sorts projects that
+way (`workspace.ts`) and the config purity gate refuses `localeCompare`.
+The two mixed-case `cacheKeyDiff` rows now expect `[Banana, Zed, apple]`
+and `[Z.ts, a.ts, b.ts]`; since the scan returns that order already,
+two new rows call `diffKeyComponents` directly on unsorted input (fold
+order, as the page's captures arrive): one holds the order with `Z`
+before `a` and `f` before `é`, which `localeCompare` reverses in every
+locale, and one holds changed, added, removed and the count. Reverting
+to `localeCompare` reddens three rows; deleting the sort reddens both
+new ones. The 703 implementer's second note, that sibling packages'
+`lint.oxlint` type-check core's tests through `node_modules/@vzn/vx`
+outside their keys, did not reproduce here: `vx-otel`'s check reads 8
+files, `node_modules` is ignored, and no sibling imports a core test.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

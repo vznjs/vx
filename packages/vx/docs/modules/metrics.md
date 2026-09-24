@@ -45,7 +45,8 @@ case it is.
   § Next 8(g) records why a plugin part's raw value is not stored.
 - `diffKeyComponents` is that join with no store under it: two keys'
   `{ kind, name, hash }` sets in, the entries (ordered by kind, then
-  name, `localeCompare`) and the unchanged count out. `cacheKeyDiff`
+  name, in code units, not `localeCompare`, whose order follows the
+  machine's locale; the playground runs this join in a browser, item 707) and the unchanged count out. `cacheKeyDiff`
   calls it on the two `entry_inputs` sets, and the site's playground
   calls the bundled copy on the components its key fold captured
   (`captureInto`), so the page names what moved a key by the rule
