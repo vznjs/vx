@@ -5,7 +5,7 @@
 // process's own pid is stale; one another process now wears is too, where
 // procfs gives start times (run-lock-recycled.unsafe.test.ts).
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -55,6 +55,16 @@ describe('the run lock', () => {
     expect(runLockPath('/w/app', '/t')).toBe(runLockPath('/w/./app', '/t'))
     expect(runLockPath('/w/app', '/t')).not.toBe(runLockPath('/w/other', '/t'))
     expect(path.dirname(runLockPath('/w/app', '/t'))).toBe('/t')
+  })
+
+  it('a root reached through a symlink names the same lock as its real path', async () => {
+    // macOS's temp dir is /var -> /private/var: a caller holding the
+    // mkdtemp spelling and a CLI whose cwd came back canonical hashed two
+    // strings, and `vx cache prune` never saw the run's lock (CI, darwin).
+    const real = path.join(dir, 'real')
+    await mkdir(real)
+    await symlink(real, path.join(dir, 'link'))
+    expect(runLockPath(path.join(dir, 'link', '.'), '/t')).toBe(runLockPath(real, '/t'))
   })
 
   it('the second process waits for the holder to release', async () => {

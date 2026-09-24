@@ -209,7 +209,9 @@ same `dist/`; a clean landing while the other run's restore is staging
 takes its files out from under it, item 215), so `run()` takes the
 workspace's lock just before it schedules — after the early exits,
 which touch no tree — and releases it with its cache handle, before a
-persistent task's wait. The lock is an atomic `mkdir` under the temp
+persistent task's wait. The lock is keyed by the workspace root's real
+path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
+`/var` → `/private/var`) name one lock. It is an atomic `mkdir` under the temp
 directory, keyed by the resolved workspace root (`--cache-dir` does not
 make two runs strangers; a read-only checkout can take it), holding the
 holder's pid: a second process polls every 50 ms, after a second says

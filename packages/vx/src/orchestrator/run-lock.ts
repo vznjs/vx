@@ -32,7 +32,7 @@
 // serialize what it chose to overlap. The directory is taken by the first
 // of them and removed by the last to release.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { mkdir, readFile, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -55,9 +55,21 @@ export interface RunLockOptions {
   signal?: AbortSignal | undefined
 }
 
-/** The lock directory for a workspace root: stable across runs and users, private to this machine. */
+/**
+ * The lock directory for a workspace root: stable across runs and users,
+ * private to this machine. Keyed by the REAL path: a CLI's cwd comes back
+ * canonical while a caller may hold a symlinked spelling (macOS's /var ->
+ * /private/var), and two spellings of one workspace must meet.
+ */
 export function runLockPath(workspaceRoot: string, dir = os.tmpdir()): string {
-  return path.join(dir, `vx-run-${xxh3hex(path.resolve(workspaceRoot))}`)
+  const resolved = path.resolve(workspaceRoot)
+  let real = resolved
+  try {
+    real = realpathSync(resolved)
+  } catch {
+    // A root that is not there yet (a test's placeholder) keys by its spelling.
+  }
+  return path.join(dir, `vx-run-${xxh3hex(real)}`)
 }
 
 interface Holder {
