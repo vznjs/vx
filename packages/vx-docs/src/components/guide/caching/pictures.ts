@@ -4,13 +4,17 @@
 // holds the model to sets written by hand.
 
 import { TOY_PACKAGES, rerunBy } from '../../demos/model/toy-monorepo.js'
-import type { Picture } from '../diagram/diagram.js'
+import type { Box, Picture } from '../diagram/diagram.js'
 
 /** What an edit to app really needs; everything else ran again for nothing. */
 const NEEDED = rerunBy('app')
 const W = 130
 const GAP = (592 - TOY_PACKAGES.length * W) / (TOY_PACKAGES.length - 1)
 const ALL = TOY_PACKAGES.flatMap((p) => ['build', 'test'].map((task) => `${p.id}#${task}`))
+const tone = (id: string) => (NEEDED.includes(id) ? ('accent' as const) : ('danger' as const))
+/** On a phone, a package per row: app's row sits lower, under its edit. */
+const rowY = (r: number) => 20 + r * 62 + (TOY_PACKAGES[r]!.id === 'app' ? 30 : 0)
+const LAST = rowY(TOY_PACKAGES.length - 1)
 
 export const rerun: Picture = {
   name: 'rerun',
@@ -26,7 +30,7 @@ export const rerun: Picture = {
         y: 30 + r * 62,
         w: W,
         label: id,
-        tone: NEEDED.includes(id) ? ('accent' as const) : ('danger' as const),
+        tone: tone(id),
       }
     }),
   ),
@@ -41,7 +45,34 @@ export const rerun: Picture = {
     },
     { x: 596, y: 176, text: `needed: ${NEEDED.length} tasks`, anchor: 'end', tone: 'ok' },
   ],
+  narrow: {
+    width: 340,
+    height: LAST + 132,
+    boxes: TOY_PACKAGES.flatMap((p, r) =>
+      ['build', 'test'].map((task, c): Box => {
+        const id = `${p.id}#${task}`
+        return { id, x: 12 + c * 166, y: rowY(r), w: 150, label: id, tone: tone(id) }
+      }),
+    ),
+    notes: [
+      { x: 328, y: LAST - 10, text: 'edit in app ✎', anchor: 'end', tone: 'accent' },
+      {
+        x: 12,
+        y: LAST + 84,
+        text: `ran again for nothing: ${ALL.length - NEEDED.length} tasks`,
+        anchor: 'start',
+        tone: 'danger',
+      },
+      { x: 12, y: LAST + 108, text: `needed: ${NEEDED.length} tasks`, anchor: 'start', tone: 'ok' },
+    ],
+  },
 }
+
+const INPUTS = ['src/index.ts', 'tsconfig.json', 'tsc -b']
+const INTO_BUILD = [
+  ...INPUTS.map((input) => ({ from: input, to: 'utils#build' })),
+  { from: 'utils#build', to: 'dist/', tone: 'ok' as const },
+]
 
 export const sameInputs: Picture = {
   name: 'same-inputs',
@@ -50,7 +81,7 @@ export const sameInputs: Picture = {
   caption: 'Same inputs in, same output out. So the output can be kept and reused.',
   height: 210,
   boxes: [
-    ...['src/index.ts', 'tsconfig.json', 'tsc -b'].map((input, i) => ({
+    ...INPUTS.map((input, i) => ({
       id: input,
       x: 10,
       y: 20 + i * 60,
@@ -61,17 +92,32 @@ export const sameInputs: Picture = {
     { id: 'utils#build', x: 250, y: 74, w: 150, label: 'utils#build', tone: 'accent' },
     { id: 'dist/', x: 470, y: 74, w: 120, label: 'dist/', tone: 'ok' },
   ],
-  arrows: [
-    ...['src/index.ts', 'tsconfig.json', 'tsc -b'].map((input) => ({
-      from: input,
-      to: 'utils#build',
-    })),
-    { from: 'utils#build', to: 'dist/', tone: 'ok' },
-  ],
+  arrows: INTO_BUILD,
   notes: [
     { x: 90, y: 200, text: 'inputs' },
     { x: 530, y: 150, text: 'output' },
   ],
+  narrow: {
+    width: 340,
+    height: 270,
+    boxes: [
+      ...INPUTS.map((input, i) => ({
+        id: input,
+        x: 12,
+        y: 20 + i * 60,
+        w: 150,
+        h: 40,
+        label: input,
+      })),
+      { id: 'utils#build', x: 200, y: 74, w: 128, label: 'utils#build', tone: 'accent' },
+      { id: 'dist/', x: 204, y: 166, w: 120, label: 'dist/', tone: 'ok' },
+    ],
+    arrows: INTO_BUILD,
+    notes: [
+      { x: 87, y: 204, text: 'inputs' },
+      { x: 264, y: 242, text: 'output' },
+    ],
+  },
 }
 
 export const key: Picture = {
@@ -102,10 +148,51 @@ export const key: Picture = {
     { from: 'key', to: 'miss', tone: 'warn' },
   ],
   notes: [{ x: 321, y: 160, text: 'the key' }],
+  narrow: {
+    width: 340,
+    height: 356,
+    boxes: [
+      { id: 'inputs', x: 120, y: 16, w: 100, label: 'inputs' },
+      { id: 'hash', x: 130, y: 98, w: 80, label: 'hash' },
+      { id: 'key', x: 115, y: 180, w: 110, label: '7c1e04a', tone: 'accent' },
+      {
+        id: 'hit',
+        x: 14,
+        y: 272,
+        w: 150,
+        label: 'found: a hit',
+        sub: "restore, don't run",
+        tone: 'ok',
+      },
+      {
+        id: 'miss',
+        x: 176,
+        y: 272,
+        w: 150,
+        label: 'not found',
+        sub: 'run, then save',
+        tone: 'warn',
+      },
+    ],
+    arrows: [
+      { from: 'inputs', to: 'hash' },
+      { from: 'hash', to: 'key' },
+      { from: 'key', to: 'hit', tone: 'ok' },
+      { from: 'key', to: 'miss', tone: 'warn' },
+    ],
+    notes: [{ x: 237, y: 211, text: 'the key', anchor: 'start' }],
+  },
 }
 
 /** The builds whose keys an edit to utils moves: all of them. */
 const MOVED = rerunBy('utils').filter((id) => id.endsWith('#build'))
+const moved = (b: Box): Box => (MOVED.includes(b.id) ? { ...b, tone: 'accent' } : b)
+const FOLDS: Picture['arrows'] = [
+  { from: 'utils#build', to: 'ui#build', tone: 'accent' },
+  { from: 'utils#build', to: 'api#build', tone: 'accent' },
+  { from: 'ui#build', to: 'app#build', tone: 'accent' },
+  { from: 'api#build', to: 'app#build', tone: 'accent' },
+]
 
 export const cascade: Picture = {
   name: 'cascade',
@@ -118,15 +205,25 @@ export const cascade: Picture = {
     { id: 'ui#build', x: 225, y: 26, w: 150, label: 'ui#build' },
     { id: 'api#build', x: 225, y: 154, w: 150, label: 'api#build' },
     { id: 'app#build', x: 444, y: 90, w: 150, label: 'app#build' },
-  ].map((b) => (MOVED.includes(b.id) ? { ...b, tone: 'accent' as const } : b)),
-  arrows: [
-    { from: 'utils#build', to: 'ui#build', tone: 'accent' },
-    { from: 'utils#build', to: 'api#build', tone: 'accent' },
-    { from: 'ui#build', to: 'app#build', tone: 'accent' },
-    { from: 'api#build', to: 'app#build', tone: 'accent' },
-  ],
+  ].map(moved),
+  arrows: FOLDS,
   notes: [
     { x: 81, y: 74, text: 'edited ✎', tone: 'accent' },
     { x: 300, y: 232, text: 'each key goes into the keys above it' },
   ],
+  narrow: {
+    width: 340,
+    height: 344,
+    boxes: [
+      { id: 'utils#build', x: 95, y: 40, w: 150, label: 'utils#build' },
+      { id: 'ui#build', x: 12, y: 144, w: 150, label: 'ui#build' },
+      { id: 'api#build', x: 178, y: 144, w: 150, label: 'api#build' },
+      { id: 'app#build', x: 95, y: 248, w: 150, label: 'app#build' },
+    ].map(moved),
+    arrows: FOLDS,
+    notes: [
+      { x: 170, y: 26, text: 'edited ✎', tone: 'accent' },
+      { x: 170, y: 326, text: 'each key goes into the keys above it' },
+    ],
+  },
 }

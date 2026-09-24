@@ -3,7 +3,7 @@
 // src/index.ts and banner.txt), which tests/guide-trust.test.ts holds to
 // the demo's model.
 
-import type { Picture } from '../diagram/diagram.js'
+import type { Layout, Picture } from '../diagram/diagram.js'
 
 export const oldBanner: Picture = {
   name: 'old-banner',
@@ -28,6 +28,27 @@ export const oldBanner: Picture = {
     { x: 502, y: 170, text: 'run passes ✓', tone: 'ok' },
     { x: 502, y: 196, text: 'but the output is wrong', tone: 'danger' },
   ],
+  narrow: {
+    width: 340,
+    height: 372,
+    boxes: [
+      { id: 'src', x: 12, y: 36, w: 150, label: 'src/index.ts' },
+      { id: 'banner', x: 178, y: 36, w: 150, label: 'banner.txt ✎', tone: 'danger' },
+      { id: 'key', x: 100, y: 150, w: 140, label: 'key', sub: 'same as before' },
+      { id: 'hit', x: 78, y: 250, w: 184, label: 'hit: old banner', tone: 'danger' },
+    ],
+    arrows: [
+      { from: 'src', to: 'key' },
+      { from: 'banner', to: 'key', tone: 'danger', dashed: true, label: '✕' },
+      { from: 'key', to: 'hit' },
+    ],
+    notes: [
+      { x: 87, y: 24, text: 'listed' },
+      { x: 253, y: 24, text: 'not listed, edited', tone: 'danger' },
+      { x: 170, y: 328, text: 'run passes ✓', tone: 'ok' },
+      { x: 170, y: 352, text: 'but the output is wrong', tone: 'danger' },
+    ],
+  },
 }
 
 export const listNotGuess: Picture = {
@@ -52,6 +73,26 @@ export const listNotGuess: Picture = {
     { x: 453, y: 166, text: 'only what one run read' },
     { x: 453, y: 190, text: 'misses the rest', tone: 'danger' },
   ],
+  narrow: {
+    width: 340,
+    height: 420,
+    frames: [
+      { x: 12, y: 8, w: 316, h: 190, label: 'you list', tone: 'ok' },
+      { x: 12, y: 218, w: 316, h: 190, label: 'a guess' },
+    ],
+    boxes: [
+      { id: 'list/src', x: 50, y: 42, w: 240, h: 40, label: 'src/**' },
+      { id: 'list/banner', x: 50, y: 94, w: 240, h: 40, label: 'banner.txt' },
+      { id: 'guess/src', x: 50, y: 252, w: 240, h: 40, label: 'src/index.ts' },
+      { id: 'guess/banner', x: 50, y: 304, w: 240, h: 40, label: 'banner.txt ?', tone: 'muted' },
+    ],
+    notes: [
+      { x: 170, y: 162, text: 'known before the run' },
+      { x: 170, y: 184, text: 'vx can check it', tone: 'ok' },
+      { x: 170, y: 372, text: 'only what one run read' },
+      { x: 170, y: 394, text: 'misses the rest', tone: 'danger' },
+    ],
+  },
 }
 
 export const sandbox: Picture = {
@@ -88,6 +129,45 @@ export const sandbox: Picture = {
   notes: [
     { x: 300, y: 214, text: 'task fails: denied banner.txt — nothing saved', tone: 'danger' },
   ],
+  narrow: sandboxNarrow(),
+}
+
+/** The wall runs across a phone: banner.txt sits under it, and the denied
+ *  read runs straight down, its label just past the wall. */
+function sandboxNarrow(): Layout {
+  const app = { x: 30, y: 50, h: 52 }
+  const wall = 140
+  // The label sits halfway between the arrow's ends (3 below app#build, 5
+  // above banner.txt): put that halfway point a line below the wall, so the
+  // wall's dashes do not run through the words.
+  const banner = 2 * (wall + 12) - (app.y + app.h + 3) + 5
+  return {
+    width: 340,
+    height: banner + 120,
+    frames: [
+      {
+        x: 12,
+        y: 10,
+        w: 316,
+        h: wall - 10,
+        label: 'sandbox: only listed files exist',
+        tone: 'link',
+      },
+    ],
+    boxes: [
+      { id: 'app#build', x: app.x, y: app.y, w: 124, label: 'app#build', tone: 'accent' },
+      { id: 'src', x: 186, y: app.y, w: 124, label: 'src/index.ts' },
+      { id: 'banner', x: app.x - 13, y: banner, w: 150, label: 'banner.txt', tone: 'danger' },
+    ],
+    arrows: [
+      { from: 'app#build', to: 'src' },
+      { from: 'app#build', to: 'banner', tone: 'danger', dashed: true, label: '✕ denied' },
+    ],
+    notes: [
+      { x: 170, y: banner + 80, text: 'task fails: denied banner.txt —', tone: 'danger' },
+      { x: 170, y: banner + 102, text: 'nothing saved', tone: 'danger' },
+    ],
+  }
 }
 
 /** What reaches a task that the sandbox does not check: each is a box
@@ -123,4 +203,25 @@ export const unchecked: Picture = {
       tone: 'warn' as const,
     })),
   ],
+  narrow: {
+    width: 340,
+    height: 470,
+    frames: [
+      { x: 12, y: 10, w: 316, h: 104, label: 'sandbox: files', tone: 'link' },
+      { x: 12, y: 134, w: 316, h: 328, label: 'not checked', tone: 'warn' },
+    ],
+    boxes: [
+      { id: 'app#build', x: 26, y: 44, w: 138, label: 'app#build', tone: 'accent' },
+      { id: 'files', x: 176, y: 44, w: 138, label: 'listed files', tone: 'ok' },
+      ...UNCHECKED.map(([label, sub], i) => ({
+        id: `unchecked-${i + 1}`,
+        x: 70,
+        y: 170 + i * 72,
+        w: 200,
+        label,
+        sub,
+        tone: 'warn' as const,
+      })),
+    ],
+  },
 }
