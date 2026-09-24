@@ -573,7 +573,9 @@ path. This holds for every task glob — `inputs.files`,
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,
 `pnpm-workspace.yaml`) and `--filter` path globs keep the package
-manager's grammar, class included.
+manager's grammar, class included — all but extglob (`packages/!(x)`),
+which a member glob refuses by name: `Bun.Glob` cannot read it, and
+list the exclusion as its own `!packages/x` entry instead.
 
 ```ts
 files: ['**/*'] // all project files
@@ -1472,12 +1474,13 @@ passThrough) — did you mean passThrough?`.
 
 Workspace-discovery errors (`src/workspace/workspace.ts`):
 
-| Symptom                                                        | Cause                                                                            |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `failed to parse <file>: <why>`                                | A `package.json` / `pnpm-workspace.yaml` is not valid.                           |
-| `<file>: packages must be an array of glob strings`            | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                         |
-| `<file>: workspaces must be an array of glob strings`          | `package.json` `workspaces` holds a non-string entry.                            |
-| `<file>: workspaces.packages must be an array of glob strings` | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry. |
+| Symptom                                                                              | Cause                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `failed to parse <file>: <why>`                                                      | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
+| `<file>: packages must be an array of glob strings`                                  | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
+| `<file>: workspaces must be an array of glob strings`                                | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
+| `<file>: workspaces.packages must be an array of glob strings`                       | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
+| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read` | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
 
 Workspace-config errors:
 

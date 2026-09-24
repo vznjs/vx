@@ -511,7 +511,12 @@ false`, the first failure failing the task; `commands: []` a no-op;
       task's outputs are what exists when its command exits; a descendant
       it detached (`setsid … &`) that writes later is saved as nothing
       and wiped by the next hit's restore (turborepo#12786;
-      caching.md § Cache write, execution.md).
+      caching.md § Cache write, execution.md). A workspace member glob
+      `packages/!(x)` listed x too (turborepo#3766): `Bun.Glob` has no
+      extglob and its scan read the group as a wildcard. Supporting a
+      subset in vx would be a second glob grammar, so every extglob form
+      is refused by name, with the exact `!` rewrite for a whole-segment
+      `!(a|b)` (npm, yarn and pnpm all take `!` entries).
 
 ## In flight
 

@@ -234,7 +234,44 @@ function assertGlobList(value: unknown, file: string, field: string): string[] {
   if (!Array.isArray(value) || value.some((p) => typeof p !== 'string')) {
     throw new UserError(`${file}: \`${field}\` must be an array of glob strings`)
   }
+  for (const pattern of value as string[]) {
+    if (EXTGLOB.test(pattern)) throw extglobRefusal(pattern, file, field)
+  }
   return value as string[]
+}
+
+/**
+ * An extglob group: `!(…)`, `@(…)`, `+(…)`, `*(…)`, `?(…)`. npm (minimatch)
+ * and yarn (micromatch) read `packages/!(x)` as "every directory in
+ * packages/ but x"; `Bun.Glob` has no extglob, and its scan read the
+ * segment as a wildcard, so the excluded package became a project
+ * (turborepo#3766) while its match read the same text literally. vx cannot
+ * honour the pattern, so it refuses it rather than read it either way.
+ */
+const EXTGLOB = /[!@+*?]\(/
+
+function extglobRefusal(pattern: string, file: string, field: string): UserError {
+  const head = `${file}: \`${field}\` entry "${pattern}" is an extglob, which vx's glob engine does not read`
+  // The common shape, a whole segment excluding plain names, has an exact
+  // rewrite in the `!` entries every package manager takes.
+  const segments = pattern.split('/')
+  const at = segments.findIndex((s) => /^!\([^()]*\)$/.test(s))
+  const names = at === -1 ? [] : segments[at]!.slice(2, -1).split('|')
+  const plain = names.every((n) => n !== '' && !/[*?[\]{}()!@+]/.test(n))
+  const rest = segments.filter((_s, i) => i !== at).join('/')
+  if (at === -1 || !plain || EXTGLOB.test(rest)) {
+    return new UserError(
+      `${head}. List the members with \`*\`, braces or \`!\` exclusions instead.`,
+    )
+  }
+  const before = segments.slice(0, at)
+  const rewrite = [
+    [...before, '*', ...segments.slice(at + 1)].join('/'),
+    ...names.map((n) => `!${[...before, n].join('/')}`),
+  ]
+  return new UserError(
+    `${head} (npm and yarn read \`!(…)\` as an exclusion). List the exclusion as its own entry: [${rewrite.map((r) => JSON.stringify(r)).join(', ')}].`,
+  )
 }
 
 /**

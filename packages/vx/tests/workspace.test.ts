@@ -9,6 +9,7 @@ import {
   memberBaseDirs,
 } from '../src/workspace/workspace.js'
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
+import { UserError } from '../src/util/index.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -343,6 +344,52 @@ describe('listProjects', () => {
     }
     const projects = await listProjects(await loadWorkspace(dir))
     expect(projects.map((p) => p.name)).toEqual(['c', 'x'])
+  })
+
+  it('an extglob member pattern is refused by name, not widened (turborepo#3766)', async () => {
+    // npm (minimatch) and yarn (micromatch) read `packages/!(x)` as "every
+    // directory in packages/ but x". Bun.Glob has no extglob: its scan read
+    // the segment as a wildcard and x became a project, while its match read
+    // it literally. vx cannot honour the pattern, so it says so and names
+    // the spelling it does read.
+    for (const rel of ['a', 'x']) {
+      await mkdir(path.join(dir, 'packages', rel), { recursive: true })
+      await writeFile(
+        path.join(dir, 'packages', rel, 'package.json'),
+        JSON.stringify({ name: rel }),
+      )
+    }
+    const pkg = path.join(dir, 'package.json')
+    const refusal = async (pattern: string): Promise<string> => {
+      await writeFile(pkg, JSON.stringify({ name: 'r', private: true, workspaces: [pattern] }))
+      return loadWorkspace(dir).then(
+        () => 'loaded',
+        (err: unknown) =>
+          err instanceof UserError ? err.message : `not a UserError: ${String(err)}`,
+      )
+    }
+    expect(await refusal('packages/!(x)')).toBe(
+      `${pkg}: \`workspaces\` entry "packages/!(x)" is an extglob, which vx's glob engine does ` +
+        'not read (npm and yarn read `!(…)` as an exclusion). List the exclusion as its own ' +
+        'entry: ["packages/*", "!packages/x"].',
+    )
+    expect(await refusal('packages/!(x|y)')).toContain(
+      'entry: ["packages/*", "!packages/x", "!packages/y"].',
+    )
+    for (const pattern of ['packages/@(a|x)', 'packages/+(a)', 'packages/*(a)', 'packages/?(a)']) {
+      expect(await refusal(pattern)).toBe(
+        `${pkg}: \`workspaces\` entry "${pattern}" is an extglob, which vx's glob engine does ` +
+          'not read. List the members with `*`, braces or `!` exclusions instead.',
+      )
+    }
+    // CONTROL: the spelling the refusal names is read, and excludes x.
+    await writeFile(
+      pkg,
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*', '!packages/x'] }),
+    )
+    expect((await listProjects(await loadWorkspace(dir))).map((p) => p.name)).toEqual(['a'])
+    // CONTROL: a parenthesis that is no extglob is a name.
+    expect(await refusal('packages/(a)')).toBe('loaded')
   })
 
   it('a negation covers everything UNDER it, not just the exact path', async () => {
