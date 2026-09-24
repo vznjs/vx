@@ -4,6 +4,7 @@ description: Tasks, dependencies and the task graph, and why a monorepo needs mo
 ---
 
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+import Checkpoint from '../../../components/demos/Checkpoint.astro'
 
 You know `npm run build`. It runs one script in one package. This page is
 about what changes when one repository holds many packages that use each
@@ -227,21 +228,6 @@ writing `BUILD` files for everything.
 
 ## Checkpoint
 
-You edit `packages/ui/src/button.ts` and run
-`vx run build test --affected`. Which tasks run, and which of them can run
-at the same time? Answer before you open the box, then check it with the
-explorer.
+<Checkpoint id="what-is-run" />
 
-<details>
-<summary>Answer</summary>
-
-Four tasks run: `ui#build`, `ui#test`, `app#build` and `app#test`.
-`ui#build` goes first. Then `ui#test` and `app#build` can run at the same
-time, because neither needs the other. `app#test` goes last.
-
-The run also needs `utils#build` and `api#build`, because `ui#build` and
-`app#build` depend on them. Nothing they read changed, so a cache from an
-earlier run restores them instead of running them. `utils#test` and
-`api#test` do not run at all.
-
-</details>
+<Checkpoint id="what-is-edit" />

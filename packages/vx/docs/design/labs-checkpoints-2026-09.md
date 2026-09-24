@@ -122,3 +122,179 @@ as they are.
 703 first (core and bundle), then 704 and 705 in parallel. Both read
 `components` from 703, 704 touches the playground element, and 705 adds
 its own element.
+
+## Shipped (item 705): the checkpoints
+
+`<vx-checkpoint>` is `Checkpoint.astro` and `demos/checkpoint.ts`, in the
+W0 island pattern. A page places one with `<Checkpoint id="…" />`. The
+questions are `demos/model/checkpoint.ts`. Each is an edit of the toy
+workspace ("you run `vx run build test` once, then you edit X and run
+it again: which tasks rerun?") or a run ("you run `vx run T` on an
+empty cache: which tasks run?"). The run form above also asked the
+order on N workers; ticking boxes cannot answer an order, so it asks
+for the set. An edit may add or replace files
+before the first run (a variant) and changes one file or one env value
+between the runs. The question's sentence is built from the change or
+the task specs, and a hand-written intro gives context before it. So a
+question cannot name one file while the answer is computed for another.
+The only prose in a question is its intro, and a row holds every
+question's full text.
+
+**The answer is the planner's.** `answerCheckpoint` runs `runPlayground`
+twice for the edit form. A task is in the answer when its key moved, and
+its reason is what `diffRuns` and `describeChange` name for it (item 703),
+for example "packages/utils/src/index.ts changed, upstream utils#build
+moved". A task outside the answer reads "key unchanged". For the run
+form, it plans `vx run build test` for the list of tasks and
+`vx run T` for the answer, and names each planned task for the task that
+waits for it, or "you asked for it". `Checkpoint.astro` computes the
+answer as the page renders, with the planner the site ships
+(`public/playground/planner.js`, written by `build.playground` before
+`build` and now before `dev`), and prints it in the `<details>`. On
+Check, the element imports the same file and computes the same answer.
+Then `markAnswer` marks each task right (ticked and in the answer, or
+left out and out of it), missed or wrong. The live region gets a
+sentence ("5 of 9 right. Missed: ui#test, app#build, app#test. Wrong:
+utils#build.") and a line per task in words ("Missed: ui#test reruns
+(upstream ui#build moved)."), and colour is only a second channel.
+
+**Under Node.** The build's prerender runs under Node on Linux CI
+(item 700). The bundle is plain browser ESM with no import left. Node
+22 imports it by its `file:` URL, and it plans with the same keys as
+under Bun: a probe planned one project under both and got
+`fbdcd63ba21636f0` both times. Configs are evaluated by
+`evaluateConfigInProcess`, as `Playground.astro` does. From
+`packages/vx-docs`, `ASTRO_TELEMETRY_DISABLED=1 node
+node_modules/.bin/astro build` exits 0, and the checkpoint rows pass
+against what it built.
+
+**Found: the planner holds one workspace at a time.** Its VFS and env
+are module state, set when a plan starts and read across its awaits.
+Two plans at once read each other's files. A probe planned the toy
+workspace and an edited copy concurrently: the first plan's keys were
+the second's. A page renders sibling components concurrently, so
+`answerCheckpoint` queues its computations. The row "answers every
+checkpoint asked at once as it answers each alone" is red with the
+queue removed (six answers mixed up) and green with it. The queue
+covers checkpoints only. A checkpoint's Check and a `<vx-playground>`
+Run on the same page share the bundle and are not serialized against
+each other; nor are two playgrounds (the labs page, item 704). A reader
+cannot realistically click both within one plan's few milliseconds, but
+the fix belongs in the bundle (a queue in `entry.ts` around
+`listPlaygroundProjects` and `planPlayground`). It is a follow-up,
+because it touches the file 704 is changing.
+
+**The questions, page by page.**
+
+- **What is task orchestration.** It used to ask about
+  `packages/ui/src/button.ts` with `--affected`, and which tasks can
+  run at the same time. Rewritten to be checkable: it now asks about an
+  edit to `packages/utils/src/index.ts` (eight tasks rerun, all but
+  `docs#build`). The playground models no git diff, so `--affected`
+  went, and "at the same time" is not a ticking question. The page's
+  "which tasks run" became a second checkpoint in the run form:
+  `vx run app#build` runs `utils#build`, `ui#build`, `api#build` and
+  `app#build`. The run form is on this page because the page teaches
+  the graph a task pulls in, and no other page's question uses it.
+- **Caching.** It used to ask two runs: stop declaring
+  `ui/tsconfig.json`, then edit it. The first run is a planner question
+  and stays, reworded to the edit form. A variant declares the file
+  (`files: ['src/**', 'tsconfig.json']`) and the edit removes it. Four
+  tasks rerun, and `ui#build`'s reason is "config changed, file removed:
+  packages/ui/tsconfig.json". The second run went to Correctness.
+- **Correctness.** It used to ask about the stale-hit demo's own model
+  (step 5, the sandbox off, then undeclared). That is not a planner
+  question. Replaced by the undeclared input the toy workspace answers
+  truthfully: `ui#build` runs `vite build`, which reads
+  `packages/ui/tsconfig.json`, but its inputs declare only `src/**`.
+  The variant adds the file, and the question edits it. No task reruns,
+  and the note says what that means: every hit replays output built from
+  the old file, and `exec.sandbox` fails the undeclared read instead.
+  The file and the story are the caching page's own (its key
+  calculator's stale scenario), so the two checkpoints are the two
+  halves of the old caching question, checked against the real planner.
+  The demo's toggles keep that scenario as model rows, renamed from
+  "the checkpoint" in `learn-correctness.test.ts`.
+- **Playground.** Both parts kept, as two checkpoints: the test-file
+  edit (`utils#test` alone) and `API_URL` (the four above `api`). An
+  env change is the edit form's second kind of change. "Which keys
+  move?" became "which tasks rerun?", and the env question starts from
+  Reset instead of from the first question's third run. The answer is
+  the same.
+
+The old page rows that parsed each hand-written answer went with the
+answers (`demo-islands`' what-is and caching rows,
+`learn-correctness`'s, and `learn-playground`'s). The toy key model's
+declare-then-edit row stays, renamed.
+
+**Rows** (`tests/learn-checkpoints.test.ts`, 32):
+
+- The truth, written out by hand: every question's text, and every task
+  of each answer with its reason. The other tasks' reason is fixed per
+  form.
+- The pages that place checkpoints, read from the MDX, equal a
+  hand-written map, and that map, the truth and `CHECKPOINTS` have the
+  same ids.
+- The planner the site ships gives each checkpoint exactly its rows,
+  and gives them again when all six are asked at once.
+- Each built page places its checkpoints in order. The question's text
+  and the no-JavaScript answer are held to the truth, not to the model:
+  the summary, one line per task with its reason, the rest, and the
+  note.
+- The markup contract: the form is hidden with its id and planner URL;
+  there is a labelled box per task in order; the legend is set; the
+  live region is present and empty; each selector the element reads is
+  there once; the element is reached from the page's scripts; and no
+  chunk it reaches carries the planner.
+- Pure rows with exact output: `markAnswer` (all four cases),
+  `markLine` in both forms, `verdictSentence`, `answerText` (with
+  answers, without, singular), `answerFromRuns` (unchanged, moved with
+  two named changes, moved with none named, new), `answerFromPlan`
+  (by id and by bare name) and `codeSpans`.
+- A note names no task, so no answer can hide in one.
+
+Differentials, each reversed by the reverse edit:
+
+| Change                                                                        | Result                                                    |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `markAnswer` swaps missed and wrong                                           | 3 red: the marking, the lines, the sentence               |
+| `what-is-edit` edits `packages/api/src/server.ts` instead (rebuilt)           | 3 red: the question, the planner's answer, the built page |
+| Correctness's intro names `packages/api/tsconfig.json` (rebuilt)              | 2 red: the question, the built page's question            |
+| The build-time answer replaced by the correct answers as a constant (rebuilt) | green: the row holds values, and a correct value passes   |
+| The same constant with `ui#test` out of caching's answer (rebuilt)            | 1 red: the caching page's no-JavaScript answer            |
+| The queue in `answerCheckpoint` removed                                       | 1 red: the concurrent row                                 |
+
+The architect's second differential cannot be built as stated: a
+page's question and its no-JavaScript answer come from one spec, so the
+question's file cannot change while the answer is left alone. The spec's
+file change (row two) re-computes the answer, and the hand-written truth
+catches both halves. Prose that names the wrong file (row three) is
+caught by the question row. The constant pair shows the built-page row
+holds the page to the hand-written set, whatever produced the page.
+
+**Chromium probe** (Playwright's, headless, over `astro preview` of the
+Node build). On all four pages, no `planner.js` was requested before
+Check, and it was requested once per page after. With JavaScript on, the
+boxes and Check were visible and the answer was hidden. A partial answer
+on each checkpoint gave:
+
+- `what-is-run`, ticking `app#build`, `ui#build` and `docs#build`: "6 of
+  9 right. Missed: utils#build, api#build. Wrong: docs#build."
+- `what-is-edit`, ticking `utils#build`, `ui#build` and `app#build`: "4
+  of 9 right. Missed: utils#test, ui#test, api#build, api#test,
+  app#test." `app#build`'s line read "Right: app#build reruns
+  (upstream api#build moved, upstream ui#build moved)."
+- Caching, ticking `ui#build` and `utils#build`: "5 of 9 right. Missed:
+  ui#test, app#build, app#test. Wrong: utils#build." `ui#build`'s line
+  read "(config changed, file removed: packages/ui/tsconfig.json)", and
+  the note followed.
+- Correctness, ticking `ui#build`: "8 of 9 right. Wrong: ui#build.",
+  with every line "key unchanged".
+- `playground-edit`, ticking `utils#test` and `utils#build`: "8 of 9
+  right. Wrong: utils#build."
+- `playground-env`, ticking `api#build`: "6 of 9 right. Missed:
+  api#test, app#build, app#test." `api#build`'s line read "(env API_URL
+  changed)".
+
+Each mark was coloured by its `data-verdict`. The live region was
+`aria-live="polite"`. There was no page error and no console error.

@@ -353,7 +353,7 @@ describe("the page's Run, over the planner the site ships", () => {
     ])
   })
 
-  it('answers the checkpoint: a test file moves its test alone, API_URL the four above api', async () => {
+  it('moves its test alone for a test file, and the four above api for API_URL', async () => {
     const first = ok(await run(FILES, new Set()))
     const testEdit = {
       ...FILES,

@@ -158,8 +158,14 @@ when the landing page or `benchmarks.md` drifts from
   a file, break a config.
 - `tests/learn-playground.test.ts` — the built playground page: the
   static table for every task, the file list and config texts, the
-  hidden controls, every piece of markup the element reads, the element
-  reachable without the planner, and the checkpoint's answers.
+  hidden controls, every piece of markup the element reads, and the
+  element reachable without the planner.
+- `tests/learn-checkpoints.test.ts` — the Learn pages' checkpoints
+  (`<vx-checkpoint>`): each question and each answer written out by
+  hand, with the reason each task is in it; the planner the site ships
+  held to them; the built pages' no-JavaScript answers held to them (the
+  build computes each answer with that planner, under Node or Bun); the
+  marking (right, missed, wrong) by pure rows; and the markup contract.
 
 ## The playground bundle
 
@@ -191,6 +197,20 @@ static table at build time from the texts, evaluated by the page's own
 `evaluateConfig`, and `demos/playground.ts` imports the planner on the
 first Run. Core's parity rows hold the page's Run on that workspace to
 `vx run build test --all --dry=json`.
+
+The Learn pages' checkpoints use the same bundle (item 705; design:
+`packages/vx/docs/design/labs-checkpoints-2026-09.md` § W11). A page
+places one with `<Checkpoint id="…" />`; the questions are
+`src/components/demos/model/checkpoint.ts`, each an edit of the toy
+workspace ("which tasks rerun?") or a `vx run` ("which tasks run?").
+`Checkpoint.astro` imports `public/playground/planner.js` as the page
+renders and computes the answer the `<details>` shows, so rendering a
+page with one, under `astro dev` too, needs `build.playground` first
+(both tasks depend on it). The build may run under Node, so the import
+is the plain file and configs are evaluated in-process.
+`demos/checkpoint.ts` computes the same answer on Check and marks each
+ticked or unticked task right, missed or wrong, with the reason core's
+key diff names.
 
 ## Worked examples
 

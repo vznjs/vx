@@ -11,19 +11,16 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { beforeAll, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { PLANNER_FILE } from '../scripts/build-playground.js'
 import { CONFIG_TEXTS, ENV, FILES, TASKS } from '../src/playground/workspace.js'
 import {
   PLAYGROUND_ROOT,
-  diffRuns,
   envText,
-  runPlayground,
   staticCells,
   staticProjects,
   staticTable,
   type Planner,
-  type PlaygroundTask,
 } from '../src/components/demos/model/playground-view.js'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
@@ -199,44 +196,5 @@ describe('the playground on learn/playground', () => {
       const body = readFileSync(path.join(DIST, '_astro', name), 'utf8')
       expect({ name, found: MARKERS.filter((m) => body.includes(m)) }).toEqual({ name, found: [] })
     }
-  })
-
-  describe('the checkpoint', () => {
-    let runs: PlaygroundTask[][]
-    let planner: Planner
-    beforeAll(async () => {
-      planner = (await import(path.join(DIST, PLANNER_FILE))) as Planner
-      const testFile = 'packages/utils/test/index.test.ts'
-      const edited = { ...FILES, [testFile]: `${FILES[testFile]}// edited\n` }
-      const states = [
-        { files: FILES, env: ENV },
-        { files: edited, env: ENV },
-        { files: edited, env: { API_URL: 'https://staging.example.com' } },
-      ]
-      runs = []
-      let cached = new Set<string>()
-      for (const s of states) {
-        const o = await runPlayground(planner, { ...s, tasks: TASKS, cached })
-        if (!o.ok) throw new Error(o.errors.join('\n'))
-        runs.push(o.tasks)
-        cached = o.cached
-      }
-    })
-
-    it('names, per answer, exactly the keys the planner moves', () => {
-      const answer = only(html, /<details>\s*<summary>Answer<\/summary>([\s\S]*?)<\/details>/g)
-      const paragraphs = [...answer.matchAll(/<p>([\s\S]*?)<\/p>/g)].map((m) => m[1]!)
-      expect(paragraphs).toHaveLength(2)
-      const named = (p: string): string[] => [...new Set(p.match(/\b\w+#\w+\b/g))].sort()
-      const moved = (i: number): string[] =>
-        diffRuns(runs[i - 1], runs[i]!, planner.diffKeyComponents)
-          .filter((r) => r.change === 'moved')
-          .map((r) => r.id)
-          .sort()
-      expect(named(paragraphs[0]!)).toEqual(moved(1))
-      expect(moved(1)).toEqual(['utils#test'])
-      expect(named(paragraphs[1]!)).toEqual(moved(2))
-      expect(moved(2)).toEqual(['api#build', 'api#test', 'app#build', 'app#test'])
-    })
   })
 })

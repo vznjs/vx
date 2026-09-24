@@ -275,20 +275,6 @@ describe('the graph explorer on learn/what-is-task-orchestration', () => {
     )
   })
 
-  it('answers the checkpoint with the run the explorer shows for ui', () => {
-    const answer = only(html, /<details>([\s\S]*?)<\/details>/g)
-    const paragraphs = [...answer.matchAll(/<p>([\s\S]*?)<\/p>/g)].map((m) => m[1]!)
-    expect(paragraphs).toHaveLength(2)
-    const named = (p: string): string[] => [...new Set(p.match(/\b\w+#\w+\b/g))].sort()
-    expect(named(paragraphs[0]!)).toEqual([...rerunBy('ui')].sort())
-    expect(named(paragraphs[0]!)).toEqual([...CHANGE['ui']!.rerun].sort())
-    // The second names what the run needs from the cache, the tasks that need
-    // it, and the two that stay out.
-    expect(named(paragraphs[1]!)).toEqual(
-      [...neededBy('ui'), 'ui#build', 'app#build', 'utils#test', 'api#test'].sort(),
-    )
-  })
-
   it("loads the element's module from the page's own scripts", () => {
     const defining = [...reachableScripts(html)].filter((name) =>
       /customElements\.define\(\s*["'`]vx-graph-explorer["'`]/.test(
@@ -361,7 +347,8 @@ function truthOf(run: ToyRun): Truth {
   }
 }
 
-const CHECKPOINT: ToyChange[] = [
+/** Stop declaring an input, then edit it. */
+const UNDECLARE_THEN_EDIT: ToyChange[] = [
   { kind: 'declare', input: 'ui/tsconfig.json' },
   { kind: 'edit', input: 'ui/tsconfig.json' },
 ]
@@ -408,8 +395,8 @@ describe('the key model', () => {
     expect(truthOf(undone!)).toEqual({ moved: SCENARIO['utils']!.moved, hit: ALL, stale: [] })
   })
 
-  it('answers the checkpoint: ui and app miss once, then every task hits and four are stale', () => {
-    const [, undeclared, edited] = toyRuns(CHECKPOINT)
+  it('stops declaring, then edits: ui and app miss once, then every task hits and four are stale', () => {
+    const [, undeclared, edited] = toyRuns(UNDECLARE_THEN_EDIT)
     const ui = ['ui#build', 'ui#test', 'app#build', 'app#test']
     expect(truthOf(undeclared!)).toEqual({
       moved: {
@@ -522,23 +509,6 @@ describe('the key calculator on learn/caching', () => {
         'what vx does on the same workspace, and a test runs vx to check it. Each table starts ' +
         'from a first run on an empty cache.',
     )
-  })
-
-  it('answers the checkpoint with what the model does', () => {
-    const answer = only(html, /<details>([\s\S]*?)<\/details>/g)
-    const paragraphs = [...answer.matchAll(/<p>([\s\S]*?)<\/p>/g)].map((m) => m[1]!)
-    expect(paragraphs).toHaveLength(3)
-    const named = (p: string): string[] => [...new Set(p.match(/\b\w+#\w+\b/g))].sort()
-    const [, undeclared, edited] = toyRuns(CHECKPOINT)
-    const ids = (run: ToyRun, pick: (t: ToyRun['tasks'][number]) => boolean): string[] =>
-      run.tasks
-        .filter(pick)
-        .map((t) => t.id)
-        .sort()
-    expect(named(paragraphs[0]!)).toEqual(ids(undeclared!, (t) => !t.hit))
-    expect(named(paragraphs[1]!)).toEqual(ids(edited!, (t) => t.hit && !t.stale))
-    expect(named(paragraphs[2]!)).toEqual(ids(edited!, (t) => t.hit && t.stale))
-    expect(ids(edited!, (t) => t.hit)).toEqual([...ALL].sort())
   })
 
   it("loads the element's module from the page's own scripts", () => {
