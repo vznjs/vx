@@ -6,7 +6,7 @@
 // Two seeds equal in their low 32 bits hash identically, and the pure-TS
 // reference port agrees with Bun only after masking the seed to 32 bits.
 
-import { xxHash3 } from './shim/xxh3.js'
+import { xxHash3 } from '../../vx-docs/src/playground/shim/xxh3.js'
 
 const M32 = 0xffffffffn
 let sameLow = 0

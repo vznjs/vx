@@ -1,6 +1,7 @@
-// The glob fuzz's generator, shared by the scoreboard (`glob-equiv.ts`) and
-// the parity row (`tests/glob-port.test.ts`), so the row fuzzes exactly the
-// domains the design note reports.
+// The glob fuzz's generator, shared by the parity row
+// (`playground-glob.test.ts`) and the research scoreboard
+// (`packages/vx-bench/playground-spike/glob-equiv.ts`), so the row fuzzes
+// exactly the domains the design note reports.
 //
 // Patterns:
 //   task — vx's task-glob alphabet (`*`, `**`, `?`, braces, `\`, and LITERAL

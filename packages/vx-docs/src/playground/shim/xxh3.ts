@@ -199,8 +199,8 @@ function hashLong(v: DataView, len: number, seed: bigint): bigint {
 /**
  * `Bun.hash.xxHash3(input, seed)` as Bun 1.4.2 computes it: the reference
  * XXH3-64 under only the LOW 32 BITS of the seed. Bun drops the high half
- * (`seed-probe.ts` measures it), so the reference over the full seed
- * disagrees with every chained key step whose seed is a 64-bit digest.
+ * (tests/playground-xxh3.test.ts holds it), so the reference over the full
+ * seed disagrees with every chained key step whose seed is a 64-bit digest.
  */
 export function bunXxHash3(input: string | Uint8Array, seed: bigint | number = 0n): bigint {
   return xxHash3(input, BigInt(seed) & 0xffffffffn)

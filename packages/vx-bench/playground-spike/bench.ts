@@ -1,15 +1,21 @@
-// W9 spike (item 676): how long one plan takes inside the bundle — the
-// playground re-plans on every edit, so this is its interaction latency.
+// W9 spike (item 676): how long one plan takes inside the playground bundle
+// — the playground re-plans on every edit, so this is its interaction
+// latency.
 //
-//   bun packages/vx-bench/playground-spike/bench.ts     (after build.ts)
+//   bun packages/vx-bench/playground-spike/bench.ts
 //
-// Two workspaces: the spike fixture, and a synthetic chain of N projects
-// with F source files each (every project `build` depends on `^build`).
-// Min and median of R plans each, in Bun (JavaScriptCore, like Safari; a
-// browser tab's number is of the same order, not identical).
+// Builds the bundle with the site's own `buildPlayground()`
+// (packages/vx-docs/scripts/build-playground.ts) into playground-spike/dist/
+// (ignored), then times two workspaces: the parity fixture, and a synthetic
+// chain of N projects with F source files each (every project `build`
+// depends on `^build`). Min and median of R plans each, in Bun
+// (JavaScriptCore, like Safari; a browser tab's number is of the same
+// order, not identical).
 
+import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { CONFIGS, ENV, FILES } from './fixture.js'
+import { buildPlayground } from '../../vx-docs/scripts/build-playground.js'
+import { CONFIGS, ENV, FILES } from '../../vx-docs/src/playground/fixture.js'
 
 type Plan = (input: {
   root: string
@@ -19,9 +25,10 @@ type Plan = (input: {
   tasks: string[]
 }) => Promise<{ tasks: unknown[] }>
 
-const { planPlayground } = (await import(path.join(import.meta.dir, 'dist/entry.js'))) as {
-  planPlayground: Plan
-}
+const bundle = path.join(import.meta.dir, 'dist/planner.js')
+mkdirSync(path.dirname(bundle), { recursive: true })
+writeFileSync(bundle, (await buildPlayground()).bytes)
+const { planPlayground } = (await import(bundle)) as { planPlayground: Plan }
 
 function synthetic(n: number, f: number) {
   const files: Record<string, string> = {
@@ -72,7 +79,7 @@ console.log(
   JSON.stringify(
     [
       await time(
-        'spike fixture',
+        'parity fixture',
         { root: '/ws', files: FILES, configs: CONFIGS, env: ENV, tasks: ['build', 'ci'] },
         15,
       ),

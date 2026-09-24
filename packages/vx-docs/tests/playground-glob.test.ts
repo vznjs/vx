@@ -1,11 +1,11 @@
-// The playground's `Bun.Glob.match` (playground-spike/shim/glob.ts, a port
+// The playground's `Bun.Glob.match` (src/playground/shim/glob.ts, a port
 // of Bun's src/glob/matcher.rs) answers exactly what Bun answers. The oracle
 // is the running Bun, so a Bun release that changes its matcher turns this
 // red instead of silently desyncing the site's plan from the CLI's (item
 // 692; design: packages/vx/docs/design/playground-spike-2026-09.md § Glob).
 import { describe, expect, it } from 'bun:test'
-import { globCases, mulberry32 } from '../playground-spike/glob-fuzz.js'
-import { Glob } from '../playground-spike/shim/glob.js'
+import { globCases, mulberry32 } from './glob-fuzz.js'
+import { Glob } from '../src/playground/shim/glob.js'
 
 // Bun's match count per domain pins that the fuzz is still the table's.
 const DOMAINS = [
@@ -21,9 +21,10 @@ interface Score {
   differs: string[]
 }
 
-// glob-equiv.ts's seed, size and domain order, so these rows ARE the design
-// note's table. The domains share one stream, so all four are scored at
-// once and a filtered run (`-t`) still sees the same pairs.
+// The seed, size and domain order of vx-bench's glob-equiv.ts, so these
+// rows ARE the design note's table. The domains share one stream, so all
+// four are scored at once and a filtered run (`-t`) still sees the same
+// pairs.
 let table: Score[] | undefined
 function scores(): Score[] {
   if (table !== undefined) return table

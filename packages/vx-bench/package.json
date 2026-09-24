@@ -9,9 +9,8 @@
     "bun": ">=1.4"
   },
   "//": [
-    "hash-wasm, picomatch, @types/picomatch: the W9 playground spike only (playground-spike/,",
-    "item 676). hash-wasm is the WASM xxh3 scored against Bun.hash.xxHash3 (xxh3-equiv.ts);",
-    "picomatch is the glob library scored against Bun.Glob (glob-equiv.ts). Neither is bundled.",
+    "picomatch, @types/picomatch: the W9 playground research only (playground-spike/glob-equiv.ts,",
+    "items 676 and 692): the glob library scored against Bun.Glob beside the site's port. Not bundled.",
     "Design: packages/vx/docs/design/playground-spike-2026-09.md"
   ],
   "devDependencies": {
@@ -19,7 +18,6 @@
     "@types/picomatch": "^4.0.3",
     "@vzn/vx": "workspace:*",
     "@vzn/vx-schedule-history": "workspace:*",
-    "hash-wasm": "4.12.0",
     "picomatch": "4.0.3"
   }
 }

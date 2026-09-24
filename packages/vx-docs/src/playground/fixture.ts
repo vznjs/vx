@@ -1,4 +1,5 @@
-// W9 spike (item 676): the fixture workspace both planners see.
+// The workspace both planners see in the playground's parity rows
+// (packages/vx/tests/playground-parity.unsafe.test.ts; spike item 676).
 //
 // Five projects: a dependency chain (utils ← core ← ui ← app) plus an
 // unrelated `docs`. It covers `^build` and same-project `dependsOn`, a

@@ -108,7 +108,8 @@ Everything runs through vx from the repo root; this package has no
 bun install                                   # from the repo root (Bun workspace)
 
 bun packages/vx/src/bin.ts run import --filter @vzn/vx-docs   # packages/vx/docs → src/content/docs
-bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs    # astro build → dist/ (runs import first)
+bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs    # astro build → dist/ (runs import and build.playground first)
+bun packages/vx/src/bin.ts run build.playground --filter @vzn/vx-docs  # the playground bundle → public/playground/
 bun packages/vx/src/bin.ts run dev --filter @vzn/vx-docs      # astro dev server
 bun packages/vx/src/bin.ts run preview --filter @vzn/vx-docs  # serve the built dist/
 bun packages/vx/src/bin.ts run test --filter @vzn/vx-docs     # the guide pins below
@@ -143,6 +144,32 @@ when the landing page or `benchmarks.md` drifts from
   `@vzn/vx-lockfile`, `-mcp`, `-migrate`, `-otel` and `-reapi` as
   devDependencies: a package the site links is one its sandboxed test
   may read.
+
+- `tests/playground-bundle.test.ts` — the built site ships
+  `playground/planner.js` byte for byte as `buildPlayground()` builds it,
+  with no import left and no free `Bun` or `process`; see below.
+- `tests/playground-xxh3.test.ts`, `tests/playground-glob.test.ts` — the
+  playground's xxh3 and glob matcher answer exactly what the running
+  Bun's do (the glob fuzz's generator is `tests/glob-fuzz.ts`).
+
+## The playground bundle
+
+`src/playground/` is vx's own planner, bundled for the browser (roadmap
+W9; design: `packages/vx/docs/design/playground-spike-2026-09.md`).
+`entry.ts` exports `planPlayground`, which runs core's discovery, config
+validation, task graph, key fold and scheduler, unchanged, over files held
+in memory; `shim/` is the platform it runs on (a virtual file system,
+xxh3 and `Bun.Glob` ports, stubs for what the plan never calls).
+`scripts/build-playground.ts` bundles it with `Bun.build`, not the site's
+Vite, into `public/playground/planner.js` (gitignored; the
+`build.playground` task, which `build` depends on). The file core's
+parity rows test is built by the same function
+(`packages/vx/tests/playground-parity.unsafe.test.ts`: every key, the
+priorities and the dispatch order equal `vx run --dry=json` on
+`src/playground/fixture.ts`), and `tests/playground-bundle.test.ts` holds
+the shipped copy to it. `src/playground/` may import core's source by
+relative path; `packages/vx/tests/package-boundaries.unsafe.test.ts`
+exempts that one directory by name.
 
 ## Worked examples
 
