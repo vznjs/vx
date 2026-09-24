@@ -199,7 +199,7 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
   )
 
   it(
-    'the workspace fingerprint: one call per candidate file, present or absent',
+    'the workspace fingerprint: one probe per candidate file, and one read of each present one',
     async () => {
       const root = path.join(dir, 'fp')
       await mkdir(root)
@@ -214,8 +214,12 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       )
       const { WORKSPACE_FINGERPRINT_FILES } = await import('../src/workspace/fingerprint.js')
       expect(WORKSPACE_FINGERPRINT_FILES.length).toBeGreaterThan(2)
+      // A probe ahead of the read (load-reads.ts): most candidates are
+      // absent, and a failed open costs more than a stat that answers "no".
+      const present = new Set(['pnpm-workspace.yaml', 'bun.lock'])
       for (const f of WORKSPACE_FINGERPRINT_FILES) {
-        expect([f, on(calls, path.join(root, f))]).toEqual([f, ['openat']])
+        const expected = present.has(f) ? ['stat', 'openat'] : ['stat']
+        expect([f, on(calls, path.join(root, f))]).toEqual([f, expected])
       }
     },
     TIMEOUT,
