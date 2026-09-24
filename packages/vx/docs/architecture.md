@@ -294,6 +294,8 @@ never branches on layering.
   `ready` resolves when a regex match appears in stdout/stderr (or
   immediately when no `readyWhen` is set). If the child exits before
   ready, `ready` rejects. `exec.timeout` bounds the readiness wait.
+  Its stdin is a pipe vx never writes, open while vx lives, so a server
+  that exits on stdin EOF (esbuild `--watch`) stays up.
   The spawn retains no output: chunks reach the caller through the
   live callbacks, and the logger keeps the one bounded tail.
 

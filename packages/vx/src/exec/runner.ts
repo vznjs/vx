@@ -339,11 +339,18 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       argv0: 'sh',
       cwd: opts.cwd,
       env: opts.env as Record<string, string>,
-      stdin: 'ignore',
+      // A pipe vx holds and never writes: stdin stays open while vx
+      // lives and ends when it does. A dev server that exits on stdin
+      // EOF (esbuild --watch, Vite's case in turborepo#8915) became ready
+      // and exited 0 under 'ignore'. Not the terminal: several servers
+      // would steal each other's keystrokes, and a CI's /dev/null stdin
+      // is the same EOF. The one-shot spawn below keeps 'ignore', so a
+      // task that reads stdin can never hang CI.
+      stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',
       // Its own session and process group, so a kill reaches what it
-      // forked (kill-tree.ts). stdin is ignored, so a background group
+      // forked (kill-tree.ts). stdin is a pipe, so a background group
       // never stops on a terminal read.
       detached: true,
     })
