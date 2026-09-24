@@ -696,7 +696,9 @@ async function runOnBus(
     // signal loop) and embedders that manage lifecycle themselves — both
     // expect run() to return, not block on a server.
     const foreground = options.log === undefined && (options.handleSignals ?? true)
-    const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground)
+    // An aborted run's children are already being torn down: nothing to hold.
+    const hold = options.holdPersistent === true && options.signal?.aborted !== true
+    const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
     await shutdownPersistent(persistentRegistry, keepAlive.children)
 
     mark('run graph')
@@ -899,6 +901,17 @@ async function runOnBus(
     // run that never returned. One status line names the server that
     // ended the session and its code — the summary above said `success`
     // for it, and an exit 1 with no word about why is a mystery in a log.
+    if (keepAlive.children.length > 0 && hold) {
+      const held = keepAlive.children
+      return {
+        ok,
+        outcomes: list,
+        persistent: {
+          ids: keepAlive.nodes.map((n) => n.id),
+          stop: () => terminateChildren(() => held),
+        },
+      }
+    }
     if (keepAlive.children.length > 0) {
       const first = await Promise.race(
         keepAlive.children.map((c, i) => c.exited.then((code) => ({ code, i }))),

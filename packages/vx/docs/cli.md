@@ -1154,11 +1154,13 @@ run):
   result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
-Persistent tasks (`exec.persistent`) re-spawn each cycle: the previous
-SIGTERM happens between cycles, then the next cycle launches a fresh
-child. For dev-server workflows where you want the server to stay up
-across changes, use the dev tool's own watch (`vite`, `tsc -b -w`,
-`bun --watch`) rather than `vx watch`.
+Persistent tasks (`exec.persistent`) re-spawn each cycle. A requested
+dev server stays up while watch idles; when the next cycle starts, the
+old server is stopped first (the kill grace, then SIGKILL) and the cycle
+launches a fresh one, so the two never hold one port. Stopping watch
+stops the server too. For dev-server workflows where you want the server
+to stay up across changes, use the dev tool's own watch (`vite`,
+`tsc -b -w`, `bun --watch`) rather than `vx watch`.
 
 ### Exit codes
 

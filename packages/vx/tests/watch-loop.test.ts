@@ -7,11 +7,13 @@
 // `watch-loop-uncached.test.ts`: one file was a 24 s serial chain of
 // settle windows, a shard on its own (2026-09-16).
 
-import { readFile, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { isAlive } from './helpers/alive.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
-import { gitIn } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import {
   BIN,
   SETTLE_MS,
@@ -20,6 +22,7 @@ import {
   startWatch,
   until,
   useWatchFixture,
+  type Watch,
 } from './helpers/watch-loop.js'
 
 describe('vx watch loop (e2e)', () => {
@@ -173,5 +176,77 @@ describe('vx watch loop (e2e)', () => {
     await Bun.sleep(SETTLE_MS)
     expect(w.cycles()).toBe(1)
     expect(await executions(f.log)).toBe(2)
+  }, 40_000)
+})
+
+describe('vx watch with a persistent task (e2e)', () => {
+  let root = ''
+  let dir = ''
+  let outside = ''
+  let pids = ''
+  let watch: Watch | undefined
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-watch-persistent-' })
+    // Outside the workspace: a write under the project would be a cycle.
+    outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-pids-'))
+    pids = path.join(outside, 'pids')
+    dir = await addProject(
+      root,
+      'web',
+      `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: 'echo $$ >> ${pids}; echo READY; exec sleep 1000',
+                persistent: { readyWhen: 'READY' },
+              },
+            },
+          },
+        }
+      `,
+    )
+    await mkdir(path.join(dir, 'src'), { recursive: true })
+    await writeFile(path.join(dir, 'src', 'a.txt'), 'a1\n')
+  })
+  afterEach(async () => {
+    if (watch !== undefined) {
+      watch.proc.kill('SIGKILL')
+      await watch.proc.exited
+      watch = undefined
+    }
+    for (const pid of await readPids()) if (isAlive(pid)) process.kill(pid, 'SIGKILL')
+    await rm(root, { recursive: true, force: true })
+    await rm(outside, { recursive: true, force: true })
+  })
+  const readPids = async (): Promise<number[]> => {
+    const f = Bun.file(pids)
+    if (!(await f.exists())) return []
+    return (await f.text()).split('\n').filter(Boolean).map(Number)
+  }
+  // One `time` line per run's summary: the count says how many runs have ended.
+  const runsEnded = (w: Watch): number => w.out().split('\n  time ').length - 1
+
+  it('the dev server stays up while watch idles and is replaced when the next cycle starts', async () => {
+    // cli.md: the previous server stops BETWEEN cycles. Until the fix it
+    // stopped at the END of each one, so it was dead whenever watch sat
+    // idle (turborepo#9421, #13115 reproduced on vx).
+    watch = startWatch(root, ['--all'], {}, 'dev')
+    const w = watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    const [first] = await readPids()
+    expect(first).toBeNumber()
+    expect(isAlive(first!)).toBe(true)
+
+    await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
+    await until(() => runsEnded(w) === 2, 'the end of the cycle after an edit')
+    const all = await readPids()
+    expect(all).toHaveLength(2)
+    expect(isAlive(first!)).toBe(false)
+    expect(isAlive(all[1]!)).toBe(true)
+
+    w.proc.kill('SIGTERM')
+    expect(await w.proc.exited).toBe(0)
+    expect(isAlive(all[1]!)).toBe(false)
   }, 40_000)
 })

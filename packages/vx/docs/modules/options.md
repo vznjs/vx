@@ -32,6 +32,7 @@ export interface RunOptions {
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
+  holdPersistent?: boolean // hand requested persistent tasks back on RunSummary.persistent
   log?: Logger
   bus?: EventBus // an embedder's bus; the run's own when absent
   inflight?: Map<string, Promise<void>> // admission's cross-run in-flight table
@@ -43,6 +44,7 @@ export interface RunOptions {
 export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
+  persistent?: HeldPersistent // { ids, stop() }: what holdPersistent handed back
 }
 ```
 
