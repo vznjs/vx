@@ -518,6 +518,23 @@ false`, the first failure failing the task; `commands: []` a no-op;
       is refused by name, with the exact `!` rewrite for a whole-segment
       `!(a|b)` (npm, yarn and pnpm all take `!` entries).
 
+740.  DONE (2026-09-24, upstream survey, turborepo#13788). A task with no
+      `cache` block declares no outputs, yet writes: an uncached `gen`
+      copying a seed into a same-project `build`'s declared `config.json`
+      replayed seed B's build under seed A on the fourth run of A,B,B,A,
+      silently. Two facts were stale. The stability gate classed `build`
+      stable, so the short-circuit keyed it before `gen` ran; an uncached
+      producer now counts where `undeclaredWriteReach` says it may write
+      (its project; a sandbox narrows that to its write grants, none to
+      nothing). And the run-start git listing, index OIDs and
+      `package.json` digest outlived `gen`'s writes, so a tracked
+      `config.json` keyed its committed OID even on the lazy path: they are
+      dropped once an uncached command exits, pass or fail, and once a
+      persistent task is ready. Rule: an unsandboxed write into ANOTHER
+      project is out of contract, as for a cached task. This repo's
+      `check.bun` is sandboxed with no write grant, so the gate's shards
+      stay in the restore tier.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

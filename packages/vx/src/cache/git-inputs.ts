@@ -225,6 +225,12 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     this.oids.delete(key)
     return super.delete(key)
   }
+
+  override clear(): void {
+    this.changed.clear()
+    this.oids.clear()
+    super.clear()
+  }
 }
 
 /** No glob metacharacter — the entry names one exact path. */

@@ -128,6 +128,19 @@ output prefixes recorded, git snapshot marked — is
 `exitCode === 0 && willSave` gate and keeps the deferred-download
 branch beside it.
 
+## What a command may have written
+
+A task with no `cache` block declares no outputs, so after its command
+exits — pass or fail — and after a persistent task becomes ready, the
+run drops the facts it holds about where `undeclaredWriteReach`
+(`sandbox-request.md`) says the task may have written: `'project'`
+deletes the project's git snapshot and its index OIDs, the
+workspace-wide partition and the project's `package.json` digest memo;
+`'workspace'` clears every partition and every digest. The next reader
+re-enumerates (one `git ls-files`) and hashes by content. A task on a
+remote executor wrote on its own disk and drops nothing (item 741:
+turborepo#13788, `tests/undeclared-writes.test.ts`).
+
 ## Sandbox request
 
 The `sandbox` half of the `ExecuteRequest` (grants, denials, the paths a
