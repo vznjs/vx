@@ -28,7 +28,7 @@ Four things stand between the spike and W9:
 - a small core refactor that takes the local store out of the bundle (P1);
 - an exact port of Bun's glob matcher (the spike's matcher agreed on every
   realistic glob, but not on every adversarial one; done as item 692);
-- a way to evaluate a config the reader types;
+- a way to evaluate a config the reader types (done as item 699);
 - a decision about one finding in core: Bun's `xxHash3` ignores the high
   32 bits of its seed, so the key chain carries 32 bits between steps.
 
@@ -329,7 +329,9 @@ rows for the shapes above. It needs no repository, so it runs in
     identity.
 
   The second is the real thing, and it needs a parity row of its own over
-  TS configs. Choose at the start of W9.
+  TS configs. Choose at the start of W9. Decided below (a
+  `vx.config.mjs`, so no type stripping); SHIPPED as item 699
+  ([Shipped](#shipped-item-699)).
 
 ## W9 decisions (2026-09-24)
 
@@ -352,10 +354,17 @@ work that follows.
   evaluates the text as a module from a Blob URL inside a Worker. The
   Worker keeps the reader's code off the page's DOM and bounds a
   runaway loop (the page terminates it after a deadline). The evaluated
-  object crosses back by structured clone. A config holding a function
-  or another value that clone refuses is reported as an error, not
-  approximated. A parity row evaluates the same text both ways (the
-  CLI's loader and the page's rewrite) and requires the same keys.
+  object crosses back as JSON: the worker stringifies it and the page
+  parses it. Corrected in item 699: this said structured clone, with a
+  function or another value clone refuses reported as an error. The
+  CLI's worker path JSON-round-trips a config
+  (`src/workspace/config-eval.ts`), and the key folds `JSON.stringify` of
+  the task config, so JSON drops exactly what the key never sees, where
+  clone keeps an `undefined` property and refuses a function that path
+  drops. `vx run`'s first load differs from both on a function: see
+  [Shipped (item 699)](#shipped-item-699). A parity row evaluates the
+  same text both ways (the CLI's loader and the page's rewrite) and
+  requires the same keys.
 - **The bundle is built by a vx task with Bun, not by the site's
   Vite.** `@vzn/vx-docs#build.playground` runs `Bun.build` with the
   spike's aliases into `public/playground/`, and the site's `build`
@@ -432,6 +441,111 @@ In Chromium (Playwright, headless, the built site's `astro preview`),
 `import('/vx/playground/planner.js')` in a secure context planned the
 fixture with all eight keys equal to `vx run --dry=json`'s, the same
 dispatch order and no page error.
+
+## Shipped (item 699)
+
+Config editing: the page evaluates a `vx.config.mjs` text the way the
+CLI evaluates the file. No page loads the bundle yet.
+
+- **The rewrite.** `rewriteConfigImports(text, vxUrl)` in
+  `packages/vx-docs/src/playground/config-eval.ts` points each `@vzn/vx`
+  specifier (an import, a re-export or a literal `import()`) at a
+  Blob-URL module whose `defineProject` and `defineWorkspace` are the
+  identity, as core's are. It refuses every other specifier by name:
+  "cannot import 'node:fs': the playground evaluates a config on its own:
+  it can import only @vzn/vx". A computed `import()` is refused as such.
+  The detection is a small tokenizer, not a pattern. A specifier in a
+  comment, a string, a template, a regular expression, a member call
+  (`loader.import(…)`), a property named `import`, or `import.meta` is not
+  an import. One misreading is pinned: a `/` after `)` is read as a
+  division, so a regular expression there (`if (x) /import('a')/.test(s)`)
+  is read as code and refused. The refusal is there for its message, not
+  as a boundary: from a Blob URL a browser resolves no other specifier
+  anyway. The two identity functions are what configs import from
+  `@vzn/vx` (the repo's own configs and the site's snippets); a config
+  that names another export fails to link, with the engine's message.
+- **The evaluation.** `evaluateConfig(text, deadlineMs)` is exported from
+  `entry.ts`, so `planner.js` carries it. It returns `{ ok: true, config }`
+  or `{ ok: false, error }`. A fresh module Worker, made from a Blob URL,
+  imports the rewritten text from a Blob URL, and replies as core's
+  worker does: `JSON.stringify` of an object default export, or null.
+  For a null the page returns the CLI's message with its own file name:
+  "Project config at vx.config.mjs did not export a default object". A
+  throw becomes `name: message`. At the deadline the Worker is terminated
+  and the error says so. A browser Worker has no `process`, so a config
+  that reads `process.env` while it evaluates fails with "ReferenceError:
+  process is not defined". The page does not shim `process`: the
+  planner's `env` input is what tasks read. Bun's Worker has `process`,
+  so no Bun row can pin that; the Chromium probe below did.
+- **The fixture is text.** `fixture.ts` exports `CONFIG_TEXTS`, each
+  project's `vx.config.mjs` source importing `defineProject` from
+  `@vzn/vx`, and `FILES` holds the same text. `CONFIGS`, the evaluated
+  objects, is gone. The parity rows and vx-bench's `bench.ts` evaluate
+  the texts through the bundle.
+- **Size and cost.** 83,873 B raw, 29,654 B gzip (from 79,811 and
+  28,154). One evaluation of `@pg/app`'s config in Bun, the Worker's
+  start included, takes 1.8 ms at the minimum and 2.5 ms at the median of 30. Plan latency is unchanged: 2.7 ms minimum for the fixture, 69.3 ms
+  for 1,102 files.
+
+**What a probe refuted.** The decision this item carried said that the
+page, by JSON, drops a function-valued property exactly as the CLI does.
+`vx run --dry=json` does not drop it. The CLI's FIRST load of a config
+evaluates it in-process and validates the live object, so
+`description: () => 'x'` is refused with "tasks.build.description must be
+a string". A function as `exec.timeout`, or inside `dependsOn`, is
+refused the same way. Only a REPEAT load (`vx watch`, through the worker
+in `src/workspace/config-eval.ts`) JSON-round-trips before it validates.
+There the same config is accepted, with the property dropped: loaded
+twice through `loadProjectConfig` in one process, it was refused and
+then accepted. The page matches the repeat path, and a row pins that. No
+row claims `vx run` parity for a function-valued property, because it
+does not hold. An `undefined` property agrees on every path: the
+validator reads it as absent, and the key's JSON drops it. The gap is
+inside core too, since `vx watch` accepts a config that `vx run`
+refuses. How to close it is open: the page could refuse what JSON would
+drop, core's worker path could validate before its round-trip, or both.
+
+The rows:
+
+| Row                                                                                                                                               | Where                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| The fixture's five texts, evaluated by the page, plan what the CLI plans (item 695's scenario rows, now fed by `evaluateConfig`)                  | `packages/vx/tests/playground-parity.unsafe.test.ts` (`test.bun.unsafe`: git, no sandbox) |
+| Per variant of `@pg/core` (a loop and spreads, `undefined` properties, `dependsOn` from a constant): keys, statuses and deps equal the CLI's      | same                                                                                      |
+| Per variant: exactly 0, 0 and 3 keys move, in both planners                                                                                       | same                                                                                      |
+| Negative control: the page's config against the CLI's one-field variant (`@pg/core#test`'s command) differs on exactly the three tasks it reaches | same                                                                                      |
+| A default export that is a number, or none: the CLI exits 1 with its message, and the page's is the same with its file name                       | same                                                                                      |
+| A function-valued or `undefined` property: the page's object is strictly the CLI worker path's (`evaluateConfigFresh`)                            | same                                                                                      |
+| `node:fs` and a relative import are refused by name; `while (true) {}` is terminated at a 200 ms deadline                                         | same                                                                                      |
+| The evaluations run with the host traps armed, and none fires                                                                                     | same                                                                                      |
+| The rewrite: 8 accepted forms rewritten exactly, 11 look-alikes left byte for byte, 13 refusals by name (one the pinned misreading)               | `packages/vx-docs/tests/playground-config-eval.test.ts` (sandboxed)                       |
+| The bundle exports exactly `evaluateConfig` and `planPlayground`                                                                                  | `packages/vx-docs/tests/playground-bundle.test.ts`                                        |
+
+The bundle row's import check read the rewrite's own comparisons with
+the strings "from" and "import" in the minified text as two specifiers.
+It now asks Bun's `Transpiler.scanImports`, and its positive sample holds
+that shape.
+
+Differentials, each restored by reverse edit:
+
+| Mutation                                                              | Red                                                                                                                                      |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| The worker posts the object (structured clone), and the page takes it | both worker-path rows: the function gives "DataCloneError: The object can not be cloned.", the `undefined` property is kept              |
+| The rewrite skips double-quoted specifiers                            | four rewrite rows: double quotes, no space, the double-quoted side-effect import and `export { … } from`                                 |
+| The deadline is never armed                                           | the deadline row, timed out at 5 s                                                                                                       |
+| The refusal removed                                                   | the `node:fs` row (Bun imports it: `ok: true`), the relative-import row (Bun's resolve error instead of the refusal) and 12 rewrite rows |
+| The negative control's variant identical to the fixture's text        | the control row alone                                                                                                                    |
+
+In Chromium (Playwright's, headless, the built site's `astro preview` on
+localhost, a secure context), `import('/vx/playground/planner.js')` then
+`evaluateConfig` on each of the fixture's five texts through the Worker
+path, then `planPlayground`, gave all eight keys equal to
+`vx run build ci --all --dry=json`'s on the committed fixture. The same
+page under a wrong `API_URL` differed on exactly the five tasks it
+reaches. `while (true) {}` came back after 203 ms with the deadline
+error. `node:fs` was refused by name. `process.env` gave "ReferenceError:
+process is not defined". A function-valued property came back dropped.
+A number default export gave the CLI's message, and a syntax error gave
+"SyntaxError: Unexpected end of input". There was no page error.
 
 ## Risks
 

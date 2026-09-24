@@ -10,7 +10,8 @@
 // file supplies is what `prepareRun` gets from the machine: the git
 // enumeration (every VFS file tracked and clean, its OID a git blob SHA-1),
 // the evaluated configs (plain objects, as a `vx.config.mjs` default export
-// evaluates), and a cache layer whose store is a set of keys.
+// evaluates; `evaluateConfig` turns the reader's text into one), and a cache
+// layer whose store is a set of keys.
 
 import { platformCalls, setEnv } from './shim/platform.js'
 import { useVfs, Vfs } from './shim/vfs.js'
@@ -38,6 +39,8 @@ import { computeReverseDepCount } from '../../../vx/src/graph/priorities.js'
 import { loadProjects } from '../../../vx/src/orchestrator/projects.js'
 import { plan } from '../../../vx/src/orchestrator/plan.js'
 import { createHashCache } from '../../../vx/src/orchestrator/task-hash.js'
+
+export { evaluateConfig } from './config-eval.js'
 
 export interface PlaygroundInput {
   /** Absolute posix path the workspace lives at inside the VFS. */

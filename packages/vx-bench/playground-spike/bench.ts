@@ -15,7 +15,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildPlayground } from '../../vx-docs/scripts/build-playground.js'
-import { CONFIGS, ENV, FILES } from '../../vx-docs/src/playground/fixture.js'
+import { CONFIG_TEXTS, ENV, FILES } from '../../vx-docs/src/playground/fixture.js'
 
 type Plan = (input: {
   root: string
@@ -24,11 +24,27 @@ type Plan = (input: {
   env: Record<string, string>
   tasks: string[]
 }) => Promise<{ tasks: unknown[] }>
+type Evaluate = (
+  text: string,
+  deadlineMs: number,
+) => Promise<{ ok: true; config: unknown } | { ok: false; error: string }>
 
 const bundle = path.join(import.meta.dir, 'dist/planner.js')
 mkdirSync(path.dirname(bundle), { recursive: true })
 writeFileSync(bundle, (await buildPlayground()).bytes)
-const { planPlayground } = (await import(bundle)) as { planPlayground: Plan }
+const { planPlayground, evaluateConfig } = (await import(bundle)) as {
+  planPlayground: Plan
+  evaluateConfig: Evaluate
+}
+
+// Evaluated once, outside the timing: the page re-evaluates only the config
+// the reader edits, and each plan here stands for one keystroke's plan.
+const CONFIGS: Record<string, unknown> = {}
+for (const [name, text] of Object.entries(CONFIG_TEXTS)) {
+  const r = await evaluateConfig(text, 10_000)
+  if (!r.ok) throw new Error(`${name}: ${r.error}`)
+  CONFIGS[name] = r.config
+}
 
 function synthetic(n: number, f: number) {
   const files: Record<string, string> = {

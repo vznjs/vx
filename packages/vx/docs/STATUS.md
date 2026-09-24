@@ -1089,6 +1089,49 @@ per invocation; the `--no-daemon` the solidjs script passes is a no-op;
 only Nx's daemon is outside the CPU column). `comparison.md` said
 "since 2.10" (from W7's reading) and now says 2.9.
 
+14cu. **Item 699 (roadmap W9, 2026-09-24): the playground evaluates
+the reader's `vx.config.mjs`.** `packages/vx-docs/src/playground/config-eval.ts`
+has `rewriteConfigImports`, a small tokenizer that points each `@vzn/vx`
+specifier at a Blob-URL module whose `defineProject` and
+`defineWorkspace` are the identity and refuses every other import by
+name ("cannot import 'node:fs': the playground evaluates a config on its
+own: it can import only @vzn/vx"), and `evaluateConfig(text, deadline)`,
+exported from `planner.js`: a fresh Blob-URL module Worker
+imports the text from a Blob URL, replies with `JSON.stringify` of the
+default export as core's worker does, and is terminated at the deadline.
+A non-object default export gets the CLI's message with the page's file
+name. `fixture.ts` now holds `CONFIG_TEXTS`, real `.mjs` source, in
+place of the evaluated `CONFIGS`; the parity rows and vx-bench's
+`bench.ts` evaluate them through the bundle. New rows in
+`playground-parity.unsafe.test.ts`: three `@pg/core` variants (a loop
+and spreads, `undefined` properties, `dependsOn` from a constant) plan
+what the CLI plans and move exactly 0, 0 and 3 keys in both; a
+negative control (the page's text against the CLI's one-field variant)
+differs on exactly three tasks; a number or missing default export
+matches the CLI's exit and message; a function-valued or `undefined`
+property gives strictly the object core's `evaluateConfigFresh` gives;
+`node:fs` and relative imports are refused; `while (true) {}` stops at
+200 ms. The evaluations run with the host traps armed.
+`tests/playground-config-eval.test.ts` in the site pins the rewrite's
+edges (8 accepted forms, 11 look-alikes untouched, 13 refusals,
+including the one known misreading: a regular expression after `)`).
+The bundle row's import regex read the tokenizer's minified `"from"`
+comparisons as specifiers and now uses Bun's `scanImports`. Bundle
+83,873 B raw, 29,654 B gzip; one evaluation 1.8 ms min in Bun. A probe
+refuted part of the decision it carried: `vx run` does NOT drop a
+function-valued property the way JSON does. Its first load validates the
+live object and refuses one (`tasks.build.description must be a
+string`); only a repeat load (`vx watch`'s worker) round-trips first
+and accepts it. The page follows the worker path, and no row claims
+`vx run` parity there. The gap is inside core too: `vx watch` accepts a
+config `vx run` refuses. Decided: item 701 refuses a value JSON cannot
+carry on every path, core's two and the page's, with one rule. Differentials (structured clone in the
+worker, double quotes skipped, deadline unarmed, refusal removed, an
+identical control) each redden their rows. In Chromium the Worker path
+planned the fixture with all eight keys equal to the CLI's.
+Design: `design/playground-spike-2026-09.md` § Shipped (item 699),
+whose W9 decision on structured clone is corrected in place.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1116,10 +1159,11 @@ only Nx's daemon is outside the CPU column). `comparison.md` said
     glob port is DONE (item 692, entry 14cn), and so are the bundle, its
     task and the parity rows (item 695, entry 14cq): the site builds
     `playground/planner.js` and core's unsafe suite holds it to the CLI.
-    Next is config editing (the reader's `vx.config.mjs` evaluated in a
-    Worker, with its parity row), then the island and the UI, designed
-    in `design/playground-ui-2026-09.md` (item 700: one Learn page on
-    the toy monorepo, held to the CLI by its own parity row).
+    Config editing is DONE (item 699, entry 14cu): the reader's
+    `vx.config.mjs` is evaluated in a Worker and held to the CLI's keys.
+    What remains of W9 is the island and the UI, designed in
+    `design/playground-ui-2026-09.md` (item 700: one Learn page on the
+    toy monorepo, held to the CLI by its own parity row).
 
 ## Decisions (this arc)
 
