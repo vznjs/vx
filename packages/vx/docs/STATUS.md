@@ -518,7 +518,7 @@ false`, the first failure failing the task; `commands: []` a no-op;
       is refused by name, with the exact `!` rewrite for a whole-segment
       `!(a|b)` (npm, yarn and pnpm all take `!` entries).
 
-740.  DONE (2026-09-24, upstream survey, turborepo#13788). A task with no
+743.  DONE (2026-09-24, upstream survey, turborepo#13788). A task with no
       `cache` block declares no outputs, yet writes: an uncached `gen`
       copying a seed into a same-project `build`'s declared `config.json`
       replayed seed B's build under seed A on the fourth run of A,B,B,A,
@@ -548,7 +548,10 @@ false`, the first failure failing the task; `commands: []` a no-op;
       inputs, 55 ms per 100 misses of 302; cold wall min-of-11 on a loaded
       4-core box 624 → 667 ms at 30,200 inputs). Not seen: an input
       changed and changed back before the check, a file added under a
-      glob.
+      glob. `CACHE_VERSION` v32 → v33: an entry the old code poisoned sits
+      under the key the fixed code derives when the tree is back in that
+      state (probed: the fixed code under v32 replayed a formatter's
+      poisoned entry as up-to-date), so it is not self-healing.
 
 ## In flight
 

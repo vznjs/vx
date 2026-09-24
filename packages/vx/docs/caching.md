@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v32'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v33'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -163,7 +163,7 @@ over (in order):
     keyed up front by the local short-circuit or the remote prefetch.
     Without both, an uncached `gen` that copies a seed into a `build`'s
     declared `config.json` replayed seed B's build under seed A
-    (turborepo#13788, item 741). A sandbox narrows the reach to its
+    (turborepo#13788, item 743). A sandbox narrows the reach to its
     write grants: none reaches nothing, and a grant elsewhere in the
     workspace reaches every project. An unsandboxed write into another
     project crosses a project boundary and is not tracked, as for a
@@ -484,7 +484,7 @@ is on):
    fingerprint rows, and the `entry_inputs` component rows
    (`INSERT OR IGNORE`).
 
-**The key is re-checked before the save** (item 741). It was taken
+**The key is re-checked before the save** (item 743). It was taken
 before the command ran — at the task's start, or up front by the local
 short-circuit — and the save files the outputs under it, so the inputs
 must still be what it describes. Two checks, in order. The key
@@ -1278,6 +1278,17 @@ was not), and the cache tests.
 
 ### History
 
+- **v32 → v33**: stored bytes wrong under a key a CORRECT derivation now
+  produces (item 743). The three stale-hit fixes of that item stop new
+  poisoned entries, but not the ones already saved: a formatter's entry
+  sits under the key of its unformatted input, an uncached `gen`'s
+  consumer's under the key of the seed before `gen` ran, an edit-mid-run's
+  under the key of the file before the edit — and each of those keys is
+  exactly what the fixed code derives when the tree is back in that
+  state. Not self-healing, unlike a fix whose old key no correct run
+  derives. Probed, not argued: an entry saved by the previous commit's
+  formatter, the input checked out unformatted, and the fixed code under
+  v32 reported `up-to-date` and left it unformatted; under v33 it runs.
 - **v31 → v32**: stored bytes wrong under a key the fix does not change
   (item 739). A declared output whose name is not UTF-8 (`x\xffy`) came
   back from `Bun.Glob` decoded lossily as `x�y`, which names no file, so

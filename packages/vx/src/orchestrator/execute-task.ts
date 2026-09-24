@@ -860,7 +860,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * and a save files the outputs under it. A user's edit mid-run, or a
    * task rewriting its own input (a formatter), saved bytes built from one
    * state under the key of another: restore the old state and the next run
-   * replayed them as up-to-date (turborepo#10111, #1146, item 741). The
+   * replayed them as up-to-date (turborepo#10111, #1146, item 743). The
    * result stands; only the entry is withheld, and the facts about the
    * project go, since something wrote there.
    */
@@ -913,7 +913,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
  * its index OIDs, and its `package.json` digest. The next reader
  * re-enumerates the project (one `git ls-files`) and hashes its files by
  * content; the per-declaration file-list memos are keyed on the snapshot
- * array, so they miss with it (item 741).
+ * array, so they miss with it (item 743).
  */
 function forgetUndeclaredWrites(args: ExecuteArgs, reach: 'none' | 'project' | 'workspace'): void {
   if (reach === 'none') return

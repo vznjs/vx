@@ -4,7 +4,7 @@
 // (turborepo#1146) — the entry holds bytes built from one state under the
 // key of another, and restoring the old state replays them as up-to-date.
 // The miss re-checks its inputs before the save and withholds the entry
-// when one moved (item 741). Every row but the controls failed on the tree
+// when one moved (item 743). Every row but the controls failed on the tree
 // before the fix.
 
 import { existsSync, lstatSync } from 'node:fs'

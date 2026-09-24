@@ -106,7 +106,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   /**
    * When the enumeration that vouched for `oids` started (ms since the
    * epoch): an index OID says what a file held when `git status` looked,
-   * so a file changed since may hold something else (item 741). Unset on
+   * so a file changed since may hold something else (item 743). Unset on
    * a cache no enumeration filled; its OIDs are then re-checked by content.
    */
   enumeratedAtMs: number | undefined
