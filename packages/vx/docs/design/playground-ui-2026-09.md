@@ -126,13 +126,24 @@ the caching and correctness pages link to it in one sentence each.
   field, is refused before the planner loads. Each error keeps the last
   good table, marked stale in its caption and dimmed.
 - **The static table comes from the texts, evaluated at build time by
-  the page's own `evaluateConfig`.** The step's premise was that build
-  time cannot run a Worker. It can: the site builds under
-  `bun --bun astro build`, and Bun has `Worker` and Blob URLs, which is
-  how core's parity rows already run `evaluateConfig`. So
-  `Playground.astro` evaluates `CONFIG_TEXTS` with the same rewrite and
-  the same Worker the reader's Run uses, and fails the build if one does
-  not evaluate. The texts are the one source. The other option, importing
+  the page's own rewrite and JSON rule.** `Playground.astro` evaluates
+  `CONFIG_TEXTS` with `evaluateConfigInProcess`: the same rewrite, the
+  same `nonJsonPaths` refusal and the same messages as the reader's
+  Worker path, with the modules imported in-process from base64 `data:`
+  URLs, which Node and Bun both import. It fails the build if one does
+  not evaluate. The texts are the one source. (Corrected after CI: the
+  step first used the Worker path at build time, on the premise that the
+  site builds under `bun --bun astro build` and Bun has `Worker`. Linux
+  CI's prerender ran under Node, which has no global `Worker`, and
+  `/learn/playground/` failed with "Worker is not defined"; this box
+  builds under Bun, so the gate never saw it. Reproduced here by running
+  astro under Node 22: red with the Worker path, green with the fix.
+  `tests/playground-build-eval.test.ts` deletes the global and requires
+  the in-process answer to equal the Worker's for every text and three
+  refusals, and pins the import. A percent-encoded `data:` URL was
+  refuted on the way: Bun picked the text loader for the api config,
+  whose command holds `src/server.ts`, and returned the source as a
+  string.) The other option, importing
   config objects, needs a second copy of each config, or texts printed
   from objects, which would carry no comments. "Waits for" is resolved by
   the view (`^task`, `task`, `pkg#task`), which is a small copy of core's

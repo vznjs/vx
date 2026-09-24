@@ -44,7 +44,7 @@ export interface Planner {
 /** Where the workspace sits in the planner's virtual file system. */
 export const PLAYGROUND_ROOT = '/toy'
 /** How long one config may take to evaluate before its Worker is terminated. */
-export const EVAL_DEADLINE_MS = 2000
+const EVAL_DEADLINE_MS = 2000
 
 export interface RunInput {
   files: Record<string, string>

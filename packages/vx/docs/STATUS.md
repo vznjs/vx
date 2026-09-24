@@ -1231,8 +1231,13 @@ task table (what each waits for, what it declares). What it computes is
 `demos/model/playground-view.ts`; `runPlayground` is the page's Run,
 and asks the bundle's new `listPlaygroundProjects` export which config
 file core loads. The static table is the texts evaluated at build time
-by the page's own `evaluateConfig`: the step assumed build time could not
-run a Worker, and under `bun --bun astro build` it can. Rows: core's
+by the page's own rewrite and JSON rule, in-process
+(`evaluateConfigInProcess`, base64 `data:` modules). The first version
+ran the Worker path at build time on the premise that the build runs
+under Bun; Linux CI's prerender ran under Node, which has no global
+`Worker`, and the page failed to render there only. It went unseen
+until item 706 put the error in the log's tail; reproduced under Node 22
+and fixed before merge. Rows: core's
 parity rows hold the page's Run to `vx run build test --all --dry=json`
 (committed, and an uncommitted `button.tsx` edit moving exactly the
 four); `tests/playground-view.test.ts` and `tests/learn-playground.test.ts`

@@ -252,12 +252,15 @@ export default defineProject({
       description: 'astro build → dist/',
       dependsOn: ['install', 'import', 'build.playground'],
       exec: {
-        // Under Bun, not the host's Node: `bun --bun` runs astro's bin on
-        // Bun's runtime, which builds the same 133 pages in half the time
-        // (18.5 s against 37 s under Node 22, 2026-09-09) and leaves no
-        // dependency on whichever Node a CI image ships — astro 6 refuses
-        // anything below 22.12, and the Linux gate's docs build had been
-        // exiting 1 in 61 ms with no output at all.
+        // Meant to run under Bun: `bun --bun` runs astro's bin on Bun's
+        // runtime, which builds the same 133 pages in half the time (18.5 s
+        // against 37 s under Node 22, 2026-09-09). NOT what Linux CI gets:
+        // there the prerender ran under Node (no global `Worker`, item 700),
+        // most likely because `bun --bun` needs a `node` shim under
+        // `/tmp/bun-node-*` that this sandbox cannot write, and falls back
+        // to the PATH's Node. So nothing the build runs may assume Bun, and
+        // astro 6 refuses a Node below 22.12 (the Linux gate's docs build
+        // once exited 1 in 61 ms with no output at all).
         command: 'bun --bun astro build',
         // astro's telemetry does `mkdir ~/.config` before anything else; a
         // sandboxed task may read HOME but not write it, so it is told to

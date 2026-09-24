@@ -10,13 +10,13 @@
 // and `.static`, so they are its contract with this markup.
 //
 // The table comes from the config TEXTS, evaluated here at build time by the
-// page's own `evaluateConfig` (a Worker from a Blob URL, which the build's
-// Bun has), so the reader's first Run and the static render read one source.
+// page's own rewrite and JSON rule (`evaluateConfigInProcess`: no Worker, which
+// a Node build lacks), so the reader's first Run and the static render read
+// one source.
 import Demo from '../Demo.astro'
-import { evaluateConfig } from '../../playground/config-eval.js'
+import { evaluateConfigInProcess } from '../../playground/config-eval.js'
 import { CONFIG_TEXTS, ENV, FILES, TASKS } from '../../playground/workspace.js'
 import {
-  EVAL_DEADLINE_MS,
   envText,
   staticCells,
   staticProjects,
@@ -25,7 +25,7 @@ import {
 
 const configs: Record<string, unknown> = {}
 for (const [name, text] of Object.entries(CONFIG_TEXTS)) {
-  const r = await evaluateConfig(text, EVAL_DEADLINE_MS)
+  const r = await evaluateConfigInProcess(text)
   if (!r.ok) throw new Error(`<Playground>: ${name}'s vx.config.mjs does not evaluate: ${r.error}`)
   configs[name] = r.config
 }
