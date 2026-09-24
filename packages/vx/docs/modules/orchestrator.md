@@ -40,11 +40,13 @@ export function shouldShortCircuit(nodes, policy, cache): boolean
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
 //   summarize?, profile?, tags?, command?, report?, log?, bus?,
-//   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return)
+//   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
+//   holdPersistent? (return the requested persistent tasks still running)
 
 export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
+  persistent?: HeldPersistent // { ids, stop() }, set only under holdPersistent
 }
 ```
 
@@ -99,6 +101,10 @@ export interface RunSummary {
     The foreground then blocks until ONE kept-alive server exits, tears
     the others down the same way (`terminateChildren`, signals.md) and
     returns `ok && exit === 0` — a crashed dev server fails the run.
+    Under `RunOptions.holdPersistent` (the watch loop) the same
+    selection applies outside the foreground, and run() returns at
+    once with the kept tasks on `RunSummary.persistent`: the caller
+    owns them and its `stop()` is the same teardown.
     `RunOptions.signal` aborts a run from outside through the same
     teardown: the scheduler dispatches nothing further (never-started
     tasks complete `aborted`) and run() returns to its caller.

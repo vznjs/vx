@@ -271,7 +271,9 @@ terminal and a task succeeding or failing. Read it alongside
        alive, Ctrl-C reaps the process group. That first exit ends the
        session: the others are torn down (SIGTERM, grace, SIGKILL) and
        a non-zero exit makes the run exit 1, so a script's `vx run dev`
-       fails when the server it started fell over.
+       fails when the server it started fell over. Under
+       `holdPersistent` (the watch loop) run() instead returns them on
+       `RunSummary.persistent`, still running, for the caller to stop.
 ```
 
 ## One command per task

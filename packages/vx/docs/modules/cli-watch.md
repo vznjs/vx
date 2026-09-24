@@ -171,12 +171,20 @@ reasons:
   miss config changes that re-shape what's watched. The current
   "watch the whole project dir" approach is robust.
 
-## Why no automatic persistent-task lifecycle
+## Persistent tasks across cycles
 
-Watch mode just re-invokes `orchestrator.run` per cycle. The
-orchestrator's persistent-task lifecycle (spawn → SIGTERM at
-end-of-run) applies per cycle. So a `persistent` dev server gets
-re-spawned each cycle.
+Watch mode re-invokes `orchestrator.run` per cycle with
+`holdPersistent: true`, so the requested persistent tasks a cycle
+started are handed back running (`RunSummary.persistent`) instead of
+being stopped when its graph ends. The loop holds them while it idles;
+the next cycle calls their `stop()` before its run, and the stop path
+calls it after the in-flight cycle returns. A dependency-only
+persistent task is still stopped at the end of its cycle, as under
+`vx run`. So a `persistent` dev server is up between cycles and
+re-spawned by each one. Until 2026-09-24 the server was stopped at the
+END of each cycle and was dead whenever watch sat idle
+(`tests/watch-loop.test.ts` › "the dev server stays up while watch
+idles and is replaced when the next cycle starts").
 
 For dev-server workflows, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`. `vx watch` is
@@ -203,7 +211,7 @@ non-persistent tasks where each cycle should re-run cleanly.
 - Doesn't re-decide the watcher shape: a package added under a running
   watch that declares the first `workspaceFiles` input keeps the
   per-project arms until a restart.
-- Doesn't manage persistent tasks across cycles (they re-spawn).
+- Doesn't keep a persistent task across a cycle: each cycle re-spawns it.
 - Doesn't react to lockfile changes _during_ a cycle (the cache key
   is computed once per cycle; mid-cycle lockfile bumps land in the
   next cycle).

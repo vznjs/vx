@@ -11,7 +11,7 @@ export {
   type LoadProjectsArgs,
 } from './projects.js'
 export { computeTaskHash, createHashCache, type HashCache } from './task-hash.js'
-export type { RunOptions, RunSummary } from './options.js'
+export type { HeldPersistent, RunOptions, RunSummary } from './options.js'
 // Re-surface the cache policy contract (defined in the cache module) so
 // embedders constructing RunOptions.cache and the package façade can
 // reach it without importing the cache module directly.

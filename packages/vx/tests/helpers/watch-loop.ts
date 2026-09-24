@@ -66,8 +66,9 @@ export function startWatch(
   root: string,
   select: readonly string[] = ['--all'],
   env: Record<string, string> = {},
+  task = 'build',
 ): Watch {
-  const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', ...select], {
+  const proc = Bun.spawn([process.execPath, BIN, 'watch', task, ...select], {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',

@@ -156,6 +156,14 @@ export interface RunOptions {
    * never orphans a cycle's children.
    */
   signal?: AbortSignal
+  /**
+   * Hand the requested persistent tasks still running back on
+   * `RunSummary.persistent` instead of stopping them when the graph ends.
+   * The caller owns them from then on and stops them with its `stop()`.
+   * The watch loop sets this: a dev server stays up while watch idles and
+   * is replaced only when the next cycle starts.
+   */
+  holdPersistent?: boolean
   log?: Logger
   /**
    * Inject the run's event bus. When provided, the orchestrator emits
@@ -215,4 +223,13 @@ export interface RunOptions {
 export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
+  /** The persistent tasks `RunOptions.holdPersistent` handed back; absent when none is running. */
+  persistent?: HeldPersistent
+}
+
+export interface HeldPersistent {
+  /** The held tasks' ids, `pkg#task`. */
+  ids: readonly string[]
+  /** Stop every held task (the kill grace, then SIGKILL) and resolve once each is gone. */
+  stop(): Promise<void>
 }

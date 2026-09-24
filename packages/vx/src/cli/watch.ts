@@ -24,7 +24,11 @@ import {
 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
-import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
+import {
+  run as runOrchestrator,
+  type HeldPersistent,
+  type RunOptions,
+} from '../orchestrator/index.js'
 import {
   buildPackageGraph,
   findWorkspaceRoot,
@@ -410,7 +414,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // in with the loop, so a SIGTERM during the initial run took Bun's
   // default (exit 143) and left the cycle's children running under init.
   const stop = new AbortController()
-  const opts: RunOptions = { ...resolved, handleSignals: false, signal: stop.signal }
+  const opts: RunOptions = {
+    ...resolved,
+    handleSignals: false,
+    signal: stop.signal,
+    holdPersistent: true,
+  }
   // Every cycle's `invocations` row names the verb, as `vx run`'s does;
   // run()'s process.argv fallback put the bin's absolute path there, so
   // `vx last --list` showed `$ /…/bin.ts watch build` beside `$ vx run build`.
@@ -460,8 +469,11 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // closing it properly needs the workspaceWide decision made without loading
   // configs.
   process.stdout.write('vx watch: initial run...\n\n')
-  await runOrchestrator(opts)
-  if (stop.signal.aborted) return 0
+  const initial = await runOrchestrator(opts)
+  if (stop.signal.aborted) {
+    await initial.persistent?.stop()
+    return 0
+  }
 
   const load: CliLoadOptions = {
     ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
@@ -471,6 +483,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
   return await runWatchLoop({
     opts,
+    held: initial.persistent,
     stop: stop.signal,
     workspaceRoot,
     projects: watched,
@@ -650,6 +663,8 @@ export function makeRootEventFilter(
 
 interface WatchLoopArgs {
   opts: RunOptions
+  /** The persistent tasks the initial run left running; the next cycle stops them before it starts. */
+  held: HeldPersistent | undefined
   /** Aborted by the SIGINT/SIGTERM handlers `watchCmd` installed; the loop drains its cycle and resolves. */
   stop: AbortSignal
   workspaceRoot: string
@@ -682,6 +697,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let projectDirs = args.projectDirs
   let workspaceInputs = args.workspaceInputs
   let outputs = args.outputs
+  // A dev server stays up while the loop idles; the cycle that replaces it
+  // stops it first, so the new one never meets the old one's port.
+  let held = args.held
 
   // Reentrancy guard — never two orchestrator runs in flight. Events that
   // land while one is running wait in `pendingPaths` and are judged, on
@@ -847,8 +865,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       while (label !== undefined && !stop.aborted) {
         process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
         try {
+          await held?.stop()
+          held = undefined
           const start = Date.now()
-          await runOrchestrator(opts)
+          held = (await runOrchestrator(opts)).persistent
           lastCycle = { start, end: Date.now() }
           if (membersChanged && !stop.aborted) {
             membersChanged = false
@@ -1076,6 +1096,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       // The aborted cycle is tearing its children down; resolve only once
       // it has returned, so the process never exits over a live child.
       await inFlight
+      await held?.stop()
       resolve(0)
     }
     if (stop.aborted) {
