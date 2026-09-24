@@ -775,6 +775,9 @@ bytes raw (27,972 to 28,666 gzip), measured on top of P1 (item 691). The generat
 `glob-fuzz.ts`, shared by `glob-equiv.ts` (now exit 1 on any
 difference, sized by `GLOB_FUZZ_N`) and `tests/glob-port.test.ts`,
 which runs the four domains at the table's seed and size in about 1.5 s
+(each domain row carries a 60 s budget: the first one pays for all four,
+and CI's loaded runner took 6.9 s against bun's 5 s default, reproduced
+here with four copies on one core)
 and pins hand rows for the adversarial shapes, the brace limits and
 escapes. Differential: the old shim reddens the four domains with the
 table's exact counts and 14 hand rows; in the port, the backtrack bound

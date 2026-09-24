@@ -47,17 +47,27 @@ function scores(): Score[] {
   return table
 }
 
+// Whichever domain row runs first scores all four: 2,000,000 matches, CPU
+// bound. That is 1.2 s alone here, 4.7 s with three copies on one core, and
+// CI's loaded runner took 6.9 s against bun's 5 s default, so each row
+// carries a budget sized for a shared machine, not for this one.
+const SCORING_BUDGET_MS = 60_000
+
 describe('the playground glob port equals Bun.Glob.match', () => {
   DOMAINS.forEach(([patterns, paths, bunMatches], i) => {
-    it(`${patterns} globs × ${paths} paths: zero differences in 500,000 pairs`, () => {
-      const r = scores()[i]!
-      expect({ differ: r.differs.length, first: r.differs.slice(0, 10) }).toEqual({
-        differ: 0,
-        first: [],
-      })
-      expect(r.pairs).toBe(500_000)
-      expect(r.bunMatches).toBe(bunMatches)
-    })
+    it(
+      `${patterns} globs × ${paths} paths: zero differences in 500,000 pairs`,
+      () => {
+        const r = scores()[i]!
+        expect({ differ: r.differs.length, first: r.differs.slice(0, 10) }).toEqual({
+          differ: 0,
+          first: [],
+        })
+        expect(r.pairs).toBe(500_000)
+        expect(r.bunMatches).toBe(bunMatches)
+      },
+      SCORING_BUDGET_MS,
+    )
   })
 
   // Hand rows, each pinning Bun's own answer too, so a Bun that changes one
