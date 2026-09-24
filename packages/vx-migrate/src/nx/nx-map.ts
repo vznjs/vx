@@ -18,7 +18,6 @@ import {
   buildPackageGraph,
   type GeneratedProject,
   type GeneratedTask,
-  PERSISTENT_TASK_NAMES,
   type ProjectMeta,
   UserError,
 } from '@vzn/vx'
@@ -43,6 +42,7 @@ interface NxTarget {
   outputs?: string[]
   dependsOn?: unknown[]
   cache?: boolean
+  continuous?: boolean
 }
 
 interface NxNode {
@@ -322,7 +322,7 @@ function buildTask(
   // outputs and no `cache` was cached anyway, so refine's 204 persistent
   // `dev` targets (tsup --watch, outputs `dist`) were cached and then
   // made uncached only by the shared-output rule (2026-09-22).
-  const persistent = persistentTarget(targetName, target.executor)
+  const persistent = persistentTarget(target)
   const cacheEnabled =
     !persistent &&
     (target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName)))
@@ -466,7 +466,7 @@ function shellQuote(word: string): string {
 /**
  * The executors whose LIFETIME is known: a server never exits, a build
  * does. Any executor runs through `nx-exec`; this table only decides
- * `persistent`, and it is authoritative where the target's name is a guess.
+ * `persistent`, and only for a target whose graph says no `continuous`.
  */
 const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/vite:build': { persistent: false },
@@ -491,17 +491,18 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
 }
 
 /**
- * Does this target run a server that never exits? A known executor is
- * authoritative — `@nx/vite:dev-server` IS one, whatever the target is
- * called. Anything else (a shell wrapper, a custom executor) says nothing
- * about lifetime, so fall back to the target NAME, the same guess the
- * scripts path makes. Without this a `serve` target became an ordinary
- * task and `vx run serve` waited forever for an exit that never comes.
+ * Does this target run a server that never exits? Nx's own word first: a
+ * target that says `continuous` (Nx ≥ 21 infers it for every serve target)
+ * is one, and one that says `continuous: false` is not. A graph from an
+ * older Nx says nothing, so a known server executor is one whatever the
+ * target is called. The target NAME is never the signal: a cached
+ * `nx:run-commands` target named `dev` ran uncached every time while the
+ * same target named `gen` cached (nx#32610).
  */
-function persistentTarget(targetName: string, executor: string | undefined): boolean {
-  const known = executor === undefined ? undefined : KNOWN_EXECUTORS[executor]
-  if (known !== undefined) return known.persistent
-  return PERSISTENT_TASK_NAMES.has(targetName)
+function persistentTarget(target: NxTarget): boolean {
+  if (typeof target.continuous === 'boolean') return target.continuous
+  const known = target.executor === undefined ? undefined : KNOWN_EXECUTORS[target.executor]
+  return known?.persistent ?? false
 }
 
 /** `a → b` for every graph edge vx's package graph cannot see. */

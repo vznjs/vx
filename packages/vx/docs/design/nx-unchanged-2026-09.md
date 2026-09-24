@@ -171,6 +171,12 @@ installed (a workspace with only `nx` and custom executors).
   Each other configuration is its own task, `<target>:<configuration>`,
   same inputs, outputs and edges, `--configuration` passed so executors
   reading `context.configurationName` see it.
+- Lifetime: a target is persistent when it says `continuous: true`, never
+  when it says `continuous: false`, and, in a graph from an Nx older than
+  that field, when its executor is a known server
+  (`@nx/vite:dev-server`, …). Never by its name: a cached `nx:run-commands`
+  target named `dev` ran uncached on every run while the same target named
+  `gen` cached (nx#32610).
 - What `nx-exec` needs at run time: `nx` resolvable from the project
   dir (the workspace's `node_modules`), Node on PATH, and the cached
   graph. It never dials the daemon.

@@ -306,6 +306,60 @@ describe('nx()', () => {
   )
 
   it(
+    'persistence is Nx’s `continuous`, never the target name: a cached `dev` caches like `gen` (nx#32610)',
+    async () => {
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      const cached = (out: string) => ({
+        executor: 'nx:run-commands',
+        options: { command: `mkdir -p ${out} && echo ${out} > ${out}/o.txt`, cwd: 'packages/lib' },
+        inputs: ['{projectRoot}/src/**/*'],
+        outputs: [`{projectRoot}/${out}`],
+        cache: true,
+      })
+      Object.assign(g.graph.nodes['lib']!.data.targets, {
+        dev: cached('dev-out'),
+        gen: cached('gen-out'),
+        tail: {
+          executor: 'nx:run-commands',
+          options: { command: 'echo tailing' },
+          continuous: true,
+        },
+        preview: { executor: '@nx/vite:dev-server', options: {}, continuous: false },
+      })
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      const plan = await planRun({
+        cwd: root,
+        tasks: ['dev', 'gen', 'tail', 'preview', 'serve'],
+        log: silent(),
+      })
+      const shape = Object.fromEntries(
+        plan.tasks.map((t) => [
+          t.node.id,
+          {
+            persistent: t.node.config.exec?.persistent !== undefined,
+            cached: !!t.node.config.cache,
+          },
+        ]),
+      )
+      expect(shape).toEqual({
+        'lib#dev': { persistent: false, cached: true },
+        'lib#gen': { persistent: false, cached: true },
+        'lib#tail': { persistent: true, cached: false },
+        // An explicit `continuous: false` is Nx's word, over the executor table.
+        'lib#preview': { persistent: false, cached: false },
+        // No `continuous` on a known server executor: the table decides.
+        'lib#serve': { persistent: true, cached: false },
+      })
+      const opts = { cwd: root, tasks: ['dev'], log: silent(), handleSignals: false }
+      expect(status(await run(opts), 'lib#dev')).toBe('success')
+      expect(status(await run(opts), 'lib#dev')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a server executor is a persistent task, reported once for all its tasks',
     async () => {
       const log = silent()
@@ -315,7 +369,10 @@ describe('nx()', () => {
       expect(serve.config.exec?.command).toBe(
         `nx-exec @nx/vite:dev-server --project lib --target serve --options '{"port":4200}'`,
       )
-      expect(log.lines.filter((l) => l.includes('lib#serve: a server executor')).length).toBe(1)
+      expect(
+        log.lines.filter((l) => l.includes('lib#serve: a continuous target (or a server executor)'))
+          .length,
+      ).toBe(1)
     },
     TIMEOUT,
   )
