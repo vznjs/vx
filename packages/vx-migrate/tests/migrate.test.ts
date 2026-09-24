@@ -498,9 +498,9 @@ describe('vx migrate (nx)', () => {
       // run-commands from the workspace root: the cd is part of the command.
       expect(build.exec?.command).toBe(
         `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }; ` +
-          `nx_run_commands() { trap 'trap "" TERM; kill -TERM 0; exit 1' USR1; ` +
-          `{ (nx_run 'tsc -b --outFile=packages/pkg-a/build/main.js' "$@") || kill -USR1 $$; } & ` +
-          `{ (nx_run 'echo done --outFile=packages/pkg-a/build/main.js' "$@") || kill -USR1 $$; } & wait; }; ` +
+          `nx_run_commands() { trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; ` +
+          `{ trap 'nx_term=1' TERM; (nx_run 'tsc -b --outFile=packages/pkg-a/build/main.js' "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & ` +
+          `{ trap 'nx_term=1' TERM; (nx_run 'echo done --outFile=packages/pkg-a/build/main.js' "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & wait; }; ` +
           'cd ../.. && nx_run_commands',
       )
       // namedInputs expansion: production → default + spec exclusion.

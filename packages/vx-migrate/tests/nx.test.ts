@@ -374,9 +374,11 @@ describe('nx()', () => {
       '`commands` run in parallel: a failing check fails the task while the server beside it is up, and TERMs it (nx#28477)',
       async () => {
         // Bounded, so the run in order the old line made ends — late, with no
-        // TERM ever sent.
+        // TERM ever sent. Its trap is slow and it lets go of the task's
+        // stdout, so only the line's own wait keeps the task until the
+        // trap is done, as Nx keeps it.
         const server =
-          'trap "echo terminated > term.txt; exit 143" TERM; : > up; i=0; while [ $i -lt 200 ]; do i=$((i+1)); sleep 0.05; done'
+          'exec >/dev/null 2>&1; trap "sleep 0.2; echo terminated > term.txt; exit 143" TERM; : > up; i=0; while [ $i -lt 200 ]; do i=$((i+1)); sleep 0.05; done'
         const check = 'while [ ! -f up ]; do sleep 0.01; done; echo check-failed; exit 3'
         await libTargets({
           par: {

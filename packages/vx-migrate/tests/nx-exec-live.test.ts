@@ -187,10 +187,9 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
       for (const f of OUTS) await rm(rel(f), { force: true })
       const code = await run()
       const files: Record<string, string> = {}
+      // Read the moment the run returns: Nx settles every command before it
+      // fails the task, so a TERMed command's trap has run by then.
       for (const f of OUTS) {
-        // A TERMed command's trap writes after the line has returned.
-        if (f === 'term.txt')
-          for (let i = 0; i < 200 && !(await Bun.file(rel(f)).exists()); i++) await Bun.sleep(10)
         if (await Bun.file(rel(f)).exists()) files[f] = await Bun.file(rel(f)).text()
       }
       return { failed: code !== 0, files }
@@ -271,7 +270,8 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
         'a failing command fails the parallel run and TERMs the other',
         {
           commands: [
-            'trap "echo terminated > term.txt; exit 143" TERM; : > up; while :; do sleep 0.05; done',
+            // A slow trap, so a line that returns before it ends reads no file.
+            'trap "sleep 0.2; echo terminated > term.txt; exit 143" TERM; : > up; while :; do sleep 0.05; done',
             'while [ ! -f up ]; do sleep 0.01; done; exit 3',
           ],
         },

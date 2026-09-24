@@ -17,8 +17,11 @@
 // was up (nx#28477), and one command's `exit` or `cd` leaked into the next.
 // Each command is a subshell here, and the parallel form is background
 // jobs whose first failure signals the line's shell, which TERMs its own
-// process group — every task vx runs is one (runner.ts spawns `detached`),
-// so the group is the task's and nothing outside it.
+// process group — every task vx runs is one (runner.ts spawns `detached`)
+// — and returns only once every command has exited, as Nx settles every
+// command before it fails the task: a TERMed server's cleanup trap runs
+// to its end inside the task, not after it. (Under vx's Linux sandbox the
+// runtime's wrapper shell shares that group, and the TERM ends it too.)
 //
 // Arguments: Nx appends every option it does not consume (`--name=value`),
 // the `args` option and the arguments given on its command line to EACH
@@ -327,9 +330,13 @@ export function mapRunCommands(
       ? `(nx_run ${shellQuote(c.text)} "$@")`
       : `(${c.text}${c.text.includes('#') ? '\n' : ''})`,
   )
+  // Each job's shell catches the TERM so it outlives it and the line's
+  // `wait` covers its command's exit (a subshell resets a caught signal,
+  // so the command itself still takes the TERM); the flag keeps a job TERMed
+  // from outside from signalling a line's shell that is already gone.
   const body =
     parallel && pieces.length > 1
-      ? `trap 'trap "" TERM; kill -TERM 0; exit 1' USR1; ${pieces.map((p) => `{ ${p} || kill -USR1 $$; } &`).join(' ')} wait`
+      ? `trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; ${pieces.map((p) => `{ trap 'nx_term=1' TERM; ${p} || [ -n "$nx_term" ] || kill -USR1 $$; } &`).join(' ')} wait`
       : pieces.join(' && ')
   const helper = commands.some((c) => c.runtime === 'append') ? `${NX_RUN}; ` : ''
   return {

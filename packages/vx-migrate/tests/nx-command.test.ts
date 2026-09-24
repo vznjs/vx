@@ -77,8 +77,9 @@ describe('commands: one shell each, parallel unless `parallel: false` (nx#28477)
   it('the default is parallel: background jobs, the first failure TERMs the group and fails the line', () => {
     expect(line({ commands: ['tsc -b', 'echo done'] }).out?.command).toBe(
       NX_RUN +
-        `nx_run_commands() { trap 'trap "" TERM; kill -TERM 0; exit 1' USR1; ` +
-        `{ (nx_run 'tsc -b' "$@") || kill -USR1 $$; } & { (nx_run 'echo done' "$@") || kill -USR1 $$; } & wait; }; ` +
+        `nx_run_commands() { trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; ` +
+        `{ trap 'nx_term=1' TERM; (nx_run 'tsc -b' "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & ` +
+        `{ trap 'nx_term=1' TERM; (nx_run 'echo done' "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & wait; }; ` +
         'cd ../.. && nx_run_commands',
     )
   })
@@ -125,18 +126,23 @@ describe('what the line does under sh', () => {
 
   const root = { projectRel: '.', projectName: 'r' }
 
-  it('parallel: a failing check ends the line at once and TERMs the server beside it', async () => {
+  it('parallel: a failing check TERMs the server beside it, and the line ends once its trap has', async () => {
     // The server never exits by itself: run in order, the check never ran.
+    // It lets go of the line's stdout, so the pipe cannot hold the reader
+    // until its slow trap is done: only the line's own wait can.
     const server =
-      'trap "echo terminated > term.txt; exit 143" TERM; : > up; while :; do sleep 0.05; done'
+      'exec >/dev/null; trap "sleep 0.2; echo terminated > term.txt; exit 143" TERM; : > up; while :; do sleep 0.05; done'
     const check = 'while [ ! -f up ]; do sleep 0.01; done; echo check-failed; exit 3'
     const { out } = line({ commands: [server, check] }, root)
     const r = await sh(out!.command)
-    // Nx's exit for a failed parallel run is 1, whatever the command's was.
-    expect({ code: r.code, out: r.out.trim() }).toEqual({ code: 1, out: 'check-failed' })
     const term = Bun.file(path.join(dir, 'term.txt'))
-    for (let i = 0; i < 200 && !(await term.exists()); i++) await Bun.sleep(10)
-    expect((await term.text()).trim()).toBe('terminated')
+    // Nx's exit for a failed parallel run is 1, whatever the command's was;
+    // and Nx fails the task only once every command has exited.
+    expect({
+      code: r.code,
+      out: r.out.trim(),
+      term: (await term.exists()) ? await term.text() : null,
+    }).toEqual({ code: 1, out: 'check-failed', term: 'terminated\n' })
   }, 10_000)
 
   it('parallel: both run at once, and the line succeeds when both have', async () => {
