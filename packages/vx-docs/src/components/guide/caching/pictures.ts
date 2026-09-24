@@ -215,15 +215,16 @@ export const cascade: Picture = {
     width: 340,
     height: 344,
     boxes: [
-      { id: 'utils#build', x: 95, y: 40, w: 150, label: 'utils#build' },
-      { id: 'ui#build', x: 12, y: 144, w: 150, label: 'ui#build' },
-      { id: 'api#build', x: 178, y: 144, w: 150, label: 'api#build' },
-      { id: 'app#build', x: 95, y: 248, w: 150, label: 'app#build' },
+      { id: 'app#build', x: 95, y: 20, w: 150, label: 'app#build' },
+      { id: 'ui#build', x: 12, y: 124, w: 150, label: 'ui#build' },
+      { id: 'api#build', x: 178, y: 124, w: 150, label: 'api#build' },
+      { id: 'utils#build', x: 95, y: 228, w: 150, label: 'utils#build' },
     ].map(moved),
+    // utils at the foot, so "above it" is where the picture draws them.
     arrows: FOLDS,
     notes: [
-      { x: 170, y: 26, text: 'edited ✎', tone: 'accent' },
-      { x: 170, y: 326, text: 'each key goes into the keys above it' },
+      { x: 170, y: 304, text: 'edited ✎', tone: 'accent' },
+      { x: 170, y: 330, text: 'each key goes into the keys above it' },
     ],
   },
 }

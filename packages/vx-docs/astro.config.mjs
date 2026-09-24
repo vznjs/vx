@@ -91,6 +91,9 @@ export default defineConfig({
         ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
       customCss: ['./src/styles/theme.css'],
+      // A code block wraps rather than scrolls: on a phone the end of a
+      // command hid past the edge, and nothing said it was there.
+      expressiveCode: { defaultProps: { wrap: true } },
       plugins: [
         starlightBlog({
           title: 'Blog',
