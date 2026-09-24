@@ -1048,7 +1048,9 @@ export function commandEnvironment(
   envDefine: Readonly<Record<string, string>>,
 ): Array<{ name: string; value: string }> {
   const merged = new Map<string, string>()
-  for (const e of inputs.env) merged.set(e.name, e.value)
+  // An unset name stays unset in the action, as `passThrough` leaves it here:
+  // shipping it as "" would run a different command than the key describes.
+  for (const e of inputs.env) if (e.value !== undefined) merged.set(e.name, e.value)
   for (const [name, value] of Object.entries(envDefine)) merged.set(name, value)
   return [...merged].map(([name, value]) => ({ name, value }))
 }

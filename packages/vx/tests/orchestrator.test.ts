@@ -449,6 +449,52 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
     TIMEOUT,
   )
 
+  // turborepo#4645: the child tells an unset name from an empty one (`??`,
+  // `${X-default}`), so the key must too, or the second run replays UNSET.
+  it(
+    'a declared env name UNSET and set to the empty string are different keys',
+    async () => {
+      await addProject(fixture.root, 'envunset', {
+        files: { 'src/a.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              show: {
+                exec: {
+                  command: "node -e 'process.stdout.write(process.env.BUILD_TARGET ?? \\"UNSET\\")' > out.txt",
+                  env: { passThrough: ['BUILD_TARGET'] },
+                },
+                cache: {
+                  inputs: { files: ['src/**'], env: ['BUILD_TARGET'] },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const out = path.join(fixture.root, 'packages/envunset/out.txt')
+      const once = async () => {
+        const r = await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
+        return [r.outcomes[0]?.status, await readFile(out, 'utf8')]
+      }
+
+      try {
+        delete process.env.BUILD_TARGET
+        expect(await once()).toEqual(['success', 'UNSET'])
+        process.env.BUILD_TARGET = ''
+        expect(await once()).toEqual(['success', ''])
+        delete process.env.BUILD_TARGET
+        expect(await once()).toEqual(['cache-hit', 'UNSET'])
+        process.env.BUILD_TARGET = ''
+        expect(await once()).toEqual(['cache-hit', ''])
+      } finally {
+        delete process.env.BUILD_TARGET
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     'exec.env.define values reach the child and participate in the cache key',
     async () => {

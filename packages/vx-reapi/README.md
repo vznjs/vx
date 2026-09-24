@@ -340,7 +340,8 @@ sorted by name — the proto requires that, so equivalent Commands hash alike:
   action identity, and they are already in the vx cache key.
 - **`cache.inputs.env`** — the values this machine resolved for those names.
   They are in the vx cache key by definition, so a change to one already
-  produces a different action.
+  produces a different action. A name unset here is left out of the
+  `Command`, not sent empty, so the worker sees what a local run would.
 
 A `define` wins over an `inputs.env` entry of the same name: it is the more
 explicit statement of intent.

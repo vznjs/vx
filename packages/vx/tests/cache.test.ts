@@ -294,10 +294,16 @@ describe('Cache.key', () => {
     expect(a).not.toBe(b)
   })
 
-  it('distinguishes empty value from unset (different cache keys)', async () => {
-    const present = await cache.key({ ...baseInput(), envValues: [['MODE', '']] })
-    const absent = await cache.key({ ...baseInput(), envValues: [] })
-    expect(present).not.toBe(absent)
+  // An unset name folds its bare name, which no `name\0value` can spell. The
+  // candidates are the values nearest that encoding: empty, and the name.
+  it('an empty value, an unset name and an unlisted one are three keys', async () => {
+    const keys = [
+      await cache.key({ ...baseInput(), envValues: [['MODE', '']] }),
+      await cache.key({ ...baseInput(), envValues: [['MODE', 'MODE']] }),
+      await cache.key({ ...baseInput(), envValues: [['MODE', undefined]] }),
+      await cache.key({ ...baseInput(), envValues: [] }),
+    ]
+    expect(new Set(keys).size).toBe(4)
   })
 
   it('different runtime output → different key', async () => {

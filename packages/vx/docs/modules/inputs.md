@@ -175,8 +175,8 @@ Listed `cache.inputs.env` names are looked up in `envSource` (the
 host's `process.env`):
 
 - Set names → `[name, value]` pair.
-- Unset names → `[name, '']` (distinguishable from "name was never
-  listed").
+- Unset names → `[name, undefined]`, which the key folds apart from
+  every value, `''` included, and from "name was never listed".
 - Sorted by name for deterministic key ordering.
 
 ## Output resolution rules
@@ -253,7 +253,7 @@ block verifies:
 - boundary isolation (nested project files don't leak)
 - gitignored files excluded; negated gitignore re-included
 - empty `files: []` produces stable hash
-- env input value changes bust cache; unset vs empty differ
+- env input value changes bust cache; unset, empty and unlisted are three keys
 
 ## Replacing this module
 

@@ -89,7 +89,10 @@ over (in order):
 7. **`cache.inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
-   values; unset names contribute the empty string.
+   values; an unset name folds its bare name, with no `\0`, so unset
+   and set-to-empty are two keys (the child tells them apart:
+   `passThrough` leaves an unset name out). A name holding a NUL is
+   refused at load.
 8. **`cache.inputs.runtime` resolved output** — `[command, output]`
    pairs, where `output` is the combined, trimmed stdout + stderr of
    each command run via `sh -c` in the **project dir** at hash time.

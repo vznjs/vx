@@ -17,9 +17,10 @@ export interface CacheKeyInput {
   taskConfigHash: string
   /**
    * Runtime values of declared cache-input env names (from parent at hash
-   * time). Independent of `exec.env`; lives here for cache identity.
+   * time), `undefined` for a name that is unset. Independent of `exec.env`;
+   * lives here for cache identity.
    */
-  envValues: Array<[name: string, value: string]>
+  envValues: Array<[name: string, value: string | undefined]>
   /**
    * Resolved `cache.inputs.runtime` commands as [command, output] pairs
    * (output = trimmed stdout+stderr, resolved live at hash time). Folded

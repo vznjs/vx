@@ -55,8 +55,8 @@ export interface InputFile {
 export interface TaskInputs {
   /** Declared `cache.inputs.files` + `workspaceFiles` (own outputs excluded), sorted by path. */
   readonly files: readonly InputFile[]
-  /** Declared `cache.inputs.env` names with their resolved values. */
-  readonly env: ReadonlyArray<{ readonly name: string; readonly value: string }>
+  /** Declared `cache.inputs.env` names with their resolved values; `undefined` when unset. */
+  readonly env: ReadonlyArray<{ readonly name: string; readonly value: string | undefined }>
   /** `cache.inputs.runtime` commands and the output that was folded — a toolchain expectation. */
   readonly runtime: ReadonlyArray<{ readonly command: string; readonly output: string }>
   /** `cache.inputs.workspaceRuntime`, same shape. */

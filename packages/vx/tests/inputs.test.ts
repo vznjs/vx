@@ -347,18 +347,19 @@ describe('resolveInputs', () => {
     expect(got.files).toEqual([])
   })
 
-  it('inputs.env: unset names contribute "" (distinguishable from never-listed)', async () => {
+  it('inputs.env: an unset name resolves to undefined, an empty one to ""', async () => {
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
-      envSource: { SET_ONE: 'val' },
-      inputs: { files: [], env: ['SET_ONE', 'UNSET_TWO'] },
+      envSource: { SET_ONE: 'val', EMPTY: '' },
+      inputs: { files: [], env: ['SET_ONE', 'UNSET_TWO', 'EMPTY'] },
       ownOutputs: [],
       nestedProjectDirs: [],
     })
     expect(got.envValues).toEqual([
+      ['EMPTY', ''],
       ['SET_ONE', 'val'],
-      ['UNSET_TWO', ''],
+      ['UNSET_TWO', undefined],
     ])
   })
 
