@@ -254,6 +254,14 @@ test is telling the truth.
       local key of such a task moves, its old entries become misses, and
       no stored bytes are wrong.
 
+728.  DONE (2026-09-24, Next 16). The sandboxing guide in plain words:
+      step 2 says a linked package of yours is readable when the task
+      depends on one of its tasks (726's rule without its terms), and
+      "What can't be sandboxed" drops this repo's own tally of the two
+      tasks that decline the sandbox, which a reader does not need; the
+      row that holds CLAUDE.md's count against the configs stays, its page
+      half gone.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -443,8 +451,8 @@ state of each:
     `docs/history/2026-09-improvement-loop-612-631.md` and 632–654 in
     `docs/history/2026-09-improvement-loop-632-654.md` (entries
     14aq–14di and loop item 677 in the next-log file). The loop above
-    is the record since 719; 14dj is below, and the next entry written
-    here is 14dk.
+    is the record since 719 (14dj in the next-log file); 14dk is below,
+    and the next entry written here is 14dl.
 15. **The plan after the sweep week: `docs/design/plan-2026-09-22.md`.**
     Fixes F1–F6, improvements I1–I7, arcs D1–D5, in the order that
     document gives (F4 → F1 → F3 → F2; F5 → I1 → I4; D3 → D1, D5
@@ -465,11 +473,11 @@ its own package through its self-link (720, `CACHE_VERSION` v30), nor a
 linked sibling its key does not cover (726, v31, the Decisions entry on
 narrowing core's grant), and a task downstream of a persistent task has
 one key on both paths (727). WHAT STANDS: 14dj is in the next-log file
-(§ Handoff 14dj); the loop holds 719–727. OWNER, unchanged: the site's read
+(§ Handoff 14dj); the loop holds 719–728. OWNER, unchanged: the site's read
 (Next 16), cut 0.1.0 (the tag, then delete `NPM_TOKEN`), the site's
-address, the scope list (roadmap 2.4), the soak length. NEXT: trim
-STATUS (items 719–727 to history, 14dj to the next-log); then the next
-item the loop's own finds or the roadmap names. Never end with "what
+address, the scope list (roadmap 2.4), the soak length. NEXT: the trim when the loop
+reaches twenty items; the warm-path A/B on the next run-path change
+(Next 6); otherwise the owner's read of the site. Never end with "what
 next?".
 
 16. **The site, redone as one story (owner, 2026-09-24).** R1–R3

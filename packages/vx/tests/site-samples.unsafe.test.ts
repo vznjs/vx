@@ -996,8 +996,8 @@ describe('the otel guide tabulates every option the plugin takes', () => {
   })
 })
 
-describe('the sandboxing guide counts the tasks that decline the sandbox', () => {
-  it('its count is what this repo’s configs declare', () => {
+describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
+  it('are the two this repo’s configs declare', () => {
     const stripStrings = (s: string) => s.replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, "''")
     const found: string[] = []
     const dir = path.resolve(import.meta.dir, '..', '..')
@@ -1018,11 +1018,9 @@ describe('the sandboxing guide counts the tasks that decline the sandbox', () =>
       }
     }
     // The parser must find the two CLAUDE.md names — if it finds none it is
-    // broken, not the docs.
+    // broken, not the docs. (The sandboxing guide no longer repeats the
+    // count: a reader wants what cannot be sandboxed, not this repo's tally.)
     expect(found.sort()).toEqual(['vx', 'vx-reapi'])
-    const page = readFileSync(path.join(DOCS, 'guides', 'sandboxing.md'), 'utf8')
-    expect(page.replace(/\s+/g, ' ')).toContain('exactly two tasks in this repository that do not')
-    expect(page).toContain('`@vzn/vx-reapi#test`')
   })
 })
 
