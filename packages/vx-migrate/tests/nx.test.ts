@@ -498,6 +498,128 @@ describe('nx()', () => {
     )
   })
 
+  describe('the `.env` files Nx gives a task', () => {
+    async function libTargets(targets: Record<string, unknown>): Promise<void> {
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      Object.assign(g.graph.nodes['lib']!.data.targets, targets)
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+    }
+    const lib = (f: string) => path.join(root, 'packages', 'lib', f)
+    const showenv = {
+      showenv: {
+        executor: 'nx:run-commands',
+        options: {
+          command: 'mkdir -p out && printf "%s|%s|%s" "$A" "$B" "$C" > out/env.txt',
+          cwd: 'packages/lib',
+        },
+        inputs: ['{projectRoot}/src/**/*'],
+        outputs: ['{projectRoot}/out'],
+        cache: true,
+      },
+    }
+
+    it(
+      'load in Nx’s order, and a gitignored one is still in the key',
+      async () => {
+        await writeFile(path.join(root, '.env'), 'A=root\nB=root\nC=root\n')
+        await writeFile(path.join(root, '.env.local'), 'C=local\n')
+        await writeFile(lib('.env'), 'A=project\n')
+        await writeFile(lib('.env.showenv'), 'B=target\n')
+        await writeFile(path.join(root, '.gitignore'), 'dist\nnode_modules\n.vx\n.nx\n.env.local\n')
+        Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+        await libTargets(showenv)
+        const plan = await planRun({ cwd: root, tasks: ['showenv'], log: silent() })
+        const config = plan.tasks.find((t) => t.node.id === 'lib#showenv')!.node.config
+        expect(config.exec?.command).toBe(
+          'nx-env --dotenv .env.showenv --dotenv .env --dotenv ../../.env.local --dotenv ../../.env -- ' +
+            `'mkdir -p out && printf "%s|%s|%s" "$A" "$B" "$C" > out/env.txt'`,
+        )
+        expect(config.cache?.inputs.runtime).toEqual([
+          'for f in .env.showenv .env ../../.env.local ../../.env; do echo "$f"; cat -- "$f" 2>/dev/null; echo; done',
+        ])
+        const opts = { cwd: root, tasks: ['showenv'], log: silent(), handleSignals: false }
+        expect(status(await run(opts), 'lib#showenv')).toBe('success')
+        expect(await Bun.file(lib('out/env.txt')).text()).toBe('project|target|local')
+        expect(status(await run(opts), 'lib#showenv')).toBe('cache-hit')
+        await writeFile(path.join(root, '.env.local'), 'C=local2\n')
+        expect(status(await run(opts), 'lib#showenv')).toBe('success')
+        expect(await Bun.file(lib('out/env.txt')).text()).toBe('project|target|local2')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'a run-commands `envFile` is loaded under them (nx#23581)',
+      async () => {
+        await writeFile(lib('.env.custom'), 'MSG=from-envfile\n')
+        await libTargets({
+          withenvfile: {
+            executor: 'nx:run-commands',
+            options: {
+              command: 'echo "MSG=[$MSG]" > msg.txt',
+              cwd: 'packages/lib',
+              envFile: 'packages/lib/.env.custom',
+            },
+          },
+        })
+        const log = silent()
+        const r = await run({ cwd: root, tasks: ['withenvfile'], log, handleSignals: false })
+        expect(status(r, 'lib#withenvfile')).toBe('success')
+        expect((await Bun.file(lib('msg.txt')).text()).trim()).toBe('MSG=[from-envfile]')
+        expect(log.lines.filter((l) => l.includes('envFile'))).toEqual([])
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'reach an executor through nx-exec',
+      async () => {
+        await writeFile(lib('.env'), 'FROM_DOTENV=yes\n')
+        const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+        expect(plan.tasks.find((t) => t.node.id === 'lib#build')!.node.config.exec?.command).toBe(
+          `nx-exec @acme/compile:run --project lib --target build --options '{"writeFile":"dist/lib.js","content":"lib v1","cwd":"{projectRoot}"}' --dotenv .env`,
+        )
+        // lib's alone: record.json is the last executor's.
+        const r = await run({
+          cwd: root,
+          tasks: ['lib#build'],
+          log: silent(),
+          handleSignals: false,
+        })
+        expect(r.outcomes.map((o) => [o.node.id, o.status])).toEqual([['lib#build', 'success']])
+        const rec = (await Bun.file(path.join(root, 'record.json')).json()) as {
+          env: Record<string, unknown>
+        }
+        expect(rec.env['FROM_DOTENV']).toBe('yes')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'none under NX_LOAD_DOT_ENV_FILES=false, as Nx loads none',
+      async () => {
+        await writeFile(lib('.env'), 'A=project\n')
+        await libTargets(showenv)
+        const before = process.env['NX_LOAD_DOT_ENV_FILES']
+        process.env['NX_LOAD_DOT_ENV_FILES'] = 'false'
+        try {
+          const plan = await planRun({ cwd: root, tasks: ['showenv'], log: silent() })
+          const config = plan.tasks.find((t) => t.node.id === 'lib#showenv')!.node.config
+          expect(config.exec?.command).toBe(
+            'mkdir -p out && printf "%s|%s|%s" "$A" "$B" "$C" > out/env.txt',
+          )
+          expect(config.cache?.inputs.runtime).toBeUndefined()
+        } finally {
+          if (before === undefined) delete process.env['NX_LOAD_DOT_ENV_FILES']
+          else process.env['NX_LOAD_DOT_ENV_FILES'] = before
+        }
+      },
+      TIMEOUT,
+    )
+  })
+
   it(
     'a server executor is a persistent task, reported once for all its tasks',
     async () => {

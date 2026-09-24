@@ -44,6 +44,8 @@ export interface RunCommandsLine {
   readonly env: Readonly<Record<string, string>>
   /** Nx's `readyWhen` as the pattern `exec.persistent.readyWhen` takes, when the target has one. */
   readonly readyWhen: string | undefined
+  /** `envFile` as declared: workspace-root-relative, or absolute. */
+  readonly envFile: string | undefined
 }
 
 /** The options run-commands consumes itself; every other one is forwarded to each command. */
@@ -230,12 +232,10 @@ export function mapRunCommands(
   }
 
   const env = mapEnv(options, todos)
-  if (typeof options['envFile'] === 'string') {
-    todos.push(
-      `nx:run-commands: \`envFile\` ${JSON.stringify(options['envFile'])} is not loaded — ` +
-        'put its variables in `env`, or in exec.env in a vx.config',
-    )
-  }
+  const envFile =
+    typeof options['envFile'] === 'string' && options['envFile'].length > 0
+      ? expand(options['envFile'], ctx)
+      : undefined
   if (options['streamOutput'] === false) {
     todos.push('nx:run-commands: `streamOutput: false` — vx shows the output per its own modes')
   }
@@ -255,7 +255,7 @@ export function mapRunCommands(
       'nx:run-commands: per-command `prefix` / `color` output decoration is not reproduced',
     )
   }
-  if (entries.length === 0) return { command: NOOP, env, readyWhen: undefined }
+  if (entries.length === 0) return { command: NOOP, env, readyWhen: undefined, envFile }
 
   const argsOption = Array.isArray(options['args'])
     ? options['args'].join(' ')
@@ -318,7 +318,7 @@ export function mapRunCommands(
   }
   const only = commands.length === 1 ? commands[0]! : undefined
   if (only !== undefined && only.runtime === 'append') {
-    return { command: `${cd}${only.text}`, env, readyWhen: pattern }
+    return { command: `${cd}${only.text}`, env, readyWhen: pattern, envFile }
   }
   // A subshell per command, as Nx gives each a shell of its own; a comment
   // in one must not swallow the `)` that closes it.
@@ -332,7 +332,12 @@ export function mapRunCommands(
       ? `trap 'trap "" TERM; kill -TERM 0; exit 1' USR1; ${pieces.map((p) => `{ ${p} || kill -USR1 $$; } &`).join(' ')} wait`
       : pieces.join(' && ')
   const helper = commands.some((c) => c.runtime === 'append') ? `${NX_RUN}; ` : ''
-  return { command: `${helper}${FN}() { ${body}; }; ${cd}${FN}`, env, readyWhen: pattern }
+  return {
+    command: `${helper}${FN}() { ${body}; }; ${cd}${FN}`,
+    env,
+    readyWhen: pattern,
+    envFile,
+  }
 }
 
 /** The target's `env` (Nx gives it priority over every other source), and `color`'s `FORCE_COLOR`. */
