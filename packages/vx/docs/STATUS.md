@@ -318,6 +318,43 @@ the built page and fails without the SVG, the caption, or the loader
 `.mdx`; the site-wide laws that walk `.md` (the config snippets, the
 doc-class pins, the samples) do not read them yet.
 
+14bx. **Item 676 (roadmap W9 spike, 2026-09-23): the planner runs in a
+browser bundle and plans what the CLI plans. Verdict: feasible, with
+changes.** Core's own source is bundled unchanged with
+`Bun.build({ target: 'browser' })`: discovery, the staged config load,
+the task graph, the fingerprint, `plan()` with the real key fold, and
+the scheduler. The shim is about 10 KB: a pure-TS xxh3, a glob matcher,
+an in-memory file system, `process.env`, and a rewrite of the `Bun` and
+`process` globals.
+
+The bundle is 126,846 B raw and 43,085 B gzip. About 48 KB of that is
+the local store, kept only by borrowing `Cache.prototype.key`; without
+the borrow it measures 76,519 B / 27,408 B. On the fixture, against
+`vx run build ci --all --dry=json` (five projects, 8 tasks), keys,
+statuses, deps, priorities and dispatch order are identical in three
+scenarios: committed, env change, uncommitted edit. The host's Bun and
+`node:fs` were trapped and never reached, the negative control differs
+on exactly the five tasks `API_URL` reaches, and two shim mutations were
+each caught. A plan takes 2.3 ms on the fixture and 68 ms on 1,102
+files.
+
+xxh3: the pure-TS port and hash-wasm are each byte-identical on 1,000
+random inputs and 200 key-shaped seed chains. A surprise: **Bun 1.4.2's
+`xxHash3` uses only the low 32 bits of its seed** (`seed-probe.ts`), so
+every step of the key chain carries 32 bits. That was proposal P4; the
+stale hit it allows was reproduced and fixed as item 682 (14cd).
+
+Glob: no library matches `Bun.Glob`. The shim differs on 0 of 315
+realistic pairs and on 219 of 500,000 adversarial task-glob pairs;
+picomatch differs on 1,503. Being exact needs a port of Bun's own
+matcher.
+
+W9 needs P1 (lift the key fold out of `Cache`), the exact glob port,
+in-page config evaluation, and an unsandboxed parity task. Estimate: six
+to eight agent days for W9 alone. Note:
+`design/playground-spike-2026-09.md`; code:
+`packages/vx-bench/playground-spike/`.
+
 14by. **Handoff after item 677 (2026-09-23, near midnight).** Since 14bb
 the arc turned from sweeping to shipping toward 1.0: the roadmap
 (`design/roadmap-1.0.md`, 655), the plugins published with the release

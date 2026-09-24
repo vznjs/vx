@@ -58,7 +58,14 @@ export default defineProject({
       dependsOn: ['install'],
       cache: {
         inputs: {
-          files: ['*.ts', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+          files: [
+            '*.ts',
+            'tests/**',
+            'playground-spike/**/*.ts',
+            'package.json',
+            '.oxlintrc.json',
+            'tsconfig.json',
+          ],
         },
         outputs: { files: [] },
       },
