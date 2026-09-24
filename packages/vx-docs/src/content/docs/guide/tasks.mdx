@@ -1,10 +1,80 @@
 ---
-title: 'Tasks'
-description: 'A task is one command, in one package, that reads inputs and writes outputs, and why each task is one command.'
+title: Tasks
+description: The unit of work a task runner orders, skips and caches, and why it is one command.
 chapter: 2
-problem: 'The loop runs "scripts"; what exactly is one unit of work?'
+problem: 'The loop runs "scripts", but what exactly is one unit of work?'
 ---
 
-{/* TODO(R2): the chapter. What it teaches: A task: one command, in one package, that reads inputs and writes outputs. Why one command per task (so each can be ordered, skipped, cached). `package#task` names. Widget: none. */}
+import Diagram from '../../../components/guide/Diagram.astro'
+import { NAME, READS_WRITES, SCRIPT, SPLIT } from '../../../components/guide/tasks/pictures.js'
 
-The loop runs "scripts", but a script can do anything. Before a tool can order, skip or reuse work, it needs a unit of work it can name. This chapter defines one.
+The loop runs `npm run build`. But what does that actually run?
+
+## A script can hide three jobs
+
+<Diagram {...SCRIPT}>One script, three jobs.</Diagram>
+
+`ui`'s build script checks types, bundles the code and copies images. To
+the loop, that is one line. It runs all of it, or none of it.
+
+## A task is one command in one package
+
+<Diagram {...NAME}>Package plus command makes a task.</Diagram>
+
+A [task](../../learn/glossary/#task) is one command, run in one package.
+Its name joins the two with `#`. So the build of `api` is `api#build`, and
+the tests of `ui` are `ui#test`. Four packages with `build` and `test`
+make eight tasks.
+
+## A task reads inputs and writes outputs
+
+<Diagram {...READS_WRITES}>Inputs on the left, outputs on the right.</Diagram>
+
+What a task reads are its [inputs](../../learn/glossary/#inputs): files,
+settings, environment variables. What it writes are its
+[outputs](../../learn/glossary/#outputs). If the inputs did not change,
+the outputs will not change either. Later chapters use that to skip work.
+
+## One command per task lets you skip the rest
+
+<Diagram {...SPLIT}>Split the script, and only the changed part runs.</Diagram>
+
+Change one image. As one task, all three jobs run again. As three tasks,
+only the copy does. A tool can only skip what it sees as its own task.
+
+## In vx
+
+In vx, a task is a command in the package's `vx.config.ts`:
+
+```ts
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: { command: 'tsc -b' },
+    },
+  },
+})
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- In `packages/utils`, this task is `utils#build`: [project config](../../schema/#project-config)
+- The command runs in the package's own folder: [`exec`](../../schema/#exec-optional--required-for-non-group-tasks)
+- A chain with `&&` is one task: [one command per task](../../execution/#one-command-per-task)
+- vx never guesses a task's input files: [the row "requires cache.inputs.files — the one declaration vx will not infer"](https://github.com/vznjs/vx/blob/main/packages/vx/tests/config.test.ts)
+
+</details>
+
+## Check yourself
+
+<details>
+<summary>Is <code>api/README.md</code> an input of <code>api#build</code>?</summary>
+
+No. The build never reads it, so changing it cannot change what it writes.
+
+</details>
+
+You have eight tasks now. Which must finish before which?

@@ -1,10 +1,85 @@
 ---
-title: 'Dependencies'
-description: 'How tasks depend on each other, how the dependencies form a graph, and how the graph decides the order.'
+title: Dependencies
+description: Which task must finish before which, the task graph that says so, and why a cycle has no order.
 chapter: 3
-problem: '`app#build` ran before `ui#build` and failed.'
+problem: 'app#build ran before ui#build and failed on a missing import.'
 ---
 
-{/* TODO(R2): the chapter. What it teaches: A dependency between tasks; `^build` versus same-package; the task graph; waves; why a cycle has no order. Widget: GraphExplorer. */}
+import Diagram from '../../../components/guide/Diagram.astro'
+import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+import { CYCLE, ORDER, RULES } from '../../../components/guide/dependencies/pictures.js'
 
-`app#build` ran before `ui#build`, and it failed: `app` imports `ui`, and `ui` had not been built yet. This chapter shows how a tool learns which task must finish first.
+You run `app#build` first. It fails.
+
+## Build ui before app
+
+<Diagram {...ORDER}>Same two tasks, different order.</Diagram>
+
+`app` imports `ui`, so `ui#build` must finish first. That is a
+[dependency](../../learn/glossary/#task-dependency): one task waits for
+another.
+
+## Two rules draw every arrow
+
+<Diagram {...RULES}>An arrow means "must finish first".</Diagram>
+
+`^build` means "first, the build of every package I use". Plain `build`
+means "first, my own package's build". Your `package.json` files already
+say who uses whom. So you never list the arrows by hand.
+
+## The rules draw the whole graph
+
+Here are both rules applied to all four packages:
+
+<GraphExplorer />
+
+This is the [task graph](../../learn/glossary/#task-graph). Each row is a
+wave: its tasks do not need each other, so they can run at the same time.
+The buttons and the table come back in chapter 7.
+
+## A loop has no first task
+
+<Diagram {...CYCLE}>Every task waits for another.</Diagram>
+
+Say `utils` starts importing `app`. Now every task in the loop waits for
+another, so none can start. vx stops and names the loop:
+
+```
+Cycle detected in task graph: api#build -> utils#build -> app#build -> api#build
+```
+
+## In vx
+
+In vx, the two rules are two `dependsOn` lines:
+
+```ts
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: { dependsOn: ['^build'], exec: { command: 'tsc -b' } },
+    test: { dependsOn: ['build'], exec: { command: 'bun test' } },
+  },
+})
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- `^build` and `build` mean what this page says: [`dependsOn`](../../schema/#dependson-optional)
+- vx reads who uses whom from `package.json`: [the row "reads all four dependency fields: a workspace peer orders a build too"](https://github.com/vznjs/vx/blob/main/packages/vx/tests/package-graph.test.ts)
+- A package from npm adds no arrow: [the row "records direct workspace deps only when the dep is in the workspace"](https://github.com/vznjs/vx/blob/main/packages/vx/tests/package-graph.test.ts)
+- vx refuses a loop: [the row "a task cycle through every project is refused"](https://github.com/vznjs/vx/blob/main/packages/vx/tests/task-graph.test.ts)
+
+</details>
+
+## Check yourself
+
+<details>
+<summary>You run <code>vx run app#build</code> on an empty cache. Which tasks run?</summary>
+
+`utils#build`, `ui#build`, `api#build` and `app#build`. No tests.
+
+</details>
+
+The order is right now. But one task at a time is still as slow as the loop.

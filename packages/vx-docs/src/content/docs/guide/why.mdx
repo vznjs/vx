@@ -1,10 +1,89 @@
 ---
-title: 'Why orchestrate?'
-description: 'Why a monorepo needs more than a shell loop: the loop runs builds in the wrong order, rebuilds everything, and runs one at a time.'
+title: Why orchestrate?
+description: Four packages, a shell loop that builds them, and the three ways the loop goes wrong.
 chapter: 1
-problem: 'Four packages, one `build` script each; you write a shell loop.'
+problem: 'Four packages have a build script each, and you write a shell loop to build them all.'
 ---
 
-{/* TODO(R2): the chapter. What it teaches: What a monorepo is; the loop's three failures: wrong order, everything rebuilt, one at a time. The rest of the book fixes them. Diagram: one static diagram (build-time SVG, components/guide/diagram). */}
+import Diagram from '../../../components/guide/Diagram.astro'
+import {
+  ORCHESTRATED,
+  ONE_AT_A_TIME,
+  PACKAGES,
+  REBUILD_ALL,
+  WRONG_ORDER,
+} from '../../../components/guide/why/pictures.js'
 
-Four packages sit in one repository: `utils`, `ui`, `api` and `app`. Each has a `build` script, and you write a shell loop that runs them one after another. This chapter shows the three ways that loop fails.
+You have four packages in one repository. Each one builds with
+`npm run build`. How do you build them all?
+
+## Four packages, one loop
+
+<Diagram {...PACKAGES}>ui and api use utils. app uses ui and api.</Diagram>
+
+You write a loop that builds each package in turn:
+
+```sh
+for p in utils ui api app; do (cd packages/$p && npm run build); done
+```
+
+It works. It also goes wrong in three ways.
+
+## The wrong order breaks the build
+
+<Diagram {...WRONG_ORDER}>In alphabetical order, three of the four builds fail.</Diagram>
+
+The right order lives only in your head. Loop over `packages/*` instead,
+and it runs in alphabetical order. `api` builds before `utils`, and fails.
+
+## Every run rebuilds everything
+
+<Diagram {...REBUILD_ALL}>One line changed. Four builds ran.</Diagram>
+
+You change one line in `app`. The loop rebuilds all four packages. Three
+of them make the same files as last time.
+
+## One build at a time leaves cores idle
+
+<Diagram {...ONE_AT_A_TIME}>Four cores. The loop uses one.</Diagram>
+
+`ui` and `api` do not need each other. They could build at the same time.
+The loop runs one command, waits, then runs the next.
+
+## An orchestrator fixes all three
+
+<Diagram {...ORCHESTRATED}>Same builds. Right order, two at once, and only what changed.</Diagram>
+
+A task orchestrator is a tool that does three things. It builds in the
+right order. It runs builds side by side when they do not need each other.
+It skips a build when nothing it reads has changed. This guide builds that
+tool, one idea per chapter.
+
+## In vx
+
+In vx, the loop is one command, and the next chapters teach it the order
+and what to skip.
+
+```sh
+vx run build --all
+```
+
+<details>
+<summary>How we know this is true</summary>
+
+- `--all` runs the task in every package that has it: [`vx run` selection](../../cli/#selection)
+- vx knows no order until you declare one: [`dependsOn`](../../schema/#dependson-optional)
+- vx skips nothing until you declare a cache: [caching is opt-in](../../schema/#cache-optional)
+
+</details>
+
+## Check yourself
+
+<details>
+<summary>You change one line in <code>ui</code>. Which builds have new work to do?</summary>
+
+`ui`, and `app`, which uses it. Not `utils` or `api`.
+
+</details>
+
+Before fixing anything, you need a precise word for one piece of work.

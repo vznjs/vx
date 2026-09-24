@@ -29,6 +29,17 @@ const CHOOSING_PROOFS = [
   'packages/vx-migrate/tests/turbo.test.ts',
 ]
 
+// The Guide's chapters link each claim about vx to the test row that holds
+// it, inside each chapter's "How we know this is true", and
+// tests/guide-page.ts reads each linked file for the row's title, as the
+// choosing page's rows do. Granted by name and keyed, like the lists above.
+const GUIDE_PROOFS = [
+  'packages/vx/tests/config.test.ts',
+  'packages/vx/tests/package-graph.test.ts',
+  'packages/vx/tests/task-graph.test.ts',
+]
+const PROOFS = [...new Set([...CHOOSING_PROOFS, ...GUIDE_PROOFS])]
+
 export default defineProject({
   tasks: {
     ci: {
@@ -187,7 +198,7 @@ export default defineProject({
               '../vx-otel/src/**',
               '../vx-reapi/src/**',
               '../vx-schedule-history/src/**',
-              ...CHOOSING_PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
+              ...PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -221,7 +232,7 @@ export default defineProject({
             '.gitignore',
             'package.json',
           ],
-          workspaceFiles: [...SIM_SOURCES, ...CHOOSING_PROOFS],
+          workspaceFiles: [...SIM_SOURCES, ...PROOFS],
         },
         outputs: { files: [] },
       },
