@@ -633,11 +633,13 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
   //
   // Both namespaces have a much smaller natural domain:
   //   files          — project-relative, so only same-project tasks can
-  //                    collide. Bucketing makes this O(sum of k^2) over
-  //                    per-project task counts, and k is single digits.
+  //                    collide.
   //   workspaceFiles — root-anchored and boundary-free, so any two tasks can
-  //                    collide — but only tasks that DECLARE it participate,
-  //                    and that set is nearly always empty.
+  //                    collide — but only tasks that DECLARE it participate.
+  // Within a domain all pairs was still quadratic in ONE project's tasks
+  // (4,000 with outputs spent 10.7 s here, item 741), so each domain is
+  // indexed again by path (`overlapCandidates`) and only the pairs that can
+  // overlap are compared, in the order the all-pairs loop met them.
   const byProject = new Map<string, TaskNode[]>()
   const wsDeclarers: TaskNode[] = []
   for (const n of nodes.values()) {
@@ -650,36 +652,94 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
     if ((outs?.workspaceFiles?.length ?? 0) > 0) wsDeclarers.push(n)
   }
 
+  const filesOf = (n: TaskNode): readonly string[] | undefined => n.config.cache?.outputs.files
+  const wsFilesOf = (n: TaskNode): readonly string[] | undefined =>
+    n.config.cache?.outputs.workspaceFiles
   for (const bucket of byProject.values()) {
-    for (let i = 0; i < bucket.length; i++) {
-      for (let j = i + 1; j < bucket.length; j++) {
-        const a = bucket[i]!
-        const b = bucket[j]!
-        collide(
-          a,
-          b,
-          a.config.cache?.outputs.files,
-          b.config.cache?.outputs.files,
-          'files',
-          reaches,
-        )
+    // Most projects hold one task with outputs, and a call per project
+    // cost the cold build a measured 0.4 ms at 1,000 projects.
+    if (bucket.length < 2) continue
+    for (const [i, j] of overlapCandidates(bucket, filesOf)) {
+      const a = bucket[i]!
+      const b = bucket[j]!
+      collide(a, b, filesOf(a), filesOf(b), 'files', reaches)
+    }
+  }
+  if (wsDeclarers.length < 2) return
+  for (const [i, j] of overlapCandidates(wsDeclarers, wsFilesOf)) {
+    const a = wsDeclarers[i]!
+    const b = wsDeclarers[j]!
+    collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches)
+  }
+}
+
+/**
+ * Where a glob's literal head ends: every character `Bun.Glob` may read as
+ * something other than itself. `*?{}` are the task-glob wildcards; `\`
+ * escapes (`x\y/*` matches `xy/a`), and a leading `!` negates (`!a/**`
+ * matches `b`). Ending early only widens the candidate set. A fuzz of
+ * nearly four million glob/literal pairs (over 400,000 of them matching)
+ * found no match outside the head this cuts, and thousands once `\` and
+ * `!` were left out (item 745).
+ */
+const GLOB_HEAD_END = /[*?{}\\!]/
+
+/**
+ * The pairs `[i, j]`, `i < j`, of `tasks` whose declared outputs CAN
+ * overlap, ascending by `i` then `j`: a superset of the pairs
+ * `outputsOverlap` accepts, so `collide` over them decides exactly what it
+ * decided over all pairs, and in the same order (the first refusal named,
+ * and the addition marks pushed, are all-pairs' own).
+ *
+ * `outputsOverlap` compares the `asTrees` forms three ways. Two equal
+ * globs are one lookup. Two equal literals are too, since each literal
+ * carries its `/**` twin. And a glob matches a literal only when the
+ * literal lies under the directory the glob's literal head names
+ * (`dist/sub/**` → `dist/sub`; `*.js` → the root, so a wildcard in the
+ * first segment meets every literal): a literal meets the globs filed at
+ * each of its ancestors. The fuzz above found no glob matching the
+ * directory its own head names.
+ */
+function overlapCandidates(
+  tasks: readonly TaskNode[],
+  globsOf: (n: TaskNode) => readonly string[] | undefined,
+): Array<[number, number]> {
+  const globs = new Map<string, number[]>()
+  const globsUnder = new Map<string, number[]>()
+  const literals: Array<[task: number, path: string]> = []
+  const file = (index: Map<string, number[]>, key: string, i: number): void => {
+    const list = index.get(key)
+    if (list === undefined) index.set(key, [i])
+    else list.push(i)
+  }
+  for (let i = 0; i < tasks.length; i++) {
+    for (const tree of asTrees(globsOf(tasks[i]!) ?? [])) {
+      if (isLiteralPattern(tree)) {
+        literals.push([i, tree])
+        continue
       }
+      file(globs, tree, i)
+      const head = tree.slice(0, tree.search(GLOB_HEAD_END))
+      file(globsUnder, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
     }
   }
-  for (let i = 0; i < wsDeclarers.length; i++) {
-    for (let j = i + 1; j < wsDeclarers.length; j++) {
-      const a = wsDeclarers[i]!
-      const b = wsDeclarers[j]!
-      collide(
-        a,
-        b,
-        a.config.cache?.outputs.workspaceFiles,
-        b.config.cache?.outputs.workspaceFiles,
-        'workspaceFiles',
-        reaches,
-      )
+  const n = tasks.length
+  const pairs = new Set<number>()
+  const pair = (x: number, y: number): void => {
+    if (x !== y) pairs.add(x < y ? x * n + y : y * n + x)
+  }
+  for (const list of globs.values()) {
+    for (let x = 0; x < list.length; x++) {
+      for (let y = x + 1; y < list.length; y++) pair(list[x]!, list[y]!)
     }
   }
+  for (const [i, path] of literals) {
+    for (const j of globsUnder.get('') ?? []) pair(i, j)
+    for (let sep = path.indexOf('/'); sep !== -1; sep = path.indexOf('/', sep + 1)) {
+      for (const j of globsUnder.get(path.slice(0, sep)) ?? []) pair(i, j)
+    }
+  }
+  return [...pairs].sort((x, y) => x - y).map((p) => [Math.floor(p / n), p % n])
 }
 
 /**
