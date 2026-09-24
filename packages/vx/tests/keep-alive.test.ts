@@ -131,4 +131,38 @@ describe('a persistent task keeps an open stdin', () => {
     expect(await proc.exited).toBe(143)
     expect((await out).join('')).not.toContain('STDIN-ENDED')
   }, 20_000)
+
+  it('the stdin ends when vx is SIGKILLed, so a server that watches it goes too', async () => {
+    // A `kill -9` of vx runs no teardown, and a persistent task survives
+    // it (kill-tree.md, the known limit). The one exception is this pipe:
+    // vx holds its write end, the kernel closes it with vx, and a server
+    // that exits on stdin EOF — esbuild --watch — goes too. `exec cat` is
+    // that server, and its pid is the task's.
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: 'echo $$ > pid.txt; echo READY; exec cat',
+                persistent: { readyWhen: 'READY' },
+              },
+            },
+          },
+        }
+      `,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+      cwd: root,
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    expect(isAlive(pid)).toBe(true)
+    process.kill(proc.pid, 'SIGKILL')
+    expect(await proc.exited).toBe(137)
+    expect(await waitForDead(pid, 2_000)).toBe(true)
+  }, 20_000)
 })

@@ -84,3 +84,5 @@ or Nx repo as it is: [Migrate](../guides/migrate/).
   holds.
 - A cache hit replays the first and last 8 MiB of a task's output.
 - A `workspaceFiles` glob stops at a git submodule's edge.
+- A `kill -9` of vx leaves its persistent tasks running, except a server
+  that exits when its stdin closes (esbuild `--watch`).
