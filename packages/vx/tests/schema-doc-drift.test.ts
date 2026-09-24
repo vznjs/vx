@@ -330,6 +330,10 @@ const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
     '<file>: workspaces.packages must be an array of glob strings',
     () => failure({ 'package.json': '{"name":"r","workspaces":{"packages":"x"}}' }, loadWorkspace),
   ],
+  [
+    `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`,
+    () => failure({ 'package.json': '{"name":"r","workspaces":["packages/!(x)"]}' }, loadWorkspace),
+  ],
 ]
 
 /** A `vx.workspace.ts` exporting `body`, loaded through the real loader. */

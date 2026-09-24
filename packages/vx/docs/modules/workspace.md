@@ -12,7 +12,12 @@ manifest in the tree a member (2026-09-10). Every entry goes through
 excluded nothing until they did (same day). A member glob keeps the
 package manager's grammar, so a bracket there is a class and `\[` a
 literal bracket — unlike a task glob, where a bracket is literal (item
-667).
+667). The one form it refuses is extglob (`!(…)`, `@(…)`, `+(…)`,
+`*(…)`, `?(…)`): npm and yarn read `packages/!(x)` as an exclusion,
+`Bun.Glob` has no extglob and its scan widened the segment to a
+wildcard (x became a project, turborepo#3766), so `assertGlobList`
+refuses the entry by name, with the exact `!` rewrite when the group is
+a whole segment of plain names.
 
 Find the workspace root, enumerate its projects, and resolve the
 cache directory. Supports pnpm / npm / yarn / Bun workspaces, plus a
