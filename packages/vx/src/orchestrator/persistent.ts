@@ -5,7 +5,7 @@
 
 import type { TaskNode } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
-import { killTree } from '../exec/index.js'
+import { killTree, untilGroupsGone } from '../exec/index.js'
 
 type Child = ReturnType<typeof Bun.spawn>
 
@@ -49,10 +49,12 @@ export function selectKeepAlive(
 /**
  * SIGTERM every persistent child not kept alive and wait for them, bounded:
  * SIGTERM gives well-behaved servers (vite, next, esbuild --watch) a moment
- * to clean up; past the grace the stragglers are SIGKILLed so the run's
- * normal completion cannot hang on one that traps the signal. Bun's
- * `kill` is idempotent on an exited child; the timer is cleared and
- * unref'd so a fast shutdown never delays CLI exit.
+ * to clean up; past the grace every group with a member left is SIGKILLed,
+ * so the run's normal completion cannot hang on one that traps the signal.
+ * The GROUP, not the leader: a `server & wait` shell dies on the SIGTERM
+ * while a server that ignores it lives on, holding the task's pipe, and
+ * vx printed its summary and never exited (nx#8286 reproduced on vx,
+ * 2026-09-24).
  */
 export async function shutdownPersistent(
   registry: ReadonlyMap<string, Child>,
@@ -63,18 +65,6 @@ export async function shutdownPersistent(
   const dying = [...registry.values()].filter((c) => !kept.has(c))
   if (dying.length === 0) return
   for (const child of dying) killTree(child, 'SIGTERM')
-  const allExited = Promise.allSettled(dying.map((c) => c.exited))
-  let graceTimer: ReturnType<typeof setTimeout> | undefined
-  const winner = await Promise.race([
-    allExited.then(() => 'exited' as const),
-    new Promise<'grace'>((resolve) => {
-      graceTimer = setTimeout(() => resolve('grace'), graceMs)
-      graceTimer.unref?.()
-    }),
-  ])
-  if (graceTimer !== undefined) clearTimeout(graceTimer)
-  if (winner === 'grace') {
-    for (const child of dying) killTree(child, 'SIGKILL')
-    await allExited
-  }
+  for (const child of await untilGroupsGone(dying, graceMs)) killTree(child, 'SIGKILL')
+  await Promise.allSettled(dying.map((c) => c.exited))
 }
