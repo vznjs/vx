@@ -1,12 +1,28 @@
 // One run at a time per workspace, per machine (item 216): a second
 // PROCESS waits for the holder's release and says so after a second; runs
 // in one process share the lock; a killed run's lock is reclaimed; a lock
-// that cannot be made is a warning, not a refusal.
+// that cannot be made is a warning, not a refusal. A lock naming this
+// process's own pid, or (on Linux) a pid another process now wears, is
+// stale.
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { acquireRunLock, runLockPath } from '../src/orchestrator/run-lock.js'
+
+/** Field 22 of /proc/<pid>/stat on Linux — what the lock records beside the pid. */
+function startOf(pid: number): string | null {
+  if (process.platform !== 'linux') return null
+  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+  return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]!
+}
+
+/** The pid file's line for a process: its pid, and its start time where the platform has one. */
+function lineOf(pid: number): string {
+  const start = startOf(pid)
+  return start === null ? `${pid}\n` : `${pid} ${start}\n`
+}
 
 describe('the run lock', () => {
   let dir: string
@@ -27,7 +43,7 @@ describe('the run lock', () => {
   async function otherHolder(): Promise<{ pid: number; end: () => void }> {
     const child = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore' })
     await mkdir(runLockPath('/w/app', dir))
-    await writeFile(pidFile(), `${child.pid}\n`)
+    await writeFile(pidFile(), lineOf(child.pid))
     return { pid: child.pid, end: () => child.kill() }
   }
 
@@ -50,7 +66,7 @@ describe('the run lock', () => {
     other.end()
     const release = await second
     expect(acquiredAt).toBeGreaterThanOrEqual(endedAt)
-    expect(await Bun.file(pidFile()).text()).toBe(`${process.pid}\n`)
+    expect(await Bun.file(pidFile()).text()).toBe(lineOf(process.pid))
     await release()
     expect(await Bun.file(pidFile()).exists()).toBe(false)
     expect(lines).toEqual([])
@@ -87,10 +103,53 @@ describe('the run lock', () => {
     // A pid no process has: the highest allowed plus one is never assigned.
     await writeFile(pidFile(), '4194305\n')
     const release = await acquireRunLock('/w/app', { dir, log })
-    expect(await Bun.file(pidFile()).text()).toBe(`${process.pid}\n`)
+    expect(await Bun.file(pidFile()).text()).toBe(lineOf(process.pid))
     await release()
     expect(lines).toEqual([])
   })
+
+  it("a lock naming this process's own pid is stale: a restarted container's vx wears it", async () => {
+    // The temp directory outlives a container restart, and the new vx got
+    // the dead run's pid (1): it waited for itself forever, "waiting for
+    // another vx run (pid 1)" (nx#36473 reproduced on vx, 2026-09-24). A
+    // run of THIS process would share the lock, not meet its file.
+    await mkdir(runLockPath('/w/app', dir))
+    await writeFile(pidFile(), `${process.pid}\n`)
+    const acquired = acquireRunLock('/w/app', { dir, log })
+    const first = await Promise.race([acquired, Bun.sleep(1_000).then(() => 'waiting' as const)])
+    expect(first).not.toBe('waiting')
+    expect(await Bun.file(pidFile()).text()).toBe(lineOf(process.pid))
+    await (
+      await acquired
+    )()
+    expect(lines).toEqual([])
+  })
+
+  it.skipIf(process.platform !== 'linux')(
+    'a lock whose pid another process now wears is stale: the start time differs',
+    async () => {
+      // The same restart with the pid recycled to some other process: it
+      // is alive, so only the start time the holder recorded tells them
+      // apart. The control below writes the live holder's real one.
+      const child = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore' })
+      try {
+        await mkdir(runLockPath('/w/app', dir))
+        await writeFile(pidFile(), `${child.pid} 1\n`)
+        const acquired = acquireRunLock('/w/app', { dir, log })
+        const first = await Promise.race([
+          acquired,
+          Bun.sleep(1_000).then(() => 'waiting' as const),
+        ])
+        expect(first).not.toBe('waiting')
+        await (
+          await acquired
+        )()
+        expect(lines).toEqual([])
+      } finally {
+        child.kill()
+      }
+    },
+  )
 
   it('CONTROL: a live holder is not reclaimed', async () => {
     const other = await otherHolder()
@@ -127,7 +186,7 @@ describe('the run lock', () => {
     await (
       await second
     )()
-    expect(await Bun.file(pidFile()).text()).toBe(`${other.pid}\n`)
+    expect(await Bun.file(pidFile()).text()).toBe(lineOf(other.pid))
     other.end()
   })
 })
