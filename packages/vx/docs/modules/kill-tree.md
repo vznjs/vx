@@ -17,7 +17,18 @@ does not matter.
 ```ts
 export type Child = ReturnType<typeof Bun.spawn>
 export function killTree(child: Child, signal: 'SIGTERM' | 'SIGKILL'): void
+export async function untilGroupsGone(children: readonly Child[], graceMs: number): Promise<Child[]>
 ```
+
+`untilGroupsGone` is the wait between the polite signal and SIGKILL: it
+resolves when every child's GROUP is gone, or at the grace with the
+children whose group still has a member — the ones to SIGKILL. The
+leader's exit is not the end of the tree: `server & wait` dies on the
+SIGTERM while a server that ignores it keeps the group and the task's
+pipe alive, and the end-of-run shutdown that waited for the shell alone
+never SIGKILLed the server — vx printed its summary and never exited
+(nx#8286 reproduced on vx, 2026-09-24). After the leaders exit the
+groups are polled every 20 ms, and only while one is left.
 
 ## Invariants
 
@@ -25,6 +36,12 @@ export function killTree(child: Child, signal: 'SIGTERM' | 'SIGKILL'): void
   would name vx's own group.
 - `ESRCH` means the group is gone — nothing to do. Any other refusal
   falls back to the pid alone, as before.
+- A zombie is not a member. `kill(-pgid, 0)` counts one, and an
+  orphaned member that died on the SIGTERM stays a zombie until init
+  reaps it — 1 to 2 s under this container's init — so on Linux a group
+  the kernel still knows is read from `/proc/*/stat` (state and pgrp).
+  Counting the zombie made a clean teardown wait 1.5–2 s instead of
+  0.32 s. Elsewhere `kill(-pgid, 0)` is the answer.
 - Callers: the runner's timeout and readiness deadline, the signal
   teardown (`orchestrator/signals.ts`), the end-of-run persistent
   shutdown (`orchestrator/persistent.ts`). The sandboxed spawn is
@@ -43,4 +60,8 @@ export function killTree(child: Child, signal: 'SIGTERM' | 'SIGKILL'): void
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
-shell's own `$$`); every case fails on a pid-only kill.
+shell's own `$$`); every case fails on a pid-only kill. A persistent
+dependency whose server ignores SIGTERM behind `& wait` does not hang
+vx's exit; a grandchild's SIGTERM cleanup gets the grace after its shell
+exits, and the teardown ends when the group is gone (under 1.2 s; the
+zombie-counting read took 1.5 s).

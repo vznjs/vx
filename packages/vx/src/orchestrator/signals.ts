@@ -12,7 +12,7 @@
 
 import { signalExitCode } from '../exec/index.js'
 import { killGraceMs } from '../util/index.js'
-import { killTree } from '../exec/index.js'
+import { killTree, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
 /**
@@ -33,12 +33,16 @@ type Child = ReturnType<typeof Bun.spawn>
 type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
 
 /**
- * SIGTERM every child `live()` returns, wait the grace for them to go,
- * then SIGKILL whatever `live()` returns NOW — re-read, because the run
- * loop may still be dispatching during the grace and a child spawned
- * after the first sweep must not survive the second. Resolves once the
- * survivors are reaped. The one teardown behind the process-signal
- * handler below, `RunOptions.signal`, and the foreground keep-alive.
+ * SIGTERM every child `live()` returns, wait the grace for each one's
+ * process GROUP to go, then SIGKILL every group with a member left and
+ * whatever `live()` returns NOW — re-read, because the run loop may still
+ * be dispatching during the grace and a child spawned after the first
+ * sweep must not survive the second. The group, not the leader: a shell
+ * that dies at once on the SIGTERM ended the wait, and its backgrounded
+ * server was SIGKILLed mid-cleanup or, once the runner had dropped the
+ * shell, not at all. Resolves once the survivors are reaped. The one
+ * teardown behind the process-signal handler below, `RunOptions.signal`,
+ * and the foreground keep-alive.
  */
 export async function terminateChildren(
   live: () => Child[],
@@ -46,18 +50,8 @@ export async function terminateChildren(
 ): Promise<void> {
   const children = live()
   for (const child of children) killTree(child, 'SIGTERM')
-  const allExited = Promise.allSettled(children.map((c) => c.exited))
-  let graceTimer: ReturnType<typeof setTimeout> | undefined
-  // Not unref'd: it is what guarantees progress when every other handle
-  // has drained, and the grace is bounded either way.
-  await Promise.race([
-    allExited,
-    new Promise<void>((resolve) => {
-      graceTimer = setTimeout(resolve, graceMs)
-    }),
-  ])
-  if (graceTimer !== undefined) clearTimeout(graceTimer)
-  const survivors = live()
+  const left = await untilGroupsGone(children, graceMs)
+  const survivors = [...new Set([...left, ...live()])]
   for (const child of survivors) killTree(child, 'SIGKILL')
   await Promise.allSettled(survivors.map((c) => c.exited))
 }

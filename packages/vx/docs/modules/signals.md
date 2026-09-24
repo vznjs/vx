@@ -4,8 +4,9 @@
 
 A SIGINT, SIGTERM or SIGHUP to the vx process mid-run forwards SIGTERM
 to every live child's process group and every ready persistent task's,
-waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) for them, SIGKILLs the
-survivors' groups, closes the cache handle, and exits 128 + signo
+waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) for those GROUPS to go,
+SIGKILLs every group with a member left, closes the cache handle, and
+exits 128 + signo
 (130 / 143 / 129); a second signal during the grace SIGKILLs at once.
 The group, not the pid (`exec/kill-tree.ts`, item 236): a task is
 spawned into its own session, so what it forked dies with it — and so
@@ -20,7 +21,10 @@ the run. Split from `run.ts` on 2026-09-10 (pure motion).
 process handler, `RunOptions.signal` (an embedder aborting a run — the
 watch loop's Ctrl-C) and the foreground keep-alive all run it. It
 re-reads the registries after the grace, so a child the still-live
-scheduler spawned during it goes too.
+scheduler spawned during it goes too. The wait is for each group
+(`untilGroupsGone`), not its leader: a shell that died at once on the
+signal ended the grace, and the server it had backgrounded was
+SIGKILLed mid-cleanup (2026-09-24).
 
 ## Public surface
 
@@ -54,7 +58,8 @@ the process's signals passes `handleSignals: false`.
 
 `tests/task-tree-kill.test.ts` (a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild; each fails on a pid-only
-kill); `tests/signal-handling.test.ts` (SIGINT → 130 and SIGTERM → 143 with
+kill; a grandchild's cleanup gets the grace after its shell exits, and
+the wait ends when the group is gone); `tests/signal-handling.test.ts` (SIGINT → 130 and SIGTERM → 143 with
 the one-shot child and the ready persistent child dead; a child that
 ignores TERM is SIGKILLed after the grace; a second signal skips the
 grace; the in-process lifecycle: handlers removed after every run,

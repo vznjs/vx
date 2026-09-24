@@ -96,8 +96,9 @@ export interface RunSummary {
     the persistent tasks the user REQUESTED (or that were surfaced) to
     KEEP ALIVE in the real CLI foreground (`options.log === undefined
 && handleSignals !== false`); `shutdownPersistent` SIGTERMs every
-    other persistent child and waits, SIGKILLing stragglers after a
-    2 s grace (`VX_KILL_GRACE_MS` shortens it; see util-settle.md).
+    other persistent child's group and waits for the groups, SIGKILLing
+    whatever is left after a 2 s grace (`VX_KILL_GRACE_MS` shortens it;
+    see util-settle.md, kill-tree.md).
     The foreground then blocks until ONE kept-alive server exits, tears
     the others down the same way (`terminateChildren`, signals.md) and
     returns `ok && exit === 0` — a crashed dev server fails the run.

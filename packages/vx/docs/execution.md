@@ -126,7 +126,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    • SIGINT/SIGTERM/SIGHUP handlers (removed in a finally): on
  │                signal, SIGTERM everything in liveChildren +
  │                persistentRegistry, wait VX_KILL_GRACE_MS (2 s) for
- │                them, SIGKILL what is still there, close the cache,
+ │                their groups, SIGKILL what is still there, close the cache,
  │                exit 128+signo (SIGINT → 130, SIGTERM → 143,
  │                SIGHUP → 129). SIGHUP is registered because a task
  │                runs in its own session, so a closing terminal

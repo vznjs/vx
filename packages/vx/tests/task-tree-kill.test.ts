@@ -35,6 +35,18 @@ const CONFIG = `
       forever: {
         exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60" },
       },
+      graceful: {
+        exec: {
+          command: "sh -c 'trap \\"sleep 0.3; echo done > cleanup.txt; exit 0\\" TERM; echo $$ > gc.pid; while :; do sleep 0.05; done' & sleep 60",
+        },
+      },
+      backend: {
+        exec: {
+          command: "sh -c 'trap \\"\\" TERM; echo $$ > gc.pid; echo READY; exec sleep 60' & wait",
+          persistent: { readyWhen: 'READY' },
+        },
+      },
+      e2e: { dependsOn: ['backend'], exec: { command: 'echo e2e-done' } },
     },
   }
 `
@@ -52,12 +64,12 @@ async function grandchildPid(root: string): Promise<number> {
   throw new Error('the task never wrote its grandchild pid')
 }
 
-function spawnVx(root: string, task: string): ReturnType<typeof Bun.spawn> {
+function spawnVx(root: string, task: string, graceMs = 200): ReturnType<typeof Bun.spawn> {
   return Bun.spawn([process.execPath, BIN, 'run', task, '--all'], {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: '200' },
+    env: { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: String(graceMs) },
   })
 }
 
@@ -124,4 +136,46 @@ describe('a task dies with everything it forked', () => {
       TIMEOUT,
     )
   }
+
+  it(
+    "a persistent dependency's server that ignores SIGTERM does not hang vx's exit",
+    async () => {
+      // `server & wait`: the shell dies on the end-of-run SIGTERM, the
+      // server ignores it and holds the task's pipe. The shutdown waited
+      // for the shell alone, never SIGKILLed the group, and vx printed its
+      // summary and never exited (nx#8286 reproduced on vx, 2026-09-24).
+      const proc = spawnVx(root, 'e2e')
+      const gc = await grandchildPid(root)
+      leaked.push(gc)
+      const exit = await Promise.race([proc.exited, Bun.sleep(10_000).then(() => 'hung' as const)])
+      if (exit === 'hung') proc.kill('SIGKILL')
+      expect(exit).toBe(0)
+      expect(await waitForDead(gc, 1000)).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a grandchild's SIGTERM cleanup gets the grace after its shell has exited",
+    async () => {
+      // The shell dies at once on the SIGTERM; the server it backgrounded
+      // takes 0.3 s to clean up. The teardown ended the grace when the
+      // shell exited and SIGKILLed the group mid-cleanup. The grace is
+      // the group's: SIGKILL only past it, only for whoever is left.
+      const proc = spawnVx(root, 'graceful', 5000)
+      const gc = await grandchildPid(root)
+      leaked.push(gc)
+      const t0 = Date.now()
+      process.kill(proc.pid, 'SIGTERM')
+      expect(await proc.exited).toBe(143)
+      expect(existsSync(path.join(root, 'packages', 'app', 'cleanup.txt'))).toBe(true)
+      // And the wait ends when the group is gone, not at the grace. The
+      // server dies an orphan, a zombie until init reaps it (1 to 2 s in a
+      // container), and a group read that counted the zombie waited that
+      // out: 1.5–2 s here against 0.32 s reading /proc (2026-09-24).
+      expect(Date.now() - t0).toBeLessThan(1200)
+      expect(await waitForDead(gc, 1000)).toBe(true)
+    },
+    TIMEOUT,
+  )
 })
