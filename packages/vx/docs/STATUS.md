@@ -189,15 +189,16 @@ test is telling the truth.
 724.  DONE (2026-09-24, Next 16). Every Guide picture reads on a phone.
       Read at 390 px, each 600-wide picture shrank to the column and set
       its type at 7-9 px, and the scheduler's charts scrolled sideways
-      with nothing to say more was there. A picture now carries a phone
+      with nothing to say more was there (their phone form is Next 16's
+      last piece). A picture now carries a phone
       layout (`narrow`, at most 360 across): the same boxes, arrows,
       frames and words, laid out tall, shown below 32rem at 13-14 px.
       `diagram-kit.test.ts` holds that every picture wider than a phone
       has one, that it fits, and that it says what the wide one says (a
       note may break across lines; a lone arrow glyph points the way its
       layout runs); `guide-page.ts` reads both drawings back against
-      their data. `lanes({ down: true })` runs a timeline down the page,
-      and so do the scheduler's charts. The cover's shell line is text
+      their data. `lanes({ down: true })` runs a timeline down the page.
+      The cover's shell line is text
       above a 410-wide drawing, the graph explorer has a phone layout
       from its model, and code blocks wrap. The site plan's "Done means"
       is rewritten for the Guide, each line naming its test.
@@ -434,7 +435,9 @@ the architect before it merges; then Next 17. Never end with "what next?".
 16. **The site, redone as one story (owner, 2026-09-24).** R1–R3
     shipped as item 721 (`design/site-redo-2026-09.md`), R4 and the prose
     polish as 722, the widgets as 723, the phone read and the rewritten
-    "Done means" as 724. Left: the owner's read.
+    "Done means" as 724. Left: the scheduler's charts in a phone form
+    (time down the page, one column per worker; they scroll sideways
+    below 34rem today), then the owner's read.
 
 17. **A sandboxed task reads a linked sibling package unseen (found by
     the capability audit, 2026-09-24).** `sandbox-request.ts` grants
