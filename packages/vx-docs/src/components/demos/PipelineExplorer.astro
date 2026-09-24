@@ -112,7 +112,9 @@ const stages = STAGES.map((s, i) => {
   .stage > :global(* + *) {
     margin-top: 0.75rem;
   }
-  .first-party {
+  /* Past widget.css's paragraph rule, which the scoped one above loses to. */
+  .stage .first-party {
+    margin: 0.75rem 0;
     font-size: 0.95rem;
     color: var(--vx-muted);
   }
