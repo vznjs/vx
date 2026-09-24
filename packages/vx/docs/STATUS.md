@@ -566,6 +566,27 @@ false`, the first failure failing the task; `commands: []` a no-op;
       rows hold the union, the direct add, the iteration and the size
       (each neutralised in turn, each red).
 
+745.  DONE (2026-09-24, upstream survey: the missing rows and the
+      ledger). The survey mapped 302 Turborepo and Nx bug reports; 66
+      had no test that would notice vx regressing into them (one was
+      pinned by item 734 since). 63 are written, each through the real
+      path (a run, the CLI, a pty, a real shallow clone or worktree),
+      and rows in every file but three were shown red under a mutation
+      of the code they guard: not task-selection or watch-loop, and a
+      named pipe in inputs is kept out by git's and `Bun.Glob`'s own
+      enumeration, which no vx line decides. Writing
+      them found two faults: a Yarn 4 `catalog:` dependency is recorded
+      as the literal `"catalog:"` in `yarn.lock`, so under `yarn()` a
+      catalog bump moves no workspace digest (a stale hit, open); and a
+      remote upload that times out, or a server that cannot be reached,
+      warns with the bare runtime message, naming neither the request
+      nor the server, once per request. One row stays untested: an
+      output past the 2 GiB ceiling costs 6 to 14 s a run. The page
+      `docs/upstream-ledger.md` lists every report with its verdict and
+      the test that holds it, and `tests/upstream-ledger.unsafe.test.ts`
+      fails when a cited title is not a test in the file it names (two
+      template-titled loops were unrolled so their rows can be cited).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

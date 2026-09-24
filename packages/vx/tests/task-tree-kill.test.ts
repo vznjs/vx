@@ -143,27 +143,23 @@ describe('a task dies with everything it forked', () => {
     TIMEOUT,
   )
 
-  for (const [signal, code] of [
-    ['SIGINT', 130],
-    ['SIGTERM', 143],
-    ['SIGHUP', 129],
-  ] as const) {
-    it(
-      `${signal} to vx reaps the grandchild and exits ${code}`,
-      async () => {
-        const proc = spawnVx(root, 'forever')
-        const gc = await grandchildPid(root)
-        leaked.push(gc)
-        expect(isAlive(gc)).toBe(true)
-        // To the pid alone, as a terminal or `kill` sends it — never to a
-        // group the grandchild might share with vx.
-        process.kill(proc.pid, signal)
-        expect(await proc.exited).toBe(code)
-        expect(await waitForDead(gc, 3000)).toBe(true)
-      },
-      TIMEOUT,
-    )
+  // One row per signal, each title a literal: the upstream ledger
+  // (docs/upstream-ledger.md) cites them by their exact text.
+  const reapsOn = (signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP', code: number) => async () => {
+    const proc = spawnVx(root, 'forever')
+    const gc = await grandchildPid(root)
+    leaked.push(gc)
+    expect(isAlive(gc)).toBe(true)
+    // To the pid alone, as a terminal or `kill` sends it — never to a
+    // group the grandchild might share with vx.
+    process.kill(proc.pid, signal)
+    expect(await proc.exited).toBe(code)
+    expect(await waitForDead(gc, 3000)).toBe(true)
   }
+
+  it('SIGINT to vx reaps the grandchild and exits 130', reapsOn('SIGINT', 130), TIMEOUT)
+  it('SIGTERM to vx reaps the grandchild and exits 143', reapsOn('SIGTERM', 143), TIMEOUT)
+  it('SIGHUP to vx reaps the grandchild and exits 129', reapsOn('SIGHUP', 129), TIMEOUT)
 
   it(
     "a persistent dependency's server that ignores SIGTERM does not hang vx's exit",

@@ -75,6 +75,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
         { label: 'vx, Turborepo, Nx, Bazel', link: '/compare/' },
         { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
         { label: 'Turbo / Nx parity map', link: '/parity/' },
+        { label: 'Upstream bug ledger', link: '/upstream-ledger/' },
       ],
     },
     { label: 'Glossary', link: '/glossary/' },
