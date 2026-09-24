@@ -836,6 +836,34 @@ next?".
     10.7 s building the graph. Index the output prefixes so each task is
     compared only with the ones that can overlap it, and pin the time
     at 4,000.
+22. **Yarn 4 catalogs make `yarn()` keys stale (found in 744,
+    turborepo#12635).** A real Yarn 4.18.1 install records a catalog
+    dependency as `"catalog:"`, and `resolveDescriptor` folds that
+    literal: bumping the catalog `^6 → ^7` left every importer digest
+    byte-identical, a stale hit under `yarn()` and a miss for
+    `--affected`. Resolve the catalog entry through `.yarnrc.yml` (or
+    the lockfile's resolution), with the ledger's row as the pin.
+23. **A remote-cache warning names nothing (found in 744).** An upload
+    timeout warns `vx/<plugin>: The operation timed out.` with no PUT,
+    hash or server; an unreachable server repeats the bare runtime
+    message once per request (3 lines for `turboCache`, 2 for
+    `nxCache` on a one-task run; a 401 is already deduplicated). Name
+    the operation and endpoint, and say it once per run.
+24. **A dangling output-root link fails a hit (found in 744, confirmed
+    on main after 742).** `dist -> real-out` inside the project with
+    `real-out` deleted: the next hit exits 1, "blocked by what is on
+    disk (EEXIST mkdir …/dist) … a path the output globs do not
+    cover", which is wrong, since `dist/**` covers it. Restore through
+    an in-project dangling link (make its target) or replace it, and
+    say which.
+25. **Three stale-hit edges 743 left (its report).** A cached task that
+    rewrites its own input in place (a formatter with `outputs: []`)
+    leaves a same-project `tasks: []` reader classed stable, so it can
+    be restored ahead of the formatter for one run; cached tasks that
+    run but do not save (read-only policy, tainted upstream) do not
+    mark their outputs changed in the git snapshot; the workspace
+    fingerprint and `inputs.runtime` values are memoised per run and
+    not re-checked before a save.
 
 ## Decisions (this arc)
 
