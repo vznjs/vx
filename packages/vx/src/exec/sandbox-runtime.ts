@@ -30,6 +30,7 @@ import type { SandboxConfig } from '../config.js'
 import {
   armTimeout,
   drainOrAbort,
+  POST_EXIT_CUT_LINE,
   shellQuote,
   signalExitCode,
   spawnFailureText,
@@ -749,9 +750,12 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
   await timeout.settle()
+  let cut = false
   if (timeout.timedOut()) ac.abort()
-  else await drainOrAbort(streams, ac)
-  const [stdout, stderr] = await streams
+  else cut = await drainOrAbort(streams, ac)
+  const [stdout, streamed] = await streams
+  if (cut) args.onStderr?.(POST_EXIT_CUT_LINE)
+  const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
   args.liveChildren?.delete(proc)
   releaseBridges(tag)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)

@@ -124,6 +124,18 @@ The promise from `runCommand` always resolves (never rejects) with a
   without `sh` showed "failed (exit 127)" under a bare `$ <command>`
   (2026-09-16).
 
+### After the shell exits
+
+`runCommand` gates on the child's exit, not on EOF: a process the task
+backgrounded holds the pipes open, and a reader that waited for EOF
+hung the run. `drainOrAbort` gives the readers `POST_EXIT_DRAIN_MS`
+(250 ms) to reach EOF, then aborts them and resolves true; the caller
+then sends `POST_EXIT_CUT_LINE` through `onStderr` and appends it to the
+result's `stderr`, so a cut is never silent (nx#35302 reproduced on vx,
+2026-09-24). A timeout aborts the readers at once, with its own line.
+The sandboxed runner does the same; on Linux bwrap's PID namespace
+kills the leftover with the shell, so there the bound is unreachable.
+
 ### Stream capture
 
 Both streams are RETAINED onto the result by default — that is the

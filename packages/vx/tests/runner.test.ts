@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import {
   armTimeout,
+  POST_EXIT_CUT_LINE,
   execWrap,
   ownRssHighWater,
   peakRssBytes,
@@ -85,6 +86,36 @@ describe('runCommand', () => {
     expect(result.stdout).toContain('up')
     // Well under the sleep's 10s → proves we did not wait for the grandchild.
     expect(elapsed).toBeLessThan(3000)
+  }, 15_000)
+
+  it('output a backgrounded child writes after the drain bound is cut, and the frame says so', async () => {
+    // The bound stays (the row above), but the cut was silent: `late-line`
+    // vanished from the frame and the cached replay with no word
+    // (nx#35302 reproduced on vx, 2026-09-24). One line on stderr, live
+    // and on the result; the control, which leaves nothing running, gets
+    // none.
+    const live: string[] = []
+    const result = await runCommand({
+      command: '(sleep 1; echo late-line) & echo early-line',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      onStderr: (chunk) => live.push(chunk),
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe('early-line\n')
+    expect(result.stderr).toBe(POST_EXIT_CUT_LINE)
+    expect(live).toEqual([POST_EXIT_CUT_LINE])
+
+    const control: string[] = []
+    const clean = await runCommand({
+      command: 'echo early-line',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      onStderr: (chunk) => control.push(chunk),
+    })
+    expect(clean.stdout).toBe('early-line\n')
+    expect(clean.stderr).toBe('')
+    expect(control).toEqual([])
   }, 15_000)
 
   // Turbo pins `nonpersistent_task_sees_eof_on_stdin`: a task that reads
