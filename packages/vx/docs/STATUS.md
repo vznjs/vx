@@ -509,6 +509,100 @@ its long-running tasks are `continuous`, not `persistent`. A dash means
 the tool's docs have no term, not that the tool cannot do the thing.
 Pages linking their terms into it is W1–W7's job as each is written.
 
+14cf. **Item 684 (roadmap W2, 2026-09-24): the caching page teaches, and
+its key calculator is held to real vx runs.** `learn/caching.mdx`
+replaces the stub under the same slug. It teaches content addressing;
+what goes into a key (the task, the files, the config with its list of
+inputs, env, upstream keys, tool versions); why a key folds upstream
+input keys and not outputs (the other way waits for outputs and needs
+them deterministic; this way reruns everything above a no-op edit); the
+cascade, as the page's one Mermaid diagram; what a stale hit is (an
+input no key sees, or a collision); and local versus remote. Then how vx
+does it (declared inputs, git blob ids, env by name in two lists, the
+seeded fold and item 682's state width, with its numbers), how
+Turborepo, Nx and Bazel do it, when their default is the better pick,
+and a checkpoint. Every competitor claim was checked against a shallow
+clone of that tool's doc source on 2026-09-24, and the check found two
+things a guess would have missed: Turborepo's docs now have a
+`dependencyOutputs` input mode that hashes a dependency's outputs, at
+the price of a key unknown until run time; and Nx reaches upstream
+through the dependencies' input files (`^production`), not their keys.
+
+The widget is `KeyCalculator.astro` and `key-calculator.ts` over
+`demos/model/toy-monorepo.ts`, extended, not forked: what each task
+reads (its `src/index.ts`; a build also its `tsconfig.json`, and
+`api#build` also `API_URL`), a state of edited and undeclared inputs,
+and `toyRun`, which folds each key from the declared inputs, their
+values and the upstream keys, and tracks what the cache replays. An
+output that differs from a run with no cache is stale, on a hit or on a
+miss built over a stale upstream. Without JavaScript the widget is four
+tables (edit `utils`, edit `app`, change `API_URL`, and the stale hit:
+stop declaring `utils/tsconfig.json`, run, edit it). Each gives every
+task's key before and after, whether it moved (own input or upstream
+key), and hit, runs or stale hit, with a sentence that says the same.
+With JavaScript the tables hide and the element shows toggle buttons
+(`aria-pressed`) for each edit, each declaration and `API_URL`, a
+replay button per table, Start over, a live table and a polite live
+region. The page and the figure caption call it a model: its keys are
+digests it computes, cut to seven hex digits, not xxHash3.
+
+The model is held to core by `tests/key-model-core.test.ts`. It writes
+the toy workspace from the model (each file holds the model's value,
+each command reads exactly the model's read set, each config declares
+what the state declares), commits it to git, and drives `run()` from
+`@vzn/vx`. At every step it compares the keys that moved, the hits and
+the stale outputs (bytes that differ from the same state run with the
+cache off in a second workspace) with the model's. It replays a
+14-step sequence that uses every control (the cascade, an undo that
+hits an old entry, the stale hit, a miss on a stale upstream, the heal,
+`passThrough` without `inputs.env`), and each of the four tables from
+a fresh cache. It runs in the sandboxed `test` task (five rows, about
+six seconds). That task now declares `packages/vx/src/**` as
+`workspaceFiles`, so a change to core's key derivation reruns it.
+
+Proofs, each red and then green after the reverse edit. Model: the key
+drops upstream keys (11 rows red); the key sees undeclared reads (7);
+the cache forgets older entries (2: the undo row and the parity row); a
+miss builds on the fresh upstream output (only the parity row went red,
+so a hand-written row for it was added and went red with it); nothing
+is ever stale (7); a moved key always blames the upstream (8; the parity
+test cannot see why a key moved, so the hand-written rows hold that);
+a scenario dropped (3). Core, with the model untouched: env values left
+out of the key (the sequence row and the env table's row); upstream
+keys left out (4 parity rows); file contents left out (3, the app
+table's row among them). Page: a table row dropped, the caption
+sentence dropped, the controls not hidden, the figure caption without
+"A model", a wrong task in the checkpoint answer, the element renamed:
+each reddened its own row. 21 new rows, 16 in `demo-islands.test.ts`
+and 5 in `key-model-core.test.ts`; the site suite is 43 green. No
+browser on this box: the element was driven in happy-dom from the
+scratchpad (not a dependency), and its layout has not been seen.
+
+14ci. **Item 687 (2026-09-24): a plugin's suite re-keys on core's
+source.** Every package that imports `@vzn/vx` reads core's source,
+since core has no build, but core's `build` was an empty group whose key
+never moved. So a dependant's `test` and `lint.oxlint`, which fold
+`install` and through it `^build`, kept their keys across a core edit,
+and a warm local cache (`vx run ci --all` on a developer box; CI keeps
+no cache between runs) replayed a plugin's pass over a core change that
+broke it. Reproduced: `@vzn/vx-github#test` kept key `c1bee330…` after
+an edit to `src/util/hash.ts`. Core's `build` now depends on a no-op
+`source` task whose inputs are `src/**`, `index.ts` and `tsconfig.json`,
+so every dependant's install folds that key; the same edit moves the
+test's key and restoring the file restores it. Held by
+`core-source-key.unsafe.test.ts`: every dependant's `test` and
+`lint.oxlint` reach `@vzn/vx#source` in the dry-run graph (red with
+`build` back to no deps). The class is every package consumed as source, not
+core alone: the site imports vx-github and vx-schedule-history, and the
+bench vx-schedule-history, and no plugin had a `build` at all. Every
+plugin package now has `build` (`^build` and its own `source`, keyed by
+`src/**`), and the law checks every workspace dependency edge: each
+dependant's `test` and `lint.oxlint` reach `<dep>#source` (red, naming
+the three missing edges, with vx-schedule-history's `source` edge
+removed). Found by the W2 implementer, who had patched only the site's
+test with `workspaceFiles: ['packages/vx/src/**']`; that second copy of
+the rule is removed, the cascade covers it.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -522,7 +616,8 @@ Pages linking their terms into it is W1–W7's job as each is written.
     skeleton and the island pattern, is DONE (item 675, entry 14bw).
     W1, the first real Learn page and the graph explorer, is DONE (item
     681, entry 14cc), and so is W12, the glossary (item 683, entry 14ce).
-    Next step: W2 and the key calculator.
+    W2, caching and the key calculator, is DONE (item 684, entry 14cf).
+    Next step: W4 and the scheduler sim.
 
 ## Decisions (this arc)
 

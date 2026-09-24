@@ -67,13 +67,27 @@ export default defineProject({
 
     // Core is consumed as source: what a dependant's `install` pulls
     // through `^build` is what it needs from its deps, and for core that
-    // is nothing — an explicit empty group says so, and keeps the
-    // convention visible. The four release targets are `build.bun`
-    // (release.yml), and `check.binary` proves the one this host can run.
+    // is nothing to compile — but it is not nothing to KEY. A dependant's
+    // test and type-check read core's source, so `build` carries that
+    // source's key through `source`, and every dependant's `install`
+    // folds it: an edit to core re-keys the plugin suites (item 687;
+    // as an empty group the key never moved, and a warm local cache
+    // replayed a plugin's pass over a core change). The four release
+    // targets are `build.bun` (release.yml), and `check.binary` proves
+    // the one this host can run.
     build: {
       description:
         'nothing to build — core is consumed as source; the release binaries are build.bun',
-      dependsOn: [],
+      dependsOn: ['source'],
+    },
+
+    source: {
+      description: 'the source dependants import: a key, not a build',
+      exec: { command: 'true', sandbox: { allow: { read: [] } } },
+      cache: {
+        inputs: { files: ['src/**', 'index.ts', 'tsconfig.json'] },
+        outputs: { files: [] },
+      },
     },
 
     'check.binary': {
