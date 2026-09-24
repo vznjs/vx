@@ -129,15 +129,16 @@ function packagesNamed(s: string): string[] {
 }
 
 /** Each code block in `html` in the given language, as its text. Expressive
- *  Code puts one `ec-line` per source line. */
+ *  Code puts one `ec-line` per source line, and marks a block that wraps
+ *  (every block, `astro.config.mjs`) on its `<pre>`. */
 export function codeBlocks(html: string, lang: string): string[] {
   return [
     ...html.matchAll(
-      new RegExp(`<pre data-language="${lang}"><code>([\\s\\S]*?)</code></pre>`, 'g'),
+      new RegExp(`<pre data-language="${lang}"[^>]*><code>([\\s\\S]*?)</code></pre>`, 'g'),
     ),
   ].map((m) =>
     m[1]!
-      .split(/<div class="ec-line[^"]*">/)
+      .split(/<div class="ec-line[^"]*"[^>]*>/)
       .slice(1)
       .map((line) => decode(line.replace(/<[^>]+>/g, '')).replace(/\n$/, ''))
       .join('\n'),
