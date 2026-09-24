@@ -1,12 +1,9 @@
-// Chapter 10, guide/try-it: the playground on the four packages, the labs,
-// and the way out to a real repository. It hosts the playground, so the
-// playground page's rows moved here from learn-playground.test.ts (and the
-// untagged-element row from learn-labs.test.ts): without JavaScript the
-// static render holds each config's text and the table of the tasks its
-// run plans; the controls are hidden; the page's scripts reach the element
-// without the planner; and the element finds every piece of markup it
-// reads. Its checkpoint is held to its answer, written out here, and its
-// pictures to the toy model and the labs page.
+// The playground page, playground/ (design/site-short-2026-09.md: the
+// Guide's chapter 10 collapsed into it, and its rows moved with it). Without
+// JavaScript the static render holds each config's text and the table of the
+// tasks its run plans; the controls are hidden; the page's scripts reach the
+// element without the planner; the element finds every piece of markup it
+// reads; and the page's one command runs what the playground runs.
 //
 // It reads `dist/`, which the `build` task writes; the `test` task depends
 // on `build` for that reason.
@@ -24,27 +21,9 @@ import {
   staticTable,
   type Planner,
 } from '../src/components/demos/model/playground-view.js'
-import { rerunBy } from '../src/components/demos/model/toy-monorepo.js'
-import * as P from '../src/components/guide/try-it/pictures.js'
-import {
-  DIST,
-  SITE,
-  chapterShape,
-  closure,
-  codeBlocks,
-  content,
-  decode,
-  defining,
-  hrefs,
-  only,
-  page,
-  runFlags,
-  sections,
-  tableRows,
-  text,
-} from './guide-page.js'
 
-const SLUG = 'try-it'
+const SITE = path.resolve(import.meta.dir, '..')
+const DIST = path.join(SITE, 'dist')
 const ELEMENT = path.join(SITE, 'src/components/demos/playground.ts')
 
 /** The tasks the playground runs, in its order: the toy's eight. `app`
@@ -60,22 +39,86 @@ const ALL = [
   'app#test',
 ]
 
-/** The chapter's one question, and its answer written out. */
-const CHECK = {
-  id: 'playground-env',
-  question: 'Which tasks rerun when you change `API_URL`?',
-  summary: '4 of the 8 tasks rerun.',
-  yes: [
-    'api#build reruns (env API_URL changed).',
-    'api#test reruns (upstream api#build moved).',
-    'app#build reruns (upstream api#build moved).',
-    'app#test reruns (upstream app#build moved).',
-  ],
+function page(rel: string): string {
+  const file = path.join(DIST, rel, 'index.html')
+  if (!existsSync(file)) throw new Error(`${file} is missing: run the site's build task first`)
+  return readFileSync(file, 'utf8')
 }
 
-/** Markup as the text a reader gets, with each `<code>` in backticks. */
-function spoken(html: string): string {
-  return text(html.replace(/<code>([^<]*)<\/code>/g, '`$1`'))
+function only(html: string, re: RegExp): string {
+  const found = [...html.matchAll(re)]
+  expect(found).toHaveLength(1)
+  return found[0]![1]!
+}
+
+function decode(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number(dec)))
+    .replace(/&amp;/g, '&')
+}
+
+function text(html: string): string {
+  return decode(html.replace(/<[^>]+>/g, ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** The rows of a table's body: each row's cells as text, header cell first. */
+function tableRows(table: string): string[][] {
+  const body = only(table, /<tbody\b[^>]*>([\s\S]*?)<\/tbody>/g)
+  return [...body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)].map((row) =>
+    [...row[1]!.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => text(c[1]!)),
+  )
+}
+
+/** Each code block in `html` in the given language, as its text. Expressive
+ *  Code puts one `ec-line` per source line. */
+function codeBlocks(html: string, lang: string): string[] {
+  return [
+    ...html.matchAll(
+      new RegExp(`<pre data-language="${lang}"[^>]*><code>([\\s\\S]*?)</code></pre>`, 'g'),
+    ),
+  ].map((m) =>
+    m[1]!
+      .split(/<div class="ec-line[^"]*"[^>]*>/)
+      .slice(1)
+      .map((line) => decode(line.replace(/<[^>]+>/g, '')).replace(/\n$/, ''))
+      .join('\n'),
+  )
+}
+
+/** Every `_astro/*.js` reachable from `names` through the chunks' imports. */
+function closure(names: string[]): Set<string> {
+  const seen = new Set<string>()
+  const queue = [...names]
+  while (queue.length > 0) {
+    const name = queue.pop()!
+    const file = path.join(DIST, '_astro', name)
+    // mermaid's chunks name files it never emits (`./elk-worker.min.js`).
+    if (seen.has(name) || !existsSync(file)) continue
+    seen.add(name)
+    for (const m of readFileSync(file, 'utf8').matchAll(/["'`]\.\/([\w.-]+\.js)["'`]/g)) {
+      queue.push(m[1]!)
+    }
+  }
+  return seen
+}
+
+/** The chunks reachable from the page's own scripts that define `<tag>`. */
+function defining(html: string, tag: string): string[] {
+  const scripts = [...html.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/g)].map((m) => m[0])
+  const reachable = closure(
+    scripts.flatMap((s) => [...s.matchAll(/\/_astro\/([\w.-]+\.js)/g)].map((m) => m[1]!)),
+  )
+  const define = new RegExp(`customElements\\.define\\(\\s*["'\`]${tag}["'\`]`)
+  return [...reachable].filter((name) =>
+    define.test(readFileSync(path.join(DIST, '_astro', name), 'utf8')),
+  )
 }
 
 /** The elements of `html` a selector of the form the element uses matches:
@@ -92,8 +135,8 @@ function matches(html: string, selector: string): number {
   return [...html.matchAll(new RegExp(`<${attr[1]}\\b[^>]*\\b${attr[2]}="${attr[3]}"`, 'g'))].length
 }
 
-describe('the playground on guide/try-it', () => {
-  const html = page(`guide/${SLUG}`)
+describe('the playground on playground/', () => {
+  const html = page('playground')
   const element = only(html, /<vx-playground\b[^>]*>([\s\S]*?)<\/vx-playground>/g)
   const staticPart = only(element, /<div class="static\b[^"]*"[^>]*>([\s\S]*)<\/div>\s*$/g)
 
@@ -192,96 +235,22 @@ describe('the playground on guide/try-it', () => {
       expect({ name, found: MARKERS.filter((m) => body.includes(m)) }).toEqual({ name, found: [] })
     }
   })
-})
-
-describe('the checkpoint on guide/try-it', () => {
-  const html = page(`guide/${SLUG}`)
-  const el = only(html, /<vx-checkpoint\b[^>]*>([\s\S]*?)<\/vx-checkpoint>/g)
-
-  it('asks the env question under "Check yourself"', () => {
-    expect(only(el, /<fieldset class="form\b[^"]*"[^>]*data-checkpoint="([^"]+)"/g)).toBe(CHECK.id)
-    const check = sections(content(html)).find((s) => s.id === 'check-yourself')!.html
-    expect(check.match(/<vx-checkpoint\b/g)).toHaveLength(1)
-  })
-
-  it('states the question, and the answer without JavaScript', () => {
-    expect(spoken(only(el, /<p class="question\b[^"]*">([\s\S]*?)<\/p>/g))).toBe(CHECK.question)
-    const details = only(el, /<details class="answer\b[^"]*">([\s\S]*?)<\/details>/g)
-    const paragraphs = [...details.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/g)].map((m) => spoken(m[1]!))
-    expect(paragraphs[0]).toBe(CHECK.summary)
-    expect([...details.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => spoken(m[1]!))).toEqual(
-      CHECK.yes,
-    )
-    const boxes = [...el.matchAll(/<input type="checkbox" value="([^"]+)"/g)].map((m) => m[1])
-    expect(boxes).toEqual(ALL)
-  })
-
-  it("loads the checkpoint element from the page's scripts", () => {
-    expect(defining(html, 'vx-checkpoint')).toHaveLength(1)
-  })
-})
-
-chapterShape({
-  slug: SLUG,
-  titles: [
-    'Edit, run, and read what moved',
-    'One file moves four keys',
-    'Break it on purpose in the labs',
-  ],
-  pictures: [P.loop, P.ripple, P.labs],
-  rows: {
-    'packages/vx/tests/playground-parity.unsafe.test.ts': [
-      'the playground bundle plans what the CLI plans',
-    ],
-  },
-  inVxNames: ['Turborepo', 'Nx'],
-})
-
-describe("the chapter's pictures and exits", () => {
-  const chapter = content(page(`guide/${SLUG}`))
-  const inVx = sections(chapter).find((s) => s.id === 'in-vx')!.html
-
-  it('moves the keys the toy model says an edit in ui moves, and draws each', () => {
-    expect(P.RIPPLE).toEqual(rerunBy('ui'))
-    expect(P.ripple.boxes.filter((b) => b.tone === 'accent').map((b) => b.id)).toEqual(P.RIPPLE)
-  })
-
-  it('draws one card per lab the labs page holds', () => {
-    const labs = readFileSync(path.join(SITE, 'src/content/docs/guide/labs.mdx'), 'utf8')
-    expect(P.labs.boxes).toHaveLength(labs.match(/^## Lab \d+:/gm)!.length)
-    expect(hrefs(chapter)).toContain('../labs/')
-  })
-
-  it('shows the loop before the playground it describes', () => {
-    expect(chapter.indexOf('data-picture="loop"')).toBeGreaterThan(-1)
-    expect(chapter.indexOf('data-picture="loop"')).toBeLessThan(chapter.indexOf('<vx-playground'))
-  })
-
-  it('leaves by the quickstart and both migrations, and plans with a documented flag', () => {
-    const links = hrefs(inVx)
-    for (const exit of [
-      '../../quickstart/',
-      '../../guides/migrate/#turborepo',
-      '../../guides/migrate/#nx',
-    ]) {
-      expect(links).toContain(exit)
-    }
-    expect(runFlags().has('--dry')).toBe(true)
-    // At a workspace root a bare task name refuses ("not inside a project").
-    expect(runFlags().has('--all')).toBe(true)
-    expect(codeBlocks(inVx, 'sh')).toEqual(['vx run build test --all --dry'])
-  })
 
   // Item 721's app#docs made the page run `build test docs`, so the page and
-  // the chapter's one command named different runs. The page runs what the
-  // chapter says; app#docs stays declared, for a reader who types it.
-  it("runs the task specs the chapter's command names, and leaves app#docs out of them", () => {
-    const [command] = codeBlocks(inVx, 'sh')
+  // its one command named different runs. The page runs what the command
+  // says; app#docs stays declared, for a reader who types it.
+  it('names the run it plays as one command with documented flags, app#docs left out', () => {
+    const [command, ...rest] = codeBlocks(html, 'sh')
+    expect(rest).toEqual([])
+    expect(command).toBe('vx run build test --all --dry')
     const specs = command!
       .split(' ')
       .slice(2)
       .filter((w) => !w.startsWith('--'))
     expect(specs).toEqual(TASKS)
+    // At a workspace root a bare task name refuses ("not inside a project").
+    const cli = readFileSync(path.join(SITE, 'src/content/docs/cli.md'), 'utf8')
+    expect(['--all', '--dry'].filter((f) => !cli.includes(`\`${f}`))).toEqual([])
     expect(CONFIG_TEXTS['app']).toContain('    docs: {')
     expect(TASKS).not.toContain('docs')
   })

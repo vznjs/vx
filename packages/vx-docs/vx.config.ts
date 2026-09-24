@@ -1,25 +1,10 @@
 import { defineProject } from '@vzn/vx'
 
-// The scheduler simulator (item 685; chapter 4 and lab 4) runs vx-bench's
-// simulator over vx's own ranking code, so the site's build bundles, and its
-// test imports, three files outside this project. Core and the history plugin
-// are devDependencies, whose directories the sandbox grants by itself;
-// vx-bench is not, so its file is granted by name. All three are inputs: an
-// edit to any of them changes the schedules the page draws.
-const SIM_SOURCES = [
-  'packages/vx-bench/schedule-policy.ts',
-  'packages/vx/src/graph/priorities.ts',
-  'packages/vx-schedule-history/src/critical-path.ts',
-]
-const SIM_READ = '../vx-bench/schedule-policy.ts'
-
 // The choosing page (item 689) links each vx guarantee to the test row that
 // holds it, and compare.test.ts reads each file for that row's title,
 // so a renamed row or a moved file fails the site's test instead of leaving
-// a dead link. Granted by name and keyed as inputs, like the sim sources.
-// The landing page's one guarantee (item 709) cites the sandbox file, and
-// landing.test.ts reads it the same way.
-const CHOOSING_PROOFS = [
+// a dead link. Granted by name and keyed as inputs.
+const PROOFS = [
   'packages/vx/tests/config.test.ts',
   'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
   'packages/vx/tests/task-hash-derive.test.ts',
@@ -28,41 +13,6 @@ const CHOOSING_PROOFS = [
   'packages/vx-reapi/tests/exec-e2e.test.ts',
   'packages/vx-migrate/tests/turbo.test.ts',
 ]
-
-// The Guide's chapters link each claim about vx to the test row that holds
-// it, in each chapter's "How we know this is true" list, and
-// tests/guide-page.ts reads each linked file for the row's title, as the
-// choosing page's rows do. Every file the ten chapters link, granted by name
-// and keyed, like the lists above.
-const GUIDE_PROOFS = [
-  'packages/vx-bench/tests/schedule-policy.test.ts',
-  'packages/vx-reapi/tests/executor.test.ts',
-  'packages/vx-schedule-history/tests/schedule-history.test.ts',
-  'packages/vx/tests/affected-base-notes.test.ts',
-  'packages/vx/tests/affected-dependents.test.ts',
-  'packages/vx/tests/affected-workspace-files.test.ts',
-  'packages/vx/tests/affected.test.ts',
-  'packages/vx/tests/cgroup.test.ts',
-  'packages/vx/tests/config.test.ts',
-  'packages/vx/tests/execute-task.test.ts',
-  'packages/vx/tests/git-oid.test.ts',
-  'packages/vx/tests/git-subdir-workspace.test.ts',
-  'packages/vx/tests/layered-cache.test.ts',
-  'packages/vx/tests/local-fallbacks.test.ts',
-  'packages/vx/tests/package-boundaries.unsafe.test.ts',
-  'packages/vx/tests/package-graph.test.ts',
-  'packages/vx/tests/playground-parity.unsafe.test.ts',
-  'packages/vx/tests/plugin-capabilities.test.ts',
-  'packages/vx/tests/plugin-pipeline.test.ts',
-  'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
-  'packages/vx/tests/scheduler.test.ts',
-  'packages/vx/tests/show-info.test.ts',
-  'packages/vx/tests/task-graph.test.ts',
-  'packages/vx/tests/task-hash-derive.test.ts',
-  'packages/vx/tests/telemetry-lifecycle.test.ts',
-  'packages/vx/tests/telemetry.test.ts',
-]
-const PROOFS = [...new Set([...CHOOSING_PROOFS, ...GUIDE_PROOFS])]
 
 export default defineProject({
   tasks: {
@@ -80,18 +30,17 @@ export default defineProject({
     // are named, not `.`: a type-checker pointed at a directory holding a
     // symlinked node_modules walks it. `src/content/` is left out, being
     // Markdown and a `content.config.ts` whose `astro:content` types exist
-    // only after astro generates them. The check follows imports across the
-    // boundary: the playground into core's source (a devDependency, its key
-    // through `install`), the scheduler simulator into vx-bench's policy file
-    // (granted by name and keyed, like the sim sources).
+    // only after astro generates them. The check follows the playground's
+    // imports across the boundary into core's source (a devDependency, its
+    // key through `install`).
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/examples src/guide src/nav src/pages src/playground src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/nav src/pages src/playground src/plugins tests',
         sandbox: {
           allow: {
-            read: ['**/*', SIM_READ, '../vx/src/**'],
+            read: ['**/*', '../vx/src/**'],
             systemInfo: ['vfs.disk-space'],
           },
         },
@@ -103,8 +52,6 @@ export default defineProject({
             'astro.config.mjs',
             'scripts/**',
             'src/components/**',
-            'src/examples/**',
-            'src/guide/**',
             'src/nav/**',
             'src/pages/**',
             'src/playground/**',
@@ -114,7 +61,6 @@ export default defineProject({
             '.oxlintrc.json',
             'tsconfig.json',
           ],
-          workspaceFiles: SIM_SOURCES,
         },
         outputs: { files: [] },
       },
@@ -188,24 +134,21 @@ export default defineProject({
       },
     },
 
-    // `build` because the chapter pins (tests/guide-<slug>.test.ts) read what
-    // the site shipped: whether a widget's no-JavaScript fallback is there is
-    // a fact about the built HTML, not about any source file.
-    // `dist/` is not an input here; `build`'s key reaches this one through
-    // `dependsOn`, and a hit on `build` restores `dist/` before this runs.
+    // `build` because the page pins (landing, sidebar, redirects, links,
+    // the playground page) read what the site shipped: whether a widget's
+    // no-JavaScript fallback is there is a fact about the built HTML, not
+    // about any source file. `dist/` is not an input here; `build`'s key
+    // reaches this one through `dependsOn`, and a hit on `build` restores
+    // `dist/` before this runs.
     //
-    // guide-inside-vx.test.ts reads across project boundaries, and says
-    // so here: it type-checks src/examples/ against core's types, reads
-    // `VxPlugin`'s source for the hook declarations the explorer shows, and
-    // calls every first-party plugin factory to hold the explorer's
-    // first-party column to the hooks each one fills. The reads go through
-    // the packages this one links (package.json), and their keys arrive
-    // through `install` (`^build` folds each linked package's `source`,
-    // item 687), so a change to a hook, a type or a plugin's hooks re-keys
-    // this task.
+    // Two rows read across project boundaries through packages this one
+    // links (package.json), whose keys arrive through `install`
+    // (`^build` folds each linked package's `source`, item 687): the CI
+    // guide's job summary is rendered by `@vzn/vx-github`, and the plugins
+    // guide's snippets type-check against `@vzn/vx-schedule-history`.
     test: {
       description:
-        'bun test — the Guide, sidebar, redirect, diagram, widget, labs, compare and site-link pins (needs the imported content and dist/)',
+        'bun test — the landing, sidebar, redirect, diagram, playground, compare and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test',
@@ -213,14 +156,8 @@ export default defineProject({
           allow: {
             read: [
               '**/*',
-              SIM_READ,
               '../vx/src/**',
               '../vx-github/src/**',
-              '../vx-lockfile/src/**',
-              '../vx-mcp/src/**',
-              '../vx-migrate/src/**',
-              '../vx-otel/src/**',
-              '../vx-reapi/src/**',
               '../vx-schedule-history/src/**',
               ...PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
             ],
@@ -233,30 +170,31 @@ export default defineProject({
           files: [
             'tests/**',
             'src/content/docs/**',
-            // demo-islands.test.ts and the chapter pins import the widgets'
-            // model to hold the built pages to it.
+            // The compare and playground pins import the widgets' model to
+            // hold the built pages to it.
             'src/components/demos/model/**',
-            // guide-try-it.test.ts and learn-checkpoints.test.ts read the
-            // elements' source for the markup they query.
+            // playground-page.test.ts reads the element's source for the
+            // markup it queries.
             'src/components/demos/playground.ts',
-            'src/components/demos/checkpoint.ts',
-            // guide.test.ts and sidebar-coverage.test.ts import the Guide's
-            // chapter list and the sidebars; diagram-kit.test.ts reads the
-            // kit's styles and the theme's tokens.
-            'src/guide/**',
+            // sidebar-coverage.test.ts imports the sidebars; diagram-kit.test.ts
+            // reads the kit's styles, the widgets' and the theme's tokens, and
+            // with landing.test.ts the landing's picture.
             'src/nav/**',
             'src/components/guide/**',
+            'src/components/landing/**',
+            'src/components/Demo.astro',
+            'src/components/demos/widget.css',
+            'src/components/demos/Playground.astro',
             'src/styles/theme.css',
             // The playground rows: its glob and xxh3 against Bun's, and the
             // shipped bundle against a fresh build.
             'src/playground/**',
             'scripts/build-playground.ts',
-            'src/examples/**',
             'astro.config.*',
             '.gitignore',
             'package.json',
           ],
-          workspaceFiles: [...SIM_SOURCES, ...PROOFS],
+          workspaceFiles: PROOFS,
         },
         outputs: { files: [] },
       },
@@ -319,10 +257,7 @@ export default defineProject({
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         sandbox: {
           allow: {
-            // The pipeline explorer shows each hook as core declares it, read
-            // from `VxPlugin`'s source at build time (PipelineExplorer.astro);
-            // its key arrives through `install` (core's `source`, item 687).
-            read: ['**/*', SIM_READ, '../vx/src/orchestrator/plugin.ts'],
+            read: ['**/*'],
             // astro's and vite's caches live under `.astro/` (astro.config.mjs),
             // never under node_modules: a write grant there makes the sandbox
             // punch the read grant into node_modules' children, and bwrap
@@ -345,15 +280,13 @@ export default defineProject({
         // `packages/`, so a docs edit never re-keyed the build.
         inputs: {
           files: ['**/*'],
-          workspaceFiles: SIM_SOURCES,
         },
         outputs: { files: ['dist/**'] },
       },
     },
 
-    // A chapter's checkpoint computes its answer as the page renders, with
-    // the playground's bundle (Checkpoint.astro), so the dev server needs it
-    // as the build does.
+    // The playground page's element fetches the bundle on the first Run, so
+    // the dev server serves it as the build does.
     dev: {
       description: 'astro dev server (persistent)',
       dependsOn: ['install', 'build.playground'],
@@ -364,7 +297,7 @@ export default defineProject({
         timeout: 120000,
         sandbox: {
           allow: {
-            read: ['**/*', SIM_READ],
+            read: ['**/*'],
             write: ['.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],

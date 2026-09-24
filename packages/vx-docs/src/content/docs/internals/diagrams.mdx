@@ -1,12 +1,12 @@
 ---
 title: The diagram kit
-description: The one build-time SVG component every Guide picture is drawn with, and the data it draws from, each part rendered with the toy monorepo.
+description: The one build-time SVG component every picture on the site is drawn with, and the data it draws from, each part rendered with the toy monorepo.
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { lanes } from '../../../components/guide/diagram/diagram.js'
 
-Every picture in the Guide is one component, `Diagram`, drawing one value
+Every picture on the site is one component, `Diagram`, drawing one value
 of `Picture`: boxes, arrows between them, notes and frames. It renders SVG
 into the page when the site is built, so the picture is there with no
 script, in both themes, and at any width. The data is documented in

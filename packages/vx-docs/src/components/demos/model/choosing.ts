@@ -268,7 +268,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'A young API with few plugins besides the first-party ones. Plugins run on Bun, and none can turn a task into anything but a command.',
         sources: [
-          { label: 'How vx is built', href: 'guide/inside-vx/' },
+          { label: 'Writing a plugin', href: 'guides/plugins/' },
           {
             label: 'tests/plugin-pipeline.test.ts',
             href: `${GH}packages/vx/tests/plugin-pipeline.test.ts`,
@@ -554,7 +554,7 @@ export const CHOICES: readonly Choice[] = [
         buys: 'A documented order that works on the first run, and a better one once there is history.',
         costs:
           'The default cannot see that a task is long. The plugin needs history and must be declared; it runs on one machine.',
-        sources: [{ label: 'Concurrency', href: 'guide/concurrency/' }],
+        sources: [{ label: 'What a run does: concurrency', href: 'execution/#concurrency' }],
       },
       turbo: {
         chose: '--concurrency, 10 by default. Its docs do not say which ready task starts first.',

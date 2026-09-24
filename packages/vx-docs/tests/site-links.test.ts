@@ -174,27 +174,27 @@ describe('every internal link in the built site', () => {
 
   it('reports each kind of dead link, and passes the ones that land', () => {
     const fixture = `
-      <a href="${BASE}guide/caching/">page</a>
-      <a href="${BASE}guide/caching/#a-change-in-utils-changes-every-key-above-it">anchor</a>
+      <a href="${BASE}playground/">page</a>
+      <a href="${BASE}#cache">anchor</a>
       <a href="../caching/#_top">relative</a>
       <a href="#_top">same page</a>
-      <a href="${SITE}guide/caching/">absolute</a>
+      <a href="${SITE}playground/">absolute</a>
       <a href="https://example.com/nowhere/">external</a>
       <img src="${BASE}favicon.svg">
-      <a href="${BASE}guide/no-such-page/">gone</a>
-      <a href="${BASE}guide/caching/#no-such-heading">bad anchor</a>
-      <a href="${BASE}guide/caching">no slash</a>
+      <a href="${BASE}playground/no-such-page/">gone</a>
+      <a href="${BASE}playground/#no-such-heading">bad anchor</a>
+      <a href="${BASE}playground">no slash</a>
       <a href="../no-such/">bad relative</a>
       <a href="/elsewhere/">outside</a>
-      <a href="${SITE}guide/gone/">bad absolute</a>
+      <a href="${SITE}gone/">bad absolute</a>
     `
-    expect(broken('guide/labs/index.html', fixture)).toEqual([
-      `guide/labs/index.html: ${BASE}guide/no-such-page/ (no such file)`,
-      `guide/labs/index.html: ${BASE}guide/caching/#no-such-heading (no such id)`,
-      `guide/labs/index.html: ${BASE}guide/caching (no such file)`,
-      'guide/labs/index.html: ../no-such/ (no such file)',
-      'guide/labs/index.html: /elsewhere/ (outside the base path)',
-      `guide/labs/index.html: ${SITE}guide/gone/ (no such file)`,
+    expect(broken('glossary/index.html', fixture)).toEqual([
+      `glossary/index.html: ${BASE}playground/no-such-page/ (no such file)`,
+      `glossary/index.html: ${BASE}playground/#no-such-heading (no such id)`,
+      `glossary/index.html: ${BASE}playground (no such file)`,
+      'glossary/index.html: ../no-such/ (no such file)',
+      'glossary/index.html: /elsewhere/ (outside the base path)',
+      `glossary/index.html: ${SITE}gone/ (no such file)`,
     ])
     expect(broken('404.html', '<a href="guide/">relative</a>')).toEqual([
       '404.html: guide/ (relative link on the 404 page)',

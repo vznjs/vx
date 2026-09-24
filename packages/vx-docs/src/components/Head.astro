@@ -1,10 +1,8 @@
 ---
 // The landing's fonts on every docs page, so the two read as one site; and the
-// Mermaid renderer everywhere but the Guide (MermaidLoader.astro).
+// Mermaid renderer (MermaidLoader.astro).
 import Default from '@astrojs/starlight/components/Head.astro'
 import MermaidLoader from './MermaidLoader.astro'
-
-const guide = Astro.locals.starlightRoute.id.startsWith('guide/')
 ---
 
 <Default><slot /></Default>
@@ -14,4 +12,4 @@ const guide = Astro.locals.starlightRoute.id.startsWith('guide/')
   rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap"
 />
-{!guide && <MermaidLoader />}
+<MermaidLoader />

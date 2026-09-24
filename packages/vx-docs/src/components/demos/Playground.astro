@@ -1,5 +1,5 @@
 ---
-// The playground (guide/try-it; item 700, design/playground-ui-2026-09.md).
+// The playground (playground/; item 700, design/playground-ui-2026-09.md).
 // Without JavaScript it is the toy workspace: each `vx.config.mjs`, folded,
 // and the tasks its run plans as a table of what each waits for and the
 // inputs it declares. `playground.ts` unhides the editor and the run
@@ -9,9 +9,11 @@
 // `.status`, `.errors`, `.results` with its `caption` and `tbody`, `.order`
 // and `.static`, so they are its contract with this markup.
 //
-// `lab` opens it on one of the labs' states (guide/labs, item 704;
+// `lab` opens it on one of the labs' states (item 704;
 // `src/playground/labs.ts`): the element gets it as `data-lab`, and the
-// static render is that state's. Without it, the workspace's.
+// static render is that state's. Without it, the workspace's. No page opens
+// a lab since the labs page went (design/site-short-2026-09.md); the states
+// stay as core's parity fixtures.
 //
 // The table comes from the config TEXTS, evaluated here at build time by the
 // page's own rewrite and JSON rule (`evaluateConfigInProcess`: no Worker, which

@@ -1,57 +1,62 @@
 ---
-// vx landing page — the Guide's cover (design/site-redo-2026-09.md § The
-// landing): the question, the loop failing three ways, the ten chapters,
-// then the numbers, adoption and what is not inside. Standalone (its own
-// nav, footer and theme), static, one script for the copy button. Every
-// measurement is written by packages/vx-bench/update-site.ts (check.site
-// guards it): from results.json, the benchRows block, the three stat tiles
-// and the graph's size in the #bench kicker and sub; from benchmarks.md,
-// the n8nRows block and the #real kicker's task count.
-// tests/landing.test.ts holds the page's other figures to their sources.
+// vx landing page — the whole story on one page (design/site-short-2026-09.md
+// § The shape): the hero, the one diagram with its six callouts, the first
+// benchmark, and the four pillars. Standalone (its own nav, footer and
+// theme), static, one script for the copy button. Every measurement is
+// written by packages/vx-bench/update-site.ts (check.site guards it) from
+// results.json: the benchRows block and the graph's size in the #bench
+// kicker and sub. tests/landing.test.ts holds the rest of the page.
+import Diagram from '../components/guide/diagram/Diagram.astro'
+import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
-import { CHAPTERS, problemHtml } from '../guide/chapters.js'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
 
-// Terminal meters (▰ filled / ▱ empty) — faithful to real `vx run` output.
-const meter = (on: number, total = 50) => ({
-  on: '▰'.repeat(on),
-  off: '▱'.repeat(Math.max(total - on, 0)),
-})
-const projects = meter(25) // round(1 affected / 2 total · 50)
-const tasks = meter(50)
-const cache = meter(50)
-const dashes = '─'.repeat(80)
+/** A callout's line, each backticked span as code. */
+const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
 
-// A sample of `vx run`'s output, in its layout and colours, labelled a
-// sample on the page: no recorded run stands behind its times. The id
-// paints as project-hue `@vzn/vx` + dim `#` + pink task, like the CLI's
-// identity coloring. The summary is computed from the rows.
-const termTasks = [
-  { ms: 241, proj: '@vzn/vx', task: 'build.bun.darwin-x64' },
-  { ms: 243, proj: '@vzn/vx', task: 'build.bun.linux-arm64' },
-  { ms: 242, proj: '@vzn/vx', task: 'build.bun.darwin-arm64' },
-  { ms: 245, proj: '@vzn/vx', task: 'build.bun.linux-x64' },
+// One card per pillar: an icon, a title, one sentence of at most fifteen
+// words, and the Docs page that says the rest.
+const pillars = [
+  {
+    id: 'correct',
+    icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+    tone: 'var(--vx-ok)',
+    title: 'Correctness',
+    body: 'A task’s cache key covers every file, setting and env var it declares.',
+    more: 'Caching in depth',
+    doc: href('caching/'),
+  },
+  {
+    id: 'sandboxed',
+    icon: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+    tone: 'var(--vx-link)',
+    title: 'Sandbox',
+    body: 'A sandboxed task fails on any read it did not declare.',
+    more: 'Sandboxing',
+    doc: href('guides/sandboxing/'),
+  },
+  {
+    id: 'extensible',
+    icon: '<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 01-12 0V8zM12 18v4"/>',
+    tone: 'var(--vx-accent)',
+    title: 'Extensibility',
+    body: 'Plugins decide where tasks run, where the cache lives and who watches.',
+    more: 'Writing a plugin',
+    doc: href('guides/plugins/'),
+  },
+  {
+    id: 'free',
+    icon: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/>',
+    tone: 'var(--vx-warn)',
+    title: 'Freedom',
+    body: 'MIT, no paywall, no cloud, no account; bring a Turborepo or Nx repo unchanged.',
+    more: 'Migrate',
+    doc: href('guides/migrate/'),
+  },
 ]
-const termMs = termTasks.map((t) => t.ms)
-const termMax = Math.max(...termMs)
-const termMin = Math.min(...termMs)
-const termAvg = Math.round(termMs.reduce((a, b) => a + b, 0) / termMs.length)
-
-// What is not inside: one card each (icon, title, one sentence, the page).
-const nots = [
-  { icon: 'bolt', tone: 'var(--c-turbo)', title: 'No daemon', body: 'One binary. Nothing keeps running between runs.', doc: href('comparison/') },
-  { icon: 'cloud', tone: 'var(--c-turbo)', title: 'No cloud, no account', body: 'Nothing phones home. A remote cache is a plugin you declare.', doc: href('guides/remote-caching/') },
-  { icon: 'lock', tone: 'var(--c-turbo)', title: 'No paywall', body: 'MIT, all of it. No tier, no seat, no hosted-only feature.', doc: href('comparison/') },
-]
-
-const featIcons: Record<string, string> = {
-  bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>',
-  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
-  cloud: '<path d="M17.5 19a4.5 4.5 0 100-9 6 6 0 00-11.5 1.5A4.5 4.5 0 006.5 19h11z"/>',
-}
 
 const benchRows = [
   {
@@ -92,66 +97,30 @@ const benchRows = [
   },
 ]
 
-// The race: the cold-build row, played back on real numbers. The track is
-// scaled to Turbo's time; Nx runs off the end and keeps going. Overhead
-// reads in ONE unit for every runner — clock time over the ideal schedule,
-// `+m:ss` — as the generator prints it (owner, 2026-09-10: never a
-// percentage for one runner and a multiple for another).
+// The cold row's overhead reads in ONE unit for every runner — clock time
+// over the ideal schedule, `+m:ss` — as the generator prints it (owner,
+// 2026-09-10: never a percentage for one runner and a multiple for another).
 const cold = benchRows[0]!
-const raceBar = (name: string) => cold.bars.find((b) => b.name === name)!
-const raceBase = raceBar('baseline')
-const raceVx = raceBar('vx')
-const raceTurbo = raceBar('turbo')
-const raceNx = raceBar('nx')
+const coldBar = (name: string) => cold.bars.find((b) => b.name === name)!
+const coldBase = coldBar('baseline')
 const clock = (ms: number): string => {
   const m = Math.floor(ms / 60_000)
   const sec = Math.round((ms - m * 60_000) / 1000)
   return `${m}:${String(sec).padStart(2, '0')}`
 }
-const plus = (val: number): string => `+${clock(val - raceBase.val)}`
-const lanes = [
-  { name: 'vx', label: 'vx', bar: raceVx, tone: 'var(--phosphor)' },
-  { name: 'turbo', label: 'Turborepo', bar: raceTurbo, tone: 'var(--c-turbo)' },
-  { name: 'nx', label: 'Nx', bar: raceNx, tone: 'var(--c-nx)' },
-]
-
-// A real Turbo repo in the same panel, the same rows: n8n-io/n8n, its own
-// turbo.json, nothing rewritten. update-site.ts writes this block from the
-// n8n table in docs/benchmarks.md, where the other four repos are too. The
-// cold row is the compilers'; the runner's rows are the other two.
-const n8nRows = [
-  {
-    task: 'Cold build · caches and outputs wiped',
-    bars: [
-      { name: 'vx', val: 137200, disp: '137.2s', c: 'var(--phosphor)' },
-      { name: 'turbo', val: 133700, disp: '133.7s', c: 'var(--c-turbo)', best: true },
-    ],
-  },
-  {
-    task: 'Restoring outputs · cache → disk',
-    bars: [
-      { name: 'vx', val: 8270, disp: '8.27s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 12500, disp: '12.5s', c: 'var(--c-turbo)' },
-    ],
-  },
-  {
-    task: 'Fully cached · nothing to rebuild',
-    bars: [
-      { name: 'vx', val: 842, disp: '842ms', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 1360, disp: '1.36s', c: 'var(--c-turbo)' },
-    ],
-  },
-]
-// The cold row's overhead over the ideal schedule, as one more row of the
-// same panel: what each runner adds, so the multiples are of vx's overhead.
+// What each runner adds, as one more row of the same panel, so the
+// multiples are of vx's overhead.
 const overheadRow = {
   task: 'Runner overhead · cold build over the ideal schedule',
-  bars: lanes.map((l) => ({
-    name: l.name,
-    val: l.bar.val - raceBase.val,
-    disp: plus(l.bar.val),
-    c: l.tone,
-    ...(l.name === 'vx' ? { best: true } : {}),
+  bars: [
+    { name: 'vx', c: 'var(--phosphor)' },
+    { name: 'turbo', c: 'var(--c-turbo)' },
+    { name: 'nx', c: 'var(--c-nx)' },
+  ].map((r) => ({
+    ...r,
+    val: coldBar(r.name).val - coldBase.val,
+    disp: `+${clock(coldBar(r.name).val - coldBase.val)}`,
+    ...(r.name === 'vx' ? { best: true } : {}),
   })),
 }
 type Bar = { name: string; val: number; disp: string; c: string; best?: boolean }
@@ -164,37 +133,30 @@ const times = (b: Bar, best: number): string => {
 }
 
 const footCols = {
-  guide: [
-    { t: 'Why orchestrate?', h: href('guide/why/') },
-    { t: 'Try it', h: href('guide/try-it/') },
-    { t: 'Blog', h: href('blog/') },
-  ],
   docs: [
     { t: 'Quickstart', h: href('quickstart/') },
-    { t: 'Caching', h: href('guides/caching/') },
+    { t: 'Configure', h: href('guides/configure/') },
     { t: 'Sandboxing', h: href('guides/sandboxing/') },
-    { t: 'Remote caching', h: href('guides/remote-caching/') },
-    { t: 'Remote execution', h: href('guides/remote-execution/') },
-    { t: 'Writing a plugin', h: href('guides/plugins/') },
-    { t: 'vx mcp', h: href('guides/mcp/') },
+    { t: 'CI and remote', h: href('guides/ci/') },
+    { t: 'Migrate', h: href('guides/migrate/') },
+    { t: 'Plugins', h: href('guides/plugins/') },
+    { t: 'Try it', h: href('playground/') },
   ],
   reference: [
     { t: 'CLI', h: href('cli/') },
     { t: 'Config', h: href('schema/') },
     { t: 'Benchmarks', h: href('benchmarks/') },
-    { t: 'Comparison', h: href('comparison/') },
+    { t: 'vx, Turborepo, Nx, Bazel', h: href('compare/') },
     { t: 'Turbo / Nx parity map', h: href('parity/') },
-    { t: 'Architecture', h: href('architecture/') },
+    { t: 'Glossary', h: href('glossary/') },
   ],
-  migrate: [
-    { t: 'From package.json scripts (vx init)', h: href('cli/') + '#vx-init' },
-    { t: 'From Turborepo', h: href('migrate/from-turborepo/') },
-    { t: 'From Nx', h: href('migrate/from-nx/') },
+  community: [
+    { t: 'GitHub', h: GH },
+    { t: 'Blog', h: href('blog/') },
   ],
-  community: [{ t: 'GitHub', h: GH }],
 }
-
 ---
+
 <!doctype html>
 <html lang="en" data-theme="dark">
   <head>
@@ -203,7 +165,7 @@ const footCols = {
     <title>vx — Bend time. Not the rules.</title>
     <meta
       name="description"
-      content="A task runner and cache for JavaScript monorepos. It decides which of hundreds of commands must run, in what order, and which to skip, from what each task declares, and caches each result under a key made from its inputs."
+      content="A fast, correct task runner and cache for JavaScript monorepos. MIT, no paywall, no cloud, no account."
     />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -230,7 +192,6 @@ const footCols = {
             <span class="word">vx</span>
           </a>
           <nav class="nav-links">
-            <a href={href('guide/why/')}>guide</a>
             <a href={href('quickstart/')}>docs</a>
             <a href={href('cli/')}>reference</a>
             <a href={href('blog/')}>blog</a>
@@ -245,197 +206,53 @@ const footCols = {
             >
             GitHub
           </a>
-          <a class="btn btn-primary btn-sm" href={href('quickstart/')}
-            >Get started <span class="arr">→</span></a
-          >
         </div>
       </header>
 
-      <!-- ===================== Hero: the question and the loop ===================== -->
       <section class="hero">
-        <div class="container hero-grid">
-          <div class="hero-copy">
-            <p class="vx-kicker">// a task runner and cache for JavaScript monorepos</p>
-            <h1>Four packages. One build.<br /><span class="phosphor">Why is it slow, and why is it wrong?</span></h1>
-            <p class="lede">
-              A shell loop builds them in the wrong order, rebuilds all of them, one at a time. The
-              guide fixes each failure, one chapter at a time.
-            </p>
-            <div class="actions">
-              <a class="btn btn-primary btn-lg" href={href('guide/why/')}
-                >Read the guide <span class="arr">→</span></a
-              >
-              <a class="btn btn-ghost btn-lg" href={href('quickstart/')}>Quickstart</a>
-            </div>
-            <div class="actions">
-              <button class="install-pill" data-copy="npm install -g @vzn/vx" type="button">
-                <span class="dollar">$</span>
-                <span class="cmd">npm install -g @vzn/vx</span>
-                <span class="copy">
-                  <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 012-2h10"></path></svg
-                  >
-                  <svg class="icon-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"></path></svg>
-                </span>
-              </button>
-            </div>
+        <div class="container">
+          <h1>A fast, correct task runner for <span class="phosphor">JavaScript monorepos</span>.</h1>
+          <div class="actions">
+            <button class="install-pill" data-copy="npm install -g @vzn/vx" type="button">
+              <span class="dollar">$</span>
+              <span class="cmd">npm install -g @vzn/vx</span>
+              <span class="copy">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 012-2h10"></path></svg
+                >
+                <svg class="icon-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"></path></svg>
+              </span>
+            </button>
           </div>
-          <figure class="loop-fig">
-            <code class="loop-code"><span class="prompt">$</span> for p in packages/*; do (cd $p &amp;&amp; npm run build); done</code>
-            <svg
-              viewBox="0 -6 410 212"
-              role="img"
-              aria-label="The loop for p in packages/* builds api, app, ui and utils one after another, in name order. api, app and ui fail, because the package each one needs builds later; only utils builds. All four rebuild on every change, and only one builds at a time."
+          <div class="actions">
+            <a class="btn btn-primary btn-lg" href={href('quickstart/')}
+              >Quickstart <span class="arr">→</span></a
             >
-              <defs>
-                <marker id="vx-loop-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                  <path class="axis-head" d="M0 0 L10 5 L0 10 z"></path>
-                </marker>
-              </defs>
-              <text class="lane" x="54" y="31">api</text>
-              <text class="lane" x="54" y="73">app</text>
-              <text class="lane" x="54" y="115">ui</text>
-              <text class="lane" x="54" y="157">utils</text>
-              <g class="bar fail"><rect x="62" y="10" width="78" height="30" rx="6"></rect><text x="101" y="30">✗ fails</text></g>
-              <g class="bar fail"><rect x="140" y="52" width="78" height="30" rx="6"></rect><text x="179" y="72">✗ fails</text></g>
-              <g class="bar fail"><rect x="218" y="94" width="78" height="30" rx="6"></rect><text x="257" y="114">✗ fails</text></g>
-              <g class="bar ok"><rect x="296" y="136" width="78" height="30" rx="6"></rect><text x="335" y="156">builds</text></g>
-              <path class="brace" d="M376 10 H384 V166 H376"></path>
-              <line class="axis" x1="62" y1="186" x2="326" y2="186" marker-end="url(#vx-loop-arrow)"></line>
-              <text class="axis-label" x="334" y="191">time</text>
-              <g class="badge b1"><circle cx="140" cy="10" r="12"></circle><text x="140" y="15">1</text></g>
-              <g class="badge b2"><circle cx="396" cy="88" r="12"></circle><text x="396" y="93">2</text></g>
-              <g class="badge b3"><circle cx="200" cy="186" r="12"></circle><text x="200" y="191">3</text></g>
-            </svg>
-            <ol class="loop-legend">
-              <li style="--c:var(--vx-danger)"><span class="n">1</span><span><strong>Wrong order.</strong> Three of four builds fail.</span></li>
-              <li style="--c:var(--vx-warn)"><span class="n">2</span><span><strong>Rebuilds everything.</strong> One line changed; four builds ran.</span></li>
-              <li style="--c:var(--vx-link)"><span class="n">3</span><span><strong>One at a time.</strong> The other cores sit idle.</span></li>
-            </ol>
-          </figure>
+            <a class="btn btn-ghost btn-lg" href={GH}>GitHub</a>
+          </div>
         </div>
       </section>
 
-      <!-- ===================== The guide, as a table of contents ===================== -->
-      <section class="section" id="chapters">
+      <section class="section" id="one-run">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// the guide · ten chapters</p>
-            <h2>Read it in order.</h2>
-            <p class="sub">Each chapter opens with the problem the last one left.</p>
+            <p class="vx-kicker">// one run, after you edit app</p>
+            <h2>Everything vx does, in one picture.</h2>
           </div>
-          <ol class="toc">
-            {
-              CHAPTERS.map((c) => (
-                <li>
-                  <a href={href(`guide/${c.slug}/`)}>
-                    <span class="n">{String(c.chapter).padStart(2, '0')}</span>
-                    <span class="t">{c.title}</span>
-                    <span class="p" set:html={problemHtml(c.problem)} />
-                  </a>
-                </li>
-              ))
-            }
-          </ol>
-        </div>
-      </section>
-
-      <!-- ===================== One run ===================== -->
-      <section class="section" id="run">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// one command</p>
-            <h2>The right order. All at once. Only what changed.</h2>
-          </div>
-          <div class="run-term">
-            <div class="term">
-            <div class="term-bar-top">
-              <span class="tdot" style="background:#ff5f57"></span>
-              <span class="tdot" style="background:#febc2e"></span>
-              <span class="tdot" style="background:#28c840"></span>
-              <span class="ttitle">zsh — vx · sample output</span>
-            </div>
-            <div class="term-body">
-              <div class="term-prompt">
-                <span class="caret">❯ </span><span class="cmd">vx run build --affected</span>
-              </div>
+          <div class="one-run">
+            <Diagram {...oneRun} />
+            <ol class="callouts">
               {
-                termTasks.map((t) => (
-                  <div class="term-task">
-                    <span class="glyph">⏺ </span>
-                    <span class="time">{t.ms}ms</span>
-                    <span class="ok">success</span>
-                    <span class="cache">miss</span>
-                    <span class="target">
-                      <span class="t-proj">{t.proj}</span><span class="t-dim">#</span><span
-                        class="t-pink">{t.task}</span
-                      >
+                CALLOUTS.map((c, i) => (
+                  <li id={c.id}>
+                    <span class="n">{i + 1}</span>
+                    <span>
+                      <strong>{c.term}</strong> <Fragment set:html={codeHtml(c.line)} />
                     </span>
-                  </div>
+                  </li>
                 ))
               }
-              <div class="term-gap"></div>
-              <div class="term-rule">
-                <span class="t-dim">─ </span><span class="mark">vx 0.0.0</span><span class="t-dim"
-                  > </span
-                ><span class="fill">{dashes}</span>
-              </div>
-              <div style="height:4px"></div>
-              <div class="term-row">
-                <span class="lbl">projects</span>
-                <span class="v"
-                  ><span class="term-meter"
-                    ><span class="t-yellow">{projects.on}</span><span class="off"
-                      >{projects.off}</span
-                    ></span
-                  ></span
-                >
-              </div>
-              <div class="term-row">
-                <span class="lbl"></span><span class="v"
-                  ><span class="t-yellow">1 affected</span><span class="t-dim"> · 2 total</span></span
-                >
-              </div>
-              <div style="height:6px"></div>
-              <div class="term-row">
-                <span class="lbl">tasks</span>
-                <span class="v"
-                  ><span class="term-meter"
-                    ><span class="t-green">{tasks.on}</span><span class="off">{tasks.off}</span></span
-                  ></span
-                >
-              </div>
-              <div class="term-row">
-                <span class="lbl"></span><span class="v"
-                  ><span class="t-green">{termTasks.length} success</span><span class="t-dim"> · {termTasks.length} total</span></span
-                >
-              </div>
-              <div style="height:6px"></div>
-              <div class="term-row">
-                <span class="lbl">cache</span>
-                <span class="v"
-                  ><span class="term-meter"
-                    ><span class="t-red">{cache.on}</span><span class="off">{cache.off}</span></span
-                  ></span
-                >
-              </div>
-              <div class="term-row">
-                <span class="lbl"></span><span class="v"><span class="t-red">{termTasks.length} miss</span></span>
-              </div>
-              <div class="term-gap"></div>
-              <div class="term-row">
-                <span class="lbl">info</span><span class="v t-dim">10 workers · local cache</span>
-              </div>
-              <div class="term-row">
-                <span class="lbl">time</span>
-                <span class="v"
-                  ><span class="term-time">252ms</span><span class="term-time-rest"
-                    > · max {termMax}ms · avg {termAvg}ms · min {termMin}ms</span
-                  ></span
-                >
-              </div>
-            </div>
-          </div>
+            </ol>
           </div>
         </div>
       </section>
@@ -445,7 +262,7 @@ const footCols = {
           <div class="section-head">
             <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
             <h2>First in every row.</h2>
-            <p class="sub">The same synthetic 3,270-task graph under vx, Turborepo and Nx. Every competitor reads as a multiple of vx.</p>
+            <p class="sub">The same synthetic 3,270-task graph under vx, Turborepo and Nx, each bar a multiple of vx.</p>
           </div>
           <div class="bench-panel">
             <div class="bench-legend">
@@ -493,120 +310,22 @@ const footCols = {
         </div>
       </section>
 
-      <section class="section" id="real">
+      <section class="section" id="pillars">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// a real repo · n8n-io/n8n · 70 build tasks · its own turbo.json, nothing rewritten</p>
-            <h2>The runner's rows on a real repo.</h2>
-            <p class="sub">On five real Turbo repos, the fastest restore on all five; the cold row is the compilers' time. Astro, payload, medusa and cal.com are in the benchmarks.</p>
-          </div>
-          <div class="bench-panel">
-            <div class="bench-legend">
-              <span class="legend"><span class="sw" style="background:var(--phosphor)"></span>vx</span>
-              <span class="legend"><span class="sw" style="background:var(--c-turbo)"></span>turborepo</span>
-            </div>
-            <div class="bench-rows">
-              {
-                n8nRows.map((r) => {
-                  const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
-                  const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
-                  const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
-                  const best = r.bars.find((x) => x.best)?.val ?? 1
-                  return (
-                    <div class="bench-row">
-                      <p class="task">{r.task}</p>
-                      {r.bars.map((b) => {
-                        const clipped = b.val > rowMax
-                        const pct = clipped ? 100 : (b.val / rowMax) * 100
-                        return (
-                          <div
-                            class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}${clipped ? ' clipped' : ''}`}
-                            style={`--c:${b.c};--w:${pct}%`}
-                          >
-                            <span class="name">{b.name}</span>
-                            <span class="track">
-                              <span class="fill" />
-                            </span>
-                            <span class="disp">{b.disp}</span>
-                            <span class="ratio">{times(b, best)}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })
-              }
-            </div>
-          </div>
-          <a class="section-link" href={href('benchmarks/') + '#five-real-turbo-repos-2026-09-11'}>Benchmarks: the five real repos <span class="arr">→</span></a>
-        </div>
-      </section>
-
-      <!-- ===================== At any size ===================== -->
-      <section class="section" id="scale">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// what each runner adds per package · the same cold build</p>
-            <h2>First at any size.</h2>
-            <p class="sub">Grow the graph and the runner grows with it in milliseconds per package.</p>
-          </div>
-          <div class="stats">
-            <div class="stat">
-              <span class="val"><span class="num">8</span><span class="unit">ms</span></span>
-              <span class="label">per package · vx</span>
-              <span class="sub">+0:08 on 1,090 packages</span>
-            </div>
-            <div class="stat turbo">
-              <span class="val"><span class="num">88</span><span class="unit">ms</span></span>
-              <span class="label">per package · Turborepo</span>
-              <span class="sub">+1:35 on 1,090 packages</span>
-            </div>
-            <div class="stat nx">
-              <span class="val"><span class="num">1,712</span><span class="unit">ms</span></span>
-              <span class="label">per package · Nx</span>
-              <span class="sub">+31:06 on 1,090 packages</span>
-            </div>
-          </div>
-          <a class="section-link" href={href('benchmarks/') + '#how-the-overhead-scales-with-the-workspace-2026-09-10'}>Benchmarks: 100, 300 and 1,000 packages <span class="arr">→</span></a>
-        </div>
-      </section>
-
-      <!-- ===================== Bring the repo you have ===================== -->
-      <section class="section" id="migrate">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// migrate</p>
-            <h2>Bring the repo you have.</h2>
-            <p class="sub"><code>turbo()</code> or <code>nx()</code> runs a Turborepo or Nx repo under vx as it is. One command writes the config when you want it.</p>
-          </div>
-          <div class="actions">
-            <div class="cmd-pill"><span class="dollar">$</span> bunx @vzn/vx-migrate</div>
-            <a class="btn btn-primary btn-lg" href={href('migrate/from-turborepo/')}
-              >From Turborepo <span class="arr">→</span></a
-            >
-            <a class="btn btn-ghost btn-lg" href={href('migrate/from-nx/')}
-              >From Nx <span class="arr">→</span></a
-            >
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== What is not inside ===================== -->
-      <section class="section" id="open">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// what is not inside</p>
-            <h2>Open, all of it.</h2>
+            <p class="vx-kicker">// what you can count on</p>
+            <h2>Correct. Sandboxed. Extensible. Free.</h2>
           </div>
           <div class="cards">
             {
-              nots.map((f) => (
-                <a class="card" style={`--c:${f.tone}`} href={f.doc}>
+              pillars.map((p) => (
+                <a class="card" id={p.id} style={`--c:${p.tone}`} href={p.doc}>
                   <span class="ico">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={featIcons[f.icon]} />
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={p.icon} />
                   </span>
-                  <h3>{f.title}</h3>
-                  <p>{f.body}</p>
+                  <h3>{p.title}</h3>
+                  <p>{p.body}</p>
+                  <span class="learn">{p.more} <span class="arr">→</span></span>
                 </a>
               ))
             }
@@ -621,7 +340,7 @@ const footCols = {
               <img src={href('logo-mark.svg')} width="24" height="24" alt="vx" />
               <span class="word">vx</span>
             </div>
-            <p>One task runner, built to be built on. One binary · MIT licensed.</p>
+            <p>One binary · MIT licensed · no account.</p>
           </div>
           {
             Object.entries(footCols).map(([title, links]) => (

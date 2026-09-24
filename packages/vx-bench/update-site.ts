@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
-// Rewrite the landing page's benchmark rows and stat tiles, and the
-// benchmarks doc's stress-shape section, from packages/vx-bench/results.json — the file
-// `packages/vx-bench/compare.ts` commits. The site is a rendering of the runner's
-// output, never hand-typed numbers; run this after every comparison. The
-// landing page's real-repo panel is rendered from benchmarks.md's n8n table,
-// the one source those numbers have (the harness's medians, typed there).
+// Rewrite the landing page's benchmark rows and the graph's size, the
+// README's benchmark sentence and the benchmarks doc's stress-shape section,
+// from packages/vx-bench/results.json — the file `packages/vx-bench/compare.ts`
+// commits. The site is a rendering of the runner's output, never hand-typed
+// numbers; run this after every comparison. The landing shows this one
+// benchmark (design/site-short-2026-09.md); the real-repo tables stay in
+// benchmarks.md, typed there.
 //
 //   bun packages/vx-bench/update-site.ts          # rewrite in place
 //   bun packages/vx-bench/update-site.ts --check  # exit 1 if the site would change (CI-able)
@@ -121,22 +122,7 @@ const rowsBlock =
 
 const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
 let landing = readFileSync(landingPath, 'utf8')
-landing = landing.replace(/const benchRows = \[\n[\s\S]*?\n\]\n/, rowsBlock)
-// The three stat tiles: the same overhead per package for every runner.
-for (const [label, r] of [
-  ['vx', vx],
-  ['Turborepo', turbo],
-  ['Nx', nx],
-] as const) {
-  const re = new RegExp(
-    `<span class="num">[\\d,]+</span><span class="unit">ms</span></span>\\n(\\s*)<span class="label">per package · ${label}</span>\\n(\\s*)<span class="sub">[^<]*</span>`,
-  )
-  if (!re.test(landing)) throw new Error(`index.astro: stat tile for ${label} not found`)
-  landing = landing.replace(
-    re,
-    `<span class="num">${perPkg(r).toLocaleString('en-US')}</span><span class="unit">ms</span></span>\n$1<span class="label">per package · ${label}</span>\n$2<span class="sub">${plus(r)} on ${d.packages.toLocaleString('en-US')} packages</span>`,
-  )
-}
+landing = rewrite(landing, /const benchRows = \[\n[\s\S]*?\n\]\n/, rowsBlock, 'the benchRows block')
 function rewrite(text: string, re: RegExp, to: string, what: string): string {
   if (!re.test(text)) throw new Error(`index.astro: ${what} not found`)
   return text.replace(re, to)
@@ -156,57 +142,8 @@ landing = rewrite(
   "the benchmark panel's graph size",
 )
 
-// ---- landing page: the real-repo panel, from benchmarks.md ----
-// The doc's cell text is the bar's label as it is ("137.2 s" → "137.2s"),
-// so the page rounds nothing the doc did not.
 const docPath = path.join(ROOT, 'packages/vx/docs/benchmarks.md')
 const docIn = readFileSync(docPath, 'utf8')
-const n8n = /^### n8n-io\/n8n \((\d+) `build` tasks,[^\n]*\n\n((?:\|[^\n]*\n)+)/m.exec(docIn)
-if (!n8n) throw new Error('benchmarks.md: the n8n-io/n8n table not found')
-const n8nCells = new Map(
-  n8n[2]!
-    .trim()
-    .split('\n')
-    .map((line) => line.split('|').map((c) => c.trim()))
-    .map((c) => [c[1]!, [c[2]!, c[3]!]] as const),
-)
-function n8nBar(name: string, cell: string, c: string): string {
-  const m = /^(\*\*)?([\d.]+) (s|ms)(\*\*)?(?: \([\d.]+×\))?$/.exec(cell)
-  if (!m) throw new Error(`benchmarks.md: n8n cell ${JSON.stringify(cell)} is not a time`)
-  const val = Math.round(Number(m[2]) * (m[3] === 's' ? 1000 : 1))
-  return `      { name: '${name}', val: ${val}, disp: '${m[2]}${m[3]}', c: '${c}'${m[1] ? ', best: true' : ''} },`
-}
-const n8nRow = (task: string, doc: string): string => {
-  const cells = n8nCells.get(doc)
-  if (!cells) throw new Error(`benchmarks.md: n8n row ${JSON.stringify(doc)} not found`)
-  return [
-    '  {',
-    `    task: '${task}',`,
-    '    bars: [',
-    n8nBar('vx', cells[0], 'var(--phosphor)'),
-    n8nBar('turbo', cells[1], 'var(--c-turbo)'),
-    '    ],',
-    '  },',
-  ].join('\n')
-}
-landing = rewrite(
-  landing,
-  /const n8nRows = \[\n[\s\S]*?\n\]\n/,
-  'const n8nRows = [\n' +
-    [
-      n8nRow('Cold build · caches and outputs wiped', 'cold (caches + outputs wiped)'),
-      n8nRow('Restoring outputs · cache → disk', 'warm, outputs wiped (restore)'),
-      n8nRow('Fully cached · nothing to rebuild', 'warm, nothing wiped (no-op)'),
-    ].join('\n') +
-    '\n]\n',
-  'the n8nRows block',
-)
-landing = rewrite(
-  landing,
-  /\/\/ a real repo · n8n-io\/n8n · \d+ build tasks ·/,
-  `// a real repo · n8n-io/n8n · ${n8n[1]} build tasks ·`,
-  'the real-repo kicker',
-)
 // ---- README benchmark sentence ----
 // Between the bench markers the README states the same three numbers the
 // landing page's stat tiles do; hand-typed, it drifted (559 ms where the

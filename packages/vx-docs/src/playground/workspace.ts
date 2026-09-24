@@ -1,13 +1,13 @@
-// The workspace the playground page opens with (guide/try-it, item 700;
-// design/playground-ui-2026-09.md): the Guide's toy monorepo, as files.
+// The workspace the playground page opens with (playground/, item 700;
+// design/playground-ui-2026-09.md): the landing's toy monorepo, as files.
 //
 // `utils`; `ui` and `api`, which both use `utils`; `app`, which uses `ui`
 // and `api`; each with `build` and `test`, wired by `^build` and `build`.
 // `app` also declares `app#docs`, which nothing waits on and which the page
-// does not run: the default run is `build test`, the command the Guide's
-// last chapter gives, so its eight tasks are the book's four packages; a
-// reader who types `docs` gets it. Every task declares the files it reads,
-// so which keys an edit moves is what the Guide teaches: editing
+// does not run: the default run is `build test`, the command the page
+// gives, so its eight tasks are the landing's four packages; a reader who
+// types `docs` gets it. Every task declares the files it reads, so which
+// keys an edit moves follows from the graph: editing
 // `packages/ui/src/button.tsx` moves `ui#build`, `ui#test`, `app#build` and
 // `app#test`, and nothing else. Core's parity row
 // (packages/vx/tests/playground-parity.unsafe.test.ts) holds this plan to
@@ -109,7 +109,7 @@ export const FILES: Record<string, string> = {
 /** The environment the page opens with: `api#build` declares `API_URL`. */
 export const ENV: Record<string, string> = { API_URL: 'https://api.example.com' }
 
-/** The file the editor opens on: the one the Guide's last chapter edits. */
+/** The file the editor opens on: one whose edit moves four keys. */
 export const OPEN = 'packages/ui/src/button.tsx'
 
 /** The task specs the page runs, as `vx run build test` takes them. */

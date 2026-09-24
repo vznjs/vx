@@ -186,7 +186,7 @@ must never be cached.
 parallelism finishes a run faster than its critical path. A scheduler
 that starts the tasks on it first finishes sooner on the same machine.
 
-- vx: with no plugin the scheduler orders ready tasks by how many tasks wait on each; `@vzn/vx-schedule-history` orders them by remaining critical path, learned from past runs ([Concurrency](../guide/concurrency/))
+- vx: with no plugin the scheduler orders ready tasks by how many tasks wait on each; `@vzn/vx-schedule-history` orders them by remaining critical path, learned from past runs ([What a run does](../execution/#concurrency))
 - Turborepo: —
 - Nx: the critical path, named where its CI guide says what a cache cannot fix ([CI caching](https://nx.dev/docs/kb/ci-caching))
 - Bazel: the critical path, which every build reports and the profiler draws ([JSON trace profile](https://bazel.build/advanced/performance/json-trace-profile))

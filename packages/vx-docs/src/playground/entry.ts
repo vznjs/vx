@@ -122,9 +122,9 @@ function playgroundCache(
 // The shim's file system and env are module state (`useVfs`, `setEnv`): the
 // bundle holds one workspace at a time, and every await in a plan is a point
 // where another plan could install its own. A page with several playgrounds
-// (guide/labs, item 704) would then plan one workspace's tasks over another's
-// files. So each entry point that installs them runs after the one before
-// it has settled.
+// (the labs page had three, item 704) would then plan one workspace's tasks
+// over another's files. So each entry point that installs them runs after
+// the one before it has settled.
 let settled: Promise<unknown> = Promise.resolve()
 
 function oneAtATime<T>(run: () => Promise<T>): Promise<T> {

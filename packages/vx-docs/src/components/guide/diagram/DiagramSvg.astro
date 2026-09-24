@@ -1,14 +1,11 @@
 ---
 // One picture's drawing (`diagram.ts`) as build-time SVG: frames, arrows,
 // boxes and notes, in that order, so a box sits on the arrows that reach it.
-// `Diagram.astro` frames it with its caption; a widget that draws with the
-// kit (the graph explorer) places it inside a `.vx-diagram` of its own and
-// passes `live`, which defines an arrowhead for every tone, so its element
-// can change a shape's tone without a head that is not there.
+// `Diagram.astro` frames it with its caption.
 import './diagram.css'
-import { TONES, boxSize, extent, route, type Picture, type Tone } from './diagram.js'
+import { boxSize, extent, route, type Picture } from './diagram.js'
 
-type Props = Picture & { live?: boolean; layout?: 'wide' | 'narrow' }
+type Props = Picture & { layout?: 'wide' | 'narrow' }
 
 const {
   name,
@@ -18,15 +15,12 @@ const {
   arrows = [],
   notes = [],
   frames = [],
-  live,
   layout,
 } = Astro.props
 
 const lines = arrows.map((a) => ({ ...a, tone: a.tone ?? 'default', ...route(Astro.props, a) }))
-const tones: readonly Tone[] = live === true ? TONES : [...new Set(lines.map((l) => l.tone))]
+const tones = [...new Set(lines.map((l) => l.tone))]
 const { top, height } = extent(Astro.props)
-const dataOf = (data: Record<string, string> = {}): Record<string, string> =>
-  Object.fromEntries(Object.entries(data).map(([k, v]) => [`data-${k}`, v]))
 ---
 
 <svg
@@ -87,7 +81,7 @@ const dataOf = (data: Record<string, string> = {}): Record<string, string> =>
       const cx = b.x + w / 2
       const cy = b.y + h / 2
       return (
-        <g class={`box ${b.tone ?? 'default'}`} data-box={b.id} {...dataOf(b.data)}>
+        <g class={`box ${b.tone ?? 'default'}`} data-box={b.id}>
           {b.title !== undefined && <title>{b.title}</title>}
           <rect x={b.x} y={b.y} width={w} height={h} rx="8" />
           <text class="label" x={cx} y={b.sub === undefined ? cy : cy - 9}>

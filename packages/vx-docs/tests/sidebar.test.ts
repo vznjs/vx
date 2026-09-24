@@ -1,21 +1,19 @@
-// The site's four places and three sidebars (design/site-redo-2026-09.md §
-// The site around the story), read from the built HTML: what a reader sees,
-// not what the config says. The Guide's sidebar is the ten chapters and
-// nothing else; the Docs' is six pages (site-short-2026-09.md); the Reference ends
+// The site's three places and two sidebars (design/site-short-2026-09.md §
+// The shape), read from the built HTML: what a reader sees, not what the
+// config says. The Docs' sidebar is the six pages, then the playground; the Reference ends
 // with the one way into the internals. Every page shows exactly one of the
-// three (the blog keeps its own), and no sidebar links an internals page.
+// two (the blog keeps its own), and no sidebar links an internals page. The
+// Guide is gone: no page shows a sidebar of its own.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { CHAPTERS } from '../src/guide/chapters.js'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Written by hand from the design, not read from src/nav/sections.ts.
 const PLACES: [string, string][] = [
-  ['Guide', 'guide/why/'],
   ['Docs', 'quickstart/'],
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
@@ -44,7 +42,7 @@ function text(html: string): string {
     .trim()
 }
 
-/** Every built page, as its path under the base (`guide/why/`); not the
+/** Every built page, as its path under the base (`cli/`); not the
  *  redirect pages astro writes for a moved URL, which carry no chrome. */
 function pages(): string[] {
   return readdirSync(DIST, { recursive: true, encoding: 'utf8' })
@@ -105,18 +103,12 @@ function places(page: string): { links: string[][]; current: string[] } {
 
 describe('the sidebars', () => {
   const all = pages()
-  const guide = sidebarList(html('guide/why/'))!
   const docs = sidebarList(html('quickstart/'))!
   const reference = sidebarList(html('cli/'))!
 
-  it('the Guide lists exactly the ten chapters, in order', () => {
-    expect(sidebarLinks(guide)).toEqual(CHAPTERS.map((c) => [c.title, `guide/${c.slug}/`]))
-    expect(groupLabels(guide)).toEqual([])
-  })
-
-  it('the Docs are the design’s six pages, in order', () => {
+  it('the Docs are the design’s six pages, then the playground', () => {
     expect(groupLabels(docs)).toEqual([])
-    expect(sidebarLinks(docs)).toEqual(DOCS_PAGES)
+    expect(sidebarLinks(docs)).toEqual([...DOCS_PAGES, ['Try it', 'playground/']])
   })
 
   it('the Reference is the four groups, and ends with the internals index, which links every internals page', () => {
@@ -131,14 +123,14 @@ describe('the sidebars', () => {
     }
   })
 
-  it('the three share no page', () => {
-    const sets = [guide, docs, reference].map((l) => sidebarLinks(l).map(([, h]) => h))
+  it('the two share no page', () => {
+    const sets = [docs, reference].map((l) => sidebarLinks(l).map(([, h]) => h))
     const seen = sets.flat()
     expect(new Set(seen).size).toBe(seen.length)
   })
 
-  it('every page shows exactly one of the three, the one its section owns', () => {
-    const lists = { Guide: guide, Docs: docs, Reference: reference }
+  it('every page shows exactly one of the two, the one its section owns', () => {
+    const lists = { Docs: docs, Reference: reference }
     const wrong: string[] = []
     for (const rel of all) {
       if (rel === '' || rel.startsWith('blog/')) continue
@@ -150,7 +142,7 @@ describe('the sidebars', () => {
         ([, l]) => JSON.stringify(sidebarLinks(l).map(([, h]) => h)) === hrefs,
       )
       const current = places(page).current
-      if (match.length !== 1) wrong.push(`${rel}: a sidebar that is none of the three`)
+      if (match.length !== 1) wrong.push(`${rel}: a sidebar that is none of the two`)
       else if (current.length !== 1 || current[0] !== match[0]![0]) {
         wrong.push(`${rel}: shows the ${match[0]![0]} sidebar, marks ${JSON.stringify(current)}`)
       }
@@ -158,9 +150,9 @@ describe('the sidebars', () => {
     expect(wrong).toEqual([])
   })
 
-  it('puts a chapter, a Docs page and a Reference page each in its own section', () => {
-    expect(places(html('guide/caching/')).current).toEqual(['Guide'])
+  it('puts a Docs page, a Reference page and a post each in its own section', () => {
     expect(places(html('guides/configure/')).current).toEqual(['Docs'])
+    expect(places(html('playground/')).current).toEqual(['Docs'])
     expect(places(html('caching/')).current).toEqual(['Reference'])
     expect(places(html('modules/')).current).toEqual(['Reference'])
     expect(places(html('blog/')).current).toEqual(['Blog'])
@@ -189,7 +181,7 @@ describe('the sidebars', () => {
 })
 
 describe('the header', () => {
-  it('names the four places, in order, on every docs page', () => {
+  it('names the three places, in order, on every docs page', () => {
     const wrong: string[] = []
     for (const rel of pages()) {
       if (rel === '') continue
@@ -200,7 +192,7 @@ describe('the header', () => {
     expect(wrong).toEqual([])
   })
 
-  it('and the landing names the same four', () => {
+  it('and the landing names the same three', () => {
     const nav = /<nav class="nav-links[^"]*">([\s\S]*?)<\/nav>/.exec(html(''))![1]!
     const got = [...nav.matchAll(/<a href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => [
       text(m[2]!),

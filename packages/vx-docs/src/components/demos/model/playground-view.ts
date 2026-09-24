@@ -1,4 +1,4 @@
-// What the playground page computes (guide/try-it, item 700;
+// What the playground page computes (playground/, item 700;
 // design/playground-ui-2026-09.md). `<vx-playground>` only wires these to
 // the DOM, and `Playground.astro` renders the static table from them at
 // build time, so the rows in tests/playground-view.test.ts hold both.
