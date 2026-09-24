@@ -187,7 +187,11 @@ export function ganttSvg(
     )
   }
   for (const b of sched.bars) {
-    const classes = ['bar', critical.has(b.id) ? 'is-critical' : '', unknown.has(b.id) ? 'is-unknown' : '']
+    const classes = [
+      'bar',
+      critical.has(b.id) ? 'is-critical' : '',
+      unknown.has(b.id) ? 'is-unknown' : '',
+    ]
       .filter(Boolean)
       .join(' ')
     const w = x(b.end) - x(b.start)
@@ -199,7 +203,9 @@ export function ganttSvg(
     parts.push(
       `<g class="${classes}" data-task="${b.id}" data-lane="${b.lane}" data-start="${b.start}" data-end="${b.end}">`,
       `<rect x="${x(b.start) + 1}" y="${(b.lane - 1) * lane + (lane - bar) / 2}" width="${Math.max(w - 2, 1)}" height="${bar}" rx="4"></rect>`,
-      fits ? `<text x="${cx}" y="${cy - 2}">${pkg}</text><text x="${cx}" y="${cy + 11}">${task}</text>` : '',
+      fits
+        ? `<text x="${cx}" y="${cy - 2}">${pkg}</text><text x="${cx}" y="${cy + 11}">${task}</text>`
+        : '',
       `<title>${b.id}: ${b.start / 1000}–${b.end / 1000} s</title>`,
       '</g>',
     )

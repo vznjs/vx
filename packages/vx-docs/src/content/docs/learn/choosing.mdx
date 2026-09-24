@@ -1,0 +1,143 @@
+---
+title: 'vx, Turbo, Nx, Bazel: choosing'
+description: The design choices behind each tool, what each buys and what it costs, and when another tool is the better pick.
+---
+
+import ChoiceMap from '../../../components/demos/ChoiceMap.astro'
+import ChoosingCheckpoint from '../../../components/demos/ChoosingCheckpoint.astro'
+import ChoosingMatrix from '../../../components/demos/ChoosingMatrix.astro'
+
+Four tools run the tasks of a monorepo and cache their results: vx,
+[Turborepo](https://turborepo.com/docs), [Nx](https://nx.dev/docs) and
+[Bazel](https://bazel.build/). All four build a
+[task graph](../glossary/#task-graph), compute a
+[cache key](../glossary/#cache-key) per task and share a
+[remote cache](../glossary/#remote-cache). A feature table ticks those
+boxes for every tool and stops there. It does not say how the key is
+computed, what checks it, who hosts the cache, or what each answer costs
+you.
+
+This page names the design choices behind the four tools. For each one it
+says what each tool chose, what that buys, what it costs, and when another
+tool's choice is the better one. After reading it you should be able to
+choose a tool for stated reasons, including when that tool is not vx.
+
+vx's maintainers wrote this page. Every claim about another tool links to
+that tool's own documentation, checked against its docs source on
+2026-09-24. Every claim about vx links to the page or the test that holds
+it. When a tool's docs say nothing about something, this page says "its
+docs describe no …". That is not the same as "it cannot".
+
+## A choice, not a checkmark
+
+Take the first question every runner answers: which files can change a
+task's result? Those files are the task's
+[inputs](../glossary/#inputs), and a runner can find them three ways.
+
+- **A default.** Hash every file in the project. Nothing to write, and a
+  task reruns whenever anything in its project changes, even a README.
+- **Inference.** Read the configuration of the tools a task runs, such as
+  `vite.config.ts`, and derive the inputs from it. Little to write, as
+  long as the inference is right.
+- **Declaration.** You list the inputs. The key covers exactly what you
+  wrote, and the lists are yours to keep right.
+
+None of the three is free. A file the key does not cover can make a
+[stale hit](../glossary/#cache-hit-miss-and-stale-hit): the cache
+replays yesterday's result under a green run. So a second choice sits
+beside the first: does anything check that the key covers what the task
+reads? A [sandbox](../glossary/#hermeticity-and-sandboxing) does, by
+running the task where undeclared files cannot be reached.
+
+The two choices together decide what a cache hit is worth, and how much
+work a task takes to set up:
+
+<ChoiceMap />
+
+Turborepo hashes every tracked file in the package by default
+([`inputs`](https://turborepo.com/docs/reference/configuration#inputs)),
+and its docs describe no file sandbox. Nx starts from every file in the
+project and lets plugins infer more
+([inputs](https://nx.dev/docs/reference/inputs)), and it sandboxes tasks
+on Nx Cloud ([task sandboxing](https://nx.dev/docs/features/ci-features/sandboxing)).
+Bazel makes you declare every action's inputs and sandboxes each action
+by default ([sandboxing](https://bazel.build/docs/sandboxing)). vx makes
+you declare the inputs and sandboxes the tasks that opt in
+([Sandboxing tasks](../../guides/sandboxing/)).
+
+## The other choices
+
+The same trade shows up everywhere else. The matrix below has twelve
+choices in four groups:
+
+- **Correctness.** How a task's inputs are found, and what checks the
+  key.
+- **Writing it down.** The configuration language, how the runner is
+  extended, and which languages it builds.
+- **Where the work runs.** The runtime the runner needs, the remote cache
+  wire, running tasks on other machines, which ready task starts first,
+  and whether a process keeps state between runs.
+- **Getting there.** Coming from another tool, and how mature each tool
+  and its ecosystem are.
+
+## Filter by what you need
+
+The first table lists needs a team might have and which tools meet
+each. With JavaScript on, tick the ones that matter to you: the second
+table keeps only the choices that decide them, marks the tools each
+favours, and says which need rules out each tool. Without JavaScript,
+both tables show everything.
+
+<ChoosingMatrix />
+
+## What vx's choices cost
+
+- **Bun only.** vx runs its configs and plugins on Bun: Bun 1.4 or later
+  from source, or the Bun inside its binary. A config or plugin that needs
+  an API only Node has does not run, and Windows means WSL
+  ([Quickstart](../../quickstart/)).
+- **Pre-alpha.** `@vzn/vx` is on npm only as 0.0.x builds. 0.1.0 is not
+  cut, there is no support policy, and the plugins, `turbo()`, `nx()` and
+  the remote ones among them, are not published yet
+  ([Roadmap to 1.0](https://github.com/vznjs/vx/blob/main/packages/vx/docs/design/roadmap-1.0.md)).
+- **Explicit inputs are work.** Every cached task lists its inputs, and
+  keeping the lists right is on you. The sandbox catches what they miss,
+  but only on the tasks that opt in
+  ([Trusting the cache](../../guides/trusting-the-cache/)).
+- **A small ecosystem.** The plugins that exist are the first-party ones
+  ([Writing a vx plugin](../../guides/plugins/)).
+- **Nothing distributed ships.** The repository holds no workers, no
+  service and no dashboard. Remote caching and remote execution are
+  plugins that speak other tools' protocols to servers you run or rent
+  ([Core is provider-neutral](../../guides/extensibility/)).
+- **No first-party cloud.** Nobody sells a hosted vx
+  ([Remote caching](../../guides/remote-caching/)).
+
+## When another tool is the better choice
+
+- **Turborepo**, if caching should work before anyone writes an input
+  list ([`inputs`](https://turborepo.com/docs/reference/configuration#inputs)),
+  if you build on native Windows, or if you need a stable release with a
+  support policy today
+  ([support policy](https://turborepo.com/docs/support-policy)).
+- **Nx**, if you want plugins that already know your tools
+  ([Nx plugins](https://nx.dev/docs/concepts/nx-plugins)), JVM or .NET
+  projects in the same graph
+  ([multi-language support](https://nx.dev/docs/features/multi-language-support)),
+  or CI distribution run for you as a service
+  ([Nx Agents](https://nx.dev/docs/features/ci-features/distribute-task-execution)).
+- **Bazel**, if the repository is heavily polyglot
+  ([intro](https://bazel.build/about/intro)), if every action should be
+  sandboxed by default
+  ([sandboxing](https://bazel.build/docs/sandboxing)), or if you need
+  remote execution in production today
+  ([remote execution](https://bazel.build/remote/rbe)).
+
+vx is the pick when you want declared inputs with a local sandbox that
+checks them, TypeScript configs, and a core you extend through plugins
+instead of forking, on a JavaScript monorepo, and you can run pre-alpha
+software on Bun.
+
+## Checkpoint
+
+<ChoosingCheckpoint />

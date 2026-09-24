@@ -7,7 +7,10 @@ This is a living document; every claim cites a source file or reference
 page in the upstream repo so future revisions can be diffed against
 reality. Last verified 2026-09-03 against `turbo@2.10.12`, `nx@23.2.0`
 and `voidzero-dev/vite-task` `main` (now the engine behind Vite+'s
-`vp run`).
+`vp run`). Five Turbo and Nx rows (the lockfile, non-JS projects, the
+daemon, the plugin surface, Nx's language plugins) were corrected on
+2026-09-24 against the tools' docs sources, for the choosing page (item
+689).
 
 ## Positioning in one paragraph each
 
@@ -18,7 +21,8 @@ and `voidzero-dev/vite-task` `main` (now the engine behind Vite+'s
   `--remote-only`; the flag surface is the largest of the four.
   _Reference repo:_ `vercel/turborepo`.
 - **Nx** — production-grade and pluggable. Per-package `project.json`,
-  executor plugins (Rust, .NET, Java, Gradle support), `affected`
+  plugins that infer tasks and add generators and executors (first-party
+  Gradle, Maven and .NET; community Rust, Go and Python), `affected`
   semantics, Terminal UI, named inputs / target defaults, distributed
   task execution via Nx Cloud agents. Heaviest schema. _Reference
   repo:_ `nrwl/nx`.
@@ -116,7 +120,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Output declarations                                                         | `outputs: [...]`                                     | `outputs: [...]`                                         | `output: glob` or `{pattern,base}` | `cache.outputs.files: string[]`                                                                                                 |
 | Output cleaning before exec / restore                                       | (no — additive)                                      | (no — additive)                                          | (via materialized artifacts)       | **yes** — strict                                                                                                                |
 | Implicit-dependency hash (project `package.json`)                           | (via lockfile)                                       | `externalDependencies`                                   | (via lockfile)                     | **yes** — folded directly (v12)                                                                                                 |
-| Lockfile-aware invalidation (only the projects a dependency change reaches) | (whole lockfile in the global hash)                  | yes — pruned lockfile per project, in the daemon's graph | (whole lockfile)                   | **`@vzn/vx-lockfile`**, **`@vzn/vx-lockfile`** — per-project closure digest, memoised by lockfile hash; `--affected` follows it |
+| Lockfile-aware invalidation (only the projects a dependency change reaches) | per package: the lockfile changes that affect it     | yes — pruned lockfile per project, in the daemon's graph | (whole lockfile)                   | **`@vzn/vx-lockfile`**, **`@vzn/vx-lockfile`** — per-project closure digest, memoised by lockfile hash; `--affected` follows it |
 | Resolved-config hash (captures TS imports)                                  | —                                                    | —                                                        | —                                  | **yes** — `node.config` JSON hashed                                                                                             |
 | Persistent / long-running tasks (dev servers)                               | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                             | (handled outside graph)            | `exec.persistent.readyWhen`                                                                                                     |
 | Configurations (named option sets)                                          | —                                                    | `configurations` + `-c`                                  | —                                  | — **gap**                                                                                                                       |
@@ -149,10 +153,10 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Capability                                | Turbo                                   | Nx                                      | vite-task  | vx                                                                  |
 | ----------------------------------------- | --------------------------------------- | --------------------------------------- | ---------- | ------------------------------------------------------------------- |
 | pnpm / npm / yarn / bun workspaces        | yes                                     | yes                                     | yes        | yes (pnpm-workspace.yaml, package.json `workspaces`, bare pkg.json) |
-| Non-JS projects (Rust, .NET, Gradle, ...) | no                                      | yes (plugins)                           | no         | no                                                                  |
+| Non-JS projects (Rust, .NET, Gradle, ...) | experimental (native Go, Cargo, uv)     | yes (plugins)                           | no         | no                                                                  |
 | Filter DSL                                | pnpm-style + `[<since>]` (git-relative) | yes via `--projects/--exclude` (no DSL) | pnpm-style | pnpm-style + `[<since>]`                                            |
 | Affected / git-relative                   | `--filter '[since...]'`, `--affected`   | full `affected` subcommand              | —          | `--affected[=<base>]` + `[<since>]`                                 |
-| Daemon / persistent project-graph process | yes (`--daemon`)                        | yes (always-on)                         | —          | — **out of scope**                                                  |
+| Daemon / persistent project-graph process | not for `turbo run` since 2.10          | yes (on by default locally)             | —          | — **out of scope**                                                  |
 | Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | `vx watch <task>`                                                   |
 | Prune workspace (Docker subset)           | `turbo prune`                           | —                                       | —          | — **gap**                                                           |
 
@@ -388,7 +392,8 @@ Things `@vzn/vx` does that the others don't:
   value into every cache key (`key`, and `vx why` shows it by plugin
   name), rewrite a project's tasks, add an edge, reorder the schedule,
   or add a verb — so "vx doesn't do X" is answered with a plugin, not
-  a fork. Turbo has no plugin surface; Nx's is executors + generators.
+  a fork. Turbo documents no plugin surface; Nx's plugins infer tasks
+  and add graph data, generators, migrations and executors.
 - **`vx why` — cache-key explainability.** Per-component input
   fingerprints are recorded on every miss, so a re-run is explained by
   diffing two keys: which file, env var, upstream key or plugin part
@@ -411,7 +416,8 @@ Things `@vzn/vx` does that the others don't:
   (name, version, peers, integrity, patches, `link:` reach), so
   `pnpm update foo` re-keys only the projects that reach `foo` and
   `--affected` selects them (and their dependents). Nx does this inside its daemon's
-  project graph; Turbo folds the whole file. vx parses once per lockfile
+  project graph; Turbo hashes the lockfile changes that affect each
+  package. vx parses once per lockfile
   content and memoises the digests, so a warm run pays a read and a
   hash, not a parse.
 - **Strict output ownership.** Declared `cache.outputs.files` are

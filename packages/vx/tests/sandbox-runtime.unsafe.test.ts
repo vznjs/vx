@@ -1376,6 +1376,79 @@ describe.skipIf(!available || process.platform !== 'linux')(
 )
 
 describe.skipIf(!available || process.platform !== 'linux')(
+  "learn/correctness's stale-hit demo, run for real",
+  () => {
+    // The site's stale-hit demo shows the frame vx prints when `web#build`
+    // reads `banner.txt` without declaring it. The site's suite runs inside a
+    // sandbox and cannot start another, so it holds the demo's text to
+    // `formatTaskBlock` over the line `parseStraceViolations` writes for a
+    // SYNTHETIC trace (packages/vx-docs/tests/learn-correctness.test.ts).
+    // This is the half it cannot run: a real trace of the same task yields
+    // exactly that one line, and declaring the file lets the task pass.
+    let fixture: Fixture
+
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const config = (files: string[]): string => `
+      export default {
+        tasks: {
+          build: {
+            exec: {
+              command: 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt',
+              sandbox: { allow: { read: ${JSON.stringify(files)}, write: ['dist/'] } },
+            },
+            cache: { inputs: { files: ${JSON.stringify(files)} }, outputs: { files: ['dist/**'] } },
+          },
+        },
+      }
+    `
+
+    it(
+      'the undeclared read fails with one line naming banner.txt; declaring it passes',
+      async () => {
+        const dir = await addProject(fixture.root, 'web', {
+          config: config(['src/**']),
+          files: {
+            'src/index.ts': 'export default 2\n',
+            'banner.txt': '/*! v2 */\n',
+          },
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(r.outcomes[0]?.exitCode).toBe(1)
+        expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
+          `openat(banner.txt) = -1 ENOENT  [${realpathSync(dir)}/banner.txt]`,
+        ])
+        // The logger trims each stderr chunk, and cat's message arrives split
+        // wherever its writes land (after `cat:` in one gate, and as
+        // `cat:` / `banner.txt` / `: No such…` on CI), so the comparison drops
+        // whitespace, which no split can move.
+        expect(fixture.log.join('').replace(/\s/g, '')).toContain(
+          'cat:banner.txt:Nosuchfileordirectory',
+        )
+
+        await writeFile(path.join(dir, 'vx.config.mjs'), config(['src/**', 'banner.txt']))
+        const declared = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(declared, fixture)
+        expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe(
+          'export default 2\n/*! v2 */\n',
+        )
+      },
+      TIMEOUT,
+    )
+  },
+)
+
+describe.skipIf(!available || process.platform !== 'linux')(
   'two sandboxed tasks at once each get their OWN violations',
   () => {
     // Linux detects violations by tracing the spawn with strace and parsing

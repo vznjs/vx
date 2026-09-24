@@ -1,0 +1,62 @@
+---
+// The page's diagram: the two choices that decide what a cache hit is worth,
+// as axes, with each tool placed from the model. Static SVG, so it reads
+// without JavaScript; its label states every position in words.
+import { MAP_X, MAP_Y, mapSvg } from './model/choosing.js'
+---
+
+<figure class="choice-map">
+  <div class="map" tabindex="0" set:html={mapSvg()} />
+  <figcaption>
+    Two of the choices below, as axes. Left to right: {MAP_X.title.toLowerCase()}. Bottom to top:{' '}
+    {MAP_Y.title.toLowerCase()}. Further right and up, a cache hit can be trusted further, and a task
+    takes more work to set up.
+  </figcaption>
+</figure>
+
+<style>
+  .choice-map {
+    margin-block: 1.5rem;
+  }
+  /* Below about 30rem the labels would shrink past reading: the diagram
+     keeps its width and scrolls sideways instead. */
+  .map {
+    overflow-x: auto;
+  }
+  .map :global(svg) {
+    display: block;
+    width: 100%;
+    min-width: 30rem;
+    height: auto;
+  }
+  .map:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  .map :global(.band) {
+    fill: none;
+    stroke: var(--sl-color-gray-5);
+  }
+  .map :global(.level) {
+    font-size: 12px;
+    fill: var(--sl-color-gray-2);
+  }
+  .map :global(.axis) {
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--sl-color-white);
+  }
+  .map :global(.tool circle) {
+    fill: var(--sl-color-accent);
+  }
+  .map :global(.tool text) {
+    font-size: 14px;
+    font-weight: 600;
+    fill: var(--sl-color-white);
+  }
+  figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+</style>

@@ -742,18 +742,22 @@ describe('the scheduler simulator on learn/scheduling', () => {
     expect(only(element, /<p class="status\b[^"]*"([^>]*)>/g).trim()).toBe(
       'aria-live="polite" hidden',
     )
-    const jsOnly = [...element.matchAll(/<\w+\b[^>]*class="js-only\b[^"]*"[^>]*>/g)].map((m) => m[0])
+    const jsOnly = [...element.matchAll(/<\w+\b[^>]*class="js-only\b[^"]*"[^>]*>/g)].map(
+      (m) => m[0],
+    )
     // The No history heading, and per task a duration field and a box.
     expect(jsOnly).toHaveLength(1 + 2 * SIM_TASKS.length)
     for (const tag of jsOnly) expect(tag).toMatch(/\shidden(?=[\s>=])/)
-    expect([...element.matchAll(/<select name="policy" data-slot="(\d)"/g)].map((m) => m[1])).toEqual(
-      ['0', '1'],
-    )
+    expect(
+      [...element.matchAll(/<select name="policy" data-slot="(\d)"/g)].map((m) => m[1]),
+    ).toEqual(['0', '1'])
   })
 
   it('draws the Mermaid diagram from the same tasks, edges and critical path', () => {
     const diagram = only(html, /<pre class="mermaid"[^>]*>([\s\S]*?)<\/pre>/g)
-    const ids = new Map([...diagram.matchAll(/(\w+)\["(\w+#\w+) · (\d+) s"\]/g)].map((m) => [m[1]!, m[2]!]))
+    const ids = new Map(
+      [...diagram.matchAll(/(\w+)\["(\w+#\w+) · (\d+) s"\]/g)].map((m) => [m[1]!, m[2]!]),
+    )
     const named = [...diagram.matchAll(/"(\w+#\w+) · (\d+) s"/g)].map((m) => `${m[1]} ${m[2]}`)
     expect(named.sort()).toEqual(SIM_TASKS.map((t) => `${t.id} ${t.dur / 1000}`).sort())
     const edges = [...diagram.matchAll(/^\s*(\w+)\b[^\n]*? --> (\w+)/gm)].map(

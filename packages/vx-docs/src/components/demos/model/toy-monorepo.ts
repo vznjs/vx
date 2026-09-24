@@ -206,7 +206,7 @@ export interface ToyRun {
 
 /** A 64-bit string digest (cyrb53's mixing, both halves kept) as 16 hex
  *  digits. Only equality matters here; it is not vx's xxHash3. */
-function digest(parts: readonly string[]): string {
+export function digest(parts: readonly string[]): string {
   const s = parts.join('\0')
   let h1 = 0xdeadbeef
   let h2 = 0x41c6ce57
@@ -279,7 +279,7 @@ export function toyRuns(changes: readonly ToyChange[]): ToyRun[] {
 }
 
 /** Seven hex digits, the way `git log --oneline` shortens a commit. */
-function shortKey(key: string): string {
+export function shortKey(key: string): string {
   return key.slice(0, 7)
 }
 

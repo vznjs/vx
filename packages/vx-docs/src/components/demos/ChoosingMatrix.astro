@@ -1,0 +1,276 @@
+---
+// The choosing matrix. Without JavaScript it is two full tables: every need
+// with the tools it rules in and why, and every design choice with what each
+// tool chose, what that buys, what it costs, its sources, and when another
+// tool is the better pick. `choosing-matrix.ts` unhides a box per need and
+// the controls, and on every change filters the choices to the ones that
+// decide the ticked needs and marks the tools each favours. It reads the
+// `.controls`, `.status`, `.js-only`, `[data-need]`, `[data-choice]`,
+// `[data-tool]` and `.decides` hooks below, so they are its contract with
+// this markup.
+import Demo from '../Demo.astro'
+import { CHOICES, NEEDS, TOOLS, TOOL_NAME, type Source } from './model/choosing.js'
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/')
+const href = (s: Source): string => (s.href.startsWith('https://') ? s.href : `${base}${s.href}`)
+const title = new Map(CHOICES.map((c) => [c.id, c.title]))
+---
+
+<Demo name="choosing-matrix">
+  <div class="controls" hidden>
+    <span>Tick what matters to you in the first table. The second shows only the choices that decide it.</span>
+    <button type="button" class="clear">Clear</button>
+  </div>
+  <p class="status" aria-live="polite" hidden></p>
+  <table class="needs">
+    <caption>What each need rules in</caption>
+    <thead>
+      <tr>
+        <th scope="col" class="js-only" hidden>Tick</th>
+        <th scope="col">Need</th>
+        {TOOLS.map((t) => <th scope="col" class="tool">{TOOL_NAME[t]}</th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {
+        NEEDS.map((n) => (
+          <tr data-need={n.id}>
+            <td class="js-only" hidden>
+              <input type="checkbox" value={n.id} aria-label={n.label} />
+            </td>
+            <th scope="row">
+              {n.label}
+              <span class="why">{n.why}</span>
+              <span class="decided">
+                Decided by{' '}
+                {n.decidedBy.map((id, i) => (
+                  <>
+                    {i > 0 && ', '}
+                    <a href={`#choice-${id}`}>{title.get(id)}</a>
+                  </>
+                ))}
+              </span>
+            </th>
+            {TOOLS.map((t) => (
+              <td data-tool={t} data-label={TOOL_NAME[t]} class={n.fits.includes(t) ? 'fit' : 'out'}>
+                {n.fits.includes(t) ? 'fits' : 'no'}
+              </td>
+            ))}
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+  <table class="choices">
+    <caption>Every design choice, what each tool chose, and what it buys and costs</caption>
+    <thead>
+      <tr>
+        <th scope="col" class="tool">Tool</th>
+        <th scope="col">What it chose</th>
+        <th scope="col">What that buys</th>
+        <th scope="col">What it costs</th>
+      </tr>
+    </thead>
+    {
+      CHOICES.map((c) => (
+        <tbody id={`choice-${c.id}`} data-choice={c.id}>
+          <tr class="choice-head">
+            <th scope="colgroup" colspan="4">
+              <span class="choice-title">{c.title}</span>
+              <span class="question">{c.question}</span>
+            </th>
+          </tr>
+          <tr class="decides" hidden>
+            <td colspan="4" />
+          </tr>
+          {TOOLS.map((t) => (
+            <tr data-tool={t}>
+              <th scope="row">{TOOL_NAME[t]}</th>
+              <td data-label="Chose">
+                {c.cells[t].chose}
+                <ul class="sources">
+                  {c.cells[t].sources.map((s) => (
+                    <li>
+                      <a href={href(s)}>{s.label}</a>
+                      {s.row !== undefined && <span class="row">: “{s.row}”</span>}
+                    </li>
+                  ))}
+                </ul>
+              </td>
+              <td data-label="Buys">{c.cells[t].buys}</td>
+              <td data-label="Costs">{c.cells[t].costs}</td>
+            </tr>
+          ))}
+          <tr class="other">
+            <th scope="row">Choose another tool if</th>
+            <td colspan="3">
+              <ul>
+                {c.otherIf.map((o) => (
+                  <li>
+                    <strong>{TOOL_NAME[o.tool]}</strong>: {o.when}
+                  </li>
+                ))}
+              </ul>
+            </td>
+          </tr>
+        </tbody>
+      ))
+    }
+  </table>
+  <Fragment slot="caption">
+    The first table lists {NEEDS.length} needs a team might have, and which tools meet each. The second
+    lists {CHOICES.length} design choices, one group of rows each: what each tool chose, what that buys,
+    what it costs, the pages that say so, and when another tool is the better pick.
+  </Fragment>
+</Demo>
+
+<style>
+  table {
+    margin-top: 1rem;
+    font-size: var(--sl-text-sm);
+    display: table;
+    width: 100%;
+  }
+  caption {
+    text-align: start;
+    font-weight: 600;
+    padding-bottom: 0.25rem;
+  }
+  th,
+  td {
+    vertical-align: top;
+  }
+  .why {
+    display: block;
+    font-weight: 400;
+  }
+  .decided {
+    display: block;
+    margin-top: 0.25rem;
+    font-weight: 400;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-2);
+  }
+  th.tool,
+  .needs td[data-tool] {
+    width: 1%;
+    white-space: nowrap;
+  }
+  .needs th.js-only {
+    width: 1%;
+  }
+  .needs td.fit {
+    font-weight: 600;
+  }
+  .needs td.out {
+    color: var(--sl-color-gray-3);
+  }
+  .choice-head th {
+    background: var(--sl-color-gray-6);
+  }
+  .choice-title {
+    display: block;
+    font-size: var(--sl-text-base);
+  }
+  .question {
+    display: block;
+    font-weight: 400;
+    color: var(--sl-color-gray-2);
+  }
+  .sources {
+    margin: 0.35rem 0 0;
+    padding-inline-start: 1rem;
+    font-size: var(--sl-text-xs);
+  }
+  .sources li,
+  .other li {
+    margin: 0;
+  }
+  .row {
+    color: var(--sl-color-gray-2);
+  }
+  .other ul {
+    margin: 0;
+    padding-inline-start: 1rem;
+  }
+  .decides td {
+    background: var(--sl-color-accent-low);
+  }
+  tr.is-selected,
+  tr.is-fit th {
+    background: var(--sl-color-accent-low);
+  }
+  tr.is-out {
+    opacity: 0.55;
+  }
+  tr.is-fit th::after {
+    content: ' ✓';
+  }
+  .controls,
+  .status {
+    font-size: var(--sl-text-sm);
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+  }
+  .controls button {
+    padding: 0.15rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    cursor: pointer;
+  }
+  .controls button:focus-visible,
+  .needs input:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  .status {
+    margin: 0.5rem 0 0;
+    min-height: 1.5em;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  /* Four columns of sentences do not fit a phone: one block per row, each
+     cell labelled. */
+  @media (max-width: 40rem) {
+    table,
+    tbody,
+    tr,
+    th,
+    td {
+      display: block;
+    }
+    caption {
+      display: block;
+    }
+    thead {
+      display: none;
+    }
+    tr {
+      padding-block: 0.4rem;
+      border-bottom: 1px solid var(--sl-color-gray-5);
+    }
+    th,
+    td {
+      border: none;
+      padding-block: 0.1rem;
+    }
+    td[data-label]::before {
+      content: attr(data-label) ': ';
+      font-weight: 600;
+    }
+    .needs td.js-only:not([hidden]),
+    .needs td[data-tool] {
+      display: inline-block;
+      width: auto;
+      margin-inline-end: 1rem;
+    }
+  }
+</style>

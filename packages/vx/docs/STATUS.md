@@ -713,6 +713,150 @@ removed). Found by the W2 implementer, who had patched only the site's
 test with `workspaceFiles: ['packages/vx/src/**']`; that second copy of
 the rule is removed, the cascade covers it.
 
+14cj. **Item 688 (roadmap W3, 2026-09-24): the correctness page, and a
+stale-hit demo held to vx.** `learn/correctness.mdx` replaces the stub
+under the same slug. It teaches the stale hit as the worst failure (a
+green run, wrong bytes); declared inputs against the two ways of
+inferring them (a broad default, a trace), with a table of what each can
+miss, whether the key is known before the run, and what reruns; why vx
+refuses inference; the sandbox as the check that turns a declared list
+into a proof, as a Mermaid diagram; what vx does when the sandbox cannot
+start (the run stops with `sandbox not available:`, the task never runs
+unsandboxed); the costs and blind spots (two lists to write, a grant
+wider than the inputs, environment variables, `node_modules`, Linux and
+macOS only, a lossy macOS log, no report for a persistent task); how vx
+does it, with a type-checked config; one paragraph each for Turborepo,
+Nx and Bazel; and a checkpoint. Competitor claims come from the doc
+clones of 2026-09-24: Turborepo's default inputs and `globalDependencies`
+(`reference/configuration.mdx`, `crafting-your-repository/caching.mdx`;
+no page mentions a sandbox or hermeticity), Nx's default inputs, inferred
+tasks and Cloud-only task sandboxing with Warning and Strict modes
+(`concepts/how-caching-works.mdoc`, `concepts/mental-model.mdoc`,
+`features/CI Features/sandboxing.mdoc`), Bazel's sandboxing and its
+macOS cost (`reference/glossary.mdx`) and "enable strict sandboxing"
+(`basics/hermeticity.mdx`). The clone does not say whether Bazel
+sandboxes by default, so the page does not either.
+
+The widget is `StaleHit.astro` and `stale-hit.ts` over
+`demos/model/stale-hit.ts` (it reuses the toy model's digest, now
+exported). `web#build` runs `mkdir -p dist && cat src/index.ts
+banner.txt > dist/out.txt` and declares `src/**`. Five steps: first run
+(miss), edit `src/index.ts` (key moves, miss), edit `banner.txt` (key
+stays, stale hit), turn on `exec.sandbox` with the same list as its
+grant (the sandbox block is config, so the key moves and the run fails
+with the report), declare `banner.txt` (key moves, miss, right output).
+Four toggles let the reader go on from any step, which the checkpoint
+uses: sandbox off (miss), then undeclare (the key is step 3's again, and
+the entry step 2 stored is replayed stale). Without JavaScript: a table
+of the five runs (key, verdict, `dist/out.txt`, what a run with no cache
+writes), a sentence per run, and the frame vx prints at step 4. The
+first draft's command had no `mkdir -p dist`; the real-vx row failed on
+it, because only the sandbox's write grant creates `dist/`.
+
+Proof, in `packages/vx-docs/tests/learn-correctness.test.ts` (19 rows):
+the model against a hand-written truth per step and for the checkpoint;
+the page's config snippet evaluates to the config the model keys on;
+the model against vx, one workspace written from the model and run with
+the cache and a second without (moved keys, hits, stale bytes), where
+the two sandboxed steps are asked of `planRun` (key and cache status),
+because the site's `test` task is itself sandboxed and a sandbox cannot
+start inside one; the step 4 frame equals `formatTaskBlock` over the line
+`parseStraceViolations` writes for a synthetic strace line (imported from
+core's source, as vx-bench does); and the built page (the table, the
+sentences, both copies of the report, hidden controls, the caption that
+calls keys and path illustrative, the checkpoint, and the element's chunk
+reached from the page's scripts with no `Bun.`, `process.` or `node:` in
+it). The half the site cannot run is a new core row,
+`sandbox-runtime.unsafe.test.ts` "learn/correctness's stale-hit demo, run
+for real": a live sandboxed run fails with exactly the one line
+`openat(banner.txt) = -1 ENOENT  [<project>/banner.txt]` and cat's
+stderr (matched loosely: the logger trims each chunk, and the gate once
+saw the message split after `cat:`), and declaring the file makes the
+same task pass. The page now names the three sandbox binaries, so
+`site-samples.unsafe.test.ts` lists it among the pages held to naming
+all three.
+
+Mutations, each red then green after the reverse edit. Model: the key
+ignores config (5 rows: step 4, checkpoint, vx parity, page render, page
+checkpoint); the key folds the undeclared file (5); the cache forgets
+old entries (5); the sandbox never denies (3; the vx row stays green by
+design, since vx is only planned there, and the core row holds it); the
+config drops its sandbox block (6); the printed snippet names other
+inputs (1). Core, with the model untouched: the key strips `exec.sandbox`
+(the vx parity row); the violation line loses a space (the report row,
+and the live core row); the frame's section rule is one dash longer (the
+report row). The live row's control with `banner.txt` left out of the
+grant (red: the run fails). Page, each with a rebuild: a table row
+dropped (2), the controls not hidden, the caption without "A model", the
+checkpoint answer saying "hits", the element renamed, the element calling
+`process.cwd()` and `Bun.hash`, the static report's duration changed,
+the stale sentence softened: each reddened its own row. One mutation
+was a no-op and is recorded as such: `typeof process ... process.env`
+survived because Vite rewrites `process.env` to `{}`, so the built chunk
+never held `process.`; `process.cwd()` replaced it. Checked in Chromium
+at 1280 and 390 px, JavaScript on and off: no horizontal page overflow,
+the table stacks per step under 40rem, the report scrolls inside its own
+box. Every page with a Mermaid diagram (this one, `learn/caching`, the
+sandboxing guide) logs one uncaught non-Error `Object` on load; it
+predates this item and is not chased here.
+
+14ck. **Item 689 (roadmap W7, 2026-09-24): the choosing page names the
+design choices and what each costs.** `learn/choosing.mdx` replaces the
+stub under the same slug. It teaches that a checkmark hides the choice
+behind it (default, inferred or declared inputs; whether anything checks
+the key), then shows the twelve choices in a matrix: how inputs are found,
+what checks the key, the configuration language, how the runner is
+extended, the runtime, which languages it builds, the remote cache wire,
+running tasks on other machines, which ready task starts first, state
+between runs, coming from another tool, and maturity. Each has, per tool,
+what it chose, what that buys, what it costs and its sources, and a
+"choose another tool if" row that never names vx. Then vx's costs in
+plain words (Bun only, pre-alpha with 0.1.0 not cut and the plugins
+unpublished, explicit inputs are work, a small ecosystem, nothing
+distributed ships, no first-party cloud), when Turborepo, Nx or Bazel is
+the better pick, and a checkpoint. One model, `demos/model/choosing.ts`,
+drives the matrix (`ChoosingMatrix.astro` + `choosing-matrix.ts`), the
+diagram (`ChoiceMap.astro`, a static SVG placing each tool on inputs ×
+what checks the key) and the checkpoint (`ChoosingCheckpoint.astro`,
+whose answer is `evaluate` on its two needs: only Bazel meets "a stable
+release" and "undeclared inputs caught on our own machines"). Without
+JavaScript: a table of nine needs × tools with each reason, and the full
+choices table. With it: a box per need, Clear, the choices filtered to
+the ones that decide the ticked needs, each deciding choice saying why,
+its tools marked, and a live region naming what rules each tool out.
+Checked in Chromium at 1280 and 390 px, JavaScript on and off, no
+horizontal overflow and no page errors. `tests/learn-choosing.test.ts`
+(15 rows): every cell filled and sourced; other tools' links only to
+turborepo.com, nx.dev or bazel.build; vx's links to a built page and
+anchor or to a test file holding the named row; the needs and the filter
+against hand-written truth (including two needs deciding one choice);
+the built tables, links, hidden controls, diagram positions, cost bullets
+and checkpoint; every time figure on the page verbatim in benchmarks.md;
+the element's chunk reachable with no platform in it. The site's `test`
+task grants and keys the seven linked vx test files by name. Twenty
+mutations, each rebuilt where it touched the page and run: an empty
+cell, an Nx link off nx.dev, an other-tool row naming vx, a renamed and
+a moved test link, a need ruling in one more tool, the empty filter, the
+favours rule (some for every), the ruled-out rule inverted, a dropped
+cell, site links without the base, controls shown, need cells inverted,
+Bazel moved on the diagram, a one-need checkpoint, a figure benchmarks.md
+lacks, the element renamed, a cost bullet dropped, a turborepo.dev link,
+a missing anchor. Each turned a row red, every row was red at least
+once, and all fifteen passed after restore. Every claim about another tool
+was checked in its docs source (vercel/turborepo efd2a5b, nrwl/nx
+54e5264, bazelbuild/bazel ad2d5c1, 2026-09-24). The check corrected five
+rows of `comparison.md` in place: Turborepo keys each package on the
+lockfile changes that affect it (not the whole file), has experimental
+native Go, Cargo and uv workspaces (not "no" for non-JS projects), and
+no longer uses its daemon for `turbo run`; the Nx daemon is on by
+default locally, not always on; Nx's plugins infer tasks and add graph
+data, generators, migrations and executors, first-party for Gradle, Maven
+and .NET (Rust is community). Found, not fixed: `benchmarks.md`'s
+2026-09-03 head-to-head says Turbo's daemon answers "what changed"
+without a walk, but Turbo 2.10 no longer uses its daemon for `turbo run`;
+and Turborepo's own docs link to turborepo.dev, while this site links
+turborepo.com.
+
 14cl. **Item 690 (2026-09-24): three claims corrected, one held by a
 row.** `VxPlugin.setup` said it runs "before any capability is
 consulted". It does not: `prepareRun` has already run the config,
@@ -786,6 +930,26 @@ special case removed reddens two domains and two rows, and the trailing
 `/**` collapse removed reddens all four. `@vzn/vx-bench#test` now keys
 on `playground-spike/**/*.ts`, which it imports.
 
+14co. **Item 693 (2026-09-24): the site's code is format-checked.** No
+task checked `packages/vx-docs`: the root `.oxfmtrc.json` ignored the
+whole package (item 50's choice, made for its Markdown, where oxfmt
+rewrites prose code fragments and moves spaces into inline code), and
+unlike every other package it had no `lint.oxfmt`. Six code files had
+drifted (`astro.config.mjs`, `import-docs.ts`, the scheduler model,
+both stylesheets, `demo-islands.test.ts`); both W3 and W7 implementers
+found it. The package now has its own `.oxfmtrc.json` (the repo's
+options, ignoring `.md`, `.mdx` and `.astro/`), a sandboxed
+`lint.oxfmt` like the others', and its `ci` depends on it. The six files
+are formatted. Red with an unformatted line appended to a widget model,
+green after the reverse edit. Recorded from the same reports, not fixed
+here: `KeyCalculator.astro` reads `var(--sl-font-mono)`, which Starlight
+never defines, so the caching widget's keys render proportional; every
+page with a Mermaid diagram logs one uncaught non-Error object in
+Chromium; and `benchmarks.md`'s 2026-09-03 head-to-head credits Turbo's
+daemon with answering "what changed", which Turbo 2.10+ no longer uses
+for `turbo run` (check which Turbo version that row measured before
+editing it).
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -803,8 +967,9 @@ on `playground-spike/**/*.ts`, which it imports.
     W4, the scheduling page and the scheduler simulator on vx's own
     ranking code, is DONE (item 685, entry 14cg). W5 and W6, the
     architecture page with its pipeline explorer and the worked plugins,
-    are DONE (item 686, entry 14ch). W3 (correctness) and W7 (choosing)
-    are in flight. W9, the playground, has started: its first core
+    are DONE (item 686, entry 14ch). W3, the correctness page and its
+    stale-hit demo, is DONE (item 688, entry 14cj). W7, the choosing page and its
+    matrix, is DONE (item 689, entry 14ck). W9, the playground, has started: its first core
     change, P1, is DONE (item 691, entry 14cm), and its three open
     questions are decided in `design/playground-spike-2026-09.md` § W9
     decisions (parity rows in core's unsafe suite, `vx.config.mjs`

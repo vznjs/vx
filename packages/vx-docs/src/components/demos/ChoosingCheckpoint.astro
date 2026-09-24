@@ -1,0 +1,21 @@
+---
+// The choosing page's checkpoint. The question names the needs in
+// `CHECKPOINT`, and the answer is what the matrix's own `evaluate` gives
+// for them, so the answer cannot drift from the tables above it.
+import { CHECKPOINT, CHOICES, NEEDS, evaluate, joinNames, verdictSentences } from './model/choosing.js'
+
+const v = evaluate(CHECKPOINT)
+const labels = CHECKPOINT.map((id) => `“${NEEDS.find((n) => n.id === id)!.label}”`)
+const deciding = v.choices.map((id) => CHOICES.find((c) => c.id === id)!.title.toLowerCase())
+---
+
+<p class="checkpoint-question">
+  Your team ticks two needs: {joinNames(labels)}. Which tools meet both, and which need rules out each
+  of the others? Answer before you open the box, then tick the two needs in the matrix.
+</p>
+
+<details>
+  <summary>Answer</summary>
+  {verdictSentences(v).map((s) => <p>{s}</p>)}
+  <p>The choices that decide it: {joinNames(deciding)}.</p>
+</details>
