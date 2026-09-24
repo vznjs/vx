@@ -107,7 +107,14 @@ over (in order):
     own cache key, filtered by `cache.inputs.tasks` (default: all of
     them). Sorted by hash before folding so the ordering of `dependsOn`
     doesn't change the key. This is the cascade mechanism: if anything
-    beneath you changes, your hash changes too.
+    beneath you changes, your hash changes too. The set is `dependsOn`'s,
+    never the run's selection: a dependency `--exclude-dependencies`
+    keeps from running is still folded, with the key a full run would
+    derive for it (nx#35234), so the flag moves no key. Its outputs are
+    whatever is on disk, which nothing proves current, so a task whose
+    key folds one, and everything built on it, may hit but does not
+    save (`orchestrator/excluded-keys.ts`); a task with
+    `cache.inputs.tasks: []` folds none and saves as usual.
 11. **Plugin key material** — the `{ name: value }` pairs a plugin's
     `key(task, ctx)` stage returned for this task, stored on the node as
     sorted `plugin/name` pairs and folded after the upstream keys and BEFORE the input files,

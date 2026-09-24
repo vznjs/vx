@@ -8,6 +8,7 @@ import {
   parseDependencySpec,
   type DependencySpec,
 } from './dependency-spec.js'
+import type { TaskOutcome } from './scheduler.js'
 
 // Re-exported so existing importers keep working while the type's home
 // moves to workspace (it's the joint product of discovery + loading).
@@ -59,6 +60,13 @@ export interface TaskNode {
    * task's tree is already current, so an addition below is not a stray.
    */
   outputsAddedToBy?: string[]
+  /**
+   * The dependencies `--exclude-dependencies` took out of the schedule, as
+   * outcomes carrying the key each would have (`excludeDependencies`, then
+   * `prepareRun`). The scheduler never sees them; the key folds them next
+   * to `deps`' own outcomes, so a key is the same whatever the selection.
+   */
+  excludedUpstream?: TaskOutcome[]
 }
 
 export function taskId(project: string, task: string): string {
@@ -214,15 +222,6 @@ export interface BuildGraphOptions {
   /** Initial set: `{ project, task }` pairs the user asked to run. */
   requested: Array<{ project: string; task: string }>
   /**
-   * Filter `dependsOn` expansion.
-   *   - `undefined` → every dependsOn entry is followed (default).
-   *   - `'all'`     → no expansion; only the requested nodes are added.
-   *   - `string[]`  → expand normally, but drop edges whose target
-   *                   task name is in the list. `dependsOn.self` and
-   *                   `dependsOn.dependencies` are both filtered.
-   */
-  excludeDependencies?: 'all' | readonly string[]
-  /**
    * Set when `projects` is a scoped load rather than the whole workspace. A
    * literal `^name` no project in `projects` declares may still be declared
    * by one that was not loaded, so the builder hands it here instead of
@@ -260,12 +259,7 @@ interface Frame {
 }
 
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode> {
-  const { projects, packageGraph, requested, excludeDependencies, undeclaredDeps } = options
-  const skipAll = excludeDependencies === 'all'
-  const skipNames =
-    Array.isArray(excludeDependencies) && excludeDependencies.length > 0
-      ? new Set(excludeDependencies)
-      : null
+  const { projects, packageGraph, requested, undeclaredDeps } = options
   const nodes = new Map<string, TaskNode>()
 
   // The walk keeps its own stack instead of recursing once per edge: a
@@ -281,7 +275,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
   function add(node: TaskNode): void {
     nodes.set(node.id, node)
-    if (!skipAll && (node.config.dependsOn?.length ?? 0) > 0) {
+    if ((node.config.dependsOn?.length ?? 0) > 0) {
       stack.push({ node, entry: 0, added: false, pending: null, next: 0 })
     }
   }
@@ -376,11 +370,6 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         `Task ${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
       )
     }
-    // CLI `--exclude-dependencies=name1,name2` drops edges whose target
-    // task name matches, regardless of bucket (self / deps / cross).
-    // Pattern specs re-apply the filter per EXPANDED name below.
-    if (skipNames?.has(spec.task)) return
-
     if (spec.kind === 'self') {
       if (isTaskPattern(spec.task)) {
         // `build.*` — every OTHER same-project task matching the
@@ -390,7 +379,6 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         const re = compileTaskPattern(spec.task)
         for (const name of Object.keys(projects.get(projectName)!.config.tasks ?? {})) {
           if (name === taskName || !re.test(name)) continue
-          if (skipNames?.has(name)) continue
           visit(frame, projectName, name, false)
         }
       } else {
@@ -415,7 +403,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // With a pattern (`^build.*`), a holder is a package declaring
       // AT LEAST ONE matching task and it receives edges to ALL its
       // matches — holder-ness is about declaration, so a holder still
-      // stops the walk even when every match is --exclude-dependencies'd.
+      // stops the walk even when `--exclude-dependencies` drops every
+      // edge to it (`excludeDependencies`).
       //
       // The declaring project seeds `visited`: package graphs may legally
       // contain cycles (the common "b devDepends on a for its tests"
@@ -438,10 +427,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             re.test(n),
           )
           if (names.length > 0) {
-            for (const name of names) {
-              if (skipNames?.has(name)) continue
-              visit(frame, target, name, false)
-            }
+            for (const name of names) visit(frame, target, name, false)
           } else {
             frontier.push(...packageGraph.directDeps(target))
           }
@@ -494,6 +480,50 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   detectCycle(nodes)
   detectOutputCollisions(nodes)
   return nodes
+}
+
+/**
+ * `--exclude-dependencies`: take `dependsOn` edges out of the SCHEDULE, not
+ * out of the graph. `'all'` drops every edge; a name list drops each edge
+ * whose target task has one of those names, whichever `dependsOn` form
+ * reached it. What stays scheduled is what the requested tasks still reach;
+ * the rest leaves `nodes` and is returned with its `deps` intact, and each
+ * scheduled task that lost an edge is listed in `dropped` with the ids it
+ * lost.
+ *
+ * Run on the whole graph, after the `graph` and `key` stages, because a
+ * dropped dependency is still KEYED: a key is a function of inputs, never of
+ * the selection (nx#35234), so the caller derives each dropped task's key
+ * as a full run would and hands it to the dependant (`excludedUpstream`).
+ */
+export function excludeDependencies(
+  nodes: Map<string, TaskNode>,
+  exclude: 'all' | readonly string[],
+): { keyOnly: Map<string, TaskNode>; dropped: Map<string, string[]> } {
+  const names = exclude === 'all' ? null : new Set(exclude)
+  const kept = (dep: string): boolean => names !== null && !names.has(nodes.get(dep)!.taskName)
+  const scheduled = new Set<string>()
+  const stack = [...nodes.values()].filter((n) => n.requested).map((n) => n.id)
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (scheduled.has(id)) continue
+    scheduled.add(id)
+    for (const dep of nodes.get(id)!.deps) if (kept(dep)) stack.push(dep)
+  }
+  const keyOnly = new Map<string, TaskNode>()
+  const dropped = new Map<string, string[]>()
+  for (const [id, node] of nodes) {
+    if (!scheduled.has(id)) {
+      keyOnly.set(id, node)
+      continue
+    }
+    const lost = node.deps.filter((d) => !kept(d))
+    if (lost.length === 0) continue
+    dropped.set(id, lost)
+    node.deps = node.deps.filter(kept)
+  }
+  for (const id of keyOnly.keys()) nodes.delete(id)
+  return { keyOnly, dropped }
 }
 
 /**

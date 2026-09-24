@@ -38,6 +38,7 @@ import {
 } from '../workspace/index.js'
 import {
   buildTaskGraph,
+  excludeDependencies,
   expandRequested,
   type TaskNode,
   undeclaredDepsError,
@@ -52,6 +53,7 @@ import {
   resolveCache,
 } from './plugin-host.js'
 import { loadProjects, loadWorkspacePlugins, type LoadedProjects } from './projects.js'
+import { keyExcludedDependencies } from './excluded-keys.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
@@ -364,17 +366,17 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     }
   }
 
-  // A scoped load is not the whole workspace: a `^name` nothing loaded
-  // declares may be declared by a config the scope left out, so the builder
-  // hands it back instead of refusing it, and the rest decide.
+  // The whole graph, whatever `--exclude-dependencies` says: the stages
+  // below shape and key the tasks it drops as a full run would, because
+  // a dropped task is still keyed (excluded-keys.ts). A scoped load is not
+  // the whole workspace: a `^name` nothing loaded declares may be declared
+  // by a config the scope left out, so the builder hands it back instead of
+  // refusing it, and the rest decide.
   const unproven: Array<[taskId: string, name: string]> = []
   const nodes = buildTaskGraph({
     projects,
     packageGraph,
     requested,
-    ...(options.excludeDependencies !== undefined
-      ? { excludeDependencies: options.excludeDependencies }
-      : {}),
     ...(projects.size < projectsWithConfigs.length
       ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
       : {}),
@@ -399,6 +401,24 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   }
   if (hasHook(plugins, 'key')) {
     await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
+  }
+  const exclude = options.excludeDependencies
+  if (exclude !== undefined && (exclude === 'all' || exclude.length > 0)) {
+    const { keyOnly, dropped } = excludeDependencies(nodes, exclude)
+    if (dropped.size > 0) {
+      await keyExcludedDependencies({
+        nodes,
+        keyOnly,
+        dropped,
+        cache,
+        workspaceRoot,
+        workspaceFingerprint,
+        forwardArgs: options.forwardArgs,
+        nestedDirsByProject,
+        gitFilesCache,
+        hashCache,
+      })
+    }
   }
   let priorities: ReadonlyMap<string, number> = new Map()
   if (hasHook(plugins, 'schedule')) {

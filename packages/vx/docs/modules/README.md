@@ -69,6 +69,7 @@ group.
 | [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/hit-restore.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay stdout.                |
 | [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).                                                      |
 | [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — which upstream a key folds, by `cache.inputs.tasks` (`selectFoldedDeps`, one matcher for both paths). |
+| [`excluded-keys.md`](./excluded-keys.md)           | `src/orchestrator/excluded-keys.ts` — the key of a dependency `--exclude-dependencies` keeps from running, and the taint it seeds.     |
 | [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (flow-aware policy, frames, replay).                                                     |
 | [`status-line.md`](./status-line.md)               | `src/orchestrator/status-line.ts` — serialized writer + dynamic bottom status line.                                                    |
 | [`framed-output.md`](./framed-output.md)           | `src/orchestrator/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                                        |

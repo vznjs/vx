@@ -18,14 +18,21 @@ rules stand between them and neither changes what the task is:
   (`taintedUpstream`) and the taint propagates through every success
   built on it — otherwise a grand-dependent would cache the same
   partial tree one hop later. Only that mode executes a task behind a
-  failure; a default run carries no check.
+  failure; a default run carries no check. `--exclude-dependencies`
+  seeds the same taint (`seeds`): a task whose key folds a dependency
+  that did not run (`excluded-keys.md`) has bytes nothing vouches for,
+  and so does everything built on it. No seed and no `always` keeps
+  the check off.
 
 Split from `run.ts` on 2026-09-10 (pure motion).
 
 ## Public surface
 
 ```ts
-export function taintTracker(enabled: boolean): (node: TaskNode, upstream: TaskOutcome[]) => boolean
+export function taintTracker(
+  continueAlways: boolean,
+  seeds: ReadonlySet<string>,
+): (node: TaskNode, upstream: TaskOutcome[]) => boolean
 
 export interface AdmissionArgs {
   inflight: Map<string, Promise<void>> | undefined
@@ -72,4 +79,6 @@ no lane, at once.
 `tests/inflight.test.ts` (two runs sharing a registry execute a key
 once; the joiner hits; the barrier is released on failure),
 `tests/continue-taint.test.ts` (the tainted task runs and does not
-save; taint reaches the grand-dependent; other modes skip).
+save; taint reaches the grand-dependent; other modes skip),
+`tests/taint-tracker.test.ts` (each poisoning status, and a seed with
+no failure upstream).

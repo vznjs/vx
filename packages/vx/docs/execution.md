@@ -95,8 +95,10 @@ terminal and a task succeeding or failing. Read it alongside
  │      - '^name'    → task in the nearest deps declaring it
  │                     (frontier walk; non-holders passed through)
  │      - 'pkg#name' → specific package's task
- │    Excluded edges (per --exclude-dependencies[=names]) are dropped.
- │    Detect cycles — throws with the path.
+ │    Detect cycles — throws with the path. After the graph and key
+ │    stages, excluded edges (per --exclude-dependencies[=names]) leave
+ │    the SCHEDULE; each dropped task is still keyed and folded into
+ │    its dependant (orchestrator/excluded-keys.ts).
  │    Each node carries: id (`${project}#${task}`), projectName,
  │    projectDir, taskName, config, sorted deps, `requested: boolean`.
  │    markSurfacedDeps then flags the display-only `surfaced` tasks a

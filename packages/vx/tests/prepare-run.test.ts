@@ -84,7 +84,12 @@ function cfg(...tasks: string[]): string {
  * is why every scoping test below names `projects`.
  */
 async function prepare(
-  opts: { tasks?: string[]; cwd?: string; projects?: string[] } = {},
+  opts: {
+    tasks?: string[]
+    cwd?: string
+    projects?: string[]
+    excludeDependencies?: 'all' | string[]
+  } = {},
 ): Promise<Awaited<ReturnType<typeof prepareRun>>> {
   return await prepareRun(
     {
@@ -92,6 +97,9 @@ async function prepare(
       tasks: opts.tasks ?? ['build'],
       concurrency: 1,
       ...(opts.projects !== undefined ? { projects: opts.projects } : {}),
+      ...(opts.excludeDependencies !== undefined
+        ? { excludeDependencies: opts.excludeDependencies }
+        : {}),
     },
     log,
   )
@@ -301,6 +309,36 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
     TIMEOUT,
   )
 
+  // The graph is built whole whatever `--exclude-dependencies` says (a
+  // dropped edge is still keyed, excluded-keys.ts), so a typo is refused
+  // under the flag as in a full run: whether a config is valid does not
+  // depend on the selection, even when the flag names the typo itself.
+  it(
+    'refuses it under --exclude-dependencies too, scoped or not',
+    async () => {
+      await pkg('app', cfg(task('typo', ['^biuld'])), ['cart'])
+      await pkg('cart', cfg(task('build')))
+      await pkg('web', cfg(task('build')))
+
+      const messages: unknown[] = []
+      for (const tasks of [['app#typo'], ['typo']]) {
+        for (const excludeDependencies of ['all', ['biuld'], ['build']] as const) {
+          const err = await refusal({
+            tasks,
+            excludeDependencies: excludeDependencies === 'all' ? 'all' : [...excludeDependencies],
+          })
+          messages.push(err instanceof UserError ? err.message : err)
+        }
+      }
+      expect(messages).toEqual(
+        Array(6).fill(
+          'Task app#typo depends on ^biuld but no project in the workspace declares biuld',
+        ),
+      )
+    },
+    TIMEOUT,
+  )
+
   it(
     'plans a ^name only a project outside the loaded closure declares',
     async () => {
@@ -348,6 +386,32 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       expect([...p.nodes.keys()]).toEqual(['app#test'])
     },
     TIMEOUT,
+  )
+})
+
+// The builder takes a 50,000-deep chain on its own stack (nx#28788, item
+// 737); `--exclude-dependencies` then keys the whole dropped chain, and
+// that walk must not recurse once per edge either.
+describe('--exclude-dependencies keys a 50,000-deep dropped chain', () => {
+  it(
+    'without overflowing the call stack',
+    async () => {
+      const DEPTH = 50_000
+      const tasks: string[] = []
+      for (let i = 0; i < DEPTH; i++) {
+        tasks.push(task(`t${i}`, i + 1 < DEPTH ? [`t${i + 1}`] : []))
+      }
+      await pkg('app', cfg(...tasks))
+
+      const p = await prepare({ tasks: ['app#t0'], excludeDependencies: 'all' })
+      const excluded = p.nodes.get('app#t0')!.excludedUpstream!
+      expect([[...p.nodes.keys()], excluded.map((o) => o.node.id)]).toEqual([
+        ['app#t0'],
+        ['app#t1'],
+      ])
+      expect(excluded[0]!.hash).toMatch(/^[0-9a-f]{16,}$/)
+    },
+    TIMEOUT * 4,
   )
 })
 

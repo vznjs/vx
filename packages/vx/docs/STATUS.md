@@ -432,8 +432,8 @@ false`, the first failure failing the task; `commands: []` a no-op;
       spawn count. `CACHE_VERSION` v31 → v32: an artifact saved before the
       non-UTF-8 fix lacks that output under an unchanged key. The fourth
       fix of the batch, `--exclude-dependencies` keying on the dependency it
-      skips (nx#35234), conflicts with item 737's graph builder and is being
-      ported.
+      skips (nx#35234), conflicted with item 737's graph builder and is
+      item 741.
 740.  DONE (2026-09-24, upstream survey: process lifecycle). Eight
       Turbo and Nx signal and teardown bugs reproduced on vx and fixed.
       `vx watch` keeps a requested dev server up until the next cycle
@@ -454,6 +454,27 @@ false`, the first failure failing the task; `commands: []` a no-op;
       and a SIGTERM-ignoring server hung the run. `util/procfs.ts` asks
       once whether `/proc/self` is our pid; if not, the group signal and
       the plain pid are the answers.
+
+741.  DONE (2026-09-24, upstream survey, nx#35234). `--exclude-dependencies`
+      dropped the skipped edge from the KEY as well as the schedule, so
+      `app#build` keyed on nothing of `lib`: a miss for no reason, then,
+      once `lib` changed and was rebuilt, a hit that replayed the old `lib`.
+      The graph is now built whole (the `graph` and `key` stages see it as
+      a full run does); `excludeDependencies` narrows the schedule, and
+      `orchestrator/excluded-keys.ts` keys each dropped task without
+      running it, folded at the run, the plan and the up-front classify, so
+      a key is the same with and without the flag. A task whose key folds a
+      skipped key, and all built on it, may hit but does not save (its
+      dependency's outputs may predate its inputs), and the run says so on
+      one line. Ported onto item 737's builder: a typo'd `^name` is now
+      refused under the flag too, where 737 let a name the flag dropped go
+      unjudged (validity, like a key, does not depend on the selection);
+      the dropped-key walk and the taint count are iterative, since the
+      original recursed once per edge (`RangeError` on a 50,000-deep
+      chain) and its taint fixpoint took 100 s on one. Self-healing, no
+      `CACHE_VERSION` bump. Open: an executor that keeps its own record of
+      executions under the cache key (`@vzn/vx-reapi`) is not told a task
+      is tainted, for this taint or `--continue=always`'s.
 
 ## In flight
 
@@ -692,6 +713,18 @@ next?".
     `sleep 10 & trap 'trap "" TERM; kill 0' EXIT; echo done`. Put the user command
     in a group of its own inside the sandbox without losing the TERM
     grace a cancellation gives it, and pin both.
+
+20. **Planning a 50,000-deep chain still overflows the stack (found in
+    741).** `vx run app#t0 --dry` without `--exclude-dependencies`
+    throws `RangeError` in `placement.ts` (`pinnedLocalSet`'s recursive
+    `visit`); item 737 fixed only the builder. Walk it on an explicit
+    stack like the builder and the excluded-key walk, with a row at
+    50,000.
+21. **`detectOutputCollisions` is quadratic in one project's tasks with
+    outputs (found in 741).** 4,000 such tasks in one project spend
+    10.7 s building the graph. Index the output prefixes so each task is
+    compared only with the ones that can overlap it, and pin the time
+    at 4,000.
 
 ## Decisions (this arc)
 

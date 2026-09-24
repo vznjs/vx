@@ -16,6 +16,7 @@ import { FULL_CACHE_POLICY } from '../cache/index.js'
 import { isGroupTask, runGraph, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { HistoryProvider } from './history.js'
 import { computeGroupHash, computeTaskHash } from './task-hash.js'
+import { keyUpstream } from './upstream.js'
 
 export type CacheStatus =
   | 'hit-local' // entry exists in local cache
@@ -124,7 +125,8 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
   const outcomes = await runGraph({
     nodes: args.nodes,
     concurrency: 1,
-    execute: async (node, upstream) => {
+    execute: async (node, live) => {
+      const upstream = keyUpstream(node, live)
       if (isGroupTask(node)) {
         cacheStatusById.set(node.id, 'group')
         return planOutcome(node, computeGroupHash(upstream))

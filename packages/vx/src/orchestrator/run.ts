@@ -34,6 +34,8 @@ import { keyedProjects } from './keyed-projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
+import { excludedTaint } from './excluded-keys.js'
+import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
 import { installPlugins } from './plugin.js'
 import { buildAdmission, resolveExecutors, teardownPlugins } from './plugin-host.js'
@@ -611,9 +613,16 @@ async function runOnBus(
     }
 
     // Whether this task runs behind a failure (`continueMode: 'always'`
-    // only) — its save is withheld and the taint propagates; see
+    // only) or on the key of a dependency `--exclude-dependencies` kept
+    // from running — its save is withheld and the taint propagates; see
     // admission.ts.
-    const isTainted = taintTracker(options.continueMode === 'always')
+    const excluded = excludedTaint(nodes)
+    if (excluded.unsaved > 0) {
+      log.status(
+        `[vx] --exclude-dependencies: ${excluded.unsaved} cached task(s) build on a skipped dependency; what they build is not saved`,
+      )
+    }
+    const isTainted = taintTracker(options.continueMode === 'always', excluded.seeds)
 
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
@@ -682,7 +691,7 @@ async function runOnBus(
         log.taskComplete(o.node, o)
         narrowDemand(o.node.id)
       },
-      execute: executeWithDedup,
+      execute: (node, upstream) => executeWithDedup(node, keyUpstream(node, upstream)),
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
       ...(prepared.priorities.size > 0 ? { priorities: prepared.priorities } : {}),

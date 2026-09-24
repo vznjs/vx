@@ -1039,6 +1039,257 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
   )
 })
 
+// nx#35234: `--exclude-dependencies` drops an edge from the SCHEDULE. It
+// dropped it from the key too, so `app#build` keyed on nothing of `lib`: a
+// miss for no reason, then, once `lib` changed, a hit that replayed the old
+// `lib`. The fixture is the survey's: `lib#build` copies its source into
+// `dist/`, `app#build` (`dependsOn: ['^build']`) copies that.
+describe('--exclude-dependencies keys on the dependency it skips', () => {
+  async function libApp(): Promise<{ lib: string; app: string }> {
+    await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+    await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeLocalWorkspace(root)
+    const lib = path.join(root, 'packages', 'lib')
+    const app = path.join(root, 'packages', 'app')
+    await write(path.join(lib, 'package.json'), '{"name":"lib","version":"1.0.0"}')
+    await write(
+      path.join(app, 'package.json'),
+      '{"name":"app","version":"1.0.0","dependencies":{"lib":"workspace:*"}}',
+    )
+    await write(
+      path.join(lib, 'vx.config.mjs'),
+      `export default { tasks: { build: {
+         exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+       } } }\n`,
+    )
+    await write(
+      path.join(app, 'vx.config.mjs'),
+      `export default { tasks: { build: {
+         dependsOn: ['^build'],
+         exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+       } } }\n`,
+    )
+    await write(path.join(lib, 'src', 'x.txt'), 'L1')
+    await write(path.join(app, 'src', 'a.txt'), 'a')
+    await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+    git(root, 'init', '-q')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'init')
+    return { lib, app }
+  }
+
+  // `base` <- `lib` <- `app`, each `build` on `^build`.
+  async function baseLibApp(): Promise<{ base: string; lib: string; app: string }> {
+    const { lib, app } = await libApp()
+    const base = path.join(root, 'packages', 'base')
+    await write(path.join(base, 'package.json'), '{"name":"base","version":"1.0.0"}')
+    await write(
+      path.join(base, 'vx.config.mjs'),
+      `export default { tasks: { build: {
+         exec: { command: 'mkdir -p dist && cat src/b.txt > dist/b.txt' },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+       } } }\n`,
+    )
+    await write(path.join(base, 'src', 'b.txt'), 'b')
+    await write(
+      path.join(lib, 'package.json'),
+      '{"name":"lib","version":"1.0.0","dependencies":{"base":"workspace:*"}}',
+    )
+    await write(
+      path.join(lib, 'vx.config.mjs'),
+      `export default { tasks: { build: {
+         dependsOn: ['^build'],
+         exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+       } } }\n`,
+    )
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'base')
+    return { base, lib, app }
+  }
+
+  const appHash = (...flags: string[]): string => {
+    const plan = JSON.parse(vx(root, 'run', 'app#build', '--dry=json', ...flags)) as {
+      tasks: Array<{ id: string; hash: string }>
+    }
+    return plan.tasks.find((t) => t.id === 'app#build')!.hash
+  }
+
+  it(
+    'the dependant has one key with and without the flag, and it hits',
+    async () => {
+      await libApp()
+      vx(root, 'run', 'build', '--all')
+      const full = appHash()
+      expect([appHash('--exclude-dependencies'), appHash('--exclude-dependencies=build')]).toEqual([
+        full,
+        full,
+      ])
+      expect(vx(root, 'run', 'app#build', '--exclude-dependencies')).toContain('up-to-date')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a change to the skipped dependency is a miss, not the old bytes',
+    async () => {
+      const { lib, app } = await libApp()
+      vx(root, 'run', 'build', '--all')
+      vx(root, 'run', 'app#build', '--exclude-dependencies')
+      await write(path.join(lib, 'src', 'x.txt'), 'L2')
+      vx(root, 'run', 'lib#build')
+      vx(root, 'run', 'app#build', '--exclude-dependencies')
+      expect(await readFile(path.join(app, 'dist', 'app.txt'), 'utf8')).toBe('L2')
+    },
+    TIMEOUT,
+  )
+
+  // The up-front classify hands a STABLE task its key, so the rows above
+  // never reach the key the run derives lazily. A same-project producer
+  // (`prep`, scheduled: only `build` edges are dropped) makes `app#build`'s
+  // key wait for it, and that lazy key must fold the skipped `lib` too.
+  it(
+    'a dependant keyed after its producer runs folds the skipped key too',
+    async () => {
+      const { app } = await libApp()
+      await write(
+        path.join(app, 'vx.config.mjs'),
+        `export default { tasks: {
+           prep: {
+             exec: { command: 'mkdir -p gen && cat src/a.txt > gen/a.txt' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] } },
+           },
+           build: {
+             dependsOn: ['^build', 'prep'],
+             exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt gen/a.txt > dist/app.txt' },
+             cache: { inputs: { files: ['src/**', 'gen/**'] }, outputs: { files: ['dist/**'] } },
+           },
+         } }\n`,
+      )
+      await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/\n')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'prep')
+      vx(root, 'run', 'build', '--all')
+      const out = vx(root, 'run', 'app#build', '--exclude-dependencies=build', '--output-logs=none')
+      // `prep` and `app#build` both current: the run's key is the full one.
+      expect(out).toContain('2 up-to-date')
+    },
+    TIMEOUT,
+  )
+
+  // Both requested, both losing an edge: `lib#build`'s key, as `app#build`
+  // folds it, is derived without running it and must still fold `base`.
+  it(
+    'a skipped dependency that is itself requested is keyed on what IT skipped',
+    async () => {
+      await baseLibApp()
+      vx(root, 'run', 'build', '--all')
+      const out = vx(root, 'run', 'app#build', 'lib#build', '--exclude-dependencies')
+      expect(out).toContain('2 up-to-date')
+    },
+    TIMEOUT,
+  )
+
+  // Only `app#build` is scheduled, so `lib#build` and `base#build` are both
+  // keyed without running; `lib`'s key must fold `base`'s, which therefore
+  // has to exist first.
+  it(
+    'a dependency two hops below the skipped one reaches the key through it',
+    async () => {
+      const { base } = await baseLibApp()
+      vx(root, 'run', 'build', '--all')
+      const before = appHash('--exclude-dependencies')
+      await write(path.join(base, 'src', 'b.txt'), 'b2')
+      const after = [appHash(), appHash('--exclude-dependencies')]
+      expect([after[0] === after[1], after[1] === before]).toEqual([true, false])
+    },
+    TIMEOUT,
+  )
+
+  // Folding the key is half the fix. The skipped dependency did not run, so
+  // its outputs may predate its inputs; an entry saved then would file the
+  // OLD `lib` under the key the next full run derives for the NEW one.
+  it(
+    'what a run builds on a skipped, out-of-date dependency is not saved',
+    async () => {
+      const { lib, app } = await libApp()
+      vx(root, 'run', 'build', '--all')
+      await write(path.join(lib, 'src', 'x.txt'), 'L2')
+      const out = vx(root, 'run', 'app#build', '--exclude-dependencies')
+      expect(out).toContain('1 cached task(s) build on a skipped dependency')
+      expect(await readFile(path.join(app, 'dist', 'app.txt'), 'utf8')).toBe('L1')
+      vx(root, 'run', 'app#build')
+      expect(await readFile(path.join(app, 'dist', 'app.txt'), 'utf8')).toBe('L2')
+    },
+    TIMEOUT,
+  )
+
+  // The line counts what would have saved. A task with no `cache` saves
+  // nothing whatever it folds, so skipping its dependency says nothing.
+  it(
+    'a skipped dependency under an uncached task makes no line',
+    async () => {
+      const { app } = await libApp()
+      await write(
+        path.join(app, 'vx.config.mjs'),
+        `export default { tasks: {
+         build: {
+           dependsOn: ['^build'],
+           exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         },
+         check: { dependsOn: ['^build'], exec: { command: 'true' } },
+       } }\n`,
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'check')
+      vx(root, 'run', 'build', '--all')
+      const lines = (out: string): string[] =>
+        out.split('\n').filter((l) => l.startsWith('[vx] --exclude-dependencies'))
+      expect(lines(vx(root, 'run', 'app#check', '--exclude-dependencies'))).toEqual([])
+      // CONTROL: the cached sibling, the same edge dropped, is counted.
+      expect(lines(vx(root, 'run', 'app#build', 'app#check', '--exclude-dependencies'))).toEqual([
+        '[vx] --exclude-dependencies: 1 cached task(s) build on a skipped dependency; what they build is not saved',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  // A group folds every dependency it has, so a group that lost one hands
+  // the skipped key, and the taint, to whatever folds the group.
+  it(
+    'what folds a group that skipped a dependency is not saved either',
+    async () => {
+      const { lib, app } = await libApp()
+      await write(
+        path.join(app, 'vx.config.mjs'),
+        `export default { tasks: {
+         deps: { dependsOn: ['^build'] },
+         build: {
+           dependsOn: ['deps'],
+           exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         },
+       } }\n`,
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'group')
+      vx(root, 'run', 'build', '--all')
+      await write(path.join(lib, 'src', 'x.txt'), 'L2')
+      // The group is the seed; the line counts the cached task it reaches.
+      expect(vx(root, 'run', 'app#build', '--exclude-dependencies=build')).toContain(
+        '1 cached task(s) build on a skipped dependency',
+      )
+      expect(await readFile(path.join(app, 'dist', 'app.txt'), 'utf8')).toBe('L1')
+      vx(root, 'run', 'app#build')
+      expect(await readFile(path.join(app, 'dist', 'app.txt'), 'utf8')).toBe('L2')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('parseCheckAttrOutput', () => {
   const triples = (...t: string[][]): string => t.flat().join('\0') + '\0'
 
