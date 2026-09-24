@@ -328,7 +328,7 @@ function titles(chapter: string): string[] {
 
 /** Words of prose a reader has to read: the `<p>`s outside figures, answers,
  *  code and widgets (the simple brief's budget, 2026-09-24). */
-export function proseWords(chapter: string): number {
+function proseWords(chapter: string): number {
   const bare = prose(chapter)
     .replace(/<details\b[\s\S]*?<\/details>/g, '')
     .replace(/<pre\b[\s\S]*?<\/pre>/g, '')

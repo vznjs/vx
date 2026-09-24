@@ -78,7 +78,7 @@ export const FONT = { label: 15, sub: 13, note: 14, arrow: 13, frame: 13 }
 
 /** A string's width in the diagram's mono face (IBM Plex Mono advances 0.6em). */
 export function textWidth(text: string, size: number): number {
-  return [...text].length * size * 0.6
+  return text.length * size * 0.6
 }
 
 export function boxSize(b: Box): { w: number; h: number } {

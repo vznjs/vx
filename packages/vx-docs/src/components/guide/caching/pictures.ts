@@ -7,7 +7,7 @@ import { TOY_PACKAGES, rerunBy } from '../../demos/model/toy-monorepo.js'
 import type { Picture } from '../diagram/diagram.js'
 
 /** What an edit to app really needs; everything else ran again for nothing. */
-export const NEEDED = rerunBy('app')
+const NEEDED = rerunBy('app')
 const W = 130
 const GAP = (592 - TOY_PACKAGES.length * W) / (TOY_PACKAGES.length - 1)
 const ALL = TOY_PACKAGES.flatMap((p) => ['build', 'test'].map((task) => `${p.id}#${task}`))
@@ -105,7 +105,7 @@ export const key: Picture = {
 }
 
 /** The builds whose keys an edit to utils moves: all of them. */
-export const MOVED = rerunBy('utils').filter((id) => id.endsWith('#build'))
+const MOVED = rerunBy('utils').filter((id) => id.endsWith('#build'))
 
 export const cascade: Picture = {
   name: 'cascade',

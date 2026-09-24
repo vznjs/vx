@@ -25,8 +25,8 @@ export const together: Picture = {
 }
 
 /** The eight build and test tasks of chapters 2 and 3. */
-export const EIGHT = SIM_TASKS.filter((t) => /#(build|test)$/.test(t.id))
-export const CHAIN = criticalPath(EIGHT).chain
+const EIGHT = SIM_TASKS.filter((t) => /#(build|test)$/.test(t.id))
+const CHAIN = criticalPath(EIGHT).chain
 /** The eight on one worker, then on two, as vx with no plugin orders them. */
 export const RUNS = [1, 2].map((workers) => schedule(EIGHT, new Set(), 'count', workers))
 

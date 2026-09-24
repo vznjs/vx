@@ -1,7 +1,7 @@
 // Chapter 9's pictures (guide/inside-vx). tests/guide-inside-vx.test.ts
 // holds the pipeline picture to core's PLUGIN_HOOKS and the rendered SVGs
 // to these values.
-import type { Arrow, Box, Picture } from '../diagram/diagram.js'
+import type { Arrow, Box, Picture, Point } from '../diagram/diagram.js'
 
 /** The stages one run passes through, in core's order (PLUGIN_HOOKS). */
 export const RUN_STAGES = [
@@ -40,7 +40,7 @@ const stageArrows: Arrow[] = RUN_STAGES.slice(1).map((to, i) => {
           via: [
             [from.x + W / 2, turn],
             [next.x + W / 2, turn],
-          ] as Arrow['via'],
+          ] as Point[],
         }),
   }
 })
