@@ -27,7 +27,7 @@ can never drift on the stability gate.
   where `undeclaredWriteReach` (`sandbox-request.md`) says it may write:
   its own project counts as an `outputs.files` project, the rest of the
   workspace as an `outputs.workspaceFiles` producer, and a sandboxed one
-  with no write grant as nothing (item 741: an uncached `gen` writing a
+  with no write grant as nothing (item 743: an uncached `gen` writing a
   same-project `build`'s declared input was classed stable, and seeds
   A,B,B,A replayed B on the fourth run, turborepo#13788).
 

@@ -96,7 +96,7 @@ export function undeclaredWriteReach(
   denial (so never on a pass): the package, the link the task went
   through, and the two ways to make the key answer for it.
 - `undeclaredWriteReach` says where a task that ran a command may have
-  written files no declaration names (item 741): `'none'` for a cached
+  written files no declaration names (item 743): `'none'` for a cached
   task (held to its declared outputs), a group, or a sandboxed task with
   no write grant; `'project'` for an unsandboxed task with no `cache`,
   or a sandboxed one whose grants stay in its project; `'workspace'`

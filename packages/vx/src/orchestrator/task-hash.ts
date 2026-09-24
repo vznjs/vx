@@ -198,7 +198,7 @@ export async function describeTaskInputs(
 
 /**
  * The first input whose content may no longer be the digest the key folded
- * (item 741), or undefined when every one still is. One `lstat` per file:
+ * (item 743), or undefined when every one still is. One `lstat` per file:
  * a file whose ctime is older than its fact (by the racy window, as git
  * judges its index) has not been written since, and one that is not gets
  * hashed again and compared. ctime, because no writer can set it back. A

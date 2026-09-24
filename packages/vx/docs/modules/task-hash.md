@@ -88,7 +88,7 @@ export function computeGroupHash(upstream: TaskOutcome[]): string
   from the git enumeration's start (`GitFilesCache.enumeratedAtMs`), a
   hashed file from the describe's own start, the `package.json` digest
   (a per-run memo) from the enumeration.
-- `movedInput` — the post-command re-check (item 741): one `lstat` per
+- `movedInput` — the post-command re-check (item 743): one `lstat` per
   fact; a file whose ctime is not older than its fact by
   `FILE_HASH_RACY_MS` is hashed again and compared, and a missing file
   has moved. Returns the first moved path; execute-task then withholds

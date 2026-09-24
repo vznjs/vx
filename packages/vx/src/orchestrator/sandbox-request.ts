@@ -463,7 +463,7 @@ function expandHome(p: string): string {
 /**
  * Where a task that ran a command may have written files no declaration
  * names — the files whose run-start facts (the git snapshot, its index
- * OIDs, the `package.json` digest) a later key must not reuse (item 741).
+ * OIDs, the `package.json` digest) a later key must not reuse (item 743).
  *
  * A cached task declares its outputs and is held to them. A task with no
  * `cache` block can declare none, so it may have written anywhere in its

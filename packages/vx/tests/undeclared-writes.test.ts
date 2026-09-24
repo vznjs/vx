@@ -4,7 +4,7 @@
 // key) reads that file. Its run-start facts — the git snapshot, the index
 // OIDs, the up-front key the local short-circuit took — describe the bytes
 // BEFORE `gen` ran, and a key built from them replays the wrong artifact
-// under a green run (turborepo#13788, item 741). Every row here failed on
+// under a green run (turborepo#13788, item 743). Every row here failed on
 // the tree before the fix.
 
 import { readFile, rm, writeFile } from 'node:fs/promises'

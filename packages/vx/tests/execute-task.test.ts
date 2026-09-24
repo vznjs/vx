@@ -1285,7 +1285,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     // fold it, and it is the key a later run's classify reproduces. The hash
     // below is deliberately not derivable from this fixture, so only verbatim
     // reuse can produce it — and since the key the describe re-derives before
-    // the command then differs, the entry is withheld (item 741): a key that
+    // the command then differs, the entry is withheld (item 743): a key that
     // does not describe the inputs the command ran over files no bytes.
     const getSpy = spyOn(b.cache, 'get')
     const status: string[] = []

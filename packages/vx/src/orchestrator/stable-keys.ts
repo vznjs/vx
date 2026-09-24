@@ -58,7 +58,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   //   - outputProjects: the project names of every upstream task declaring
   //     cache.outputs.files (project-relative outputs land in the producer's
   //     own dir), and of every upstream with no cache block that may write
-  //     in its own project (`undeclaredWriteReach`, item 741).
+  //     in its own project (`undeclaredWriteReach`, item 743).
   //   - wsOutputUpstream: any upstream declares cache.outputs.workspaceFiles
   //     (root-anchored, boundary-ignoring outputs), or has no cache block
   //     and a sandbox write grant elsewhere in the workspace.
