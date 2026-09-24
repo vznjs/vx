@@ -163,7 +163,9 @@ describe('archive restore — path-traversal defense', () => {
       EOF_BLOCKS,
     ])
 
-    await expect(restore(tar, dest, path.join(dest, 'ws'))).rejects.toThrow(/symlinked parent/i)
+    await expect(restore(tar, dest, path.join(dest, 'ws'))).rejects.toThrow(
+      `${path.join(dest, 'ws', 'dist')} is a symbolic link to `,
+    )
     expect(existsSync(path.join(outside, 'x.txt'))).toBe(false)
   })
 
@@ -322,7 +324,9 @@ describe('archive restore — symlink defense', () => {
 
     const body = new TextEncoder().encode('attacker-controlled')
     const tar = tarWithEntry('outputs/dist/evil.txt', body)
-    await expect(restore(tar, dest)).rejects.toThrow(/escape|symlink|unsafe/i)
+    await expect(restore(tar, dest)).rejects.toThrow(
+      `${path.join(dest, 'dist')} is a symbolic link to `,
+    )
     expect(existsSync(path.join(sensitiveDir, 'evil.txt'))).toBe(false)
     await rm(sensitiveDir, { recursive: true, force: true })
   })
@@ -336,7 +340,9 @@ describe('archive restore — symlink defense', () => {
     await symlink(sensitiveDir, path.join(dest, 'dist'))
 
     const tar = tarWithEntry('outputs/dist/a/b/c.txt', new TextEncoder().encode('x'))
-    await expect(restore(tar, dest)).rejects.toThrow(/escape|symlink|unsafe/i)
+    await expect(restore(tar, dest)).rejects.toThrow(
+      `${path.join(dest, 'dist')} is a symbolic link to `,
+    )
     expect(existsSync(path.join(sensitiveDir, 'a'))).toBe(false)
     await rm(sensitiveDir, { recursive: true, force: true })
   })
@@ -744,7 +750,9 @@ describe('archive restore — mixed valid + malicious entries', () => {
       makeDataBlock(new TextEncoder().encode('bad\n')),
       EOF_BLOCKS,
     ])
-    await expect(restore(tar, dest)).rejects.toThrow(/escape|symlink|unsafe/i)
+    await expect(restore(tar, dest)).rejects.toThrow(
+      `${path.join(dest, 'dist')} is a symbolic link to `,
+    )
     expect(existsSync(path.join(dest, 'fine.txt'))).toBe(false)
     expect(existsSync(path.join(sensitiveDir, 'evil.txt'))).toBe(false)
     await rm(sensitiveDir, { recursive: true, force: true })

@@ -365,7 +365,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   that entry as a miss and runs the task. Throws `CorruptArtifactError`
   when the artifact is not a readable archive or lacks an output the
   index recorded, and `ArchiveSecurityError` on an unsafe name or an
-  escape. Either way nothing was renamed into place.
+  escape by name. A directory on the tree side that links out of the
+  anchor is the tree's fault, not the artifact's: a `UserError` naming
+  the link and its target (it is kept, never written through). Either
+  way nothing was renamed into place.
 
 `get(hash)`:
 

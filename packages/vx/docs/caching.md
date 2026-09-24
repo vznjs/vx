@@ -858,7 +858,15 @@ followed) and prunes the directories it emptied, so a task whose
 output changed shape — `dist/out` a directory one run and a file the
 next — restores either entry over the other's tree; a stray the globs
 do not cover that stands in an entry's way fails the restore naming
-it, not as a corrupt artifact. Entry NAMES are
+it, not as a corrupt artifact. A directory on the way that is a
+symbolic link OUT of the project (a `dist` made a link after the entry
+was saved) is never written through and never replaced — the link is
+the user's, and replacing it is the bug nx#37061 reports — so the
+restore refuses, naming it: `<dir>/dist is a symbolic link to
+<target>, outside <dir> — a cache restore never writes through a link
+that leaves its directory. Remove the link and re-run (the restore
+puts a real directory there), or stop declaring outputs under it.` A
+link that stays inside the project is written through. Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
 are unlinked and the empty directories the extraction created are
