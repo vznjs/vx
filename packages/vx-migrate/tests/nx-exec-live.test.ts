@@ -309,6 +309,12 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
         NX_DAEMON: 'false',
         NX_TUI: 'false',
         NX_NO_CLOUD: 'true',
+        // Nx's plugin workers talk over unix sockets the test task's sandbox
+        // refuses (`listen EPERM`). Nx loads plugins in-process itself when
+        // it sees a sandbox's marker (SANDBOX_RUNTIME, which this bare env
+        // drops); the dotenv loading under test is the task runner's, not
+        // a plugin's, so in-process loading changes nothing it compares.
+        NX_ISOLATE_PLUGINS: 'false',
       }
       const out = path.join(root, 'envout.txt')
       try {

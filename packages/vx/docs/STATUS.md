@@ -381,7 +381,13 @@ false`, the first failure failing the task; `commands: []` a no-op;
       a gateway that base64-encodes other types no longer turns every hit
       into a corrupt artifact. Parity rows compare each option shape with
       real Nx 22.7.12. Still todos (reported in the migration): `{args.name}`
-      from `--`, several `readyWhen` strings, per-command prefixes.
+      from `--`, several `readyWhen` strings, per-command prefixes. The
+      live rows ran red in CI's sandbox: the parallel line exited before
+      a TERMed command's trap ended, where Nx settles every command
+      first, so the line now waits for them (each job's shell catches
+      the TERM); and `nx run` inside the sandbox could not listen on its
+      plugin workers' sockets, so that row sets `NX_ISOLATE_PLUGINS=false`,
+      what Nx does itself when it sees a sandbox.
 
 ## In flight
 
@@ -612,6 +618,14 @@ next?".
     run at that size on the Linux box. OWNER: re-run `compare.ts 100 11
 1` on the macOS machine and `update-site.ts`, or take the Linux run
     in `benchmarks.md` (where Turbo wins warm, Next 17) for the site.
+19. **A sandboxed task's `kill 0` kills the sandbox (Linux, found in
+    736).** bwrap's `--new-session` puts the runtime's wrapper shell in
+    the task's process group, so a command that signals its own group
+    ends the wrapper too. This line succeeds unsandboxed and fails 143
+    sandboxed, the pid namespace's teardown SIGKILLing the rest mid-trap:
+    `sleep 10 & trap 'trap "" TERM; kill 0' EXIT; echo done`. Put the user command
+    in a group of its own inside the sandbox without losing the TERM
+    grace a cancellation gives it, and pin both.
 
 ## Decisions (this arc)
 
