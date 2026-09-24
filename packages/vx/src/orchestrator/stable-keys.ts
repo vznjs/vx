@@ -100,6 +100,12 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       continue
     }
 
+    // A persistent task has no key on the live path (its outcome carries no
+    // hash, so a dependent folds nothing of it); recording one here gave
+    // its dependents a second key, which a `--force` or remote run never
+    // saved under.
+    if (node.config.exec?.persistent !== undefined) continue
+
     const hash = await computeTaskHash({
       node,
       upstream,

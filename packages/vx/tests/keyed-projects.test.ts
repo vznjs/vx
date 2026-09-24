@@ -324,11 +324,11 @@ describe('K(T) is what moves the key (R4)', () => {
         expect(PROJECTS.filter((p) => keyed.has(dirs.get(p)!))).toEqual(s.keyed)
 
         expect(await movers(true, s.title)).toEqual(s.keyed)
-        // The classify pass hashes a persistent task too, so its key may
-        // move with MORE than K(T) (a sibling withheld that could have been
-        // granted); never with less.
-        const local = await movers(false, s.title)
-        expect(s.keyed.filter((p) => !local.includes(p))).toEqual([])
+        expect(await movers(false, s.title)).toEqual(s.keyed)
+        // One key on both paths, or a `--force` or remote run saves entries
+        // a plain local run never probes (a persistent upstream once split
+        // them: the classify pass hashed it and the live path did not).
+        expect((await testRun(false)).hash).toBe((await testRun(true)).hash)
       },
       TIMEOUT,
     )

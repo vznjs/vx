@@ -14,9 +14,9 @@
 > `ui#bare` with no dependencies moved the dependent's key on an edit to
 > `ui/README.md`, on both key paths. So K(T) counts every exec task the
 > fold reaches, cached or not; R4 holds it to the key in both directions.
-> A persistent task stays excluded: the live path gives it no hash (the
-> local classify pass does — `stable-keys.ts` — so a key there moves with
-> more than K(T), never less).
+> A persistent task stays excluded: neither key path gives it a hash (the
+> local classify pass hashed one until item 727, so its dependents had a
+> second key).
 
 ## What we're solving
 

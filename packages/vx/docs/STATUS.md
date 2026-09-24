@@ -240,7 +240,19 @@ test is telling the truth.
       1,000-package workspace is 0.28 ms (18 ms with `build → ^build`);
       the gate A/B is flat (warm min 0.49 → 0.51 s, the residue in
       `check.bun`'s spawn). This repo went red nowhere. Found on the way:
-      Next 17.
+      item 727.
+
+727.  DONE (2026-09-24, Next 17). A task downstream of a persistent task
+      had two keys: the local classify pass (`stable-keys.ts`) hashed the
+      persistent dependency and the live path (`--force`, a remote cache)
+      folded nothing of it, so a `--force` or remote run saved entries a
+      plain local run never probed. The classify pass now skips a
+      persistent task as the live path does. `keyed-projects.test.ts` R4
+      holds both paths to one key in all eight shapes and to the same
+      movers (the local check had been a superset); without the fix the
+      persistent shape reads two keys. No `CACHE_VERSION` bump: only the
+      local key of such a task moves, its old entries become misses, and
+      no stored bytes are wrong.
 
 ## In flight
 
@@ -441,51 +453,30 @@ state of each:
     and what not to do; strike an entry through there when its item
     lands here.
 
-14dj. **Handoff after item 719 (2026-09-24, morning).** Since 14by the
-arc shipped the site that teaches, track W whole: the Learn section and
-its island pattern (675), the planner in the browser (676 spike, 691,
-692, 695, 699, 700, 703), what-is (681), caching and the key calculator
-(684), scheduling on vx's own ranking code (685), architecture and
-extending (686), correctness and the stale-hit demo (688), choosing
-(689), the glossary (683), the labs (704), the checkpoints (705, 710),
-the landing (709), a site-wide link check (711, which found a page the
-importer had lost to a name collision) and the landing's figures held
-to their sources (712). Core alongside: a 64-bit key chain (682), a
-config is JSON data on every path (701), the run's `Failed:` recap
-(706), a locale-free key diff (707), one config worker per watch round
-(694); the site's prerender runs under Bun (708); the 0.1.0 notes run
-through 710 (713). WHAT STANDS: entries 14bw–14di and loop item 677 are
-in the next-log file (§ Entries 14bw–14di); the loop holds 719 alone.
-The owner then judged the site "very bad": pages were added to the old
-structure instead of redoing it, and nothing tells one story. The redo
-is `design/site-redo-2026-09.md` (Next 16): one Guide of ten chapters on
-one toy monorepo (why, tasks, dependencies, concurrency, caching, trust,
-affected, many machines, inside vx, try it), Docs and Reference around
-it, internals out of the sidebar, one look, build-time SVG diagrams.
-The audit's 714–718 are dropped; their substance feeds chapters 3, 7, 8
-and the "vx, Turborepo, Nx, Bazel" page. IN FLIGHT: R1 (the skeleton)
-and R2 (the chapters, three implementers); the design for Next 17 (a
-sandboxed task reads a linked sibling package unseen) from an
-architect. OWNER, unchanged: cut 0.1.0 (the tag, then delete
-`NPM_TOKEN`), the site's address, the scope list (roadmap 2.4), the
-soak length. NEXT: R1–R4 in the design's order, each chapter edited by
-the architect before it merges; then Next 17. Never end with "what next?".
+14dk. **Handoff after item 727 (2026-09-24, midday).** Since 14dj the
+site was redone as one story and read on a phone: the Guide of ten
+chapters on one toy monorepo, Docs and Reference around it, internals
+out of the sidebar, one look, build-time pictures (721); the old Learn
+pages retired with redirects (722); the widgets restyled and cut (723);
+every picture, the cover, the graph explorer (724) and the scheduler's
+charts (725) given a phone form, held by the diagram kit's laws, and
+code blocks wrapped. Core alongside: a sandboxed task no longer reads
+its own package through its self-link (720, `CACHE_VERSION` v30), nor a
+linked sibling its key does not cover (726, v31, the Decisions entry on
+narrowing core's grant), and a task downstream of a persistent task has
+one key on both paths (727). WHAT STANDS: 14dj is in the next-log file
+(§ Handoff 14dj); the loop holds 719–727. OWNER, unchanged: the site's read
+(Next 16), cut 0.1.0 (the tag, then delete `NPM_TOKEN`), the site's
+address, the scope list (roadmap 2.4), the soak length. NEXT: trim
+STATUS (items 719–727 to history, 14dj to the next-log); then the next
+item the loop's own finds or the roadmap names. Never end with "what
+next?".
 
 16. **The site, redone as one story (owner, 2026-09-24).** R1–R3
     shipped as item 721 (`design/site-redo-2026-09.md`), R4 and the prose
     polish as 722, the widgets as 723, the phone read and the rewritten
     "Done means" as 724, the scheduler's charts in a phone form as 725.
     Left: the owner's read.
-
-17. **A task downstream of a persistent task has two keys (found by
-    item 726, 2026-09-24).** The local classify pass (`stable-keys.ts`)
-    hashes a persistent dependency and the live path (`--force`, a remote
-    cache) does not: probe `e40d7350…` locally, `442990eb…` under
-    `--force`, `e40d7350…` locally again. So a `--force` or remote run
-    writes entries a plain local run never probes: misses, not stale
-    hits. Decide which key is right (a persistent task has no output to
-    fold, so likely neither folds it), make both paths one, and hold it
-    with a row that compares the two keys for that shape.
 
 ## Decisions (this arc)
 
