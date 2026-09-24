@@ -13,10 +13,19 @@
 // folds `part` into the running digest. Equivalent to the old
 // `CryptoHasher.update(...).update(...).digest()` pattern, without
 // allocating an intermediate buffer.
+//
+// Bun reads only the LOW 32 bits of that seed (measured, item 682), so a
+// bare `xxHash3(part, prev)` carries 32 bits of state from step to step:
+// two input sets whose running digests share their low halves merge at
+// the next step, and a birthday search found such a pair in 0.08 s — a
+// stale hit at ~2^-32 per step, not 2^-64. The seed is XORed back in
+// (feed-forward): states that share their low half keep their exact
+// high-half difference through every later step, so they never merge,
+// and a seed of 0 changes nothing, so single-shot digests are unchanged.
 
 /** xxHash3 bigint output. Use as the seed for the next chain step. */
 export function xxh3(input: string | Uint8Array, seed: bigint = 0n): bigint {
-  return Bun.hash.xxHash3(input, seed)
+  return Bun.hash.xxHash3(input, seed) ^ seed
 }
 
 /** xxHash3 hex-encoded, fixed 16 chars (zero-padded). */

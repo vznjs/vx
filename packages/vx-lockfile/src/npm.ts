@@ -129,12 +129,17 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   }
   const digests = reachDigests({ material, edges })
   const out = new Map<string, string>()
-  const seed = Bun.hash.xxHash3(lock.global)
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
+  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
   for (const [p, e] of lock.packages) {
     if (p !== '' && !e.isWorkspace) continue
     out.set(
       p === '' ? '.' : p,
-      Bun.hash.xxHash3(digests[index.get(p)!]!, seed).toString(16).padStart(16, '0'),
+      Bun.hash
+        .xxHash3(`${global}\0${digests[index.get(p)!]!}`)
+        .toString(16)
+        .padStart(16, '0'),
     )
   }
   return out

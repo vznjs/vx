@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v28'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v29'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -199,6 +199,9 @@ over (in order):
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
+Bun's xxHash3 reads only the low 32 bits of a seed, so `xxh3` feeds the
+seed forward (`xxHash3(part, seed) ^ seed`) and the chain carries all 64
+bits of state from step to step (item 682; `tests/hash-chain.test.ts`).
 xxHash3 is non-cryptographic by design — cache keys need uniqueness
 across honest inputs, not adversarial collision resistance.
 
@@ -1153,6 +1156,19 @@ version — the decision log it once named was retired 2026-09-02),
 was not), and the cache tests.
 
 ### History
+
+- **v28 → v29**: every key moves, and the bump is for the notice, not
+  for wrong bytes (item 682). The key is a seed-chained xxHash3 fold,
+  one step per field and per input file, and Bun's xxHash3 reads only
+  the low 32 bits of its seed: a bare chain carried 32 bits of state, so
+  two input sets whose running digests shared their low halves merged at
+  the next step, a stale hit at about 2^-32 per step rather than 2^-64.
+  A birthday search over 2^17 values of one env variable found two that
+  gave one `Cache.key` in under a second. `xxh3` now feeds the seed
+  forward (`xxHash3(part, seed) ^ seed`): states that share their low
+  half keep their high-half difference through every later step. The
+  old keys were wrong but their stored bytes are not, so the fix alone
+  is self-healing; without the bump every entry would miss silently.
 
 - **v27 → v28**: stored bytes wrong under a key the fix does not change —
   the v25/v26 shape (item 667). A bracket in a task glob became a literal
