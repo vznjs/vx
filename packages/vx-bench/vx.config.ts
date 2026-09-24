@@ -1,5 +1,13 @@
 import { defineProject } from '@vzn/vx'
 
+// The site's playground files the research tools in playground-spike/
+// import (item 695), granted by name and keyed as inputs.
+const PLAYGROUND = [
+  'packages/vx-docs/scripts/build-playground.ts',
+  'packages/vx-docs/src/playground/**',
+  'packages/vx-docs/tests/glob-fuzz.ts',
+]
+
 export default defineProject({
   tasks: {
     install: {
@@ -49,11 +57,18 @@ export default defineProject({
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },
 
+    // The type-check follows playground-spike/'s imports into the site's
+    // playground, so it declares that read and keys on those files.
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command: 'oxlint --type-aware --type-check',
-        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+        sandbox: {
+          allow: {
+            read: ['**/*', ...PLAYGROUND.map((p) => p.replace(/^packages\//, '../'))],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
       },
       dependsOn: ['install'],
       cache: {
@@ -66,6 +81,7 @@ export default defineProject({
             '.oxlintrc.json',
             'tsconfig.json',
           ],
+          workspaceFiles: PLAYGROUND,
         },
         outputs: { files: [] },
       },
@@ -99,8 +115,7 @@ export default defineProject({
       },
       dependsOn: ['install'],
       cache: {
-        // playground-spike/: tests/glob-port.test.ts holds the glob shim.
-        inputs: { files: ['*.ts', 'tests/**', 'playground-spike/**/*.ts', 'package.json'] },
+        inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
         outputs: { files: [] },
       },
     },

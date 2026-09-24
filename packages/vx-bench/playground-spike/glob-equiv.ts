@@ -5,15 +5,16 @@
 //     GLOB_FUZZ_N=n   patterns per domain (default 20000, × 25 paths each)
 //
 // Differential fuzz, the oracle being Bun itself, over the domains
-// `glob-fuzz.ts` describes. Each (pattern, path) pair scores the shim
-// (shim/glob.ts, a port of Bun's matcher) and picomatch, the usual library
-// answer. Exits 1 when the shim differs anywhere: since item 692 every
-// domain is at zero, and `tests/glob-port.test.ts` holds that at a smaller
-// size. Numbers: docs/design/playground-spike-2026-09.md § Glob.
+// `packages/vx-docs/tests/glob-fuzz.ts` describes. Each (pattern, path)
+// pair scores the site's shim (packages/vx-docs/src/playground/shim/glob.ts,
+// a port of Bun's matcher) and picomatch, the usual library answer. Exits 1
+// when the shim differs anywhere: since item 692 every domain is at zero,
+// and `packages/vx-docs/tests/playground-glob.test.ts` holds that at the
+// default size. Numbers: docs/design/playground-spike-2026-09.md § Glob.
 
 import picomatch from 'picomatch'
-import { compiledByTaskGlob, globCases, mulberry32 } from './glob-fuzz.js'
-import { Glob as ShimGlob } from './shim/glob.js'
+import { compiledByTaskGlob, globCases, mulberry32 } from '../../vx-docs/tests/glob-fuzz.js'
+import { Glob as ShimGlob } from '../../vx-docs/src/playground/shim/glob.js'
 
 const rand = mulberry32(667)
 const N = Number(process.env.GLOB_FUZZ_N ?? 20_000)

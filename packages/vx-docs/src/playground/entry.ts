@@ -1,5 +1,6 @@
-// W9 spike (item 676): vx's real planner over a virtual workspace — the
-// entry point of the browser bundle (build.ts).
+// vx's real planner over a virtual workspace: the entry point of the
+// playground bundle (scripts/build-playground.ts; spike item 676, promoted
+// in item 695).
 //
 // Everything below the shim is core's own source, bundled unchanged:
 // discovery (`loadWorkspace`, `listProjects`), the package graph, the
@@ -13,10 +14,10 @@
 
 import { platformCalls, setEnv } from './shim/platform.js'
 import { useVfs, Vfs } from './shim/vfs.js'
-import type { ProjectConfig } from '../../vx/src/config.js'
-import { GitFilesCache, applyGitEnumeration, type CacheLayer } from '../../vx/src/cache/index.js'
-import { foldKey } from '../../vx/src/cache/key-fold.js'
-import { relPosix } from '../../vx/src/util/index.js'
+import type { ProjectConfig } from '../../../vx/src/config.js'
+import { GitFilesCache, applyGitEnumeration, type CacheLayer } from '../../../vx/src/cache/index.js'
+import { foldKey } from '../../../vx/src/cache/key-fold.js'
+import { relPosix } from '../../../vx/src/util/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
@@ -25,18 +26,18 @@ import {
   loadWorkspace,
   validateProjectConfig,
   type ProjectEntry,
-} from '../../vx/src/workspace/index.js'
+} from '../../../vx/src/workspace/index.js'
 import {
   buildTaskGraph,
   expandRequested,
   runGraph,
   unresolvedRequests,
   type TaskNode,
-} from '../../vx/src/graph/index.js'
-import { computeReverseDepCount } from '../../vx/src/graph/priorities.js'
-import { loadProjects } from '../../vx/src/orchestrator/projects.js'
-import { plan } from '../../vx/src/orchestrator/plan.js'
-import { createHashCache } from '../../vx/src/orchestrator/task-hash.js'
+} from '../../../vx/src/graph/index.js'
+import { computeReverseDepCount } from '../../../vx/src/graph/priorities.js'
+import { loadProjects } from '../../../vx/src/orchestrator/projects.js'
+import { plan } from '../../../vx/src/orchestrator/plan.js'
+import { createHashCache } from '../../../vx/src/orchestrator/task-hash.js'
 
 export interface PlaygroundInput {
   /** Absolute posix path the workspace lives at inside the VFS. */

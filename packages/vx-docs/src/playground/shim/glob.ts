@@ -7,7 +7,8 @@
 // commit 744846f844374847c902b5e7fd59b4342a51ef99 (the binding is
 // `Glob::r#match` in src/runtime/api/glob.rs). The Rust names are kept in
 // the comments so the two diff side by side. Parity with Bun is held by
-// tests/glob-port.test.ts; the fuzz is playground-spike/glob-equiv.ts.
+// tests/playground-glob.test.ts in this package; the scoreboard against
+// picomatch is packages/vx-bench/playground-spike/glob-equiv.ts.
 //
 // Bun is MIT (Copyright (c) Oven, https://github.com/oven-sh/bun/blob/main/LICENSE.md).
 // matcher.rs itself carries this notice, reproduced as the licence asks:

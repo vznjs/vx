@@ -20,3 +20,6 @@ dist/
 /src/content/docs/schema.md
 /src/content/docs/modules/
 /src/content/docs/design/
+
+# The playground bundle, built by `build.playground` (scripts/build-playground.ts)
+/public/playground/

@@ -149,6 +149,10 @@ export default defineProject({
             // demo-islands.test.ts and learn-architecture.test.ts import the
             // widgets' model to hold the built pages to it.
             'src/components/demos/model/**',
+            // The playground rows: its glob and xxh3 against Bun's, and the
+            // shipped bundle against a fresh build.
+            'src/playground/**',
+            'scripts/build-playground.ts',
             'src/examples/**',
             'astro.config.*',
             '.gitignore',
@@ -164,9 +168,38 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
+    // The playground's planner (roadmap W9, item 695): core's planner source
+    // behind the browser shim, bundled by Bun into `public/`, which astro
+    // copies into `dist/` as it is. Bun and not the site's Vite, so the file
+    // core's parity rows build (with this script's own function) is the file
+    // the site ships. The bundle IS core's source, read across the project
+    // boundary by relative import. Core is a devDependency, whose directory
+    // the sandbox grants by itself (the stub's export names come from core's
+    // own `node_modules` that way), but the read is named so the config says
+    // what the bundle is made of; its key arrives through `install` (core's
+    // `source`, item 687).
+    'build.playground': {
+      description: 'bundle the playground planner → public/playground/planner.js',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun scripts/build-playground.ts',
+        sandbox: {
+          allow: {
+            read: ['**/*', '../vx/src/**'],
+            write: ['public/playground/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      cache: {
+        inputs: { files: ['scripts/build-playground.ts', 'src/playground/**', 'package.json'] },
+        outputs: { files: ['public/playground/planner.js'] },
+      },
+    },
+
     build: {
       description: 'astro build → dist/',
-      dependsOn: ['install', 'import'],
+      dependsOn: ['install', 'import', 'build.playground'],
       exec: {
         // Under Bun, not the host's Node: `bun --bun` runs astro's bin on
         // Bun's runtime, which builds the same 133 pages in half the time

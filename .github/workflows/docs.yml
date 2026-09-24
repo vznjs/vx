@@ -5,9 +5,16 @@ name: Deploy docs
 on:
   push:
     branches: [main]
+    # The site ships code, not only pages: the playground bundle is core's
+    # planner source (item 695), and the scheduler simulator bundles
+    # core's ranking, vx-bench's simulator and the history plugin's
+    # critical path (vx-docs' SIM_SOURCES). A change there re-deploys.
     paths:
       - 'packages/vx/docs/**'
+      - 'packages/vx/src/**'
       - 'packages/vx-docs/**'
+      - 'packages/vx-bench/schedule-policy.ts'
+      - 'packages/vx-schedule-history/src/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 

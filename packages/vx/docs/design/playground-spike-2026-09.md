@@ -8,8 +8,13 @@ item 8). Before any widget depends on it, the spike answers two questions:
    platform shim?
 2. Does the bundle produce the same task graph and cache keys as the CLI?
 
-The spike code lives in `packages/vx-bench/playground-spike/`, which is
-private and ships in no package. Nothing in `packages/vx/src` changed.
+The spike's code lived in `packages/vx-bench/playground-spike/`. Nothing
+in `packages/vx/src` changed. Since item 695 the bundle's parts are the
+site's: the entry, the shim and the fixture are
+`packages/vx-docs/src/playground/`, `packages/vx-docs/scripts/build-playground.ts`
+builds them, and the spike's comparisons are test rows (see
+[Shipped](#shipped-item-695)). The measurement tools stay in
+`packages/vx-bench/playground-spike/` and import the site's files.
 
 ## Verdict: feasible, with changes
 
@@ -33,9 +38,11 @@ All numbers are from Bun 1.4.2 on Linux x64.
 
 ### The bundle
 
-`build.ts` calls `Bun.build({ target: 'browser', minify: true })`, the
-JS form of `bun build --target=browser`. The JS form is needed for the
-aliasing plugin.
+The build (the spike's `build.ts`, now `buildPlayground()` in
+`packages/vx-docs/scripts/build-playground.ts`) calls
+`Bun.build({ target: 'browser', minify: true })`, the JS form of
+`bun build --target=browser`. The JS form is needed for the aliasing
+plugin.
 
 | Build                                          | Raw     | Gzip   |
 | ---------------------------------------------- | ------- | ------ |
@@ -43,6 +50,7 @@ aliasing plugin.
 | Borrow removed (measured), the size P1 reaches | 76,519  | 27,408 |
 | After P1 (item 691), `foldKey` imported        | 78,465  | 27,972 |
 | After the exact glob port (item 692)           | 81,370  | 28,666 |
+| Pure stubs, one inlined export (item 695)      | 79,811  | 28,154 |
 
 About 50 KB of the spiked bundle is the local store. That is
 `src/cache/cache.ts` (26 KB) with the archive, tar, zstd, output-index,
@@ -108,7 +116,9 @@ Only the enumeration, the configs and the store come from the page.
 
 ### Browser equals CLI
 
-`compare.ts` writes the fixture (`fixture.ts`) to a temporary git
+The spike's `compare.ts`, now the rows of
+`packages/vx/tests/playground-parity.unsafe.test.ts`, writes the fixture
+(`packages/vx-docs/src/playground/fixture.ts`) to a temporary git
 repository. The fixture has five projects:
 
 - a `^build` chain and a `pkg#task` edge;
@@ -147,7 +157,8 @@ The priorities and the dispatch order come from the bundled
 `computeReverseDepCount` and `runGraph`. They are compared with core's
 source run on the CLI's graph.
 
-Plan latency inside the bundle (`bench.ts`, min and median):
+Plan latency inside the bundle (`playground-spike/bench.ts`, min and
+median):
 
 | Workspace                      | Min     | Median  |
 | ------------------------------ | ------- | ------- |
@@ -156,8 +167,11 @@ Plan latency inside the bundle (`bench.ts`, min and median):
 
 ### xxh3
 
-`xxh3-equiv.ts` compares each candidate with `Bun.hash.xxHash3` on the
-same inputs:
+The spike's `xxh3-equiv.ts` compared each candidate with
+`Bun.hash.xxHash3` on the same inputs (since item 695 the pure-TS port's
+two columns and the control are the rows of
+`packages/vx-docs/tests/playground-xxh3.test.ts`, and hash-wasm, which no
+row needs, left the repo):
 
 - **(i)** 1,000 random inputs covering every length branch (0–16,
   17–128, 129–240, and long inputs across block boundaries). A seventh
@@ -188,7 +202,7 @@ The 200 control misses are the fifth of inputs whose seed is above 2^32.
 
 ### Glob
 
-`glob-equiv.ts` fuzzes against `Bun.Glob.match` as the oracle, with
+`playground-spike/glob-equiv.ts` fuzzes against `Bun.Glob.match` as the oracle, with
 20,000 patterns × 25 paths per domain. Task globs are compiled by core's
 own `taskGlob`, so the escaping under test is core's. "Git paths" are
 what the planner matches: non-empty segments with no leading or trailing
@@ -230,9 +244,11 @@ credits Devon Govett, glob-match's author, so the shared quirks are
 inheritance. The port walks UTF-8 bytes as the Rust does, and keeps the
 depth-10 brace stack and the 10,000-branch budget, which the rule-based
 shim lacked. It is 5.5 KB of the bundle, against the rules' 2.6 KB.
-`tests/glob-port.test.ts` holds it at zero in all four domains at this
-seed and size, and pins hand rows for the shapes above. It needs no
-repository, so it runs in `@vzn/vx-bench#test` under the sandbox.
+`packages/vx-docs/tests/playground-glob.test.ts` (item 692's
+`tests/glob-port.test.ts` in vx-bench, moved with the shim in item 695)
+holds it at zero in all four domains at this seed and size, and pins hand
+rows for the shapes above. It needs no repository, so it runs in
+`@vzn/vx-docs#test` under the sandbox.
 
 ## Proposed core changes (none made)
 
@@ -273,9 +289,10 @@ repository, so it runs in `@vzn/vx-bench#test` under the sandbox.
   `Bun.nanoseconds()` and reads `process.env` at module load. Taking t0
   on the first `mark` would remove one shim entry. This is optional.
 
-## Proposed architecture for W9
+## Architecture for W9
 
-- **The bundle.** Promote the shim and the entry into
+- **The bundle.** SHIPPED as item 695 ([Shipped](#shipped-item-695)).
+  Promote the shim and the entry into
   `packages/vx-docs/src/playground/`. A vx task
   (`@vzn/vx-docs#build.playground`) builds it with `Bun.build`, with the
   same aliases and `define`, into the site's static assets. It is built
@@ -286,19 +303,21 @@ repository, so it runs in `@vzn/vx-bench#test` under the sandbox.
   nothing on a page that never opens the playground. Plans take
   milliseconds, so the main thread is fine; a Worker becomes worth it
   above roughly a thousand files.
-- **The pin (browser = CLI).** Three rows:
+- **The pin (browser = CLI).** SHIPPED as item 695, in core's unsafe
+  suite as decided below, not in a new task. Three rows:
   - `compare.ts` becomes a test: the built bundle in Bun with the host
     APIs trapped, against the CLI's `--dry=json` on the fixture, with
     the scenarios, the negative control and an exact expected set of
     platform calls;
   - `xxh3-equiv.ts` becomes a test;
   - `glob-equiv.ts` becomes a test: done as item 692,
-    `tests/glob-port.test.ts`, at zero differences in every domain.
+    `tests/glob-port.test.ts`, at zero differences in every domain
+    (now `packages/vx-docs/tests/playground-glob.test.ts`).
 
   The CLI half needs git, and a sandboxed shard has none, so these rows
-  live in a task without `exec.sandbox`. Such a task is the third
-  exception in the repo, so it needs the owner's word, or a way for the
-  sandbox to host git. The rows run on CI's pinned Bun, so a Bun change
+  live in a task without `exec.sandbox`. A new such task would be the
+  third exception in the repo; the decision below puts them in
+  `test.bun.unsafe` instead. The rows run on CI's pinned Bun, so a Bun change
   to `xxHash3` or `Glob` fails a row instead of silently desyncing the
   site.
 
@@ -344,8 +363,75 @@ work that follows.
   ships. The island loads it with a dynamic `import()` on first use.
 
 Order: P1 (item 691), the exact glob port (item 692), then the bundle
-and its task with the parity rows, then config editing, then the UI.
-W10 and W11 build on the finished playground.
+and its task with the parity rows (item 695), then config editing, then
+the UI. W10 and W11 build on the finished playground.
+
+## Shipped (item 695)
+
+The bundle, its task and the parity rows. No page loads the bundle yet.
+
+- **Where things are.** `packages/vx-docs/src/playground/` holds
+  `entry.ts` (`planPlayground`), the shim (`shim/`) and the parity
+  fixture (`fixture.ts`), moved from the spike with their history.
+  `packages/vx-docs/scripts/build-playground.ts` exports
+  `buildPlayground()`, the only copy of the build options, and writes
+  `public/playground/planner.js` when run. The measurement tools
+  (`bench.ts`, `bundle-report.ts`, which replaced the spike's reporting
+  `build.ts`, `seed-probe.ts`, `glob-equiv.ts`, `glob-probe.ts`) stay in
+  `packages/vx-bench/playground-spike/` and import the site's files;
+  vx-bench's `lint.oxlint` declares that read and keys on those files.
+- **The task.** `@vzn/vx-docs#build.playground` runs the script
+  sandboxed, reads its own project and `../vx/src/**`, writes
+  `public/playground/**`, keys on the script, `src/playground/**` and
+  `package.json` (core's source arrives through `install`, item 687), and
+  outputs exactly `public/playground/planner.js`. The site's `build`
+  depends on it, and astro copies the file into `dist/`. The file is
+  gitignored.
+- **A fixed name, not a content hash.** The task's output is that one
+  name, so a hit restores it and a rebuild never leaves an old hashed
+  sibling in `public/` to ship. GitHub Pages serves every file, the pages
+  included, with the same short max-age, so a hash buys no long-lived
+  caching. The island will import `/vx/playground/planner.js`.
+- **The build is deterministic now.** The spike's stubs inlined every
+  export whose value was JSON under 20 KB. An export's value is the
+  building process's state: `node:module`'s `_cache` is its module cache,
+  data in a script and over the limit inside `bun test`, where it became
+  a call that tree-shaking keeps. The same sources built 81,370 bytes in
+  the task and 81,397 in the site's test. The stubs now inline only
+  `node:module`'s `builtinModules`, the one value core reads at load, and
+  every other export is a `/* @__PURE__ */` proxy, so unused ones are
+  shaken out: 79,811 B raw, 28,154 B gzip.
+
+The rows:
+
+| Row                                                                                                       | Where                                                                                     |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Per scenario: keys, cache statuses and deps equal the CLI's                                               | `packages/vx/tests/playground-parity.unsafe.test.ts` (`test.bun.unsafe`: git, no sandbox) |
+| Per scenario: priorities and dispatch order equal core's scheduler on the CLI's graph                     | same                                                                                      |
+| Per scenario: exactly the expected keys move, in both planners (0, 5, 6)                                  | same                                                                                      |
+| Negative control: the bundle under the wrong `API_URL` differs on exactly the five tasks it reaches       | same                                                                                      |
+| No host trap fires; the calls made are exactly `Bun.Glob`, `Bun.file`, `Bun.hash.xxHash3`; the traps fire | same                                                                                      |
+| The site ships exactly what `buildPlayground()` builds; no import and no free `Bun` / `process` in it     | `packages/vx-docs/tests/playground-bundle.test.ts` (sandboxed, reads `dist/`)             |
+| xxh3: 1,000 inputs and 200 chains equal Bun's; the 64-bit seed misses exactly the 200 high seeds          | `packages/vx-docs/tests/playground-xxh3.test.ts` (sandboxed, no git)                      |
+| Glob: four fuzz domains at zero, hand rows                                                                | `packages/vx-docs/tests/playground-glob.test.ts` (sandboxed, no git)                      |
+
+The parity rows build the bundle with `buildPlayground()` and import it
+from a temporary file; the CLI runs over the fixture committed to a
+temporary repository under a canonical temporary root, with its own
+`--cache-dir`. Core's type-check stays its own: the rows import the
+site's files by computed path.
+
+`tests/package-boundaries.unsafe.test.ts` resolved nothing: its pattern
+matched `../src/`, core's path before it moved under `packages/`, so a
+sibling's `src/` could reach `packages/vx/src` unseen. It now resolves
+every relative specifier against its file and exempts the playground by
+name, and asserts it sees the playground's reach before it asserts no
+other.
+
+In Chromium (Playwright, headless, the built site's `astro preview`),
+`import('/vx/playground/planner.js')` in a secure context planned the
+fixture with all eight keys equal to `vx run --dry=json`'s, the same
+dispatch order and no page error.
 
 ## Risks
 
@@ -354,7 +440,7 @@ W10 and W11 build on the finished playground.
    parity rows turn that into a red build instead of a wrong page.
 2. **Glob residuals.** Closed by item 692: the matcher is a port of
    Bun's, at zero differences on the fuzz. A Bun release that changes its
-   matcher reopens this, and `tests/glob-port.test.ts` goes red when it
+   matcher reopens this, and `playground-glob.test.ts` goes red when it
    does.
 3. **Config evaluation** runs the reader's code in the page. Run it in a
    Worker. Its object must also serialise the way Bun's evaluation does.
@@ -392,18 +478,17 @@ likely spends that whole budget.
 
 ## Reproducing
 
-From `packages/vx-bench`, after `bun install`:
+The rows run in the gate: `@vzn/vx#test.bun.unsafe` (parity) and
+`@vzn/vx-docs#test` (the shipped bundle, xxh3, glob). The tools, from
+`packages/vx-bench` after `bun install`:
 
 ```sh
-bun playground-spike/build.ts        # the bundle, its sizes and specifiers → dist/ (ignored)
-bun playground-spike/compare.ts      # browser = CLI; SPIKE_TMP=<dir> for the fixture repo
-bun playground-spike/bench.ts        # plan latency inside the bundle
-bun playground-spike/xxh3-equiv.ts   # the three xxh3 candidates
-bun playground-spike/seed-probe.ts   # Bun's 32-bit seed
-bun playground-spike/glob-equiv.ts   # the glob fuzz (DUMP=n prints n differences)
+bun playground-spike/bundle-report.ts  # the bundle's sizes, specifiers and bytes per module
+bun playground-spike/bench.ts          # plan latency inside the bundle
+bun playground-spike/seed-probe.ts     # Bun's 32-bit seed
+bun playground-spike/glob-equiv.ts     # the glob fuzz with picomatch (DUMP=n prints n differences)
 bun playground-spike/glob-probe.ts '<pattern>' '<path>'   # one Bun.Glob answer
 ```
 
-Each script exits 1 when its claim fails, `glob-equiv.ts` on any
-difference in any domain (`GLOB_FUZZ_N=n` sets its size). The two
-probes only print.
+`glob-equiv.ts` exits 1 on any difference in any domain
+(`GLOB_FUZZ_N=n` sets its size). The rest print.

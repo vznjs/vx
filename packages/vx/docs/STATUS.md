@@ -1023,6 +1023,72 @@ per invocation; the `--no-daemon` the solidjs script passes is a no-op;
 only Nx's daemon is outside the CPU column). `comparison.md` said
 "since 2.10" (from W7's reading) and now says 2.9.
 
+14cq. **Item 695 (roadmap W9, 2026-09-24): the playground bundle is the
+site's, built by a vx task and held to the CLI.** The spike's entry, shim
+and fixture moved (`git mv`) to `packages/vx-docs/src/playground/`;
+`packages/vx-docs/scripts/build-playground.ts` exports `buildPlayground()`,
+the only copy of the build options, and `@vzn/vx-docs#build.playground`
+runs it sandboxed (reads its project and `../vx/src/**`, writes
+`public/playground/**`, keys on the script and `src/playground/**`, core's
+source through `install`) to `public/playground/planner.js`, a fixed name
+(an exact output a hit restores and no stale hashed sibling to ship; Pages
+gives every file the same short max-age, so a hash buys nothing). The
+site's `build` depends on it; the file is gitignored. 79,811 B raw, 28,154
+B gzip. A finding on the way: the spike's stubs inlined every export
+whose value was JSON under 20 KB, and `node:module`'s `_cache` (the
+building process's module cache) was data in the task and too big inside
+`bun test`, where it became a call tree-shaking keeps, so the same sources
+built 81,370 B in the task and 81,397 B in the site's test. The stubs now
+inline only `builtinModules` and mark every other export
+`/* @__PURE__ */` (1,559 B smaller). The rows: `packages/vx/tests/playground-parity.unsafe.test.ts`
+(in `test.bun.unsafe`, per the W9 decision; no new unsandboxed task)
+builds with `buildPlayground()`, runs `vx run build ci --all --dry=json`
+with its own `--cache-dir` on the fixture committed under a canonical temp
+root, and plans the same files in the bundle with 20 host APIs trapped:
+per scenario (committed, env change, uncommitted edit) keys, statuses and
+deps equal, priorities and dispatch order equal core's scheduler on the
+CLI's graph, and exactly 0, 5 and 6 keys move in both planners; the
+wrong-env control differs on exactly the five `API_URL` tasks; no trap
+fires, the calls are exactly `Bun.Glob`, `Bun.file` and
+`Bun.hash.xxHash3`, and a positive row proves the traps fire. In the
+site's sandboxed `test`: `playground-bundle.test.ts` (the built site ships
+exactly what `buildPlayground()` builds; no import, no free `Bun` or
+`process`, each pattern proven on a positive first), `playground-xxh3.test.ts`
+(`xxh3-equiv.ts` as rows: 1,000 inputs and 200 chains equal Bun's, and the
+64-bit-seed reference misses on exactly the 200 inputs whose seed exceeds
+32 bits; hash-wasm, which no row needs, left vx-bench) and
+`playground-glob.test.ts` (item 692's `glob-port.test.ts`, moved with the
+shim it tests; its generator is `tests/glob-fuzz.ts`). The tools stay in
+vx-bench (`bundle-report.ts` replaces the reporting half of `build.ts`;
+`bench.ts`, `seed-probe.ts`, `glob-equiv.ts`, `glob-probe.ts`) and import
+the site's files, which vx-bench's `lint.oxlint` now grants and keys on.
+`package-boundaries.unsafe.test.ts` rule 1 matched `../src/`, core's path
+before it moved under `packages/`, so it passed with the playground's ten
+imports of `../../../vx/src/` in a sibling's `src/`; it now resolves each
+relative specifier, exempts the playground by name, and asserts it sees
+that reach first. The docs deploy now also triggers on core's `src/`, the
+scheduler simulator's sources and the history plugin's `src/`, which the
+site ships. Differentials, each restored by reverse edit: the shim's xxh3
+reading the full seed reddens the xxh3 input and chain rows (the control
+passes both ways) and four parity rows; the reference masking its seed
+reddens the control alone; the 240-byte branch moved to 239 reddens the
+input row and the control; the bundle given the committed files while the
+CLI sees the edit reddens that scenario's keys and moved-keys rows; the
+build without the `Bun` define fails the parity setup with "trapped: the
+bundle reached the host's Bun.file" and the site's no-free-`Bun` row; one
+worker for the bundle's dispatch reddens the three scheduler rows (no
+priorities at all is equivalent: `runGraph` computes the same
+reverse-dependency count as its baseline); the shim not counting
+`Bun.Glob` reddens the platform-call row alone; an ignored env reddens
+four rows; `build` without `build.playground` over a stale `public/`
+reddens the shipped-bytes row, and with the dependency the same shim edit
+is green; the playground exemption removed lists the ten imports. In
+Chromium (Playwright, the built site's `astro preview`),
+`import('/vx/playground/planner.js')` planned the fixture with all eight
+keys equal to the CLI's and no page error. Not done: no page loads the
+bundle yet (the island comes with the UI), and CLAUDE.md's layout does
+not yet name `src/playground/`.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page
@@ -1047,8 +1113,11 @@ only Nx's daemon is outside the CPU column). `comparison.md` said
     questions are decided in `design/playground-spike-2026-09.md` § W9
     decisions (parity rows in core's unsafe suite, `vx.config.mjs`
     evaluated in a Worker, a Bun-built bundle from a vx task). The exact
-    glob port (item 692) is in flight; the bundle, its task and the
-    parity rows follow.
+    glob port is DONE (item 692, entry 14cn), and so are the bundle, its
+    task and the parity rows (item 695, entry 14cq): the site builds
+    `playground/planner.js` and core's unsafe suite holds it to the CLI.
+    Next is config editing (the reader's `vx.config.mjs` evaluated in a
+    Worker, with its parity row), then the island and the UI.
 
 ## Decisions (this arc)
 
