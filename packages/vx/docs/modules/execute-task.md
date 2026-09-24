@@ -23,7 +23,7 @@ export interface ExecuteArgs {
   nestedProjectDirs: string[]
   runStartHrTimeNs: bigint
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
-  liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; signal handler SIGTERMs these
+  liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
 }
 
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>

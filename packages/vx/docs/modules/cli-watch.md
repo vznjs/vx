@@ -146,12 +146,14 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
    - Reentrancy guard: while a cycle is running, further events set
      a `pending` flag; the loop drains it after the current cycle
      finishes. Two events can collapse into one re-run.
-6. **Exit.** `watchCmd` installs `process.once('SIGINT' | 'SIGTERM')`
-   BEFORE the initial run; both abort one `AbortController` whose
-   signal every cycle's `run()` carries (`RunOptions.signal`,
-   `handleSignals: false`). The in-flight cycle tears its children down
-   (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL) and returns; the loop closes
-   its watchers, waits for that cycle, and resolves 0. SIGINT also
+6. **Exit.** `watchCmd` installs `process.once` handlers for SIGINT,
+   SIGTERM and SIGHUP BEFORE the initial run; each aborts one
+   `AbortController`, with the signal's name as the reason, whose
+   signal every cycle's `run()` carries (`RunOptions.signal`, `handleSignals: false`). The
+   in-flight cycle tears its children down (the received signal, a
+   SIGHUP as SIGTERM; `VX_KILL_GRACE_MS`; SIGKILL) and returns; the loop
+   closes its watchers, waits for that cycle, stops the persistent tasks
+   it holds with the same signal, and resolves 0. SIGINT also
    prints `vx watch: stopped`. Until 2026-09-10 the handlers went in
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child
@@ -233,7 +235,8 @@ end), `tests/watch-loop-members.test.ts` (a package coming or going),
 `tests/watch-loop-uncached.test.ts` (undeclared writes judged by
 settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
 with different bytes every run), `tests/watch-signals.test.ts` (SIGINT
-and SIGTERM during the initial run and a cycle), and
+and SIGTERM during the initial run and a cycle; a Ctrl-C reaches the
+cycle's task and the held dev server as SIGINT), and
 `tests/staged-once.test.ts` (a cycle evaluates live).
 
 ## Replacing this module

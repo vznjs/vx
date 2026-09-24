@@ -25,6 +25,7 @@ import {
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import {
+  forwardedSignal,
   run as runOrchestrator,
   type HeldPersistent,
   type RunOptions,
@@ -408,8 +409,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // run() must not install its exit-the-process handlers — Ctrl-C
   // mid-cycle would kill the loop with 130 instead of the loop's own
   // clean shutdown — so it gets `signal` instead: on SIGINT/SIGTERM the
-  // controller aborts, the in-flight cycle tears its children down
-  // (SIGTERM, grace, SIGKILL) and returns, and the loop resolves 0.
+  // controller aborts with the signal's name as the reason, the in-flight
+  // cycle forwards it to its children (a SIGINT as SIGINT, the rest as
+  // SIGTERM; grace, SIGKILL) and returns, and the loop resolves 0.
   // Installed BEFORE the initial run: until 2026-09-10 the handlers went
   // in with the loop, so a SIGTERM during the initial run took Bun's
   // default (exit 143) and left the cycle's children running under init.
@@ -429,12 +431,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   delete opts.staged
   process.once('SIGINT', () => {
     process.stdout.write('\nvx watch: stopped\n')
-    stop.abort()
+    stop.abort('SIGINT')
   })
-  process.once('SIGTERM', () => stop.abort())
+  process.once('SIGTERM', () => stop.abort('SIGTERM'))
   // A task runs in its own session (exec/kill-tree.ts): the terminal
   // closing reaches the loop alone, and the loop passes it on.
-  process.once('SIGHUP', () => stop.abort())
+  process.once('SIGHUP', () => stop.abort('SIGHUP'))
 
   // Enumerate projects-in-scope so we know what dirs to watch.
   // `opts.projects` is the resolved scope; undefined means "every
@@ -471,7 +473,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   process.stdout.write('vx watch: initial run...\n\n')
   const initial = await runOrchestrator(opts)
   if (stop.signal.aborted) {
-    await initial.persistent?.stop()
+    await initial.persistent?.stop(forwardedSignal(stop.signal.reason))
     return 0
   }
 
@@ -1096,7 +1098,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       // The aborted cycle is tearing its children down; resolve only once
       // it has returned, so the process never exits over a live child.
       await inFlight
-      await held?.stop()
+      await held?.stop(forwardedSignal(stop.reason))
       resolve(0)
     }
     if (stop.aborted) {

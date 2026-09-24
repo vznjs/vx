@@ -124,9 +124,10 @@ terminal and a task succeeding or failing. Read it alongside
  │    • liveChildren — Set<Subprocess> of in-flight children; the
  │                runner adds/removes each around its spawn.
  │    • SIGINT/SIGTERM/SIGHUP handlers (removed in a finally): on
- │                signal, SIGTERM everything in liveChildren +
- │                persistentRegistry, wait VX_KILL_GRACE_MS (2 s) for
- │                their groups, SIGKILL what is still there, close the cache,
+ │                signal, forward it (SIGHUP as SIGTERM) to everything
+ │                in liveChildren + persistentRegistry, wait
+ │                VX_KILL_GRACE_MS (2 s) for their groups, SIGKILL
+ │                what is still there, close the cache,
  │                exit 128+signo (SIGINT → 130, SIGTERM → 143,
  │                SIGHUP → 129). SIGHUP is registered because a task
  │                runs in its own session, so a closing terminal

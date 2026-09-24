@@ -158,8 +158,9 @@ the very end (the dev server IS the point of the run).
 `run()` installs SIGINT + SIGTERM + SIGHUP handlers for its own
 duration (unless `RunOptions.handleSignals === false`) and removes them
 in a `finally`, so repeated `run()` calls never stack listeners. On
-signal: SIGTERM everything in `liveChildren` + `persistentRegistry`,
-close the cache, `process.exit(signalExitCode(signal))`
+signal: forward it (a SIGHUP as SIGTERM) to everything in
+`liveChildren` + `persistentRegistry`, close the cache,
+`process.exit(signalExitCode(signal))`
 (130 / 143 / 129).
 Children killed this way classify as `aborted` — not counted, not
 recorded. Watch mode passes `handleSignals: false`; the loop owns

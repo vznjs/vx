@@ -16,7 +16,7 @@ does not matter.
 
 ```ts
 export type Child = ReturnType<typeof Bun.spawn>
-export function killTree(child: Child, signal: 'SIGTERM' | 'SIGKILL'): void
+export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void
 export async function untilGroupsGone(children: readonly Child[], graceMs: number): Promise<Child[]>
 ```
 
@@ -48,7 +48,9 @@ groups are polled every 20 ms, and only while one is left.
   detached too; bwrap's pid namespace would reap on its own, and one
   rule for every spawn is simpler than two.
 - A task runs in its own session, so the terminal closing no longer
-  reaches it: vx handles SIGHUP beside SIGINT and SIGTERM (129).
+  reaches it: vx handles SIGHUP beside SIGINT and SIGTERM (129). The
+  same session is why a terminal's Ctrl-C reaches vx alone, and vx
+  forwards it as SIGINT (`signals.md`), so a task hears it once.
 
 ## What it does NOT do
 

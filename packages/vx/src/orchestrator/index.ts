@@ -18,6 +18,7 @@ export type { HeldPersistent, RunOptions, RunSummary } from './options.js'
 export { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 // The CLI reads a recorded exit code; the runner's convention decodes it.
 export { exitSignal } from '../exec/index.js'
+export { forwardedSignal } from './signals.js'
 export { defaultLogger, resolveOutputView } from './logger.js'
 export type { Logger, OutputView } from './logger.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'

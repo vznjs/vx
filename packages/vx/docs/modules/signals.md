@@ -2,8 +2,10 @@
 
 ## Purpose
 
-A SIGINT, SIGTERM or SIGHUP to the vx process mid-run forwards SIGTERM
-to every live child's process group and every ready persistent task's,
+A SIGINT, SIGTERM or SIGHUP to the vx process mid-run forwards the
+signal it received — SIGINT as SIGINT, SIGTERM as SIGTERM, SIGHUP as
+SIGTERM — to every live child's process group and every ready
+persistent task's,
 waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) for those GROUPS to go,
 SIGKILLs every group with a member left, closes the cache handle, and
 exits 128 + signo
@@ -16,6 +18,21 @@ to the process alone — CI cancellation, `kill <pid>` — orphaned every
 running child; terminal Ctrl-C only worked through the process group.
 Without the escalation (2026-09-10) a child that trapped TERM outlived
 the run. Split from `run.ts` on 2026-09-10 (pure motion).
+
+The received signal, not SIGTERM for all (2026-09-24): a task runs in
+its own session, so a terminal's Ctrl-C reaches vx alone, and vx sending
+SIGTERM in its place skipped every cleanup bound to SIGINT only — Node's
+`process.on('SIGINT')`, a shell's `trap … INT` (turborepo#444, #12652,
+#13097 and nx#23585, each reproduced on vx). A task hears the Ctrl-C
+once, from vx. A hang-up forwards SIGTERM, because to many servers
+SIGHUP means "reload". One consequence is the terminal's own: a
+non-interactive shell starts what it backgrounds (`server & wait`) with
+SIGINT ignored, so on a Ctrl-C such a server waits out the grace and is
+SIGKILLed, exactly as it would outlive a Ctrl-C in a plain terminal;
+give it a SIGINT trap, or `exec` it. `forwardedSignal` is the rule, and
+`RunOptions.signal` follows it through its abort reason: aborted with
+the reason `'SIGINT'` (the watch loop's Ctrl-C) the children get
+SIGINT; any other reason, SIGHUP's included, sends SIGTERM.
 
 `terminateChildren` is that teardown on its own, minus the exit: the
 process handler, `RunOptions.signal` (an embedder aborting a run — the
@@ -30,7 +47,13 @@ SIGKILLed mid-cleanup (2026-09-24).
 
 ```ts
 export const SIGNAL_SHUTDOWN_GRACE_MS = 2000
-export async function terminateChildren(live: () => Subprocess[], graceMs?: number): Promise<void>
+export type ForwardedSignal = 'SIGINT' | 'SIGTERM' // SIGHUP forwards as SIGTERM
+export function forwardedSignal(received: unknown): ForwardedSignal // a SIGINT stays one; SIGTERM, SIGHUP, anything else → SIGTERM
+export async function terminateChildren(
+  live: () => Subprocess[],
+  signal?: ForwardedSignal, // default SIGTERM
+  graceMs?: number,
+): Promise<void>
 export function forwardSignals(args: {
   enabled: boolean // RunOptions.handleSignals
   log: Logger
@@ -63,7 +86,9 @@ the wait ends when the group is gone); `tests/signal-handling.test.ts` (SIGINT �
 the one-shot child and the ready persistent child dead; a child that
 ignores TERM is SIGKILLed after the grace; a second signal skips the
 grace; the in-process lifecycle: handlers removed after every run,
-`handleSignals: false` installs none); `tests/abort.test.ts`
+`handleSignals: false` installs none; a one-shot and a ready persistent
+task each hear the signal as vx forwards it, a Ctrl-C as SIGINT; a
+task is its own session leader); `tests/abort.test.ts`
 (`RunOptions.signal`: the running child and its dependents `aborted`,
 a stubborn child SIGKILLed, an already-aborted signal runs nothing);
 `tests/keep-alive.test.ts` (one requested server exiting ends the

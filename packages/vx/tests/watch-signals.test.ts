@@ -96,4 +96,51 @@ describe('vx watch under a signal (e2e)', () => {
     await reader
     expect(out).toContain('vx watch: stopped')
   }, 20_000)
+
+  // The loop forwards the signal it received, as `vx run` does: a Ctrl-C
+  // reaches the cycle's task and the dev server it holds between cycles
+  // as SIGINT, so a SIGINT-only cleanup runs. The task records which
+  // signal reached it.
+  const TRAPS =
+    "trap 'echo SIGINT > got.txt; exit 0' INT; trap 'echo SIGTERM > got.txt; exit 0' TERM"
+  for (const [when, persistent] of [
+    ['during the initial run reaches its task', false],
+    ['while idle reaches the dev server it holds', true],
+  ] as const) {
+    it(`SIGINT ${when} as SIGINT`, async () => {
+      const dir = await addProject(
+        root,
+        'app',
+        `
+          export default {
+            tasks: {
+              t: {
+                exec: {
+                  command: "${TRAPS}; echo $$ > pid.txt; echo READY; while :; do sleep 0.05; done",
+                  ${persistent ? "persistent: { readyWhen: 'READY' }," : ''}
+                },
+              },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'watch', 't', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+      })
+      let out = ''
+      const reader = (async () => {
+        for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+      })()
+      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      if (persistent) await waitForText(async () => out, 'watching', 10_000)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(0)
+      await reader
+      expect((await Bun.file(path.join(dir, 'got.txt')).text()).trim()).toBe('SIGINT')
+      expect(await waitForDead(pid, 1_000)).toBe(true)
+    }, 20_000)
+  }
 })
