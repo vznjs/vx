@@ -1,6 +1,8 @@
-// The landing page (roadmap W8, item 709; design/landing-2026-09.md): the
-// problem first, then the three ideas, then the numbers. These rows read the
-// page as it shipped, `dist/index.html`, which the `build` task writes.
+// The landing page as the Guide's cover (design/site-redo-2026-09.md § The
+// landing; R3 of the site redo): one question and one picture, the ten
+// chapters, then the numbers, adoption and what is not inside. These rows
+// read the page as it shipped, `dist/index.html`, which the `build` task
+// writes.
 //
 // The measurements are not checked here: `@vzn/vx-bench#check.site` holds
 // the benchRows block, the stat tiles and the graph's size to results.json,
@@ -10,35 +12,20 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { CHAPTERS } from '../src/guide/chapters.js'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
-const REPO = path.resolve(import.meta.dir, '../../..')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
-const GH_BLOB = 'https://github.com/vznjs/vx/blob/main/'
 
-// Every section, top to bottom: the three ideas, then the numbers, then the
-// sections the page had before the ideas.
-const SECTIONS = [
-  'inputs',
-  'seams',
-  'speed',
-  'bench',
-  'real',
-  'scale',
-  'why',
-  'open',
-  'plugins',
-  'config',
-  'migrate',
-]
+// Every section below the hero, top to bottom. The three idea sections of
+// item 709 (`inputs`, `seams`, `speed`), the feature and plugin cards
+// (`why`, `plugins`) and the config sample (`config`) are gone: the
+// chapters teach each of them now.
+const SECTIONS = ['chapters', 'run', 'bench', 'real', 'scale', 'migrate', 'open']
 
-// Each idea section and the pages it must link to: its Learn pages, and for
-// the third, which has none, the page on its mechanisms and benchmarks.md.
-const IDEA_LINKS: Record<string, string[]> = {
-  inputs: ['learn/caching/', 'learn/correctness/', 'learn/labs/'],
-  seams: ['learn/architecture/', 'learn/extending/'],
-  speed: ['concepts/why-vx-is-fast/', 'benchmarks/'],
-}
+// The toy monorepo's four packages, in the order `for p in packages/*`
+// visits them: by name.
+const LOOP_ORDER = ['api', 'app', 'ui', 'utils']
 
 // Every internal link the page carried before item 709 (the built page at
 // f565ec5f), without the base path. Two of them, the benchmark panels'
@@ -71,9 +58,13 @@ const OLD_LINKS = [
   'quickstart/',
   'schema/',
 ]
-// Links removed on purpose, each with the reason. None so far: the cards the
-// idea sections replaced linked pages the page still links elsewhere.
-const REMOVED: Record<string, string> = {}
+// Links removed on purpose, each with the reason.
+const REMOVED: Record<string, string> = {
+  'cli/#vx-why': 'the feature cards went; the Docs caching page shows `vx why`',
+  'guides/extensibility/': 'merged into guides/plugins/, which the footer links',
+  'guides/plugins/#keys-and-order': 'the plugin cards went; chapter 9 teaches the stages',
+  'guides/trusting-the-cache/': 'merged into guides/caching/, which the footer links',
+}
 
 // benchmarks.md as the import step copied it; its tables and headings are
 // the source's, byte for byte.
@@ -117,6 +108,11 @@ function text(html: string): string {
     .trim()
 }
 
+/** Text with each tag read as a space: a `<br>` or two spans side by side. */
+function spaced(html: string): string {
+  return text(html.replace(/<[^>]+>/g, ' '))
+}
+
 function section(html: string, id: string): string {
   const found = [
     ...html.matchAll(new RegExp(`<section\\b[^>]*\\bid="${id}"[^>]*>([\\s\\S]*?)</section>`, 'g')),
@@ -150,59 +146,66 @@ function resolves(link: string): string | undefined {
 
 describe('the landing page', () => {
   const html = page()
+  const h1At = html.indexOf('<h1')
+  const hero = html.slice(h1At, html.indexOf('<section', h1At))
 
-  it('states the problem in the h1, then the three ideas, then the numbers', () => {
-    const h1 = [...html.matchAll(/<h1\b/g)]
+  it('asks the question in the h1, then lists the chapters, then the numbers', () => {
+    const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
+    expect(spaced(h1[0]![1]!)).toBe(
+      'Four packages. One build. Why is it slow, and why is it wrong?',
+    )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
     expect(h1[0]!.index!).toBeLessThan(ids[0]!.index!)
   })
 
-  it('sends the first actions to Learn, then the playground, then the quickstart', () => {
-    const h1 = html.indexOf('<h1')
-    const hero = html.slice(h1, html.indexOf('<section', h1))
-    expect(hrefs(hero)).toEqual([
-      `${BASE}learn/what-is-task-orchestration/`,
-      `${BASE}learn/playground/`,
-      `${BASE}quickstart/`,
+  it('sends the reader to the guide first, then the quickstart', () => {
+    expect(hrefs(hero)).toEqual([`${BASE}guide/why/`, `${BASE}quickstart/`])
+    const primary = /<a\b[^>]*class="btn btn-primary[^"]*"[^>]*>([\s\S]*?)<\/a>/.exec(hero)
+    expect(text(primary![1]!)).toBe('Read the guide →')
+    expect(hero).toContain('data-copy="npm install -g @vzn/vx"')
+  })
+
+  it('draws the loop failing three ways, as one static picture', () => {
+    const svgs = [...hero.matchAll(/<svg\b([^>]*)>([\s\S]*?)<\/svg>/g)].filter((m) =>
+      /\srole="img"/.test(m[1]!),
+    )
+    expect(svgs).toHaveLength(1)
+    const [, attrs, body] = svgs[0]!
+    expect(attrs).toMatch(/\saria-label="[^"]{80,}"/)
+    expect(body).toContain('for p in packages/*')
+    // One lane per package, in the loop's order; the three that need a
+    // package built later fail, and the one that needs nothing builds.
+    const lanes = [...body!.matchAll(/<text class="lane"[^>]*>([^<]*)</g)].map((m) => m[1])
+    expect(lanes).toEqual(LOOP_ORDER)
+    const bars = [...body!.matchAll(/<g class="bar (fail|ok)"/g)].map((m) => m[1])
+    expect(bars).toEqual(['fail', 'fail', 'fail', 'ok'])
+    const legend = [...hero.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => spaced(m[1]!))
+    expect(legend.map((l) => l.replace(/\..*$/, ''))).toEqual([
+      '1 Wrong order',
+      '2 Rebuilds everything',
+      '3 One at a time',
     ])
+    expect(hero).not.toMatch(/<script\b|\son[a-z]+=/)
   })
 
-  it('links each idea to its pages, and every one lands on a built page', () => {
-    const wrong: string[] = []
-    for (const [id, links] of Object.entries(IDEA_LINKS)) {
-      const on = hrefs(section(html, id))
-      for (const l of links) {
-        if (!on.includes(`${BASE}${l}`)) wrong.push(`${id}: no link to ${l}`)
-        const miss = resolves(l)
-        if (miss !== undefined) wrong.push(`${id}: ${miss}`)
-      }
-    }
-    expect(wrong).toEqual([])
-  })
-
-  it("links idea 1's guarantee to the core test row that holds it", () => {
-    const tests = [...section(html, 'inputs').matchAll(/<a\b[^>]*\shref="([^"]+)"[^>]*>([^<]+)</g)]
-      .filter((m) => m[1]!.startsWith(GH_BLOB))
-      .map((m) => ({ file: m[1]!.slice(GH_BLOB.length), row: text(m[2]!) }))
-    expect(tests).toHaveLength(1)
-    const { file, row } = tests[0]!
-    expect(file.startsWith('packages/vx/tests/')).toBe(true)
-    const source = path.join(REPO, file)
-    expect(existsSync(source)).toBe(true)
-    expect(readFileSync(source, 'utf8')).toContain(`'${row}'`)
-  })
-
-  it('draws each idea as a static figure, with no script in any idea section', () => {
-    for (const id of Object.keys(IDEA_LINKS)) {
-      const body = section(html, id)
-      const svgs = [...body.matchAll(/<svg\b([^>]*)>/g)].map((m) => m[1]!)
-      expect(svgs).toHaveLength(1)
-      expect(svgs[0]).toMatch(/\srole="img"/)
-      expect(svgs[0]).toMatch(/\saria-label="[^"]{40,}"/)
-      expect(body).not.toMatch(/<script\b|\son[a-z]+=/)
-    }
+  it('lists the ten chapters, each its title and problem, as chapters.ts has them', () => {
+    const items = [...section(html, 'chapters').matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => {
+      const link = /<a href="([^"]*)"/.exec(m[1]!)![1]!
+      const part = (cls: string) =>
+        text(new RegExp(`<span class="${cls}"[^>]*>([\\s\\S]*?)</span>`).exec(m[1]!)![1]!)
+      return [link, part('n'), part('t'), part('p')]
+    })
+    expect(items).toEqual(
+      CHAPTERS.map((c) => [
+        `${BASE}guide/${c.slug}/`,
+        String(c.chapter).padStart(2, '0'),
+        c.title,
+        c.problem.replace(/`/g, ''),
+      ]),
+    )
+    for (const [link] of items) expect(resolves(link!.slice(BASE.length))).toBeUndefined()
   })
 
   it('keeps every internal link the page had, unless it was removed on purpose', () => {
@@ -247,7 +250,7 @@ describe("the landing page's figures", () => {
       tableRow(repo, 'warm, outputs wiped (restore)')[0]!.startsWith('**'),
     )
     expect(restore).toEqual([true, true, true, true, true])
-    expect(text(section(html, 'why'))).toContain(
+    expect(text(section(html, 'real'))).toContain(
       'On five real Turbo repos, the fastest restore on all five;',
     )
     // The panel shows n8n and names the other four.
@@ -267,7 +270,8 @@ describe("the landing page's figures", () => {
 
   it("labels the terminal a sample, and prints core's version in it", () => {
     const version = (JSON.parse(readFileSync(CORE_PACKAGE, 'utf8')) as { version: string }).version
-    const term = html.slice(html.indexOf('<div class="term">'), html.indexOf('id="inputs"'))
+    const term = section(html, 'run')
+    expect(term).toContain('<div class="term">')
     expect(text(term)).toContain('zsh — vx · sample output')
     expect(text(term)).toContain(`─ vx ${version} `)
   })
