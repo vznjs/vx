@@ -241,7 +241,7 @@ output on a fail-before-ready outcome.
   in CI; design-doc/sandbox.md was removed).
 - **Doesn't install signal handlers.** Signal shutdown is the
   orchestrator's job: it owns the `liveChildren` set this module
-  populates, SIGTERMs everything in it on SIGINT/SIGTERM, and exits
+  populates, forwards SIGINT/SIGTERM to everything in it, and exits
   `signalExitCode(signal)`. The runner only maintains the registry.
   Every child is spawned `detached` — its own session and process
   group — and every kill goes through `killTree` (`kill-tree.ts`),

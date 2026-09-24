@@ -139,16 +139,18 @@ export interface RunOptions {
    */
   profile?: string
   /**
-   * Install SIGINT/SIGTERM handlers for the run's duration: forward
-   * SIGTERM to every live child, close the cache, exit 128+signo
-   * (130/143). Default true. The watch loop disables this — it owns
+   * Install SIGINT/SIGTERM handlers for the run's duration: forward the
+   * signal received to every live child's group (a SIGHUP as SIGTERM),
+   * close the cache, exit 128+signo (130/143). Default true. The watch loop disables this — it owns
    * signal disposition for its whole lifetime and a cycle must never
    * exit the process out from under it.
    */
   handleSignals?: boolean
   /**
    * Abort the run from outside. On `abort` every live and persistent
-   * child is SIGTERMed, given the kill grace, then SIGKILLed; nothing
+   * child is sent SIGINT when the abort reason is `'SIGINT'` (a Ctrl-C
+   * the embedder received), SIGTERM otherwise, given the kill grace,
+   * then SIGKILLed; nothing
    * further is dispatched; run() returns with the killed tasks and the
    * never-started ones `aborted`. The seam for an embedder that owns its
    * process's lifetime instead of `handleSignals` — the watch loop aborts
@@ -230,6 +232,6 @@ export interface RunSummary {
 export interface HeldPersistent {
   /** The held tasks' ids, `pkg#task`. */
   ids: readonly string[]
-  /** Stop every held task (the kill grace, then SIGKILL) and resolve once each is gone. */
-  stop(): Promise<void>
+  /** Send every held task `signal` (default SIGTERM), then SIGKILL after the kill grace; resolves once each is gone. */
+  stop(signal?: 'SIGINT' | 'SIGTERM'): Promise<void>
 }

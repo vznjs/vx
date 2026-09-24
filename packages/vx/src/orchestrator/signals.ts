@@ -1,5 +1,5 @@
-// A SIGINT/SIGTERM mid-run forwards SIGTERM to everything live, waits a
-// bounded grace for it to go, SIGKILLs what is still there, closes the
+// A SIGINT/SIGTERM mid-run forwards that signal to everything live, waits
+// a bounded grace for it to go, SIGKILLs what is still there, closes the
 // cache handle, and exits 128+signo (130/143). Without the forward, a
 // programmatic signal to the vx process alone (CI cancellation,
 // `kill <pid>`) orphans every running child — terminal Ctrl-C only worked
@@ -32,8 +32,25 @@ type Child = ReturnType<typeof Bun.spawn>
  */
 type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
 
+/** What a teardown sends a task's group before the SIGKILL. */
+export type ForwardedSignal = 'SIGINT' | 'SIGTERM'
+
 /**
- * SIGTERM every child `live()` returns, wait the grace for each one's
+ * The signal a stop forwards to every task group: the one vx received.
+ * A task runs in its own session, so a terminal's Ctrl-C reaches vx
+ * alone; forwarding SIGTERM in its place skipped every SIGINT-only
+ * cleanup — a Node SIGINT listener, a shell's `trap … INT`
+ * (turborepo#444, #12652, #13097 and nx#23585 reproduced on vx,
+ * 2026-09-24). A hang-up forwards SIGTERM: to many servers SIGHUP means
+ * "reload", not "stop". Anything else — an embedder's abort reason that
+ * names no signal — is a SIGTERM.
+ */
+export function forwardedSignal(received: unknown): ForwardedSignal {
+  return received === 'SIGINT' ? 'SIGINT' : 'SIGTERM'
+}
+
+/**
+ * Send `signal` to every child `live()` returns, wait the grace for each one's
  * process GROUP to go, then SIGKILL every group with a member left and
  * whatever `live()` returns NOW — re-read, because the run loop may still
  * be dispatching during the grace and a child spawned after the first
@@ -46,10 +63,11 @@ type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
  */
 export async function terminateChildren(
   live: () => Child[],
+  signal: ForwardedSignal = 'SIGTERM',
   graceMs: number = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS),
 ): Promise<void> {
   const children = live()
-  for (const child of children) killTree(child, 'SIGTERM')
+  for (const child of children) killTree(child, signal)
   const left = await untilGroupsGone(children, graceMs)
   const survivors = [...new Set([...left, ...live()])]
   for (const child of survivors) killTree(child, 'SIGKILL')
@@ -96,7 +114,7 @@ export function forwardSignals(args: {
     } catch {
       // teardown must not throw on the way out
     }
-    void terminateChildren(everyChild).then(() => exit(signal))
+    void terminateChildren(everyChild, forwardedSignal(signal)).then(() => exit(signal))
   }
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')

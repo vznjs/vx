@@ -96,7 +96,10 @@ Exit codes:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `0`                   | Every task finished `success` or `cache-hit` (local or remote).                                                                                                                                                           |
 | `1`                   | At least one task ended `failed` or `skipped`; or parse/setup error.                                                                                                                                                      |
-| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): every task's process group — the task, what it forked, a runner's workers — is SIGTERMed, given `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILLed; a second signal skips the grace. |
+| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. |
+
+A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
+and each task hears it once: from vx, as SIGINT.
 
 A reader that leaves does not change the code. `vx run build | head -1`
 closes the pipe after one line; the run still finishes, saves what it
@@ -1165,9 +1168,10 @@ to stay up across changes, use the dev tool's own watch (`vite`,
 ### Exit codes
 
 - `0` — clean Ctrl+C / SIGTERM exit. A cycle in flight is torn down
-  first — its children get SIGTERM, `VX_KILL_GRACE_MS` (2 s), then
-  SIGKILL — and the process leaves only once it has returned, so a CI
-  cancellation never orphans a task.
+  first — its children, and the dev server held between cycles, get the
+  signal watch received (a Ctrl-C as SIGINT; a SIGTERM or SIGHUP as SIGTERM),
+  `VX_KILL_GRACE_MS` (2 s), then SIGKILL — and the process leaves only
+  once it has returned, so a CI cancellation never orphans a task.
 - `1` — parser error or missing scope.
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit

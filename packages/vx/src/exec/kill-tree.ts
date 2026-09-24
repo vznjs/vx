@@ -14,7 +14,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 
 export type Child = ReturnType<typeof Bun.spawn>
 
-export function killTree(child: Child, signal: 'SIGTERM' | 'SIGKILL'): void {
+export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
   if (!(child.pid > 0)) return

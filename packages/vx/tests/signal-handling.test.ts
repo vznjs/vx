@@ -289,6 +289,91 @@ describe('signal handling during vx run (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  // A task runs in its own session, so a terminal's Ctrl-C reaches vx
+  // alone, and vx forwards what it received. It forwarded SIGTERM for
+  // every signal, so a cleanup bound to SIGINT alone — Node's
+  // `process.on('SIGINT')`, a shell's `trap … INT` — never ran
+  // (turborepo#444, #12652, #13097, nx#23585 reproduced on vx,
+  // 2026-09-24). The task records which signal reached it; SIGTERM is the
+  // control that passes either way.
+  const TRAPS =
+    "trap 'echo SIGINT > got.txt; exit 0' INT; trap 'echo SIGTERM > got.txt; exit 0' TERM"
+  for (const [signal, code] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const) {
+    for (const persistent of [false, true]) {
+      const kind = persistent ? 'a ready persistent task' : 'a one-shot task'
+      it(
+        `${signal} to vx reaches ${kind} as ${signal}`,
+        async () => {
+          const dir = await addProject(
+            fixture.root,
+            'app',
+            `
+              export default {
+                tasks: {
+                  t: {
+                    exec: {
+                      command: "${TRAPS}; echo $$ > pid.txt; echo READY; while :; do sleep 0.05; done",
+                      ${persistent ? "persistent: { readyWhen: 'READY' }," : ''}
+                    },
+                  },
+                },
+              }
+            `,
+          )
+          const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+            cwd: fixture.root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+          })
+          const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+          proc.kill(signal)
+          expect(await proc.exited).toBe(code)
+          expect((await Bun.file(path.join(dir, 'got.txt')).text()).trim()).toBe(signal)
+          expect(await waitForDead(pid, 3_000)).toBe(true)
+        },
+        TIMEOUT,
+      )
+    }
+  }
+
+  it.skipIf(process.platform !== 'linux')(
+    'a task runs in its own session, so a Ctrl-C from the terminal reaches vx alone',
+    async () => {
+      // The terminal signals its foreground process group, which is vx's;
+      // a task in vx's group would get the Ctrl-C twice, once from the
+      // terminal and once forwarded. Field 6 of /proc/<pid>/stat is the
+      // session id; a session leader's is its own pid.
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              t: { exec: { command: 'echo $$ $(cut -d" " -f5,6 /proc/$$/stat) > ids.txt' } },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+        cwd: fixture.root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(await proc.exited).toBe(0)
+      const [pid, pgrp, sid] = (await Bun.file(path.join(dir, 'ids.txt')).text())
+        .trim()
+        .split(' ')
+        .map(Number)
+      expect(pgrp).toBe(pid!)
+      expect(sid).toBe(pid!)
+      expect(sid).not.toBe(proc.pid)
+    },
+    TIMEOUT,
+  )
 })
 
 describe('terminateChildren — the second sweep re-reads what is live', () => {
@@ -316,7 +401,7 @@ describe('terminateChildren — the second sweep re-reads what is live', () => {
       // Sweep 1 sees only `first`; by the SIGKILL sweep, `late` has joined.
       const live = (): ReturnType<typeof Bun.spawn>[] => (++sweep === 1 ? [first] : [first, late])
       try {
-        await terminateChildren(live, 100)
+        await terminateChildren(live, 'SIGTERM', 100)
         expect(sweep).toBeGreaterThan(1)
         expect(isAlive(first.pid)).toBe(false)
         expect(isAlive(late.pid)).toBe(false)

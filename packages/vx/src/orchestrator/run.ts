@@ -47,7 +47,7 @@ import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
-import { forwardSignals, terminateChildren } from './signals.js'
+import { forwardedSignal, forwardSignals, terminateChildren } from './signals.js'
 import {
   hasPooledExecutor,
   placeTasks,
@@ -366,7 +366,7 @@ async function runOnBus(
   //     exit; ownership moves here so the orchestrator can SIGTERM
   //     them once the rest of the graph finishes.
   //
-  // A SIGINT/SIGTERM mid-run forwards SIGTERM to everything in both
+  // A SIGINT/SIGTERM mid-run forwards that signal to everything in both
   // (`signals.ts`); the handlers are removed in the finally below so
   // repeated run() calls (test suites) never stack listeners.
   const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
@@ -382,7 +382,10 @@ async function runOnBus(
   // the exit — the scheduler stops dispatching (it reads the signal) and
   // run() returns to its caller. Detached in the finally below.
   const onAbort = (): void => {
-    void terminateChildren(() => [...liveChildren, ...persistentRegistry.values()])
+    void terminateChildren(
+      () => [...liveChildren, ...persistentRegistry.values()],
+      forwardedSignal(options.signal?.reason),
+    )
   }
   options.signal?.addEventListener('abort', onAbort, { once: true })
   // The cache handle must be released on EVERY exit path, not just the
@@ -908,7 +911,7 @@ async function runOnBus(
         outcomes: list,
         persistent: {
           ids: keepAlive.nodes.map((n) => n.id),
-          stop: () => terminateChildren(() => held),
+          stop: (signal) => terminateChildren(() => held, signal),
         },
       }
     }
