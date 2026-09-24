@@ -53,8 +53,10 @@ over (in order):
    one file off it: `VxPlugin.fingerprint` claims a lockfile, core
    leaves it out of this digest, and the plugin's `key` hook folds what
    the file means for each project instead (`@vzn/vx-lockfile`'s `pnpm()`
-   folds the project's own resolved dependency closure, so `pnpm update foo`
-   re-keys only the projects that depend on `foo`; its `bun()` is the same
+   folds the project's own resolved dependency closure and the root
+   package's, so `pnpm update foo` re-keys only the projects that depend
+   on `foo` — every project when the root does, since the root's tools
+   run from the root `node_modules/.bin` on every task's PATH; its `bun()` is the same
    for `bun.lock`, and this repo declares that one). The
    config-evaluation cache still keys on every file: a config may import
    a dependency the lockfile resolved.
