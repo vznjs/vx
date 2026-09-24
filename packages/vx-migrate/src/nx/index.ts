@@ -102,16 +102,30 @@ async function mapAll(
         return typeof cmd === 'string' && cmd.startsWith(`${bin} `)
       }),
     )
+  let loadsNx = false
   for (const [bin, what] of [
     ['nx-exec', 'executor targets run'],
     ['nx-env', 'targets with `.env` files run'],
   ] as const) {
-    if (uses(bin) && !(await Bun.file(path.join(root, 'node_modules', '.bin', bin)).exists())) {
+    if (!uses(bin)) continue
+    loadsNx = true
+    if (!(await Bun.file(path.join(root, 'node_modules', '.bin', bin)).exists())) {
       notes.push(
         `${what} through \`${bin}\`, which is not in node_modules/.bin — add ` +
           "@vzn/vx-migrate to the workspace's devDependencies so its bin is on every task's PATH",
       )
     }
+  }
+  // Both bins run Nx's own code from the workspace; a repo run from an
+  // exported `graph` may have none installed.
+  if (
+    loadsNx &&
+    !(await Bun.file(path.join(root, 'node_modules', 'nx', 'package.json')).exists())
+  ) {
+    notes.push(
+      'nx-exec and nx-env load Nx from the workspace, and node_modules/nx is not there — ' +
+        'install nx, or those tasks fail',
+    )
   }
   return {
     byName,

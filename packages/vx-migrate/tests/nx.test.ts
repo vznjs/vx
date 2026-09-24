@@ -621,6 +621,22 @@ describe('nx()', () => {
   })
 
   it(
+    'without nx in node_modules the run warns once that nx-exec and nx-env need it',
+    async () => {
+      const line = 'nx-exec and nx-env load Nx from the workspace, and node_modules/nx is not there'
+      const quiet = silent()
+      await planRun({ cwd: root, tasks: ['build'], log: quiet })
+      expect(quiet.lines.filter((l) => l.includes(line))).toEqual([])
+      await rm(path.join(root, 'node_modules', 'nx'), { recursive: true })
+      await workspace("nx({ graph: 'graph.json' })")
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['build'], log })
+      expect(log.lines.filter((l) => l.includes(line)).length).toBe(1)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a server executor is a persistent task, reported once for all its tasks',
     async () => {
       const log = silent()
