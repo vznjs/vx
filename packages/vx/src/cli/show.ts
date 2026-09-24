@@ -12,6 +12,7 @@ import { nearMatches, relPosix, UserError } from '../util/index.js'
 import { loadCliProjects } from './workspace-config.js'
 import {
   findWorkspaceRoot,
+  type LoadReads,
   listProjects,
   loadWorkspace,
   type ProjectEntry,
@@ -51,8 +52,9 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx show: ${parsed.error}\n`)
     return 1
   }
-  const root = await findWorkspaceRoot(process.cwd())
-  const metas = await listProjects(await loadWorkspace(root))
+  const reads: LoadReads = new Map()
+  const root = await findWorkspaceRoot(process.cwd(), reads)
+  const metas = await listProjects(await loadWorkspace(root, reads))
   const byName = new Map(metas.map((m) => [m.name, m]))
 
   const hashAt = parsed.target?.indexOf('#') ?? -1

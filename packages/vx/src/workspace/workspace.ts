@@ -3,6 +3,7 @@ import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { BUN_GLOB_WILDCARDS, relPosix, UserError, normalizeBunGlob } from '../util/index.js'
+import { type LoadReads, readOnce } from './load-reads.js'
 
 export interface PackageJson {
   name: string
@@ -40,6 +41,8 @@ export interface ProjectEntry {
 
 const CONFIG_FILENAMES = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
 
+const decoder = new TextDecoder()
+
 /**
  * Walk up from `start` to find the workspace root. A directory is a root
  * CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
@@ -56,15 +59,17 @@ const CONFIG_FILENAMES = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.c
  * When no candidate claims `start` — a standalone package, or a subdirectory
  * of a single-project repo — the nearest candidate wins (the root itself IS
  * the project). Throws a `UserError` when there is no candidate before `/`.
+ * A load that goes on to `loadWorkspace` passes its `reads`, so the
+ * root's manifest is read once for both.
  */
-export async function findWorkspaceRoot(start: string): Promise<string> {
+export async function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string> {
   let dir = path.resolve(start)
   const below: string[] = []
   let nearest: string | null = null
   while (true) {
     let globs: string[] | null
     try {
-      globs = await readPackageGlobs(dir)
+      globs = await readPackageGlobs(dir, reads)
     } catch {
       // An unparseable manifest is still a root SIGNAL (the pre-existing
       // behaviour probed only for existence); it just can't claim members.
@@ -138,16 +143,19 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
  * candidate. A bare `package.json` (no `workspaces`) is single-project mode:
  * the root itself is the only project, hence `['.']`.
  */
-async function readPackageGlobs(dir: string): Promise<string[] | null> {
+async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[] | null> {
   const yamlPath = path.join(dir, 'pnpm-workspace.yaml')
-  if (await Bun.file(yamlPath).exists()) {
-    const parsed = (parseManifest(await Bun.file(yamlPath).text(), yamlPath, Bun.YAML.parse) ??
-      {}) as { packages?: unknown }
+  const yaml = await readOnce(reads, yamlPath)
+  if (yaml !== null) {
+    const parsed = (parseManifest(decoder.decode(yaml), yamlPath, Bun.YAML.parse) ?? {}) as {
+      packages?: unknown
+    }
     return assertGlobList(parsed.packages ?? [], yamlPath, 'packages')
   }
   const pkgPath = path.join(dir, 'package.json')
-  if (!(await Bun.file(pkgPath).exists())) return null
-  const pkg = parseManifest(await Bun.file(pkgPath).text(), pkgPath, JSON.parse) as PackageJson
+  const pkgBytes = await readOnce(reads, pkgPath)
+  if (pkgBytes === null) return null
+  const pkg = parseManifest(decoder.decode(pkgBytes), pkgPath, JSON.parse) as PackageJson
   const ws = pkg.workspaces as unknown
   if (ws === undefined || ws === null) return ['.']
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
@@ -249,8 +257,8 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
  * If a `package.json` exists with no `workspaces` field, the root
  * itself is treated as a single-project workspace.
  */
-export async function loadWorkspace(root: string): Promise<Workspace> {
-  const packageGlobs = await readPackageGlobs(root)
+export async function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace> {
+  const packageGlobs = await readPackageGlobs(root, reads)
   if (packageGlobs === null) {
     // Should be unreachable: findWorkspaceRoot only returns dirs that
     // pass at least one of the two existence checks.

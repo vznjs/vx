@@ -55,7 +55,8 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
 ## Steps
 
 1. **Workspace discovery** — `findWorkspaceRoot`, `loadWorkspace`,
-   `listProjects`; the workspace config arrives evaluated and with the
+   `listProjects`, sharing one `LoadReads` with the fingerprint in
+   step 4 so the root manifest is read once per run; the workspace config arrives evaluated and with the
    `config` stage applied (`RunOptions`, from `cli/workspace-config.ts`),
    and `loadWorkspacePlugins` gives the declared plugin list.
 2. **Project config load** — `loadProjects` ([`projects.md`](./projects.md)),

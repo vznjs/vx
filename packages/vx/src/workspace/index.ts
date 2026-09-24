@@ -53,6 +53,7 @@ export {
   type ProjectEntry,
   type ProjectMeta,
 } from './workspace.js'
+export type { LoadReads } from './load-reads.js'
 // The migration seam (see migration.ts) and core's own mapper, the scripts one.
 export {
   applyMigration,

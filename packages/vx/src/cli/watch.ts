@@ -21,6 +21,7 @@ import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.j
 import {
   buildPackageGraph,
   findWorkspaceRoot,
+  type LoadReads,
   listProjects,
   loadProjectConfig,
   loadWorkspace,
@@ -427,8 +428,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // closure `--filter 'app...'` walks, computed below once the initial
   // run has staged the configs. Plus the workspace root, for lockfile
   // changes.
-  const workspaceRoot = await findWorkspaceRoot(cwd)
-  const workspace = await loadWorkspace(workspaceRoot)
+  const reads: LoadReads = new Map()
+  const workspaceRoot = await findWorkspaceRoot(cwd, reads)
+  const workspace = await loadWorkspace(workspaceRoot, reads)
   const allProjects = await listProjects(workspace)
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
     opts.projects === undefined ? [...all] : all.filter((p) => opts.projects!.includes(p.name))
