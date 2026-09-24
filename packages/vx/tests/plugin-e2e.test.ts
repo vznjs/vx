@@ -8,7 +8,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
-import { run } from '../src/index.js'
+import { planRun, run } from '../src/index.js'
 import { pluginSource } from './helpers/plugin.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
@@ -145,6 +145,65 @@ describe('Plugin API — end-to-end via run()', () => {
       expect(
         statusLines.some((l) => l.includes('org/bad-teardown') && l.includes('teardown')),
       ).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  // `setup` is not a guard over the whole pipeline: the config, project,
+  // cache, graph, key and schedule stages have run by the time it is
+  // called, and a plan never calls it. It does precede every executor,
+  // every telemetry sink, admission and the first task.
+  it('setup runs after the planning stages and before the executor, telemetry and the first task', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      const mark = (name: string) => `${name}() { globalThis.__vxOrder.push('${name}') },`
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource(
+          [
+            pluginSource(
+              'org/order',
+              `{ ${['config', 'project', 'cache', 'graph', 'key', 'schedule', 'executor', 'telemetry'].map(mark).join('\n')}
+             admit() { globalThis.__vxOrder.push('admit'); return true },
+             setup(ctx) {
+               globalThis.__vxOrder.push('setup')
+               ctx.on('onTaskStart', () => globalThis.__vxOrder.push('task:start'))
+             },
+           }`,
+            ),
+          ],
+          `globalThis.__vxOrder = []
+`,
+        ),
+      )
+      gitInitCommit(workspaceRoot)
+      const order = () => (globalThis as unknown as { __vxOrder: string[] }).__vxOrder
+      const opts = {
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger(),
+      }
+      await planRun(opts)
+      expect(order()).not.toContain('setup')
+      expect(order()).toContain('schedule')
+      order().length = 0
+      const summary = await run({ ...opts, handleSignals: false })
+      expect(summary.ok).toBe(true)
+      expect(order()).toEqual([
+        'config',
+        'project',
+        'cache',
+        'graph',
+        'key',
+        'schedule',
+        'setup',
+        'executor',
+        'telemetry',
+        'admit',
+        'task:start',
+      ])
     } finally {
       cleanup()
     }

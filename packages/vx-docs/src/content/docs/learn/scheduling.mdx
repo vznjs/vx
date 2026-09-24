@@ -248,8 +248,9 @@ has run a few times, and only in a workspace that declares it.
   run times and dependencies
   ([Nx Agents](https://nx.dev/docs/features/ci-features/distribute-task-execution)),
   but not how a local run orders ready tasks. Its source sorts them by
-  how many tasks directly wait on each, and among equals starts a task
-  with no recorded time first
+  how many tasks directly wait on each, then by how many projects depend
+  on its project, and only among tasks equal on both starts one with no
+  recorded time first
   ([`tasks-schedule.ts`](https://github.com/nrwl/nx/blob/master/packages/nx/src/tasks-runner/tasks-schedule.ts)).
 - **Bazel** runs up to `--jobs` actions at once, and holds back an action
   whose estimated memory or CPU would not fit

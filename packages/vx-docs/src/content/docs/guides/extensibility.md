@@ -51,7 +51,7 @@ flowchart LR
 | execute  | `executor(ctx)`        | *where* ONE task's command runs — local or a worker     | `reapi({ execute: true })`, or your own; the local executor is the floor |
 | store    | `cache(ctx)`           | *which* cache is used — your server, S3, a CAS          | `reapi()`, `turboCache()`, `nxCache()`, or your own; the local store is the floor |
 | observe  | `telemetry(ctx)`       | *where* run data goes — OTel, Slack, your DB            | nothing unless declared              |
-| setup    | `setup(ctx)`           | validate once, before any capability is used            | nothing unless declared              |
+| setup    | `setup(ctx)`           | once per run, before the executors and the first task   | nothing unless declared              |
 | cli      | `commands`             | which verbs `vx` has                                    | `mcp()` (`vx mcp`), `scheduleHistoryPlugin()` (`vx history`), or your own |
 | teardown | `teardown()`           | flush and close at the end of the run                   | nothing unless declared              |
 

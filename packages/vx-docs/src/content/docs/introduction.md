@@ -34,7 +34,7 @@ order you declare them in `vx.workspace.ts`:
 | execute     | `executor(ctx)`        | where one task's command runs                            |
 | store       | `cache(ctx)`           | where artifacts live                                     |
 | observe     | `telemetry(ctx)`       | where run records go                                     |
-| setup       | `setup(ctx)`           | validate once, before any capability is used             |
+| setup       | `setup(ctx)`           | once per run, before the executors and the first task    |
 | cli         | `commands`             | which verbs `vx` has                                     |
 | teardown    | `teardown()`           | flush and close at the end of the run                    |
 

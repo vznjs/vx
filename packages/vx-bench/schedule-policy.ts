@@ -1,5 +1,6 @@
 // Scheduler policy benchmark: does a task with NO history deserve to run
-// FIRST (Nx's rule, `tasks-schedule.spec.ts:497`) rather than at the
+// FIRST (Nx's rule, `tasks-schedule.spec.ts:497`, held here over the whole
+// ranking where Nx applies it only as its last tie-break) rather than at the
 // workspace median `@vzn/vx-schedule-history` gives it today? Parity row
 // N-M7, item 669.
 //

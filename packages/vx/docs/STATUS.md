@@ -713,6 +713,28 @@ removed). Found by the W2 implementer, who had patched only the site's
 test with `workspaceFiles: ['packages/vx/src/**']`; that second copy of
 the rule is removed, the cascade covers it.
 
+14cl. **Item 690 (2026-09-24): three claims corrected, one held by a
+row.** `VxPlugin.setup` said it runs "before any capability is
+consulted". It does not: `prepareRun` has already run the config,
+project, cache, graph, key and schedule stages, and a plan (`--dry`,
+`planRun`) never calls it. It runs before the executors, the telemetry
+sinks, admission and the first task. The comment now says so, and so do
+the four site copies (introduction, extensibility, the plugin guide's
+type sketch, the pipeline blog post). `plugin-e2e.test.ts` holds the
+order: one plugin fills ten hooks and records each call, and a run's
+sequence is asserted exactly, `config` to `task:start`, with a plan's
+lacking `setup` (red with the `setup` call removed). Second, Nx's
+"no history first" is its LAST tie-break, not a rule over the queue:
+`sortScheduledTasks` sorts by tasks waiting, then by projects
+depending, and only among tasks equal on both starts one with no
+recorded time first (read in Nx's source at 54e5264).
+`schedule-policy.md` and the bench's header said Nx runs such a task
+before every task with one; the scheduling page said "among equals"
+and skipped the middle key. All three say it now, and the bench's
+`unknown-first` is named the stronger rule it is; its verdict stands.
+Third, CLAUDE.md gains the rule item 682 taught: measure what a
+platform primitive consumes, not only what it returns.
+
 16. **The site teaches (owner, 2026-09-23; roadmap track W).** Redo the
     site so it explains task orchestration before it sells vx: a Learn
     section with one diagram and one interactive element per page

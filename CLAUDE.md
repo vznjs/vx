@@ -358,6 +358,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   or close" drove the read, and the sibling flush's three sites had
   one held (items 628, 629). Delete each site's line in turn; a run
   that reaches only one of them (close) makes that one the product.
+- Measure what a platform primitive CONSUMES, not only what it
+  returns: `Bun.hash.xxHash3(input, seed)` reads 32 bits of its 64-bit
+  seed, so a chain that fed each digest in as the next seed carried 32
+  bits of state, and two states sharing a low half collided for good
+  (item 682). Before chaining through a parameter, prove every bit of
+  it moves the output.
 
 ## Live invariants (verify in source before quoting)
 
