@@ -181,6 +181,48 @@ installed (a workspace with only `nx` and custom executors).
   dir (the workspace's `node_modules`), Node on PATH, and the cached
   graph. It never dials the daemon.
 
+## run-commands as one shell line (2026-09-24)
+
+`nx:run-commands` stays a shell line, not an `nx-exec` one: the host's
+~220 ms floor per executed task is the price of running an executor, and
+a shell command has none. So the line carries Nx's option handling
+itself — `normalizeOptions` in `run-commands.impl.ts` and the runners in
+`running-tasks.ts`, identical in Nx 22.7 and 23.2 — and
+`tests/nx-exec-live.test.ts` holds each shape against Nx's own executor
+run through `nx-exec` on the same options and arguments.
+
+- Each command is a subshell, as Nx gives each a shell of its own: one
+  command's `exit`, `cd` or `set` stays in it.
+- `commands` run in parallel unless `parallel: false` (the schema's
+  default). The line starts each as a background job whose failure
+  sends `USR1` to the line's shell; its trap TERMs the process group and
+  exits 1, Nx's code for a failed parallel run. The group is the task's
+  own: vx spawns every task `detached`, and a line pasted into a script
+  should run under `setsid sh -c` for the same reason. Joined with `&&`,
+  a failing check waited for a server that never exits (nx#28477).
+- Arguments: Nx appends every option it does not consume (`--k=v`,
+  quoted as it quotes), the `args` option and the command line's
+  arguments to each command, as TEXT. vx appends `vx run … -- <args>` to
+  the end of the line, so a line of more than one command is a function,
+  and a helper appends `"$@"` to each command only when there are
+  arguments: an unconditional `"$@"` after `done` is a syntax error with
+  none (nx#12165). `{args.name}` is filled from the options at map time;
+  one given after `--` does not reach it (a todo).
+- `nx-exec` passes what it does not know to Nx's own `createOverrides`,
+  and hands the result to `runExecutor`. `runExecutor` derives the
+  unparsed list from the parsed overrides and puts positional words
+  first, where `nx run` keeps the typed order; the parity rows type
+  positionals first for that reason.
+- `env` is `exec.env.define` (the key sees it), `color` sets
+  `FORCE_COLOR`, `readyWhen` makes the task persistent with the escaped
+  string as its pattern. Nx waits for EVERY `readyWhen` string; vx takes
+  one pattern, so several are an alternation and a todo. Nx also fails a
+  run whose `readyWhen` matched on stderr; vx does not.
+- `commands: []` is `true`: Nx completes it at once (nx#31345).
+- Reported and not reproduced: `envFile`, per-command `prefix` / `color`,
+  `streamOutput: false`, `__unparsed__` in a graph. `usePty`, `tty` and
+  `verbose` are display-only here: vx runs no task under a pty.
+
 ## What it does not do
 
 - Nx's configuration propagation (`^build` under `--configuration

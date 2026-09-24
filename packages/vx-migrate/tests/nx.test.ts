@@ -359,6 +359,145 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  describe('nx:run-commands runs as Nx runs it', () => {
+    /** Adds targets to `lib` in the graph the fake `nx` exports. */
+    async function libTargets(targets: Record<string, unknown>): Promise<void> {
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      Object.assign(g.graph.nodes['lib']!.data.targets, targets)
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+    }
+    const libFile = (name: string) => Bun.file(path.join(root, 'packages', 'lib', name))
+
+    it(
+      '`commands` run in parallel: a failing check fails the task while the server beside it is up, and TERMs it (nx#28477)',
+      async () => {
+        // Bounded, so the run in order the old line made ends — late, with no
+        // TERM ever sent.
+        const server =
+          'trap "echo terminated > term.txt; exit 143" TERM; : > up; i=0; while [ $i -lt 200 ]; do i=$((i+1)); sleep 0.05; done'
+        const check = 'while [ ! -f up ]; do sleep 0.01; done; echo check-failed; exit 3'
+        await libTargets({
+          par: {
+            executor: 'nx:run-commands',
+            options: { commands: [server, check], cwd: 'packages/lib' },
+          },
+        })
+        const r = await run({ cwd: root, tasks: ['par'], log: silent(), handleSignals: false })
+        expect(status(r, 'lib#par')).toBe('failed')
+        expect((await libFile('term.txt').text()).trim()).toBe('terminated')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      '`commands: []` is a no-op that succeeds (nx#31345)',
+      async () => {
+        await libTargets({ empty: { executor: 'nx:run-commands', options: { commands: [] } } })
+        const log = silent()
+        const r = await run({ cwd: root, tasks: ['empty'], log, handleSignals: false })
+        expect(status(r, 'lib#empty')).toBe('success')
+        expect(log.lines.filter((l) => l.includes('lib#empty'))).toEqual([])
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'arguments after `vx run … --` reach every command, and an executor target’s options (nx#12165)',
+      async () => {
+        await libTargets({
+          rcpub: {
+            executor: 'nx:run-commands',
+            options: {
+              commands: ['echo one > one.txt', 'echo two > two.txt'],
+              cwd: 'packages/lib',
+            },
+          },
+          publish: { executor: '@acme/publish:run', options: { registry: 'x' } },
+        })
+        const opts = {
+          cwd: root,
+          tasks: ['rcpub', 'publish'],
+          log: silent(),
+          handleSignals: false,
+          forwardArgs: ['--otp=123'],
+        }
+        const r = await run(opts)
+        expect([status(r, 'lib#rcpub'), status(r, 'lib#publish')]).toEqual(['success', 'success'])
+        expect([
+          (await libFile('one.txt').text()).trim(),
+          (await libFile('two.txt').text()).trim(),
+        ]).toEqual(['one --otp=123', 'two --otp=123'])
+        const rec = (await Bun.file(path.join(root, 'record.json')).json()) as {
+          overrides: Record<string, unknown>
+          target: { options: Record<string, unknown> }
+        }
+        // Nx's own parse of the arguments (`createOverrides`), handed to runExecutor.
+        expect(rec.overrides).toEqual({ otp: 123 })
+        expect(rec.target.options).toEqual({ registry: 'x' })
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'a run-commands `env` reaches the command and the key (nx#20465)',
+      async () => {
+        const withenv = (value: string) => ({
+          withenv: {
+            executor: 'nx:run-commands',
+            options: {
+              command: 'mkdir -p out && echo "$OUTPUT_PATH" > out/env.txt',
+              cwd: 'packages/lib',
+              env: { OUTPUT_PATH: value },
+            },
+            inputs: ['{projectRoot}/src/**/*'],
+            outputs: ['{projectRoot}/out'],
+            cache: true,
+          },
+        })
+        await libTargets(withenv('abc'))
+        const opts = { cwd: root, tasks: ['withenv'], log: silent(), handleSignals: false }
+        expect(status(await run(opts), 'lib#withenv')).toBe('success')
+        expect((await libFile('out/env.txt').text()).trim()).toBe('abc')
+        expect(status(await run(opts), 'lib#withenv')).toBe('cache-hit')
+        await libTargets(withenv('xyz'))
+        const later = new Date(Date.now() + 5_000)
+        await utimes(path.join(root, 'packages', 'lib', 'project.json'), later, later)
+        expect(status(await run(opts), 'lib#withenv')).toBe('success')
+        expect((await libFile('out/env.txt').text()).trim()).toBe('xyz')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      '`readyWhen` makes the target persistent: its dependent runs once the line is printed',
+      async () => {
+        await libTargets({
+          up: {
+            executor: 'nx:run-commands',
+            options: { command: 'echo "server ready"; exec sleep 60', readyWhen: 'server ready' },
+          },
+          after: {
+            executor: 'nx:run-commands',
+            options: { command: 'echo after > after.txt', cwd: 'packages/lib' },
+            dependsOn: ['up'],
+          },
+        })
+        const plan = await planRun({ cwd: root, tasks: ['after'], log: silent() })
+        expect(
+          plan.tasks.find((t) => t.node.id === 'lib#up')!.node.config.exec?.persistent,
+        ).toEqual({
+          readyWhen: 'server ready',
+        })
+        const r = await run({ cwd: root, tasks: ['after'], log: silent(), handleSignals: false })
+        expect(status(r, 'lib#after')).toBe('success')
+        expect((await libFile('after.txt').text()).trim()).toBe('after')
+      },
+      TIMEOUT,
+    )
+  })
+
   it(
     'a server executor is a persistent task, reported once for all its tasks',
     async () => {

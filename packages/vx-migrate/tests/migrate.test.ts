@@ -493,9 +493,16 @@ describe('vx migrate (nx)', () => {
       const tasks = config.tasks!
 
       const build = tasks.build!
-      // commands array joined with ' && '.
-      // Nx runs run-commands from the workspace root: the cd is part of the command.
-      expect(build.exec?.command).toBe('cd ../.. && tsc -b && echo done')
+      // `commands` run in parallel (Nx's default), each with the option
+      // run-commands does not consume appended, as Nx appends it. Nx runs
+      // run-commands from the workspace root: the cd is part of the command.
+      expect(build.exec?.command).toBe(
+        `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }; ` +
+          `nx_run_commands() { trap 'trap "" TERM; kill -TERM 0; exit 1' USR1; ` +
+          `{ (nx_run 'tsc -b --outFile=packages/pkg-a/build/main.js' "$@") || kill -USR1 $$; } & ` +
+          `{ (nx_run 'echo done --outFile=packages/pkg-a/build/main.js' "$@") || kill -USR1 $$; } & wait; }; ` +
+          'cd ../.. && nx_run_commands',
+      )
       // namedInputs expansion: production → default + spec exclusion.
       // {workspaceRoot}/<path> → inputs.workspaceFiles, not a TODO.
       expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.spec.ts'])
