@@ -1137,7 +1137,13 @@ interface WorkspaceConfig {
   and uploads have landed, only when something is due (a run with
   nothing to evict pays one scan of the index), and says what it
   evicted in one line (`vx: cache retention evicted 3 entries
-(1.2 GB)`); an entry the run just used is never due. Housekeeping,
+(1.2 GB)`); an entry the run just used is never due. The prune's
+  orphan sweep (artifacts no index row counts, older than an hour —
+  see `vx cache prune`) also runs on its own clock, at most once an
+  hour, so their bytes go even when nothing the index holds is due
+  (`vx: cache retention reaped 3 orphaned artifacts (9.0 MB)`);
+  listing the directory every run would cost 0.5 ms per 1,000
+  entries. Housekeeping,
   not the run's work: a failure is a warning, never a failed run. Not
   folded into any cache key. Omitted → the cache grows until
   `vx cache prune`.

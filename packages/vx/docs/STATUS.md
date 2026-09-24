@@ -496,7 +496,13 @@ false`, the first failure failing the task; `commands: []` a no-op;
       then 301 → 300 ms; restore min 574 → 549, 871 → 743). A deleting
       `vx cache prune` also takes the workspace's run lock now, so beside
       a run on the same workspace it waits instead of making that run
-      re-run its hits (a dry run takes none).
+      re-run its hits (a dry run takes none). `cacheRetention` summed
+      index rows only, so row-less artifacts (a schema reset, a deleted
+      `cache.db`, a crashed save) neither counted nor went: 9 MiB sat
+      under a 1 MB limit (nx#35483). The orphan sweep now also runs on
+      its own clock (`schema_meta.orphans_swept_at`, at most hourly):
+      listing the directory costs 0.5 ms per 1,000 entries (4.9 at
+      10,000), the clock read 4 µs.
 
 ## In flight
 

@@ -987,10 +987,19 @@ async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<
       ...(maxAgeMs !== undefined ? { maxAgeMs } : {}),
       ...(maxBytes !== undefined ? { maxBytes } : {}),
     })
-    if (result !== null && result.evicted > 0) {
-      log.status(
-        `vx: cache retention evicted ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)})`,
-      )
+    if (result !== null && (result.evicted > 0 || result.orphans > 0)) {
+      const said: string[] = []
+      if (result.evicted > 0) {
+        said.push(
+          `evicted ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)})`,
+        )
+      }
+      if (result.orphans > 0) {
+        said.push(
+          `reaped ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`,
+        )
+      }
+      log.status(`vx: cache retention ${said.join(', ')}`)
     }
   } catch (err) {
     log.status(`vx: cache retention skipped: ${err instanceof Error ? err.message : String(err)}`)
