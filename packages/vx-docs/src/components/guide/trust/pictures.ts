@@ -89,3 +89,38 @@ export const sandbox: Picture = {
     { x: 300, y: 214, text: 'task fails: denied banner.txt — nothing saved', tone: 'danger' },
   ],
 }
+
+/** What reaches a task that the sandbox does not check: each is a box
+ *  outside the wall, with what to do about it. */
+export const UNCHECKED: [label: string, sub: string][] = [
+  ['env variables', 'list in inputs.env'],
+  ['your tools', 'e.g. Node version'],
+  ['node_modules', 'even a linked ui'],
+  ['Windows', 'only under WSL'],
+]
+
+export const unchecked: Picture = {
+  name: 'unchecked',
+  label: `The sandbox checks the files app#build reads. Outside its wall, four things it does not check: ${UNCHECKED.map(
+    ([l, s]) => `${l} (${s})`,
+  ).join('; ')}.`,
+  caption: 'The sandbox checks files. Keep an eye on these four yourself.',
+  height: 196,
+  frames: [
+    { x: 6, y: 10, w: 190, h: 176, label: 'sandbox: files', tone: 'link' },
+    { x: 216, y: 10, w: 378, h: 176, label: 'not checked', tone: 'warn' },
+  ],
+  boxes: [
+    { id: 'app#build', x: 26, y: 50, w: 150, label: 'app#build', tone: 'accent' },
+    { id: 'files', x: 26, y: 118, w: 150, label: 'listed files', tone: 'ok' },
+    ...UNCHECKED.map(([label, sub], i) => ({
+      id: `unchecked-${i + 1}`,
+      x: 234 + (i % 2) * 180,
+      y: i < 2 ? 46 : 114,
+      w: 162,
+      label,
+      sub,
+      tone: 'warn' as const,
+    })),
+  ],
+}

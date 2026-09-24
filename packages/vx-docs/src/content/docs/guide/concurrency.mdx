@@ -37,13 +37,15 @@ shorter than it.
 
 ## Start the longest chain first
 
+<Diagram {...P.order} />
+
 When more tasks are ready than there are workers, the one that starts first
 changes when the run ends. vx starts the task that the most others wait
 on. The `@vzn/vx-schedule-history` plugin starts the one with the longest
 chain ahead, learned from past runs.
 
-The simulator adds a `lint` task to each package and a slow `app#docs`.
-Change the workers and watch when each rule finishes.
+These runs add a `lint` task to each package and a slow `app#docs`.
+Change the workers below and watch when each rule finishes.
 
 <SchedulerSim />
 

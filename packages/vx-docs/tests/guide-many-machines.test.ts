@@ -38,7 +38,7 @@ chapterShape({
     'A worker gets only what the task declares',
     'Both cost something',
   ],
-  pictures: [P.threeBuilds, P.sameKey, P.whoWrites, P.worker],
+  pictures: [P.threeBuilds, P.sameKey, P.whoWrites, P.worker, P.costs],
   rows: {
     'packages/vx/tests/task-hash-derive.test.ts': [
       'is a pure function of its inputs: same inputs, same key',
@@ -65,6 +65,21 @@ describe('the pictures on guide/many-machines', () => {
 
   it('sends the worker only the declared input', () => {
     expect(P.worker.arrows!.filter((a) => a.to === 'worker').map((a) => a.from)).toEqual(['src'])
+  })
+
+  it('draws the four costs as one strip, the section’s only content', () => {
+    expect(P.COSTS).toEqual([
+      ['Download time', 'a hit downloads'],
+      ['A server', 'someone runs it'],
+      ['Same tools', 'on every worker'],
+      ['Some stay local', 'a dev server'],
+    ])
+    expect(P.costs.boxes.map((b) => [b.label, b.sub])).toEqual(P.COSTS)
+    // One row, left to right.
+    expect(new Set(P.costs.boxes.map((b) => b.y)).size).toBe(1)
+    const xs = P.costs.boxes.map((b) => b.x)
+    expect(xs).toEqual([...xs].sort((a, b) => a - b))
+    expect(section(content(page(`guide/${SLUG}`)), 'both-cost-something')).not.toContain('<ul>')
   })
 })
 
