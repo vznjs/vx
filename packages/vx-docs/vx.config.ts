@@ -13,6 +13,20 @@ const SIM_SOURCES = [
 ]
 const SIM_READ = '../vx-bench/schedule-policy.ts'
 
+// The choosing page (item 689) links each vx guarantee to the test row that
+// holds it, and learn-choosing.test.ts reads each file for that row's title,
+// so a renamed row or a moved file fails the site's test instead of leaving
+// a dead link. Granted by name and keyed as inputs, like the sim sources.
+const CHOOSING_PROOFS = [
+  'packages/vx/tests/config.test.ts',
+  'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
+  'packages/vx/tests/task-hash-derive.test.ts',
+  'packages/vx/tests/plugin-pipeline.test.ts',
+  'packages/vx/tests/layered-cache.test.ts',
+  'packages/vx-reapi/tests/exec-e2e.test.ts',
+  'packages/vx-migrate/tests/turbo.test.ts',
+]
+
 export default defineProject({
   tasks: {
     ci: {
@@ -100,6 +114,7 @@ export default defineProject({
               '../vx-otel/src/**',
               '../vx-reapi/src/**',
               '../vx-schedule-history/src/**',
+              ...CHOOSING_PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -118,7 +133,7 @@ export default defineProject({
             '.gitignore',
             'package.json',
           ],
-          workspaceFiles: SIM_SOURCES,
+          workspaceFiles: [...SIM_SOURCES, ...CHOOSING_PROOFS],
         },
         outputs: { files: [] },
       },

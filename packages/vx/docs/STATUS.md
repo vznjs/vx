@@ -800,6 +800,63 @@ box. Every page with a Mermaid diagram (this one, `learn/caching`, the
 sandboxing guide) logs one uncaught non-Error `Object` on load; it
 predates this item and is not chased here.
 
+14ck. **Item 689 (roadmap W7, 2026-09-24): the choosing page names the
+design choices and what each costs.** `learn/choosing.mdx` replaces the
+stub under the same slug. It teaches that a checkmark hides the choice
+behind it (default, inferred or declared inputs; whether anything checks
+the key), then shows the twelve choices in a matrix: how inputs are found,
+what checks the key, the configuration language, how the runner is
+extended, the runtime, which languages it builds, the remote cache wire,
+running tasks on other machines, which ready task starts first, state
+between runs, coming from another tool, and maturity. Each has, per tool,
+what it chose, what that buys, what it costs and its sources, and a
+"choose another tool if" row that never names vx. Then vx's costs in
+plain words (Bun only, pre-alpha with 0.1.0 not cut and the plugins
+unpublished, explicit inputs are work, a small ecosystem, nothing
+distributed ships, no first-party cloud), when Turborepo, Nx or Bazel is
+the better pick, and a checkpoint. One model, `demos/model/choosing.ts`,
+drives the matrix (`ChoosingMatrix.astro` + `choosing-matrix.ts`), the
+diagram (`ChoiceMap.astro`, a static SVG placing each tool on inputs ×
+what checks the key) and the checkpoint (`ChoosingCheckpoint.astro`,
+whose answer is `evaluate` on its two needs: only Bazel meets "a stable
+release" and "undeclared inputs caught on our own machines"). Without
+JavaScript: a table of nine needs × tools with each reason, and the full
+choices table. With it: a box per need, Clear, the choices filtered to
+the ones that decide the ticked needs, each deciding choice saying why,
+its tools marked, and a live region naming what rules each tool out.
+Checked in Chromium at 1280 and 390 px, JavaScript on and off, no
+horizontal overflow and no page errors. `tests/learn-choosing.test.ts`
+(15 rows): every cell filled and sourced; other tools' links only to
+turborepo.com, nx.dev or bazel.build; vx's links to a built page and
+anchor or to a test file holding the named row; the needs and the filter
+against hand-written truth (including two needs deciding one choice);
+the built tables, links, hidden controls, diagram positions, cost bullets
+and checkpoint; every time figure on the page verbatim in benchmarks.md;
+the element's chunk reachable with no platform in it. The site's `test`
+task grants and keys the seven linked vx test files by name. Twenty
+mutations, each rebuilt where it touched the page and run: an empty
+cell, an Nx link off nx.dev, an other-tool row naming vx, a renamed and
+a moved test link, a need ruling in one more tool, the empty filter, the
+favours rule (some for every), the ruled-out rule inverted, a dropped
+cell, site links without the base, controls shown, need cells inverted,
+Bazel moved on the diagram, a one-need checkpoint, a figure benchmarks.md
+lacks, the element renamed, a cost bullet dropped, a turborepo.dev link,
+a missing anchor. Each turned a row red, every row was red at least
+once, and all fifteen passed after restore. Every claim about another tool
+was checked in its docs source (vercel/turborepo efd2a5b, nrwl/nx
+54e5264, bazelbuild/bazel ad2d5c1, 2026-09-24). The check corrected five
+rows of `comparison.md` in place: Turborepo keys each package on the
+lockfile changes that affect it (not the whole file), has experimental
+native Go, Cargo and uv workspaces (not "no" for non-JS projects), and
+no longer uses its daemon for `turbo run`; the Nx daemon is on by
+default locally, not always on; Nx's plugins infer tasks and add graph
+data, generators, migrations and executors, first-party for Gradle, Maven
+and .NET (Rust is community). Found, not fixed: `benchmarks.md`'s
+2026-09-03 head-to-head says Turbo's daemon answers "what changed"
+without a walk, but Turbo 2.10 no longer uses its daemon for `turbo run`;
+and Turborepo's own docs link to turborepo.dev, while this site links
+turborepo.com.
+
 14cl. **Item 690 (2026-09-24): three claims corrected, one held by a
 row.** `VxPlugin.setup` said it runs "before any capability is
 consulted". It does not: `prepareRun` has already run the config,
@@ -891,8 +948,8 @@ on `playground-spike/**/*.ts`, which it imports.
     ranking code, is DONE (item 685, entry 14cg). W5 and W6, the
     architecture page with its pipeline explorer and the worked plugins,
     are DONE (item 686, entry 14ch). W3, the correctness page and its
-    stale-hit demo, is DONE (item 688, entry 14cj). W7 (choosing) is in
-    flight. W9, the playground, has started: its first core
+    stale-hit demo, is DONE (item 688, entry 14cj). W7, the choosing page and its
+    matrix, is DONE (item 689, entry 14ck). W9, the playground, has started: its first core
     change, P1, is DONE (item 691, entry 14cm), and its three open
     questions are decided in `design/playground-spike-2026-09.md` § W9
     decisions (parity rows in core's unsafe suite, `vx.config.mjs`
