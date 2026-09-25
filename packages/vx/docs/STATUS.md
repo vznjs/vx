@@ -870,6 +870,23 @@ rev-parse`). The profile's numbers for them came from a source run
       function a row drives with a synthetic trace (red without the
       resumed match). And `bindRun`'s comment said 17 columns; it binds 21.
 
+756.  DONE (2026-09-25, Next 21 closed). The profile's last two small
+      fixes are declined unmeasured, each under the wall's ~5 ms noise
+      at 476 packages: the group hash computed once (reusing it needs
+      every upstream outcome's hash compared with the pass's, the same
+      order of work as the 2–3 ms of hashing it saves) and `resolveFiles`'
+      memo checked earlier (the memo cannot hit there: its key holds the
+      task's own outputs, and a project's `build` and `test` differ in
+      them; sharing the glob matches instead would save about 3 ms). The
+      large lever, persisting last run's stable keys under one digest of
+      what they read, is designed in
+      `docs/design/persisted-stable-keys-2026-09.md`: sixteen input
+      classes with where each enters, five shapes that bypass, a proof
+      sketch, and a prototype that saved 13–21 ms at min (base 212–230,
+      memo 198–214 over four interleaved passes). DEFERRED (Decisions):
+      exact-repeat runs only, part of the saving reappears in `run
+graph`, and a missed input is a stale hit on every run.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1124,13 +1141,19 @@ next?".
     git's own run, which is the enumeration's wall anyway);
     the group hash computed once instead of in the stable-key pass and
     again at execute; and `resolveFiles`' memo checked before it builds
-    its key. The large lever is a design: persist last run's stable keys
-    under one digest of what they read (about 25 ms of the 34 the pass
-    costs), stale-hit-critical. (`vx-bench/strace-vx.ts` counting
-    git's worker threads as vx: fixed in item 755.)
+    its key (both declined in item 756). The large lever, persisting
+    last run's stable keys, is designed and DEFERRED (item 756).
+    (`vx-bench/strace-vx.ts` counting git's worker threads as vx: fixed
+    in item 755.) DONE through items 753–756.
 
 ## Decisions (this arc)
 
+- **Persisted stable keys: deferred (item 756).** Designed and
+  prototyped (`docs/design/persisted-stable-keys-2026-09.md`): 13–21 ms
+  of a 476-package warm run, exact-repeat runs only, and any input the
+  digest misses is a stale hit on every run. Not built while vx leads the
+  warm column; revisit on a measured warm-no-op loss or an agent-loop
+  workload, and land only through that doc's gate.
 - **Once per run (owner, 2026-09-24, item 732).** Within a run nothing
   outside vx changes the files it reads; what vx learns once (a read, a
   stat, a PATH lookup, a spawn's answer) it reuses, and only vx's own
