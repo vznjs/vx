@@ -680,6 +680,34 @@ request` (-32600), and the session goes on. The new row sends
         Equivalent:
       - The decoder's final flush: JSON cannot end mid-character.
       - `entry ?? null`: `bun:sqlite`'s `get()` already answers `null`.
+809.  DONE (2026-09-25, `@vzn/vx-migrate`'s shared helpers, the first
+      slice of its sweep). Files: `paths.ts`, `script-command.ts`,
+      `persistent-note.ts`, `plugin-gaps.ts`, `shared-outputs.ts` and
+      `nx/nx-dotenv.ts`. 56 mutations: 42 caught, 10 held now, 4 not
+      held. `persistent-note.ts` had no row of its own at all. Held now,
+      in `tests/helpers-sweep.test.ts`:
+      - A task named by a bare name, a `^` edge or a `pkg#` edge keeps
+        its readiness note; an orphan loses the note alone; a
+        non-string `dependsOn` entry is passed over.
+      - The package manager's `pack`, `publish` and `version` hooks
+        stay out of a task.
+      - A shared-output pair is ordered by an edge in either direction.
+      - A `dependsOn` cycle terminates: without the `seen` set the walk
+        spins, and the row hangs until the job's timeout.
+      - An empty `nonAtomizedTarget` is no parent.
+      - `.<id>.env` files are listed.
+        Not held:
+      - `relPosix`'s separator join, a no-op on the two supported
+        platforms.
+      - An output list of no strings, which overlaps nothing either way.
+      - The `''`-directory fallback in `existingDotenv`: no candidate
+        produces it.
+      - `kept.push` in `resolveSharedOutputs`. The outer loop judges
+        every remaining task as a keeper in turn, so a pair one pass
+        misses the next pass drops, with the same todo. No input built
+        separates the two; not proven equivalent.
+        `nx-map.ts`, `turbo-map.ts`, `nx-command.ts` and the two remote
+        caches are the next slices.
 
 ## In flight
 
