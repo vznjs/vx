@@ -372,8 +372,12 @@ Reads via `get()` are non-blocking thanks to WAL.
   index recorded, and `ArchiveSecurityError` on an unsafe name or an
   escape by name. A directory on the tree side that links out of the
   anchor is the tree's fault, not the artifact's: a `UserError` naming
-  the link and its target (it is kept, never written through). Either
-  way nothing was renamed into place.
+  the link and its target (it is kept, never written through). A link
+  that stays inside the anchor is written through, a dangling one too:
+  its target directory is created first, decided on where the link
+  resolves (`resolveThrough`), and only when a `mkdir` has failed, so a
+  clean tree pays nothing. A cycle of links is a `UserError` by name.
+  On any throw, nothing was renamed into place.
 
 `get(hash)`:
 

@@ -16,7 +16,7 @@
 // Hostile fixtures are still hand-built byte by byte, because a writer
 // that refuses to emit the attack cannot produce the input under test.
 
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync } from 'node:fs'
 import {
   link,
   mkdir,
@@ -30,7 +30,7 @@ import {
 } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'bun:test'
 import {
   ArchiveSecurityError,
   extractArtifactStream,
@@ -690,6 +690,37 @@ describe('archive restore — mixed valid + malicious entries', () => {
     )
     expect(await readdir(dest)).toEqual(['dist2'])
     expect(await readFile(path.join(dest, 'dist2', 'keep.txt'), 'utf8')).toBe('theirs')
+  })
+
+  it('abort prunes the target a dangling link led it to create, and keeps the link', async () => {
+    // Item 747: an entry under a dangling in-project link is written
+    // through it, its target created at the link's resolved path. The
+    // abort's lexical walk from `dist/` never meets that path, so it
+    // starts from where the link leads. The destination is reached through
+    // a link of its own (macOS's /var shape), so the two walks must agree
+    // on a resolved path.
+    const via = `${dest}-via`
+    await symlink(dest, via)
+    onTestFinished(() => rm(via, { force: true }))
+    const good = new TextEncoder().encode('ok\n')
+    const entry = [
+      makeHeader({ name: 'outputs/dist/a.txt', size: 3, typeFlag: '0' }),
+      makeDataBlock(good),
+    ]
+    await symlink('real-out', path.join(dest, 'dist'))
+    await restore(concatTar([...entry, EOF_BLOCKS]), via)
+    expect(await readFile(path.join(dest, 'real-out/a.txt'), 'utf8')).toBe('ok\n')
+
+    await rm(path.join(dest, 'real-out'), { recursive: true })
+    const poisoned = concatTar([
+      ...entry,
+      makeHeader({ name: 'outputs/../evil.txt', size: 3, typeFlag: '0' }),
+      makeDataBlock(good),
+      EOF_BLOCKS,
+    ])
+    await expect(restore(poisoned, via)).rejects.toThrow(/escape|traversal|unsafe/i)
+    expect(await readdir(dest)).toEqual(['dist'])
+    expect(lstatSync(path.join(dest, 'dist')).isSymbolicLink()).toBe(true)
   })
 
   it('a pax `path` record that renames a benign header to a traversal is refused', async () => {

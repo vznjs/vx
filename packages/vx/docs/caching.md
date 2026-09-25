@@ -920,7 +920,14 @@ restore refuses, naming it: `<dir>/dist is a symbolic link to
 <target>, outside <dir> — a cache restore never writes through a link
 that leaves its directory. Remove the link and re-run (the restore
 puts a real directory there), or stop declaring outputs under it.` A
-link that stays inside the project is written through. Entry NAMES are
+link that stays inside the project is written through, and so is one
+whose target is gone: the restore creates the directory it names —
+following a chain of links to its end — and writes through it, the
+link kept. Whether a link stays inside is decided on where it resolves,
+so a dangling link to `../elsewhere` or to an absolute path out of the
+project is the same refusal, nothing created outside, and a cycle of
+links is refused by name. (A link the output globs themselves cover,
+`dist/sub` under `dist/**`, is an output: the clean unlinks it.) Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
 are unlinked and the empty directories the extraction created are
