@@ -831,6 +831,20 @@ next?".
     pass it as a direct write grant (two of them macOS `sandbox-exec`
     rows, which this box cannot run) and move to `allow.write` in the
     same change, proven on the darwin CI job.
+23. **Two signal rows went red once each, root cause unproven
+    (2026-09-25).** (a) `watch-signals.test.ts` › "SIGINT during the
+    initial run reaches its task as SIGINT", on the macOS job of #878.
+    The recap cut the assertion, it passed on the same code in #879, and
+    it passed 49 of 49 Linux repetitions. (b) `signal-handling.test.ts`
+    › "at the moment vx exits on a signal every task process is gone and
+    its pipes are closed", in a full local gate. On SIGINT one task pid
+    was alive at vx's exit; the shard passed 4 of 4 alone and a gate
+    re-run passed. Under the sandbox `procfsIsOwn()` is false, so the
+    test's `isAlive` counts a zombie, and `slow`'s `sleep 30 &` starts
+    with SIGINT ignored and dies only to the SIGKILL. An orphan zombie
+    that init has not reaped yet is the leading suspect, not a proven
+    one. Next: make both rows print what they saw (the pid's state and
+    command line, vx's stderr) so the next failure names itself.
 
 ## Decisions (this arc)
 
