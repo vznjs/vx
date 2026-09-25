@@ -681,3 +681,160 @@ describe('nx()', () => {
     TIMEOUT,
   )
 })
+
+// Item 816's sweep of nx/index.ts: each row fails with one line undone.
+describe('nx(): what the sweep found unheld', () => {
+  const graphWith = (edit: (g: typeof GRAPH) => void) => {
+    const g = structuredClone(GRAPH)
+    edit(g)
+    return JSON.stringify(g)
+  }
+
+  it(
+    '`root` names where nx.json and the graph live',
+    async () => {
+      // Nx's workspace is packages/: its node roots are relative to it.
+      const g = graphWith((x) => {
+        x.graph.nodes.lib.data.root = 'lib'
+        x.graph.nodes.app.data.root = 'app'
+        x.graph.nodes.lib.data.targets.lint.options = { command: 'echo from-sub', cwd: 'lib' }
+      })
+      await writeFile(path.join(root, 'packages', 'graph-sub.json'), g)
+      await workspace(
+        `nx({ root: ${JSON.stringify(path.join(root, 'packages'))}, graph: 'graph-sub.json' })`,
+      )
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(plan.tasks.find((t) => t.node.id === 'lib#lint')!.node.config.exec?.command).toBe(
+        'echo from-sub',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the mapper’s notes are reported: an implicit dep no package declares',
+    async () => {
+      await writeFile(
+        path.join(root, 'graph.json'),
+        graphWith((x) => {
+          ;(x.graph.dependencies.lib as unknown[]).push({
+            source: 'lib',
+            target: 'app',
+            type: 'implicit',
+          })
+        }),
+      )
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(log.lines.filter((l) => l.includes('implicit Nx dep'))).toEqual([
+        '[@vzn/vx-migrate] 1 implicit Nx dep not representable (lib → app); review dependsOn',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a root project’s gaps are not reported: its note already says it does not run',
+    async () => {
+      await writeFile(
+        path.join(root, 'graph.json'),
+        graphWith((x) => {
+          ;(x.graph.nodes.ws.data.targets as Record<string, unknown>)['ci-all'] = {
+            executor: 'nx:run-commands',
+            options: { command: 'true', streamOutput: false },
+          }
+        }),
+      )
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(log.lines.filter((l) => l.includes('streamOutput'))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'with no executor or .env line, neither missing bin nor a missing nx is reported',
+    async () => {
+      // `echo nx-exec` names the bin but does not start with it.
+      await writeFile(
+        path.join(root, 'graph.json'),
+        JSON.stringify({
+          graph: {
+            nodes: {
+              lib: {
+                name: 'lib',
+                data: {
+                  root: 'packages/lib',
+                  targets: { lint: { command: 'echo nx-exec', cwd: 'packages/lib' } },
+                },
+              },
+            },
+            dependencies: {},
+          },
+        }),
+      )
+      await rm(path.join(root, 'node_modules', '.bin', 'nx-exec'))
+      await rm(path.join(root, 'node_modules', '.bin', 'nx-env'))
+      await rm(path.join(root, 'node_modules', 'nx'), { recursive: true })
+      await workspace("nx({ graph: 'graph.json' })")
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
+      expect(log.lines.filter((l) => /node_modules/.test(l))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  // One file per row: a file dated in the future stays newer than every
+  // snapshot after it, so a second touch in the same row proves nothing.
+  for (const [what, rel] of [
+    ['the root package.json', 'package.json'],
+    ['a package’s package.json', 'packages/lib/package.json'],
+  ] as const) {
+    it(
+      `${what} newer than the snapshot re-exports`,
+      async () => {
+        await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+        expect(await nxCalls(root)).toBe(1)
+        const later = new Date(Date.now() + 5_000)
+        await utimes(path.join(root, rel), later, later)
+        await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+        expect(await nxCalls(root)).toBe(2)
+      },
+      TIMEOUT,
+    )
+  }
+
+  it(
+    'an export that exits 0 and writes nothing is a failure; a failure names its last three lines',
+    async () => {
+      const bin = path.join(root, 'node_modules', '.bin', 'nx')
+      await writeFile(bin, '#!/bin/sh\nexit 0\n')
+      await expect(planRun({ cwd: root, tasks: ['lint'], log: silent() })).rejects.toThrow(
+        '[@vzn/vx-migrate] nx(): nx graph --file exited 0',
+      )
+      await writeFile(bin, '#!/bin/sh\nprintf "one\\ntwo\\nthree\\nfour\\n" >&2\nexit 7\n')
+      await expect(planRun({ cwd: root, tasks: ['lint'], log: silent() })).rejects.toThrow(
+        '[@vzn/vx-migrate] nx(): nx graph --file exited 7: two three four',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a target the mapper skips is left out, not declared null',
+    async () => {
+      await writeFile(
+        path.join(root, 'graph.json'),
+        graphWith((x) => {
+          ;(x.graph.nodes.lib.data.targets as Record<string, unknown>)['idle'] = {
+            executor: 'nx:noop',
+          }
+        }),
+      )
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
+    },
+    TIMEOUT,
+  )
+})

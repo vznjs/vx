@@ -498,3 +498,28 @@ describe('one mapping per run', () => {
     TIMEOUT,
   )
 })
+
+// Item 816's sweep of turbo/index.ts: the row fails with the line undone.
+describe('turbo(): what the sweep found unheld', () => {
+  it(
+    '`root` names where turbo.json lives',
+    async () => {
+      await mkdir(path.join(root, 'cfg'))
+      await writeFile(
+        path.join(root, 'cfg', 'turbo.json'),
+        JSON.stringify({ tasks: { lint: { cache: false } } }),
+      )
+      await rm(path.join(root, 'turbo.json'))
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        localWorkspaceSource(
+          [`turbo({ root: ${JSON.stringify(path.join(root, 'cfg'))} })`],
+          `import { turbo } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
+        ),
+      )
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['app#lint'])
+    },
+    TIMEOUT,
+  )
+})
