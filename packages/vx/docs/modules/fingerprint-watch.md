@@ -35,7 +35,11 @@ export class FingerprintWatch {
   file. A persistent one calls it once ready.
 - `moved()` — the files that no longer hold what the run read, or
   undefined. Nothing is looked at until `wrote()` was called; then one
-  `lstat` per table entry, and a file written since the read (by ctime,
+  `stat` per table entry — following a link, as both reads do, so a
+  symlinked lockfile rewritten through it is seen by its target's ctime
+  (an `lstat` saw the link's, which never moved: a stale hit on every
+  run after the link aged, item 760, `tests/in-run-writes.test.ts` › "a
+  lockfile that is a symlink…") — and a file written since the read (by ctime,
   within `FILE_HASH_RACY_MS` as git judges its index) is read and
   compared with the bytes the fold kept (`WorkspaceFingerprints.files`).
   A file that appeared or went has moved. Once moved, the run stays
