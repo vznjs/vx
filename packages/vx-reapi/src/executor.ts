@@ -683,9 +683,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
             )
           }
-          const decodedTree = decodeTree(treeBlob)
+          const decodedTree = decodeTreeWithBytes(treeBlob)
           if (decodedTree.root === undefined) continue
-          treeGrafts.push({ path: d.path, root: decodedTree.root, children: decodedTree.children })
+          treeGrafts.push({
+            path: d.path,
+            root: decodedTree.root,
+            children: decodedTree.children,
+            childDigests: decodedTree.childDigests,
+          })
         }
       }
 
