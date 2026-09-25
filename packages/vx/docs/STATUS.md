@@ -837,6 +837,36 @@ graph`, and a missed input is a stale hit on every run.
       (macOS's `/tmp` → `/private/tmp`) and a missing one. Two fixture
       files skip rows as root here (`cache-dir-selection` 4,
       `inputs` 1); no verdict rests on them.
+782.  DONE (2026-09-25, sweep of `cli/plan-format.ts`, never named). 45
+      mutations over the ten files that assert its sentences, 40 caught,
+      4 held now, 1 equivalent (`executes > 0` beside
+      `executes > p.unknownCount`, a count that is never negative). Held
+      now: one hit read "1 cache hits"; a plan with more than three eager
+      refusals listed all of them, or dropped its "…and N more" line; and
+      a prediction whose every would-run task has history grew a
+      "0 tasks without history" tail. Three rows in
+      `tests/plan-format.test.ts` (the refusal row with a three-refusal
+      control), each red against its mutant.
+783.  DONE (2026-09-25, sweep of `util/timing.ts`, never named). 16
+      mutations; the dry-run file held 2 (the off switch on an empty
+      variable, and the span section). The module reads `VX_TIMING` at
+      import, so the new `tests/util-timing.test.ts` drives a child per row:
+      the table's own-share arithmetic, span accumulation (count, total,
+      largest first, the caveat line), no span section without spans, no
+      table without marks, and off when unset or empty, with a span as the
+      shared no-op. Now 14 are caught; `mark` recording while off (T3) and
+      `printTimings` without its `enabled` test (T9) are each invisible
+      alone, and the pair is held. The header claimed marks were
+      cumulative from process start. They are from the module's load, which
+      is also what `benchmarks.md` says, so the comment now says so, and a
+      row (50 ms of child work before the import) pins the origin.
+784.  DONE (2026-09-25, sweeps of `util/ulid.ts`, `util/num.ts`,
+      `cli/format.ts` and `workspace/load-reads.ts`, never named). 2, 9, 1
+      and 5 mutations, every one caught: a UUIDv4 or a constant id, each
+      `clampInt` / `parseDecimalInt` guard and the timer ceiling, the
+      `formatBytes` re-export, and the load's memo and its probe
+      (`tests/read-once.unsafe.test.ts` holds the memo and both sets;
+      `fingerprint.test.ts` and `syscall-repeats` the probe). No change.
 
 ## In flight
 

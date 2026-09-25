@@ -62,6 +62,39 @@ describe('formatPlanText', () => {
     expect(out).not.toContain('cache hits')
   })
 
+  it('one hit is a singular "cache hit"', () => {
+    const out = formatPlanText({ tasks: [task('a#lint', 'hit-local', 'bbbbbbbb22222222')] })
+    expect(out.split('\n')).toContain('1 task(s) planned, 1 cache hit (1 local).')
+  })
+
+  it('names the first three eager refusals and counts the rest', () => {
+    const refusals = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ taskId: `a#t${i}`, reason: `reason ${i}` }))
+    const tail = (n: number) =>
+      formatPlanText({
+        tasks: [task('a#build', 'miss', 'dddddddd44444444')],
+        downloadDowngrades: refusals(n),
+      })
+        .split('\n')
+        .slice(-(n > 3 ? 6 : n + 2))
+    expect(tail(5)).toEqual([
+      'download: 0 task(s) would keep outputs remote, 5 kept eager:',
+      '    a#t0 — reason 0',
+      '    a#t1 — reason 1',
+      '    a#t2 — reason 2',
+      '    …and 2 more',
+      '',
+    ])
+    // CONTROL: exactly three is the whole list, with no "more" line.
+    expect(tail(3)).toEqual([
+      'download: 0 task(s) would keep outputs remote, 3 kept eager:',
+      '    a#t0 — reason 0',
+      '    a#t1 — reason 1',
+      '    a#t2 — reason 2',
+      '',
+    ])
+  })
+
   it('shows task description below the id line when present', () => {
     const out = formatPlanText({
       tasks: [task('a#lint', 'miss', '11111111', [], 'oxlint with type-aware checks')],
@@ -97,7 +130,10 @@ describe('formatPlanText — time prediction', () => {
     // The hit line carries no eta.
     const lintLine = out.split('\n').find((l) => l.includes('a#lint'))!
     expect(lintLine).not.toContain('~')
-    expect(out).toContain('predicted: ~1.50s wall · ~1.50s total execution')
+    // Every would-run task has history: the footer names no unknown count.
+    expect(out.split('\n').find((l) => l.startsWith('predicted:'))).toBe(
+      'predicted: ~1.50s wall · ~1.50s total execution',
+    )
   })
 
   it('counts would-run tasks without history as unknown (+?)', () => {
