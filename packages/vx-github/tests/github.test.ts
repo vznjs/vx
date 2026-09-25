@@ -13,6 +13,18 @@ import { github, GithubSummarySink } from '../src/plugin.js'
 import { MAX_JOB_SUMMARY_BYTES } from '../src/summary.js'
 import { renderJobSummary } from '../src/summary.js'
 
+/**
+ * Put `process.env` back IN PLACE: assigning a fresh object detaches it
+ * from the process environment for every later file in this process.
+ */
+function restoreEnv(saved: Readonly<Record<string, string | undefined>>): void {
+  for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key]
+  for (const [key, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+}
+
 const GITHUB_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
 const RUN: RunContextRecord = {
@@ -374,7 +386,7 @@ describe('Checks API', () => {
       expect(body['conclusion']).toBe('success')
       expect((body['output'] as { summary: string }).summary).toContain('a#build')
     } finally {
-      process.env = prev
+      restoreEnv(prev)
     }
   })
 
@@ -394,7 +406,7 @@ describe('Checks API', () => {
       expect(warns[0]).toContain('403')
       expect(warns[0]).toContain('checks: write')
     } finally {
-      process.env = prev
+      restoreEnv(prev)
     }
   })
 
@@ -412,7 +424,7 @@ describe('Checks API', () => {
       void github({ summaryFile: '/tmp/s.md' }).telemetry!(wctx)
       expect(warns.length).toBe(1) // default: silent skip
     } finally {
-      process.env = prev
+      restoreEnv(prev)
     }
   })
 })

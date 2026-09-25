@@ -225,6 +225,17 @@ test is telling the truth.
       is 446 pass, 0 fail. Unreachable from a row: `/proc` unreadable
       right after `procfsIsOwn()` read it, the non-digit entry skip (a
       cost), and the transient `X` state.
+788.  DONE (2026-09-25, found gating 787). Three `isTmpdirRefusal` rows
+      (item 781) went red once the new test file re-dealt the shards and
+      put `timeout-bounds.test.ts` ahead of `user-error-classify.test.ts`
+      in one process. `timeout-bounds` restored its environment with
+      `process.env = { ...saved }`, which DETACHES `process.env` from the
+      process environment: every later write in that process lands on a
+      plain object that `os.tmpdir()` never reads, so the rows' TMPDIR
+      went unseen. Reproduced with the two files alone; the fix restores
+      in place (`tests/helpers/env.ts`), in `timeout-bounds`, `colors`
+      and `vx-github`'s own suite (a local copy: a plugin's tests do not
+      read core's), the three places the pattern stood.
 
 ## In flight
 

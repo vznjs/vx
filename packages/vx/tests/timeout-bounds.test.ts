@@ -32,6 +32,7 @@ import { validateProjectConfig } from '../src/workspace/project-loader.js'
 import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 import { readTaskTimeoutEnv } from '../src/orchestrator/run.js'
 import { parseRunArgs } from '../src/cli/index.js'
+import { restoreEnv } from './helpers/env.js'
 
 function taskWithTimeout(timeout: number): ProjectConfig {
   return { tasks: { build: { exec: { command: 'true', timeout } } } } as ProjectConfig
@@ -131,7 +132,7 @@ describe('declared timeouts are REFUSED past the bound', () => {
 describe('env knobs are CLAMPED, because their contract never throws', () => {
   const saved = { ...process.env }
   afterEach(() => {
-    process.env = { ...saved }
+    restoreEnv(saved)
   })
 
   it('VX_TASK_TIMEOUT clamps instead of inverting', () => {
