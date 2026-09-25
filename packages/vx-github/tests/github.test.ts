@@ -428,3 +428,220 @@ describe('Checks API', () => {
     }
   })
 })
+
+// Item 806's sweep: each row fails with one line of src/ undone.
+describe('every output the vx-github sweep found unheld', () => {
+  const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
+  const ENV = { GITHUB_TOKEN: 't0ken', GITHUB_REPOSITORY: 'vznjs/vx', GITHUB_SHA: 'abc123' }
+  const row = (md: string, id: string) => md.split('\n').find((l) => l.startsWith(`| ${id} |`))
+
+  it('the job summary is clamped in BYTES, on a character boundary', async () => {
+    // Ids of 2-byte letters and a 3-byte `⚡` a row: under the cap in UTF-16
+    // units, well past it in bytes, and the old clamp passed the page whole
+    // (item 806).
+    const { clampJobSummary } = await import('../src/summary.js')
+    const many = Array.from({ length: 20_000 }, (_, i) =>
+      task({ taskId: `żółć-żółć-żółć-${i}#build`, status: 'cache-hit' }),
+    )
+    const page = renderJobSummary(summary(many))
+    expect({ units: page.length < MAX_JOB_SUMMARY_BYTES }).toEqual({ units: true })
+    expect({ bytes: Buffer.byteLength(page, 'utf8') > MAX_JOB_SUMMARY_BYTES }).toEqual({
+      bytes: true,
+    })
+    const written = clampJobSummary(page)
+    expect(Buffer.byteLength(written, 'utf8')).toBeLessThanOrEqual(MAX_JOB_SUMMARY_BYTES)
+    expect(written).toContain('truncated by @vzn/vx-github')
+    expect(written).not.toContain('�')
+  })
+
+  it('a cut that lands inside a character backs off to its start, whichever parity', async () => {
+    // 2-byte letters behind an optional 1-byte prefix: one of the two puts
+    // the cut mid-character, where decoding the half left a U+FFFD that
+    // also pushed the page past the cap.
+    const { clampJobSummary } = await import('../src/summary.js')
+    for (const prefix of ['', 'a']) {
+      const written = clampJobSummary(prefix + 'ż'.repeat(MAX_JOB_SUMMARY_BYTES / 2 + 10))
+      expect({
+        prefix,
+        replaced: written.includes('\uFFFD'),
+        overCap: Buffer.byteLength(written, 'utf8') > MAX_JOB_SUMMARY_BYTES,
+      }).toEqual({ prefix, replaced: false, overCap: false })
+    }
+  })
+
+  it('each clamp keeps a page of exactly its cap whole and cuts one past it', async () => {
+    const { clampJobSummary } = await import('../src/summary.js')
+    const { clampSummary } = await import('../src/checks.js')
+    const atJob = 'x'.repeat(MAX_JOB_SUMMARY_BYTES)
+    expect(clampJobSummary(atJob)).toBe(atJob)
+    expect(clampJobSummary(`${atJob}x`)).toContain('truncated by @vzn/vx-github')
+    const atCheck = 'x'.repeat(65_535)
+    expect(clampSummary(atCheck)).toBe(atCheck)
+    expect(clampSummary(`${atCheck}x`)).toContain('truncated by @vzn/vx-github')
+  })
+
+  it.each([
+    [999, '999ms'],
+    [1000, '1.0s'],
+    [59_999, '60.0s'],
+    [60_000, '1m 0s'],
+    [125_000, '2m 5s'],
+  ])('a duration of %d ms reads %s', (ms, shown) => {
+    expect(row(renderJobSummary(summary([task({ durationMs: ms })])), 'a#build')).toBe(
+      `| a#build | ✅ ran | ${shown} |`,
+    )
+  })
+
+  it('a status without a label passes through as itself', () => {
+    const md = renderJobSummary(summary([task({ status: 'mystery' as TaskTelemetry['status'] })]))
+    expect(row(md, 'a#build')).toBe('| a#build | mystery | 1.2s |')
+  })
+
+  it('the stats line counts executed tasks, hits by source and failures, singular and plural', () => {
+    const four = renderJobSummary(
+      summary([
+        task({ taskId: 'a#1' }),
+        task({ taskId: 'a#2', status: 'failed', exitCode: 1 }),
+        task({ taskId: 'a#3', status: 'cache-hit' }),
+        task({ taskId: 'a#4', status: 'cache-hit-remote' }),
+      ]),
+    )
+    expect(four.split('\n')[2]).toBe(
+      '**4** tasks · **2** executed · **2** cache hits (1 remote) · **1** failed · 4.3s',
+    )
+    const one = renderJobSummary(summary([task({})]))
+    expect(one.split('\n')[2]).toBe('**1** task · **1** executed · **0** cache hits · 4.3s')
+  })
+
+  it('a persistent task that failed to spawn reads so', () => {
+    const md = renderJobSummary(
+      summary([task({ status: 'failed', exitCode: 127, notReady: 'spawn' })]),
+    )
+    expect(md).toContain('- **a#build** — never ready (spawn failed), exit 127\n')
+  })
+
+  it('the footer counts a hit as passed and escapes the command; a blocked id is escaped', () => {
+    const md = renderJobSummary(
+      summary(
+        [
+          task({}),
+          task({ taskId: 'a#test', status: 'cache-hit' }),
+          task({ taskId: 'x#y', status: 'failed', exitCode: 1 }),
+          task({ taskId: 'p|q#t', status: 'skipped', blockedBy: 'x#y' }),
+        ],
+        { run: { ...RUN, command: 'vx run a|b' } },
+      ),
+    )
+    expect(md).toContain('· `vx run a\\|b` · 2/4 passed · 1 restored</sub>')
+    expect(md).toContain('· blocked p\\|q#t')
+  })
+
+  it('the check-run payload: its times, its title in both numbers, its summary clamped', async () => {
+    const { buildCheckRunPayload } = await import('../src/checks.js')
+    const s = summary([task({})], { startedAt: 1_000, endedAt: 61_000 })
+    const payload = buildCheckRunPayload({
+      summary: s,
+      markdown: 'y'.repeat(70_000),
+      name: 'vx',
+      sha: 'a',
+    })
+    expect([payload['started_at'], payload['completed_at']]).toEqual([
+      '1970-01-01T00:00:01.000Z',
+      '1970-01-01T00:01:01.000Z',
+    ])
+    const output = payload['output'] as { title: string; summary: string }
+    expect(output.title).toBe('1 task · 0 cached')
+    expect(output.summary.length).toBeLessThanOrEqual(65_535)
+    const two = buildCheckRunPayload({
+      summary: summary([task({}), task({ taskId: 'b#x', status: 'cache-hit' })]),
+      markdown: 'm',
+      name: 'vx',
+      sha: 'a',
+    })
+    expect((two['output'] as { title: string }).title).toBe('2 tasks · 1 cached')
+  })
+
+  it('the POST sends exactly the API headers; a body is cut to 200 chars; an unreadable one still warns', async () => {
+    const { postCheckRun } = await import('../src/checks.js')
+    const env = { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api' }
+    const seen: Record<string, string>[] = []
+    const warns: string[] = []
+    await postCheckRun({
+      env,
+      payload: {},
+      fetchFn: async (_url, init) => {
+        seen.push(init.headers)
+        return { ok: false, status: 500, text: async () => 'e'.repeat(300) }
+      },
+      warn: (m) => warns.push(m),
+    })
+    expect(seen[0]).toEqual({
+      authorization: 'Bearer t',
+      accept: 'application/vnd.github+json',
+      'content-type': 'application/json',
+      'x-github-api-version': '2022-11-28',
+      'user-agent': 'vzn-vx-github',
+    })
+    await postCheckRun({
+      env,
+      payload: {},
+      fetchFn: async () => ({
+        ok: false,
+        status: 502,
+        text: async () => {
+          throw new Error('socket closed')
+        },
+      }),
+      warn: (m) => warns.push(m),
+    })
+    expect(warns).toEqual([
+      `vx-github: check-run POST failed (500): ${'e'.repeat(200)}`,
+      'vx-github: check-run POST failed (502): ',
+    ])
+  })
+
+  it('an empty GITHUB_STEP_SUMMARY declines like a missing one', () => {
+    const prev = { ...process.env }
+    process.env['GITHUB_STEP_SUMMARY'] = ''
+    try {
+      expect(github().telemetry!(ctx)).toBeUndefined()
+    } finally {
+      restoreEnv(prev)
+    }
+  })
+
+  it('`checks: false` posts nothing with the env present; `checkName` and `title` are used', async () => {
+    const prev = { ...process.env }
+    Object.assign(process.env, ENV)
+    try {
+      const bodies: string[] = []
+      const writes: string[] = []
+      const fetchFn = async (_url: string, init: { body: string }) => {
+        bodies.push(init.body)
+        return { ok: true, status: 201, text: async () => '' }
+      }
+      const off = github({
+        summaryFile: '/tmp/s.md',
+        checks: false,
+        append: async () => undefined,
+        fetchFn,
+      }).telemetry!(ctx) as GithubSummarySink
+      off.onRunSummary!(summary([task({})]))
+      await off.flush!()
+      expect(bodies).toEqual([])
+      const named = github({
+        summaryFile: '/tmp/s.md',
+        checkName: 'vx / ci',
+        title: 'nightly',
+        append: async (_f, md) => void writes.push(md),
+        fetchFn,
+      }).telemetry!(ctx) as GithubSummarySink
+      named.onRunSummary!(summary([task({})]))
+      await named.flush!()
+      expect((JSON.parse(bodies[0]!) as { name: string }).name).toBe('vx / ci')
+      expect(writes[0]!.startsWith('## ✅ nightly\n')).toBe(true)
+    } finally {
+      restoreEnv(prev)
+    }
+  })
+})

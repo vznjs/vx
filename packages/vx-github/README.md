@@ -74,5 +74,5 @@ PR.
 
 Both artifacts are bounded by GitHub's own limits, because exceeding
 either loses the whole thing rather than its tail: the check-run output
-at 65 535 characters, the job summary at 1 MiB (about 19 000 task rows).
+at 65 535 characters, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary.
 Past either, what is written ends with a line saying it was truncated.

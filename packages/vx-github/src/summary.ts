@@ -47,9 +47,19 @@ function statusLabel(t: TaskTelemetry): string {
 export const MAX_JOB_SUMMARY_BYTES = 1024 * 1024
 
 export function clampJobSummary(markdown: string): string {
-  if (markdown.length <= MAX_JOB_SUMMARY_BYTES) return markdown
+  // The cap is BYTES, and the page is not ASCII: every status label is an
+  // emoji (4 bytes, 2 UTF-16 units) and every separator a `·` or a `—`
+  // (2 and 3 bytes, 1 unit). Measured in `.length`, a clamped page of those
+  // rows came out past 1 MiB and GitHub refused it whole (item 806). A unit
+  // is at most 3 bytes, so a short page skips the encode.
+  if (markdown.length * 3 <= MAX_JOB_SUMMARY_BYTES) return markdown
+  const bytes = new TextEncoder().encode(markdown)
+  if (bytes.byteLength <= MAX_JOB_SUMMARY_BYTES) return markdown
   const suffix = '\n\n…truncated by @vzn/vx-github (GitHub caps a job summary at 1 MiB)\n'
-  return markdown.slice(0, MAX_JOB_SUMMARY_BYTES - suffix.length) + suffix
+  let end = MAX_JOB_SUMMARY_BYTES - new TextEncoder().encode(suffix).byteLength
+  // Back up off a continuation byte, so the cut never splits a character.
+  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
+  return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
 }
 
 /** Render the whole job summary. Deterministic for a given record. */

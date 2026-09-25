@@ -598,6 +598,33 @@ test is telling the truth.
         off.
         After the refactor, 41 mutations over `critical-path.ts`,
         `index.ts` and `history-view.ts` are all caught.
+806.  DONE (2026-09-25, sweep of `@vzn/vx-github`). 50 mutations over
+      `summary.ts`, `checks.ts` and `plugin.ts`: 22 caught, 27 survived,
+      1 did not compile. One survivor was a bug. The job-summary clamp
+      measured `.length`, which counts UTF-16 units, against GitHub's
+      1 MiB cap, which counts bytes. The page is not ASCII: every status
+      is an emoji and every separator a `·` or a `—`. So a page under the
+      cap in units could be well past it in bytes, and GitHub refuses
+      such a page whole. The clamp now measures UTF-8 bytes and backs a
+      cut off a continuation byte, so no character is split; a page
+      under a third of the cap in units skips the encode. New rows in
+      `tests/github.test.ts`:
+      - the byte cap, on a page under it in units and past it in bytes;
+      - a cut inside a character, both parities;
+      - each clamp's exact boundary;
+      - the duration breaks;
+      - an unlabelled status;
+      - the stats line in both numbers;
+      - a spawn that never became ready;
+      - the footer's pass count and escaping, and an escaped blocked id;
+      - the check-run's times, title and clamped summary;
+      - the POST's exact headers, its 200-character body cut, and an
+        unreadable body;
+      - an empty `GITHUB_STEP_SUMMARY`;
+      - `checks: false`, `checkName` and `title`.
+        With the fix and a re-anchored clamp, 52 mutations: 50 caught, 2
+        equivalent. `blockedBy` is set only on a skipped task, and the
+        record's `hitCount` is built from the statuses the footer counts.
 
 ## In flight
 
