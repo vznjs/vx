@@ -813,6 +813,17 @@ request` (-32600), and the session goes on. The new row sends
         truncated temp ends the stream cleanly (probed), and as root a
         permission change cannot make the read fail.
 
+815.  DONE (2026-09-25, `vx-migrate`'s `nx-cache/index.ts`, the
+      seventh slice). 25 mutations: 16 caught, 9 held now. Held now, in
+      `tests/nx-cache-sweep.test.ts`, through a stub `fetch`:
+      - config: every trailing slash stripped, a server of `''` or `/`
+        declines, a password with no user name refused, the
+        `accessToken` option over the env, and an empty token as none;
+      - requests: no token sends no `Authorization`, an upload declares
+        its `Content-Length`, a GET answering 500 is an error;
+      - the probe's kept response serves one `get`, and the next
+        fetches again.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
