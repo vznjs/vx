@@ -816,7 +816,12 @@ false`, the first failure failing the task; `commands: []` a no-op;
       exits 143 with its own status, no longer the tracer's signal death.
       `closeSignalChannel` drops a child's entry before it closes the
       descriptor: Bun leaves the pipe open after exit, and a kill after
-      the close must not write to a reused number.
+      the close must not write to a reused number. The PR's darwin job
+      failed an unrelated row of item 745's, the post-exit drain: its
+      grandchild slept 0.1 s before printing, and on a loaded runner that
+      overran the 250 ms drain (292 ms). It now prints once its parent is
+      gone (`kill -0 $$` polled), the claim the row makes; 20 serial and
+      8 parallel runs pass, and it still fails with the drain at 0.
 
 ## In flight
 

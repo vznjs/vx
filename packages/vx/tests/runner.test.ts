@@ -121,10 +121,13 @@ describe('runCommand', () => {
   // nx#36863, nx#35302: output a task's background child printed just
   // after the task exited was missing from the log and the replay. Within
   // the post-exit drain it is kept: live, and in what the cache stores.
+  // The grandchild prints once its parent is gone, not after a fixed
+  // sleep: `sleep 0.1` plus a loaded macOS runner's start-up overran the
+  // 250 ms drain (CI, 292 ms), and the claim is "just after the exit".
   it('a grandchild that prints within the post-exit drain reaches the live stream and the result', async () => {
     let live = ''
     const result = await runCommand({
-      command: '(sleep 0.1; echo TAIL) & echo HEAD',
+      command: '(while kill -0 $$ 2>/dev/null; do sleep 0.01; done; echo TAIL) & echo HEAD',
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       onStdout: (chunk) => {
