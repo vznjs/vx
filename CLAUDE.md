@@ -394,6 +394,14 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   entry, `h-<pid>-<start>-<n>` (item 759) — and a stress row meant to
   catch the race makes the judged state common (every third taking
   there dies holding), not one per process spawn.
+- A test that can reach a self-replacing or host-mutating path runs
+  against a COPY of the runtime, never the host's own binary: the
+  source-mode `vx upgrade` row spawned `process.execPath`, and a mutant
+  of its one guard (`isCompiledBinary()`) downloaded the vx release and
+  renamed it over the container's Bun (2026-09-25, item 779). The row
+  now copies the runtime into its temp dir, spawns the copy, and
+  asserts the copy's digest unchanged, so a broken guard replaces only
+  the copy and fails the row.
 
 ## Live invariants (verify in source before quoting)
 
