@@ -727,6 +727,35 @@ request` (-32600), and the session goes on. The new row sends
         Equivalent: the `delete def.extends` after the merge. Nothing
         reads `extends` again, and the unknown-key scan skips it.
 
+811.  DONE (2026-09-25, `vx-migrate`'s `nx/nx-map.ts`, the third slice).
+      A defect found by reading `parseNxGraph`: a graph file of `null`
+      read `null.graph` and threw a bare TypeError, not the error naming
+      the shape it wanted. It reads `?.graph` now; the row fails
+      without it. 42 mutations: 26 caught, 14 held now, 2 equivalent.
+      Held now, in `tests/nx-map-sweep.test.ts`, driven through
+      `mapNxWorkspace` on a synthetic graph:
+      - a node root with a trailing slash finds its project (unmatched,
+        it would be synthesized with the slash in its dir);
+      - a root node with no discovered project takes its package.json
+        name;
+      - a `defaultConfiguration` naming no configuration is ignored;
+      - a group whose every `^` edge held nothing keeps an empty
+        `dependsOn`;
+      - a cached continuous target says it runs uncached;
+      - a cached target with no inputs reads the whole project;
+      - a plain `command` target maps as run-commands;
+      - `envFile`: an absolute path kept, none loaded under
+        `NX_LOAD_DOT_ENV_FILES=false`;
+      - run-script's `script` option;
+      - `{args.*}` reported;
+      - implicit deps: one pair per target project, and "and N more"
+        past five.
+        Equivalent:
+      - Skipping a graph node without targets before synthesizing it:
+        the mapping loop skips it again.
+      - The `nx.json` existence check: the failed read lands in the
+        same catch.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
