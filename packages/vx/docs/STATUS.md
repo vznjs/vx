@@ -181,6 +181,27 @@ test is telling the truth.
       fingerprint watch's stale hit, 759–763); the `baseAllowWrite` seam
       (771); and the mutation sweeps of files STATUS had named once or
       never (765–770, 773–778). Next trim when the loop passes forty.
+786.  DONE (2026-09-25, sweep of `cache/output-index.ts`, never named in
+      a sweep; the proofs a cache hit runs before it skips a restore). 27
+      mutations over the 17 files that name it or assert what a hit
+      restores: 17 caught, 5 held now, 5 equivalent. Held now, each by a
+      row in `tests/output-dirs.test.ts` that fails against its mutant:
+      the size half of the file check (the mtime half masked it, so a
+      different size under a forged identical mtime read current);
+      a missing output file read current (masked twice in `run()`: the
+      removal bumps its directory, and the glob drops the path); a
+      re-save kept the previous save's file rows beside its own; a
+      recorded directory replaced by a file with every mtime forged read
+      current; and a flushed snapshot stayed pending, so each later flush
+      wrote it again over the rows another process had since stored. None
+      of the five is a stale hit as `run()` drives it today: each needs a
+      forged mtime or is masked by another proof, and the last only costs
+      a walk. Equivalent: the empty-list early return (SQLite answers
+      `IN ()` with no rows), the walk's `isDirectory` guard (a file
+      prefix fails at `readdir` the same way), `!isSymbolicLink()` beside
+      a `Dirent`'s own `isDirectory()` (which does not follow links), the
+      absent-prefix return (a real directory's mtime is never within 1 ms
+      of −1), and the empty-flush return (an empty transaction).
 
 ## In flight
 
