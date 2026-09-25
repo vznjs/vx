@@ -83,7 +83,9 @@ export function parseNxGraph(text: string, label: string): NxGraph {
     const msg = err instanceof Error ? err.message : String(err)
     throw new UserError(`failed to parse ${label}: ${msg}`)
   }
-  const g = ((parsed as { graph?: unknown }).graph ?? parsed) as {
+  // `?.`: a file of `null` is JSON, and read as an object it threw a bare
+  // TypeError instead of naming the shape it wanted (item 811).
+  const g = ((parsed as { graph?: unknown } | null)?.graph ?? parsed) as {
     nodes?: unknown
     dependencies?: unknown
   }
