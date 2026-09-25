@@ -100,21 +100,20 @@ export function shellQuote(word: string): string {
   return /^[A-Za-z0-9_@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`
 }
 
-/** Nx's `needsShellQuoting` / `isAlreadyQuoted` / `wrapArgIntoQuotesIfNeeded`, for the text it appends. */
+/**
+ * Nx's `needsShellQuoting` / `isAlreadyQuoted` / `wrapArgIntoQuotesIfNeeded`
+ * for the one shape it appends here, `--name=value`: Nx's branch for a word
+ * without `=` has no caller in this file.
+ */
 const SHELL_META = /[|&;<>()$`\\!"'*?[\]{}~#\s]/
 function nxQuoteArg(arg: string): string {
   const quoted = (s: string) =>
     s.length >= 2 && ((s[0] === "'" && s.at(-1) === "'") || (s[0] === '"' && s.at(-1) === '"'))
   const eq = arg.indexOf('=')
-  if (eq !== -1) {
-    const key = arg.slice(0, eq)
-    const value = arg.slice(eq + 1)
-    if (key.startsWith('--') && SHELL_META.test(value) && !quoted(value)) {
-      return `${key}="${value.replaceAll('"', '\\"')}"`
-    }
-    return arg
-  }
-  return SHELL_META.test(arg) && !quoted(arg) ? `"${arg.replaceAll('"', '\\"')}"` : arg
+  const value = arg.slice(eq + 1)
+  return SHELL_META.test(value) && !quoted(value)
+    ? `${arg.slice(0, eq)}="${value.replaceAll('"', '\\"')}"`
+    : arg
 }
 
 /**
