@@ -955,6 +955,30 @@ request` (-32600), and the session goes on. The new row sends
       change landed first as a port into #895, which the limit had
       blocked; this item adds the `nativelink.md` recipe's mirrors.
 
+822.  DONE (2026-09-25, `vx-reapi`'s offline REAPI server). The Execute stub
+      819 and 820 named, and more: `tests/helpers/fake-reapi.ts` serves all
+      five services the client speaks (Capabilities, ActionCache, CAS,
+      ByteStream with zstd resources, and Execution with `WaitExecution`)
+      over maps. It records every call with its metadata, fails a method
+      on demand, and lets a row script what each Execute streams (stages,
+      then a response, a status, or an early end). Nothing runs a command.
+      `tests/fake-reapi.test.ts` drives the real `ReapiClient` through
+      each service, so the sweeps that stand on it stand on answers the
+      client is known to read:
+      - capabilities and zstd negotiation;
+      - a batch and a streamed CAS round trip, plus the missing set;
+      - zstd resources stored and served as the plain bytes;
+      - an ActionCache update read back;
+      - Execute's stages and a decoded final response;
+      - a transient status retried, and a dropped Execute re-attaching
+        through `WaitExecution` by its operation name.
+        Two things the rows taught the fake: protobufjs's `encode` takes
+        an enum's number (`fromObject` turns the name into it, and without
+        it every stage read `UNKNOWN`), and with no instance name a
+        resource starts `compressed-blobs/…` with no leading slash.
+        `findMissingBlobs` returns the server's digests as proto-loader
+        reads them, `size_bytes` a string, so rows compare hashes.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
