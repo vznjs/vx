@@ -32,7 +32,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `outputs` is the DECLARED output globs (`files` project-relative,
   `workspaceFiles` root-relative) — what an executor running elsewhere has
   to bring back.
-- `ExecuteSandbox` — `baseAllowRead`, `baseAllowWrite`, `baseDenyRead`,
+- `ExecuteSandbox` — `baseAllowRead`, `baseDenyRead`,
   `reportWithin` (the project: denials there are reported), `reportLinked`
   (the canonical directories of the linked workspace packages core
   withheld from a cached task because its key does not answer for them:

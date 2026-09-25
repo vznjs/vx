@@ -216,7 +216,7 @@ describe('the request derives nothing from cache', () => {
   // `sandbox-runtime.unsafe.test.ts` and are Linux-gated on the bwrap
   // denial message; this pins the same claim where it actually lives, on
   // every platform, with no sandbox required to run it.
-  it('a task declaring cache.outputs and no grant gets an EMPTY write baseline', async () => {
+  it('a task declaring cache.outputs and no grant gets no write at all', async () => {
     const n: TaskNode = {
       ...node(),
       config: {
@@ -228,15 +228,14 @@ describe('the request derives nothing from cache', () => {
       },
     }
     const { sandbox } = await sandboxRequestFor(n, {}, root, new Set())
-    expect(sandbox.baseAllowWrite).toEqual([])
+    expect(sandbox.config.allowWrite).toEqual([])
     // …and the read baseline is dependencies, never the declared inputs.
     expect(sandbox.baseAllowRead.some((p) => p.includes('src'))).toBe(false)
     expect(sandbox.baseAllowRead.every((p) => p.includes('node_modules'))).toBe(true)
   })
 
-  it('CONTROL: an explicit grant is what fills the write baseline', async () => {
+  it('CONTROL: an explicit grant is what fills the write set', async () => {
     const { sandbox } = await requestFor(['dist/'])
-    expect(sandbox.baseAllowWrite).toEqual([])
     expect(sandbox.config.allowWrite.some((p) => p.endsWith('dist'))).toBe(true)
   })
 })

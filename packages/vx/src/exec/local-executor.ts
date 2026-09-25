@@ -31,7 +31,6 @@ export function localExecutor(): TaskExecutor {
       return runSandboxed({
         ...common,
         baseAllowRead: req.sandbox.baseAllowRead,
-        baseAllowWrite: req.sandbox.baseAllowWrite,
         baseDenyRead: req.sandbox.baseDenyRead,
         reportWithin: req.sandbox.reportWithin,
         reportLinked: req.sandbox.reportLinked,

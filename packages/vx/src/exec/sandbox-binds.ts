@@ -135,13 +135,12 @@ export function buildCustomConfig(
   args: Pick<SandboxedRunArgs, 'config'>,
   baselines: {
     allowRead: readonly string[]
-    allowWrite: readonly string[]
     denyRead: readonly string[]
   },
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const c = args.config
   const denyRead = unique([...baselines.denyRead])
-  const allowWrite = bindableWrites(unique([...baselines.allowWrite, ...c.allowWrite]))
+  const allowWrite = bindableWrites(unique([...c.allowWrite]))
   const allowRead = unique(
     [...baselines.allowRead, ...c.allowRead].flatMap((r) => punchWritePaths(r, allowWrite)),
   )

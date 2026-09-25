@@ -1246,8 +1246,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
     // `SandboxConfig`'s own doc comment describes — `sandbox: {}`, no allow
     // block at all — had nothing, and that is how the comment came to
     // promise a baseline derived from `cache` while the code granted none
-    // (item 443). `sandboxRequestFor` builds the request with
-    // `baseAllowWrite: []`, so a declared `cache.outputs` buys the task no
+    // (item 443). `sandboxRequestFor` builds a request that carries no
+    // write of its own, so a declared `cache.outputs` buys the task no
     // write at all.
     //
     // Linux-only for the same reason as the row further down: `Read-only
@@ -2555,11 +2555,10 @@ describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
           cwd: dir,
           env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
           baseAllowRead: [dir],
-          baseAllowWrite: [dir],
           baseDenyRead: [],
           reportWithin: dir,
           reportLinked: [],
-          config: resolveSandboxConfig({ allow: { read: ['.'] } }, dir),
+          config: resolveSandboxConfig({ allow: { read: ['.'], write: ['.'] } }, dir),
         })
         expect(r.stdout).toBe('')
         expect(r.stderr).toContain('sandbox_apply: Operation not permitted')
@@ -2770,11 +2769,10 @@ describe('sandbox probe', () => {
           cwd: dir,
           env: process.env,
           baseAllowRead: [dir],
-          baseAllowWrite: [dir],
           baseDenyRead: [],
           reportWithin: dir,
           reportLinked: [],
-          config: resolveSandboxConfig({}, dir),
+          config: resolveSandboxConfig({ allow: { write: ['.'] } }, dir),
         })
         expect([r.exitCode, r.stderr]).toEqual([0, ''])
       } finally {
@@ -2892,11 +2890,10 @@ describe.skipIf(process.platform !== 'linux')(
       // nor a directory: `statSync` throws on it, so without the glob
       // check it falls through to `path.dirname` and the pattern the user
       // wrote is replaced by a plain directory.
-      const cfg = { allowRead: [], allowWrite: [], ignore: undefined } as never
       const write = (grants: string[]): string[] => {
         const c = buildCustomConfig(
-          { config: cfg },
-          { allowRead: [], allowWrite: grants, denyRead: [] },
+          { config: { allowRead: [], allowWrite: grants, ignore: undefined } as never },
+          { allowRead: [], denyRead: [] },
         ) as { filesystem?: { allowWrite?: string[] } }
         return c.filesystem?.allowWrite ?? []
       }
@@ -2987,12 +2984,13 @@ describe.skipIf(process.platform !== 'linux')(
     // widening could go and SRT would be handed the directory twice.
     it('two file grants in one directory widen to that directory once', () => {
       const c = buildCustomConfig(
-        { config: { allowRead: [], allowWrite: [] } as never },
         {
-          allowRead: [],
-          allowWrite: [path.join(dir, 'dist', 'a.bin'), path.join(dir, 'dist', 'b.bin')],
-          denyRead: [],
+          config: {
+            allowRead: [],
+            allowWrite: [path.join(dir, 'dist', 'a.bin'), path.join(dir, 'dist', 'b.bin')],
+          } as never,
         },
+        { allowRead: [], denyRead: [] },
       ) as { filesystem?: { allowWrite?: string[] } }
       expect(c.filesystem?.allowWrite).toEqual([path.join(dir, 'dist')])
     })
@@ -3018,7 +3016,7 @@ describe('buildCustomConfig hands each capability to SRT', () => {
   const custom = (extra: Record<string, unknown>): Record<string, unknown> =>
     buildCustomConfig(
       { config: { allowRead: [], allowWrite: [], ...extra } as never },
-      { allowRead: [], allowWrite: [], denyRead: [] },
+      { allowRead: [], denyRead: [] },
     ) as Record<string, unknown>
   const at = (o: Record<string, unknown>, keys: string[]): unknown =>
     keys.reduce<unknown>((v, k) => (v as Record<string, unknown> | undefined)?.[k], o)
@@ -3262,7 +3260,6 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     cwd: dir,
     env: process.env,
     baseAllowRead: [dir],
-    baseAllowWrite: [],
     baseDenyRead: [],
     reportWithin: dir,
     reportLinked: [],
@@ -3325,7 +3322,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   it("a timeout reaches the command's TERM trap, and a command that ignores it is killed at the grace (item 752)", async () => {
     const trapped = await runSandboxed(
       args(`trap 'echo trapped > got.txt; exit 0' TERM; echo up; while :; do sleep 0.05; done`, {
-        baseAllowWrite: [dir],
+        config: resolveSandboxConfig({ allow: { write: ['.'] } }, dir),
         timeoutMs: 300,
       }),
     )
@@ -3469,7 +3466,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         `await initSandbox()`,
         `const dir = ${JSON.stringify(dir)}`,
         `const outs = []`,
-        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseAllowWrite: [], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })).stdout)`,
+        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })).stdout)`,
         `console.log(JSON.stringify({ outs, calls }))`,
         `await resetSandbox()`,
       ].join('\n')
@@ -3661,7 +3658,6 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
         cwd: dir,
         config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
         baseAllowRead: [],
-        baseAllowWrite: [],
         baseDenyRead: [],
       })
       // The host's socat binds asynchronously: wait for it, bounded.

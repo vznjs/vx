@@ -181,7 +181,6 @@ export async function sandboxRequestFor(
     // readable too: a task that writes `dist/x` expects to read it back
     // (`tsc --incremental` re-reads .tsbuildinfo).
     baseAllowRead: depDirs,
-    baseAllowWrite: [],
     // Enforcement anchors at the WORKSPACE ROOT: a task may not leave
     // its project, so every sibling and every root file is denied.
     // Reporting is a different question — see `reportWithin` below.
