@@ -265,8 +265,14 @@ function bucket(field: unknown): Readonly<Record<string, unknown>> {
 // for text that is no range at all (`latest`, `npm:foo@1`, `github:a/b`,
 // `../x`), ORs bare comparators npm ANDs (`1 2`), and reads `>x` and a
 // leading wildcard (`x.3.1`) its own way; a spec outside this grammar
-// counts as unmet. The playground's port (packages/vx-docs,
-// src/playground/shim/semver.ts) is held to Bun over this grammar.
+// counts as unmet. One corner inside it still differs (item 831): a
+// prerelease at a `<` bound over a partial (`<3.x`, `<3.1`) or at a hyphen
+// range's partial end, beside a lower bound naming that prerelease's own
+// version — `3.0.0-beta` against `>=3.0.0-alpha <3.x` — Bun admits and npm
+// does not. bun installs by the first answer and the others by the second,
+// so neither is right everywhere; the graph takes Bun's. The playground's
+// port (packages/vx-docs, src/playground/shim/semver.ts) is held to Bun
+// over this grammar.
 const W = String.raw`[xX*]`
 const PRE = String.raw`(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`
 const NUMERIC = String.raw`[vV]?\d+(?:\.${W}(?:\.${W})?|\.\d+(?:\.${W}|\.\d+${PRE})?)?`

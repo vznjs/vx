@@ -101,7 +101,13 @@ comparators npm ANDs (`1 2`), and reads `>x` and a leading wildcard
 (`x.3.1`) its own way, so a spec is handed to it only inside the part
 of npm's grammar where the two agree: `||`-joined sets, each a hyphen
 range, one comparator, or two or more `<`/`>` bounds, over versions
-whose wildcards trail. A spec outside it counts as unmet. The site's
+whose wildcards trail. A spec outside it counts as unmet. One corner
+inside it still differs (item 831): a prerelease at a `<` bound over a
+partial (`<3.x`, `<3.1`) or at a hyphen range's partial end, beside a
+lower bound naming that prerelease's own version. Bun admits
+`3.0.0-beta` to `>=3.0.0-alpha <3.x` and npm does not. bun installs by
+the first answer and npm, pnpm and yarn by the second, so the graph,
+which takes Bun's, is right for bun only there. The site's
 playground bundles this module without Bun; its port
 (`packages/vx-docs/src/playground/shim/semver.ts`) is held to Bun over
 exactly `SEMVER_RANGE` by
