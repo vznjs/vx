@@ -25,6 +25,7 @@ import {
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import { criticalPathPriorities } from './critical-path.js'
+import { renderHistory, type HistoryRow } from './history-view.js'
 
 export { criticalPathPriorities } from './critical-path.js'
 
@@ -70,34 +71,34 @@ export interface ScheduleHistoryOptions {
 // hint needs less and reads a 2.5× smaller slice of the run history.
 const DEFAULT_WINDOW = 20
 
+// Each option is read in ONE place that a run's hooks and `vx history`
+// share: two copies of each let either drift unseen (item 805).
+const windowOf = (options: ScheduleHistoryOptions): number => options.window ?? DEFAULT_WINDOW
+
+const readHistory = (
+  cache: Cache,
+  ids: readonly string[],
+  options: ScheduleHistoryOptions,
+): Promise<HistoryTable> =>
+  new LocalHistoryProvider(cache.dbHandle(), windowOf(options)).loadFor(ids)
+
+/** What each task reserves: learned from the history unless `resources: false`, a declared reservation over either. */
+const reservationsFor = (
+  ids: Iterable<string>,
+  table: HistoryTable,
+  options: ScheduleHistoryOptions,
+): ReadonlyMap<string, ResourceEstimate> =>
+  withDeclared(
+    options.resources !== false
+      ? estimatesFor(ids, table, options.resources?.headroom ?? DEFAULT_HEADROOM)
+      : new Map(),
+    options.reservations,
+  )
+
+const memoryBudgetMb = (options: ScheduleHistoryOptions): number =>
+  options.memory ?? Math.floor(machineMemoryBytes() / MB)
+
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
-  // One history read per run serves both hooks: `graph` runs first and
-  // keeps the table for `schedule`, keyed on the cache handle so a second
-  // run in the same process (`vx watch`) reads its own, fresher history.
-  let memo: { cache: Cache; table: HistoryTable } | undefined
-  const load = async (
-    nodes: ReadonlyMap<string, TaskNode>,
-    ctx: { readonly localCache: Cache; readonly warn: (m: string) => void },
-    stage: string,
-  ): Promise<HistoryTable | undefined> => {
-    if (memo !== undefined && memo.cache === ctx.localCache) return memo.table
-    const provider = new LocalHistoryProvider(
-      ctx.localCache.dbHandle(),
-      options.window ?? DEFAULT_WINDOW,
-    )
-    try {
-      const table = await provider.loadFor([...nodes.keys()])
-      memo = { cache: ctx.localCache, table }
-      return table
-    } catch (err) {
-      // Failing open: a broken history read costs the ordering (or the
-      // reservations), never the run.
-      ctx.warn(
-        `[vx] schedule-history: ${stage} falls back to the baseline: ${err instanceof Error ? err.message : String(err)}`,
-      )
-      return undefined
-    }
-  }
   const hooks: Parameters<typeof definePlugin>[1] = {
     commands: {
       history: {
@@ -106,15 +107,21 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         run: (argv, ctx) => historyCmd(argv, ctx, options),
       },
     },
+    // Core calls it once per run, so the history is read once per run, and
+    // a second run in the same process (`vx watch`) reads its own.
     async schedule(nodes, ctx) {
-      const table = await load(nodes, ctx, 'ordering')
-      if (table === undefined) return undefined
-      if (options.resources !== false) {
-        reservations = withDeclared(
-          resourceEstimates(nodes, table, options.resources?.headroom ?? DEFAULT_HEADROOM),
-          options.reservations,
+      let table: HistoryTable
+      try {
+        table = await readHistory(ctx.localCache, [...nodes.keys()], options)
+      } catch (err) {
+        // Failing open: a broken history read costs the ordering and the
+        // learned reservations, never the run.
+        ctx.warn(
+          `[vx] schedule-history: ordering falls back to the baseline: ${err instanceof Error ? err.message : String(err)}`,
         )
+        return undefined
       }
+      reservations = reservationsFor(nodes.keys(), table, options)
       return criticalPathPriorities([...nodes.values()], table, options.assume)
     },
   }
@@ -124,7 +131,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     Object.entries(options.reservations ?? {}),
   )
   if (options.resources !== false || options.reservations !== undefined) {
-    const memoryMb = options.memory ?? Math.floor(machineMemoryBytes() / MB)
+    const memoryMb = memoryBudgetMb(options)
     hooks.admit = (task, ctx) =>
       admits(
         task.id,
@@ -245,16 +252,6 @@ function fitsAxis(cost: number, reserved: number, holders: number, budget: numbe
 // reservations are decided at dispatch and shown nowhere by core (core
 // holds no notion of them), so without this a developer could not tell
 // what the plugin will pack, or why two tasks stopped overlapping.
-interface HistoryRow {
-  id: string
-  runs: number
-  p50DurationMs: number | null
-  maxPeakRssBytes: number | null
-  maxCpuParallelism: number | null
-  reservation: ResourceEstimate | null
-  declared: boolean
-}
-
 async function historyCmd(
   argv: readonly string[],
   ctx: CommandContext,
@@ -280,22 +277,18 @@ async function historyCmd(
   for (const p of projects.values()) {
     for (const t of Object.keys(p.config.tasks ?? {})) ids.push(`${p.name}#${t}`)
   }
-  const window = options.window ?? DEFAULT_WINDOW
+  const window = windowOf(options)
   const cache = new Cache(ctx.cacheDir)
   let table: HistoryTable
   try {
-    table = await new LocalHistoryProvider(cache.dbHandle(), window).loadFor(ids)
+    table = await readHistory(cache, ids, options)
   } finally {
     cache.close()
   }
-  const learned =
-    options.resources !== false
-      ? estimatesFor(ids, table, options.resources?.headroom ?? DEFAULT_HEADROOM)
-      : new Map<string, ResourceEstimate>()
-  const reservations = withDeclared(learned, options.reservations)
+  const reservations = reservationsFor(ids, table, options)
   const budgets: Budgets = {
     cpus: machineParallelism(),
-    memory: options.memory ?? Math.floor(machineMemoryBytes() / MB),
+    memory: memoryBudgetMb(options),
   }
   const rows: HistoryRow[] = ids.map((id) => {
     const h = table.get(id)
@@ -313,55 +306,6 @@ async function historyCmd(
     process.stdout.write(`${JSON.stringify({ window, budgets, tasks: rows })}\n`)
     return 0
   }
-  const seen = rows.filter((r) => r.runs > 0 || r.reservation !== null)
-  const lines: string[] = [
-    `history: last ${window} runs · budgets ${budgets.cpus} cores (the default worker count; --concurrency changes it per run) · ${budgets.memory} MB` +
-      `${options.memory !== undefined ? ' (the memory option)' : ' (what this process may use)'}`,
-  ]
-  if (seen.length === 0) {
-    lines.push('no task has an execution in the window — run something first')
-  } else {
-    const idW = Math.max(...seen.map((r) => r.id.length), 4)
-    lines.push(
-      `  ${'task'.padEnd(idW)}  ${'runs'.padStart(4)}  ${'p50'.padStart(7)}  ${'peak rss'.padStart(8)}  ${'cpu'.padStart(5)}  reserves`,
-    )
-    for (const r of seen) {
-      const reserve =
-        r.reservation === null
-          ? '—'
-          : [
-              ...(r.reservation.memory !== undefined ? [`${r.reservation.memory} MB`] : []),
-              ...(r.reservation.cpus !== undefined
-                ? [`${r.reservation.cpus} core${r.reservation.cpus === 1 ? '' : 's'}`]
-                : []),
-            ].join(' · ') + (r.declared ? ' (declared)' : '')
-      lines.push(
-        `  ${r.id.padEnd(idW)}  ${String(r.runs).padStart(4)}  ${fmtMs(r.p50DurationMs).padStart(7)}  ` +
-          `${fmtBytes(r.maxPeakRssBytes).padStart(8)}  ${(r.maxCpuParallelism === null ? '—' : `${r.maxCpuParallelism.toFixed(1)}×`).padStart(5)}  ${reserve}`,
-      )
-    }
-    const silent = rows.length - seen.length
-    if (silent > 0) {
-      lines.push(
-        `  ${silent} task${silent === 1 ? '' : 's'} with no execution in the window reserve${silent === 1 ? 's' : ''} nothing`,
-      )
-    }
-  }
-  process.stdout.write(`${lines.join('\n')}\n`)
+  process.stdout.write(renderHistory(rows, window, budgets, options.memory !== undefined))
   return 0
-}
-
-function fmtMs(ms: number | null): string {
-  if (ms === null) return '—'
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`
-  const m = Math.floor(ms / 60_000)
-  return `${m}m ${Math.round((ms - m * 60_000) / 1000)}s`
-}
-
-function fmtBytes(n: number | null): string {
-  if (n === null) return '—'
-  if (n < MB) return `${Math.round(n / 1024)} KB`
-  if (n < 1024 * MB) return `${(n / MB).toFixed(0)} MB`
-  return `${(n / (1024 * MB)).toFixed(1)} GB`
 }
