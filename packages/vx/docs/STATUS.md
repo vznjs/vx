@@ -625,6 +625,38 @@ test is telling the truth.
         With the fix and a re-anchored clamp, 52 mutations: 50 caught, 2
         equivalent. `blockedBy` is set only on a skipped task, and the
         record's `hitCount` is built from the statuses the footer counts.
+807.  DONE (2026-09-25, sweep of `@vzn/vx-otel`). 123 mutations over
+      `otlp.ts`, `plugin.ts` and `sink.ts`: 83 caught, 36 held now, 4
+      equivalent. A bug found by reading `resolveOtelConfig`: a signal
+      without its own URL fell back to the traces URL while staying
+      enabled. With only `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` set, every
+      run POSTed its metrics payload to `/v1/traces`, which a collector
+      refuses. `logs: true` did the same for logs. A signal now ships
+      only to its own URL, and one asked for by name without a URL warns
+      once. Rows fail without the fix; the control passes both ways.
+      Held now:
+      - `otlp.ts`: the metrics, trace and log envelopes, pinned whole
+        (counter values, temporality and monotonicity, the scope
+        version, a failed record's severity, observed time and
+        workspace), and a fractional int attribute truncated to an
+        integer string.
+      - `plugin.ts`: trimmed header keys, a whitespace-only endpoint,
+        per-signal options over env, the logs opt-out read trimmed and
+        in any case, and `metrics: false`, `timeoutMs` and `post`.
+      - `sink.ts`: span times without a summary (run.start to run.end,
+        a task without task.start, a root with no end), a summary's
+        times over the records' for the root and the logs, integer
+        nanoseconds, nothing POSTed for an empty run, the configured
+        headers, the run's vx version, a one-line error body, a
+        message-only partial success, a refusal whose body dies
+        mid-read, and the request timer cleared once the export
+        answers (a child process exits well inside its 5 s timeout).
+        Equivalent:
+      - `eq <= 0` in the header parser: the empty-key guard catches `=v`.
+      - The `partialSuccess` substring check: a fast path in front of a
+        parse that answers the same.
+      - `Number.isFinite`: a NaN count already fails `> 0`.
+      - `logs.finish` with logs off: no `task.log` reaches that sink.
 
 ## In flight
 
