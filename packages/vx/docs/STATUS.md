@@ -688,6 +688,15 @@ graph`, and a missed input is a stale hit on every run.
       trap row is red without its moved grant (as `probe`). The sandbox
       suites as `probe` with `VX_REQUIRE_SANDBOX=1`: 223 pass, 1 skip
       (a platform row), 0 fail.
+772.  DONE (2026-09-25, Next 6: the day's warm A/B). The run-path changes
+      since item 758's measurement (the run-lock rewrite, 759, on every
+      run; the sandbox seam, 771) against 758's commit, as whole
+      `vx run build --all` processes on the synthetic workspace, one copy per arm
+      warmed by that arm, 21 interleaved reps each (the order alternating
+      rep by rep), this 4-core container: 100 projects, min 100.1 → 95.4
+      ms, median 111.3 → 112.1; 1,000 projects, min 195.5 → 195.3,
+      median 243.4 → 235.0. A tie at both sizes: the lock's five calls
+      (same count as before, item 759) cost what the old ones did.
 
 ## In flight
 
