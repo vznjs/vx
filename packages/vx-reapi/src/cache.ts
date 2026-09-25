@@ -73,9 +73,12 @@ function decodeDuration(raw: Uint8Array | undefined): number | undefined {
 
 export class ReapiRemoteCache {
   private readonly client: ReapiClient
+  /** Named in core's degrade line: a gRPC status carries no server. */
+  readonly endpoint: string
 
   constructor(opts: ReapiOptions) {
     this.client = new ReapiClient(opts)
+    this.endpoint = opts.endpoint
   }
 
   /**

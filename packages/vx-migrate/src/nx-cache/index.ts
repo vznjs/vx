@@ -18,6 +18,7 @@ import {
   type RemoteCacheLayer,
   type VxPlugin,
 } from '@vzn/vx'
+import { deadlineNamed } from '../remote-deadline.js'
 
 export interface NxCacheOptions {
   /** Base URL of the cache server, or `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. */
@@ -75,10 +76,13 @@ export function resolveNxCacheConfig(
 export class NxRemoteCache implements RemoteCacheLayer {
   private disabled = false
   private last: { hash: string; res: Response } | undefined
+  readonly endpoint: string
   constructor(
     private readonly config: NxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
-  ) {}
+  ) {
+    this.endpoint = `${config.server}/v1/cache`
+  }
 
   /**
    * `undefined` = the token was refused and the refusal is ALREADY
@@ -107,13 +111,15 @@ export class NxRemoteCache implements RemoteCacheLayer {
       headers,
       ...(body === undefined ? {} : { body }),
       signal: AbortSignal.timeout(this.config.timeoutMs),
+    }).catch((err: unknown) => {
+      throw deadlineNamed(err, this.config.timeoutMs)
     })
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
       throw new Error(
-        `${method} ${this.config.server}/v1/cache → ${res.status}: ${res.status === 401 ? 'missing or invalid token' : 'access forbidden (a read-only token cannot write)'}; remote cache off for this run`,
+        `HTTP ${res.status}: ${res.status === 401 ? 'missing or invalid token' : 'access forbidden (a read-only token cannot write)'}; remote cache off for this run`,
       )
     }
     return res
@@ -135,7 +141,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
     const res = await this.request('GET', hash)
     if (res === undefined) return null
     if (res.status === 404) return null
-    if (res.status !== 200) throw new Error(`GET ${hash} → ${res.status}`)
+    if (res.status !== 200) throw new Error(`HTTP ${res.status}`)
     return res
   }
 
@@ -153,7 +159,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
     const res = await this.request('PUT', hash, body)
     if (res === undefined) return
     if (res.status === 200 || res.status === 202 || res.status === 409) return
-    throw new Error(`PUT ${hash} → ${res.status}`)
+    throw new Error(`HTTP ${res.status}`)
   }
 }
 

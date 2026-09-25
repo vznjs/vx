@@ -268,7 +268,7 @@ describe('LayeredCache', () => {
     const layered = new LayeredCache(local, shaped, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.get('h-shape', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
-      'remote cache layer returned an invalid result: get(h-shape) resolved body is string (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
+      'download h-shape failed: remote cache layer returned an invalid result: get() resolved body is string (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
     ])
     expect(await local.get('h-shape')).toBeNull()
   })
@@ -288,7 +288,7 @@ describe('LayeredCache', () => {
     const layered = new LayeredCache(local, old, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.get('h-old', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
-      'remote cache layer returned an invalid result: get(h-old) resolved body is a Uint8Array (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
+      'download h-old failed: remote cache layer returned an invalid result: get() resolved body is a Uint8Array (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
     ])
     expect(await local.has('h-old')).toBeNull()
   })
@@ -352,7 +352,7 @@ describe('LayeredCache', () => {
     const layered = new LayeredCache(local, shaped, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.remoteHasMany(['h-a', 'h-b'])).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
-      'remote cache layer returned an invalid result: hasMany() resolved an array (expected a Set of the hashes present, or null) — a plugin bug, degraded to a miss',
+      'probe of 2 artifacts failed: remote cache layer returned an invalid result: hasMany() resolved an array (expected a Set of the hashes present, or null) — a plugin bug, degraded to a miss',
     ])
   })
 
@@ -464,7 +464,7 @@ describe('LayeredCache', () => {
       pack.mockRestore()
       writeless.close()
     }
-    expect(errors.map((e) => e.message)).toEqual(['pack exploded'])
+    expect(errors.map((e) => e.message)).toEqual(['upload h-pack failed: pack exploded'])
     expect(remote.puts).toBe(0)
   })
 
@@ -803,5 +803,145 @@ describe('LayeredCache', () => {
     expect(stats.runCountLast24h).toBe(1)
 
     await expect(layered.prune({})).rejects.toThrow(/at least one of/)
+  })
+
+  // Item 749: a wire's own message names nothing — "The operation timed
+  // out." with no upload, hash or server — and an unreachable server said
+  // it once per request. The layer knows the call and the artifact, the
+  // plugin knows the server; the line carries all three, once per class.
+  describe('what a degraded remote says', () => {
+    const ENDPOINT = 'https://cache.example.com/v8/artifacts'
+
+    /** A layer whose every call throws what `fail` returns for it. */
+    function failing(
+      fail: (call: 'has' | 'hasMany' | 'get' | 'put', hash: string) => Error,
+      endpoint?: string,
+    ): RemoteCacheLayer {
+      return {
+        ...(endpoint === undefined ? {} : { endpoint }),
+        has: async (h) => {
+          throw fail('has', h)
+        },
+        hasMany: async (hs) => {
+          throw fail('hasMany', hs.join(','))
+        },
+        get: async (h) => {
+          throw fail('get', h)
+        },
+        put: async (h) => {
+          throw fail('put', h)
+        },
+      }
+    }
+
+    /** Close the layer (the repeat count is said there) and reopen `local` for afterEach. */
+    function closeAndReopen(layered: LayeredCache): void {
+      layered.close()
+      local = new Cache(cacheDir)
+    }
+
+    it('each call names its operation, its artifact and the endpoint', async () => {
+      const errors: Error[] = []
+      const causes = {
+        has: new Error('HEAD said 500'),
+        hasMany: new Error('POST said 502'),
+        get: new Error('GET said 503'),
+        put: new Error('PUT said 504'),
+      }
+      const layered = new LayeredCache(
+        local,
+        failing((call) => causes[call], ENDPOINT),
+        { onRemoteError: (e) => errors.push(e) },
+      )
+      expect(await layered.has('h1')).toBeNull()
+      expect(await layered.remoteHasMany(['h1', 'h2'])).toBeNull()
+      expect(await layered.get('h1')).toBeNull()
+      await saveSample(layered, 'h-up')
+      closeAndReopen(layered)
+      expect(errors.map((e) => e.message)).toEqual([
+        'probe h1 at https://cache.example.com/v8/artifacts failed: HEAD said 500',
+        'probe of 2 artifacts at https://cache.example.com/v8/artifacts failed: POST said 502',
+        'download h1 from https://cache.example.com/v8/artifacts failed: GET said 503',
+        'upload h-up to https://cache.example.com/v8/artifacts failed: PUT said 504',
+      ])
+      expect(errors.map((e) => e.cause)).toEqual([
+        causes.has,
+        causes.hasMany,
+        causes.get,
+        causes.put,
+      ])
+    })
+
+    it('one failure class is said once, and close() counts the requests held back', async () => {
+      const errors: Error[] = []
+      const layered = new LayeredCache(
+        local,
+        failing(() => new Error('Unable to connect'), ENDPOINT),
+        { onRemoteError: (e) => errors.push(e) },
+      )
+      await layered.remoteHasMany(['h1'])
+      await layered.get('h1')
+      await saveSample(layered, 'h1')
+      expect(errors.map((e) => e.message)).toEqual([
+        'probe of 1 artifact at https://cache.example.com/v8/artifacts failed: Unable to connect',
+      ])
+      closeAndReopen(layered)
+      expect(errors.map((e) => e.message)).toEqual([
+        'probe of 1 artifact at https://cache.example.com/v8/artifacts failed: Unable to connect',
+        '2 more requests failed the same way: Unable to connect',
+      ])
+    })
+
+    it('the artifact in a message and the timing in a coded one do not split a class', async () => {
+      // gRPC writes the elapsed time into the message, so a deadline's code
+      // is its class; a status line that names the hash is one class across
+      // hashes. A different code is a different class (the control).
+      const coded = (code: number, message: string): Error =>
+        Object.assign(new Error(message), { code })
+      const errors: Error[] = []
+      const layered = new LayeredCache(
+        local,
+        failing((call, hash) => {
+          if (call === 'has' && hash === 'h1') return coded(4, '4 DEADLINE_EXCEEDED: after 0.001s')
+          if (call === 'has' && hash === 'h2') return coded(4, '4 DEADLINE_EXCEEDED: after 0.702s')
+          if (call === 'has') return coded(14, '14 UNAVAILABLE: no connection')
+          return new Error(`HTTP 500 for ${hash}`)
+        }),
+        { onRemoteError: (e) => errors.push(e) },
+      )
+      for (const h of ['h1', 'h2', 'h3']) await layered.has(h)
+      for (const h of ['h4', 'h5']) await layered.get(h)
+      closeAndReopen(layered)
+      expect(errors.map((e) => e.message)).toEqual([
+        'probe h1 failed: 4 DEADLINE_EXCEEDED: after 0.001s',
+        'probe h3 failed: 14 UNAVAILABLE: no connection',
+        'download h4 failed: HTTP 500 for h4',
+        '1 more request failed the same way: 4 DEADLINE_EXCEEDED: after 0.001s',
+        '1 more request failed the same way: HTTP 500 for h4',
+      ])
+    })
+
+    it('the endpoint is printed without its credentials, query or fragment', async () => {
+      const said = async (endpoint: string): Promise<string[]> => {
+        const errors: Error[] = []
+        const layered = new LayeredCache(
+          local,
+          failing(() => new Error('down'), endpoint),
+          { onRemoteError: (e) => errors.push(e) },
+        )
+        await layered.has('h1')
+        return errors.map((e) => e.message)
+      }
+      expect(await said('https://user:secret@cache.example.com/v1/cache?token=t0k#frag')).toEqual([
+        'probe h1 at https://cache.example.com/v1/cache failed: down',
+      ])
+      // Controls: a clean URL and a gRPC `host:port` print as given.
+      expect(await said('https://cache.example.com/v1/cache')).toEqual([
+        'probe h1 at https://cache.example.com/v1/cache failed: down',
+      ])
+      expect(await said('grpc.example.com:443')).toEqual([
+        'probe h1 at grpc.example.com:443 failed: down',
+      ])
+    })
   })
 })

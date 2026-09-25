@@ -4,6 +4,7 @@
 // declared in a workspace that has no REAPI server at all.
 
 import { describe, expect, it } from 'bun:test'
+import type { CacheLayer } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
@@ -120,6 +121,38 @@ describe('reapi(): lifecycle and failure messages', () => {
         expect(msg).toMatch(/check the endpoint/)
         expect(msg).toMatch(/UNAVAILABLE|ECONNREFUSED/) // the cause survives
         await p.teardown?.()
+      })
+    },
+    30_000,
+  )
+
+  it.skipIf(!CHUNKING_SUPPORTED)(
+    'a cache that cannot reach its server names the probe, the artifact and the endpoint, once',
+    async () => {
+      // A gRPC status names no server and no key, and writes the elapsed time
+      // into its message, so two deadlines never read alike (item 749). Core
+      // names the request from the layer's `endpoint` and keys the class on
+      // the status code: the second probe is a count, not a second line.
+      await withoutReapiEnv(async () => {
+        const warns: string[] = []
+        const local = { has: async () => null, close: () => {} }
+        const p = reapi({ endpoint: '127.0.0.1:1', callTimeoutMs: 300 })
+        const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+        const layer = (await p.cache?.({
+          warn: (m: string) => warns.push(m),
+          localCache: local,
+          policy,
+        } as never)) as CacheLayer
+        expect(await layer.has('h1')).toBeNull()
+        expect(await layer.has('h2')).toBeNull()
+        layer.close()
+        await p.teardown?.()
+        const cause = warns[0]?.split(' failed: ')[1] ?? ''
+        expect(cause).toMatch(/^\d+ [A-Z_]+: /)
+        expect(warns).toEqual([
+          `vx/reapi: probe h1 at 127.0.0.1:1 failed: ${cause}`,
+          `vx/reapi: 1 more request failed the same way: ${cause}`,
+        ])
       })
     },
     30_000,

@@ -21,6 +21,7 @@ import {
   type RemoteCacheLayer,
   type VxPlugin,
 } from '@vzn/vx'
+import { deadlineNamed } from '../remote-deadline.js'
 
 export interface TurboCacheOptions {
   /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`; with a token and neither, Vercel's hosted cache, as for `turbo`. */
@@ -189,12 +190,14 @@ export function resolveTurboCacheConfig(
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
   private readonly key: Uint8Array | undefined
+  readonly endpoint: string
   constructor(
     private readonly config: TurboCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly tempDir: string = tmpdir(),
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
+    this.endpoint = `${config.apiUrl}/v8/artifacts`
   }
 
   private url(pathname: string): string {
@@ -223,19 +226,20 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     pathname: string,
     init: { body?: Blob | string; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<Response | undefined> {
+    const timeoutMs = init.timeoutMs ?? this.config.timeoutMs
     const res = await this.fetchImpl(this.url(pathname), {
       method,
       headers: this.headers(init.headers),
       ...(init.body === undefined ? {} : { body: init.body }),
-      signal: AbortSignal.timeout(init.timeoutMs ?? this.config.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch((err: unknown) => {
+      throw deadlineNamed(err, timeoutMs)
     })
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
-      throw new Error(
-        `${method} ${this.config.apiUrl}/v8/artifacts → ${res.status}: the token was refused; remote cache off for this run`,
-      )
+      throw new Error(`HTTP ${res.status}: the token was refused; remote cache off for this run`)
     }
     return res
   }
@@ -246,7 +250,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     if (res === undefined) return false
     if (res.status === 200) return true
     if (res.status === 404) return false
-    throw new Error(`HEAD ${hash} → ${res.status}`)
+    throw new Error(`HTTP ${res.status}`)
   }
 
   async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
@@ -270,7 +274,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     })
     if (res === undefined) return null
     if (res.status === 404) return null
-    if (res.status !== 200) throw new Error(`GET ${hash} → ${res.status}`)
+    if (res.status !== 200) throw new Error(`HTTP ${res.status}`)
     const duration = Number(res.headers.get('x-artifact-duration'))
     const durationMs = Number.isFinite(duration) && duration > 0 ? duration : undefined
     if (this.key === undefined) return { body: res, durationMs }
@@ -283,8 +287,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
    * first and signed from there: two passes over a file, never one in memory.
    */
   private async verified(key: Uint8Array, hash: string, res: Response): Promise<Response> {
-    const refused = () =>
-      new Error(`GET ${hash}: artifact signature did not verify — treated as a miss`)
+    const refused = () => new Error('the artifact signature did not verify — treated as a miss')
     const tag = res.headers.get('x-artifact-tag')
     if (tag === null) {
       await res.body?.cancel()
@@ -318,7 +321,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       timeoutMs: this.config.uploadTimeoutMs,
     })
     if (res === undefined) return
-    if (res.status !== 200 && res.status !== 202) throw new Error(`PUT ${hash} → ${res.status}`)
+    if (res.status !== 200 && res.status !== 202) throw new Error(`HTTP ${res.status}`)
   }
 }
 
