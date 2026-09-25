@@ -3320,10 +3320,13 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   })
 
   it("a timeout reaches the command's TERM trap, and a command that ignores it is killed at the grace (item 752)", async () => {
+    // The timeout counts from the spawn, so it is also the window in which
+    // bwrap, the tracer and `sh` start and the trap is set: at 300 ms a
+    // loaded gate delivered TERM first (exit 143, no got.txt, 2026-09-25).
     const trapped = await runSandboxed(
       args(`trap 'echo trapped > got.txt; exit 0' TERM; echo up; while :; do sleep 0.05; done`, {
         config: resolveSandboxConfig({ allow: { write: ['.'] } }, dir),
-        timeoutMs: 300,
+        timeoutMs: 1000,
       }),
     )
     const got = existsSync(path.join(dir, 'got.txt'))
@@ -3331,7 +3334,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       : null
     expect([trapped.timedOut, trapped.exitCode, got]).toEqual([true, 0, 'trapped'])
     const deaf = await runSandboxed(
-      args(`trap '' TERM; echo up; while :; do sleep 0.05; done`, { timeoutMs: 300 }),
+      args(`trap '' TERM; echo up; while :; do sleep 0.05; done`, { timeoutMs: 1000 }),
     )
     expect([deaf.timedOut, deaf.exitCode, deaf.signal]).toEqual([true, 137, 'SIGKILL'])
   })
