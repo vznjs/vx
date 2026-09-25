@@ -31,7 +31,33 @@ can never drift on the stability gate.
   same-project `build`'s declared input was classed stable, and seeds
   A,B,B,A replayed B on the fourth run, turborepo#13788).
 
-The helpers (`synthUpstream`, `topoOrder`) are internal and not exported.
+  A **cached** task may rewrite its own inputs in place (a formatter with
+  `outputs: []`), and `commandWriteReach` says where: it counts only for
+  a reader whose key does not fold its key, on some path of folds
+  (`tasks: []`, or a filter that leaves it out). A key that folds the
+  rewriter's names what it writes, since what it may rewrite are its own
+  inputs; a key that does not was taken over the bytes before it (item
+  750: the cached twin of 743's A,B,B,A, replaying B on the fourth run).
+  So `deriveStableKeys` carries two sets per task: the projects of every
+  cached rewriter upstream, and the subset its key does not fold. A
+  dependency it does not fold hands over the whole first set, one it
+  folds only its own uncovered subset (a rewriter behind an unfolded
+  edge stays uncovered however many folds follow). A cached rewriter
+  whose reach is every project — a sandbox grant elsewhere in the
+  workspace, or a fingerprinted root file (`mayWriteFingerprint`) —
+  makes an unfolding reader unstable; one it folds is already unstable
+  itself and inherited. An **uncached** task that may rewrite a
+  fingerprinted file (a root `pnpm install`) makes every reader after it
+  unstable, folding or not: every key folds the fingerprint, and the
+  run re-checks it before a lazy probe (`fingerprint-watch.md`).
+  Only a key that leaves some dependency's key out can be preliminary
+  for a cached rewriter, so a graph with no `cache.inputs.tasks` filter
+  and no persistent task (which has no key to fold) builds none of the
+  sets: building them cost about 2 ms (median) of a 27 ms memoised walk
+  over the 3,000-task bench.
+
+The helpers (`synthUpstream`, `foldedBy`, `topoOrder`) are internal and
+not exported.
 
 ## Invariants
 

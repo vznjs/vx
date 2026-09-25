@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v33'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v34'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -61,6 +61,22 @@ over (in order):
    for `bun.lock`, and this repo declares that one). The
    config-evaluation cache still keys on every file: a config may import
    a dependency the lockfile resolved.
+
+   The fingerprint is read once per run, before any task. A task in the
+   root project may rewrite one of these files — `pnpm install` without
+   `--frozen-lockfile` updates the lockfile and the installed tree — and
+   every key taken before it names the old one. So a task that may
+   (unsandboxed in the root project, or granted a write over one) tells
+   the run when its command ran, the run re-checks the files then (one
+   `lstat` each, the bytes compared for any written since the read), and
+   once one moved nothing keyed on the old digest is probed or saved for
+   the rest of the run, with one status line naming the file. Every
+   reader after such a task is keyed late, not up front. Without it the
+   run after a lockfile rewrite restored a build made against the old
+   install, and a save filed a build against the new install under the
+   old lockfile's key, replayed whenever the tree went back (item 750,
+   [`modules/fingerprint-watch.md`](./modules/fingerprint-watch.md)).
+
 4. **Project `package.json` hash** — xxh3 of the project's
    `package.json` bytes. Folded in implicitly (Turbo / Nx parity).
    Covers the case where `cache.inputs.files: ['src/**']` is narrow
@@ -169,6 +185,17 @@ over (in order):
     workspace reaches every project. An unsandboxed write into another
     project crosses a project boundary and is not tracked, as for a
     cached task's undeclared write (`tests/undeclared-writes.test.ts`).
+
+    A task **with** a `cache` block may still rewrite its own inputs in
+    place — a formatter declaring `outputs: []` — and a same-project
+    reader after it whose key does not fold its key (`tasks: []`, or a
+    filter that leaves it out, on every path) is not keyed up front
+    either: its key would be taken over the bytes before the rewrite, and
+    seeds A,B,B,A replayed B on the fourth run (item 750). A reader that
+    folds the rewriter's key keeps its up-front probe — that key names
+    the rewriter's inputs, which are what it may rewrite. A cached task
+    writing a file that is neither a declared output nor its own input
+    is out of contract: a hit restores only what it declared.
 
     A file whose name is **not valid UTF-8** (Linux allows any byte
     but `/` and NUL) cannot be opened from a string, so it cannot be
@@ -514,6 +541,17 @@ saves. Not seen: an input changed and changed BACK before the check
 mid-run (the listing is not taken again; the next run's key holds the
 file, so a stale hit needs it to vanish again). Cost: one `lstat` per
 input on a miss that saves; a hit runs no command and checks nothing.
+A workspace fingerprint a task rewrote since the run read it (§ Cache
+key derivation, step 3) withholds the save the same way.
+
+A miss that ran here and saves **nothing** — it failed, the cache
+policy writes nothing (`--cache=local:r,remote:r`), an upstream failed
+under `--continue` — runs the same input re-check and, when an input
+moved, forgets the project as above; otherwise its declared outputs are
+resolved and marked in the git snapshot exactly as a save marks them.
+Before item 750 only a save marked them, so a same-run reader keyed
+from the snapshot's index OID for an output (or for an input the task
+rewrote) restored the bytes from before the command.
 
 A declared set that resolves to **nothing** is said on the run's
 status line, once, on the miss that saved: `cache.inputs matched no
@@ -751,12 +789,18 @@ A runtime command executes **once per run, per project** (memoized by
 `projectDir + command`), at key-derivation time — which, with the
 up-front classify/prefetch pass, is before any task runs. It is a
 run-level reading of the ENVIRONMENT (toolchain versions, resolved
-config), not a per-task probe: a command that reads another task's
-OUTPUT folds the pre-run state, which under deterministic upstreams is
-subsumed by the folded upstream keys and degrades to a spurious miss on
-the run after that output changes — never a stale hit — but declare the
-producing task's output as an input (`dependsOn` + files) rather than
-sampling it from a runtime command.
+config), not a per-task probe, and the contract is that no task in the
+run changes its answer: it is not asked again before a save, as input
+files are, because that would be one spawn per command per miss where a
+file costs one `lstat`. A command that reads another task's OUTPUT folds
+the pre-run state. When the reader's key folds that task's key, the
+upstream key covers it, and the cost is a spurious miss on the run after
+the output changes. When it does not (`tasks: []`), nothing covers it:
+the save files bytes built from the new state under the old answer, and
+a later run that starts from the old state hits them (item 750 pins
+exactly that, `tests/in-run-writes.test.ts`). So declare the producing
+task's output as an input (`dependsOn` + files) rather than sampling it
+from a runtime command: files are re-checked, answers are not.
 
 So `vx run --frozen` loads the frozen command strings but still spawns
 them and folds their current output into the key. A `node -v` that goes
@@ -1216,7 +1260,8 @@ never wrong. Details and the deny-list:
   one SQLite transaction. Hashing dominates the run; storage itself
   is cheap. The remote upload (if any) is backgrounded.
 - **Workspace fingerprint** is computed once per `vx run` invocation
-  and reused for every task in that run.
+  and reused for every task in that run; after a task that may rewrite
+  one of its files ran, one `lstat` per file re-checks it (item 750).
 
 ## What's NOT in the key (and why)
 
@@ -1293,6 +1338,19 @@ was not), and the cache tests.
 
 ### History
 
+- **v33 → v34**: stored bytes wrong under a key a CORRECT derivation now
+  produces (item 750). A root task that rewrote the lockfile mid-run
+  (`pnpm install` without `--frozen-lockfile`) let a reader after it save
+  a build made against the new install under the key of the lockfile the
+  run started with, and that key is exactly what the fixed code derives
+  when the tree is back on that lockfile. The fix stops new entries, not
+  old ones. Probed, not argued: seeds A then B through the previous
+  commit, then A twice through the fixed code under v33 — the last run
+  started on lockfile A, installed A, and restored the build made against
+  B; under v34 it built A. The item's other two edges poisoned nothing:
+  their stale restores happened in runs that saved nothing (a read-only
+  policy, a tainted upstream) or saved under a key the 743 re-check
+  already guarded.
 - **v32 → v33**: stored bytes wrong under a key a CORRECT derivation now
   produces (item 743). The three stale-hit fixes of that item stop new
   poisoned entries, but not the ones already saved: a formatter's entry

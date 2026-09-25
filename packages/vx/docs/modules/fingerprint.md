@@ -14,6 +14,7 @@ export const WORKSPACE_FINGERPRINT_FILES: readonly string[] // the table below, 
 export interface WorkspaceFingerprints {
   readonly all: string // over every file present
   readonly unclaimed: string // over the files no plugin claims
+  readonly files: ReadonlyMap<string, Uint8Array> // the bytes folded, by file name
 }
 
 export function computeWorkspaceFingerprint(
@@ -31,7 +32,11 @@ Every file goes through the load's `reads` (workspace.md), so the
 `pnpm-workspace.yaml` discovery already read is folded from those bytes
 rather than probed and read a third time.
 
-Both return 16 hex characters of seed-chained xxh3. The second reads each
+Both return 16 hex characters of seed-chained xxh3. The second also hands
+back the bytes it folded (`files`), already in memory for the fold: the
+run keeps them so a mid-run check can say which file a task rewrote
+(`orchestrator/fingerprint-watch.ts`,
+[`fingerprint-watch.md`](./fingerprint-watch.md)). The second reads each
 file once and folds two digests: `all` over every file present, and
 `unclaimed` over the files no plugin claims. `prepareRun` keys the
 config-evaluation cache on `all` (a config may import a dependency the

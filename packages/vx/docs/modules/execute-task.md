@@ -106,8 +106,22 @@ caches.
    fact (`movedInput`). A move withholds the save, says so on the
    status line, and drops the project's facts as an uncached command
    does (every partition when the task declares workspace outputs,
-   whose save would have marked them). Otherwise `resolveOutputs(...)`
-   → `cache.save({ hash, projectDir, outputFiles, entry })`.
+   whose save would have marked them). A workspace fingerprint a task
+   rewrote since the run read it withholds the save too (the run's
+   `FingerprintWatch`, [`fingerprint-watch.md`](./fingerprint-watch.md),
+   item 750). Otherwise `resolveOutputs(...)` →
+   `cache.save({ hash, projectDir, outputFiles, entry })`.
+   **If it ran here and saves nothing** — it failed, the policy writes
+   nothing (`--cache=local:r,remote:r`), an upstream failed, the key no
+   longer held — the same re-check runs (`movedInput`), and a move drops
+   the project's facts; otherwise its declared outputs are resolved and
+   marked in the git snapshot as a save marks them (`markUnsaved`). A
+   same-run reader keyed from the snapshot's OIDs for either replayed
+   the bytes from before the command (item 750). A deferred or
+   remote-only task wrote nothing here and marks nothing, and nor does
+   one nothing in the run depends on (`noDependants`, set by `run.ts`):
+   no task is ordered after it to read what it wrote, and the output
+   walk cost 1,000 read-only misses 1.62 → 1.78 s (min of 9).
 6. Return outcome with hash, status (`success` / `failed`),
    exitCode, durationMs, captured stdout/stderr, hrtime spans, and
    (when Bun's resourceUsage returned them) `cpuMs` / `peakRssBytes` —
@@ -134,6 +148,12 @@ output prefixes recorded, git snapshot marked — is
 `exitCode === 0 && willSave` gate and keeps the deferred-download
 branch beside it.
 
+## The lazy probe
+
+A task not probed up front asks the run's `FingerprintWatch` before its
+`cache.get`: once a task rewrote a fingerprinted file, the key (which
+folded the old digest) is not probed, and the task runs.
+
 ## What a command may have written
 
 A task with no `cache` block declares no outputs, so after its command
@@ -145,7 +165,9 @@ workspace-wide partition and the project's `package.json` digest memo;
 `'workspace'` clears every partition and every digest. The next reader
 re-enumerates (one `git ls-files`) and hashes by content. A task on a
 remote executor wrote on its own disk and drops nothing (item 743:
-turborepo#13788, `tests/undeclared-writes.test.ts`).
+turborepo#13788, `tests/undeclared-writes.test.ts`). Any task that
+`mayWriteFingerprint` (`sandbox-request.md`) tells the run's
+`FingerprintWatch` it ran, cached or not.
 
 ## Sandbox request
 

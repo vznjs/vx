@@ -30,6 +30,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry> // every discovered project, a typo's measure
   anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
   workspaceFingerprint: string
+  fingerprintWatch: FingerprintWatch // has a task rewritten what that digest folded? (fingerprint-watch.md)
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache // per-run memo of `git ls-files`, by project dir
   workspaceProjectCount: number // every project discovery found, in or out of scope

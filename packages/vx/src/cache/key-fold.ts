@@ -87,7 +87,7 @@ import type { CacheKeyInput } from './layer.js'
 // never folded and saved what it built. The fix withholds that link unless
 // the key answers for the package, but an entry saved before it still hits
 // after the sibling changes (probed: the old output replayed).
-export const CACHE_VERSION = 'vx-cache-v33'
+export const CACHE_VERSION = 'vx-cache-v34'
 
 /**
  * Fold one task's key inputs into its 16-hex cache key. `hashFile` answers

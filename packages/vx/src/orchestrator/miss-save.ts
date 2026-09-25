@@ -150,41 +150,79 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
       })
     }
   }
-  // This task just wrote outputs to the project's tree. Record the
-  // exact declared-output paths as changed (same as the cache-hit
-  // restore path) instead of dropping the whole snapshot: a downstream
-  // same-project task then re-spawns git ONLY when its input globs can
-  // actually see one of these paths. On a 1000-package cold run this
-  // removes ~one synchronous `git ls-files` spawn per project (the
-  // single largest cold-run cost — 22% of CPU in profiling). Contract:
-  // outputs must be declared — an executed task that writes files
-  // outside `cache.outputs.files` which a same-project downstream task
-  // reads is undeclared behavior (the restore path already assumes it).
-  if (outputFiles.length > 0) {
-    a.gitFilesCache?.markOutputsChanged(
-      node.projectDir,
-      outputFiles.map((p) => path.relative(node.projectDir, p).split(path.sep).join('/')),
-    )
-  }
-  // Declared workspace outputs may have landed inside OTHER
-  // projects' dirs (no-boundary escape hatch) — mark the exact
-  // paths against every partition that can see them.
-  if (wsOutputFiles.length > 0) {
-    a.gitFilesCache?.markWorkspaceOutputsChanged(
-      a.workspaceRoot,
-      wsOutputFiles.map((f) => path.relative(a.workspaceRoot, f).split(path.sep).join('/')),
-    )
-  }
-  // The workspace-wide partition (when one exists) spans this
-  // project's subtree, so it inherits the same "undeclared writes
-  // are only visible to git" rule as the project drop above.
-  if (outputFiles.length + wsOutputFiles.length > 0) {
-    a.gitFilesCache?.invalidateWorkspacePartition()
-  }
+  markWritten(a, outputFiles, wsOutputFiles)
   // Off the slot when the run keeps a lane (the save lane bounds and
   // drains it); in the slot otherwise — an embedder without a lane gets
   // the entry before the outcome.
   if (a.deferSave !== undefined) return { landed: a.deferSave(save) }
   await save()
   return { landed: Promise.resolve() }
+}
+
+/** What `markUnsaved` reads of a miss: where its declared outputs are. */
+export type UnsavedArgs = Pick<
+  SaveMissArgs,
+  'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'gitFilesCache' | 'outputs' | 'wsOutputs'
+>
+
+/**
+ * A miss that ran here and saves nothing (it failed, the policy writes
+ * nothing, an upstream failed, its key no longer held) still wrote its
+ * outputs, and a same-project reader after it must see them as it sees a
+ * save's: resolved and marked the same way.
+ */
+export async function markUnsaved(a: UnsavedArgs): Promise<void> {
+  const endResolve = span('miss: resolve outputs')
+  const outputFiles = await resolveOutputs({
+    projectDir: a.node.projectDir,
+    outputs: a.outputs,
+    nestedProjectDirs: a.nestedProjectDirs,
+  })
+  const wsOutputFiles = await resolveWorkspaceOutputs({
+    workspaceRoot: a.workspaceRoot,
+    outputs: a.wsOutputs,
+  })
+  endResolve()
+  markWritten(a, outputFiles, wsOutputFiles)
+}
+
+/**
+ * The task just wrote outputs to the project's tree. Record the exact
+ * declared-output paths as changed (same as the cache-hit restore path)
+ * instead of dropping the whole snapshot: a downstream same-project task
+ * then re-spawns git ONLY when its input globs can actually see one of
+ * these paths. On a 1000-package cold run this removes ~one synchronous
+ * `git ls-files` spawn per project (the single largest cold-run cost —
+ * 22% of CPU in profiling). Contract: outputs must be declared — an
+ * executed task that writes files outside `cache.outputs.files` which a
+ * same-project downstream task reads is undeclared behavior (the restore
+ * path already assumes it).
+ */
+function markWritten(
+  a: Pick<SaveMissArgs, 'node' | 'workspaceRoot' | 'gitFilesCache'>,
+  outputFiles: readonly string[],
+  wsOutputFiles: readonly string[],
+): void {
+  const { projectDir } = a.node
+  if (outputFiles.length > 0) {
+    a.gitFilesCache?.markOutputsChanged(
+      projectDir,
+      outputFiles.map((p) => path.relative(projectDir, p).split(path.sep).join('/')),
+    )
+  }
+  // Declared workspace outputs may have landed inside OTHER projects' dirs
+  // (no-boundary escape hatch) — mark the exact paths against every
+  // partition that can see them.
+  if (wsOutputFiles.length > 0) {
+    a.gitFilesCache?.markWorkspaceOutputsChanged(
+      a.workspaceRoot,
+      wsOutputFiles.map((f) => path.relative(a.workspaceRoot, f).split(path.sep).join('/')),
+    )
+  }
+  // The workspace-wide partition (when one exists) spans this project's
+  // subtree, so it inherits the same "undeclared writes are only visible
+  // to git" rule as the project drop above.
+  if (outputFiles.length + wsOutputFiles.length > 0) {
+    a.gitFilesCache?.invalidateWorkspacePartition()
+  }
 }

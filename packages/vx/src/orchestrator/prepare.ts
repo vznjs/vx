@@ -54,6 +54,7 @@ import {
 } from './plugin-host.js'
 import { loadProjects, loadWorkspacePlugins, type LoadedProjects } from './projects.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
+import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
@@ -103,6 +104,8 @@ export interface PreparedRun {
    */
   anyProjectConfig: boolean
   workspaceFingerprint: string
+  /** Whether a task has since rewritten what that fingerprint folded (fingerprint-watch.ts). */
+  fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   /**
    * Per-run memo for `git ls-files` output, keyed by project dir.
@@ -222,6 +225,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // Two digests from one read: the config-evaluation cache keys on every
   // file (a config may import a dependency), the task keys on the files no
   // plugin claims (`VxPlugin.fingerprint`).
+  const fingerprintsAt = Date.now()
   const fingerprints = await computeWorkspaceFingerprints(
     workspaceRoot,
     new Set(fingerprintClaims(plugins).keys()),
@@ -340,6 +344,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
   mark('git enumeration')
   const hashCache = createHashCache()
+  const fingerprintWatch = new FingerprintWatch(workspaceRoot, fingerprints, fingerprintsAt)
 
   // Empty-cases bookkeeping. We still construct the cache + fingerprint
   // so the caller's try/finally pattern can close it uniformly.
@@ -358,6 +363,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       anyProjectConfig: projectsWithConfigs.length > 0,
       workspaceFingerprint,
+      fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache,
       hashCache,
@@ -444,6 +450,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     projects,
     anyProjectConfig: projectsWithConfigs.length > 0,
     workspaceFingerprint,
+    fingerprintWatch,
     nestedDirsByProject,
     gitFilesCache,
     hashCache,

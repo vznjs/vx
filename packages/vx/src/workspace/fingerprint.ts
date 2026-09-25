@@ -67,6 +67,12 @@ export interface WorkspaceFingerprints {
    * — what every task key folds. Identical to `all` with nothing claimed.
    */
   readonly unclaimed: string
+  /**
+   * The bytes folded, by file name — what a mid-run check compares against
+   * when a task may have rewritten one (orchestrator/fingerprint-watch.ts).
+   * Already in memory for the fold; kept, not copied.
+   */
+  readonly files: ReadonlyMap<string, Uint8Array>
 }
 
 /**
@@ -83,16 +89,18 @@ export async function computeWorkspaceFingerprints(
 ): Promise<WorkspaceFingerprints> {
   let all = 0n
   let unclaimed = 0n
+  const files = new Map<string, Uint8Array>()
   for (const f of WORKSPACE_FINGERPRINT_FILES) {
     const bytes = await readOnce(reads, path.join(workspaceRoot, f))
     if (bytes === null) continue
+    files.set(f, bytes)
     all = xxh3(`${f}\0`, all)
     all = xxh3(bytes, all)
     if (claimed.has(f)) continue
     unclaimed = xxh3(`${f}\0`, unclaimed)
     unclaimed = xxh3(bytes, unclaimed)
   }
-  return { all: hex(all), unclaimed: hex(unclaimed) }
+  return { all: hex(all), unclaimed: hex(unclaimed), files }
 }
 
 function hex(h: bigint): string {

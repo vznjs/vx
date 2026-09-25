@@ -44,7 +44,19 @@ export interface SaveMissArgs {
   deferSave?: ((save: () => Promise<void>) => Promise<void>) | undefined // the run's save lane; resolves when the save lands
 }
 export function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void> }>
+
+export type UnsavedArgs = Pick<
+  SaveMissArgs,
+  'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'gitFilesCache' | 'outputs' | 'wsOutputs'
+>
+export function markUnsaved(a: UnsavedArgs): Promise<void>
 ```
+
+`markUnsaved` is step 5 alone, for a miss that ran here and saves
+nothing (it failed, the policy writes nothing, an upstream failed): its
+outputs are resolved and marked exactly as a save's are. Before it, a
+reader after such a task kept the snapshot's index OIDs for them and
+restored the bytes from before the command (item 750).
 
 ## The save lane (2026-09-10)
 

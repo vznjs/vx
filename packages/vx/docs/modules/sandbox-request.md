@@ -55,10 +55,10 @@ export function reachedWithheld(
 ): WithheldLink[]
 export function withheldLinkLine(taskId: string, w: WithheldLink): string
 
-export function undeclaredWriteReach(
-  node: TaskNode,
-  workspaceRoot: string,
-): 'none' | 'project' | 'workspace'
+export type WriteReach = 'none' | 'project' | 'workspace'
+export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
+export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
+export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): boolean
 ```
 
 - `prepareSandbox` prepares the runtime for a run when any task opts
@@ -104,6 +104,18 @@ export function undeclaredWriteReach(
   reaches no input). The stability gate (`stable-keys.md`) and
   execute-task's fact drop (`execute-task.md`) both read it, so the up-
   front key and the live one agree on what a producer can contradict.
+- `commandWriteReach` is the same answer with the `cache` block ignored:
+  where a command may write at all. `undeclaredWriteReach` is it for an
+  uncached task and `'none'` for a cached one; the stability gate reads
+  it for a cached task too, as where that task may rewrite its own
+  inputs in place (a formatter, item 750).
+- `mayWriteFingerprint` — may the command rewrite a file the workspace
+  fingerprint folds (`WORKSPACE_FINGERPRINT_FILES`, all at the root)? An
+  unsandboxed task only when the root is its own project; a sandboxed
+  one when a write grant covers such a file. Anyone else writing there
+  crosses a project boundary, out of contract. Read by the stability
+  gate and by execute-task, which tells the run's `FingerprintWatch`
+  (`fingerprint-watch.md`).
 
 ## Rules
 
