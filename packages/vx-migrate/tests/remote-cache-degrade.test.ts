@@ -415,9 +415,13 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
         const cause = r.warnings[0]?.split(' failed: ')[1] ?? ''
         const first = firsts.find((f) => r.warnings[0] === `${prefix} ${f} failed: ${cause}`)
         const repeats = wire === 'turboCache' ? '2 more requests' : '1 more request'
+        // A refusal turns the remote off for the run, so nothing repeats:
+        // behind a sandbox's network proxy (CI's plugin job) an unknown
+        // host is not a resolver error but the proxy's HTTP 403.
+        const off = cause.endsWith('remote cache off for this run')
         expect(r.warnings).toEqual([
           `${prefix} ${first} failed: ${cause}`,
-          `${prefix} ${repeats} failed the same way: ${cause}`,
+          ...(off ? [] : [`${prefix} ${repeats} failed the same way: ${cause}`]),
         ])
         return { warnings: r.warnings, first: cause }
       } finally {
