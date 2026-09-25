@@ -140,18 +140,6 @@ export async function parseStraceViolations(
 }
 
 /**
- * Apply the task's user-provided `sandbox.ignore` grants on top
- * of whatever the macOS log monitor + Linux strace pass produced.
- * Mirrors SRT's own substring-match semantics:
- *   - `'*'` entries match every command
- *   - other keys match commands whose userCommand string CONTAINS the key
- *   - the array of strings under each key is substring-matched against
- *     the violation line
- *
- * The defaults installed in `initSandbox` already filter on the macOS
- * side; this pass catches per-task additions + Linux strace results.
- */
-/**
  * Does a violation line match something the task said to ignore?
  *
  * The line names an operation and a target — `deny(1) file-write-create
@@ -284,6 +272,18 @@ function withinReported(
   )
 }
 
+/**
+ * Apply the task's user-provided `sandbox.ignore` grants on top
+ * of whatever the macOS log monitor + Linux strace pass produced.
+ * Mirrors SRT's own substring-match semantics:
+ *   - `'*'` entries match every command
+ *   - other keys match commands whose userCommand string CONTAINS the key
+ *   - the array of strings under each key is substring-matched against
+ *     the violation line
+ *
+ * The defaults installed in `initSandbox` already filter on the macOS
+ * side; this pass catches per-task additions + Linux strace results.
+ */
 function filterIgnored(
   violations: SandboxViolation[],
   ignore: ResolvedSandboxConfig['ignore'],

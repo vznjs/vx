@@ -40,27 +40,6 @@ export interface SandboxArmer {
 }
 
 /**
- * Prepare the sandbox for a run WITHOUT starting it. Starting is
- * `arm()`, and it happens on the first task that actually executes inside
- * a sandbox — not up front. Up front, every run of a sandboxed workspace
- * paid the probe (a sandboxed `true` through the runtime, ~300–400 ms on
- * Linux, the runtime module's own load included) even when every task was
- * a cache hit and nothing executed; measured 2026-09-10 on this repo's
- * own warm gate: `classify + probe` 288 ms of a 798 ms run. A hit needs
- * no sandbox, so a hit pays nothing.
- *
- * The domain union is computed here from every sandboxed node, because
- * SRT runs ONE filtering proxy per run and checks every request against
- * the allowlist given to `initialize()` — never the per-call one
- * (`sandbox-manager.js` 0.0.75). A task that declares no domains still
- * reaches nothing: its profile is not given the proxy's port at all.
- * The unix-socket allowance is per run the same way: SRT's Linux seccomp
- * filter on `socket(AF_UNIX)` is all-or-nothing and read at
- * `initialize()`, so a task declaring `unixSockets`, or a `localBinding`
- * port list (its bridge is a unix socket the task's side creates), lifts
- * it for the run. macOS keeps per-task precision through vx's own rules.
- */
-/**
  * What SRT's run-wide `initialize()` is armed with, folded from every
  * sandboxed task in the graph — or `null` when the run has none.
  *
@@ -100,6 +79,27 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
   return { domains: [...domains], unixSockets, weakerNested }
 }
 
+/**
+ * Prepare the sandbox for a run WITHOUT starting it. Starting is
+ * `arm()`, and it happens on the first task that actually executes inside
+ * a sandbox — not up front. Up front, every run of a sandboxed workspace
+ * paid the probe (a sandboxed `true` through the runtime, ~300–400 ms on
+ * Linux, the runtime module's own load included) even when every task was
+ * a cache hit and nothing executed; measured 2026-09-10 on this repo's
+ * own warm gate: `classify + probe` 288 ms of a 798 ms run. A hit needs
+ * no sandbox, so a hit pays nothing.
+ *
+ * The domain union is computed here from every sandboxed node, because
+ * SRT runs ONE filtering proxy per run and checks every request against
+ * the allowlist given to `initialize()` — never the per-call one
+ * (`sandbox-manager.js` 0.0.75). A task that declares no domains still
+ * reaches nothing: its profile is not given the proxy's port at all.
+ * The unix-socket allowance is per run the same way: SRT's Linux seccomp
+ * filter on `socket(AF_UNIX)` is all-or-nothing and read at
+ * `initialize()`, so a task declaring `unixSockets`, or a `localBinding`
+ * port list (its bridge is a unix socket the task's side creates), lifts
+ * it for the run. macOS keeps per-task precision through vx's own rules.
+ */
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
   const union = sandboxRunUnion(nodes)
   if (union === null) return null

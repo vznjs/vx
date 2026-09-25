@@ -80,13 +80,6 @@ interface InFlight {
 }
 
 /**
- * Bounded per-run capture. `append` keeps a chunk LIST + running char count per
- * task, evicting whole chunks from the head past `TASK_LOG_TAIL_CHARS` — no
- * string concatenation until `drain`, so a cache-hit replay (one big chunk) is
- * one array push, zero copies. `finish` decides retention; `drain` emits the
- * bundle, failures first.
- */
-/**
  * Per-retained-chunk overhead, in char-equivalents, charged against the RUN
  * budget on top of the characters themselves.
  *
@@ -110,6 +103,13 @@ function budgetCost(chars: number, chunkCount: number): number {
   return chars + chunkCount * CHUNK_OVERHEAD_CHARS
 }
 
+/**
+ * Bounded per-run capture. `append` keeps a chunk LIST + running char count per
+ * task, evicting whole chunks from the head past `TASK_LOG_TAIL_CHARS` — no
+ * string concatenation until `drain`, so a cache-hit replay (one big chunk) is
+ * one array push, zero copies. `finish` decides retention; `drain` emits the
+ * bundle, failures first.
+ */
 export class TaskLogBuffer {
   private readonly inFlight = new Map<string, InFlight>()
   private readonly retained = new Map<string, Retained>()

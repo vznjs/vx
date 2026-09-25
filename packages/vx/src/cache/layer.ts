@@ -359,12 +359,6 @@ export const OUTPUT_DIRS_RACY_MS = 50
 export const FILE_HASH_RACY_MS = 50
 
 /**
- * The shape every cache implementation honors. `Cache` (the local v10
- * implementation) and `LayeredCache` both `implements` this so the
- * orchestrator's `executeTask` can take either without a discriminated
- * union and we get a compile-time guarantee the surfaces stay congruent.
- */
-/**
  * Context passed to `get()`. Optional, but required when the lookup
  * may resolve through the remote layer — the local SQL row inserted on
  * remote-hit needs `taskId` + `command` to be queryable later (the
@@ -426,6 +420,12 @@ export class ArtifactVanishedError extends Error {
   }
 }
 
+/**
+ * The shape every cache implementation honors. `Cache` (the local v10
+ * implementation) and `LayeredCache` both `implements` this so the
+ * orchestrator's `executeTask` can take either without a discriminated
+ * union and we get a compile-time guarantee the surfaces stay congruent.
+ */
 export interface CacheLayer {
   /**
    * The local handle this layer wraps, when it wraps one (`LayeredCache`).

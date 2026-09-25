@@ -990,6 +990,16 @@ function forgetUndeclaredWrites(args: ExecuteArgs, reach: 'none' | 'project' | '
   args.hashCache?.packageJson.delete(args.node.projectDir)
 }
 
+/** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */
+function taskBinDirs(node: TaskNode, workspaceRoot: string): string[] {
+  const bins = [path.join(node.projectDir, 'node_modules', '.bin')]
+  const rootBin = path.join(workspaceRoot, 'node_modules', '.bin')
+  // Identical when the root is itself a project — dedupe rather than list it
+  // twice, so PATH reads the same either way.
+  if (rootBin !== bins[0]) bins.push(rootBin)
+  return bins
+}
+
 /**
  * Build the child-process env for one task. Same arguments at every call site
  * (persistent + cached). Two `node_modules/.bin` directories are prepended to
@@ -1006,16 +1016,6 @@ function forgetUndeclaredWrites(args: ExecuteArgs, reach: 'none' | 'project' | '
  * so a task that resolved on a worker failed on the machine that submitted
  * it. npm/pnpm/yarn all put the ancestor chain on PATH for the same reason.
  */
-/** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */
-function taskBinDirs(node: TaskNode, workspaceRoot: string): string[] {
-  const bins = [path.join(node.projectDir, 'node_modules', '.bin')]
-  const rootBin = path.join(workspaceRoot, 'node_modules', '.bin')
-  // Identical when the root is itself a project — dedupe rather than list it
-  // twice, so PATH reads the same either way.
-  if (rootBin !== bins[0]) bins.push(rootBin)
-  return bins
-}
-
 function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJS.ProcessEnv {
   const bins = taskBinDirs(node, workspaceRoot)
   const env = buildIsolatedEnv({

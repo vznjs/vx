@@ -304,6 +304,16 @@ async function resolveWorkspaceFilesOver(
   return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
 }
 
+/** Anything at the path — file, directory, symlink to anything or to nothing. */
+function existsOnDisk(abs: string): boolean {
+  try {
+    lstatSync(abs)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /**
  * What an enumerated path must be to count as an input: a regular file, or
  * a symlink (to anything, or to nothing — its target STRING is what folds,
@@ -315,16 +325,6 @@ async function resolveWorkspaceFilesOver(
  * the paths that reach this probe are the ones without a trusted index OID
  * (untracked and dirty files), a handful on a warm run.
  */
-/** Anything at the path — file, directory, symlink to anything or to nothing. */
-function existsOnDisk(abs: string): boolean {
-  try {
-    lstatSync(abs)
-    return true
-  } catch {
-    return false
-  }
-}
-
 function isInputOnDisk(abs: string): boolean {
   try {
     const st = lstatSync(abs)
@@ -415,7 +415,6 @@ async function resolveRuntimeValues(
   )
 }
 
-/** Resolve declared output globs (project-relative) to actual produced files. */
 /**
  * What no output glob reaches. An output is otherwise taken as written —
  * `node_modules/**` IS an install task's output, so `ALWAYS_IGNORE` does not
@@ -425,6 +424,7 @@ async function resolveRuntimeValues(
  */
 const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**']
 
+/** Resolve declared output globs (project-relative) to actual produced files. */
 export async function resolveOutputs(args: {
   projectDir: string
   outputs: string[]

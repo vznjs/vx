@@ -632,13 +632,6 @@ export function ownRssHighWater(): number {
 }
 
 /**
- * Drain a `Bun.spawn` stdout/stderr stream while invoking the live
- * callback per UTF-8 chunk. Returns the accumulated string, or `''` when
- * `retain` is false — the stream is still fully drained and every chunk
- * still reaches `onChunk`; only the retained copy is dropped, so a caller
- * that will not read it does not pay its byte size in heap.
- */
-/**
  * What a task's captured output keeps: the first `CAPTURE_HEAD_CHARS` and
  * the last `CAPTURE_TAIL_CHARS` characters, the dropped middle counted and
  * named where it was. The live stream is never bounded — every byte still
@@ -707,6 +700,13 @@ class BoundedCapture {
   }
 }
 
+/**
+ * Drain a `Bun.spawn` stdout/stderr stream while invoking the live
+ * callback per UTF-8 chunk. Returns the accumulated string, or `''` when
+ * `retain` is false — the stream is still fully drained and every chunk
+ * still reaches `onChunk`; only the retained copy is dropped, so a caller
+ * that will not read it does not pay its byte size in heap.
+ */
 export async function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
@@ -751,12 +751,6 @@ export async function streamToString(
 }
 
 /**
- * Pull CPU + RSS out of Bun's resourceUsage() shape into our schema's
- * shape (ms + bytes). Returns an empty object when usage isn't available
- * (e.g., the platform didn't expose rusage), so the orchestrator records
- * NULLs in the runs table for those tasks.
- */
-/**
  * How far above the parent's own mark a child's `ru_maxrss` must read to
  * count as the child's. A light child inherits the parent's footprint at
  * exec, so its reading sits ON the floor by construction, and the kernel's
@@ -766,6 +760,8 @@ export async function streamToString(
  * accounting jitter and below what any reservation resolves (64 MB steps).
  */
 export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
+
+const MIN_PLAUSIBLE_PEAK_BYTES = 1024 * 1024
 
 /**
  * A child's `maxRSS` in BYTES, whatever unit the runtime reported it in.
@@ -794,12 +790,16 @@ export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
  * CI red on both platforms (2026-09-20). Compare like with like, or do not
  * compare at all.
  */
-const MIN_PLAUSIBLE_PEAK_BYTES = 1024 * 1024
-
 export function peakRssBytes(maxRSS: number): number {
   return maxRSS > 0 && maxRSS < MIN_PLAUSIBLE_PEAK_BYTES ? maxRSS * 1024 : maxRSS
 }
 
+/**
+ * Pull CPU + RSS out of Bun's resourceUsage() shape into our schema's
+ * shape (ms + bytes). Returns an empty object when usage isn't available
+ * (e.g., the platform didn't expose rusage), so the orchestrator records
+ * NULLs in the runs table for those tasks.
+ */
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
   /** The parent's own high-water mark (`ownRssHighWater`); a peak at or under it is inherited, not the child's, and is not reported. */

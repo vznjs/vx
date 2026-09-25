@@ -227,17 +227,6 @@ export interface ScheduleOptions {
 }
 
 /**
- * Run the task graph. Independent tasks run in parallel up to `concurrency`.
- * If a task fails, its dependents are marked `skipped` but unrelated tasks
- * keep running so the user gets maximum information per invocation.
- *
- * Scheduling: when more than one task is ready, the scheduler picks the
- * one that blocks the most downstream work (most transitive reverse
- * dependents). Ties break in graph-insertion order (which is the topo
- * order produced by `buildTaskGraph`). Minimizes worker idle at the
- * end of the run.
- */
-/**
  * A binary max-heap of ready task ids, ordered by (priority DESC, enqueue-seq
  * ASC) so `pop()` returns the highest-priority task and equal-priority ties
  * break in enqueue order — the exact contract the prior sorted-array kept, but
@@ -322,6 +311,17 @@ class ReadyHeap {
   }
 }
 
+/**
+ * Run the task graph. Independent tasks run in parallel up to `concurrency`.
+ * If a task fails, its dependents are marked `skipped` but unrelated tasks
+ * keep running so the user gets maximum information per invocation.
+ *
+ * Scheduling: when more than one task is ready, the scheduler picks the
+ * one that blocks the most downstream work (most transitive reverse
+ * dependents). Ties break in graph-insertion order (which is the topo
+ * order produced by `buildTaskGraph`). Minimizes worker idle at the
+ * end of the run.
+ */
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>> {
   const { nodes, concurrency, execute, onStart, onFinish } = options
   const continueMode = options.continueMode ?? 'deps-ok'

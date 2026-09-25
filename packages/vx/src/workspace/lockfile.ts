@@ -37,16 +37,16 @@ export function lockfilePath(root: string): string {
   return path.join(root, LOCKFILE_NAME)
 }
 
+/** What a `--frozen` verb says when there is no lock to read. */
+export const FROZEN_WITHOUT_LOCK =
+  "--frozen requires vx-lock.json at the workspace root — run 'vx lock' and commit it"
+
 /**
  * Read and shape-validate `vx-lock.json`. Returns `null` when no lock
  * exists (the common case — the feature is opt-in). The lock is a
  * user-editable file, so this is a system boundary: malformed content
  * throws a `UserError` instead of crashing deeper in the run.
  */
-/** What a `--frozen` verb says when there is no lock to read. */
-export const FROZEN_WITHOUT_LOCK =
-  "--frozen requires vx-lock.json at the workspace root — run 'vx lock' and commit it"
-
 export async function readLockfile(root: string): Promise<Lockfile | null> {
   const file = Bun.file(lockfilePath(root))
   if (!(await file.exists())) return null

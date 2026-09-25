@@ -267,15 +267,6 @@ const DEFAULT_IGNORE_VIOLATIONS: Record<string, string[]> = {
 }
 
 /**
- * One-time SRT initialization per orchestrator run. Starts the proxy
- * servers + (on macOS) the violation log monitor. Safe to call repeatedly
- * — SRT itself returns early on the second call.
- *
- * The base config sets network to "block everything" (empty allowedDomains).
- * Per-task wrapping passes a customConfig that re-enables network for
- * tasks with `sandbox.network: true`.
- */
-/**
  * The temp directory SRT hands every sandboxed task. It overrides `TMPDIR`
  * so temp-file writers land somewhere its filesystem policy already allows,
  * and it deliberately does NOT create the directory — its own comment says
@@ -293,13 +284,6 @@ function sandboxTmpdir(): string {
   return named !== undefined && named !== '' ? named : '/tmp/claude'
 }
 
-/**
- * @param opts.allowedDomains every domain any sandboxed task in this run
- * declared. SRT's filtering proxy is per-RUN and reads its allowlist from
- * this call, never from the per-task config, so the union is the only
- * place a domain list can take effect. Per-task precision survives where
- * it matters: a task that declared none is never handed the proxy port.
- */
 /** Whether SRT is up in this process — set by `initSandbox`, cleared by `resetSandbox`. */
 let srtUp = false
 
@@ -324,6 +308,21 @@ async function unlinkStaleMuxSockets(): Promise<void> {
   }
 }
 
+/**
+ * One-time SRT initialization per orchestrator run. Starts the proxy
+ * servers + (on macOS) the violation log monitor. Safe to call repeatedly
+ * — SRT itself returns early on the second call.
+ *
+ * The base config sets network to "block everything" (empty allowedDomains).
+ * Per-task wrapping passes a customConfig that re-enables network for
+ * tasks with `sandbox.network: true`.
+ *
+ * @param opts.allowedDomains every domain any sandboxed task in this run
+ * declared. SRT's filtering proxy is per-RUN and reads its allowlist from
+ * this call, never from the per-task config, so the union is the only
+ * place a domain list can take effect. Per-task precision survives where
+ * it matters: a task that declared none is never handed the proxy port.
+ */
 export async function initSandbox(opts?: {
   allowedDomains?: readonly string[]
   /**
@@ -546,16 +545,6 @@ export interface SandboxedRunResult extends RunResult {
 }
 
 /**
- * Run a single task wrapped in the sandbox. Caller must have called
- * `initSandbox()` first.
- *
- * Violations are matched by a unique per-task command prefix — SRT's
- * `getViolationsForCommand` keys by base64 of the first 100 chars, so
- * two tasks running the same underlying command (e.g. parallel `tsc`
- * across packages) would otherwise collide. We prepend `: '<tag>';`
- * (shell no-op) to make every command's first 100 chars unique.
- */
-/**
  * The sandboxed form of a command: SRT's wrapper over the tagged command,
  * with vx's own seatbelt rules appended on macOS. This is the ENFORCEMENT
  * half of `runSandboxed`, shared with persistent tasks — a dev server is
@@ -718,6 +707,16 @@ export function releaseBridges(tag: string): void {
   }
 }
 
+/**
+ * Run a single task wrapped in the sandbox. Caller must have called
+ * `initSandbox()` first.
+ *
+ * Violations are matched by a unique per-task command prefix — SRT's
+ * `getViolationsForCommand` keys by base64 of the first 100 chars, so
+ * two tasks running the same underlying command (e.g. parallel `tsc`
+ * across packages) would otherwise collide. We prepend `: '<tag>';`
+ * (shell no-op) to make every command's first 100 chars unique.
+ */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()

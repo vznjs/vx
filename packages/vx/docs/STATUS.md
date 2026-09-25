@@ -960,6 +960,24 @@ graph`, and a missed input is a stale hit on every run.
       its target STRING as git does (`file-hashes.ts`), so the link's
       own ctime is the fact its digest names.
 
+761.  DONE (2026-09-25, found reading `dependency-spec.ts` and
+      `plugin-commands.ts` in the unswept-file pass that also read
+      `chained-cache.ts`, `upgrade.ts` and `run-artifacts.ts` and found
+      them sound). A doc block directly followed by another describes
+      nothing: a helper with its own doc had been inserted between a doc
+      and its declaration, so the doc attached to the helper. 26 such
+      pairs across the packages — `runGraph`'s, `taskEnv`'s,
+      `CacheLayer`'s, `parseDependencySpec`'s among them; 23 moved onto
+      their declarations (pure moves, the diff balanced line for line),
+      `initSandbox`'s two blocks merged into one, the pack-step block in
+      `cache.ts` folded into `packArtifact`'s doc (its "return them, no
+      disk write" had gone stale when `packArtifactToTemp` began writing
+      the temp), and `migrate-turbo.ts`'s block for a `relPosix` that
+      moved to `paths.ts` deleted. One the detector cannot see, moved by
+      hand: `peakRssBytes`' doc sat on the constant above it. The law:
+      `tests/doc-comments-attached.unsafe.test.ts` (red with one orphan
+      put back).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

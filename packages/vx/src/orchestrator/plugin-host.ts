@@ -25,13 +25,6 @@ import type {
   WorkspaceHookContext,
 } from './plugin.js'
 
-/**
- * Run a capability factory with crash isolation. A throw becomes a clean
- * `UserError` naming the plugin + hook: every stage and capability resolved
- * here is load-bearing, so a broken one must abort with a clear message,
- * never silently degrade. (Telemetry sinks are the observe-only exception,
- * and telemetry-host.ts logs-and-skips them instead.)
- */
 /** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
 function describeValue(v: unknown): string {
   if (v === null) return 'null'
@@ -40,7 +33,6 @@ function describeValue(v: unknown): string {
   return t === 'object' ? 'an object' : `a ${t}`
 }
 
-/** What a capability hook handed back must be what the seam runs. */
 /** Every method `CacheLayer` requires (the optional ones are probed with `?.`). */
 export const CACHE_LAYER_METHODS: readonly string[] = [
   'key',
@@ -60,6 +52,7 @@ export const CACHE_LAYER_METHODS: readonly string[] = [
   'close',
 ]
 
+/** What a capability hook handed back must be what the seam runs. */
 function assertShape(
   plugin: VxPlugin,
   hook: string,
@@ -78,6 +71,13 @@ function assertShape(
   )
 }
 
+/**
+ * Run a capability factory with crash isolation. A throw becomes a clean
+ * `UserError` naming the plugin + hook: every stage and capability resolved
+ * here is load-bearing, so a broken one must abort with a clear message,
+ * never silently degrade. (Telemetry sinks are the observe-only exception,
+ * and telemetry-host.ts logs-and-skips them instead.)
+ */
 async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>): Promise<T> {
   try {
     return await fn()
