@@ -70,6 +70,7 @@ describe('cli run()', () => {
     ['lock', ['lock', '--chk']],
     ['info', ['info', 'extra']],
     ['cache', ['cache', 'bogus']],
+    ['upgrade', ['upgrade', '--forse']],
   ])('a bad argument to `%s` points at its help', async (verb, argv) => {
     // Some verbs print and return non-zero, others throw a UserError that
     // `bin.ts` prints. Both are the same thing to a user, so accept either.

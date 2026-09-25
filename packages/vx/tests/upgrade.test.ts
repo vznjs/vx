@@ -2,7 +2,7 @@
 // against a local server; the CLI path pins the source-mode refusal
 // (the compiled-binary path needs a real release and stays manual).
 
-import { readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -126,6 +126,69 @@ describe('replaceBinary', () => {
       },
     )
   })
+
+  it('an empty download is refused even when the digest agrees (sha256 of nothing)', async () => {
+    // The digest check alone passes an empty body whose published digest is
+    // sha256(''): the emptiness refusal is what stands between that and a
+    // zero-byte executable.
+    const empty = new Bun.CryptoHasher('sha256').update('').digest('hex')
+    await withFetch(
+      (() => Promise.resolve(new Response(''))) as unknown as typeof fetch,
+      async () => {
+        const dest = path.join(dir, 'vx4')
+        await Bun.write(dest, 'old')
+        let caught: unknown
+        try {
+          await replaceBinary(dest, 'https://example.invalid/empty', empty)
+        } catch (err) {
+          caught = err
+        }
+        expect(caught).toBeInstanceOf(UserError)
+        expect((caught as Error).message).toBe(
+          'vx upgrade: empty download — https://example.invalid/empty',
+        )
+        expect(await readFile(dest, 'utf8')).toBe('old')
+      },
+    )
+  })
+
+  it('an upper-case expected digest still installs', async () => {
+    await withFetch(
+      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
+      async () => {
+        const dest = path.join(dir, 'vx5')
+        await Bun.write(dest, 'old')
+        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA.toUpperCase())
+        expect(await readFile(dest, 'utf8')).toBe(FAKE)
+      },
+    )
+  })
+
+  it('a rename that fails is one refusal naming dest, and leaves no temp file', async () => {
+    // A non-empty directory at dest: the write and chmod of the temp file
+    // succeed, the rename over dest does not.
+    await withFetch(
+      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
+      async () => {
+        const dest = path.join(dir, 'vx6')
+        await mkdir(path.join(dest, 'inside'), { recursive: true })
+        let caught: unknown
+        try {
+          await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA)
+        } catch (err) {
+          caught = err
+        }
+        expect(caught).toBeInstanceOf(UserError)
+        const message = (caught as Error).message
+        expect(message.startsWith(`vx upgrade: could not replace ${dest} (`)).toBe(true)
+        expect(
+          message.endsWith(') — check permissions, or reinstall with npm install -g @vzn/vx'),
+        ).toBe(true)
+        expect(await Array.fromAsync(new Bun.Glob('vx6.upgrade-*').scan({ cwd: dir }))).toEqual([])
+        expect(await readdir(dest)).toEqual(['inside'])
+      },
+    )
+  })
 })
 
 describe('npmOwnedBinary', () => {
@@ -150,6 +213,10 @@ describe('npmOwnedBinary', () => {
     expect(npmOwnedBinary('/usr/local/bin/vx')).toBeNull()
     expect(npmOwnedBinary('/home/me/.vx/bin/vx')).toBeNull()
     expect(npmOwnedBinary('/$bunfs/root/vx')).toBeNull()
+  })
+
+  it('a node_modules with nothing under it still counts as npm-owned', () => {
+    expect(npmOwnedBinary('/home/me/app/node_modules')).toBe('node_modules')
   })
 })
 
@@ -185,19 +252,69 @@ describe('releaseAsset', () => {
     expect(() => releaseAsset(release, 'vx-linux-arm64')).toThrow(
       /publishes no SHA-256 digest for vx-linux-arm64/,
     )
-    expect(() => releaseAsset({ message: 'Not Found' }, 'vx-linux-x64')).toThrow(/has no asset/)
+    expect(() => releaseAsset({ message: 'Not Found' }, 'vx-linux-x64')).toThrow(UserError)
+    let message = ''
+    try {
+      releaseAsset({ message: 'Not Found' }, 'vx-linux-x64')
+    } catch (err) {
+      message = (err as Error).message
+    }
+    expect(message).toBe(
+      'vx upgrade: release (unknown) has no asset vx-linux-x64 for this platform',
+    )
+  })
+
+  it.each([
+    ['no download url', { name: 'vx-linux-x64', digest: 'sha256:' + 'a'.repeat(64) }],
+    [
+      'an empty download url',
+      { name: 'vx-linux-x64', browser_download_url: '', digest: 'sha256:' + 'a'.repeat(64) },
+    ],
+  ])('refuses an asset with %s', (_, asset) => {
+    let message = ''
+    try {
+      releaseAsset({ tag_name: 'v0.0.21', assets: [asset] }, 'vx-linux-x64')
+    } catch (err) {
+      message = (err as Error).message
+    }
+    expect(message).toBe('vx upgrade: release v0.0.21 names no download for vx-linux-x64')
+  })
+
+  it('refuses a digest one hex digit too long', () => {
+    const asset = (digest: string) => ({
+      tag_name: 'v0.0.21',
+      assets: [{ name: 'vx-linux-x64', browser_download_url: 'https://x/l', digest }],
+    })
+    expect(releaseAsset(asset('sha256:' + 'c'.repeat(64)), 'vx-linux-x64').sha256).toBe(
+      'c'.repeat(64),
+    )
+    expect(() => releaseAsset(asset('sha256:' + 'c'.repeat(65)), 'vx-linux-x64')).toThrow(
+      /publishes no SHA-256 digest for vx-linux-x64/,
+    )
   })
 })
 
 describe('vx upgrade (CLI)', () => {
   it('refuses when running from source', async () => {
+    // The only guard between this row and `replaceBinary(process.execPath)`
+    // is `isCompiledBinary()`. Spawned on the host's own Bun, a broken guard
+    // downloaded the vx release and renamed it over that Bun (item 779). So
+    // the row runs a COPY of the runtime: a broken guard replaces the copy,
+    // and the copy's digest fails the row.
+    const runtime = path.join(dir, 'bun-copy')
+    await copyFile(process.execPath, runtime)
+    await chmod(runtime, 0o755)
+    const before = new Bun.CryptoHasher('sha256').update(await readFile(runtime)).digest('hex')
     const proc = Bun.spawn({
-      cmd: [process.execPath, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade'],
+      cmd: [runtime, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade'],
       stdout: 'pipe',
       stderr: 'pipe',
     })
     const code = await proc.exited
     const err = await new Response(proc.stderr).text()
+    expect(new Bun.CryptoHasher('sha256').update(await readFile(runtime)).digest('hex')).toBe(
+      before,
+    )
     expect(code).toBe(1)
     expect(err).toContain('only works for the compiled binary')
   })

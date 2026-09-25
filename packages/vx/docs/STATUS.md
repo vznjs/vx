@@ -796,6 +796,47 @@ graph`, and a missed input is a stale hit on every run.
       never-fail plugin still warns. One row in
       `tests/telemetry-lifecycle.test.ts` (a throwing `onRunSummary`
       driven through the handle), red against the mutant.
+779.  DONE (2026-09-25, a hazard the `cli/upgrade.ts` sweep found). The
+      source-mode row of `tests/upgrade.test.ts` spawned `process.execPath`
+      (the host's Bun) on `src/bin.ts upgrade`, and the one guard between
+      it and `replaceBinary(process.execPath)` is `isCompiledBinary()`.
+      With that guard mutated to always-true, `vx upgrade` downloaded the
+      real v0.0.21 release and renamed it over the container's Bun. The
+      row now copies the runtime into its temp dir, spawns the copy and
+      asserts the copy's SHA-256 unchanged: under `if (false) {` it is red
+      (the copy was replaced) and the host Bun's digest is unchanged, run
+      in a scratch worktree. The rest of the suite reaches `upgradeCmd` only
+      in process (`tests/cli.test.ts`'s help and bad-flag rows), where the
+      unknown-flag refusal and `isCompiledBinary()` would both have to
+      break to reach the download. The rule is in CLAUDE.md.
+780.  DONE (2026-09-25, sweep of `cli/upgrade.ts`, never named). 24
+      mutations, 14 caught, 10 held now, each red against its mutant
+      over `tests/upgrade.test.ts` + `tests/cli.test.ts`: `npmOwnedBinary`
+      of a bare `…/node_modules` returned '' instead of `node_modules` (U7);
+      the `(unknown)` tag of a release document with no `tag_name` (U8,
+      now an exact message); an asset with no download url, and one with
+      '' (U10, U11); a digest one hex digit too long, which the dropped
+      `$` anchor accepted (U12); an empty body whose published digest is
+      sha256('') installed a zero-byte executable without the emptiness
+      refusal (U18); an upper-case expected digest refused a good
+      download (U19); a failed rename left its `.upgrade-*` temp file
+      (U21) or surfaced as a raw error (U22) — driven by a non-empty
+      directory at dest; and `vx upgrade --forse` joins the bad-argument
+      table (U23).
+781.  DONE (2026-09-25, sweep of `util/errors.ts`, E9 onward). 19
+      mutations over the eight files that assert its sentences; with the
+      new rows all 19 are caught. Before them, `isFsRefusal` dropping its
+      permission half (E9) was held by no row, `isExecutableMissing`
+      read as always-true (E14 — a git that ran and failed would say
+      "install git") and `gitSpawnRefusal` losing `(working dir: …)` (E15)
+      survived, and `isTmpdirRefusal` had no unit row at all: its code
+      gate, path-over-message choice, realpath, both `includes` and the
+      non-Error guard were held only where `tests/tmpdir-refusal.test.ts`
+      drives ENOENT end to end. Rows in `tests/user-error-classify.test.ts`,
+      with TMPDIR pointed per row at a canonical dir, a symlink to it
+      (macOS's `/tmp` → `/private/tmp`) and a missing one. Two fixture
+      files skip rows as root here (`cache-dir-selection` 4,
+      `inputs` 1); no verdict rests on them.
 
 ## In flight
 
