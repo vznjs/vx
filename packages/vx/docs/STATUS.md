@@ -339,6 +339,28 @@ test is telling the truth.
       - The Linux test is equivalent, since `readlink` throws elsewhere.
       - The unreadable `/proc` answer (false, not true) differs only
         where `/proc` is missing: macOS, a job this gate cannot run.
+794.  DONE (2026-09-25, sweeps of `exec/sandbox-paths.ts` and
+      `orchestrator/persistent.ts`, never named in a sweep).
+      `sandbox-paths.ts`: 12 mutations, 8 caught, 4 equivalent, no
+      change. The equivalent four are the root guard of `toRealPath` (a
+      realpath of `/` never fails), the exact-member fast path and
+      `abs === a` in `isUnderAny` (the set lookup answers both first),
+      and `absolutize` normalising an absolute path. That last was
+      probed rather than assumed: every caller passes its answer through
+      `toRealPath`, whose realpath or `path.join` fallback resolves `..`
+      whether or not the path exists (`/tmp/no-such/../secret` →
+      `/tmp/secret`).
+      `persistent.ts`: 10 mutations, 5 caught, 4 held now, 1 equivalent
+      (the empty early return; `untilGroupsGone([])` resolves at once).
+      Every e2e row sets `VX_KILL_GRACE_MS`, so the default grace was
+      free: 60 s passed as well as 2 s. The new
+      `tests/persistent-shutdown.test.ts` holds:
+      - The default grace, unset: a SIGTERM-ignoring child is SIGKILLed
+        in 1.9–8 s.
+      - The SIGTERM before the wait: a server's TERM trap cleans up.
+      - The await of the killed children's exits.
+      - A surfaced (not requested) persistent task is kept alive in the
+        foreground.
 
 ## In flight
 
