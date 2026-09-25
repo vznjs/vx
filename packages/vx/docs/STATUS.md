@@ -484,6 +484,29 @@ test is telling the truth.
       - a restore under a lowered ceiling fails loudly (a local fault,
         not a miss);
       - an ingest past it never lands.
+801.  DONE (2026-09-25, the ledger's `signal:parent-sigkill-orphans-children`
+      row, turborepo#9666). The ask was to evaluate util-linux
+      `setpriv --pdeathsig KILL --` in front of every task. Measured and
+      refuted:
+      - It costs 3.6 ms against 2.4 ms per spawn (min of 400,
+        interleaved).
+      - A 300-project `test --all --no-cache` run (600 tasks) took
+        3,865 ms against 3,631 (+6.4%, min of 9, interleaved).
+      - The death signal reaches only the process it was set on and does
+        not survive a fork. `sh -c 'x & wait'` lost the shell and kept
+        `x`, and an exec'd command died while its children lived on, so
+        a `dev` script's runner goes and its server stays.
+        The probe found the real gap on the sandboxed path. bwrap already
+        passes `--die-with-parent`, but its parent was the spawn's shell,
+        which outlived vx. `wrapSandboxedCommand` now returns
+        `exec bwrap …` on Linux, so bwrap is vx's own child and the pid
+        namespace goes with a `kill -9` of vx, a `setsid` child included.
+        The new unsafe row fails without the `exec`, and its control
+        (unsandboxed, both children survive) pins the limit that remains.
+        A strace-traced one-shot spawn keeps strace as bwrap's parent; a
+        persistent task is never traced. The ledger row becomes
+        `open (limit: unsandboxed)`, and kill-tree.md and
+        sandbox-runtime.md record the numbers.
 
 ## In flight
 

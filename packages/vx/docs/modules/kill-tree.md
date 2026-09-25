@@ -73,16 +73,28 @@ groups are polled every 20 ms, and only while one is left.
 
 - Reach a daemon that called `setsid` itself — the residual every
   non-cgroup runner shares; a sandbox's pid namespace takes even that.
-- Outlive a `kill -9` of vx: nothing in vx runs to signal the groups,
-  so a persistent task survives under init (turborepo#9666 reproduced
-  on vx, 2026-09-24). A persistent task's stdin is a pipe vx holds, so
-  a server that exits on stdin EOF (esbuild `--watch`) goes with vx
-  (`tests/keep-alive.test.ts`). `prctl(PR_SET_PDEATHSIG)` is not the
-  fix, measured 2026-09-24: `Bun.spawn` has no pre-exec hook, a
-  `bun:ffi` wrapper that calls prctl and then execve costs a Bun start
-  per spawn (9.8 ms against 1.0 ms for a bare `sh`, min of 10), it is
-  Linux and glibc only, and the death signal reaches the group leader
-  alone — `sh -c 'server & wait'` lost the shell and kept the server.
+- Outlive a `kill -9` of vx, unsandboxed: nothing in vx runs to signal
+  the groups, so a persistent task survives under init (turborepo#9666
+  reproduced on vx, 2026-09-24). A persistent task's stdin is a pipe vx
+  holds, so a server that exits on stdin EOF (esbuild `--watch`) goes
+  with vx (`tests/keep-alive.test.ts`). A Linux SANDBOXED task goes
+  with vx whole: its bwrap is vx's own child, and `--die-with-parent`
+  takes the pid namespace down (item 801, `sandbox-runtime.md`).
+  `PR_SET_PDEATHSIG` is not the unsandboxed fix, measured twice:
+  - 2026-09-24, a `bun:ffi` wrapper that calls prctl and then execve
+    (`Bun.spawn` has no pre-exec hook): a Bun start per spawn, 9.8 ms
+    against 1.0 ms for a bare `sh` (min of 10), Linux and glibc only.
+  - 2026-09-25 (item 801), util-linux `setpriv --pdeathsig KILL --`
+    in front of the shell: 3.6 ms against 2.4 ms per spawn (min of 400,
+    interleaved), and a 300-project `test --all --no-cache` run (600
+    tasks) at 3,865 ms against 3,631 (+6.4%, min of 9, interleaved,
+    one workspace copy per arm).
+    Either way the death signal reaches the one process it was set on,
+    and it does not survive a fork: `sh -c 'server & wait'` lost the
+    shell and kept the server, and a plain command vx execs (`exec
+sleep`) died while whatever it forked lived on. A package manager's
+    `dev` script is that shape — the runner dies, the server does not.
+    The price buys the case that needs it least.
 - Reap: the caller awaits `exited` as before.
 
 ## Tests
