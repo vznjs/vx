@@ -62,6 +62,8 @@ export interface ExecutePlan {
   stages?: string[]
   /** The final `ExecuteResponse` (snake_case, as the protos spell it). */
   response?: Record<string, unknown>
+  /** Raw `ExecuteOperationMetadata` bytes per stage message, in place of `stages`. */
+  metadataBytes?: Uint8Array[]
   /** A gRPC status to end the stream with instead of a final operation. */
   error?: { code: grpc.status; details: string }
   /** End the stream without sending the final operation (a server that goes away). */
@@ -104,6 +106,9 @@ export interface FakeReapi {
   /** A Read sends one message and then waits to be cancelled. */
   holdReads: boolean
   readsCancelled: number
+  executesCancelled: number
+  /** Directories GetTree serves, one per page. */
+  tree: Record<string, unknown>[]
   /** Stores `data`; its digest as the client spells one (`size_bytes` a number). */
   put(data: Uint8Array): { hash: string; size_bytes: number }
   stop(): void
@@ -156,6 +161,8 @@ export async function startFakeReapi(): Promise<FakeReapi> {
     rejectBatch: new Set(),
     holdReads: false,
     readsCancelled: 0,
+    executesCancelled: 0,
+    tree: [],
     put(data) {
       const hash = new Bun.CryptoHasher('sha256').update(data).digest('hex')
       fake.blobs.set(hash, data)
@@ -286,6 +293,40 @@ export async function startFakeReapi(): Promise<FakeReapi> {
         }),
       })
     }) as grpc.UntypedHandleCall,
+    // Split in two halves; splice concatenates; GetTree pages `fake.tree`.
+    SplitBlob: ((
+      call: grpc.ServerUnaryCall<{ blob_digest: WireDigest }, unknown>,
+      cb: grpc.sendUnaryData<unknown>,
+    ) => {
+      if (enter('SplitBlob', call, unaryErr(cb))) return
+      const blob = fake.blobs.get(call.request.blob_digest.hash)
+      if (blob === undefined) return cb({ code: grpc.status.NOT_FOUND, details: 'no blob' })
+      const half = Math.ceil(blob.length / 2)
+      cb(null, {
+        chunk_digests: [fake.put(blob.subarray(0, half)), fake.put(blob.subarray(half))],
+        chunking_function: 'FAST_CDC_2020',
+      })
+    }) as grpc.UntypedHandleCall,
+    SpliceBlob: ((
+      call: grpc.ServerUnaryCall<{ chunk_digests: WireDigest[] }, unknown>,
+      cb: grpc.sendUnaryData<unknown>,
+    ) => {
+      if (enter('SpliceBlob', call, unaryErr(cb))) return
+      const parts = call.request.chunk_digests.map((d) => fake.blobs.get(d.hash))
+      if (parts.some((p) => p === undefined))
+        return cb({ code: grpc.status.NOT_FOUND, details: 'no chunk' })
+      cb(null, { blob_digest: fake.put(Buffer.concat(parts as Uint8Array[])) })
+    }) as grpc.UntypedHandleCall,
+    // Server-streaming, as the proto declares it: every page on one call,
+    // one directory per page, `next_page_token` naming the one after.
+    GetTree: ((call: grpc.ServerWritableStream<{ page_token: string }, unknown>) => {
+      if (enter('GetTree', call, (e) => call.emit('error', e))) return
+      for (let at = Number(call.request.page_token || 0); at < fake.tree.length; at++) {
+        const next = at + 1 < fake.tree.length ? String(at + 1) : ''
+        call.write({ directories: [fake.tree[at]], next_page_token: next })
+      }
+      call.end()
+    }) as grpc.UntypedHandleCall,
   })
   server.addService(bs['ByteStream']!.service, {
     Write: ((
@@ -406,10 +447,20 @@ export async function startFakeReapi(): Promise<FakeReapi> {
     (method: string) =>
     async (call: grpc.ServerWritableStream<Record<string, unknown>, unknown>) => {
       if (enter(method, call, (e) => call.emit('error', e))) return
+      call.on('cancelled', () => {
+        fake.executesCancelled++
+      })
       const plan = fake.onExecute(call.request, method)
       const name =
         method === 'WaitExecution' ? String(call.request['name']) : `operations/${++operations}`
       for (const stage of plan.stages ?? []) call.write(operation(name, stage))
+      for (const value of plan.metadataBytes ?? []) {
+        call.write({
+          name,
+          done: false,
+          metadata: { type_url: `type.googleapis.com/${V2}.ExecuteOperationMetadata`, value },
+        })
+      }
       if (plan.hold !== undefined) await plan.hold
       if (plan.error !== undefined) {
         call.emit('error', { ...plan.error, metadata: new grpc.Metadata() })
