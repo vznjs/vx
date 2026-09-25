@@ -794,6 +794,25 @@ request` (-32600), and the session goes on. The new row sends
         its `--` test. Its one caller passes `--name=value`, so the
         function now takes only that shape, with the same output.
 
+814.  DONE (2026-09-25, `vx-migrate`'s `turbo-cache/index.ts`, the
+      sixth slice). 46 mutations: 30 caught, 15 held now, 1 not held.
+      Held now, in `tests/turbo-cache-sweep.test.ts`, through a stub
+      `fetch` that records each request and serves the exact response:
+      - config: a signature key measured in bytes (11 `€` pass), exactly
+        32 bytes enough, the `teamId` option over `TURBO_TEAMID`, and
+        every trailing slash stripped;
+      - statuses: 403 is a refused token (thrown once, then off); HEAD
+        and GET answering 500 are errors, not misses; a batch query not
+        answering 200 is no answer; a duration of `0` or `Infinity` is
+        none;
+      - the upload: its `Content-Length`, a rounded duration that is
+        never negative, and the upload deadline rather than the request
+        one (the HEAD on the same slow stub is the control);
+      - a tag of the wrong length is refused, not a `RangeError`.
+        Not held: the temp's removal when a read fails part-way. A
+        truncated temp ends the stream cleanly (probed), and as root a
+        permission change cannot make the read fail.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
