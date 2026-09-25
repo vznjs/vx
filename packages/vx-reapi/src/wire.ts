@@ -1184,23 +1184,20 @@ export class ReapiClient {
   }
 
   /**
-   * `GetTree` — page through a Directory tree. Used to materialise an action's
-   * output directories, whose children are not in the ActionResult.
+   * `GetTree` — every Directory under `rootDigest`. The RPC is
+   * SERVER-STREAMING: one call carries every page, and `next_page_token`
+   * only names where a later call would resume. It went through the unary
+   * helper before (item 824), whose callback a streaming stub never calls,
+   * so every call hung until its deadline passed unheard.
    */
   async getTree(rootDigest: Digest): Promise<Directory[]> {
+    const call = (this.svc.cas as unknown as Record<string, Function>)['getTree']!(
+      { instance_name: this.instance, root_digest: rootDigest, page_token: '' },
+      this.meta(),
+      this.bounded(),
+    ) as AsyncIterable<{ directories?: Directory[] }>
     const out: Directory[] = []
-    let pageToken = ''
-    do {
-      const res: { directories?: Directory[]; next_page_token?: string } = await unary(
-        this.svc.cas,
-        'getTree',
-        { instance_name: this.instance, root_digest: rootDigest, page_token: pageToken },
-        this.meta(),
-        this.bounded(),
-      )
-      out.push(...(res.directories ?? []))
-      pageToken = res.next_page_token ?? ''
-    } while (pageToken !== '')
+    for await (const page of call) out.push(...(page.directories ?? []))
     return out
   }
 

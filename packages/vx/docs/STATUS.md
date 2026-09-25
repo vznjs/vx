@@ -1020,6 +1020,29 @@ request` (-32600), and the session goes on. The new row sends
         a one-row test file. The row uses a fresh client. Whether a real
         server can put the client there is not known.
 
+824.  DONE (2026-09-25, `vx-reapi`'s `wire.ts`, second slice: Execute,
+      split, splice, GetTree). A defect, fixed: `getTree` hung on every
+      call. The proto declares GetTree server-streaming, and the client
+      sent it through the unary helper, whose callback a streaming stub
+      never calls. It now reads
+      the one stream to its end. The method is public API with no caller
+      in `src/`, which is how it went unseen. Its row timed out before
+      the fix. The sweep: 20 mutations, 2 caught by 822's self-tests, 18
+      held now, in `tests/wire-exec-sweep.test.ts`:
+      - Execute's defaults (skip the server's cache, inline stdout and
+        stderr, nothing else) and its options (files to inline, both
+        priorities, a negotiated digest function);
+      - a non-transient status thrown with no re-attach, a stream ending
+        with no operation refused by name, and an abort that cancels the
+        call (the row bounds itself: an abort nobody hears held the file
+        open);
+      - stages: a message with no stage reports none, an unnamed number
+        is `STAGE_n`, and a stage after a digest field still reads;
+      - the public `waitExecution` by name, split's chunks and chunking
+        function, splice's expected digest, and every GetTree page.
+        The fake learned SplitBlob, SpliceBlob, a streaming GetTree,
+        raw stage metadata and a count of cancelled Executes.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
