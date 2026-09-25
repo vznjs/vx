@@ -1093,16 +1093,6 @@ export class Cache implements CacheLayer {
     await this.writeArtifactAndIndex(hash, { tmpPath }, meta)
   }
 
-  /**
-   * Collect stdout + outputs into artifact bytes, zstd-compress, return
-   * them. No disk write to the final cache path — that's the index
-   * step's job. Pure transform, so `ingest()` can skip this and hand
-   * its remote-supplied temp straight to `writeArtifactAndIndex`.
-   *
-   * Entries are named directly into the archive, so there is no staging
-   * copy of every output byte and no `tar` subprocess (see
-   * `archive.ts`).
-   */
   /** Archive name → absolute source path for every declared output. */
   private outputsOf(args: {
     projectDir: string
@@ -1127,6 +1117,12 @@ export class Cache implements CacheLayer {
    * writes are off. A large artifact is packed and compressed as a
    * stream and collected — with no local artifact the bytes must be
    * captured while the outputs are still on disk.
+   *
+   * Both packers name entries directly into the archive — no staging
+   * copy of the outputs, no `tar` subprocess (`archive.ts`) — and
+   * neither writes the final cache path, which is the index step's job:
+   * `ingest()` packs nothing and hands its remote-supplied temp straight
+   * to `writeArtifactAndIndex`.
    */
   private async packArtifact(args: {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
@@ -1184,13 +1180,6 @@ export class Cache implements CacheLayer {
     return { tmpPath }
   }
 
-  /**
-   * Atomically write `compressed` to `<hash>.tar.zst` and (re)build the
-   * entries + output_files SQL rows from the archive itself. Shared by
-   * `save()` (we just packed the bytes) and `ingest()` (it streamed them
-   * from the remote layer into a temp) — both index the identical values, because both
-   * read them out of the artifact.
-   */
   /** tmp suffix mixes pid + hrtime + a random hex chunk so two saves of
    *  the same hash from the same process (or from two forked workers that
    *  happen to share a wall-clock ms) don't pick the same tmp filename and
@@ -1199,6 +1188,13 @@ export class Cache implements CacheLayer {
     return `${this.tarPath(hash)}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
   }
 
+  /**
+   * Atomically write `compressed` to `<hash>.tar.zst` and (re)build the
+   * entries + output_files SQL rows from the archive itself. Shared by
+   * `save()` (we just packed the bytes) and `ingest()` (it streamed them
+   * from the remote layer into a temp) — both index the identical values, because both
+   * read them out of the artifact.
+   */
   private async writeArtifactAndIndex(
     hash: string,
     compressed: Uint8Array | { tmpPath: string },

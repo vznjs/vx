@@ -242,11 +242,6 @@ export function stripLiterals(source: string): string | null {
   return out
 }
 
-/**
- * The cache key for evaluating `configPath`, or `null` when the config is
- * not provably pure (or its closure cannot be read), in which case the
- * caller evaluates live and stores nothing.
- */
 /** `git hash-object` of `bytes` (sha1 domain), the identity `Cache.hashFile` returns for a sha1 repo. */
 export function blobOidOf(bytes: Uint8Array): string {
   const hasher = new Bun.CryptoHasher('sha1')
@@ -263,6 +258,11 @@ function keySeed(workspaceFingerprint: string): bigint {
 
 const EXPLICIT_EXT = /\.(?:m?[jt]s|cjs|cts)$/
 
+/**
+ * The cache key for evaluating `configPath`, or `null` when the config is
+ * not provably pure (or its closure cannot be read), in which case the
+ * caller evaluates live and stores nothing.
+ */
 export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKeyResult | null> {
   let h = keySeed(a.workspaceFingerprint)
   const hashOf = a.hashFile ?? (async (_file: string, bytes?: Uint8Array) => blobOidOf(bytes!))

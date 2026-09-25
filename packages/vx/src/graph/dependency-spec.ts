@@ -18,20 +18,6 @@ export class DependencySpecError extends Error {
   }
 }
 
-/**
- * Parse one `dependsOn` / `cache.inputs.tasks` entry.
- *
- *   `name`       → self.name
- *   `^name`      → every dep workspace's `name` task
- *   `pkg#name`   → specific package's `name` task (cross-edge)
- *   `*`          → all same-project upstream (filter-only)
- *   `^*`         → all dep upstream (filter-only)
- *   `!<form>`    → negation of any of the above (filter-only)
- *
- * Wildcards and negation are accepted everywhere — callers (the graph
- * builder vs the filter) decide which ones make semantic sense and
- * surface their own validation errors. This keeps the parser pure.
- */
 /** True when a task form is a `*` pattern (`build.*`) rather than an exact name. */
 export function isTaskPattern(task: string): boolean {
   return task.includes('*')
@@ -48,6 +34,20 @@ export function compileTaskPattern(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`)
 }
 
+/**
+ * Parse one `dependsOn` / `cache.inputs.tasks` entry.
+ *
+ *   `name`       → self.name
+ *   `^name`      → every dep workspace's `name` task
+ *   `pkg#name`   → specific package's `name` task (cross-edge)
+ *   `*`          → all same-project upstream (filter-only)
+ *   `^*`         → all dep upstream (filter-only)
+ *   `!<form>`    → negation of any of the above (filter-only)
+ *
+ * Wildcards and negation are accepted everywhere — callers (the graph
+ * builder vs the filter) decide which ones make semantic sense and
+ * surface their own validation errors. This keeps the parser pure.
+ */
 export function parseDependencySpec(raw: string): DependencySpec {
   if (raw.length === 0) throw new DependencySpecError(raw, 'empty spec')
 

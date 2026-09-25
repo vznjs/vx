@@ -192,13 +192,6 @@ function ctors(): { v2: Ctors; bs: Ctors } {
   return loaded
 }
 
-/**
- * All five service stubs share ONE channel. Constructing them independently
- * opens one HTTP/2 connection per service to the same endpoint — five times
- * the sockets, five times the flow-control state, and a server that sees five
- * clients where there is one. `channelOverride` is grpc-js's supported way to
- * bind extra stubs onto an existing channel.
- */
 /** Per-entry encoding cost in a Batch request: a 64-char hex hash, a size,
  *  and the nested field tags and length prefixes around them. Rounded up. */
 const BATCH_ENTRY_OVERHEAD = 128
@@ -210,6 +203,13 @@ const SAFE_BATCH_BYTES = 4 * 1024 * 1024 - 64 * 1024
 /** grpc's 4 MiB receive default is far below REAPI's real message sizes. */
 const MAX_MESSAGE_BYTES = 256 * 1024 * 1024
 
+/**
+ * All five service stubs share ONE channel. Constructing them independently
+ * opens one HTTP/2 connection per service to the same endpoint — five times
+ * the sockets, five times the flow-control state, and a server that sees five
+ * clients where there is one. `channelOverride` is grpc-js's supported way to
+ * bind extra stubs onto an existing channel.
+ */
 function loadServices(target: string, creds: grpc.ChannelCredentials): ServiceClients {
   const { v2, bs } = ctors()
   // An ActionResult listing a real dependency tree is megabytes, and the
@@ -412,13 +412,6 @@ export class ReapiClient {
     }
   }
 
-  /**
-   * Per-call metadata. Beyond the user's headers this carries REAPI's
-   * `RequestMetadata` in the well-known binary header, which is how a server
-   * groups the dozens of CAS/AC calls an action makes into one build in its
-   * UI. Omitting it is legal and makes vx invisible in every REAPI server's
-   * dashboard, which is the whole reason the field exists.
-   */
   /** Call options for a BULK transfer — deadline scales with payload size. */
   private bounded(): grpc.CallOptions {
     return { deadline: new Date(Date.now() + this.callTimeoutMs) }
@@ -429,6 +422,13 @@ export class ReapiClient {
     return { deadline: new Date(Date.now() + this.metaTimeoutMs) }
   }
 
+  /**
+   * Per-call metadata. Beyond the user's headers this carries REAPI's
+   * `RequestMetadata` in the well-known binary header, which is how a server
+   * groups the dozens of CAS/AC calls an action makes into one build in its
+   * UI. Omitting it is legal and makes vx invisible in every REAPI server's
+   * dashboard, which is the whole reason the field exists.
+   */
   private meta(): grpc.Metadata {
     const m = new grpc.Metadata()
     for (const [k, v] of Object.entries(this.headers)) m.set(k, v)

@@ -36,13 +36,6 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
 }
 
 /**
- * The run path's project-config load (`loadProjects`) for a verb that only
- * reads: the plugin `project` stage applies, and the local cache opens only
- * to serve cached evaluations — a pure config costs a stat, not an
- * evaluation. `scope` is every project or a list of names; no closure, no
- * lock (a verb reads live, as a default run does).
- */
-/**
  * `--cache-dir <path>` / `--cache-dir=<path>` for a verb that reads the
  * cache a run wrote — `why`, `last`, `info`, `cache prune`. Same rules as
  * `vx run`'s: a value is required, and the space form refuses a value
@@ -85,6 +78,13 @@ export interface CliLoadOptions {
   frozen?: boolean
 }
 
+/**
+ * The run path's project-config load (`loadProjects`) for a verb that only
+ * reads: the plugin `project` stage applies, and the local cache opens only
+ * to serve cached evaluations — a pure config costs a stat, not an
+ * evaluation. `scope` is every project or a list of names; no closure, no
+ * lock (a verb reads live, as a default run does).
+ */
 export async function loadCliProjects(
   workspaceRoot: string,
   metas: readonly ProjectMeta[],

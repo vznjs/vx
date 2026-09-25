@@ -623,15 +623,6 @@ function assertTimeoutInRange(ms: number, where: string): void {
 }
 
 /**
- * True when a glob contains a `..` PATH SEGMENT (`../x`, `a/../b`, `x/..`), which
- * escapes its base dir — `foo..bar` / `a..b` inside a filename are fine. A
- * leading negation marker is stripped first so `!../x` is caught too. Used to
- * keep output globs inside the project and workspace globs inside the workspace
- * root: `cleanOutputs` rm()s resolved output paths before every run, and
- * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
- * vector (delete files outside the project / above the repo root).
- */
-/**
  * `.`, `./`, `././` (with or without a `!`) name the directory itself, which
  * no matcher expands: the entry selected nothing and said so nowhere.
  * `./src/**` is fine — the resolver strips the `./` (`normalizeGlob`).
@@ -641,6 +632,15 @@ function namesDirItself(glob: string): boolean {
   return g === '' || g === '/'
 }
 
+/**
+ * True when a glob contains a `..` PATH SEGMENT (`../x`, `a/../b`, `x/..`), which
+ * escapes its base dir — `foo..bar` / `a..b` inside a filename are fine. A
+ * leading negation marker is stripped first so `!../x` is caught too. Used to
+ * keep output globs inside the project and workspace globs inside the workspace
+ * root: `cleanOutputs` rm()s resolved output paths before every run, and
+ * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
+ * vector (delete files outside the project / above the repo root).
+ */
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
   return g.split('/').some((seg) => seg === '..')

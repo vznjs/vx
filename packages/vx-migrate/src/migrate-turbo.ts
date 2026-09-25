@@ -15,7 +15,6 @@ import {
 import { mapTurboWorkspace, type TurboGlobal } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
 
-/** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 /** The preset takes the configs' extension: plain arrays either way. */
 function presetFile(format: MigrationFormat): string {
   return `vx-preset.${format}`
