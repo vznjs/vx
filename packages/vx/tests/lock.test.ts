@@ -206,4 +206,81 @@ describe('vx lock (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'an unknown argument is refused before anything is written: `--chek` is not a lock',
+    async () => {
+      await addProject(root, 'app', ENV_CONFIG)
+      const typo = await vx(root, ['lock', '--chek'], {})
+      expect(typo.code).toBe(1)
+      expect(typo.err).toContain('vx lock: unknown argument: --chek')
+      expect(typo.out).toBe('')
+      // The audit a CI step asked for must not become a write that passes.
+      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(false)
+      // Control: the spelled flag reaches the audit.
+      expect((await vx(root, ['lock', '--check'], {})).err).toContain('run `vx lock` first')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--check refuses a config that moved, as `--frozen` does, even when its bytes did not change',
+    async () => {
+      const dir = await addProject(root, 'app', ENV_CONFIG)
+      expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
+      const bytes = await Bun.file(path.join(dir, 'vx.config.mjs')).bytes()
+      await rm(path.join(dir, 'vx.config.mjs'))
+      await writeFile(path.join(dir, 'vx.config.ts'), bytes)
+      // Same bytes, same evaluation: only the path says the lock is stale,
+      // and the frozen run refuses on it — so the audit must too.
+      const frozen = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
+        X: 'a',
+      })
+      expect(frozen.code).toBe(1)
+      const check = await vx(root, ['lock', '--check'], { X: 'a' })
+      expect(check.code).toBe(1)
+      expect(check.err).toBe(
+        `vx lock --check: "app" (packages/app/vx.config.ts) is not in the lock — run 'vx lock'\n`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--check names a locked project that no longer has a config in the workspace',
+    async () => {
+      await addProject(root, 'app', ENV_CONFIG)
+      const gone = await addProject(root, 'gone', ENV_CONFIG)
+      expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
+      await rm(gone, { recursive: true, force: true })
+      const check = await vx(root, ['lock', '--check'], { X: 'a' })
+      expect(check.code).toBe(1)
+      expect(check.err).toBe(
+        `vx lock --check: locked project "gone" no longer has a config in the workspace — run 'vx lock'\n`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a field a config leaves undefined is not drift: the audit compares the JSON a lock can hold',
+    async () => {
+      // A first load in a process is the module's live default export, where
+      // `description: undefined` is a key; the lock (JSON) has no such key.
+      await addProject(
+        root,
+        'app',
+        `export default { tasks: { build: { description: process.env.VX_LOCK_UNSET, exec: { command: 'echo hi' } } } }\n`,
+      )
+      expect((await vx(root, ['lock'], {})).code).toBe(0)
+      const check = await vx(root, ['lock', '--check'], {})
+      expect(check.err).toBe('')
+      expect(check.code).toBe(0)
+      // Control: the same field SET is drift once the lock was written without it.
+      const drift = await vx(root, ['lock', '--check'], { VX_LOCK_UNSET: 'now set' })
+      expect(drift.code).toBe(1)
+      expect(drift.err).toContain('lock differs from fresh evaluation in this environment (app)')
+    },
+    TIMEOUT,
+  )
 })

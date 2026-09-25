@@ -607,6 +607,27 @@ graph`, and a missed input is a stale hit on every run.
       records a run and an invocation whose every field carries a value
       no other field has, false booleans included, and reads each column
       back.
+768.  DONE (2026-09-25, sweeps of `failure-mode.ts` and `cli/lock.ts`).
+      `failure-mode.ts`: 18 mutations, 16 caught, 2 equivalent (a
+      pass-now test that ignores the attempt count, the empty-candidate
+      guard), no change. `cli/lock.ts`: 13 mutations, 5 caught, 4 held
+      now, 4 equivalent or held by a law. Four holes in `vx lock`:
+      `vx lock --chek` WROTE the lock and exited 0 where a CI step had
+      asked for an audit; `--check` passed a config renamed with its
+      bytes unchanged, which `--frozen` then refused; `--check` passed a
+      lock naming a project whose config was gone; and the check's JSON
+      round-trip, the one thing that keeps a field a config leaves
+      `undefined` (`description: process.env.UNSET`) from reading as
+      drift, was held by nothing. Four rows in `tests/lock.test.ts`, each
+      red against its mutant. The equivalents: strict against loose
+      `deepEquals` (both sides are JSON by then); the write side's
+      round-trip, now removed since `writeLockfile` stringifies anyway;
+      and the two `fresh: true` flags, which change nothing today (no
+      `evalCache` is passed) and which `module-boundaries.test.ts` pins
+      as the guard against a later edit freezing a stored evaluation.
+      `fresh`'s doc claimed "no module-cache reuse", which it never
+      controlled, and `config-cache.md` named `vx show` as a user of it;
+      both are corrected.
 
 ## In flight
 

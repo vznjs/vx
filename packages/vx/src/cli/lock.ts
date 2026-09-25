@@ -59,16 +59,15 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
 /** Evaluate one config in the current env, returning its lock entry. */
 async function evaluateEntry(root: string, meta: ConfiguredMeta): Promise<LockfileEntry> {
   const bytes = await Bun.file(meta.configPath).bytes()
-  // `fresh: true` — locking must observe the current environment, not
-  // a module-cache replay from earlier in this process.
+  // `fresh: true` — the lock freezes this environment's evaluation, never
+  // a stored one, whatever options a later edit passes beside it.
   const config = await loadProjectConfig(meta.configPath, { fresh: true })
   return {
     configPath: relPosix(root, meta.configPath),
     configHash: xxh3hex(bytes),
-    // JSON round-trip drops `undefined` fields so the stored object is
-    // byte-identical to what a later read of the lock will produce —
-    // the exact form `--check` compares against.
-    config: JSON.parse(JSON.stringify(config)) as ProjectConfig,
+    // Stored through `writeLockfile`'s JSON.stringify, which drops a field
+    // left `undefined` — the form `--check` compares a fresh evaluation in.
+    config,
   }
 }
 
@@ -119,6 +118,8 @@ async function checkLock(root: string, metas: ConfiguredMeta[], bare: number): P
       if (hash !== entry.configHash) {
         return `config file changed since lock (${m.name}: ${rel}) — run 'vx lock'`
       }
+      // The lock's form: a first load is the module's live export, where a
+      // field left `undefined` is a key the stored JSON never has.
       const fresh = JSON.parse(
         JSON.stringify(await loadProjectConfig(m.configPath, { fresh: true })),
       ) as ProjectConfig
