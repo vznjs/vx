@@ -788,6 +788,14 @@ graph`, and a missed input is a stale hit on every run.
       `tests/run-artifacts.test.ts`, each red against its mutants. (Two
       mutants wrote their artifact into the process directory; the
       sweep's worktree kept them off the tree, and they were removed.)
+778.  DONE (2026-09-25, sweep of `orchestrator/telemetry-host.ts`, never
+      named). 17 mutations, 16 caught, 1 held now. The host hands the
+      telemetry source the run's own `warn`; replacing it with a no-op
+      survived the whole telemetry fixture, so a sink that throws once the
+      run is live was isolated in silence, against the invariant that a
+      never-fail plugin still warns. One row in
+      `tests/telemetry-lifecycle.test.ts` (a throwing `onRunSummary`
+      driven through the handle), red against the mutant.
 
 ## In flight
 

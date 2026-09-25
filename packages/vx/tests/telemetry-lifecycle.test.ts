@@ -283,6 +283,19 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
     expect(handle).toBeUndefined()
   })
 
+  // The source isolates a sink that throws once the run is live; the host
+  // hands it the run's own `warn`, so the isolation is never silent — "a
+  // never-fail plugin still warns" (CLAUDE.md's invariants).
+  it("a sink that throws once the run is live warns through the run's warn", async () => {
+    const { handle, warnings } = await subscribeWith({
+      onRunSummary: () => {
+        throw new Error('sink blew up')
+      },
+    })
+    ;(handle as { emitSummary(s: unknown): void }).emitSummary({})
+    expect(warnings.join('\n')).toContain('sink blew up')
+  })
+
   it('a well-formed sink is still accepted', async () => {
     const { handle, warnings } = await subscribeWith({ onRunSummary: () => undefined })
     expect(handle).toBeDefined()
