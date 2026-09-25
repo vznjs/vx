@@ -34,7 +34,7 @@ const RUN: RunContextRecord = {
   tags: {},
 }
 
-type Reply = { status: number; body: string }
+type Reply = { status: number; body: string; breakBody?: true }
 let reply: Reply = { status: 200, body: '{}' }
 let server: ReturnType<typeof Bun.serve>
 let url: string
@@ -45,6 +45,17 @@ beforeAll(() => {
     idleTimeout: 0,
     async fetch(req) {
       await req.text()
+      if (reply.breakBody === true) {
+        // A body that dies mid-read: the status arrived, the text never does.
+        const body = new ReadableStream({
+          async start(c) {
+            c.enqueue(new TextEncoder().encode('par'))
+            await Bun.sleep(20)
+            c.error(new Error('the collector hung up'))
+          },
+        })
+        return new Response(body, { status: reply.status })
+      }
       return new Response(reply.body, { status: reply.status })
     },
   })
@@ -163,4 +174,59 @@ describe('the OTLP transport reports a collector that refuses the export', () =>
     expect(warnings[0]!.includes('\n')).toBe(false)
     expect(warnings[0]!.length).toBeLessThan(320)
   })
+})
+
+// Item 807's sweep: each row fails with one line of sink.ts undone.
+describe('the transport, as the vx-otel sweep found it unheld', () => {
+  const at = (path: string) => `[vx-otel] export failed for ${url}${path}: `
+
+  it('an error body is folded onto one line before it is cut', async () => {
+    expect(await exportWith({ status: 413, body: 'too\n  big\tbody' })).toEqual([
+      `${at('/v1/traces')}HTTP 413: too big body`,
+    ])
+  })
+
+  it('a partialSuccess that rejected nothing but says why is reported', async () => {
+    expect(
+      await exportWith({
+        status: 200,
+        body: JSON.stringify({ partialSuccess: { errorMessage: 'attributes trimmed' } }),
+      }),
+    ).toEqual([
+      `${at('/v1/traces')}the collector dropped part of the export: some of it: attributes trimmed`,
+    ])
+  })
+
+  it('a refusal whose body cannot be read still names the status', async () => {
+    expect(await exportWith({ status: 502, body: '', breakBody: true })).toEqual([
+      `${at('/v1/traces')}HTTP 502`,
+    ])
+  })
+
+  it('the request timer is cleared once the export answers: it never keeps the process alive', async () => {
+    // A timer left armed keeps a CLI process alive until it fires, long
+    // after the POST resolved. The child exports against this server with
+    // a 5 s timeout and must exit well before it.
+    reply = { status: 200, body: '{}' }
+    const script = `
+      import { OtelSink } from ${JSON.stringify(`${import.meta.dir}/../src/sink.ts`)}
+      const sink = new OtelSink({
+        tracesUrl: ${JSON.stringify(`${url}/v1/traces`)}, metricsUrl: '', logsUrl: '',
+        serviceName: 'vx', headers: {}, metricsEnabled: false, logsEnabled: false, timeoutMs: 5000,
+      })
+      sink.onRecord({ v: 1, kind: 'run.start', run: ${JSON.stringify(RUN)}, total: 1, ts: 1000, startedAt: 1000 })
+      sink.onRecord({ v: 1, kind: 'task.end', runId: 'run-1', ts: 1050, taskId: 'a#b', project: 'a', task: 'b',
+        status: 'success', cacheSource: 'miss', exitCode: 0, durationMs: 1 })
+      await sink.flush()
+    `
+    const t0 = Date.now()
+    const child = Bun.spawn([process.execPath, '-e', script], { stdout: 'ignore', stderr: 'pipe' })
+    const code = await child.exited
+    const lived = Date.now() - t0
+    expect({ code, stderr: await new Response(child.stderr).text() }).toEqual({
+      code: 0,
+      stderr: '',
+    })
+    expect(lived).toBeLessThan(3_000)
+  }, 15_000)
 })

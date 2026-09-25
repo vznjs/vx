@@ -96,9 +96,22 @@ export function resolveOtelConfig(
   // `OTEL_LOGS_EXPORTER=none` is the standard SDK opt-out; honour it so a
   // pipeline already configured that way does not start receiving build logs
   // just because it upgraded vx.
-  const logsEnabled =
-    opts.logs ??
-    (env['OTEL_LOGS_EXPORTER']?.trim().toLowerCase() !== 'none' && logsUrl !== undefined)
+  const logsWanted = opts.logs ?? env['OTEL_LOGS_EXPORTER']?.trim().toLowerCase() !== 'none'
+  const metricsWanted = opts.metrics ?? true
+  // A signal ships only to its OWN url. With only a traces endpoint set, the
+  // metrics payload used to go to the traces url — a request the collector
+  // refuses on every run (item 807). A signal asked for by name and given no
+  // url says so once instead.
+  for (const [signal, asked, url] of [
+    ['metrics', opts.metrics, metricsUrl],
+    ['logs', opts.logs, logsUrl],
+  ] as const) {
+    if (asked === true && url === undefined) {
+      warn?.(
+        `[vx-otel] ${signal}: true but no ${signal} endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT) — ${signal} are not exported`,
+      )
+    }
+  }
 
   return {
     tracesUrl,
@@ -106,8 +119,8 @@ export function resolveOtelConfig(
     logsUrl: logsUrl ?? tracesUrl,
     serviceName: present(opts.serviceName) ?? present(env['OTEL_SERVICE_NAME']) ?? 'vx',
     headers: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers },
-    metricsEnabled: opts.metrics ?? true,
-    logsEnabled,
+    metricsEnabled: metricsWanted && metricsUrl !== undefined,
+    logsEnabled: logsWanted && logsUrl !== undefined,
     timeoutMs: opts.timeoutMs ?? 15_000,
     ...(opts.post ? { post: opts.post } : {}),
     ...(warn ? { warn } : {}),

@@ -28,8 +28,15 @@ to declare in every environment:
 | `OTEL_EXPORTER_OTLP_ENDPOINT`         | base collector URL (e.g. `http://localhost:4318`) |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`  | full traces URL override                          |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | full metrics URL override                         |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`    | full logs URL override                            |
+| `OTEL_LOGS_EXPORTER=none`             | export traces + metrics only                      |
 | `OTEL_SERVICE_NAME`                   | service name (default `vx`)                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`          | `k=v,k=v` headers (e.g. auth)                     |
+
+Each signal ships only to its own URL: the base endpoint's `/v1/<signal>`,
+or its override. With only a traces URL set, metrics and logs are not
+exported (they used to be POSTed to the traces URL, which a collector
+refuses), and `metrics: true` or `logs: true` without a URL says so once.
 
 Options override env:
 
