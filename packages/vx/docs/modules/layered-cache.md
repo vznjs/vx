@@ -26,6 +26,8 @@ via `RunOptions.remoteCache`.
 
 ```ts
 export interface RemoteCacheLayer {
+  /** Where the artifacts live, named in every degrade warning; never a credential. */
+  readonly endpoint?: string
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
   /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
@@ -42,6 +44,7 @@ export class LayeredCache implements CacheLayer {
 }
 
 export interface LayeredCacheOptions {
+  /** Once per failure class; the repeats are counted at `close()`. */
   onRemoteError?: (err: Error) => void
   /** 4-axis policy; this layer reads remoteRead / remoteWrite. */
   policy?: CachePolicy
@@ -75,10 +78,39 @@ result of the wrong SHAPE — a `get` whose `body` is not a `Blob` or a
 `Response` (the pre-stream `ArrayBuffer` / `Uint8Array` included, named
 as such: "body is a Uint8Array"), a `hasMany` that is not a `Set` or
 `null` — is the plugin's bug, named as such through `onRemoteError`
-("remote cache layer returned an invalid result: get(<hash>) resolved
-body is string (expected { body: Blob | Response, durationMs } or null)
-— a plugin bug, degraded to a miss") and degraded the same way, never
-reported as a corrupt artifact.
+("download <hash> failed: remote cache layer returned an invalid
+result: get() resolved body is string (expected { body: Blob | Response,
+durationMs } or null) — a plugin bug, degraded to a miss") and degraded
+the same way, never reported as a corrupt artifact.
+
+## What a failure says
+
+A wire's own message names nothing: Bun's abort is "The operation timed
+out.", a refused connection "Unable to connect. Is the computer able to
+access the url?", a gRPC status carries its elapsed time but no server
+or key. The layer knows the call and the artifact, the plugin knows the
+server, so the line `onRemoteError` receives carries all three:
+
+```
+probe <hash> at <endpoint> failed: <cause>
+probe of <n> artifacts at <endpoint> failed: <cause>   (hasMany)
+download <hash> from <endpoint> failed: <cause>        (get, and a body ingest refused)
+upload <hash> to <endpoint> failed: <cause>            (put, and the in-memory pack)
+```
+
+`<endpoint>` is the layer's optional `endpoint` field (without one the
+clause is left out); a URL's `user:pass@`, query and fragment are dropped
+before it is printed, since the field is a plugin's and the line is a
+log. The error's `cause` is the layer's original throw.
+
+A run's requests are concurrent, so one fact (an unreachable server)
+fails every request at once. The layer says each failure CLASS once per
+instance, which is once per run: the class is the error's `code` when
+it carries one (a gRPC status, an errno, Bun's `ConnectionRefused`),
+else its message with the artifact's hash taken out. The operation is
+not part of it. The requests held back are counted, and `close()` says
+`<n> more requests failed the same way: <cause>` per class that had
+any, after `run()` has drained every upload and prefetch.
 
 ## Read path
 

@@ -207,7 +207,8 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction and the pre
 
 ## Remote-cache behaviour (both)
 
-- A remote error degrades to a **miss** and one warning; the run never fails because of the cache.
+- A remote error degrades to a **miss** and a warning that names the request, the artifact and the server — `vx/turbo-cache: upload 32248a2a7c89e241 to https://cache.example.com/v8/artifacts failed: no answer within 60000 ms` — never the token. The run never fails because of the cache.
+- The same failure is said once per run: an unreachable server fails the probe, the download and the upload alike, and the run prints the first and, at its end, `vx/turbo-cache: 2 more requests failed the same way: Unable to connect. Is the computer able to access the url?` (core's `LayeredCache` does the counting, for every cache plugin).
 - A refused token (`401`/`403`) warns **once** and turns the layer off for the rest of the process — including the requests already in flight when the refusal lands, which degrade in silence rather than repeating it (a six-project run printed five identical lines before 2026-09-20).
 - Policy (`--cache=remote:r`, …) is enforced by core's `LayeredCache`, which the plugins wrap — a read-only token pairs naturally with `remote:r`.
 

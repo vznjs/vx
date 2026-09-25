@@ -693,7 +693,7 @@ describe('archive restore — mixed valid + malicious entries', () => {
   })
 
   it('abort prunes the target a dangling link led it to create, and keeps the link', async () => {
-    // Item 747: an entry under a dangling in-project link is written
+    // Item 748: an entry under a dangling in-project link is written
     // through it, its target created at the link's resolved path. The
     // abort's lexical walk from `dist/` never meets that path, so it
     // starts from where the link leads. The destination is reached through

@@ -413,6 +413,13 @@ Hard invariants:
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
   never fail a run.
+- **Said once, and said whole.** The warning names the operation
+  (`probe`, `download`, `upload`), the artifact and the layer's
+  `endpoint`, with a URL's credentials, query and fragment dropped:
+  `upload <hash> to <endpoint> failed: HTTP 413`. One failure class
+  (the error's `code` when it has one, else its message with the hash
+  taken out) is said once per run, and the repeats are counted at
+  close: `2 more requests failed the same way: <cause>`.
 
 ### Remote uploads (background, drained at run end)
 

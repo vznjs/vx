@@ -47,6 +47,13 @@ import { FULL_CACHE_POLICY, type OutputDirRow } from './cache.js'
  * docs/modules/layered-cache.md.
  */
 export interface RemoteCacheLayer {
+  /**
+   * Where the layer's artifacts live, named in every degrade warning
+   * (`upload <hash> to <endpoint> failed: …`): a base URL or `host:port`.
+   * Never a credential: a URL's `user:pass@`, query and fragment are
+   * dropped before it is printed.
+   */
+  readonly endpoint?: string
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
   /**
@@ -75,10 +82,6 @@ export interface RemoteCacheLayer {
 }
 
 /**
- * Cap on concurrent background PUTs. Keeps a burst of cache misses from
- * opening one socket per task; excess uploads queue and drain FIFO.
- */
-/**
  * What a remote layer resolves is a plugin's, so its shape is a boundary
  * (item 252): a `get` that resolved `{ body: 'abc' }` was reported as
  * "corrupt artifact … not a readable archive" — the bytes blamed for the
@@ -105,10 +108,57 @@ function describeValue(value: unknown): string {
   return typeof value === 'object' ? 'an object' : typeof value
 }
 
+/**
+ * Cap on concurrent background PUTs. Keeps a burst of cache misses from
+ * opening one socket per task; excess uploads queue and drain FIFO.
+ */
 const UPLOAD_CONCURRENCY = 4
 
+/** The seam call a failure happened in, as the warning names it. */
+type RemoteOp = 'probe' | 'download' | 'upload'
+
+const PREPOSITION: Record<RemoteOp, string> = { probe: 'at', download: 'from', upload: 'to' }
+
+/** The layer's `endpoint` as it may be printed: no userinfo, query or fragment. */
+function printableEndpoint(endpoint: unknown): string | undefined {
+  if (typeof endpoint !== 'string' || endpoint === '') return undefined
+  if (!URL.canParse(endpoint)) return endpoint
+  const u = new URL(endpoint)
+  if (u.username === '' && u.password === '' && u.search === '' && u.hash === '') return endpoint
+  u.username = ''
+  u.password = ''
+  u.search = ''
+  u.hash = ''
+  return u.toString()
+}
+
+/**
+ * What makes two failures "the same way": the error's `code` when it
+ * carries one (a gRPC status, an errno, Bun's `ConnectionRefused`), because
+ * gRPC writes the elapsed time into its message and no two deadline messages
+ * match; else the message with the artifact's hash taken out, so a 500 on
+ * one hash and a 500 on the next are one class. The operation is not part of
+ * it: an unreachable server fails the probe, the download and the upload
+ * alike, and that is one fact.
+ */
+function failureClass(err: Error, hash: string | undefined): string {
+  const code = (err as { code?: unknown }).code
+  if (typeof code === 'string' || typeof code === 'number') return `${err.name}\0${code}`
+  return hash === undefined ? err.message : err.message.replaceAll(hash, '\0')
+}
+
+/** A batch probe names no one hash, so its line counts them. */
+function batchOf(hashes: readonly string[]): { batch: string } {
+  return { batch: `of ${hashes.length} artifact${hashes.length === 1 ? '' : 's'}` }
+}
+
 export interface LayeredCacheOptions {
-  /** Called for remote-related errors that the layer suppresses. */
+  /**
+   * Called for the remote failures the layer degrades to a miss, once per
+   * failure class per layer (`upload <hash> to <endpoint> failed: <cause>`,
+   * with the original error as `cause`); the repeats are counted and said
+   * once more at `close()` (`<n> more requests failed the same way: <cause>`).
+   */
   onRemoteError?: (err: Error) => void
   /**
    * The 4-axis read/write policy. The local slice (read/write) is
@@ -157,6 +207,15 @@ export class LayeredCache implements CacheLayer {
   private drainWaiters: Array<() => void> = []
 
   private readonly policy: CachePolicy
+  private readonly endpoint: string | undefined
+
+  /**
+   * One entry per failure class said: its first line went out, `repeats`
+   * counts the ones held back. A run's requests are concurrent, so an
+   * unreachable server otherwise printed its bare runtime message once per
+   * request (three lines for one task over the Turbo wire, item 749).
+   */
+  private readonly reported = new Map<string, { cause: string; repeats: number }>()
 
   constructor(
     readonly local: Cache,
@@ -164,6 +223,7 @@ export class LayeredCache implements CacheLayer {
     private readonly options: LayeredCacheOptions = {},
   ) {
     this.policy = options.policy ?? FULL_CACHE_POLICY
+    this.endpoint = printableEndpoint(remote.endpoint)
   }
 
   key(input: CacheKeyInput): Promise<string> {
@@ -196,6 +256,8 @@ export class LayeredCache implements CacheLayer {
       const found: unknown = await this.remote.hasMany(hashes)
       if (found !== null && found !== undefined && !(found instanceof Set)) {
         this.reportRemoteError(
+          'probe',
+          batchOf(hashes),
           invalidRemoteResult(
             `hasMany() resolved ${describeValue(found)} (expected a Set of the hashes present, or null)`,
           ),
@@ -204,7 +266,7 @@ export class LayeredCache implements CacheLayer {
       }
       return found ?? null
     } catch (err) {
-      this.reportRemoteError(err)
+      this.reportRemoteError('probe', batchOf(hashes), err)
       return null
     }
   }
@@ -272,7 +334,7 @@ export class LayeredCache implements CacheLayer {
     try {
       return (await this.remote.has(hash)) ? 'remote' : null
     } catch (err) {
-      this.reportRemoteError(err)
+      this.reportRemoteError('probe', hash, err)
       return null
     }
   }
@@ -308,7 +370,7 @@ export class LayeredCache implements CacheLayer {
     try {
       remoteResult = await this.remote.get(hash)
     } catch (err) {
-      this.reportRemoteError(err)
+      this.reportRemoteError('download', hash, err)
       return false
     }
     if (!remoteResult) return false
@@ -318,8 +380,10 @@ export class LayeredCache implements CacheLayer {
           ? describeValue(remoteResult)
           : `body is ${describeValue((remoteResult as { body?: unknown }).body)}`
       this.reportRemoteError(
+        'download',
+        hash,
         invalidRemoteResult(
-          `get(${hash}) resolved ${shape} (expected { body: Blob | Response, durationMs } or null)`,
+          `get() resolved ${shape} (expected { body: Blob | Response, durationMs } or null)`,
         ),
       )
       return false
@@ -345,7 +409,7 @@ export class LayeredCache implements CacheLayer {
       // artifact must degrade to a cache miss (task re-executes), not
       // crash the run. Local-layer reads outside this block still
       // propagate: local corruption is a real fault, not a network one.
-      this.reportRemoteError(err)
+      this.reportRemoteError('download', hash, err)
       return false
     }
     this.remoteSourced.add(hash)
@@ -396,7 +460,7 @@ export class LayeredCache implements CacheLayer {
       try {
         packed = await this.local.packArtifactBytes(args)
       } catch (err) {
-        this.reportRemoteError(err)
+        this.reportRemoteError('upload', hash, err)
         return
       }
     }
@@ -406,7 +470,7 @@ export class LayeredCache implements CacheLayer {
           packed !== undefined ? new Blob([packed]) : Bun.file(this.local.outputsPath(hash))
         await this.remote.put(hash, body, { durationMs })
       } catch (err) {
-        this.reportRemoteError(err)
+        this.reportRemoteError('upload', hash, err)
       }
     })
   }
@@ -481,12 +545,42 @@ export class LayeredCache implements CacheLayer {
     return this.local.prune(options)
   }
 
+  /** `run()` drains the uploads and prefetches first, so the repeat counts are final here. */
   close(): void {
+    for (const { cause, repeats } of this.reported.values()) {
+      if (repeats === 0) continue
+      this.emit(
+        new Error(
+          `${repeats} more request${repeats === 1 ? '' : 's'} failed the same way: ${cause}`,
+        ),
+      )
+    }
+    this.reported.clear()
     this.local.close()
   }
 
-  private reportRemoteError(err: unknown): void {
+  /**
+   * `subject` is the artifact's hash, or the batch for a `hasMany`. The
+   * wire's own message says what went wrong but not on what or where: an
+   * upload deadline read `The operation timed out.` with no upload, hash or
+   * server in it (item 749).
+   */
+  private reportRemoteError(op: RemoteOp, subject: string | { batch: string }, err: unknown): void {
     const e = err instanceof Error ? err : new Error(String(err))
+    const hash = typeof subject === 'string' ? subject : undefined
+    const cls = failureClass(e, hash)
+    const seen = this.reported.get(cls)
+    if (seen !== undefined) {
+      seen.repeats++
+      return
+    }
+    this.reported.set(cls, { cause: e.message, repeats: 0 })
+    const what = typeof subject === 'string' ? subject : subject.batch
+    const where = this.endpoint === undefined ? '' : ` ${PREPOSITION[op]} ${this.endpoint}`
+    this.emit(new Error(`${op} ${what}${where} failed: ${e.message}`, { cause: e }))
+  }
+
+  private emit(e: Error): void {
     // The remote cache is fully optional: NO remote failure — a 500, a
     // network drop, a corrupt artifact, even a throwing onRemoteError
     // callback — may ever fail the run. We report and degrade to a

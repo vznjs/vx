@@ -690,6 +690,33 @@ false`, the first failure failing the task; `commands: []` a no-op;
       containment check, its resolved base and the abort's resolve are
       each red when neutralised.
 
+749.  DONE (2026-09-25, Next 21 as it stood: a remote-cache warning
+      named nothing). An upload past its deadline warned
+      `vx/turbo-cache: The operation timed out.`, and a closed port
+      printed Bun's bare "Unable to connect" once per request: three
+      lines for one task over the Turbo wire, two over Nx's. The
+      naming and the counting went into core's `LayeredCache`, so
+      every cache plugin has them. The seam's `RemoteCacheLayer` takes
+      an optional `endpoint`, and a failure reads
+      `upload <hash> to <endpoint> failed: <cause>` (or `probe`,
+      `probe of N artifacts`, `download`), with a URL's credentials,
+      query and fragment dropped before printing. A failure class is
+      said once per layer, which is once per run: the error's `code`
+      when it has one (gRPC writes the elapsed time into each
+      deadline's message), else the message with the hash taken out.
+      `close()` then counts the rest, as
+      `N more requests failed the same way: <cause>`. `turboCache()`
+      and `nxCache()` name their endpoint, throw `HTTP 413` rather
+      than `PUT <hash> → 413`, and name a spent deadline
+      (`no answer within 700 ms`); `reapi()` names its endpoint. The
+      closed port now prints two lines, the first request with its
+      server and the count of the other two. The degrade rows pin the
+      exact lines and each is red on main; five mutations of the
+      class, the stripping and the count are each caught. Over Turbo's
+      wire the first request to fail is either the batch probe or the
+      task's own download: the prefetch pass is detached from
+      execution, so the two race.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -928,13 +955,7 @@ next?".
     in a group of its own inside the sandbox without losing the TERM
     grace a cancellation gives it, and pin both.
 
-20. **A remote-cache warning names nothing (found in 745).** An upload
-    timeout warns `vx/<plugin>: The operation timed out.` with no PUT,
-    hash or server; an unreachable server repeats the bare runtime
-    message once per request (3 lines for `turboCache`, 2 for
-    `nxCache` on a one-task run; a 401 is already deduplicated). Name
-    the operation and endpoint, and say it once per run.
-21. **Three stale-hit edges 743 left (its report).** A cached task that
+20. **Three stale-hit edges 743 left (its report).** A cached task that
     rewrites its own input in place (a formatter with `outputs: []`)
     leaves a same-project `tasks: []` reader classed stable, so it can
     be restored ahead of the formatter for one run; cached tasks that

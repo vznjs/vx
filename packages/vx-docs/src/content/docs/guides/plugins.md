@@ -161,24 +161,26 @@ export default defineWorkspace({ plugins: [hello()] })
 
 Implement core's `RemoteCacheLayer`: `has`, `get` and `put`, plus an
 optional `hasMany`. Wrap it in `LayeredCache`, and a remote error is a
-miss:
+miss and one warning per kind of failure, naming the request, the
+artifact and the layer's `endpoint` (`download <hash> from <endpoint>
+failed: HTTP 500`):
 
 ```ts
 import { definePlugin, defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 class AcmeRemote implements RemoteCacheLayer {
-  constructor(private url: string) {}
+  constructor(readonly endpoint: string) {} // printed in warnings: no credentials in it
   async has(hash: string) {
-    return (await fetch(`${this.url}/artifacts/${hash}`, { method: 'HEAD' })).ok
+    return (await fetch(`${this.endpoint}/${hash}`, { method: 'HEAD' })).ok
   }
   async get(hash: string) {
-    const res = await fetch(`${this.url}/artifacts/${hash}`)
+    const res = await fetch(`${this.endpoint}/${hash}`)
     if (res.status === 404) return null
-    if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`) // a throw is a miss
+    if (!res.ok) throw new Error(`HTTP ${res.status}`) // a throw is a miss
     return { body: res, durationMs: undefined } // streamed to disk
   }
   async put(hash: string, body: Blob) {
-    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body })
+    await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body })
   }
 }
 
@@ -187,7 +189,10 @@ function acmeCache(): VxPlugin {
     cache(ctx) {
       const url = process.env.ACME_CACHE_URL
       if (!url) return undefined // decline: the local cache alone
-      return new LayeredCache(ctx.localCache, new AcmeRemote(url), { policy: ctx.policy })
+      return new LayeredCache(ctx.localCache, new AcmeRemote(`${url}/artifacts`), {
+        policy: ctx.policy,
+        onRemoteError: (err) => ctx.warn(`acme-cache: ${err.message}`),
+      })
     },
   })
 }

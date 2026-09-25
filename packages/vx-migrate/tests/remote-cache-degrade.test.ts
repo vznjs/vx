@@ -285,8 +285,15 @@ describe('a refused token costs ONE line on a whole workspace', () => {
     ])
     const exitCode = await proc.exited
     const warnings = `${out}${err}`.split('\n').filter((l) => l.includes('vx/turbo-cache:'))
+    // Every request after the refusal degrades in silence, so there is no
+    // repeat count either. Which request meets it first is a race between
+    // the prefetch pass's batch probe and a task's own download.
     expect({ exitCode, warnings: warnings.length }).toEqual({ exitCode: 0, warnings: 1 })
-    expect(warnings[0]).toMatch(/401.*token was refused/)
+    expect(warnings[0]).toMatch(
+      new RegExp(
+        `^vx/turbo-cache: (probe of 6 artifacts at|download [0-9a-f]{16} from) ${srv.url}/v8/artifacts failed: HTTP 401: the token was refused; remote cache off for this run$`,
+      ),
+    )
   })
 })
 
@@ -319,6 +326,7 @@ async function cliRun(
 
 for (const wire of ['turboCache', 'nxCache'] as const) {
   const prefix = wire === 'turboCache' ? 'vx/turbo-cache:' : 'vx/nx-cache:'
+  const base = wire === 'turboCache' ? '/v8/artifacts' : '/v1/cache'
   // turborepo#487, #2096, #8772: a failed upload was silent, and the team
   // found out only when nothing ever hit.
   describe(`a refused or timed-out upload is said once and stores nothing (${wire})`, () => {
@@ -337,7 +345,10 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       await rm(root, { recursive: true, force: true })
     })
 
-    const upload = async (mode: 'put413' | 'puthang'): Promise<string[]> => {
+    /** The warnings of a run whose upload meets `mode`, and the task's key. */
+    const upload = async (
+      mode: 'put413' | 'puthang',
+    ): Promise<{ warnings: string[]; hash: string }> => {
       await coldAgain(root)
       srv.state.mode = mode
       let warnings: string[]
@@ -353,23 +364,32 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       const next = await run({ cwd: root, tasks: ['build'], handleSignals: false })
       expect(next.outcomes.map((o) => o.status)).toEqual(['success'])
       srv.store.clear()
-      return warnings
+      return { warnings, hash: next.outcomes[0]!.hash! }
     }
 
-    it('a 413: green, one warning naming the PUT, and the next cold run executes', async () => {
-      const warnings = await upload('put413')
-      expect(warnings).toHaveLength(1)
-      expect(warnings[0]).toMatch(new RegExp(`^${prefix} PUT [0-9a-f]+ → 413$`))
+    it('a 413: green, one warning naming the upload, its artifact and the server', async () => {
+      const { warnings, hash } = await upload('put413')
+      expect(warnings).toEqual([`${prefix} upload ${hash} to ${srv.url}${base} failed: HTTP 413`])
     })
 
-    it('an upload past its deadline: green, one warning, and the next cold run executes', async () => {
-      expect(await upload('puthang')).toEqual([`${prefix} The operation timed out.`])
+    it('an upload past its deadline: green, one warning naming the upload and the deadline', async () => {
+      const { warnings, hash } = await upload('puthang')
+      expect(warnings).toEqual([
+        `${prefix} upload ${hash} to ${srv.url}${base} failed: no answer within 700 ms`,
+      ])
     })
   })
 
   // turborepo#2081: an unreachable cache server was silent.
   describe(`an unreachable server degrades to a miss, out loud (${wire})`, () => {
-    const unreachable = async (url: string): Promise<void> => {
+    /**
+     * The run's warnings, with the runtime's own words for the failure read
+     * off the first line: the claim is the shape — one line naming the first
+     * request, one counting the rest — and the resolver's wording for a
+     * missing host is the platform's (a sandbox without DNS says it
+     * differently), so the closed-port row pins that part too.
+     */
+    const unreachable = async (url: string): Promise<{ warnings: string[]; first: string }> => {
       const decl =
         wire === 'turboCache'
           ? `turboCache({ apiUrl: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700 })`
@@ -378,24 +398,41 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       try {
         const r = await cliRun(root, prefix)
         expect(r.exitCode).toBe(0)
-        expect(r.warnings.length).toBeGreaterThan(0)
         await coldAgain(root)
         const next = await run({ cwd: root, tasks: ['build'], handleSignals: false })
         expect({ ok: next.ok, statuses: next.outcomes.map((o) => o.status) }).toEqual({
           ok: true,
           statuses: ['success'],
         })
+        const hash = next.outcomes[0]!.hash!
+        // Turbo's wire makes three requests (the prefetch pass's batch
+        // probe, the task's download, the upload), and which of the first
+        // two fails first is a race; Nx has no batch probe, so its download
+        // is first and the upload the one repeat.
+        const download = `download ${hash} from ${url}${base}`
+        const firsts =
+          wire === 'turboCache' ? [`probe of 1 artifact at ${url}${base}`, download] : [download]
+        const cause = r.warnings[0]?.split(' failed: ')[1] ?? ''
+        const first = firsts.find((f) => r.warnings[0] === `${prefix} ${f} failed: ${cause}`)
+        const repeats = wire === 'turboCache' ? '2 more requests' : '1 more request'
+        expect(r.warnings).toEqual([
+          `${prefix} ${first} failed: ${cause}`,
+          `${prefix} ${repeats} failed the same way: ${cause}`,
+        ])
+        return { warnings: r.warnings, first: cause }
       } finally {
         await rm(root, { recursive: true, force: true })
       }
     }
 
-    it('a closed port: green, the task executes, and a warning says the remote failed', async () => {
-      await unreachable('http://127.0.0.1:1')
+    it('a closed port: green, the task executes, and ONE warning names the request and the server', async () => {
+      const { first } = await unreachable('http://127.0.0.1:1')
+      expect(first).toBe('Unable to connect. Is the computer able to access the url?')
     })
 
-    it('a host that does not resolve: green, the task executes, and a warning says the remote failed', async () => {
-      await unreachable('http://no-such-host.invalid')
+    it('a host that does not resolve: green, the task executes, and ONE warning names the request and the server', async () => {
+      const { first } = await unreachable('http://no-such-host.invalid')
+      expect(first).not.toBe('')
     })
   })
 }
