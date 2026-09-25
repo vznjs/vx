@@ -594,6 +594,20 @@ graph`, and a missed input is a stale hit on every run.
       pinned (`orchestrator-run.test.ts`), and under `turbo()`/`nx()`
       every package counts.
 
+767.  DONE (2026-09-25, the sweep of `run-history.ts`). 19 mutations: 12
+      caught, 2 equivalent (the retention cut at `<` against `<=` on a
+      millisecond; the single-row fast path, which the transaction path
+      does the same), 5 held now by one row. The history is written by
+      position, so a swapped or dropped binding stores a plausible value
+      in the wrong column and nothing read it back: the wall-clock pair
+      and `host`/`os` swapped, `forward_args` dropped, a false `cached`
+      stored as NULL (which reads as a row from before the column), and
+      `ON CONFLICT` dropped (a second bundle under one run id then
+      threw) all passed the suite. `tests/run-history-columns.test.ts`
+      records a run and an invocation whose every field carries a value
+      no other field has, false booleans included, and reads each column
+      back.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
