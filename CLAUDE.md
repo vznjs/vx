@@ -403,6 +403,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   asserts the copy's digest unchanged, so a broken guard replaces only
   the copy and fails the row.
 
+- Await a gRPC call's refusal with `.then(ok, err)`, never
+  `expect(…).rejects`: under `bun test` the latter held a call that
+  needed more I/O until its 30 s deadline, and the same call settled in
+  2 ms through `.then` (item 827). The row reads as a client hang.
+
 ## Live invariants (verify in source before quoting)
 
 - `CACHE_VERSION` `vx-cache-v34`, core `SCHEMA_VERSION` `v27`,
