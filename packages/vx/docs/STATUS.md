@@ -257,6 +257,23 @@ test is telling the truth.
         entry, in both formats, and to "(no cache entry either)".
         And `tests/schema-reset-notice.test.ts` shows `vx why` prints the
         reset notice too.
+790.  DONE (2026-09-25, sweep of `workspace/migration.ts`, the seam
+      `vx init` and `@vzn/vx-migrate` share, never named in a sweep). 42
+      mutations over `init`, `cli` and the site samples in core and
+      `migrate`, `turbo`, `nx`, `script-command` and `paths` in
+      vx-migrate (run with the worktree's own `@vzn/vx` linked in, so the
+      plugin's suite saw the mutant): 23 caught, 19 held now by the new
+      `tests/migration.test.ts`, which drives `applyMigration` with
+      hand-made plans. Held now: a carriage return left raw in a
+      generated literal (a line terminator: the file would not load);
+      both "nothing to migrate" messages; no config for a project with no
+      tasks; `vx.workspace.js` counts as a workspace file; a hand-written
+      config of another extension refuses the write, and one beside a
+      project with no tasks does not; a skipped target (null task, no
+      TODO) is not counted clean; the report's singulars and its colon;
+      the dry-run file header; `next:` names `build` wherever it sits,
+      else the first task; and the renderer's `null`, dropped
+      `undefined`, `{}` and key quoting.
 
 ## In flight
 
