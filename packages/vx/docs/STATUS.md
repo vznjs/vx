@@ -943,6 +943,18 @@ request` (-32600), and the session goes on. The new row sends
         executor's passing of `childDigests` into the graft, which needs
         the Execute stub named in 819.
 
+821.  DONE (2026-09-25, CI). The execution service's busybox base now
+      comes from whichever of three mirrors of the Docker Official image
+      answers (AWS, `mirror.gcr.io`, Docker Hub), in two rounds 20 s
+      apart. One registry had been one outage away from a red job: AWS's
+      mirror answered every attempt on #895 with a 429 ("Data limit
+      exceeded") before any test ran, and Docker Hub 500'd the same step
+      on 2026-08-24. The loop was exercised with a stand-in
+      `docker` that fails on AWS and succeeds on the second mirror, and
+      one that fails everywhere (six attempts, exit 1). The workflow
+      change landed first as a port into #895, which the limit had
+      blocked; this item adds the `nativelink.md` recipe's mirrors.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
