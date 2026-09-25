@@ -2,12 +2,12 @@
 // per-task filesystem + network isolation.
 //
 // Design contract:
-//   The caller (executeCachedTask) computes the exact allowRead /
-//   allowWrite paths from the task's declared inputs + outputs + sandbox
-//   block. This module adds nothing implicit — no /tmp, no node_modules,
-//   no project dir. If a task needs them, the user declares them in
-//   their sandbox config. That gives users a complete view of what each
-//   task can touch from a single vx.config.ts file.
+//   The caller (sandbox-request.ts) hands over the task's own
+//   `sandbox.allow` block plus two baselines: the `node_modules` reads a
+//   task's dependencies need, and the workspace-root deny anchor. Writes
+//   are the task's `allow.write` alone — nothing is derived from `cache`.
+//   This module adds nothing implicit on top — no /tmp, no project dir —
+//   so what a task may touch is its vx.config.ts plus those baselines.
 //
 // Network is opt-in per task. By default the sandbox blocks all outbound
 // traffic; tasks that need it set `sandbox.network: true`.
@@ -394,11 +394,6 @@ export interface SandboxedRunArgs {
    */
   baseAllowRead: readonly string[]
   /**
-   * Baseline writes, beside the task's own `allow.write`. Core passes
-   * none: a declared `cache.outputs` is not a write grant (config.ts).
-   */
-  baseAllowWrite: readonly string[]
-  /**
    * Read-deny anchor. Combined with allowRead it produces the effective
    * deny set: anything under one of these paths that isn't in allowRead
    * is forbidden. Pass `[workspaceRoot]` to enforce project boundaries.
@@ -451,7 +446,7 @@ export interface ResolvedSandboxConfig {
  * Canonical form of every path the sandbox policy is expressed in.
  *
  * `resolveSandboxConfig` already canonicalizes the USER's paths; the
- * orchestrator-supplied baselines (resolved inputs, output prefixes, the
+ * orchestrator-supplied baselines (the `node_modules` reads and the
  * workspace-root deny anchor) arrived raw, so a workspace reached through a
  * symlink expressed HALF its policy in real paths and half in link paths.
  * bwrap then died mounting the link path inside its new root
@@ -461,17 +456,15 @@ export interface ResolvedSandboxConfig {
  */
 interface CanonicalBaselines {
   allowRead: string[]
-  allowWrite: string[]
   denyRead: string[]
   cwd: string
 }
 
 function canonicalBaselines(
-  args: Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseAllowWrite' | 'baseDenyRead' | 'cwd'>,
+  args: Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead' | 'cwd'>,
 ): CanonicalBaselines {
   return {
     allowRead: args.baseAllowRead.map(toRealPath),
-    allowWrite: args.baseAllowWrite.map(toRealPath),
     denyRead: args.baseDenyRead.map(toRealPath),
     cwd: toRealPath(args.cwd),
   }
@@ -556,7 +549,7 @@ export interface SandboxedRunResult extends RunResult {
  */
 export async function wrapSandboxedCommand(
   args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config'> &
-    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseAllowWrite' | 'baseDenyRead'>,
+    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'>,
 ): Promise<{
   wrapped: string
   tag: string

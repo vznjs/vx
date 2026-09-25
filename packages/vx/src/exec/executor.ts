@@ -18,7 +18,6 @@ import { UserError } from '../util/index.js'
 /** Sandbox baselines + the user's resolved sandbox block, when the task is sandboxed. */
 export interface ExecuteSandbox {
   readonly baseAllowRead: readonly string[]
-  readonly baseAllowWrite: readonly string[]
   readonly baseDenyRead: readonly string[]
   /**
    * Only denials on a path under this directory are reported. A denial

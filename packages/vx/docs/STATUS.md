@@ -673,6 +673,21 @@ graph`, and a missed input is a stale hit on every run.
       `cache.outputs.files`" — the claim item 443 corrected in
       `config.ts` and missed here; both now say what core passes. Removing
       the always-empty field from the executor seam is Next 22.
+771.  DONE (2026-09-25, Next 22). `baseAllowWrite` leaves the executor
+      seam (`ExecuteSandbox`), the runtime's `SandboxedRunArgs`, its
+      canonical baselines and `buildCustomConfig`'s: core sent `[]` on
+      every request, so the write set was always the task's own
+      `allow.write`, and now that is the only place it can come from. The
+      runtime's file header claimed, a third time beside the two comments
+      item 770 corrected, that the caller derives writes from "declared
+      inputs + outputs" and that no `node_modules` is added; it now names
+      the two baselines core does pass. Test rows that used the baseline
+      as a direct write grant (two macOS `sandbox-exec` rows, the Linux
+      TERM-trap row, two `buildCustomConfig` rows) moved the same paths
+      into `allow.write`, which the runtime unions identically; the
+      trap row is red without its moved grant (as `probe`). The sandbox
+      suites as `probe` with `VX_REQUIRE_SANDBOX=1`: 223 pass, 1 skip
+      (a platform row), 0 fail.
 
 ## In flight
 
@@ -936,7 +951,7 @@ next?".
     last run's stable keys, is designed and DEFERRED (item 756).
     (`vx-bench/strace-vx.ts` counting git's worker threads as vx: fixed
     in item 755.) DONE through items 753–756.
-22. **`baseAllowWrite` has one value (item 770).** Core sends `[]` on
+22. DONE as item 771 — **`baseAllowWrite` had one value (item 770).** Core sends `[]` on
     every sandboxed request, so the field on `ExecuteSandbox` and
     `SandboxedRunArgs` is a knob no producer turns; an executor plugin
     reading it learns nothing. Remove it from the seam and let the

@@ -124,11 +124,10 @@ export interface SandboxedRunArgs {
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
   baseAllowRead: readonly string[] // node_modules + resolved workspace links
-  baseAllowWrite: readonly string[] // empty — writes are declared, never derived
   baseDenyRead: readonly string[] // [workspaceRoot] — the task may not leave its project
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
-  config: ResolvedSandboxConfig
+  config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
 }
 
 export interface SandboxViolation {
@@ -145,7 +144,7 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
 // built from. What an executor running the command ITSELF needs.
 export function wrapSandboxedCommand(
   args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config'> &
-    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseAllowWrite' | 'baseDenyRead'>,
+    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'>,
 ): Promise<{
   wrapped: string
   tag: string
