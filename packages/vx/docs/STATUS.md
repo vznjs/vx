@@ -862,6 +862,25 @@ request` (-32600), and the session goes on. The new row sends
         a config imports the names it uses sorted.
         `vx-migrate` is swept end to end (items 809 to 817).
 
+818.  DONE (2026-09-25, `@vzn/vx-reapi`'s `cache.ts`, the first slice
+      of the last package). 16 mutations: 4 caught offline, 10 held
+      now, 2 equivalent. The offline suite held little: the live e2e
+      suite (skip-mode in the gate) was the only other reader. Held
+      now, in `tests/stream-cache.test.ts` against its in-process gRPC
+      stub:
+      - `execDigestFor` and `actionDigestFor` by exact digest;
+      - `has` and `get` find the artifact by its path, not by its
+        place in `output_files`;
+      - `has` is false for an entry whose blob is gone;
+      - a duration that is not a number is none, and one normalised
+        into CAS (`stdout_digest`) is read from there;
+      - a put of a blob the server has uploads nothing and records one
+        non-executable output file;
+      - `close` ends the client.
+        Equivalent: `decodeDuration`'s empty-bytes guard (an empty
+        `stdout_raw` never reaches it, and `JSON.parse('')` lands in
+        the same `undefined`), and `exit_code: 0` (proto3's default).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

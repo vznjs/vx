@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
-import { ReapiRemoteCache, actionDigestFor, digestOf } from '../src/cache.js'
+import { createHash } from 'node:crypto'
+import { ReapiRemoteCache, actionDigestFor, digestOf, execDigestFor } from '../src/cache.js'
 import { CHUNK_BYTES } from '../src/wire.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 
@@ -286,5 +287,98 @@ describe.if(CHUNKING_SUPPORTED)('the REAPI cache layer streams against a fake se
     } finally {
       cache.close()
     }
+  })
+})
+
+// Item 818's sweep of cache.ts: each row fails with one line undone.
+describe('the REAPI cache layer, exactly', () => {
+  const ARTIFACT = 'vx-artifact.tar.zst'
+  const bytes = (s: string) => new TextEncoder().encode(s)
+  const store = (s: string) => {
+    const b = bytes(s)
+    blobs.set(digestOf(b).hash, b)
+    return digestOf(b)
+  }
+  const entry = (key: string, result: Record<string, unknown>) =>
+    actions.set(actionDigestFor(key).hash, { exit_code: 0, ...result })
+  const withCache = async <T>(f: (c: ReapiRemoteCache) => Promise<T>): Promise<T> => {
+    const cache = new ReapiRemoteCache({ endpoint })
+    try {
+      return await f(cache)
+    } finally {
+      cache.close()
+    }
+  }
+
+  it('the execution record has its own address, apart from the artifact’s', () => {
+    const sha = (s: string) => createHash('sha256').update(s).digest('hex')
+    expect(execDigestFor('k')).toEqual({ hash: sha('vx-reapi-exec-v1\0k'), size_bytes: 18 })
+    expect(actionDigestFor('k')).toEqual({ hash: sha('vx-reapi-v1\0k'), size_bytes: 13 })
+  })
+
+  it('has and get find the artifact by its path, not by its place in the list', async () => {
+    const other = digestOf(bytes('not uploaded'))
+    const real = store('the artifact')
+    entry('k-order', {
+      output_files: [
+        { path: 'other', digest: other, is_executable: false },
+        { path: ARTIFACT, digest: real, is_executable: false },
+      ],
+    })
+    await withCache(async (c) => {
+      expect(await c.has('k-order')).toBe(true)
+      store('decoy')
+      entry('k-order-get', {
+        output_files: [
+          { path: 'other', digest: store('decoy'), is_executable: false },
+          { path: ARTIFACT, digest: real, is_executable: false },
+        ],
+      })
+      expect(await (await c.get('k-order-get'))!.body.text()).toBe('the artifact')
+    })
+  })
+
+  it('has is false for an entry whose blob is gone', async () => {
+    entry('k-gone', {
+      output_files: [{ path: ARTIFACT, digest: digestOf(bytes('evicted')), is_executable: false }],
+    })
+    expect(await withCache((c) => c.has('k-gone'))).toBe(false)
+  })
+
+  it('a duration that is not a number is none; one normalised into CAS is read from there', async () => {
+    const artifact = store('a')
+    entry('k-strdur', {
+      output_files: [{ path: ARTIFACT, digest: artifact, is_executable: false }],
+      stdout_raw: bytes('{"durationMs":"5"}'),
+    })
+    entry('k-casdur', {
+      output_files: [{ path: ARTIFACT, digest: artifact, is_executable: false }],
+      stdout_raw: new Uint8Array(0),
+      stdout_digest: store('{"durationMs":42}'),
+    })
+    await withCache(async (c) => {
+      expect((await c.get('k-strdur'))!.durationMs).toBeUndefined()
+      expect((await c.get('k-casdur'))!.durationMs).toBe(42)
+    })
+  })
+
+  it('a put of a blob the server has uploads nothing, and records the one output file', async () => {
+    const body = bytes('same bytes')
+    await withCache(async (c) => {
+      await c.put('k-dup-1', new Blob([body]), { durationMs: 1 })
+      const before = writes.length
+      await c.put('k-dup-2', new Blob([body]), { durationMs: 1 })
+      expect(writes.length).toBe(before)
+    })
+    const recorded = actions.get(actionDigestFor('k-dup-2').hash) as {
+      output_files: { path: string; is_executable: boolean }[]
+    }
+    expect(recorded.output_files.map((f) => [f.path, f.is_executable])).toEqual([[ARTIFACT, false]])
+  })
+
+  it('close ends the client: a call after it fails', async () => {
+    const cache = new ReapiRemoteCache({ endpoint })
+    cache.close()
+    await expect(cache.has('k-closed')).rejects.toThrow()
   })
 })
