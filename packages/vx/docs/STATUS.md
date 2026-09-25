@@ -824,6 +824,28 @@ request` (-32600), and the session goes on. The new row sends
       - the probe's kept response serves one `get`, and the next
         fetches again.
 
+816.  DONE (2026-09-25, `vx-migrate`'s plugin glue: `nx/index.ts`,
+      `turbo/index.ts`, `adoption-plugin.ts`, `remote-deadline.ts`, the
+      eighth slice). 26 mutations: 14 caught, 12 held now. Held now, in
+      `nx.test.ts` and `turbo.test.ts` through a real `planRun`:
+      - `root` names where nx.json and the graph live, and where
+        turbo.json lives;
+      - the mapper's notes are reported (an implicit dep);
+      - a root project's gaps are not reported;
+      - with no line that starts with `nx-exec` or `nx-env`, neither a
+        missing bin nor a missing `node_modules/nx` is reported (a line
+        that names the bin mid-way does not start with it);
+      - the root `package.json` and a package's `package.json`, each
+        newer than the snapshot, re-export. One row per file: a file
+        dated in the future stays newer than every later snapshot, so a
+        second touch in the same row proved nothing;
+      - an export that exits 0 and writes nothing is a failure, and a
+        failure names stderr's last three lines;
+      - a target the mapper skips (`nx:noop` with nothing to chain) is
+        left out, not declared `null`.
+        Left for the next slice: the `bunx @vzn/vx-migrate` writer
+        (`index.ts`, `migrate-turbo.ts`, `migrate-nx.ts`, `bin.ts`).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
