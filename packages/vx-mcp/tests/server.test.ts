@@ -348,4 +348,32 @@ describe('serve (stdio framing)', () => {
     await serve(chunks(new TextEncoder().encode(two)), (l) => lines.push(l), ctx)
     expect(lines.map((l) => (JSON.parse(l) as { id: number }).id)).toEqual([1, 2])
   })
+
+  it('JSON that is not a request object is an invalid request, and the session goes on', async () => {
+    // `null` used to throw outside every catch: serve() rejected, and the
+    // ping after it was never answered (item 808).
+    const input = [
+      'null',
+      '5',
+      '[]',
+      '"x"',
+      JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'ping' }),
+    ]
+      .map((l) => `${l}\n`)
+      .join('')
+    const lines: string[] = []
+    await serve(chunks(new TextEncoder().encode(input)), (l) => lines.push(l), ctx)
+    const invalid = {
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32600, message: 'invalid request' },
+    }
+    expect(lines.map((l) => JSON.parse(l) as unknown)).toEqual([
+      invalid,
+      invalid,
+      invalid,
+      invalid,
+      { jsonrpc: '2.0', id: 9, result: {} },
+    ])
+  })
 })
