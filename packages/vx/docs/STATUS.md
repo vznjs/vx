@@ -423,6 +423,28 @@ test is telling the truth.
         handler, so a late rejection is handled either way); in
         `colors.ts`, the colour memo (a cost) and `if (color)` (an empty
         colour's ANSI code is `''`).
+798.  DONE (2026-09-25, sweep of `@vzn/vx-lockfile`'s `bun.ts`, the
+      parser this repo declares; no plugin package had been swept). 23
+      mutations over `bun.test.ts` and `npm.test.ts`: 10 caught, 13 held
+      now. Every survivor was an input the per-workspace digest did not
+      provably read, which is a stale hit on every run that changes only
+      that input. Held now, in `tests/bun.test.ts`, each row changing one
+      input and naming the workspaces whose key must move:
+      - An optional or peer dependency is followed like any other.
+      - The integrity alone moves a package (a republish, a git
+        dependency's new commit), including past a non-empty registry
+        field, where `find` took the registry URL for the resolution.
+      - The install-wide `configVersion`, `patchedDependencies` and
+        `catalogs` each move every workspace.
+      - Resolution walks up level by level: `x/y`'s `z` is `x/z`, not
+        the root's.
+      - From a scoped package an unscoped `y` is never `@s/y`.
+      - An unresolved dependency still folds its specifier, from a
+        workspace and from a package.
+      - A workspace that depends on the root package (`ws@workspace:`)
+        folds the root's reach.
+      - A non-tuple entry is passed over, not a crash.
+        `npm.ts`, `pnpm.ts` and `yarn.ts` are next, one item each.
 
 ## In flight
 
