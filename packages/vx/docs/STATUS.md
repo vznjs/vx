@@ -361,6 +361,23 @@ test is telling the truth.
       - The await of the killed children's exits.
       - A surfaced (not requested) persistent task is kept alive in the
         foreground.
+795.  DONE (2026-09-25, sweep of `cli/workspace-config.ts`, never named
+      in a sweep: the workspace every reading verb sees). 12 mutations
+      over the 16 files that read a cache or a staged load: 8 caught, 4
+      held now.
+      - `--cache-dir=-x` is a path (only the space form refuses a
+        dash-led value, where an empty variable would swallow the next
+        flag).
+      - A relative `--cache-dir` resolves against the working
+        directory, as `vx run`'s does, in the new
+        `tests/workspace-config.test.ts`.
+      - The staged load `show`, `watch` and the picker share opens the
+        evaluation cache: a pure config has no side effect to count
+        evaluations by, so the row reads `config_evals` after one
+        `vx show`, and without the store every reading verb re-evaluated
+        every config.
+      - That same load prints the schema-reset notice: a `vx show` row
+        beside `vx why`'s in `tests/schema-reset-notice.test.ts`.
 
 ## In flight
 
