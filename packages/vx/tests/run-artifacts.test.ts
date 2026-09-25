@@ -372,6 +372,76 @@ describe('writeRunSummary', () => {
     expect(parsed.aborted.map((t) => t.id)).not.toContain('pkg#ci')
   })
 
+  it("carries a hit's stored usage, an admit hold, a timeout and a not-ready reason, each on its row only", async () => {
+    const out = await writeRunSummary({
+      target: '',
+      cacheDir,
+      cwd: tmp,
+      runId: 'fields',
+      startedAtMs: 0,
+      endedAtMs: 1,
+      totalMs: 1,
+      ok: false,
+      outcomes: [
+        outcome({
+          node: execNode('p', 'hit'),
+          status: 'cache-hit',
+          storedCpuMs: 7,
+          storedPeakRssBytes: 9,
+        }),
+        outcome({ node: execNode('p', 'held'), admissionHeldMs: 40 }),
+        outcome({ node: execNode('p', 'slow'), status: 'failed', exitCode: 143, timedOut: true }),
+        outcome({ node: execNode('p', 'dev'), status: 'failed', exitCode: 1, notReady: 'timeout' }),
+        outcome({ node: execNode('p', 'plain') }),
+      ],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      tasks: Array<Record<string, unknown>>
+    }
+    const keys = ['storedCpuMs', 'storedPeakRssBytes', 'admissionHeldMs', 'timedOut', 'notReady']
+    const picked = Object.fromEntries(
+      parsed.tasks.map((t) => [
+        t['id'],
+        Object.fromEntries(keys.filter((k) => k in t).map((k) => [k, t[k]])),
+      ]),
+    )
+    expect(picked).toEqual({
+      'p#hit': { storedCpuMs: 7, storedPeakRssBytes: 9 },
+      'p#held': { admissionHeldMs: 40 },
+      'p#slow': { timedOut: true },
+      'p#dev': { notReady: 'timeout' },
+      'p#plain': {},
+    })
+  })
+
+  it('an aborted GROUP is in neither list: it did no work to abort', async () => {
+    const out = await writeRunSummary({
+      target: '',
+      cacheDir,
+      cwd: tmp,
+      runId: 'aborted-group',
+      startedAtMs: 0,
+      endedAtMs: 1,
+      totalMs: 1,
+      ok: false,
+      outcomes: [
+        outcome({ node: groupNode('p', 'ci'), status: 'aborted', exitCode: 143 }),
+        outcome({ node: execNode('p', 'build'), status: 'aborted', exitCode: 143 }),
+      ],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      tasks: Array<{ id: string }>
+      aborted: Array<{ id: string }>
+    }
+    expect({
+      tasks: parsed.tasks.map((t) => t.id),
+      aborted: parsed.aborted.map((t) => t.id),
+    }).toEqual({
+      tasks: [],
+      aborted: ['p#build'],
+    })
+  })
+
   it('a run with nothing aborted carries an empty list and a zero count', async () => {
     const out = await writeRunSummary({
       target: path.join(tmp, 's.json'),
@@ -489,6 +559,26 @@ describe('writeRunProfile', () => {
       traceEvents: Array<{ name: string }>
     }
     expect(parsed.traceEvents.map((e) => e.name)).toEqual(['pkg#build'])
+  })
+
+  it('an outcome with a start and no end is not an event: its duration is unknown', async () => {
+    const out = await writeRunProfile({
+      target: path.join(tmp, 'profile.json'),
+      cwd: tmp,
+      outcomes: [outcome({ node: execNode('pkg', 'cut'), wallclockStartNs: 5_000n })],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as { traceEvents: unknown[] }
+    expect(parsed.traceEvents).toEqual([])
+  })
+
+  it('a relative target resolves against cwd, not the process directory', async () => {
+    const out = await writeRunProfile({
+      target: path.join('nested', 'profile.json'),
+      cwd: tmp,
+      outcomes: [],
+    })
+    expect(out).toBe(path.join(tmp, 'nested', 'profile.json'))
+    expect(JSON.parse(await readFile(out, 'utf8'))).toEqual({ traceEvents: [] })
   })
 
   it('includes cpuMs / peakRssBytes / hash inside the args object when available', async () => {
