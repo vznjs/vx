@@ -628,3 +628,244 @@ describe('vx run with pnpm() declared', () => {
     expect(rewritten.lock).not.toBe(fresh.lock)
   })
 })
+
+// The mutation sweep of item 802: each row changes one input the digest
+// must read and names the importers whose key must move. Before it, each
+// of these could be dropped from pnpm.ts with the suite green — a stale
+// hit on every run that changes only that input.
+describe('every input the pnpm digest must read', () => {
+  const movedDirs = (before: string, after: string): string[] => {
+    const b = digests(before)
+    const a = digests(after)
+    expect([...a.keys()]).toEqual([...b.keys()])
+    return [...a.keys()].filter((k) => a.get(k) !== b.get(k))
+  }
+
+  /** v9: `.` → foo (a directory, `file:vendor/foo`) → bar. */
+  const fileDepV9 = (bar: string) => `lockfileVersion: '9.0'
+importers:
+  .:
+    dependencies:
+      foo:
+        specifier: file:vendor/foo
+        version: file:vendor/foo
+packages:
+  bar@${bar}:
+    resolution: {integrity: sha512-bar${bar}}
+  foo@file:vendor/foo:
+    resolution: {directory: vendor/foo, type: directory}
+snapshots:
+  bar@${bar}: {}
+  foo@file:vendor/foo:
+    dependencies:
+      bar: ${bar}
+`
+
+  it('a bump behind a v9 `file:` dependency moves the importer (pnpm 9 keys it `name@file:…`)', () => {
+    // The shape `pnpm@9 install --lockfile-only` writes for a directory
+    // dependency (2026-09-25). Taking the bare version as the key made
+    // `foo` a leaf, and `bar` was never reached.
+    expect(movedDirs(fileDepV9('1.0.0'), fileDepV9('1.0.1'))).toEqual(['.'])
+  })
+
+  it('a bump behind a v6 `file:` dependency moves the importer (v6 keys it by the bare version)', () => {
+    const lock = (bar: string) => `lockfileVersion: '6.0'
+dependencies:
+  foo:
+    specifier: file:vendor/foo
+    version: file:vendor/foo
+packages:
+  /bar@${bar}:
+    resolution: {integrity: sha512-bar${bar}}
+    dev: false
+  file:vendor/foo:
+    resolution: {directory: vendor/foo, type: directory}
+    name: foo
+    version: 1.0.0
+    dependencies:
+      bar: ${bar}
+    dev: false
+`
+    expect(movedDirs(lock('1.0.0'), lock('1.0.1'))).toEqual(['.'])
+  })
+
+  it('a lockfile below v5 is refused; v5 is read', () => {
+    expect(() => parseLockfile("lockfileVersion: '4.0'\n")).toThrow(
+      'pnpm-lock.yaml: unsupported lockfileVersion "4.0"',
+    )
+    expect(() => parseLockfile('lockfileVersion: 5.4\n')).not.toThrow()
+  })
+
+  /** v5, one package: dependencies at the top level, keys `/name/version`. */
+  const singleV5 = (bar: string, patch = '') => `lockfileVersion: 5.4
+${patch}specifiers:
+  '@s/foo': ^1
+dependencies:
+  '@s/foo': 1.0.0
+packages:
+  /@s/foo/1.0.0:
+    resolution: {integrity: sha512-foo}
+    dependencies:
+      bar: ${bar}
+    dev: false
+  /bar/${bar}:
+    resolution: {integrity: sha512-bar${bar}}
+    dev: false
+`
+
+  it("a single-package lockfile's top-level dependencies are the root importer's", () => {
+    expect(movedDirs(singleV5('2.0.0'), singleV5('2.0.1'))).toEqual(['.'])
+  })
+
+  it('a v5 patch named by a scoped package alone moves what reaches it', () => {
+    const patched = (hash: string) =>
+      `patchedDependencies:\n  '@s/foo':\n    hash: ${hash}\n    path: p.patch\n`
+    expect(movedDirs(singleV5('2.0.0', patched('h1')), singleV5('2.0.0', patched('h2')))).toEqual([
+      '.',
+    ])
+  })
+
+  it.each([
+    ['a scalar entry (`bar: <hash>`)', 'bar: h1', 'bar: h2'],
+    ['a record with no hash', 'bar: {path: patches/a.patch}', 'bar: {path: patches/b.patch}'],
+    ['a record keyed `name@version`', "'bar@2.0.0': {hash: h1}", "'bar@2.0.0': {hash: h2}"],
+    ['a scoped package named alone', "'@s/qux': {hash: h1}", "'@s/qux': {hash: h2}"],
+  ])('a patch given as %s moves only what reaches it', (_shape, before, after) => {
+    const withPatch = (entry: string) =>
+      v9().replace('\nimporters:', `\npatchedDependencies:\n  ${entry}\n\nimporters:`) +
+      // `@s/qux` is reached from packages/b only.
+      ''
+    const scoped = (text: string) =>
+      text
+        .replace(
+          '      qux:\n        specifier: ^1\n        version: 1.0.0(react@19.0.0)',
+          "      '@s/qux':\n        specifier: ^1\n        version: 1.0.0",
+        )
+        .replace(
+          '\n  react@18.0.0:\n    resolution',
+          "\n  '@s/qux@1.0.0':\n    resolution: {integrity: sha512-sq}\n\n  react@18.0.0:\n    resolution",
+        )
+        .replace('\n  react@18.0.0: {}', "\n  '@s/qux@1.0.0': {}\n\n  react@18.0.0: {}")
+    const isScoped = before.startsWith("'@s/")
+    const b = withPatch(before)
+    const a = withPatch(after)
+    expect(movedDirs(isScoped ? scoped(b) : b, isScoped ? scoped(a) : a)).toEqual(
+      isScoped ? ['packages/b', 'packages/c'] : ['packages/a'],
+    )
+  })
+
+  it.each([
+    ['settings', 'settings:\n  autoInstallPeers: true\n', 'settings:\n  autoInstallPeers: false\n'],
+    ['overrides', 'overrides:\n  bar: 2.0.0\n', 'overrides:\n  bar: 2.0.1\n'],
+    [
+      'packageExtensionsChecksum',
+      'packageExtensionsChecksum: aa\n',
+      'packageExtensionsChecksum: bb\n',
+    ],
+    [
+      'ignoredOptionalDependencies',
+      'ignoredOptionalDependencies:\n  - fsevents\n',
+      'ignoredOptionalDependencies:\n  - esbuild\n',
+    ],
+  ])('the install-wide `%s` alone moves every importer', (_field, before, after) => {
+    const lock = (block: string) =>
+      v9().replace(
+        'settings:\n  autoInstallPeers: true\n',
+        block.startsWith('settings') ? block : `settings:\n  autoInstallPeers: true\n${block}`,
+      )
+    expect(movedDirs(lock(before), lock(after))).toEqual([
+      '.',
+      'packages/a',
+      'packages/b',
+      'packages/c',
+    ])
+  })
+
+  it('the lockfile version alone moves every importer', () => {
+    const text = v9()
+    expect(
+      movedDirs(text, text.replace("lockfileVersion: '9.0'", "lockfileVersion: '9.1'")),
+    ).toEqual(['.', 'packages/a', 'packages/b', 'packages/c'])
+  })
+
+  it('an optional dependency is followed like any other', () => {
+    const optional = (text: string) =>
+      text.replace(
+        '  foo@1.0.0:\n    dependencies:\n      bar:',
+        '  foo@1.0.0:\n    optionalDependencies:\n      bar:',
+      )
+    expect(optional(v9())).not.toBe(v9())
+    expect(movedDirs(optional(v9()), optional(v9({ bar: '2.0.1' })))).toEqual(['packages/a'])
+  })
+
+  it('key order inside a resolution and the settings never moves a digest', () => {
+    const a = v9()
+      .replace(
+        'resolution: {integrity: sha512-foo}',
+        'resolution: {integrity: sha512-foo, tarball: t.tgz}',
+      )
+      .replace(
+        'settings:\n  autoInstallPeers: true\n',
+        'settings:\n  autoInstallPeers: true\n  dedupePeers: false\n',
+      )
+    const b = v9()
+      .replace(
+        'resolution: {integrity: sha512-foo}',
+        'resolution: {tarball: t.tgz, integrity: sha512-foo}',
+      )
+      .replace(
+        'settings:\n  autoInstallPeers: true\n',
+        'settings:\n  dedupePeers: false\n  autoInstallPeers: true\n',
+      )
+    expect(a).not.toBe(b)
+    expect(digests(a)).toEqual(digests(b))
+  })
+
+  it("a peer-suffixed snapshot folds its package's resolution (v9: under `name@version`)", () => {
+    const after = v9().replace('sha512-qux}', 'sha512-qux2}')
+    expect(movedDirs(v9(), after)).toEqual(['packages/a', 'packages/b', 'packages/c'])
+  })
+
+  it('a peer-suffixed package folds its own resolution (v6: keyed with the suffix)', () => {
+    const lock = (integrity: string) => `lockfileVersion: '6.0'
+importers:
+  packages/a:
+    dependencies:
+      qux:
+        specifier: ^1
+        version: 1.0.0(react@18.0.0)
+packages:
+  /qux@1.0.0(react@18.0.0):
+    resolution: {integrity: ${integrity}}
+    dependencies:
+      react: 18.0.0
+    dev: false
+  /react@18.0.0:
+    resolution: {integrity: sha512-react18}
+    dev: false
+`
+    expect(movedDirs(lock('sha512-q1'), lock('sha512-q2'))).toEqual(['packages/a'])
+  })
+
+  it('a `link:` outside every importer folds its target', () => {
+    const lock = (target: string) =>
+      v9().replace('version: link:../b', `version: link:../../vendor/${target}`)
+    expect(movedDirs(lock('b1'), lock('b2'))).toEqual(['packages/c'])
+  })
+
+  it('a package the file lists without a snapshot still folds its resolution', () => {
+    const lock = (integrity: string) => `lockfileVersion: '9.0'
+importers:
+  packages/a:
+    dependencies:
+      leaf:
+        specifier: ^1
+        version: 1.0.0
+packages:
+  leaf@1.0.0:
+    resolution: {integrity: ${integrity}}
+snapshots: {}
+`
+    expect(movedDirs(lock('sha512-l1'), lock('sha512-l2'))).toEqual(['packages/a'])
+  })
+})
