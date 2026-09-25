@@ -273,6 +273,7 @@ async function runOnBus(
     cache,
     nodes,
     workspaceFingerprint,
+    fingerprintWatch,
     nestedDirsByProject,
     gitFilesCache,
     hashCache,
@@ -623,6 +624,8 @@ async function runOnBus(
       )
     }
     const isTainted = taintTracker(options.continueMode === 'always', excluded.seeds)
+    const dependedOn = new Set<string>()
+    for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
@@ -651,6 +654,8 @@ async function runOnBus(
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),
         ...(taint ? { taintedUpstream: true } : {}),
+        ...(dependedOn.has(node.id) ? {} : { noDependants: true as const }),
+        fingerprintWatch,
         ...(sandboxArmer !== null ? { armSandbox: () => sandboxArmer.arm() } : {}),
         keyedProjects: keyed,
         outputDirSnapshots,

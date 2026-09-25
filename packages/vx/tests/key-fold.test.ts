@@ -49,7 +49,7 @@ describe('the key fold (item 691)', () => {
     try {
       const captured: Array<{ kind: string; name: string; hash: string }> = []
       const key = await cache.key(input(captured))
-      expect(key).toBe('425b8c6d09f3d0d9')
+      expect(key).toBe('97648072ed6ca1e1')
       expect(captured.map((c) => `${c.kind} ${c.name} ${c.hash}`)).toEqual([
         'workspace fingerprint fp00112233445566',
         'package package.json pkgjson0123456789',
@@ -85,7 +85,7 @@ describe('the key fold (item 691)', () => {
       },
       (f) => relPosix(root, f),
     )
-    expect(key).toBe('425b8c6d09f3d0d9')
+    expect(key).toBe('97648072ed6ca1e1')
     expect(asked).toEqual(['a.ts'])
   })
 })

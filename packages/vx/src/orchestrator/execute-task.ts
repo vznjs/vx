@@ -34,6 +34,7 @@ import {
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { relPosix, span } from '../util/index.js'
 import {
+  mayWriteFingerprint,
   type Placeholder,
   placeholderSweeper,
   reachedWithheld,
@@ -44,7 +45,8 @@ import {
   type WithheldLink,
   withheldLinkLine,
 } from './sandbox-request.js'
-import { saveMiss, type OutputDirSnapshot } from './miss-save.js'
+import { markUnsaved, saveMiss, type OutputDirSnapshot } from './miss-save.js'
+import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
 import { shellVerdict } from './shell-verdict.js'
 // The hit path's entry stays importable from here (tests).
@@ -178,6 +180,18 @@ export interface ExecuteArgs {
    * clean run's stale hit.
    */
   taintedUpstream?: boolean
+  /**
+   * Whether a task has rewritten a file the workspace fingerprint folded
+   * since the run read it (fingerprint-watch.ts): past that, no key taken
+   * on the old digest is probed or saved.
+   */
+  fingerprintWatch?: FingerprintWatch
+  /**
+   * No task in the run depends on this one, so none is ordered after it to
+   * read what it wrote: a miss that saves nothing marks nothing (the output
+   * walk cost 1,000 read-only misses 1.62 → 1.78 s, item 750).
+   */
+  noDependants?: true
 }
 
 /**
@@ -344,6 +358,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   args.persistentRegistry?.set(node.id, spawn.child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
+  if (mayWriteFingerprint(node, args.workspaceRoot)) args.fingerprintWatch?.wrote()
   return {
     node,
     status: 'success',
@@ -508,7 +523,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         throw new RestoreDemoted(node.id)
       }
       // Confirmed stable miss — skip the probe, fall through to run.
-    } else {
+    } else if (!fingerprintMoved()) {
       const endProbe = span('cache.get')
       const hit = await cache.get(hash, { taskId: node.id, command: step.command })
       endProbe()
@@ -735,10 +750,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // run-start facts describe; a remote executor wrote on its own disk.
   const writeReach =
     args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
+  const writesFingerprint =
+    args.executor.remote !== true && mayWriteFingerprint(node, args.workspaceRoot)
   for (;;) {
     attempt++
     const a = await runAttempt()
     forgetUndeclaredWrites(args, writeReach)
+    if (writesFingerprint) args.fingerprintWatch?.wrote()
     result = a.result
     effectiveExitCode = a.exitCode
 
@@ -852,6 +870,48 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       deferSave: args.deferSave,
     })
     args.deferredSaves?.set(node.id, landed)
+  } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {
+    // Ran here and saves nothing — failed, a read-only policy, a tainted
+    // upstream, a key that no longer held — yet it wrote what a save would
+    // have marked, and may have rewritten an input the re-check before a
+    // save catches. A same-run reader keyed from the snapshot's OIDs for
+    // either replayed the bytes from before the command (item 750). A
+    // withheld save already dropped the project; this finds the same move
+    // again and drops it again.
+    const endCheck = span('miss: recheck inputs')
+    const moved = await movedSinceKey()
+    endCheck()
+    if (moved !== undefined) {
+      forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
+    } else {
+      await markUnsaved({
+        node,
+        workspaceRoot: args.workspaceRoot,
+        nestedProjectDirs: args.nestedProjectDirs,
+        gitFilesCache: args.gitFilesCache,
+        outputs,
+        wsOutputs,
+      })
+    }
+  }
+
+  /**
+   * The workspace fingerprint every key here folded has moved (a task
+   * rewrote the lockfile), said once per run.
+   */
+  function fingerprintMoved(): boolean {
+    if (args.fingerprintWatch?.moved() === undefined) return false
+    args.fingerprintWatch.say(log)
+    return true
+  }
+
+  /**
+   * The input that no longer holds what the key folded: `null` when the
+   * key re-derived just before the command already differed (the file
+   * unnamed), undefined when none moved.
+   */
+  async function movedSinceKey(): Promise<string | null | undefined> {
+    return described!.hash !== hash ? null : await movedInput(described!.facts, cache)
   }
 
   /**
@@ -862,13 +922,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * state under the key of another: restore the old state and the next run
    * replayed them as up-to-date (turborepo#10111, #1146, item 743). The
    * result stands; only the entry is withheld, and the facts about the
-   * project go, since something wrote there.
+   * project go, since something wrote there. A lockfile a task rewrote
+   * withholds it too: the key folded the old one.
    */
   async function keyStillTrue(): Promise<boolean> {
+    if (fingerprintMoved()) return false
     const endCheck = span('miss: recheck inputs')
-    // The describe re-derived the key just before the command: a different
-    // answer means an input moved between the two, the file unnamed.
-    const moved = described!.hash !== hash ? null : await movedInput(described!.facts, cache)
+    const moved = await movedSinceKey()
     endCheck()
     if (moved === undefined) return true
     const what = moved === null ? 'its inputs' : `\`${relPosix(args.workspaceRoot, moved)}\``

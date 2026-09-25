@@ -18,6 +18,7 @@ import {
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { grantPrefix, UserError } from '../util/index.js'
+import { WORKSPACE_FINGERPRINT_FILES } from '../workspace/index.js'
 
 /**
  * Arm the sandbox runtime for a run, lazily: only when at least one task
@@ -460,26 +461,36 @@ function expandHome(p: string): string {
   return p.startsWith('~') ? path.join(homedir(), p.slice(1)) : p
 }
 
+/** Where a command may have written: nothing a key reads, its own project, or any project. */
+export type WriteReach = 'none' | 'project' | 'workspace'
+
 /**
  * Where a task that ran a command may have written files no declaration
  * names — the files whose run-start facts (the git snapshot, its index
  * OIDs, the `package.json` digest) a later key must not reuse (item 743).
  *
  * A cached task declares its outputs and is held to them. A task with no
- * `cache` block can declare none, so it may have written anywhere in its
- * own project (`'project'`), unless a sandbox bounds it: no write grant
- * writes nothing a key reads (`'none'`), and a grant that leaves the
- * project for elsewhere in the workspace reaches every project
- * (`'workspace'`). A grant outside the workspace reaches no input. An
- * unsandboxed write into another project crosses a project boundary and
- * is out of contract, as it is for a cached task.
+ * `cache` block can declare none, so it may have written anywhere
+ * `commandWriteReach` says. An unsandboxed write into another project is
+ * out of contract, as it is for a cached task.
  */
-export function undeclaredWriteReach(
-  node: TaskNode,
-  workspaceRoot: string,
-): 'none' | 'project' | 'workspace' {
+export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach {
+  if (node.config.cache !== undefined) return 'none'
+  return commandWriteReach(node, workspaceRoot)
+}
+
+/**
+ * Where a task's command may write at all: anywhere in its own project
+ * (`'project'`), unless a sandbox bounds it — no write grant writes nothing
+ * a key reads (`'none'`), and a grant that leaves the project for elsewhere
+ * in the workspace reaches every project (`'workspace'`). A grant outside
+ * the workspace reaches no input. A cached task's reach is where it may
+ * rewrite its own inputs in place (a formatter), which the stability gate
+ * reads (stable-keys.ts).
+ */
+export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteReach {
   const exec = node.config.exec
-  if (exec === undefined || node.config.cache !== undefined) return 'none'
+  if (exec === undefined) return 'none'
   if (exec.sandbox === undefined) return 'project'
   let reach: 'none' | 'project' = 'none'
   for (const grant of exec.sandbox.allow?.write ?? []) {
@@ -488,4 +499,25 @@ export function undeclaredWriteReach(
     else if (within(abs, workspaceRoot) || within(workspaceRoot, abs)) return 'workspace'
   }
   return reach
+}
+
+/**
+ * May this task's command rewrite a file the workspace fingerprint folds
+ * (a lockfile, `pnpm-workspace.yaml`)? Those sit at the workspace root, so
+ * an unsandboxed task may only when the root is its own project (`pnpm
+ * install` without `--frozen-lockfile` in a root task); a sandboxed one
+ * when a write grant covers one. Anyone else writing there crosses a
+ * project boundary, out of contract.
+ */
+export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): boolean {
+  const exec = node.config.exec
+  if (exec === undefined) return false
+  if (exec.sandbox === undefined) return node.projectDir === workspaceRoot
+  for (const grant of exec.sandbox.allow?.write ?? []) {
+    const abs = path.resolve(node.projectDir, expandHome(grantPrefix(grant)))
+    for (const f of WORKSPACE_FINGERPRINT_FILES) {
+      if (within(path.join(workspaceRoot, f), abs)) return true
+    }
+  }
+  return false
 }

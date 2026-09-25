@@ -91,6 +91,7 @@ group.
 | [`telemetry-host.md`](./telemetry-host.md)         | `src/orchestrator/telemetry-host.ts` — sink consultation (zero-sink = zero cost).                                                      |
 | [`run-context.md`](./run-context.md)               | `src/orchestrator/run-context.ts` — git / CI / host capture (≤1 spawn).                                                                |
 | [`stable-keys.md`](./stable-keys.md)               | `src/orchestrator/stable-keys.ts` — shared stable-key derivation + stability gate.                                                     |
+| [`fingerprint-watch.md`](./fingerprint-watch.md)   | `src/orchestrator/fingerprint-watch.ts` — has a task rewritten the lockfile mid-run? Re-checked only after one that may.               |
 | [`download-policy.md`](./download-policy.md)       | `src/orchestrator/download-policy.ts` — `--download` modes + the deferral eligibility gate.                                            |
 | [`deferred-outputs.md`](./deferred-outputs.md)     | `src/orchestrator/deferred-outputs.ts` — deferred-output registry + lazy materialise/converge.                                         |
 | [`local-shortcircuit.md`](./local-shortcircuit.md) | `src/orchestrator/local-shortcircuit.ts` — restore-ahead classify (two-tier schedule).                                                 |

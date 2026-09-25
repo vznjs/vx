@@ -14,9 +14,9 @@
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
-import { undeclaredWriteReach } from './sandbox-request.js'
+import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
-import { keyUpstream } from './upstream.js'
+import { filterUpstreamHashes, keyUpstream } from './upstream.js'
 
 export interface DeriveStableKeysArgs {
   nodes: Map<string, TaskNode>
@@ -64,9 +64,40 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   //     (item 744).
   //   - wsOutputUpstream: any upstream declares cache.outputs.workspaceFiles
   //     (root-anchored, boundary-ignoring outputs), or has no cache block
-  //     and a sandbox write grant elsewhere in the workspace.
+  //     and a sandbox write grant elsewhere in the workspace, or may rewrite
+  //     a file the workspace fingerprint folds (a root `pnpm install`): every
+  //     key folds that digest, taken once per run.
+  //   - rewritersById / unfoldedById: the projects of every upstream CACHED
+  //     task that may rewrite its own inputs in place (a formatter declaring
+  //     no outputs; `commandWriteReach`), and the subset this task's key does
+  //     not fold. A key that folds the rewriter's covers what it writes — its
+  //     writes are its inputs', which its key names — so only a reader
+  //     folding no path to it (`tasks: []`) is preliminary. A rewriter an
+  //     unfolded dependency covered is still uncovered here: its key is not
+  //     in this one.
+  //   - wsRewriters: the same for a cached rewriter whose reach is every
+  //     project (a write grant elsewhere in the workspace, or a fingerprinted
+  //     file, `mayWriteFingerprint`); one this key does not fold makes it
+  //     preliminary. A dependency this key folds needs no pass-through here:
+  //     a keyed task with such a rewriter unfolded is unstable itself, and
+  //     instability is inherited below.
   const projects = new ProjectIndex(args.nodes)
   const outputProjectsById = new Map<string, ProjectSet>()
+  const rewritersById = new Map<string, ProjectSet>()
+  const unfoldedById = new Map<string, ProjectSet>()
+  const wsRewriters = new Set<string>()
+  // A cached rewriter matters only to a key that leaves a dependency's key
+  // out: a `cache.inputs.tasks` filter, or a persistent dependency, which
+  // has no key. With neither in the graph every edge folds and the sets
+  // above stay empty, so they are not built (about 2 ms, median, of a 27 ms
+  // memoised walk over the 3,000-task bench; item 750).
+  let anyUnfolded = false
+  for (const n of args.nodes.values()) {
+    if (n.config.cache?.inputs?.tasks !== undefined || n.config.exec?.persistent !== undefined) {
+      anyUnfolded = true
+      break
+    }
+  }
   const wsOutputUpstreamById = new Map<string, boolean>()
   const stableKeys: StableKey[] = []
   // Workspace-relative project dirs, for the reach test of a
@@ -85,6 +116,11 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     // Fold every dep's accumulated producers + the dep's own declared
     // outputs into this node's transitive-upstream producer sets.
     const outputProjects = projects.empty()
+    let rewriters: ProjectSet | undefined
+    let unfolded: ProjectSet | undefined
+    let folds: ((dep: string) => boolean) | undefined
+    let wsRewriter = false
+    let wsUnfoldedHere = false
     let wsOutputUpstream = false
     for (const dep of node.deps) {
       const depNode = args.nodes.get(dep)
@@ -102,9 +138,45 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       const reach = undeclaredWriteReach(depNode, args.workspaceRoot)
       if (reach === 'project') outputProjects.add(depNode.projectName)
       else if (reach === 'workspace') wsOutputUpstream = true
+      const cached = depNode.config.cache !== undefined
+      if (!cached && mayWriteFingerprint(depNode, args.workspaceRoot)) wsOutputUpstream = true
+      if (!anyUnfolded) continue
+      // The cached twin: a formatter rewriting its own input ahead of a
+      // reader that folds no key of it replayed seed B's build under seed A
+      // on the fourth run, the same way (item 750).
+      const rewrites = cached ? commandWriteReach(depNode, args.workspaceRoot) : 'none'
+      const rewritesWs =
+        cached && (rewrites === 'workspace' || mayWriteFingerprint(depNode, args.workspaceRoot))
+      const rewritersOfDep = rewritersById.get(dep)
+      const wsRewriterOfDep = wsRewriters.has(dep)
+      if (
+        rewritersOfDep === undefined &&
+        rewrites !== 'project' &&
+        !wsRewriterOfDep &&
+        !rewritesWs
+      ) {
+        continue
+      }
+      rewriters ??= projects.empty()
+      if (rewritersOfDep !== undefined) rewriters.addAll(rewritersOfDep)
+      if (rewrites === 'project') rewriters.add(depNode.projectName)
+      if (wsRewriterOfDep || rewritesWs) wsRewriter = true
+      folds ??= foldedBy(node, upstream, keyById)
+      if (folds(dep)) {
+        const unfoldedOfDep = unfoldedById.get(dep)
+        if (unfoldedOfDep !== undefined) (unfolded ??= projects.empty()).addAll(unfoldedOfDep)
+        continue
+      }
+      unfolded ??= projects.empty()
+      if (rewritersOfDep !== undefined) unfolded.addAll(rewritersOfDep)
+      if (rewrites === 'project') unfolded.add(depNode.projectName)
+      if (wsRewriterOfDep || rewritesWs) wsUnfoldedHere = true
     }
     outputProjectsById.set(id, outputProjects)
     wsOutputUpstreamById.set(id, wsOutputUpstream)
+    if (rewriters !== undefined) rewritersById.set(id, rewriters)
+    if (unfolded !== undefined) unfoldedById.set(id, unfolded)
+    if (wsRewriter) wsRewriters.add(id)
 
     if (isGroupTask(node)) {
       // Groups have no exec/cache; they only fold upstream keys so
@@ -137,13 +209,40 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 
     const unstable =
       node.deps.some((d) => unstableById.has(d)) ||
-      dependsOnSiblingOutputs(node, outputProjects, wsOutputUpstream, dirByProject)
+      dependsOnSiblingOutputs(
+        node,
+        unfolded === undefined ? outputProjects : unfolded.or(outputProjects),
+        wsOutputUpstream || wsUnfoldedHere,
+        dirByProject,
+      )
     if (unstable) unstableById.add(id)
 
     const cacheEnabled = node.config.cache !== undefined
     if (cacheEnabled && !unstable) stableKeys.push({ hash, node })
   }
   return stableKeys
+}
+
+/**
+ * Does this task's key fold the dependency's? What `computeTaskHash` folds
+ * (`filterUpstreamHashes` over the same synthetic outcomes); a group folds
+ * every keyed member. A dependency with no key (persistent) is folded by
+ * none.
+ */
+function foldedBy(
+  node: TaskNode,
+  upstream: TaskOutcome[],
+  keyById: Map<string, string>,
+): (dep: string) => boolean {
+  const filter = node.config.cache?.inputs?.tasks
+  if (isGroupTask(node) || filter === undefined) return (dep) => keyById.has(dep)
+  const hashes = new Set(
+    filterUpstreamHashes(upstream, filter, node.projectName, node.id).map(([, h]) => h),
+  )
+  return (dep) => {
+    const h = keyById.get(dep)
+    return h !== undefined && hashes.has(h)
+  }
 }
 
 /**
@@ -307,6 +406,12 @@ class ProjectSet implements ProjectNames {
 
   addAll(other: ProjectSet): void {
     for (let w = 0; w < this.bits.length; w++) this.bits[w]! |= other.bits[w]!
+  }
+
+  or(other: ProjectSet): ProjectSet {
+    const bits = this.bits.slice()
+    for (let w = 0; w < bits.length; w++) bits[w]! |= other.bits[w]!
+    return new ProjectSet(this.index, bits)
   }
 
   has(name: string): boolean {

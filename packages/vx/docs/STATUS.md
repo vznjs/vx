@@ -717,6 +717,60 @@ false`, the first failure failing the task; `commands: []` a no-op;
       task's own download: the prefetch pass is detached from
       execution, so the two race.
 
+750.  DONE (2026-09-25, Next 20 as it stood: the three stale-hit edges
+      743 left). Each was reproduced first (`tests/in-run-writes.test.ts`).
+      A CACHED formatter (`outputs: []`, rewriting `a.ts` from a seed)
+      ahead of a same-project `build` with `tasks: []`: seeds A,B,B,A
+      built A,B,B,B, the up-front probe restoring run 3's B before the
+      formatter wrote A. The gate now counts a cached task where
+      `commandWriteReach` says it may rewrite its own inputs, but only
+      for a reader whose key folds no path to it: a folding key names
+      the rewriter's inputs, which are what it may rewrite, so a default
+      reader keeps its up-front probe. Two bitsets per task carry it,
+      built only when some key leaves a dependency out (a `tasks`
+      filter, or a persistent dependency). Second, a cached task that
+      ran but saved nothing marked nothing in the git snapshot: under
+      `--cache=local:r,remote:r` a `gen` rewriting its tracked `gen.txt`
+      left the committed OID there, and a `tasks: []` reader restored
+      the first run's X over B; a formatter under the same policy did
+      the same, no re-check having run. Such a miss now re-checks its
+      inputs (a move drops the project) or marks its declared outputs
+      as a save does (`markUnsaved`), when some task depends on it.
+      With none, nothing in the run can read it: the walk had cost
+      1,000 read-only misses 1,624 → 1,778 ms (min of 9), and with the
+      gate 1,685 → 1,685. Third, a root-project `install` rewriting
+      `pnpm-lock.yaml`, which is in contract (the root is its own
+      project): seeds A,B,B,A,A built A,B,B,B,B — the fourth run
+      restored up front under lockfile B after installing A, the fifth
+      hit what the second saved under lockfile A from an install of B.
+      A task that `mayWriteFingerprint` (unsandboxed in the root
+      project, or a grant over a fingerprinted file) makes every reader
+      after it unstable and tells the run's `FingerprintWatch` when its
+      command ran (a persistent one when ready); the watch re-checks the
+      files then, an `lstat` each and the bytes compared with what the
+      fold kept, and once one moved nothing is lazily probed or saved
+      for the rest of the run, with one status line. `inputs.runtime` is
+      not re-checked: it would be a spawn per command per miss, and its
+      answer is the environment, which the contract says no task
+      changes. caching.md claimed a runtime command sampling a task's
+      output was "never a stale hit"; that held only for a reader
+      folding the task, and a row now pins the contract (asked once per
+      run; a `tasks: []` reader after a task that changed the answer
+      hits an entry filed under the old one). `CACHE_VERSION` v33 →
+      v34: an entry the old code saved after an in-run lockfile rewrite
+      replays under the fixed code once the tree is back on that
+      lockfile (probed: under v33 the fixed code restored B on lockfile
+      A; under v34 it built A). The other two edges poisoned nothing:
+      their stale restores fell in runs that saved nothing, or under a
+      key 743's re-check already guarded. 23 mutations of the three
+      fixes each redden a row; the uncovered set passed through a
+      folded dependency needed a cross-project row (a same-project one
+      inherits instability), and the same pass-through for a
+      workspace-reach rewriter was dead and went. Warm, 1,000 projects,
+      31 interleaved reps, min/median: `build --all` 227/248 → 222/249
+      ms, `test install --all` 362/398 → 350/388 (A/A: 219/248 against
+      225/247, 341/387 against 339/383).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -955,15 +1009,6 @@ next?".
     in a group of its own inside the sandbox without losing the TERM
     grace a cancellation gives it, and pin both.
 
-20. **Three stale-hit edges 743 left (its report).** A cached task that
-    rewrites its own input in place (a formatter with `outputs: []`)
-    leaves a same-project `tasks: []` reader classed stable, so it can
-    be restored ahead of the formatter for one run; cached tasks that
-    run but do not save (read-only policy, tainted upstream) do not
-    mark their outputs changed in the git snapshot; the workspace
-    fingerprint and `inputs.runtime` values are memoised per run and
-    not re-checked before a save.
-
 ## Decisions (this arc)
 
 - **Once per run (owner, 2026-09-24, item 732).** Within a run nothing
@@ -973,6 +1018,13 @@ next?".
   measured reason in a comment and in the strace laws that pin it.
 - **Tools resolve on vx's own PATH (item 732).** The task's PATH decides
   what its command runs, never which shell parses it.
+- **What a cached task may write undeclared (item 750).** Its own
+  inputs, in place (a formatter), and nothing else: its key names those,
+  so a reader folding it is covered. A root-project task may rewrite the
+  lockfile; the run watches for it. An `inputs.runtime` answer is the
+  environment, asked once per run and never re-checked: a task that
+  changes it is out of contract, and a file another task writes is
+  declared as an input instead.
 - **Every project's lockfile key folds the root importer (item 733).**
   What the root declares is reachable from every task.
 
