@@ -214,9 +214,12 @@ non-persistent tasks where each cycle should re-run cleanly.
   watch that declares the first `workspaceFiles` input keeps the
   per-project arms until a restart.
 - Doesn't keep a persistent task across a cycle: each cycle re-spawns it.
-- Doesn't react to lockfile changes _during_ a cycle (the cache key
-  is computed once per cycle; mid-cycle lockfile bumps land in the
-  next cycle).
+- Re-key a cycle when a task rewrites a lockfile _during_ it: the keys
+  are taken once per cycle. The run itself notices (item 750,
+  [`fingerprint-watch.md`](./fingerprint-watch.md)): nothing keyed
+  before the rewrite is restored or saved, and the rewrite is an event
+  the next cycle re-keys on. A rewrite to the same bytes starts that one
+  cycle and settles (probed 2026-09-25, item 763).
 
 ## Tests
 
