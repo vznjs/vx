@@ -220,6 +220,13 @@ export interface RunOptions {
    * declares a cache plugin). Undefined → identical to before.
    */
   remoteCache?: RemoteCacheLayer
+  /**
+   * The largest artifact, decoded, the local cache saves, ingests or
+   * restores; default 2 GiB. A seam for a test, which cannot produce 2 GiB
+   * of output to prove the refusal: the CLI never sets it, and no config
+   * or variable reaches it.
+   */
+  artifactCeiling?: number
 }
 
 export interface RunSummary {

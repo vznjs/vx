@@ -219,6 +219,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     cacheDir,
     { read: policy.localRead, write: policy.localWrite },
     workspaceRoot,
+    options.artifactCeiling,
   )
   localCache.assertWritable()
   noteSchemaReset(localCache, (m) => log.status(m))

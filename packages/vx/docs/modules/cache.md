@@ -97,7 +97,15 @@ export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
   // workspace root in a run, so it shares the enumeration's `rev-parse`
   // (git-inputs.md). Absent, the directory of the first file hashed.
-  constructor(cacheDir: string, localPolicy?: { read: boolean; write: boolean }, repoDir?: string)
+  // artifactCeiling: the largest artifact, decoded, this cache saves,
+  // ingests or restores — 2 GiB; lowered only by a test, through
+  // `RunOptions.artifactCeiling` (tests/artifact-ceiling.test.ts).
+  constructor(
+    cacheDir: string,
+    localPolicy?: { read: boolean; write: boolean },
+    repoDir?: string,
+    artifactCeiling?: number,
+  )
   // ... CacheLayer methods
 }
 
@@ -363,7 +371,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   rename, never by a write through a planted link, and never with a
   moment of absence.
 - Artifacts above 4 MiB compressed are decoded as a stream; smaller
-  ones in one call. Same reader, same extractor, same 2 GiB ceiling.
+  ones in one call. Same reader, same extractor, same 2 GiB ceiling —
+  the one a save refuses past before it packs, so vx never stores an
+  artifact its own restore would refuse.
 - Throws `ArtifactVanishedError` when the artifact is gone (removed
   after the probe: a `vx cache prune` in another shell, another
   workspace's retention on a shared `--cache-dir`) — the caller treats

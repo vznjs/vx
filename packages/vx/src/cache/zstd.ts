@@ -8,9 +8,10 @@ import { CorruptArtifactError } from './layer.js'
  * A decompressed artifact above this is refused as a zstd bomb rather than
  * expanded into memory. 2 GiB comfortably exceeds any real build output while
  * bounding a malicious/compromised remote's ability to OOM a victim who takes
- * a cache hit.
+ * a cache hit. The default of `Cache`'s `artifactCeiling`, the one seam that
+ * lowers it (for a test: no test can produce 2 GiB of output).
  */
-const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
+export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
 
 /**
  * Read a zstd frame's declared Frame_Content_Size (RFC 8878 §3.1.1) WITHOUT
@@ -128,12 +129,12 @@ export async function decodedTar(
   source: Uint8Array | Bun.BunFile,
   hash: string,
   /**
-   * The decompression ceiling, a parameter only so the STREAMING half can
-   * be exercised. Reaching it for real needs an artifact that expands past
-   * 2 GiB, which no test can produce — so before item 487 the sizeless-bomb
-   * defense this module's comments promise had nothing asserting it, while
-   * the declared-size half was pinned by a forged header costing 20 bytes.
-   * Callers never pass it; the default IS the ceiling.
+   * The decompression ceiling: `Cache` passes its `artifactCeiling`, whose
+   * default IS this module's. Reaching the real one needs an artifact that
+   * expands past 2 GiB, which no test can produce — so before item 487 the
+   * sizeless-bomb defense this module's comments promise had nothing
+   * asserting it, while the declared-size half was pinned by a forged
+   * header costing 20 bytes.
    */
   cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
 ): Promise<ReadableStream<Uint8Array>> {
