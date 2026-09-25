@@ -274,6 +274,32 @@ test is telling the truth.
       the dry-run file header; `next:` names `build` wherever it sits,
       else the first task; and the renderer's `null`, dropped
       `undefined`, `{}` and key quoting.
+791.  DONE (2026-09-25, sweep of `cache/archive.ts` beyond
+      `assertSafeName`, which item 485 swept). 44 mutations over the 21
+      files that pack, scan or restore an artifact: 27 caught, 3 held now
+      by `tests/archive-extract-meta.test.ts`, 14 that no row can tell
+      apart. Held now:
+      - An artifact with no sidecar scans to its header's mtime, not 0.
+      - A header mtime of 0 is unknown, so the restored file keeps the
+        time it was written rather than 1970.
+      - The sidecar's mode is applied whatever the umask made the temp
+        file: the chmod is skipped only when the temp already has the
+        mode, and a skip keyed to a fixed 0644 would restore a 0644
+        output as 0664 under umask 002.
+        Not distinguishable from a row:
+      - Masked: the packed-size check (`tarPack` already refuses a body
+        that grew or shrank since the plan, both probed); the lexical
+        containment check (`assertSafeName` refuses the names first);
+        the empty-rest guard (the tar reader strips `outputs/`'s slash,
+        so the name has no namespace).
+      - Unreachable: a non-finite usage in the sidecar (JSON carries
+        none).
+      - Costs, not outcomes: the directory memos, the buffer against
+        stream choice at 4 MiB, the one-part fast path, the in-flight
+        byte bound, the cancelled pack generator's `return`.
+      - The same outcome another way: the second `mkdir` rethrows the
+        code the first did; the prune loop ends at its top either way;
+        a link cycle is refused at hop 400,000 as at 40, only later.
 
 ## In flight
 
