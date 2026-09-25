@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { detectColors, paint } from '../src/orchestrator/colors.js'
+import { restoreEnv } from './helpers/env.js'
 
 describe('paint', () => {
   it('returns the bare text when colors are disabled', () => {
@@ -45,7 +46,7 @@ describe('detectColors', () => {
   })
 
   afterEach(() => {
-    process.env = { ...orig }
+    restoreEnv(orig)
   })
 
   it('NO_COLOR forces off, even with FORCE_COLOR also set', () => {
