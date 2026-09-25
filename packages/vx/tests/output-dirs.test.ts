@@ -209,6 +209,68 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     utimesSync(path.join(proj, 'dist'), new Date(recorded.mtimeMs), new Date(recorded.mtimeMs))
     expect(await cache.outputDirsCurrent(proj, rows())).toBe(true) // the stray is invisible
   })
+
+  it('a recorded directory replaced by a file is not current, even with every mtime forged', async () => {
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    const at = (rel: string) => rows().find((r) => r.path === rel)!.mtimeMs
+    const deep = at('dist/sub/deep')
+    const sub = at('dist/sub')
+    rmSync(path.join(proj, 'dist/sub/deep'), { recursive: true })
+    writeFileSync(path.join(proj, 'dist/sub/deep'), 'not a directory')
+    utimesSync(path.join(proj, 'dist/sub/deep'), new Date(deep), new Date(deep))
+    utimesSync(path.join(proj, 'dist/sub'), new Date(sub), new Date(sub))
+    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
+  })
+
+  it("a flushed snapshot is not written again over another process's newer one", async () => {
+    // Two handles on one cache: this process flushed its snapshot; another
+    // then snapshotted the changed tree. A later flush here (any read) must
+    // not put the old rows back.
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    expect(rows().map((r) => r.path)).not.toContain('dist/fresh')
+    mkdirSync(path.join(proj, 'dist/fresh'))
+    age()
+    const other = new Cache(path.join(root, 'cache'))
+    await other.recordOutputDirs('h1', proj, ['dist'])
+    other.close()
+    rows()
+    // A third handle reads what is stored, with no snapshot of its own to add.
+    const reader = new Cache(path.join(root, 'cache'))
+    try {
+      expect(
+        (reader.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path).sort(),
+      ).toEqual(['dist', 'dist/fresh', 'dist/sub', 'dist/sub/deep'])
+    } finally {
+      reader.close()
+    }
+  })
+
+  it("a re-save replaces the entry's file rows rather than adding to them", async () => {
+    await cache.save({
+      hash: 'h1',
+      projectDir: proj,
+      outputFiles: [path.join(proj, 'dist/sub/b.js')],
+      entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
+    })
+    expect(
+      cache
+        .loadOutputFilesBatch(['h1'])
+        .get('h1')
+        ?.map((r) => r.path),
+    ).toEqual(['dist/sub/b.js'])
+  })
+
+  it('a file row is current only while the file is there with its recorded size', async () => {
+    const files = cache.loadOutputFilesBatch(['h1']).get('h1')!
+    expect(await cache.isOutputsCurrent(proj, files)).toBe(true)
+    // A different size under a forged identical mtime: the size is what tells.
+    const a = path.join(proj, 'dist/a.js')
+    writeFileSync(a, 'longer than before')
+    utimesSync(a, new Date(files[0]!.mtimeMs), new Date(files[0]!.mtimeMs))
+    expect(await cache.isOutputsCurrent(proj, files)).toBe(false)
+    rmSync(a)
+    expect(await cache.isOutputsCurrent(proj, files)).toBe(false)
+  })
   it('snapshots land together: pending until a read, a prune, a stat or close, then one transaction', async () => {
     // A snapshot is read by the NEXT run's hit check, never by the task
     // that took it, so nothing is written per task (a commit each was the
