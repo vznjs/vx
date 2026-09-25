@@ -846,6 +846,22 @@ request` (-32600), and the session goes on. The new row sends
         Left for the next slice: the `bunx @vzn/vx-migrate` writer
         (`index.ts`, `migrate-turbo.ts`, `migrate-nx.ts`, `bin.ts`).
 
+817.  DONE (2026-09-25, `vx-migrate`'s writer: `index.ts`,
+      `migrate-turbo.ts`, `migrate-nx.ts`, `bin.ts`, the ninth and last
+      slice). 27 mutations: 14 caught, 13 held now, in `migrate.test.ts`:
+      - `parseMigrateArgs`: `--from=nx`, `--help` and `-h` as the usage
+        line, and an unknown flag named as one (the positional error
+        also contains the word, so the row pins the whole message);
+      - source detection, through the bin, by exact stderr: turbo.json
+        beside a bare `nx.json` and beside a graph with no `nx.json`
+        both ask for `--from`; `--from turbo` without turbo.json, and
+        `--from nx` with no Nx at all, say which is missing; an argument
+        error is said on stderr;
+      - the preset: `globalEnv` alone or `globalPassThroughEnv` alone
+        writes the file with that one section and a final newline, and
+        a config imports the names it uses sorted.
+        `vx-migrate` is swept end to end (items 809 to 817).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
