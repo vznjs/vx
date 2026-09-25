@@ -388,6 +388,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   bits of state, and two states sharing a low half collided for good
   (item 682). Before chaining through a parameter, prove every bit of
   it moves the output.
+- A check-then-remove by PATH is a race: the thing judged can be gone
+  and another in its place before the remove lands. Remove by a name
+  only the judged thing carries — the run lock unlinks its holder's own
+  entry, `h-<pid>-<start>-<n>` (item 759) — and a stress row meant to
+  catch the race makes the judged state common (every third taking
+  there dies holding), not one per process spawn.
 
 ## Live invariants (verify in source before quoting)
 

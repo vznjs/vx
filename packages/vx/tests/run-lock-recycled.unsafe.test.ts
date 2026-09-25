@@ -31,7 +31,7 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
     const child = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore' })
     try {
       await mkdir(runLockPath('/w/app', dir))
-      await writeFile(path.join(runLockPath('/w/app', dir), 'pid'), `${child.pid} 1\n`)
+      await writeFile(path.join(runLockPath('/w/app', dir), `h-${child.pid}-1-1`), '')
       const acquired = acquireRunLock('/w/app', { dir, log: (l) => lines.push(l) })
       const first = await Promise.race([acquired, Bun.sleep(1_000).then(() => 'waiting' as const)])
       expect(first).not.toBe('waiting')
