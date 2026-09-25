@@ -8,7 +8,7 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { isAlive, waitForDead } from './helpers/alive.js'
+import { describePid, isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -131,13 +131,29 @@ describe('vx watch under a signal (e2e)', () => {
     const reader = (async () => {
       for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
     })()
+    const err = new Response(proc.stderr).text()
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     if (persistent) await waitForText(async () => out, 'watching', 10_000)
     proc.kill('SIGINT')
-    expect(await proc.exited).toBe(0)
+    const code = await proc.exited
     await reader
-    expect((await Bun.file(path.join(dir, 'got.txt')).text()).trim()).toBe('SIGINT')
-    expect(await waitForDead(pid, 1_000)).toBe(true)
+    const got = await Bun.file(path.join(dir, 'got.txt'))
+      .text()
+      .then(
+        (t) => t.trim(),
+        () => '<no got.txt>',
+      )
+    const dead = await waitForDead(pid, 1_000)
+    // One comparison, and on a mismatch everything vx said beside it: the
+    // macOS job failed this row once with the assertion cut from the log
+    // (STATUS Next 23).
+    const seen = { code, got, dead }
+    const want = { code: 0, got: 'SIGINT', dead: true }
+    expect(
+      Bun.deepEquals(seen, want)
+        ? seen
+        : { ...seen, task: describePid(pid), stdout: out, stderr: await err },
+    ).toEqual(want)
   }
 
   it('SIGINT during the initial run reaches its task as SIGINT', reachesAsSigint(false), 20_000)

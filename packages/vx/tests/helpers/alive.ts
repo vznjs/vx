@@ -42,3 +42,20 @@ export async function waitForDead(pid: number, timeoutMs: number): Promise<boole
   }
   return !isAlive(pid)
 }
+
+/**
+ * A pid as a failing row should name it: its state and command line where
+ * procfs is this process's own. Under a sandbox's procfs the number names
+ * another process, so it says so rather than describe the wrong one.
+ */
+export function describePid(pid: number): string {
+  if (!procfsIsOwn()) return `${pid} (procfs is another pid namespace's)`
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    const state = stat.charAt(stat.lastIndexOf(')') + 2)
+    const cmd = readFileSync(`/proc/${pid}/cmdline`, 'utf8').replaceAll('\0', ' ').trim()
+    return `${pid} ${state} ${cmd}`
+  } catch {
+    return `${pid} (no procfs entry)`
+  }
+}

@@ -560,6 +560,18 @@ test is telling the truth.
       - Classic's early `[]` and the `:`-range `[]`: every later branch
         finds nothing for those inputs.
       - Classic's global is a constant.
+804.  DONE (2026-09-25, Next 23's first step). The two signal rows that
+      went red once each with no proven cause now say what they saw.
+      `signal-handling.test.ts`'s at-the-moment-of-exit row names each
+      survivor by its file (`dev`, `slow`, `child`) with `describePid`,
+      a new `tests/helpers/alive.ts` export: the state and command line
+      where procfs is the process's own, and a note that it is not
+      under a sandbox. `watch-signals.test.ts`'s SIGINT rows compare one
+      `{ code, got, dead }` object and, on a mismatch, carry the task's
+      description and vx's stdout and stderr into the diff. The rows no
+      longer throw on a missing `got.txt`; it reads as `<no got.txt>`.
+      A mutant that forwards SIGTERM for SIGINT printed the whole
+      picture.
 
 ## In flight
 
@@ -843,8 +855,9 @@ next?".
     test's `isAlive` counts a zombie, and `slow`'s `sleep 30 &` starts
     with SIGINT ignored and dies only to the SIGKILL. An orphan zombie
     that init has not reaped yet is the leading suspect, not a proven
-    one. Next: make both rows print what they saw (the pid's state and
-    command line, vx's stderr) so the next failure names itself.
+    one. Both rows now print what they saw on a mismatch (item 804); the
+    next failure names the process and what vx said, and this entry
+    closes on that evidence.
 
 ## Decisions (this arc)
 
