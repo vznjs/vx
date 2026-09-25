@@ -158,6 +158,57 @@ describe('deferralEligibility', () => {
     expect(deferralEligibility(nodes).has('a#gen')).toBe(false)
   })
 
+  // Held since item 765's sweep, which found each of the next five open.
+  it('an output INSIDE a sibling’s read prefix forces eager: test reads src, build writes src/gen', () => {
+    // The overlap runs both ways: a reader under the output (the row
+    // above) and an output under the reader. Checking only the first let
+    // src/gen defer while test's key read src/** — a key that moved with
+    // whether the bytes were fetched.
+    const nodes = graph(
+      node('a#build', { inputs: { files: ['schema/**'] }, outputs: { files: ['src/gen/**'] } }),
+      node('a#test', { inputs: { files: ['src/**'] }, outputs: { files: [] } }),
+    )
+    expect(deferralEligibility(nodes).get('a#build')).toBe(
+      'a#test reads src with cache.inputs.files',
+    )
+  })
+
+  it('a cacheable sibling with no declared files reads the whole project', () => {
+    const nodes = graph(
+      node('a#build', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
+      node('a#lint', { outputs: { files: [] } }),
+    )
+    expect(deferralEligibility(nodes).get('a#build')).toBe(
+      'a#lint reads the whole project with cache.inputs.files',
+    )
+  })
+
+  it('a task’s own outputs never make it ineligible: its key excludes them', () => {
+    const nodes = graph(
+      node('a#codegen', { inputs: { files: ['src/**'] }, outputs: { files: ['src/gen/**'] } }),
+    )
+    expect(deferralEligibility(nodes).size).toBe(0)
+  })
+
+  it('a prefix that only shares characters is disjoint: dist2 is not under dist', () => {
+    const nodes = graph(
+      node('a#build', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
+      node('a#pack', { inputs: { files: ['dist2/**'] }, outputs: { files: ['pkg/**'] } }),
+    )
+    expect(deferralEligibility(nodes).has('a#build')).toBe(false)
+  })
+
+  it('a task with no outputs is never named: there is nothing of it to keep home', () => {
+    const nodes = graph(
+      node('a#build', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
+      node('a#probe', {
+        inputs: { files: ['src/**'], runtime: ['node -v'] },
+        outputs: { files: [] },
+      }),
+    )
+    expect([...deferralEligibility(nodes).keys()]).toEqual(['a#build'])
+  })
+
   it('project boundaries hold: a different project cannot force it eager', () => {
     const nodes = graph(
       node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] } }),
@@ -264,6 +315,24 @@ describe('resolveDownloadModes', () => {
     })
     expect(r.modeOf.get('a#gen')).toBe('eager')
     expect(r.downgrades.get('a#gen')).toContain('a#build reads gen')
+  })
+
+  it('a group task gets no mode: it has no outputs to place', () => {
+    const group = {
+      id: 'a#ci',
+      projectName: 'a',
+      taskName: 'ci',
+      projectDir: '/ws/a',
+      deps: ['a#gen'],
+      config: {},
+    } as unknown as TaskNode
+    const r = resolveDownloadModes({
+      nodes: graph(...nodes.values(), group),
+      policy: 'none',
+      localPlaced: new Set(),
+      remoteOnly: new Set(),
+    })
+    expect([...r.modeOf.keys()].sort()).toEqual(['a#gen', 'a#local'])
   })
 
   it("`remote: 'only'` stays never — --download cannot override it", () => {
