@@ -111,8 +111,8 @@ false negative costs one evaluation, never a stale key.
 - JSON is already the contract for a config object (`hashTaskConfig` and
   `vx lock` go through `JSON.stringify`), so a cached config derives the
   same task cache key as a live evaluation of the same bytes.
-- `fresh: true` (what `vx lock` / `vx show` use) bypasses the cache in
-  both directions.
+- `fresh: true` (what `vx lock` uses) bypasses the cache in both
+  directions, even when an `evalCache` is passed beside it.
 - The store honours the run's local read/write axes: `--cache=local:`
   neither reads nor writes it.
 - Rows unused for 30 days are pruned on `Cache.close()`.

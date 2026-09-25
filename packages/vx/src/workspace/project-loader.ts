@@ -227,7 +227,7 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
 }
 
 export interface LoadProjectConfigOptions {
-  /** Observe the CURRENT environment: no module-cache reuse, no eval cache. */
+  /** Observe the CURRENT environment: no eval cache, even when `evalCache` is passed. */
   fresh?: boolean
   /**
    * Serve a provably-pure config from its cached evaluation (see

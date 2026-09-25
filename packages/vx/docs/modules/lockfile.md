@@ -53,5 +53,11 @@ that walks the graph stages) reads the lock the same way under
 --frozen`. `configHash` exists for `--check`'s file-changed report.
 - A missing entry (or a missing lock) under `--frozen` is a hard
   `UserError` — never a silent fallback to evaluation.
+- `--check` refuses at least what `--frozen` refuses: a project with no
+  entry, or an entry whose stored path is not the project's (a config
+  renamed with its bytes unchanged), and it also names a locked project
+  that no longer has a config. It compares a fresh evaluation in the
+  lock's JSON form, so a field a config leaves `undefined` is not drift.
+  An unknown argument exits 1 before anything is read or written.
 - `vx-lock.json` is globally excluded from cache inputs and
   `--affected` (it's vx's own metadata, never a task input).
