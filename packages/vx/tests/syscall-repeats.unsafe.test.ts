@@ -176,7 +176,7 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
   )
 
   it(
-    'releasing the run lock: the pid file and the directory, one call each',
+    'taking and releasing the run lock: five calls, nothing read back',
     async () => {
       const locks = path.join(dir, 'locks')
       await mkdir(locks)
@@ -190,10 +190,30 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       )
       const { runLockPath } = await import('../src/orchestrator/run-lock.js')
       const lockDir = runLockPath('/ws', locks)
-      expect(on(calls, lockDir)).toEqual(['mkdir', 'rmdir'])
-      // Written at acquire, read back at release: the read is the proof no
-      // other run reclaimed the lock, not a repeat (run-lock.ts).
-      expect(on(calls, path.join(lockDir, 'pid'))).toEqual(['openat', 'openat', 'unlink'])
+      // Built beside its name and renamed onto it, left by unlinking this
+      // taking's own entry: that unlink is the proof no other run reclaimed
+      // the lock, so nothing is read back (run-lock.ts, item 759).
+      const lockCalls = calls
+        .filter(
+          (c) =>
+            c.path.startsWith(`${lockDir}/`) ||
+            c.path.startsWith(`${lockDir}.`) ||
+            c.path === lockDir,
+        )
+        .map(
+          (c) =>
+            `${on([c], c.path)[0]} ${c.path
+              .slice(lockDir.length)
+              .replace(/h-\d+-(\d+|x)-\d+/g, '<entry>')
+              .replace(/^\.<entry>\.[a-z0-9]+/, '.<staging>')}`,
+        )
+      expect(lockCalls).toEqual([
+        'mkdir .<staging>',
+        'openat .<staging>/<entry>',
+        'rename .<staging>',
+        'unlink /<entry>',
+        'rmdir ',
+      ])
     },
     TIMEOUT,
   )

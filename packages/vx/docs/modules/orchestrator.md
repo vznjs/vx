@@ -211,33 +211,51 @@ workspace's lock just before it schedules — after the early exits,
 which touch no tree — and releases it with its cache handle, before a
 persistent task's wait. The lock is keyed by the workspace root's real
 path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
-`/var` → `/private/var`) name one lock. It is an atomic `mkdir` under the temp
+`/var` → `/private/var`) name one lock. It lives under the temp
 directory, keyed by the resolved workspace root (`--cache-dir` does not
-make two runs strangers; a read-only checkout can take it), holding the
-holder's pid: a second process polls every 50 ms, after a second says
+make two runs strangers; a read-only checkout can take it), and is a
+directory HELD exactly while it is not empty. Its one entry,
+`h-<pid>-<start>-<n>`, names the holder and is unique to that taking.
+The lock is built beside its name and renamed onto it, which succeeds
+only where the name is absent or an empty directory; it is left, or
+reclaimed from a holder that died, by unlinking that one entry by
+name — an unlink that cannot succeed on another taking's entry, so a
+reclaim judged on one holder never removes the next one's lock — and
+the emptied directory goes with a best-effort `rmdir`. It was a bare
+`mkdir` then a `pid` file, left as an unlink then the rmdir and
+reclaimed by `rm -r`: visible without its pid a moment each way, which a
+waiter past its grace removed as abandoned, so four contending processes
+held it two at once 22 times in four seconds and a release threw ENOENT
+out of `run()` (item 759, `tests/run-lock.test.ts` › "contending
+processes never hold it at once…", with holders that die holding it). A
+second process polls every 50 ms, after a second says
 `[vx] waiting for another vx run (pid N) on this workspace to finish…`,
 and reclaims a lock whose pid is gone. A pid comes back, too: the temp
 directory outlives a container restart, and the restarted container's
 vx got the dead run's pid (1) and waited for itself forever (nx#36473,
 reproduced on vx 2026-09-24). So a lock naming this process's OWN pid
 is stale (a run of this process shares the lock and never meets its
-file), and on Linux the pid file also carries the holder's start time
+entry), and on Linux the entry also carries the holder's start time
 (field 22 of `/proc/<pid>/stat`), so a live pid another process now
 wears is stale as well. The start time is read once per process for
-the pid file and once per holder while waiting; elsewhere, where it
+its entry and once per holder while waiting; elsewhere, where it
 would cost a `ps` spawn per run, and under a procfs mounted for another
 pid namespace (`util/procfs.ts`), the lock trusts the pid
-(`tests/run-lock.test.ts`, `tests/run-lock-recycled.unsafe.test.ts`). A directory that cannot be made
-for any reason but "exists" is a one-line warning and an unlocked run;
-when the reason is the temp directory itself (missing, a file, not
-writable), the warning adds `point TMPDIR at a writable directory`.
-Runs inside ONE process share the lock (a count; the last release
-removes the directory): an embedder that runs two at once coordinates
-them itself through `RunOptions.inflight`. The release reads the pid
-file back before it removes anything — that read is the proof no later
-run reclaimed the directory, not a repeat of the write — and then
-removes exactly what it made, the pid file and the directory, one call
-each (`tests/syscall-repeats.unsafe.test.ts`). `vx cache prune` (not
+(`tests/run-lock.test.ts`, `tests/run-lock-recycled.unsafe.test.ts`). A
+`pid` file an older vx wrote is still read, waited for and reclaimed;
+an older vx does not read the entry, so mixed versions exclude each
+other only as far as the older one's lock did. A lock that cannot be
+made, read or reclaimed for any reason but "held" (another user's lock
+refuses this user's unlink) is a one-line warning and an unlocked run,
+never a retry without the poll; when the reason is the temp directory itself (missing, a
+file, not writable), the warning adds `point TMPDIR at a writable
+directory`. Runs inside ONE process share the lock (a count; the last
+release leaves it through the taker's entry): an embedder that runs two
+at once coordinates them itself through `RunOptions.inflight`. Taking
+and releasing costs five calls — the mkdir, the entry's write, the
+rename, the unlink and the rmdir — with nothing read back: the unlink of
+its own entry is the release's proof that no later run reclaimed the
+lock (`tests/syscall-repeats.unsafe.test.ts`). `vx cache prune` (not
 `--dry-run`) takes the same lock before it evicts: a prune beside a run
 removed the artifacts the run had just probed as hits, whose
 `accessed_at` bumps were not flushed yet (nx#36688). The run survives

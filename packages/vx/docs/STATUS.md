@@ -907,6 +907,45 @@ graph`, and a missed input is a stale hit on every run.
       table; the committed `RESULTS.md` stays the macOS run the site
       reads, since which run the site quotes is Next 18's, the owner's.
 
+759.  DONE (2026-09-25, the run lock, `run-lock.ts`, unmentioned in any
+      sweep). Two runs held it at once. It was a bare `mkdir` then a
+      `pid` write, left as an unlink then the rmdir, reclaimed by
+      `rm -r`: visible without its pid a moment each way, and a waiter
+      whose grace (one poll, counted from ITS start) had long passed
+      removed that moment as abandoned. Probe: four processes contending
+      for four seconds held it two at once 22 times, one release threw
+      ENOENT (out of `run()`'s `finally`, in a CLI run) and six took the
+      "no run lock" path; with holders SIGKILLed mid-hold, 27 overlaps.
+      A first fix (build beside, rename into place, reclaim by moving
+      aside and putting back what was not the judged holder) cut that to
+      a window a third run could take: a failed put-back in four stress
+      runs of ten, an overlap in two. Now the lock is a directory HELD
+      while not empty, holding one entry `h-<pid>-<start>-<n>` unique to
+      the taking: taken by a rename onto an absent or empty name, left
+      and reclaimed by unlinking that entry BY NAME (an unlink that cannot
+      hit the next taking's entry), then a best-effort rmdir. An older
+      vx's `pid` file is still read and reclaimed. Five calls to take
+      and release, as before, nothing read back (the syscall pin
+      rewritten). Rows: the stress (six contenders, every third taking
+      dies holding, a real SIGKILLed one beside; red 3/3 on the old
+      file, 0 of 60+ runs on the new), a release that leaves a lock
+      another run took since (deterministic; red with the release as
+      `rm -r`), an older vx's pid file dead and live, an empty
+      directory is free. Recorded survivors, each a single mutation the
+      stress hits only sometimes: reclaim as `rm -r` (caught in 2 of 3
+      runs), an empty directory read as pid-less (0 of 3) — both need a
+      reclaim to interleave with a take inside one async step. The one
+      stress "warning" chased on the way was the waiting notice: a
+      contender among six can wait past a second. Two more found
+      re-reading the diff: a reclaim the file system refuses (another
+      user's lock) read as "gone already" and the wait retried at once,
+      no poll, forever — it is the "no run lock" warning now (a
+      non-root row, driven as `probe`: red as a 1 s spin with the
+      refusal swallowed); and a staging name unique only by pid, start
+      and number (start is `x` where procfs is not ours) would meet a
+      killed pid 1's leftover after a container restart and refuse
+      every run — it carries a random suffix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
