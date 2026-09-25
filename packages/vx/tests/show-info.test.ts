@@ -8,8 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseShowArgs } from '../src/cli/index.js'
-import { describeMemory, describeWorkers } from '../src/cli/info.js'
-import { collectInfo } from '../src/orchestrator/index.js'
+import { describeMemory, describeWorkers, renderInfo } from '../src/cli/info.js'
+import { collectInfo, type InfoFacts } from '../src/orchestrator/index.js'
 import { stableSandboxReason } from '../src/orchestrator/doctor.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
@@ -533,6 +533,11 @@ describe('vx info (e2e)', () => {
       expect(pretty.out).toContain(facts.cacheDir.split(path.sep).slice(-2).join(path.sep))
       // The value forms are checked, not the spelling.
       expect((await vx(root, ['info', '--format=yaml'])).code).toBe(1)
+      // A `--cache-dir` with no path is refused, not read as "the default".
+      const noDir = await vx(root, ['info', '--cache-dir'])
+      expect(noDir.code).toBe(1)
+      expect(noDir.err).toBe('vx info: --cache-dir requires a path\n')
+      expect(noDir.out).toBe('')
     },
     TIMEOUT,
   )
@@ -697,6 +702,141 @@ describe('vx info — the sandbox row is stable across invocations', () => {
   })
 })
 
+// Every row of the printout from literal facts: a real box shows one side of
+// each branch (a supported Bun, git present, a sandbox that starts), so the
+// other side is driven here or nowhere.
+describe('vx info — the rendered rows', () => {
+  const GB = 1024 ** 3
+  const healthy: InfoFacts = {
+    vx: '0.1.0',
+    bun: '1.4.2',
+    bunSupported: true,
+    git: '2.43.0',
+    gitStatusCache: { fsmonitor: true, untrackedCache: true },
+    workspaceRoot: '/w',
+    projects: 3,
+    tasks: 1,
+    configErrors: [],
+    plugins: [],
+    workers: { count: 4, source: 'cores', cores: 4, cpuQuota: null },
+    memory: { usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null },
+    cacheDir: '/w/.vx',
+    cacheVersion: 'vx-cache-v34',
+    schemaVersion: 'v27',
+    cacheEntries: 0,
+    cacheBytes: 0,
+    orphans: { artifacts: 0, bytes: 0 },
+    runs24h: 5,
+    hits24h: 2,
+    flakyTasks: [],
+    lockfile: true,
+    sandbox: { available: true, reason: '', declared: 1 },
+  }
+
+  it('a healthy workspace: one aligned column, no optional rows', () => {
+    expect(renderInfo(healthy)).toBe(
+      [
+        'vx:               0.1.0',
+        'bun:              1.4.2',
+        'git:              2.43.0',
+        'git status cache: fsmonitor + untrackedCache on',
+        'workspace root:   /w',
+        'projects:         3 (1 task)',
+        'plugins:          none',
+        'workers:          4 — the CPU count',
+        'memory:           16 GB',
+        'cache dir:        /w/.vx',
+        'cache versions:   keys vx-cache-v34 · index schema v27',
+        'cache entries:    0 (0 B)',
+        'task runs (24h):  5 (2 cache hits)',
+        'flaky tasks:      none',
+        'sandbox:          available (1 task declares exec.sandbox)',
+        'vx-lock.json:     yes',
+      ].join('\n'),
+    )
+  })
+
+  it('a degraded one: every warning row says what is wrong', () => {
+    const degraded: InfoFacts = {
+      ...healthy,
+      bun: '1.3.11',
+      bunSupported: false,
+      git: null,
+      gitStatusCache: null,
+      projects: 2,
+      tasks: 0,
+      configErrors: [{ path: 'packages/a/vx.config.ts', message: 'boom' }],
+      plugins: [
+        { name: 'p', seams: [] },
+        { name: 'q', seams: ['executor', 'cache'] },
+      ],
+      workers: { count: 8, source: 'workspace', cores: 4, cpuQuota: 2 },
+      memory: { usableBytes: 2 * GB, totalBytes: 8 * GB, cgroupLimitBytes: 2 * GB },
+      cacheEntries: 3,
+      cacheBytes: 2048,
+      orphans: { artifacts: 1, bytes: 512 },
+      runs24h: 0,
+      hits24h: 0,
+      flakyTasks: [
+        { taskId: 'a#test', project: 'a', task: 'test', keys: 2, passes: 4, failures: 3 },
+        { taskId: 'b#e2e', project: 'b', task: 'e2e', keys: 1, passes: 3, failures: 1 },
+      ],
+      lockfile: false,
+      sandbox: { available: false, reason: 'bwrap missing', declared: 2 },
+    }
+    expect(renderInfo(degraded)).toBe(
+      [
+        'vx:               0.1.0',
+        'bun:              1.3.11 — unsupported, vx needs >= 1.4.0; answers may be wrong',
+        'git:              (not found)',
+        'git status cache: (unknown)',
+        'workspace root:   /w',
+        'projects:         2 (0 tasks · 1 config did not load)',
+        'config errors:    packages/a/vx.config.ts: boom',
+        'plugins:          2 — p (no seams); q (executor, cache)',
+        'workers:          8 — vx.workspace.ts (4 cores, cgroup CPU quota 2)',
+        'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
+        'cache dir:        /w/.vx',
+        'cache versions:   keys vx-cache-v34 · index schema v27',
+        'cache entries:    3 (2.0 KB)',
+        'orphans:          1 artifact (512 B) the index does not know — `vx cache prune` reaps them',
+        'task runs (24h):  0 (0 cache hits)',
+        'flaky tasks:      2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
+        'sandbox:          unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',
+        'vx-lock.json:     no',
+      ].join('\n'),
+    )
+  })
+
+  it('names the one git status setting that is off, and warns only of a sandbox a task declares', () => {
+    const row = (f: InfoFacts, label: string): string | undefined =>
+      renderInfo(f)
+        .split('\n')
+        .find((l) => l.startsWith(`${label}:`))
+    expect(
+      row(
+        { ...healthy, gitStatusCache: { fsmonitor: false, untrackedCache: true } },
+        'git status cache',
+      ),
+    ).toBe('git status cache: core.fsmonitor off')
+    expect(
+      row(
+        { ...healthy, gitStatusCache: { fsmonitor: true, untrackedCache: false } },
+        'git status cache',
+      ),
+    ).toBe('git status cache: core.untrackedCache off')
+    expect(
+      row(
+        { ...healthy, gitStatusCache: { fsmonitor: false, untrackedCache: false } },
+        'git status cache',
+      ),
+    ).toBe('git status cache: core.fsmonitor, core.untrackedCache off')
+    expect(
+      row({ ...healthy, sandbox: { available: false, reason: 'root', declared: 0 } }, 'sandbox'),
+    ).toBe('sandbox:          unavailable — root; 0 tasks declare exec.sandbox')
+  })
+})
+
 describe('vx info — the workers and memory rows', () => {
   const GB = 1024 ** 3
   it('names where the worker count comes from', () => {
@@ -708,6 +848,10 @@ describe('vx info — the workers and memory rows', () => {
     )
     expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: null })).toBe(
       '8 — vx.workspace.ts (4 cores)',
+    )
+    // The workspace's number wins, and a quota beside it is still named.
+    expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: 2 })).toBe(
+      '8 — vx.workspace.ts (4 cores, cgroup CPU quota 2)',
     )
     // A quota that does not bind (wider than the cores) is still named.
     expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: 6 })).toBe(
@@ -725,6 +869,10 @@ describe('vx info — the workers and memory rows', () => {
     ).toBe('13 GB usable — cgroup limit; the machine has 16 GB')
     expect(
       describeMemory({ usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null }),
+    ).toBe('16 GB')
+    // A limit wider than the machine binds nothing: no "usable" clause.
+    expect(
+      describeMemory({ usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: 64 * GB }),
     ).toBe('16 GB')
   })
 })

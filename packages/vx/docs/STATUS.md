@@ -628,6 +628,33 @@ graph`, and a missed input is a stale hit on every run.
       `fresh`'s doc claimed "no module-cache reuse", which it never
       controlled, and `config-cache.md` named `vx show` as a user of it;
       both are corrected.
+769.  DONE (2026-09-25, sweeps of `cli/info.ts` and `graph/priorities.ts`).
+      `info.ts`: 31 mutations, 14 caught, 16 held now, 1 equivalent (the
+      memory row's cgroup test beside the usable-below-total test: usable
+      is below the total only when a limit binds). The suite drove the
+      printout from a real box, which shows one side of every branch — a
+      supported Bun, git present, a sandbox that starts, no plugin
+      without seams — so the other side of each was unheld: the
+      unsupported-Bun warning, `(not found)` and `(unknown)` for git, the
+      git status settings named when off, "will fail" beside a declared
+      sandbox that cannot start, the flaky list's first-only "on
+      unchanged inputs", the lockfile row, the 24-hour hit count, and the
+      label column's alignment itself. `renderInfo` is exported beside
+      `describeWorkers` and three rows in `tests/show-info.test.ts` drive
+      a healthy and a degraded facts object through it whole, compared as
+      literals; `vx info --cache-dir` with no path, which the mutant read
+      as the default cache, is refused by an e2e row; a workspace worker
+      count beside a quota and a cgroup limit wider than the machine join
+      the describe rows. `priorities.ts`: 15 mutations, 11 caught, 1 held
+      now, 3 equivalent (the two `nodes.has` guards: the restore tier is
+      built from the graph's own nodes, and an extra entry would never be
+      looked up; the cycle default the builder makes unreachable). The
+      held one: a restore feeding two exec-tier tasks kept only the last
+      one's weight under an overwrite, and every row fed one; a row in
+      `tests/scheduler.test.ts` feeds two. Every new row is red against
+      its mutant. `deferred-outputs.ts` was swept in item 643; the sweeps
+      now run in a scratch worktree, so the tree a stop check reads stays
+      clean.
 
 ## In flight
 

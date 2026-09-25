@@ -57,7 +57,7 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
   return 0
 }
 
-function renderInfo(f: InfoFacts): string {
+export function renderInfo(f: InfoFacts): string {
   const rows: [string, string][] = [
     ['vx', f.vx],
     // The prose stays in the rendered row; `f.bun` itself is the bare
