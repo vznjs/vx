@@ -577,7 +577,8 @@ false`, the first failure failing the task; `commands: []` a no-op;
       enumeration, which no vx line decides. Writing
       them found two faults: a Yarn 4 `catalog:` dependency is recorded
       as the literal `"catalog:"` in `yarn.lock`, so under `yarn()` a
-      catalog bump moves no workspace digest (a stale hit, open); and a
+      catalog bump moves no workspace digest (a stale hit, fixed in
+      747); and a
       remote upload that times out, or a server that cannot be reached,
       warns with the bare runtime message, naming neither the request
       nor the server, once per request. One row stays untested: an
@@ -635,6 +636,32 @@ false`, the first failure failing the task; `commands: []` a no-op;
       an A/A of 195/224. A call per single-task project had cost that
       stage 0.4 ms until the call site skipped it. The time bound at
       4,000 fails the old loop tenfold.
+747.  DONE (2026-09-25, Next 20 as it stood: Yarn 4 catalogs,
+      turborepo#12635). A real Yarn 4.18.1 install writes a workspace's
+      catalog dependency as `is-number: "catalog:"` and gives the range
+      the catalog names an entry nothing in `yarn.lock` points at, so
+      `yarn()` folded the literal and reached nothing: a bump inside the
+      range (`yarn up`, `.yarnrc.yml` unchanged) moved no digest, a
+      stale hit. Worse, and not `yarn()`'s alone: with `^6` and `^7`
+      both already resolved, flipping the catalog `^6 → ^7` rewrote not
+      one byte of `yarn.lock` while the workspace's `node_modules`
+      moved from 6.0.0 to 7.0.0 (measured with the real install), and
+      `.yarnrc.yml` was in no key, so core without any plugin replayed
+      too. Core's workspace fingerprint now folds `.yarnrc.yml` (a
+      catalog edit re-keys and `--affected` selects every project, as a
+      `pnpm-workspace.yaml` edit does; one more absent-file probe, 2 µs
+      a run, min of 2,000 interleaved), and `yarn()` resolves
+      `catalog:` and `catalog:<name>` to every entry of the package
+      (scoped names too), so a bump of any of them moves the workspace;
+      which one the catalog names is `.yarnrc.yml`'s to say, and the
+      plugin does not claim it. `DIGEST_VERSION` 3 retires the old
+      memos. Every new row fails without its half of the fix, and a
+      mutation of the scoped-name split is caught. pnpm and Bun catalogs
+      were already right and are pinned from real installs: pnpm
+      records the resolved version beside `specifier: 'catalog:'`
+      (only the importer moves), and `bun.lock` copies the catalog and
+      hoists what it resolved (every workspace moves on the catalog,
+      only the naming one on a bump inside it).
 
 ## In flight
 
@@ -874,27 +901,20 @@ next?".
     in a group of its own inside the sandbox without losing the TERM
     grace a cancellation gives it, and pin both.
 
-20. **Yarn 4 catalogs make `yarn()` keys stale (found in 745,
-    turborepo#12635).** A real Yarn 4.18.1 install records a catalog
-    dependency as `"catalog:"`, and `resolveDescriptor` folds that
-    literal: bumping the catalog `^6 → ^7` left every importer digest
-    byte-identical, a stale hit under `yarn()` and a miss for
-    `--affected`. Resolve the catalog entry through `.yarnrc.yml` (or
-    the lockfile's resolution), with the ledger's row as the pin.
-21. **A remote-cache warning names nothing (found in 745).** An upload
+20. **A remote-cache warning names nothing (found in 745).** An upload
     timeout warns `vx/<plugin>: The operation timed out.` with no PUT,
     hash or server; an unreachable server repeats the bare runtime
     message once per request (3 lines for `turboCache`, 2 for
     `nxCache` on a one-task run; a 401 is already deduplicated). Name
     the operation and endpoint, and say it once per run.
-22. **A dangling output-root link fails a hit (found in 745, confirmed
+21. **A dangling output-root link fails a hit (found in 745, confirmed
     on main after 742).** `dist -> real-out` inside the project with
     `real-out` deleted: the next hit exits 1, "blocked by what is on
     disk (EEXIST mkdir …/dist) … a path the output globs do not
     cover", which is wrong, since `dist/**` covers it. Restore through
     an in-project dangling link (make its target) or replace it, and
     say which.
-23. **Three stale-hit edges 743 left (its report).** A cached task that
+22. **Three stale-hit edges 743 left (its report).** A cached task that
     rewrites its own input in place (a formatter with `outputs: []`)
     leaves a same-project `tasks: []` reader classed stable, so it can
     be restored ahead of the formatter for one run; cached tasks that

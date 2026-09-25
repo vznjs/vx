@@ -21,6 +21,8 @@ export interface Lockfile {
   readonly descriptors: ReadonlyMap<string, string>
   /** workspace dir → entry id (berry only) */
   readonly workspaces: ReadonlyMap<string, string>
+  /** package name → every entry a descriptor of that name resolves to (berry only) */
+  readonly names: ReadonlyMap<string, readonly string[]>
   readonly global: string
 }
 
@@ -53,6 +55,7 @@ function parseBerry(text: string): Lockfile {
   const entries = new Map<string, Entry>()
   const descriptors = new Map<string, string>()
   const workspaces = new Map<string, string>()
+  const names = new Map<string, string[]>()
   for (const [keys, raw] of Object.entries(d)) {
     if (keys === '__metadata') continue
     const e = record(raw) ?? {}
@@ -61,7 +64,14 @@ function parseBerry(text: string): Lockfile {
       deps: depsOf(e, ['dependencies', 'peerDependencies']),
       resolution: `${resolution}\0${typeof e['checksum'] === 'string' ? e['checksum'] : ''}`,
     })
-    for (const k of keys.split(',')) descriptors.set(k.trim(), resolution)
+    for (const k of keys.split(',')) {
+      const descriptor = k.trim()
+      descriptors.set(descriptor, resolution)
+      const name = descriptor.slice(0, descriptor.indexOf('@', 1))
+      const ids = names.get(name)
+      if (ids === undefined) names.set(name, [resolution])
+      else if (!ids.includes(resolution)) ids.push(resolution)
+    }
     const ws = resolution.indexOf('@workspace:')
     if (ws !== -1) workspaces.set(resolution.slice(ws + '@workspace:'.length), resolution)
   }
@@ -71,6 +81,7 @@ function parseBerry(text: string): Lockfile {
     entries,
     descriptors,
     workspaces,
+    names,
     global: JSON.stringify({ version: meta['version'], cacheKey: meta['cacheKey'] }),
   }
 }
@@ -126,7 +137,14 @@ function parseClassic(text: string): Lockfile {
     }
   }
   flush()
-  return { generation: 'classic', entries, descriptors, workspaces: new Map(), global: 'classic' }
+  return {
+    generation: 'classic',
+    entries,
+    descriptors,
+    workspaces: new Map(),
+    names: new Map(),
+    global: 'classic',
+  }
 }
 
 function unquote(s: string): string {
@@ -152,16 +170,27 @@ function record(v: unknown): Json | undefined {
  * bare range gets berry's `npm:` prefix. A `workspace:` range resolves to
  * the workspace entry of that name whatever the range says (`*`, `^`, a
  * path) — berry lists the range among the keys, but the name is enough.
+ *
+ * A Yarn 4 catalog range (`catalog:`, `catalog:<name>`) is recorded as
+ * that literal, and the range the catalog names lives in `.yarnrc.yml`,
+ * not here: the entry it resolved to is in the file, but nothing points
+ * at it. So it resolves to EVERY entry of that package — a bump of any
+ * of them moves the workspace, never a bump of none (turborepo#12635).
+ * Which one the catalog names is `.yarnrc.yml`'s to say, and core folds
+ * that file into every key.
  */
-function resolveDescriptor(lock: Lockfile, name: string, range: string): string | undefined {
+function resolveDescriptor(lock: Lockfile, name: string, range: string): readonly string[] {
   const direct = lock.descriptors.get(`${name}@${range}`)
-  if (direct !== undefined) return direct
-  if (lock.generation !== 'berry') return undefined
+  if (direct !== undefined) return [direct]
+  if (lock.generation !== 'berry') return []
   if (range.startsWith('workspace:')) {
-    for (const id of lock.workspaces.values()) if (id.startsWith(`${name}@workspace:`)) return id
-    return undefined
+    for (const id of lock.workspaces.values()) if (id.startsWith(`${name}@workspace:`)) return [id]
+    return []
   }
-  return range.includes(':') ? undefined : lock.descriptors.get(`${name}@npm:${range}`)
+  if (range.startsWith('catalog:')) return lock.names.get(name) ?? []
+  if (range.includes(':')) return []
+  const bare = lock.descriptors.get(`${name}@npm:${range}`)
+  return bare === undefined ? [] : [bare]
 }
 
 /**
@@ -182,9 +211,9 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   for (const [id, e] of lock.entries) {
     const from = index.get(id)!
     for (const [name, range] of e.deps) {
-      const target = resolveDescriptor(lock, name, range)
-      if (target !== undefined) edges[from]!.push(index.get(target)!)
-      else material[from] += `\nunresolved\0${name}\0${range}`
+      const targets = resolveDescriptor(lock, name, range)
+      for (const target of targets) edges[from]!.push(index.get(target)!)
+      if (targets.length === 0) material[from] += `\nunresolved\0${name}\0${range}`
     }
   }
   const digests = reachDigests({ material, edges })

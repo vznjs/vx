@@ -83,6 +83,57 @@ ${opts.override === undefined ? '' : `  "overrides": { "zod": "${opts.override}"
 `
 }
 
+/**
+ * A Bun catalog, in the shape a real `bun install` writes: `a` depends
+ * on `is-number: catalog:`, the root's `catalog` is copied into the
+ * lockfile, and the hoisted `is-number` is what the catalog resolved;
+ * `b` → is-odd → is-number ^6 (nested under is-odd once the catalog
+ * hoists 7).
+ */
+function catalogLock(range: string, hoisted: string): string {
+  const nested = hoisted.startsWith('6')
+    ? ''
+    : `
+    "is-odd/is-number": ["is-number@6.0.0", "", {}, "sha512-six"],
+`
+  return `{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "root",
+    },
+    "packages/a": {
+      "name": "a",
+      "version": "0.0.0",
+      "dependencies": {
+        "is-number": "catalog:",
+      },
+    },
+    "packages/b": {
+      "name": "b",
+      "version": "0.0.0",
+      "dependencies": {
+        "is-odd": "^3.0.1",
+      },
+    },
+  },
+  "catalog": {
+    "is-number": "${range}",
+  },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+
+    "b": ["b@workspace:packages/b"],
+
+    "is-number": ["is-number@${hoisted}", "", {}, "sha512-${hoisted}"],
+
+    "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-odd"],
+${nested}  }
+}
+`
+}
+
 const digests = (text: string) => importerDigests(parseLockfile(text))
 
 describe('workspace digests', () => {
@@ -112,6 +163,24 @@ describe('workspace digests', () => {
     const after = digests(lock({ nestedBar: '1.0.1' }))
     expect(after.get('packages/b')).not.toBe(before.get('packages/b'))
     expect(after.get('packages/a')).toBe(before.get('packages/a'))
+  })
+
+  it('a catalog bump moves every workspace: bun.lock records the catalog (turborepo#12635)', () => {
+    const moved = (before: string, after: string) => {
+      const b = digests(before)
+      const a = digests(after)
+      return [...a.keys()].filter((k) => a.get(k) !== b.get(k))
+    }
+    expect(moved(catalogLock('^6.0.0', '6.0.0'), catalogLock('^7.0.0', '7.0.0'))).toEqual([
+      '.',
+      'packages/a',
+      'packages/b',
+    ])
+    // Inside the range, the catalog unchanged: the hoisted entry moves
+    // the workspace that names `catalog:` and no other.
+    expect(moved(catalogLock('^7.0.0', '7.0.0'), catalogLock('^7.0.0', '7.0.1'))).toEqual([
+      'packages/a',
+    ])
   })
 
   it("a workspace dependency folds the linked workspace's reach", () => {

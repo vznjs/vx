@@ -296,9 +296,10 @@ describe('the root-file trigger set does not drift from the fingerprint', () => 
     // No hand-rolled literals: re-adding the list fails HERE rather than
     // silently reintroducing the drift — and this guard is not redundant with
     // the lockfile e2e in cli.test.ts. Measured: with the hand-rolled list
-    // restored, that e2e still PASSES, because both lists carry the same seven
-    // names today. It only starts failing once someone adds a name to one of
-    // them, which is exactly the moment nobody is looking.
+    // restored, that e2e still PASSED, because both lists carried the same seven
+    // names then. It only starts failing once someone adds a name to one of
+    // them, which is exactly the moment nobody is looking (`.yarnrc.yml`,
+    // turborepo#12635, was the eighth).
     for (const name of WORKSPACE_FINGERPRINT_FILES) {
       expect({ name, hardcoded: src.includes(`'${name}'`) }).toEqual({ name, hardcoded: false })
     }
@@ -308,6 +309,7 @@ describe('the root-file trigger set does not drift from the fingerprint', () => 
     // A control on the constant itself, so "reads the shared list" cannot pass
     // by the shared list quietly shrinking.
     expect([...WORKSPACE_FINGERPRINT_FILES].sort()).toEqual([
+      '.yarnrc.yml',
       'bun.lock',
       'bun.lockb',
       'npm-shrinkwrap.json',

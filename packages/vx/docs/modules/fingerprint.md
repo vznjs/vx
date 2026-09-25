@@ -66,7 +66,16 @@ Whichever of these exist at the workspace root, in this fixed order:
 | `yarn.lock`           | yarn resolved deps                       |
 | `bun.lock`            | Bun resolved deps (text format)          |
 | `bun.lockb`           | Bun resolved deps (binary legacy format) |
-| `pnpm-workspace.yaml` | workspace shape                          |
+| `pnpm-workspace.yaml` | workspace shape, pnpm catalogs           |
+| `.yarnrc.yml`         | Yarn 4 catalogs, install settings        |
+
+`.yarnrc.yml` is here because `yarn.lock` does not say what a catalog
+names: a workspace's `catalog:` dependency is recorded as that literal,
+and a real Yarn 4.18.1 install that flipped the catalog `^6 → ^7`, both
+ranges already resolved, rewrote not one byte of `yarn.lock` while the
+workspace's `node_modules` moved to 7 (turborepo#12635). No plugin
+claims it: `yarn()` keys each workspace on every entry of a catalog's
+package, and which one the catalog names is this file's to say.
 
 Missing files are skipped (not all workspaces use every manager). The
 fixed declaration order gives a deterministic fingerprint regardless of
