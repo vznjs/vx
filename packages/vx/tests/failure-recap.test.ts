@@ -358,6 +358,11 @@ describe('the recap’s tail', () => {
 })
 
 describe('the ring is bounded however much a task prints', () => {
+  // What the ring HOLDS, summed from its chunks — not `ring.chars`, the
+  // count it keeps of them: with whole-chunk eviction gone the count still
+  // read 8,193 while the chunks held 64,000 characters (item 765).
+  const held = (ring: ReturnType<typeof createRecapRing>): number =>
+    ring.chunks.reduce((n, c) => n + c.length, 0)
   const LINE = 'x'.repeat(99) // 100 bytes with its newline
   const CHUNK = `${LINE}\n`.repeat(640) // 64,000 bytes
   const CHUNKS = 800 // 51.2 MB
@@ -367,9 +372,10 @@ describe('the ring is bounded however much a task prints', () => {
     let most = 0
     for (let i = 0; i < CHUNKS; i++) {
       appendRecapRing(ring, CHUNK)
-      most = Math.max(most, ring.chars)
+      most = Math.max(most, held(ring))
     }
     expect(most).toBeLessThanOrEqual(8193)
+    expect(ring.chars).toBe(held(ring))
     const tail = recapTail(ring)
     expect(tail.earlierLines).toBe(CHUNKS * 640 - 30)
     expect(tail.cutBytes).toBe(0)
@@ -379,8 +385,24 @@ describe('the ring is bounded however much a task prints', () => {
   it('50 MB in one chunk (a buffered task’s whole stdout): the same bound', () => {
     const ring = createRecapRing()
     appendRecapRing(ring, CHUNK.repeat(CHUNKS))
-    expect(ring.chars).toBeLessThanOrEqual(8193)
+    expect(held(ring)).toBeLessThanOrEqual(8193)
+    expect(ring.chars).toBe(held(ring))
     expect(recapTail(ring).earlierLines).toBe(CHUNKS * 640 - 30)
+  })
+
+  it('a blank line opening the thirty is shown, not counted above them', () => {
+    // Forty lines, the eleventh empty: the tail shows lines 11–40, so ten
+    // are above it. Counting a newline AT the window's first character
+    // read the empty line as an eleventh (item 765).
+    const lines = numbered(1, 40)
+    lines[10] = ''
+    const ring = createRecapRing()
+    for (const line of lines) appendRecapRing(ring, `${line}\n`)
+    expect(recapTail(ring)).toEqual({
+      text: lines.slice(10).join('\n'),
+      earlierLines: 10,
+      cutBytes: 0,
+    })
   })
 
   // Evicting a big head chunk whole would have left 300 characters for a

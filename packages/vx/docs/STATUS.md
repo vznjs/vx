@@ -553,6 +553,28 @@ graph`, and a missed input is a stale hit on every run.
       and `--affected` across a lockfile-only bump
       (`vx-lockfile/tests/*`). Next trim when the loop passes forty.
 
+765.  DONE (2026-09-25, mutation sweeps of two files STATUS named once).
+      `failure-recap.ts`, 16 mutations: 11 caught, 3 equivalent (the
+      empty-chunk guard; the two eviction boundaries, where the partial
+      path does what the whole-chunk path would), 2 held now. With
+      whole-chunk eviction gone the ring grew without bound and the
+      bound row passed, because it read `ring.chars` — the count the
+      ring keeps, not what its chunks hold — so the rows sum the chunks
+      and pin the count to them. And a blank line opening the thirty
+      shown lines counted as one above them under `<=` in the newline
+      count; a row puts one there. `download-policy.ts`, 23 mutations:
+      15 caught, 2 equivalent (an empty prefix, which `staticPrefix`
+      never returns; eligibility computed under `all`, which reads no
+      answer), 6 held now. One was a stale-hit hole the suite left
+      open: the overlap test checked a reader UNDER an output, not an
+      output under a reader, so `build` writing `src/gen/**` beside a
+      `test` reading `src/**` could defer — its key would move with
+      whether the bytes came home. The code was right; nothing held it.
+      The other five: a cacheable reader with no files reads the whole
+      project; a task's own outputs never make it ineligible; `dist2`
+      is not under `dist`; a task with no outputs is never named; a
+      group gets no mode.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
