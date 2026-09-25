@@ -708,6 +708,24 @@ request` (-32600), and the session goes on. The new row sends
         separates the two; not proven equivalent.
         `nx-map.ts`, `turbo-map.ts`, `nx-command.ts` and the two remote
         caches are the next slices.
+810.  DONE (2026-09-25, `vx-migrate`'s `turbo/turbo-map.ts`, the second
+      slice). 44 mutations: 29 caught, 14 held now, 1 equivalent. Held
+      now, in `tests/turbo-map-sweep.test.ts`, driven through
+      `mapTurboWorkspace` on a small tree:
+      - turbo 1's `pipeline` read like `tasks`;
+      - a script that is `''`, `null`, an array or a number, each
+        reported in its own words;
+      - a root `pkg#task` key giving that package the task, and a
+        package overlay's `#` key never becoming one;
+      - two tasks on one output path, the second uncached;
+      - a persistent task never cached;
+      - a `pkg#task` edge to a missing script dropped with a todo;
+      - `?`, `[…]` and `!` refused as wildcards in `env` and
+        `passThroughEnv`;
+      - a negated `$TURBO_ROOT$/` input, an input leaving the
+        workspace, and `$TURBO_ROOT$` mid-glob.
+        Equivalent: the `delete def.extends` after the merge. Nothing
+        reads `extends` again, and the unknown-key scan skips it.
 
 ## In flight
 
