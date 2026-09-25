@@ -103,6 +103,16 @@ describe('the playground xxh3 equals Bun.hash.xxHash3', () => {
     expect(differ).toEqual([])
   })
 
+  // Item 832: a view into a larger buffer (a pooled Buffer, a subarray)
+  // hashes its own bytes, not the buffer's from offset 0.
+  it('on views that start past their buffer’s first byte, in every length branch', () => {
+    const differ = [...EDGES, ...LONG_EDGES].flatMap((len) => {
+      const view = bytesOf(len + 13).subarray(13)
+      return bunXxHash3(view, 7n) === bun(view, 7n) ? [] : [len]
+    })
+    expect(differ).toEqual([])
+  })
+
   // The control: the reference read of the seed (all 64 bits) misses on
   // exactly the inputs whose seed has high bits, and on every chain. So the
   // fixture reaches the seeds that matter, and the port matches because it

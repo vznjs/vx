@@ -389,6 +389,19 @@ test is telling the truth.
       numeric end, the `m = 0` already set, and a partial's absent
       patch and prerelease when its minor is absent.
 
+832.  DONE (2026-09-25, the playground's `xxh3.ts`, the pure-TS port of
+      the hash every cache key folds). 37 mutations over every length
+      branch, the long-input accumulator, the seeded secret and the
+      32-bit seed read: 34 caught by the Bun-oracle rows already there,
+      1 held now, 2 equivalent. Held in `tests/playground-xxh3.test.ts`:
+      a view that starts past its buffer's first byte (a pooled
+      `Buffer`, a subarray) hashes its own bytes, in every length
+      branch. The port reads the view's offset; nothing held it.
+      Equivalent: the long path's `seed !== 0n` shortcut (a secret
+      derived from seed 0 is the default one) and the reference entry's
+      64-bit seed mask (its only caller, `bunXxHash3`, has already cut
+      the seed to 32 bits).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
