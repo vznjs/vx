@@ -70,7 +70,12 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    `'local'` → `'hit-local'`, `'remote'` → `'hit-remote'`, nothing →
    `'miss'`. Prediction keys off READS: a no-read policy (`--no-cache`,
    `--force`) predicts `'no-cache'` without probing.
-3. Group tasks short-circuit to `'group'`.
+3. Group tasks short-circuit to `'group'`. A persistent task gets no
+   key and `'no-cache'`, as on the live path (its outcome carries no
+   hash, so a dependant folds nothing for it): keying it made `--dry`
+   call its dependants misses under a key the run never looks up
+   (item 766, `tests/stale-hit.test.ts` › "`--dry` calls a dependant of
+   a persistent task by the key the run uses").
 4. Tasks with no `cache` block OR `--no-cache` set → `'no-cache'`.
 5. With a `history`, attach each would-run task's p50 and predict the
    run (`predicted`: the critical path's wall time, the work sum, the

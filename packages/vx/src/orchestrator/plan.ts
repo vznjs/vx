@@ -131,6 +131,14 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         cacheStatusById.set(node.id, 'group')
         return planOutcome(node, computeGroupHash(upstream))
       }
+      // A persistent task has no key on the live path (its outcome carries
+      // none, `stable-keys.ts`), so a dependant folds nothing for it. The
+      // plan keyed it and folded that, and `--dry` then called a dependant
+      // a miss under a key the run never looks up (item 766).
+      if (node.config.exec?.persistent !== undefined) {
+        cacheStatusById.set(node.id, 'no-cache')
+        return planOutcome(node, undefined)
+      }
 
       const hash = await computeTaskHash({
         node,
@@ -263,12 +271,12 @@ function predictPlan(tasks: PlannedTask[]): PlanPrediction {
   return { wallMs, workMs, unknownCount }
 }
 
-function planOutcome(node: TaskNode, hash: string): TaskOutcome {
+function planOutcome(node: TaskNode, hash: string | undefined): TaskOutcome {
   return {
     node,
     status: 'success',
     exitCode: 0,
     durationMs: 0,
-    hash,
+    ...(hash !== undefined ? { hash } : {}),
   }
 }
