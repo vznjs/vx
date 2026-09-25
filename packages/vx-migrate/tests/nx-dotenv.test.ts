@@ -2,6 +2,7 @@
 // half, `src/nx/nx-dotenv.ts`), and the `nx-env` bin that loads them for a
 // shell line, against the FAKE `nx` (`helpers/fake-nx.ts`). Real Nx's
 // parsing and precedence are `nx-exec-live.test.ts`.
+import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -15,6 +16,7 @@ import {
 import { fakeNx } from './helpers/fake-nx.js'
 
 const NX_ENV = path.resolve(import.meta.dir, '..', 'src', 'nx-env.cjs')
+const NODE = Bun.which('node')!
 
 describe('dotenvCandidates — Nx’s getEnvPathsForTask', () => {
   it('the project’s files before the root’s, the most specific name first', () => {
@@ -91,7 +93,8 @@ describe('nx-env', () => {
   })
 
   async function nxEnv(args: string[], env: Record<string, string> = {}) {
-    const p = Bun.spawn(['node', NX_ENV, ...args], {
+    // `node` by its path: a row takes `sh` off the PATH it hands the bin.
+    const p = Bun.spawn([NODE, NX_ENV, ...args], {
       cwd,
       env: { PATH: process.env['PATH']!, ...env },
       stdin: 'ignore',
@@ -157,5 +160,49 @@ describe('nx-env', () => {
   it('usage errors are exit 2', async () => {
     const r = await nxEnv(['--dotenv'])
     expect({ code: r.code, hit: r.err.includes('usage: nx-env') }).toEqual({ code: 2, hit: true })
+  })
+
+  // Item 829's rows: each fails with one line of nx-env.cjs or
+  // nx-dotenv.cjs undone.
+  const USAGE = 'usage: nx-env [--dotenv <file>]... [--envFile <file>] -- <command> [args…]'
+
+  it('each usage error says which; --help and -h print the usage and exit 0', async () => {
+    expect(await nxEnv(['--dotenv'])).toEqual({
+      code: 2,
+      out: '',
+      err: `nx-env: unexpected "--dotenv"\n${USAGE}\n`,
+    })
+    expect(await nxEnv(['--dotenv', '.env'])).toEqual({
+      code: 2,
+      out: '',
+      err: `nx-env: no command after --\n${USAGE}\n`,
+    })
+    for (const flag of ['--help', '-h']) {
+      expect(await nxEnv([flag])).toEqual({ code: 0, out: `${USAGE}\n`, err: '' })
+    }
+  })
+
+  it('without nx it refuses by name; with nx and no files, Nx’s loader is never required', async () => {
+    await rm(path.join(root, 'node_modules', 'nx', 'src', 'tasks-runner'), {
+      recursive: true,
+    })
+    expect(await nxEnv(['--', 'echo ran'])).toEqual({ code: 0, out: 'ran\n', err: '' })
+    await rm(path.join(root, 'node_modules', 'nx'), { recursive: true })
+    expect(await nxEnv(['--', 'echo ran'])).toEqual({
+      code: 1,
+      out: '',
+      // process.cwd() is canonical; macOS's temp dir is reached through a symlink.
+      err: `nx-env: cannot resolve \`nx\` from ${realpathSync(cwd)} — is it installed in this workspace?\n`,
+    })
+  })
+
+  it('a shell killed by a signal is 128 + its number; no shell at all is exit 1 by name', async () => {
+    expect((await nxEnv(['--', 'kill -TERM $$'])).code).toBe(143)
+    const r = await nxEnv(['--', 'echo ran'], { PATH: path.join(root, 'no-bin') })
+    expect({ code: r.code, out: r.out, err: r.err.split('\n')[0] }).toEqual({
+      code: 1,
+      out: '',
+      err: 'nx-env: spawnSync sh ENOENT',
+    })
   })
 })
