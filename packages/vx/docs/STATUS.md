@@ -236,6 +236,27 @@ test is telling the truth.
       in place (`tests/helpers/env.ts`), in `timeout-bounds`, `colors`
       and `vx-github`'s own suite (a local copy: a plugin's tests do not
       read core's), the three places the pattern stood.
+789.  DONE (2026-09-25, sweep of `cli/why.ts`, never named in a sweep).
+      33 mutations over the 14 files that assert its sentences: 17
+      caught, 15 held now, 1 equivalent (`previousRun == null` against
+      `=== null`: the query answers null, never undefined, once `found`
+      holds). The suite asserted `vx why`'s output with `toContain`, so
+      its shapes went unseen. New rows in `tests/why.test.ts`, each a
+      whole line or message, with a fixture of five projects:
+      - Resolution: a bare name matches the whole task name
+        (`lint` is not `prelint`); several projects are listed to pick
+        from; a typo hints three, not all; an anchored id with no runs
+        and no near miss gets no empty "did you mean"; the anchored form
+        keeps its own message; a missing target is one line, not a
+        TypeError.
+      - The diff rows: `+` and `-` signs; the change word padded to 7;
+        the kind to the longest.
+      - An older database: a NULL `cache_hit` is not called
+        "executed"; a changed key with no entry inputs prints its
+        `detail` line; runs with no run id fall back to the latest
+        entry, in both formats, and to "(no cache entry either)".
+        And `tests/schema-reset-notice.test.ts` shows `vx why` prints the
+        reset notice too.
 
 ## In flight
 
