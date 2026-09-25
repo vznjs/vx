@@ -202,6 +202,29 @@ test is telling the truth.
       a `Dirent`'s own `isDirectory()` (which does not follow links), the
       absent-prefix return (a real directory's mtime is never within 1 ms
       of −1), and the empty-flush return (an empty transaction).
+787.  DONE (2026-09-25, sweep of `exec/kill-tree.ts`, never named in a
+      sweep). 24 mutations over the 13 files that assert what a kill
+      reaches: 11 caught, 10 held now, 3 unreachable. The new
+      `tests/kill-tree.test.ts` holds, each row red against its mutants:
+      the channel gets the signal's bare name (`TERM`; the in-sandbox
+      watcher runs under the runtime's bash, which takes `SIGTERM` too,
+      but dash refuses it) and the group gets nothing; a closed channel
+      leaves the table (a later kill would write to a reused descriptor)
+      and closes its descriptor; a child with no pid signals nothing (a
+      kill of `-0` names vx's own group); ESRCH ends the kill and EPERM
+      falls back to the child; `untilGroupsGone` counts a group it may
+      not signal as still there, polls nothing for a child with no pid,
+      and reads a live member named `a) Z 9 9` as live (a parse from the
+      first `)` read it as a zombie and left it un-killed; that row is
+      `tests/kill-tree-proc.unsafe.test.ts`, since only an unsandboxed
+      run owns the `/proc` it parses). The
+      `procfsIsOwn()` gate in `groupAlive` survived every bare run and is
+      held only in the sandbox: under `@vzn/vx#test.bun.shard-12`, run
+      sandboxed in a worktree, dropping it turned four
+      `task-tree-kill` / `armTimeout` rows red, and the unmutated shard
+      is 446 pass, 0 fail. Unreachable from a row: `/proc` unreadable
+      right after `procfsIsOwn()` read it, the non-digit entry skip (a
+      cost), and the transient `X` state.
 
 ## In flight
 
