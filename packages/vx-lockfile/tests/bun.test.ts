@@ -217,6 +217,119 @@ describe('workspace digests', () => {
   })
 })
 
+// What moves a digest, one input at a time. Each row changes exactly the
+// thing it names and asserts the workspaces whose key must move: an input
+// the digest does not read is a stale hit on every run that changes it.
+describe('every input the digest must read', () => {
+  const movedDirs = (before: string, after: string): string[] => {
+    const b = digests(before)
+    const a = digests(after)
+    return [...a.keys()].filter((k) => a.get(k) !== b.get(k))
+  }
+  const doc = (workspaces: string, packages: string, extra = '') => `{
+  "lockfileVersion": 1,${extra}
+  "workspaces": { ${workspaces} },
+  "packages": { ${packages} }
+}
+`
+
+  it('an optional and a peer dependency are followed like any other', () => {
+    for (const field of ['optionalDependencies', 'peerDependencies']) {
+      const text = (v: string) =>
+        doc(
+          `"": { "name": "ws" }, "packages/a": { "name": "a", "${field}": { "opt": "^1" } }`,
+          `"a": ["a@workspace:packages/a"], "opt": ["opt@${v}", "", {}, "sha512-${v}"]`,
+        )
+      expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
+    }
+  })
+
+  it('the integrity alone moves the package, past a non-empty registry field', () => {
+    // Same id, same version: a republish or a git dependency's new commit.
+    const text = (sha: string) =>
+      doc(
+        `"": { "name": "ws", "dependencies": { "x": "^1" } }`,
+        `"x": ["x@1.0.0", "https://registry.example/", {}, "sha512-${sha}"]`,
+      )
+    expect(movedDirs(text('one'), text('two'))).toEqual(['.'])
+  })
+
+  it.each([
+    ['configVersion', '"configVersion": 1,', '"configVersion": 2,'],
+    [
+      'patchedDependencies',
+      '"patchedDependencies": { "x@1.0.0": "p/a.patch" },',
+      '"patchedDependencies": { "x@1.0.0": "p/b.patch" },',
+    ],
+    [
+      'catalogs',
+      '"catalogs": { "react": { "react": "^18" } },',
+      '"catalogs": { "react": { "react": "^19" } },',
+    ],
+  ])('the install-wide %s moves every workspace', (_, one, two) => {
+    const text = (extra: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a" }`,
+        `"a": ["a@workspace:packages/a"]`,
+        `\n  ${extra}`,
+      )
+    expect(movedDirs(text(one), text(two))).toEqual(['.', 'packages/a'])
+  })
+
+  it('a dependency resolves at the nearest ancestor that holds it, level by level', () => {
+    // x → y (nested under x) → z; `x/z` sits between `x/y/z` (absent) and
+    // the root's `z`, and is the one y reaches.
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws", "dependencies": { "x": "^1" } }`,
+        `"x": ["x@1.0.0", "", { "dependencies": { "y": "^1" } }, "sha512-x"],
+    "x/y": ["y@1.0.0", "", { "dependencies": { "z": "^1" } }, "sha512-y"],
+    "x/z": ["z@${v}", "", {}, "sha512-z${v}"],
+    "z": ["z@9.0.0", "", {}, "sha512-z9"]`,
+      )
+    expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['.'])
+  })
+
+  it("an unscoped dependency of a scoped package is not the scope's package of that name", () => {
+    // From `@s/x`, dependency `y` is `@s/x/y`, else the root's `y` — never
+    // `@s/y`, which only shares the scope.
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws", "dependencies": { "@s/x": "^1" } }`,
+        `"@s/x": ["@s/x@1.0.0", "", { "dependencies": { "y": "^1" } }, "sha512-x"],
+    "@s/y": ["@s/y@1.0.0", "", {}, "sha512-sy"],
+    "y": ["y@${v}", "", {}, "sha512-y${v}"]`,
+      )
+    expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['.'])
+  })
+
+  it('an unresolved dependency still folds its specifier, from a workspace and from a package', () => {
+    const ws = (spec: string) =>
+      doc(`"": { "name": "ws", "dependencies": { "ghost": "${spec}" } }`, ``)
+    expect(movedDirs(ws('^1'), ws('^2'))).toEqual(['.'])
+    const pkg = (spec: string) =>
+      doc(
+        `"": { "name": "ws", "dependencies": { "x": "^1" } }`,
+        `"x": ["x@1.0.0", "", { "dependencies": { "ghost": "${spec}" } }, "sha512-x"]`,
+      )
+    expect(movedDirs(pkg('^1'), pkg('^2'))).toEqual(['.'])
+  })
+
+  it("a workspace that depends on the root package folds the root's reach", () => {
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws", "dependencies": { "t": "^1" } }, "packages/a": { "name": "a", "dependencies": { "ws": "workspace:*" } }`,
+        `"ws": ["ws@workspace:"], "a": ["a@workspace:packages/a"], "t": ["t@${v}", "", {}, "sha512-t${v}"]`,
+      )
+    expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['.', 'packages/a'])
+  })
+
+  it('an entry that is not a package tuple is passed over, not a crash', () => {
+    const text = doc(`"": { "name": "ws" }`, `"odd": 5, "also": [7]`)
+    expect([...digests(text).keys()]).toEqual(['.'])
+  })
+})
+
 describe('bun()', () => {
   it('refuses an unknown scope', () => {
     expect(() => bun({ scope: 'file' as never })).toThrow(
