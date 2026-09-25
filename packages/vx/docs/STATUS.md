@@ -979,6 +979,47 @@ request` (-32600), and the session goes on. The new row sends
         `findMissingBlobs` returns the server's digests as proto-loader
         reads them, `size_bytes` a string, so rows compare hashes.
 
+823.  DONE (2026-09-25, `vx-reapi`'s `wire.ts`, first slice: setup,
+      metadata, CAS, ByteStream). 50 mutations: 10 caught, 38 held now,
+      2 equivalent. Offline, only the integrity suite and a few pins read
+      this half of the client. Held now, in `tests/wire-sweep.test.ts` on
+      the 822 fake:
+      - what every call carries: `RequestMetadata` byte-equal to
+        protobufjs's encoding (a 128-byte name crossing a varint,
+        empty fields omitted), user headers, the instance name in batch
+        reads and resource names, and a `grpc://` endpoint plain while a
+        `grpcs://` one is TLS;
+      - negotiation: `update_enabled`, batch compressors apart from the
+        stream ones, a digest function the server lacks refused,
+        compression declinable, batch uploads compressed only where the
+        server takes zstd, and an oversized advertised batch clamped;
+      - batches: a refused blob named, a missing read absent, reads
+        charged for framing (a blob past the budget streams, a full group
+        flushes), uploads sending only what is missing, and zstd accepted
+        on reads;
+      - integrity and errors: wrong bytes and wrong sizes refused on
+        `readBlob` and batch reads, RESOURCE_EXHAUSTED retried, a non-
+        NOT_FOUND refusal an error on three paths, and a cancelled read
+        stream cancelling its call;
+      - writes: an empty blob as one finishing message, offsets and
+        `finish_write`, a streamed Blob's tail, zstd for small Blobs and
+        identity for streamed ones, the stall downgrade to the safe size
+        for multi-message writes only, resume from the committed offset
+        (bytes and a streamed Blob), and a write the server reports
+        complete not sent again.
+        The fake learned `QueryWriteStatus` with cut writes, per-blob
+        batch rejection, `update_enabled`, recorded `finish_write`, held
+        reads, and injected Write failures answered at the stream's end.
+        Answered mid-stream, grpc-js leaves the client writing until its
+        own deadline. Equivalent: the floor's `patch < 0` (MIN_BUN's
+        patch is 0) and the short-write check's expected size on the
+        compressed path (`committed > 0` decides there).
+        Open, unproven: a one-message write, on the same client whose
+        large write was just failed with DEADLINE_EXCEEDED, waited out the
+        30 s deadline under `bun test`, but not in a standalone script or
+        a one-row test file. The row uses a fresh client. Whether a real
+        server can put the client there is not known.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

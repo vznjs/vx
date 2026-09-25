@@ -81,10 +81,11 @@ export interface FakeReapi {
   readonly blobs: Map<string, Uint8Array>
   readonly actions: Map<string, Record<string, unknown>>
   readonly calls: FakeCall[]
-  /** Each ByteStream Write: its resource name and the `data` length of every message. */
-  readonly writes: { resource: string; sizes: number[] }[]
+  /** Each ByteStream Write: its resource, each message's `data` length and offset, and whether it finished. */
+  readonly writes: { resource: string; sizes: number[]; offsets: number[]; finished: boolean }[]
   caps: {
     execEnabled: boolean
+    acUpdateEnabled: boolean
     digestFunctions: string[]
     compressors: string[]
     batchCompressors: string[]
@@ -94,7 +95,17 @@ export interface FakeReapi {
   onExecute: (request: Record<string, unknown>, method: string) => ExecutePlan
   /** The next `times` calls of `method` fail with `code`. */
   fail(method: string, code: grpc.status, times?: number): void
-  put(data: Uint8Array): WireDigest
+  /** The next Write keeps its first `bytes` as committed, then fails UNAVAILABLE. */
+  cutWrite: number | undefined
+  /** QueryWriteStatus answers `complete` for every resource. */
+  reportComplete: boolean
+  /** Digests BatchUpdateBlobs rejects with INVALID_ARGUMENT. */
+  readonly rejectBatch: Set<string>
+  /** A Read sends one message and then waits to be cancelled. */
+  holdReads: boolean
+  readsCancelled: number
+  /** Stores `data`; its digest as the client spells one (`size_bytes` a number). */
+  put(data: Uint8Array): { hash: string; size_bytes: number }
   stop(): void
 }
 
@@ -120,6 +131,8 @@ export async function startFakeReapi(): Promise<FakeReapi> {
   ).google.bytestream
 
   const failures = new Map<string, { code: grpc.status; left: number }>()
+  /** What a cut Write committed, by resource, for QueryWriteStatus and the resume. */
+  const partial = new Map<string, Uint8Array>()
   const fake: Omit<FakeReapi, 'endpoint'> & { endpoint: string } = {
     endpoint: '',
     blobs: new Map(),
@@ -128,6 +141,7 @@ export async function startFakeReapi(): Promise<FakeReapi> {
     writes: [],
     caps: {
       execEnabled: true,
+      acUpdateEnabled: true,
       digestFunctions: ['SHA256'],
       compressors: [],
       batchCompressors: [],
@@ -137,10 +151,15 @@ export async function startFakeReapi(): Promise<FakeReapi> {
     fail(method, code, times = 1) {
       failures.set(method, { code, left: times })
     },
+    cutWrite: undefined,
+    reportComplete: false,
+    rejectBatch: new Set(),
+    holdReads: false,
+    readsCancelled: 0,
     put(data) {
       const hash = new Bun.CryptoHasher('sha256').update(data).digest('hex')
       fake.blobs.set(hash, data)
-      return { hash, size_bytes: String(data.length) }
+      return { hash, size_bytes: data.length }
     },
     stop() {
       server.forceShutdown()
@@ -181,7 +200,7 @@ export async function startFakeReapi(): Promise<FakeReapi> {
         cache_capabilities: {
           digest_functions: fake.caps.digestFunctions,
           max_batch_total_size_bytes: String(fake.caps.maxBatchBytes),
-          action_cache_update_capabilities: { update_enabled: true },
+          action_cache_update_capabilities: { update_enabled: fake.caps.acUpdateEnabled },
           supported_compressors: fake.caps.compressors,
           supported_batch_update_compressors: fake.caps.batchCompressors,
         },
@@ -231,6 +250,12 @@ export async function startFakeReapi(): Promise<FakeReapi> {
       if (enter('BatchUpdateBlobs', call, unaryErr(cb))) return
       cb(null, {
         responses: call.request.requests.map((r) => {
+          if (fake.rejectBatch.has(r.digest.hash)) {
+            return {
+              digest: r.digest,
+              status: { code: grpc.status.INVALID_ARGUMENT, message: 'rejected' },
+            }
+          }
           const data = r.compressor === 'ZSTD' ? Bun.zstdDecompressSync(r.data) : r.data
           fake.blobs.set(r.digest.hash, new Uint8Array(data))
           return { digest: r.digest, status: { code: 0 } }
@@ -270,36 +295,68 @@ export async function startFakeReapi(): Promise<FakeReapi> {
       >,
       cb: grpc.sendUnaryData<unknown>,
     ) => {
-      const sizes: number[] = []
+      const record = {
+        resource: '',
+        sizes: [] as number[],
+        offsets: [] as number[],
+        finished: false,
+      }
       const parts: Uint8Array[] = []
-      let resource = ''
-      let failed = false
+      // An injected failure answers once the client has sent everything:
+      // answered mid-stream, grpc-js leaves the client writing into a call
+      // that has ended until its own deadline.
+      let failed: grpc.StatusObject | undefined
+      const cut = fake.cutWrite
+      fake.cutWrite = undefined
       call.on('data', (m) => {
-        if (resource === '') {
-          resource = m.resource_name
-          fake.writes.push({ resource, sizes })
-          failed = enter(
+        if (record.resource === '') {
+          record.resource = m.resource_name
+          fake.writes.push(record)
+          enter(
             'Write',
-            { request: { resource_name: resource }, metadata: call.metadata },
-            (e) => cb(e),
+            { request: { resource_name: m.resource_name }, metadata: call.metadata },
+            (e) => (failed = e),
           )
+          // A resumed write carries on from what an earlier one committed.
+          const earlier = partial.get(m.resource_name)
+          if (Number(m.write_offset) > 0 && earlier !== undefined) parts.push(earlier)
         }
-        sizes.push(m.data.length)
+        record.sizes.push(m.data.length)
+        record.offsets.push(Number(m.write_offset))
+        record.finished ||= m.finish_write
         parts.push(m.data)
       })
       call.on('end', () => {
-        if (failed) return
+        if (failed !== undefined) return cb(failed)
+        const resource = record.resource
         if (resource === '') return cb({ code: grpc.status.CANCELLED, details: 'empty write' })
         const joined = Buffer.concat(parts)
+        if (cut !== undefined) {
+          partial.set(resource, joined.subarray(0, cut))
+          return cb({ code: grpc.status.UNAVAILABLE, details: `cut after ${cut} bytes` })
+        }
         const data = ZSTD_RESOURCE.test(resource) ? Bun.zstdDecompressSync(joined) : joined
         fake.blobs.set(hashOf(resource), new Uint8Array(data))
         cb(null, { committed_size: String(joined.length) })
       })
     }) as grpc.UntypedHandleCall,
+    QueryWriteStatus: ((
+      call: grpc.ServerUnaryCall<{ resource_name: string }, unknown>,
+      cb: grpc.sendUnaryData<unknown>,
+    ) => {
+      if (enter('QueryWriteStatus', call, unaryErr(cb))) return
+      const held = partial.get(call.request.resource_name)
+      if (fake.reportComplete) return cb(null, { committed_size: '0', complete: true })
+      if (held === undefined) return cb({ code: grpc.status.NOT_FOUND, details: 'no upload' })
+      cb(null, { committed_size: String(held.length), complete: false })
+    }) as grpc.UntypedHandleCall,
     Read: ((
       call: grpc.ServerWritableStream<{ resource_name: string; read_offset: string }, unknown>,
     ) => {
       if (enter('Read', call, (e) => call.emit('error', e))) return
+      call.on('cancelled', () => {
+        fake.readsCancelled++
+      })
       const blob = fake.blobs.get(hashOf(call.request.resource_name))
       if (blob === undefined) {
         call.emit('error', { code: grpc.status.NOT_FOUND, details: 'no blob' })
@@ -309,6 +366,10 @@ export async function startFakeReapi(): Promise<FakeReapi> {
         ? Bun.zstdCompressSync(blob)
         : blob
       const from = Number(call.request.read_offset ?? 0)
+      if (fake.holdReads) {
+        call.write({ data: body.subarray(from, from + 64 * 1024) })
+        return
+      }
       for (let at = from; at < body.length; at += 64 * 1024) {
         call.write({ data: body.subarray(at, at + 64 * 1024) })
       }
