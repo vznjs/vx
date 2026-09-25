@@ -758,6 +758,22 @@ graph`, and a missed input is a stale hit on every run.
       reversed; the two-layer guard. Eight rows over recording fake
       layers in `tests/chained-cache.test.ts`, each red against its
       mutants.
+776.  DONE (2026-09-25, sweeps of `orchestrator/keyed-projects.ts` and
+      `workspace/json-data.ts`, never named). `keyed-projects.ts`: 10
+      mutations, 6 caught, 4 equivalent (the memo skip and the re-push of
+      a visited dependency cost only time; a group's selection is every
+      dependency, having no `cache.inputs.tasks`; an unsorted group unit
+      splits a dedup whose two groups name the same projects), no change.
+      `json-data.ts`: 17 mutations, 14 caught, 3 held now. An array was
+      never an ancestor, so a config whose array holds itself recursed
+      until the stack gave out instead of being refused; an array's
+      ancestor entry left un-popped read a DAG as a cycle — the shape that
+      shows it is a task OBJECT holding an array, used under two names,
+      because the object's own pop removes the array in its place; and an
+      instance of an anonymous class read "an instance of " with no name.
+      Two refusal rows (each on the first load and the worker) and one
+      faithful row in `tests/config-eval.test.ts`, each red against its
+      mutant.
 
 ## In flight
 

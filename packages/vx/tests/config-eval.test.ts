@@ -679,6 +679,18 @@ describe('a config is JSON data, on every path (item 701)', () => {
       'a cyclic reference',
     ],
     [
+      'a cycle through an array',
+      `const deps = ['^build']\ndeps.push(deps)\nexport default { tasks: { build: { exec: { command: 'true' }, dependsOn: deps } } }\n`,
+      'tasks.build.dependsOn[1]',
+      'a cyclic reference',
+    ],
+    [
+      'an instance of an anonymous class',
+      `export default { tasks: { build: { exec: { command: 'true', sandbox: new (class {})() } } } }\n`,
+      'tasks.build.exec.sandbox',
+      'an object whose prototype is not Object.prototype',
+    ],
+    [
       'a default export that is not a plain object',
       `export default new Map()\n`,
       'the default export',
@@ -709,6 +721,19 @@ describe('a config is JSON data, on every path (item 701)', () => {
       'an undefined property and a conditional spread',
       `const ci = false\nexport default { tasks: { build: { exec: { command: 'true', timeout: undefined, ...(ci ? { retries: 2 } : {}) }, description: undefined } } }\n`,
       { tasks: { build: { exec: { command: 'true' } } } },
+    ],
+    [
+      // The shared object holds an array: a walk that pushed the array and
+      // never popped it pops the object in its place, and the second visit
+      // then reads a cycle that is not there.
+      'one task object, holding an array, under two names: a DAG is data, not a cycle',
+      `const task = { exec: { command: 'true' }, dependsOn: ['^build'] }\nexport default { tasks: { a: task, b: task } }\n`,
+      {
+        tasks: {
+          a: { exec: { command: 'true' }, dependsOn: ['^build'] },
+          b: { exec: { command: 'true' }, dependsOn: ['^build'] },
+        },
+      },
     ],
     [
       'a null-prototype object and one object shared by two tasks',
