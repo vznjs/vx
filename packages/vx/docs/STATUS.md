@@ -741,6 +741,23 @@ graph`, and a missed input is a stale hit on every run.
       gate delivered TERM first (exit 143, no `got.txt`; 12 reps under
       six CPU burners did not reproduce it, the gate's many sandboxes
       did). Both halves of the row now time out at 1,000 ms.
+775.  DONE (2026-09-25, the sweep of `cache/chained-cache.ts`, a
+      never-named file). 22 mutations: 7 caught, 15 held now. The rows
+      drove real caches, which answer from one layer at a time, so every
+      broadcast narrowed to the first layer and every remembered answer
+      forgotten changed nothing they could see: `has()` and `prefetch()`
+      forgetting the layer that answered (a restore then went to the
+      first layer, which does not hold the artifact); the batched remote
+      probe asking local-only layers (no batch at all), skipping each
+      layer's own complement, or never answering; `markRemoteAbsent` and
+      `drainUploads` reaching only the first layer (a second remote's
+      uploads undrained at run end); the output-row merge letting a later
+      layer override the first; `outputsPath` from the first layer; a
+      layer over a DIFFERENT local handle skipping its local write; `close`
+      stopping at the first throw or swallowing it; the lookup order
+      reversed; the two-layer guard. Eight rows over recording fake
+      layers in `tests/chained-cache.test.ts`, each red against its
+      mutants.
 
 ## In flight
 
