@@ -587,7 +587,8 @@ export async function wrapSandboxedCommand(
   // user command, so it goes INTO the sandboxed command; the host side is
   // spawned here and released when the task's process ends.
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
-  const inner = ports.length > 0 ? `${portBridgeInner(ports, tag)} ${taggedCommand}` : taggedCommand
+  const grouped = process.platform === 'linux' ? ownGroupCommand(tag, userCommand) : taggedCommand
+  const inner = ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped}` : grouped
   let wrapped = await SandboxManager.wrapWithSandbox(inner, undefined, customConfig)
   if (process.platform === 'darwin') {
     const rules = macProfileRules(args.config)
@@ -595,6 +596,31 @@ export async function wrapSandboxedCommand(
   }
   if (ports.length > 0) spawnHostBridges(ports, tag)
   return { wrapped, tag, taggedCommand, baselines }
+}
+
+/**
+ * Linux: the user command in a session, and so a process group, of its
+ * own. bwrap's `--new-session` puts the runtime's shells (the proxy
+ * bridges' script, the seccomp step's) in ONE group with the command, and
+ * `kill 0` reaches a group's members across the nested pid namespace: a
+ * command that signals its own group ended the runtime's shell, bwrap
+ * exited 143 and the namespace's teardown SIGKILLed the rest mid-trap
+ * (item 751). `setsid` from a shell's child is no group leader, so it
+ * calls setsid() and execs without a fork: the shell waits on the command
+ * itself and its status, a signal death included, is the command's.
+ * Tools resolve on vx's own PATH; without `setsid` the command keeps the
+ * shared group, as before.
+ */
+function ownGroupCommand(tag: string, userCommand: string): string {
+  let setsid: string
+  let bash: string
+  try {
+    setsid = executablePath('setsid')
+    bash = executablePath('bash')
+  } catch {
+    return `: 'vx-${tag}'; ${userCommand}`
+  }
+  return `: 'vx-${tag}'; ${shellQuote(setsid)} ${shellQuote(bash)} -c ${shellQuote(userCommand)}`
 }
 
 /** The ports a list grants, deduped; `true` bridges nothing (the host sees no port on Linux). */

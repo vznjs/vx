@@ -3320,6 +3320,19 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([r.exitCode, r.signal]).toEqual([143, 'SIGTERM'])
   })
 
+  it("a command that signals its own group ends its own tree, not the runtime's shell (item 751)", async () => {
+    // The line exits 0 unsandboxed; sharing bwrap's session group with
+    // the runtime's shells, it ended them and the run read 143.
+    const r = await runSandboxed(args(`sleep 10 & trap 'trap "" TERM; kill 0' EXIT; echo done`))
+    expect([r.exitCode, r.stdout]).toEqual([0, 'done\n'])
+  })
+
+  it("CONTROL: in its own group the command's exit, a signal death included, is still its own", async () => {
+    const exited = await runSandboxed(args('exit 3'))
+    const killed = await runSandboxed(args('kill -9 $$'))
+    expect([exited.exitCode, killed.exitCode]).toEqual([3, 137])
+  })
+
   it('traces openat only, through the seccomp filter', async () => {
     // The flag is the difference between tracing one syscall and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.

@@ -771,6 +771,26 @@ false`, the first failure failing the task; `commands: []` a no-op;
       ms, `test install --all` 362/398 → 350/388 (A/A: 219/248 against
       225/247, 341/387 against 339/383).
 
+751.  DONE (2026-09-25, Next 19 as it stood: a sandboxed task's
+      `kill 0` killed the sandbox). Reproduced driving `runSandboxed`:
+      `sleep 10 & trap 'trap "" TERM; kill 0' EXIT; echo done` exits 0
+      unsandboxed and 143 sandboxed. bwrap's `--new-session` puts the
+      runtime's shells (the proxy bridges' script, the seccomp step's)
+      in one group with the command, and `kill 0` reaches a group's
+      members across the nested pid namespace. On Linux the command now
+      runs as `: 'vx-<tag>'; setsid bash -c '<command>'`, both tools on
+      vx's own PATH: `setsid` from a shell's child is no group leader, so
+      it execs without a fork and the exit is the command's (3 stays 3,
+      a SIGKILL stays 137; that control passes without the fix too). Job
+      control was refuted first: bash's `set -m` printed job notices and
+      returned 0 for `exit 3`, dash refused it without a tty. Cost, min
+      of 15 over three interleaved pairs of a sandboxed `true`: 35.2 →
+      38.6 ms. The item asked to keep "the TERM grace a cancellation
+      gives it": there is none to keep. A group SIGTERM (a timeout, or
+      sent by hand, with and without strace) ends bwrap's monitor, and
+      `--die-with-parent` SIGKILLs the namespace, so a sandboxed
+      command's `trap … TERM` never runs (Next 20).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1000,14 +1020,18 @@ next?".
     run at that size on the Linux box. OWNER: re-run `compare.ts 100 11
 1` on the macOS machine and `update-site.ts`, or take the Linux run
     in `benchmarks.md` (where Turbo wins warm, Next 17) for the site.
-19. **A sandboxed task's `kill 0` kills the sandbox (Linux, found in
-    736).** bwrap's `--new-session` puts the runtime's wrapper shell in
-    the task's process group, so a command that signals its own group
-    ends the wrapper too. This line succeeds unsandboxed and fails 143
-    sandboxed, the pid namespace's teardown SIGKILLing the rest mid-trap:
-    `sleep 10 & trap 'trap "" TERM; kill 0' EXIT; echo done`. Put the user command
-    in a group of its own inside the sandbox without losing the TERM
-    grace a cancellation gives it, and pin both.
+19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
+    sandbox (Linux, found in 736).** The command runs in a session of
+    its own inside the sandbox.
+20. **A cancelled sandboxed task gets no TERM grace (Linux, found in
+    751).** vx's group SIGTERM reaches bwrap's monitor, which dies of
+    it, and `--die-with-parent` SIGKILLs the namespace: a sandboxed
+    command's `trap … TERM` never runs, and a sandboxed dev server's
+    Ctrl-C cleanup neither (measured 2026-09-25, `runSandboxed` with
+    `timeoutMs`, and a direct group SIGTERM with and without strace).
+    Carry the signal past the monitor (bwrap forwards none): a pipe vx
+    holds that the in-sandbox shell reads, or bwrap in a group of its
+    own with a forwarder in front, and keep SIGKILL at the grace's end.
 
 ## Decisions (this arc)
 
