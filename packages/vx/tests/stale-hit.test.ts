@@ -1299,6 +1299,123 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     TIMEOUT,
   )
 
+  // The four rows below were each open to a single mutation of
+  // excluded-keys.ts (item 766): the key a dropped dependency folds must be
+  // the one the live path gives it, whatever its shape.
+  const withLibConfig = async (config: string): Promise<void> => {
+    await libApp()
+    await write(path.join(root, 'packages', 'lib', 'vx.config.mjs'), config)
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'lib shape')
+  }
+
+  it(
+    'a skipped dependency that is a GROUP folds as a group, as the full run does',
+    async () => {
+      await withLibConfig(
+        `export default { tasks: {
+           compile: {
+             exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           },
+           build: { dependsOn: ['compile'] },
+         } }\n`,
+      )
+      expect(appHash('--exclude-dependencies')).toBe(appHash())
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a skipped dependency that is PERSISTENT folds no key, as the full run does',
+    async () => {
+      await withLibConfig(
+        `export default { tasks: { build: {
+           exec: { command: 'echo ready && exec sleep 30', persistent: { readyWhen: 'ready' } },
+         } } }\n`,
+      )
+      expect(appHash('--exclude-dependencies')).toBe(appHash())
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`--dry` calls a dependant of a persistent task by the key the run uses',
+    async () => {
+      // The plan keyed the persistent `lib#build` and folded that into
+      // `app#build`'s key, which the run never derives: after a run saved
+      // `app#build`, `--dry` still said "cache miss — would exec" (item 766).
+      await withLibConfig(
+        `export default { tasks: { build: {
+           exec: { command: 'echo ready && exec sleep 30', persistent: { readyWhen: 'ready' } },
+         } } }\n`,
+      )
+      await write(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           dependsOn: ['^build'],
+           exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'app reads its own source')
+      expect(vx(root, 'run', 'app#build')).toContain('1 miss')
+      const plan = JSON.parse(vx(root, 'run', 'app#build', '--dry=json')) as {
+        tasks: Array<{ id: string; hash: string; cacheStatus: string }>
+      }
+      expect(plan.tasks.map((t) => [t.id, t.cacheStatus])).toEqual([
+        ['app#build', 'hit-local'],
+        ['lib#build', 'no-cache'],
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a skipped dependency with a project nested inside it keeps that project out of its key',
+    async () => {
+      await withLibConfig(
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
+           cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      const inner = path.join(root, 'packages', 'lib', 'inner')
+      await write(path.join(inner, 'package.json'), '{"name":"inner","version":"1.0.0"}')
+      // Config-bearing: a package with no config and no \`project\` plugin
+      // is only a directory of its parent (prepare.ts), fenced by nothing.
+      await write(path.join(inner, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await write(path.join(inner, 'src', 'i.txt'), 'i')
+      await write(
+        path.join(root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "packages/*"\n  - "packages/lib/inner"\n',
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'nested')
+      const full = appHash()
+      expect(appHash('--exclude-dependencies')).toBe(full)
+      await write(path.join(inner, 'src', 'i.txt'), 'i2')
+      expect(appHash('--exclude-dependencies')).toBe(full)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a skipped dependency that is requested folds the forwarded arguments, as the full run does',
+    async () => {
+      await libApp()
+      const hashOf = (...flags: string[]): string => {
+        const plan = JSON.parse(
+          vx(root, 'run', 'app#build', 'lib#build', '--dry=json', ...flags, '--', '--mode=ci'),
+        ) as { tasks: Array<{ id: string; hash: string }> }
+        return plan.tasks.find((t) => t.id === 'app#build')!.hash
+      }
+      expect(hashOf('--exclude-dependencies')).toBe(hashOf())
+    },
+    TIMEOUT,
+  )
+
   // Only `app#build` is scheduled, so `lib#build` and `base#build` are both
   // keyed without running; `lib`'s key must fold `base`'s, which therefore
   // has to exist first.

@@ -575,6 +575,25 @@ graph`, and a missed input is a stale hit on every run.
       is not under `dist`; a task with no outputs is never named; a
       group gets no mode.
 
+766.  DONE (2026-09-25, the sweep of `excluded-keys.ts`, which found a
+      bug next door). 13 mutations: 7 caught, 2 equivalent (the empty
+      early return; the unsaved count's persistent test, since a
+      persistent task cannot carry `cache`), 4 held now — a skipped
+      dependency that is a group, a persistent task, a project with a
+      config-bearing project nested inside it, or requested with
+      forwarded arguments must each fold the key the full run gives it.
+      Writing the persistent row found `--dry` wrong: the planner keyed
+      a persistent task (the live path gives it no key) and folded that
+      into its dependants, so after a run saved `app#build`, `--dry`
+      still said "cache miss — would exec" under a key the run never
+      looks up. `plan.ts` now gives a persistent task no key and
+      `no-cache`; red before. The class, grepped: every other
+      `computeTaskHash` site already skips or cannot see a persistent
+      task. Refuted on the way: a config-less package nested in a
+      project is NOT fenced without a `project` plugin — deliberate and
+      pinned (`orchestrator-run.test.ts`), and under `turbo()`/`nx()`
+      every package counts.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
