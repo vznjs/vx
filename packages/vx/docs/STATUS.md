@@ -774,6 +774,20 @@ graph`, and a missed input is a stale hit on every run.
       Two refusal rows (each on the first load and the worker) and one
       faithful row in `tests/config-eval.test.ts`, each red against its
       mutant.
+777.  DONE (2026-09-25, sweeps of `orchestrator/run-report.ts` and
+      `orchestrator/run-artifacts.ts`, never named). The markdown report:
+      24 mutations, all caught. The `--summarize` / `--profile` writers:
+      31 mutations, 23 caught, 8 held now. Every conditional field of a
+      summary row had a row setting it except five: a hit's stored CPU and
+      peak RSS (what the PRODUCING execution used, item 41's point), an
+      admit hold, a timeout and a persistent task's not-ready reason — each
+      dropped from the artifact unseen. An aborted GROUP could join the
+      aborted list; the profile turned an outcome with a start and no end
+      into an event of negative duration; a relative profile target
+      resolved against the process directory. Four rows in
+      `tests/run-artifacts.test.ts`, each red against its mutants. (Two
+      mutants wrote their artifact into the process directory; the
+      sweep's worktree kept them off the tree, and they were removed.)
 
 ## In flight
 
