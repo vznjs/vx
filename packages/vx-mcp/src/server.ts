@@ -25,12 +25,19 @@ type Response =
 
 /** One message in, at most one message out (a notification answers nothing). */
 export async function handleMessage(raw: string, ctx: ToolContext): Promise<Response | null> {
-  let msg: Request
+  let parsed: unknown
   try {
-    msg = JSON.parse(raw) as Request
+    parsed = JSON.parse(raw)
   } catch {
     return { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } }
   }
+  // Valid JSON that is not a request object (`null`, `5`, a batch array) is
+  // an invalid request. Read as one, `null` threw outside every catch and
+  // ended the session: the next request was never answered (item 808).
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'invalid request' } }
+  }
+  const msg = parsed as Request
   const id = msg.id ?? null
   if (typeof msg.method !== 'string') {
     return { jsonrpc: '2.0', id, error: { code: -32600, message: 'invalid request' } }

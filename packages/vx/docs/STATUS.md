@@ -657,6 +657,29 @@ test is telling the truth.
         parse that answers the same.
       - `Number.isFinite`: a NaN count already fails `> 0`.
       - `logs.finish` with logs off: no `task.log` reaches that sink.
+808.  DONE (2026-09-25, sweep of `@vzn/vx-mcp`). A bug found by reading
+      `handleMessage`: a line of valid JSON that is not an object read as
+      a request. `null` threw on `msg.id` outside every catch, so
+      `serve()` rejected, the session ended, and the next request was
+      never answered (probed). Such a line is now JSON-RPC's `invalid
+request` (-32600), and the session goes on. The new row sends
+      `null`, `5`, `[]` and a string, then a ping, and fails without the
+      fix. 49 mutations over `server.ts` and `tools.ts`: 32 caught, 15
+      held now, 2 equivalent. New rows, most in `tests/sweep.test.ts`:
+      - `listTasks` narrowed to one project, every field exact
+        (description, a `null` command for a group, `cached`,
+        `persistent`), and an empty project name refused;
+      - `getRunHistory` rows carrying their blocker, their timeout and
+        their violation count;
+      - `explainCacheKey` explaining the latest of two entries;
+      - `initialize`'s instructions;
+      - a tool result indented two spaces;
+      - a tool's own non-user failure (a `cache.db` that is not a
+        database) as -32603 carrying SQLite's message;
+      - blank and whitespace-only lines getting no reply.
+        Equivalent:
+      - The decoder's final flush: JSON cannot end mid-character.
+      - `entry ?? null`: `bun:sqlite`'s `get()` already answers `null`.
 
 ## In flight
 
