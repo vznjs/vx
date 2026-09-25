@@ -987,6 +987,18 @@ graph`, and a missed input is a stale hit on every run.
       interpolates plugin verb names into the shell scripts unquoted —
       the plugin supplying such a name already runs code in vx.
 
+763.  DONE (2026-09-25, two end-to-end probes, both sound). A workspace
+      reached through a symlink and through its real path, from the root
+      and from a project directory: one cache, warm runs up to date and
+      restores correct across an input change and back (the unit rows
+      in run-lock, inputs-resolution and sandbox-request hold the shape,
+      and macOS CI's `/var` temp directory runs every e2e row through a
+      non-canonical root). And `vx watch` over a root `install` that
+      rewrites `pnpm-lock.yaml` to the same bytes each run: one extra
+      cycle, then settled — no loop. `cli-watch.md` said watch "doesn't
+      react to lockfile changes during a cycle"; since item 750 the run
+      withholds what it keyed before the rewrite, and the page says so.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
