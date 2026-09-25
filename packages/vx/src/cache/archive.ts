@@ -38,7 +38,7 @@
 // otherwise silently loses the claim rather than acting on it.
 
 import { chmodSync, renameSync, statSync, utimesSync } from 'node:fs'
-import { mkdir, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
@@ -308,7 +308,12 @@ export async function extractArtifactStream(
       await x.assertContained(dest.base, target, e.name)
       provided.add(e.name)
       headerMtime.set(e.name, e.mtimeMs)
-      await x.stage(e.name, target, e.size <= SMALL_ENTRY ? await bytesOf(e.body) : e.body)
+      await x.stage(
+        e.name,
+        dest.base,
+        target,
+        e.size <= SMALL_ENTRY ? await bytesOf(e.body) : e.body,
+      )
     }
     verify?.(provided)
     await x.commit((name) => {
@@ -486,19 +491,51 @@ class Extractor {
   }
 
   /**
+   * `mkdir -p` does not follow a DANGLING link: it fails EEXIST at the link,
+   * ENOENT below it, ELOOP in a cycle — and the containment walk passed it,
+   * finding nothing that resolves between it and the base. A live link that
+   * stays inside the base is written through, so a dangling one is too: the
+   * directory it names is created and the entry lands through the link,
+   * which stays the user's (never replaced, nx#37061). One that leads out of
+   * the base is the refusal a live link out gets. Only the failure pays for
+   * the walk; a clean tree never reaches it.
+   */
+  private async mkdirThroughLink(
+    base: string,
+    dir: string,
+    err: NodeJS.ErrnoException,
+  ): Promise<string | undefined> {
+    if (err.code !== 'EEXIST' && err.code !== 'ENOENT' && err.code !== 'ELOOP') throw err
+    const real = await resolveThrough(dir)
+    const realBase = await this.realBaseOf(base)
+    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+      throw await linkOutError(path.resolve(base), dir, realBase)
+    }
+    // What stands there without a link on the way (a file named like the
+    // directory) fails this mkdir as it failed the first: the caller names
+    // it as a stray.
+    return mkdir(real, { recursive: true })
+  }
+
+  /**
    * Write the entry beside its target. A buffer is written without
    * waiting, bounded by `INFLIGHT_BYTES`; a chunk stream goes to a file
    * sink one piece at a time.
    */
   async stage(
     name: string,
+    base: string,
     target: string,
     body: Uint8Array | AsyncIterable<Uint8Array>,
   ): Promise<void> {
     const dir = path.dirname(target)
     let created: string | undefined
     if (!this.ensuredDirs.has(dir)) {
-      created = await mkdir(dir, { recursive: true })
+      try {
+        created = await mkdir(dir, { recursive: true })
+      } catch (err) {
+        created = await this.mkdirThroughLink(base, dir, err as NodeJS.ErrnoException)
+      }
       this.ensuredDirs.add(dir)
     }
     // Write beside the target and RENAME into place. rename(2) replaces
@@ -601,6 +638,9 @@ class Extractor {
       if (s.created === undefined) continue
       let dir = path.dirname(s.target)
       const top = path.resolve(s.created)
+      // Created at a dangling link's resolved target (`mkdirThroughLink`),
+      // so the chain is pruned from where the link leads.
+      if (!dir.startsWith(top)) dir = await realpath(dir).catch(() => dir)
       while (dir.startsWith(top)) {
         if (
           !(await rmdir(dir).then(
@@ -639,7 +679,7 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
   let real = realBase
   for (const part of path.relative(base, probe).split(path.sep)) {
     dir = path.join(dir, part)
-    real = await realpath(dir)
+    real = await resolveThrough(dir)
     if (real !== realBase && !real.startsWith(realBase + path.sep)) break
   }
   return new UserError(
@@ -647,6 +687,41 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
       'through a link that leaves its directory. Remove the link and re-run (the restore ' +
       'puts a real directory there), or stop declaring outputs under it.',
   )
+}
+
+/**
+ * Where `p` leads, every link on the way followed, a dangling one included:
+ * `realpath` for the part that exists, and past the first missing name the
+ * rest as written — where `mkdir -p` would create it if it followed links.
+ * A cycle is the user's tree, not the artifact, so it is refused by name.
+ */
+async function resolveThrough(p: string): Promise<string> {
+  const pending = path.resolve(p).split(path.sep).filter(Boolean).reverse()
+  let at: string = path.sep
+  let hops = 0
+  while (pending.length > 0) {
+    const next = path.join(at, pending.pop()!)
+    const link = await readlink(next).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'EINVAL') return null
+      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return undefined
+      throw err
+    })
+    if (link === undefined) return path.join(next, ...pending.reverse())
+    if (link === null) {
+      at = next
+      continue
+    }
+    // Linux's own bound on links followed in one lookup (MAXSYMLINKS).
+    if (++hops > 40) {
+      throw new UserError(
+        `${p} goes through a cycle of symbolic links (at ${next}) — a cache restore cannot ` +
+          'write through it. Remove the link and re-run.',
+      )
+    }
+    if (path.isAbsolute(link)) at = path.sep
+    pending.push(...link.split(path.sep).filter(Boolean).reverse())
+  }
+  return at
 }
 
 /**

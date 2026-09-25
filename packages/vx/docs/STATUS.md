@@ -663,6 +663,33 @@ false`, the first failure failing the task; `commands: []` a no-op;
       hoists what it resolved (every workspace moves on the catalog,
       only the naming one on a bump inside it).
 
+748.  DONE (2026-09-25, Next 22 as it stood: a dangling output-root
+      link). `dist -> real-out` inside the project with `real-out`
+      deleted failed every hit: `mkdir -p` does not follow a dangling
+      link, so it stopped EEXIST at the link ("blocked by what is on
+      disk … a path the output globs do not cover", though `dist/**`
+      covers it) and ENOENT below it, which reached the user as an
+      internal error, a corrupt artifact. A live in-project link is
+      written through (742's control), so a dangling one now is too:
+      the extractor resolves the link on the failed `mkdir` alone
+      (`resolveThrough`, a clean tree never pays), creates the
+      directory it names when that is inside the project, and writes
+      through it; the link stays. One that resolves out of the project
+      — absolute, `../`, or the last hop of a chain — is 742's refusal
+      by name, and nothing is created outside; a cycle is refused by
+      name. A link the output globs cover (`dist/sub` under `dist/**`)
+      never reaches this: the clean unlinks it, as before. A restore
+      that aborts prunes the target it created from where the link
+      leads, since the lexical walk never meets it. Six rows restore
+      through such a link under a root reached through a link (the
+      macOS `/var` shape): at the root, below it, above a deeper entry,
+      a chain, an absolute link, and a task probed in its own slot
+      rather than restored in the tier. Six refuse (five shapes out,
+      one cycle). These twelve and the abort row fail without the fix;
+      the live-link and covered-link controls pass both ways; the
+      containment check, its resolved base and the abort's resolve are
+      each red when neutralised.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -907,14 +934,7 @@ next?".
     message once per request (3 lines for `turboCache`, 2 for
     `nxCache` on a one-task run; a 401 is already deduplicated). Name
     the operation and endpoint, and say it once per run.
-21. **A dangling output-root link fails a hit (found in 745, confirmed
-    on main after 742).** `dist -> real-out` inside the project with
-    `real-out` deleted: the next hit exits 1, "blocked by what is on
-    disk (EEXIST mkdir …/dist) … a path the output globs do not
-    cover", which is wrong, since `dist/**` covers it. Restore through
-    an in-project dangling link (make its target) or replace it, and
-    say which.
-22. **Three stale-hit edges 743 left (its report).** A cached task that
+21. **Three stale-hit edges 743 left (its report).** A cached task that
     rewrites its own input in place (a formatter with `outputs: []`)
     leaves a same-project `tasks: []` reader classed stable, so it can
     be restored ahead of the formatter for one run; cached tasks that
