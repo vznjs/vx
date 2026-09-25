@@ -172,6 +172,60 @@ packages:
 `
 }
 
+/**
+ * A pnpm 10 catalog, in the shape a real install writes: `a` depends on
+ * `is-number: catalog:`, and the importer records the catalog's
+ * resolved version beside the literal specifier. `b` → is-odd →
+ * is-number 6.0.0 whatever the catalog says.
+ */
+function catalogV9(major: 6 | 7): string {
+  const seven = major === 7
+  return `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+catalogs:
+  default:
+    is-number:
+      specifier: ^${major}.0.0
+      version: ${major}.0.0
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      is-number:
+        specifier: 'catalog:'
+        version: ${major}.0.0
+
+  packages/b:
+    dependencies:
+      is-odd:
+        specifier: ^3.0.1
+        version: 3.0.1
+
+packages:
+
+  is-number@6.0.0:
+    resolution: {integrity: sha512-six}
+${seven ? '\n  is-number@7.0.0:\n    resolution: {integrity: sha512-seven}\n' : ''}
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-odd}
+
+snapshots:
+
+  is-number@6.0.0: {}
+${seven ? '\n  is-number@7.0.0: {}\n' : ''}
+  is-odd@3.0.1:
+    dependencies:
+      is-number: 6.0.0
+`
+}
+
 const digests = (text: string) => importerDigests(parseLockfile(text))
 
 describe('importer digests', () => {
@@ -193,6 +247,15 @@ describe('importer digests', () => {
     expect(after.get('packages/b')).toBe(before.get('packages/b'))
     expect(after.get('packages/c')).toBe(before.get('packages/c'))
     expect(after.get('.')).toBe(before.get('.'))
+  })
+
+  it('a catalog bump moves the importer that names `catalog:` and no other (turborepo#12635)', () => {
+    // pnpm records each importer's resolved version beside `catalog:`,
+    // so the lockfile alone carries the bump; pnpm-workspace.yaml, where
+    // the catalog lives, is in core's fingerprint besides.
+    const before = digests(catalogV9(6))
+    const after = digests(catalogV9(7))
+    expect([...after.keys()].filter((k) => after.get(k) !== before.get(k))).toEqual(['packages/a'])
   })
 
   it("a `link:` dependency folds the linked importer's closure", () => {

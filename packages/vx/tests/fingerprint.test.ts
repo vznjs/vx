@@ -51,6 +51,7 @@ const TRACKED = [
   'bun.lock',
   'bun.lockb',
   'pnpm-workspace.yaml',
+  '.yarnrc.yml',
 ] as const
 
 describe('shape of the digest', () => {
@@ -148,6 +149,25 @@ describe('sensitivity — a lockfile change must move the digest', () => {
       expect(with_).not.toBe(without)
     })
   }
+
+  it('a Yarn catalog flip that leaves yarn.lock byte-identical moves the digest (turborepo#12635)', async () => {
+    // Measured with a real Yarn 4.18.1 install: with `is-number@npm:^6.0.0`
+    // and `^7.0.0` both already resolved, flipping `.yarnrc.yml`'s
+    // `catalog:` from `^6.0.0` to `^7.0.0` rewrote not one byte of
+    // yarn.lock (the workspace's entry records `"catalog:"`, never the
+    // range) and its package.json says `catalog:` either way, yet its
+    // node_modules moved from 6.0.0 to 7.0.0. `.yarnrc.yml` is the only
+    // file that says so.
+    const lock =
+      '__metadata:\n  version: 10\n\n"a@workspace:packages/a":\n  dependencies:\n    is-number: "catalog:"\n'
+    const six = await computeWorkspaceFingerprint(
+      workspace({ 'yarn.lock': lock, '.yarnrc.yml': 'catalog:\n  is-number: ^6.0.0\n' }),
+    )
+    const seven = await computeWorkspaceFingerprint(
+      workspace({ 'yarn.lock': lock, '.yarnrc.yml': 'catalog:\n  is-number: ^7.0.0\n' }),
+    )
+    expect(seven).not.toBe(six)
+  })
 
   it('notices a one-byte change', async () => {
     const a = await computeWorkspaceFingerprint(workspace({ 'bun.lock': 'aaaaaaaa' }))

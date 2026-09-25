@@ -24,6 +24,12 @@ export const WORKSPACE_FINGERPRINT_FILES = [
   // Workspace definition (pnpm); package.json is hashed per-project
   // via projectPackageJsonHash, not here.
   'pnpm-workspace.yaml',
+  // Yarn 4 catalogs: yarn.lock records a `catalog:` dependency as that
+  // literal, so a catalog flip to a range the file already resolves
+  // leaves it byte-identical while the workspace's install moves
+  // (turborepo#12635). pnpm's catalogs live in pnpm-workspace.yaml, and
+  // its lockfile records each importer's resolved version besides.
+  '.yarnrc.yml',
 ]
 
 // DELIBERATELY ABSENT: `vx.workspace.{ts,mts,js,mjs}`. Everything it can

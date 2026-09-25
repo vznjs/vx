@@ -46,7 +46,8 @@ over (in order):
    marker found at the root (see
    [`modules/fingerprint.md`](./modules/fingerprint.md)):
    `pnpm-lock.yaml`, `package-lock.json`, `npm-shrinkwrap.json`,
-   `yarn.lock`, `bun.lock`, `bun.lockb`, `pnpm-workspace.yaml`. Any
+   `yarn.lock`, `bun.lock`, `bun.lockb`, `pnpm-workspace.yaml`,
+   `.yarnrc.yml` (Yarn 4 catalogs, which `yarn.lock` does not record). Any
    install-resolved change (a `bun install` that bumps `bun.lock`) or
    any workspace-shape change invalidates _every_ cache entry. This is
    the single global "the world changed" lever — and a plugin can take
