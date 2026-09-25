@@ -404,6 +404,25 @@ test is telling the truth.
         Also held: the zsh verb list as words, the order `vx completions`
         emits (core verbs, `help`, `version`, then plugin verbs), and its
         refusals of a second shell.
+797.  DONE (2026-09-25, sweeps of the last five `src/` files no sweep
+      had named, each read sound in items 761–762: `workspace/nested-dirs.ts`,
+      `util/tail.ts`, `util/settle.ts`, `orchestrator/colors.ts`,
+      `graph/dependency-spec.ts`). 42 mutations, 32 caught, 4 held now, 6
+      equivalent. With this item every non-index file under `src/` has
+      been named by a sweep.
+      - Held now, in `tests/dependency-spec.test.ts`:
+        `compileTaskPattern`'s escaping (an unescaped dot matched `buildx`
+        for `build.*`) and its anchors (`prebuild.x`, and
+        `build.bun.linux` for `build.bun`); `isTaskPattern` for a `*`
+        anywhere, not only first; `pkg#task` splitting on the first `#`,
+        so `a#b#c` is task `b#c`.
+      - Equivalent: in `nested-dirs.ts`, the empty early return and
+        `break` against `continue` past the prefix block (same result,
+        more scanning); the one-chunk fast path in `tail.ts`;
+        `void p.catch` in `settleWithin` (`p.then` already attaches a
+        handler, so a late rejection is handled either way); in
+        `colors.ts`, the colour memo (a cost) and `if (color)` (an empty
+        colour's ANSI code is `''`).
 
 ## In flight
 
