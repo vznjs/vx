@@ -756,6 +756,24 @@ request` (-32600), and the session goes on. The new row sends
       - The `nx.json` existence check: the failed read lands in the
         same catch.
 
+812.  DONE (2026-09-25, `vx-migrate`'s `nx-inputs.ts`, `nx-outputs.ts`
+      and `nx-deps.ts`, the fourth slice). Pure functions with no rows
+      of their own: 29 mutations, 8 caught, 20 held now, 1 equivalent.
+      Held now, in `tests/nx-helpers-sweep.test.ts`, by exact output:
+      - inputs: a negated `{workspaceRoot}` glob, an unsupported token, a
+        named input that names itself, and every object form (fileset,
+        input, dependencies, externalDependencies,
+        dependentTasksOutputFiles);
+      - outputs: a glob kept as written, `{workspaceRoot}` directories,
+        the root project's plain path, a normalized root path, and a
+        non-string option and an unknown token reported;
+      - deps: a leading colon, an empty target, and the object forms
+        (`self`, a project by its package name, a non-array `projects`,
+        a missing target).
+        Equivalent: one `seen` set per entry rather than per call.
+        Sharing it drops only a duplicate glob, which resolves to the
+        same files.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
