@@ -94,6 +94,10 @@ when they load:
 
 ```ts
 export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number>
+export function tieredReverseDepCount(
+  nodes: Map<string, TaskNode>,
+  restoreTier: ReadonlySet<string>,
+): Map<string, number>
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
@@ -154,6 +158,16 @@ first (`computeReverseDepCount` — an exact bitset closure swept in
 reverse-topo order, O(E·N/32); Set-based closures cost 8.5 s at 3,270
 tasks). Ties break in graph-insertion order: `ReadyHeap` is a binary
 max-heap ordered by (priority DESC, enqueue-seq ASC).
+With a restore tier the count is `tieredReverseDepCount` (item 754): a
+restore-tier task never waits on its deps, so it blocks only the
+exec-tier tasks that depend on it. An exec-tier task's count is the
+exact closure over the exec tier alone; a restore's is the sum over its
+direct exec-tier dependents of one plus theirs, a rank that can count a
+diamond twice, which only reorders restores among themselves, on a lane
+twice the exec cap. A warm run's exec tier is its group tasks with no
+edges among them, and the whole-graph closure (476 packages: 1,428
+nodes, 12.8k edges of 45-word bitsets) was 10 ms of the run-graph
+stage (48.1 → 37.7 ms, min of 6).
 When `priorities` is passed, `mergePriorities` scales those weights
 (by 2^20) to sort above the baseline for every covered node, with the
 baseline as the tie-break inside the override set. Nothing in core
