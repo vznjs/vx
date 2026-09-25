@@ -29,6 +29,19 @@ when disabled (CI). When active:
   newline restores column 0.
 - `clearStatus()` is permanent (run end).
 
+Off a TTY, `coalesce: true` holds writes and hands them to the stream
+once per turn of the event loop (`setImmediate`), in order; `settle()`
+hands over what is held and writes straight through from then on. A
+warm 476-package run wrote each of its 952 task lines as its own
+syscall; coalesced, the warm run's wall went 184.0 → 167.8 ms (min of
+15, interleaved compiled binaries, item 753). Only `run()`'s own
+terminal logger asks for it (a caller reading a stream right after a
+write still sees it), and it settles in `runEnd`, before the summary
+prints below the held lines, and again in `run()`'s `finally` for a
+throw that never reached `runEnd`: nothing is held when `bin.ts` ends
+stdout. A TTY is never coalesced; its region redraws already serialise
+the writes.
+
 ## formatStatusRegion
 
 A pinned zone, then one row per worker slot, then a stats line.

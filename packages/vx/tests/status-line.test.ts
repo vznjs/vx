@@ -67,6 +67,40 @@ describe('createOutputWriter', () => {
     expect(s.text()).toBe('hello\n')
   })
 
+  // A warm 476-package run wrote each of its 952 task lines as its own
+  // syscall (item 753): off a TTY the run's writer holds them and hands
+  // them over once per turn of the event loop, and `settle` (runEnd)
+  // hands over what is held before the summary prints below it.
+  it('coalesces off a TTY: one write per turn of the event loop, in order', async () => {
+    const s = pipe()
+    const w = createOutputWriter(s, { coalesce: true })
+    w.write('a\n')
+    w.write('b\n')
+    expect(s.chunks).toEqual([])
+    await new Promise((r) => setImmediate(r))
+    w.write('c\n')
+    await new Promise((r) => setImmediate(r))
+    expect(s.chunks).toEqual(['a\nb\n', 'c\n'])
+  })
+
+  it('settle hands over what is held and writes straight through after it', () => {
+    const s = pipe()
+    const w = createOutputWriter(s, { coalesce: true })
+    w.write('a\n')
+    w.settle()
+    expect(s.chunks).toEqual(['a\n'])
+    w.write('summary\n')
+    expect(s.chunks).toEqual(['a\n', 'summary\n'])
+  })
+
+  it('CONTROL: a TTY is never coalesced, and neither is a writer not asked to', () => {
+    const t = tty()
+    createOutputWriter(t, { coalesce: true }).write('now\n')
+    const p = pipe()
+    createOutputWriter(p).write('now\n')
+    expect([t.text(), p.text()]).toEqual(['now\n', 'now\n'])
+  })
+
   it('draws the status line as one clear+rewrite', () => {
     const s = tty()
     const w = createOutputWriter(s)
@@ -242,6 +276,23 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(n, mkOutcome(n, 'success'))
     log.runEnd?.()
     expect(s.text()).not.toContain('\x1b')
+  })
+
+  it('a coalescing logger holds its lines until runEnd, which hands them over before the summary', () => {
+    const s = pipe()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { coalesce: true })
+    log.runStart?.({ total: 2 })
+    const a = mkNode('one#a')
+    const b = mkNode('one#b')
+    log.taskComplete(a, mkOutcome(a, 'success'))
+    log.taskComplete(b, mkOutcome(b, 'success'))
+    expect(s.chunks).toEqual([])
+    log.runEnd?.()
+    expect(s.chunks).toHaveLength(1)
+    expect(s.text()).toContain('one#a')
+    expect(s.text()).toContain('one#b')
+    log.status('summary')
+    expect(s.chunks[s.chunks.length - 1]).toBe('summary\n')
   })
 
   it('CI view: status line suppressed even on a TTY', () => {

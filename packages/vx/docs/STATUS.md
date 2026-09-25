@@ -823,6 +823,22 @@ false`, the first failure failing the task; `commands: []` a no-op;
       gone (`kill -0 $$` polled), the claim the row makes; 20 serial and
       8 parallel runs pass, and it still fails with the drain at 0.
 
+753.  DONE (2026-09-25, found by profiling the warm no-op at 476
+      packages: vx 189 ms against Turbo 226, min of 9, both noisy). The
+      profile's cheapest large cost: each of the 952 task lines was its
+      own stdout write, 8.5 ms of the run-graph stage. Off a TTY the run's
+      terminal logger now holds its writes and hands them over once per
+      turn of the event loop, settling in `runEnd` (before the summary)
+      and in `run()`'s `finally`, so nothing is held when `bin.ts` ends
+      stdout. Warm, compiled, interleaved against a binary built from
+      main, min of 15: 184.0 → 167.8 ms wall, 363 → 350 ms CPU; the
+      output is the same lines. Rows: the writer's coalescing and
+      `settle`, a TTY and an unasked writer untouched, the logger's
+      `runEnd` handing over what it held (fails with the settle
+      neutralised), and twenty cache hits reaching stdout in at most five
+      writes that carry task lines (twenty with coalescing off). The
+      profile's other findings, ranked, are Next 21.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1058,6 +1074,21 @@ next?".
 20. DONE as item 752 — **A cancelled sandboxed task got no TERM grace
     (Linux, found in 751).** SIGINT and SIGTERM reach the command's
     group through fd 3; SIGKILL stays the group's.
+21. **The rest of the 476-package warm profile (item 753).** In order
+    of measured saving, each on a patched copy (interleaved, stage
+    mins): scheduler priorities over the exec tier only (a restored task
+    blocks nothing; `computeReverseDepCount` ORs 45-word bitsets over
+    12.8k edges, 6 ms); one multi-row insert for the run's history rows
+    (952 statements, 5 ms); `node:readline/promises` imported only by
+    the picker (2.5 ms on every run); `git rev-parse` in the enumeration
+    as an async spawn beside the others (2 to 3 ms on the main thread);
+    the group hash computed once instead of in the stable-key pass and
+    again at execute; and `resolveFiles`' memo checked before it builds
+    its key. The large lever is a design: persist last run's stable keys
+    under one digest of what they read (about 25 ms of the 34 the pass
+    costs), stale-hit-critical. Also `vx-bench/strace-vx.ts` counts
+    git's worker threads as vx (a `clone3` resumed line its regex
+    misses).
 
 ## Decisions (this arc)
 

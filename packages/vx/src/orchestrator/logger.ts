@@ -69,6 +69,12 @@ export interface DefaultLogger extends Logger {
    * when nothing failed, and in the modes that promise no task output.
    */
   failureRecap(): string[]
+  /**
+   * Hand over any output still coalesced, and write straight through from
+   * now on. `runEnd` does it; the run's own `finally` does it again for a
+   * throw that never reached `runEnd`.
+   */
+  settle(): void
 }
 
 /**
@@ -170,7 +176,7 @@ export function defaultLogger(
   colors: ColorSupport = detectColors(),
   view: OutputView = { mode: 'full' },
   out: StatusStream = process.stdout,
-  opts: { forceFloorMs?: number } = {},
+  opts: { forceFloorMs?: number; coalesce?: boolean } = {},
 ): DefaultLogger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout under `├─ stdout` and stderr under `├─ stderr`.
@@ -233,6 +239,7 @@ export function defaultLogger(
   const writer = createOutputWriter(out, {
     enabled: view.ci !== true,
     ...(opts.forceFloorMs !== undefined ? { forceFloorMs: opts.forceFloorMs } : {}),
+    ...(opts.coalesce === true ? { coalesce: true } : {}),
   })
 
   // Status-display state, driven by the optional lifecycle hooks.
@@ -398,6 +405,9 @@ export function defaultLogger(
     view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1
 
   return {
+    settle() {
+      writer.settle()
+    },
     failureRecap() {
       if (recapEntries.length === 0) return []
       // Fenced like a frame: a tail is the task's own text, and a line of it
@@ -500,6 +510,9 @@ export function defaultLogger(
         flushedFailures = true
         for (const block of deferredFailures) emitBlock(block)
       }
+      // The summary and the CLI's own lines follow on the stream directly:
+      // nothing may still be held, and nothing after this is.
+      writer.settle()
     },
     taskStdout(node, chunk) {
       if (discardsOutput) return

@@ -182,7 +182,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // preserving, so terminal output is byte-identical to a direct call.
   // See docs/design/event-stream-2026-06.md.
   const terminal =
-    options.log === undefined ? defaultLogger(colors, resolveOutputView(options)) : null
+    options.log === undefined
+      ? defaultLogger(colors, resolveOutputView(options), process.stdout, { coalesce: true })
+      : null
   const sink = options.log ?? terminal!
   // An injected bus already has surfaces subscribed; we add the terminal
   // renderer for this run and take it off again on every way out: the bus
@@ -194,6 +196,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     return await runOnBus(options, bus, colors, () => terminal?.failureRecap() ?? [])
   } finally {
     unsubscribeTerminal()
+    terminal?.settle()
   }
 }
 
