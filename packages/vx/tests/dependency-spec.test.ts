@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { DependencySpecError, parseDependencySpec } from '../src/graph/dependency-spec.js'
+import {
+  compileTaskPattern,
+  DependencySpecError,
+  isTaskPattern,
+  parseDependencySpec,
+} from '../src/graph/dependency-spec.js'
 
 describe('parseDependencySpec', () => {
   it('parses the concrete forms', () => {
@@ -37,4 +42,33 @@ describe('parseDependencySpec', () => {
       expect(() => parseDependencySpec(raw)).toThrow(reason)
     })
   }
+})
+
+describe('a cross edge splits on the first #', () => {
+  it('so a task name that holds one round-trips', () => {
+    expect(parseDependencySpec('a#b#c')).toEqual({
+      kind: 'cross',
+      project: 'a',
+      task: 'b#c',
+      negated: false,
+    })
+  })
+})
+
+describe('task-name patterns', () => {
+  it('a * anywhere makes a pattern', () => {
+    expect(isTaskPattern('build.*')).toBe(true)
+    expect(isTaskPattern('*.linux')).toBe(true)
+    expect(isTaskPattern('build')).toBe(false)
+  })
+
+  it('match the whole name, with every other character literal', () => {
+    const re = compileTaskPattern('build.*')
+    expect(re.test('build.bun')).toBe(true)
+    // The dot is literal, not "any character".
+    expect(re.test('buildx')).toBe(false)
+    // Anchored at both ends.
+    expect(re.test('prebuild.x')).toBe(false)
+    expect(compileTaskPattern('build.bun').test('build.bun.linux')).toBe(false)
+  })
 })
