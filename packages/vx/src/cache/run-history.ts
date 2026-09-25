@@ -85,7 +85,7 @@ export class RunHistory {
 
 /**
  * Bind a RunRecord to the positional parameters expected by the
- * `insertRun` prepared statement (17 columns). Shared between the
+ * `insertRun` prepared statement (21 columns). Shared between the
  * single and batched record paths.
  */
 function bindRun(run: RunRecord): SQLQueryBindings[] {

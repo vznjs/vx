@@ -857,6 +857,19 @@ false`, the first failure failing the task; `commands: []` a no-op;
       (red on the whole-graph count), and a restore feeding pending work
       restoring first (red with restore weights zeroed).
 
+755.  DONE (2026-09-25, Next 21's next three, each A/B'd on the
+      476-package warm run and each REFUTED, recorded there: a multi-row
+      history insert, a lazy `node:readline/promises`, an async `git
+rev-parse`). The profile's numbers for them came from a source run
+      under the profiler or from skipping the work outright; against
+      compiled binaries, interleaved, none moved the wall. What the pass
+      did fix: `vx-bench/strace-vx.ts` read only whole calls, so a spawn
+      strace split across threads (`<... clone3 resumed> … = <pid>`) left
+      git's worker threads unowned and their 3,371 `newfstatat`s counted
+      as vx's; it now reads the resumed line too, and its counter is a
+      function a row drives with a synthetic trace (red without the
+      resumed match). And `bindRun`'s comment said 17 columns; it binds 21.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1095,17 +1108,26 @@ next?".
 21. **The rest of the 476-package warm profile (item 753).** In order
     of measured saving, each on a patched copy (interleaved, stage
     mins): scheduler priorities over the exec tier only (DONE as item
-    754); one multi-row insert for the run's history rows
-    (952 statements, 5 ms); `node:readline/promises` imported only by
-    the picker (2.5 ms on every run); `git rev-parse` in the enumeration
-    as an async spawn beside the others (2 to 3 ms on the main thread);
+    754); one multi-row insert for the run's history rows (REFUTED
+    2026-09-25: 40-row INSERTs made 85 rows three statements, and a warm
+    476-package run's `record history` stayed 8.2 → 8.6 ms at min, wall
+    174.3 → 176.6, N=21; the 5 ms the profile saw was skipping the
+    rows, and binding 21 columns a row is the cost, not the statement
+    count); `node:readline/promises` imported only by
+    the picker (REFUTED 2026-09-25: two compiled binaries, one importing
+    it beside the other node: modules vx loads, differ by 0.27 ms at min
+    and 0.1 at median, 41 interleaved; the 2.5 ms was the source run's
+    transpile under the profiler); `git rev-parse` in the enumeration
+    as an async spawn beside the others (REFUTED 2026-09-25: as a fourth
+    spawn in the `Promise.all`, two interleaved passes of 21 read min
+    168.7 → 171.8 and 165.5 → 183.8 ms; the sync spawn's block overlaps
+    git's own run, which is the enumeration's wall anyway);
     the group hash computed once instead of in the stable-key pass and
     again at execute; and `resolveFiles`' memo checked before it builds
     its key. The large lever is a design: persist last run's stable keys
     under one digest of what they read (about 25 ms of the 34 the pass
-    costs), stale-hit-critical. Also `vx-bench/strace-vx.ts` counts
-    git's worker threads as vx (a `clone3` resumed line its regex
-    misses).
+    costs), stale-hit-critical. (`vx-bench/strace-vx.ts` counting
+    git's worker threads as vx: fixed in item 755.)
 
 ## Decisions (this arc)
 
