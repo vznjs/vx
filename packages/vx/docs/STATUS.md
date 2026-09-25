@@ -507,6 +507,35 @@ test is telling the truth.
         persistent task is never traced. The ledger row becomes
         `open (limit: unsandboxed)`, and kill-tree.md and
         sandbox-runtime.md record the numbers.
+802.  DONE (2026-09-25, sweep of `@vzn/vx-lockfile`'s `pnpm.ts`, as 798
+      and 799 did `bun.ts` and `npm.ts`). 35 mutations over
+      `pnpm.test.ts`: 13 caught, 19 held now, 2 equivalent, and 1 bug.
+      The bug was a stale hit. A v9 `file:` directory dependency is keyed
+      `name@file:…` (`pnpm@9 install --lockfile-only` writes it so), but
+      `snapshotKey` took the bare `file:…` version first. The directory
+      became a leaf, and a bump behind it moved no digest. The
+      generation's own key now comes first; v5/v6, which key it by the
+      bare version, reach it through the fallback. Held now, in
+      `tests/pnpm.test.ts`, each row changing one input:
+      - a bump behind a v9 and a v6 `file:` dependency;
+      - lockfiles below v5 refused;
+      - a single-package lockfile's top-level dependencies;
+      - four patch shapes: a scalar, a record with no hash, one keyed
+        `name@version`, and a scoped package named alone (v9 and v5);
+      - `settings`, `overrides`, `packageExtensionsChecksum`,
+        `ignoredOptionalDependencies` and the lockfile version, each
+        alone;
+      - optional dependencies;
+      - key order inside a resolution and the settings;
+      - a peer-suffixed package's resolution (v9 under `name@version`,
+        v6 under its suffixed key);
+      - a `link:` outside every importer;
+      - a package listed without a snapshot.
+        Equivalent:
+      - The `/` shortcut: the version fallback reaches the same key.
+      - The key order: it differs only when a version string is itself
+        another snapshot's key, which pnpm writes for no plain
+        dependency.
 
 ## In flight
 

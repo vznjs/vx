@@ -129,12 +129,16 @@ function stable(v: unknown): string {
 /**
  * The snapshot key a dependency `name@version` resolves to, per lockfile
  * generation: `name@1.0.0(peer@2)` (v9), `/name@1.0.0(peer@2)` (v6),
- * `/name/1.0.0_peer@2` (v5). A version that is already a key (`/…`, a
- * `file:…`) is used as it is, and so is an alias (`name: other@1.0.0`)
- * when the lockfile has a snapshot under it.
+ * `/name/1.0.0_peer@2` (v5). A version that is already a key (`/…`) is
+ * used as it is. Otherwise the generation's own key comes first, then
+ * the version itself when the lockfile has a snapshot under it: an alias
+ * (`name: other@1.0.0`), and a v5/v6 `file:…`, whose key is the bare
+ * version. A v9 `file:…` is keyed `name@file:…` like any other, and
+ * taking the version first made it a leaf: a bump behind a directory
+ * dependency moved no digest (item 802).
  */
 function snapshotKey(lock: Lockfile, name: string, version: string): string {
-  if (version.startsWith('/') || version.startsWith('file:')) return version
+  if (version.startsWith('/')) return version
   const major = Number.parseInt(lock.version, 10)
   const own =
     major >= 9 ? `${name}@${version}` : major >= 6 ? `/${name}@${version}` : `/${name}/${version}`
