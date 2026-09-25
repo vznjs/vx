@@ -899,6 +899,50 @@ request` (-32600), and the session goes on. The new row sends
         live or offline, passes them through `reapi()`. The executor
         slice needs an Execute stub, and these two rows go with it.
 
+820.  DONE (2026-09-25, `vx-reapi`'s `merkle.ts`). The sweep found three
+      defects, all fixed:
+      - A grafted upstream `Tree` could reference directories no blob
+        matched. `canonicaliseTree` found a child only by re-encoding it
+        with our encoder, which misses whenever the worker's bytes differ
+        (the executor's own comment measured 4 of 649 resolved). So the
+        grafted parent kept the worker's digest while we shipped our
+        encoding under another. A `TreeGraft` now carries the
+        raw-bytes child digests `decodeTreeWithBytes` already computes.
+        The row grafts a Tree whose child bytes are valid but not in our
+        field order, and requires every reachable directory to have a
+        blob.
+      - `FileNode.node_properties` was encoded as field 5, which the
+        proto reserves; it is field 6. Held by a protobufjs oracle row.
+      - `decodeFileNode` dropped `node_properties`, so the executor's
+        "`unix_mode` is authoritative when the server sent it" never
+        ran: a comment claiming what the code lacked. It is now decoded
+        (`mtime`, `unix_mode`), held by a row that decodes protobufjs's
+        own bytes.
+        Each fix fails its row when reverted. The sweep: 56 mutations, 18
+        caught, 34 held now, 4 equivalent. Held now, in
+        `tests/merkle-sweep.test.ts`:
+      - protobufjs byte-for-byte: a varint boundary and a size past
+        2^31, node properties, a command's platform, legacy outputs and
+        node-property names sorted, an action's floored timeout, empty
+        salt and sorted platform, and a Tree's children in field 2;
+      - decoders: a size past two varint bytes, an explicit
+        `is_executable = 0`, and stopping at a wire type they do not
+        read;
+      - digest functions: SHA1, an unsupported function refused, and
+        `canDigest` agreeing with this runtime's `createHash`;
+      - trees: a graft keeps its symlinks and ships its blobs, a graft
+        wins over a disk directory, ensured directories sort and `''` is
+        the root, a file graft counts, only the owner's execute bit
+        counts;
+      - `DigestCache`: a hit is the stored digest, and a new mtime at
+        the same size is a miss.
+        Equivalent: symlink sorting (paths are sorted before insertion),
+        the `working_directory` and `output_directory_format` guards
+        (`strField` and `intField` omit their defaults already), and a
+        truncated varint's early return. Not held offline: the
+        executor's passing of `childDigests` into the graft, which needs
+        the Execute stub named in 819.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

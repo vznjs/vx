@@ -93,6 +93,12 @@ export interface TreeGraft {
   path: string
   root: Directory
   children: Directory[]
+  /**
+   * Each child's digest over the bytes the worker SENT (`decodeTreeWithBytes`),
+   * parallel to `children`: the only key a parent's `DirectoryNode` digest
+   * is sure to match.
+   */
+  childDigests?: readonly string[]
 }
 
 /**
@@ -105,10 +111,17 @@ export interface TreeGraft {
  * untouched (content-addressed, already in the CAS).
  */
 function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
+  // Keyed by the worker's own bytes first: a child re-encoded by US matches
+  // its parent's reference only when both encoders agree byte for byte, and
+  // one that does not (a field order, a `node_properties` our decoder drops)
+  // stayed unresolved, leaving the parent pointing at a Directory no blob
+  // here matches (item 820).
   const byOldDigest = new Map<string, Directory>()
-  for (const child of graft.children) {
+  graft.children.forEach((child, i) => {
     byOldDigest.set(sha256(encodeDirectory(child)).hash, child)
-  }
+    const sent = graft.childDigests?.[i]
+    if (sent !== undefined) byOldDigest.set(sent, child)
+  })
   const blobs: Blob[] = []
   const rebuild = (dir: Directory): Digest => {
     const directories: DirectoryNode[] = dir.directories.map((d) => {
@@ -365,7 +378,7 @@ export function encodeDigest(d: Digest): Uint8Array {
   return concat([strField(1, d.hash), intField(2, d.size_bytes)])
 }
 
-/** `FileNode { name = 1, digest = 2, is_executable = 4, node_properties = 5 }` */
+/** `FileNode { name = 1, digest = 2, is_executable = 4, node_properties = 6 }`; 3 and 5 are reserved. */
 function encodeFileNode(f: FileNode): Uint8Array {
   return concat([
     strField(1, f.name),
@@ -373,7 +386,7 @@ function encodeFileNode(f: FileNode): Uint8Array {
     boolField(4, f.is_executable),
     ...(f.node_properties === undefined
       ? []
-      : [lenField(5, encodeNodeProperties(f.node_properties))]),
+      : [lenField(6, encodeNodeProperties(f.node_properties))]),
   ])
 }
 
@@ -672,6 +685,7 @@ function decodeFileNode(buf: Uint8Array): FileNode {
       i += len
       if (field === 1) f.name = new TextDecoder().decode(slice)
       else if (field === 2) f.digest = decodeDigestBytes(slice)
+      else if (field === 6) f.node_properties = decodeNodeProperties(slice)
     } else if (wire === 0) {
       const [v, n] = readVarintAt(buf, i)
       i = n
@@ -679,6 +693,45 @@ function decodeFileNode(buf: Uint8Array): FileNode {
     } else break
   }
   return f
+}
+
+/**
+ * The two `NodeProperties` fields vx reads back, the inverse of
+ * `encodeNodeProperties`: `mtime = 2` (a `Timestamp`) and `unix_mode = 3`
+ * (a `UInt32Value`). The executor honours `unix_mode` on materialise; before
+ * this the decoder dropped the field, and that branch never ran (item 820).
+ */
+function decodeNodeProperties(buf: Uint8Array): NodeProperties {
+  const np: NodeProperties = {}
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarintAt(buf, i)
+    i = k
+    if ((key & 7) !== 2) break
+    const [len, l] = readVarintAt(buf, i)
+    i = l
+    const slice = buf.subarray(i, i + len)
+    i += len
+    const inner = varintFields(slice)
+    if (key >>> 3 === 2) np.mtimeMs = (inner.get(1) ?? 0) * 1000 + (inner.get(2) ?? 0) / 1e6
+    else if (key >>> 3 === 3) np.unixMode = inner.get(1) ?? 0
+  }
+  return np
+}
+
+/** A message of varint fields only (`Timestamp`, `UInt32Value`), by field number. */
+function varintFields(buf: Uint8Array): Map<number, number> {
+  const out = new Map<number, number>()
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarintAt(buf, i)
+    i = k
+    if ((key & 7) !== 0) break
+    const [v, n] = readVarintAt(buf, i)
+    i = n
+    out.set(key >>> 3, v)
+  }
+  return out
 }
 
 function decodeDirectoryNode(buf: Uint8Array): DirectoryNode {
