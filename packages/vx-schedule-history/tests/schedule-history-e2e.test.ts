@@ -252,6 +252,67 @@ describe('schedule-history plugin end to end', () => {
   )
 
   it(
+    '`vx history` reads the window and the headroom the plugin was given',
+    async () => {
+      // Item 805: the window and the headroom were each read in two places,
+      // a run's and the verb's, and either copy could drift unseen. One
+      // helper now reads each; this row turns both knobs.
+      await pkg(
+        'a',
+        'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"\' } } } }\n',
+      )
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource([
+            'scheduleHistoryPlugin({ window: 1, resources: { headroom: 2 }, memory: 8192 })',
+          ]),
+      )
+      for (let i = 0; i < 2; i++) {
+        const r = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+        expect(r.ok).toBe(true)
+      }
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      expect(json.exitCode).toBe(0)
+      const out = JSON.parse(json.stdout.toString()) as {
+        window: number
+        tasks: {
+          id: string
+          runs: number
+          maxPeakRssBytes: number | null
+          reservation: { memory?: number } | null
+        }[]
+      }
+      const a = out.tasks.find((t) => t.id === 'a#build')!
+      expect({ window: out.window, runs: a.runs }).toEqual({ window: 1, runs: 1 })
+      expect(a.maxPeakRssBytes).toBeGreaterThan(200 * 1024 * 1024)
+      const mb = (a.maxPeakRssBytes! * 2) / (1024 * 1024)
+      expect(a.reservation).toEqual({ memory: Math.ceil(mb / 64) * 64 })
+      const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
+      expect(pretty.stdout.toString()).toContain(' · 8192 MB (the memory option)\n')
+      // The same history with learning off and no memory option: nothing is
+      // learned, and the budget says where it came from.
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['scheduleHistoryPlugin({ resources: false })']),
+      )
+      const off = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      const offOut = JSON.parse(off.stdout.toString()) as typeof out
+      expect(offOut.tasks.find((t) => t.id === 'a#build')!.reservation).toBeNull()
+      const offPretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
+      expect(offPretty.stdout.toString()).toContain(' MB (what this process may use)\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an assumed duration orders the very first run, before any history exists',
     async () => {
       // The same two chains, no history: the case above pins that this run

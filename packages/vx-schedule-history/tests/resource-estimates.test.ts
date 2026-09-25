@@ -1,11 +1,11 @@
-// The estimator behind the plugin's `graph` hook: what a task should
+// The estimator behind the plugin's `schedule` and `admit` hooks: what a task should
 // reserve, from what its executions used. Pure over the history table the
 // scheduler already reads; the pins here are the rounding, the headroom,
 // the thresholds, the packing rule and the one rule that matters most — a
 // declared reservation is never overridden.
 import { describe, expect, it } from 'bun:test'
 import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
-import { admits, resourceEstimates, withDeclared } from '../src/index.js'
+import { admits, resourceEstimates, scheduleHistoryPlugin, withDeclared } from '../src/index.js'
 
 const MB = 1024 * 1024
 
@@ -149,5 +149,53 @@ describe('withDeclared', () => {
   it('declared reservations reach tasks the history never saw', () => {
     const merged = withDeclared(new Map(), { 'cold#build': { cpus: 2 } })
     expect(merged.get('cold#build')).toEqual({ cpus: 2 })
+  })
+})
+
+// Item 805's sweep: each row fails with one line of index.ts undone.
+describe('the reservation rules the sweep found unheld', () => {
+  it('a peak whose reservation is exactly one step reserves it', () => {
+    // 51.2 MB × 1.25 = 64 MB exactly: one step, reserved, not dropped.
+    const nodes = new Map([['a#build', node('a#build')]])
+    const peak = (64 * MB) / 1.25
+    const est = resourceEstimates(nodes, table({ 'a#build': hist({ maxPeakRssBytes: peak }) }))
+    expect(est.get('a#build')).toEqual({ memory: 64 })
+  })
+
+  it('a task that reserves nothing on an axis runs beside one over that axis’s budget', () => {
+    // The hog reserves 200 MB of a 100 MB budget and runs alone on memory;
+    // a cores-only task costs memory nothing, so memory never holds it.
+    const reservations = new Map([
+      ['hog#t', { memory: 200 }],
+      ['cpu#t', { cpus: 1 }],
+    ])
+    expect(admits('cpu#t', ['hog#t'], reservations, { cpus: 4, memory: 100 })).toBe(true)
+  })
+
+  it('declared reservations install the admit hook with learning off; nothing else does', () => {
+    const declared = scheduleHistoryPlugin({
+      resources: false,
+      reservations: { 'a#build': { memory: 100 } },
+    })
+    expect(typeof declared.admit).toBe('function')
+    expect(scheduleHistoryPlugin({ resources: false }).admit).toBeUndefined()
+  })
+
+  it('a history read that fails costs the ordering, never the run: no weights, one warning', async () => {
+    const plugin = scheduleHistoryPlugin()
+    const warned: string[] = []
+    const ctx = {
+      localCache: {
+        dbHandle() {
+          throw new Error('disk on fire')
+        },
+      },
+      warn: (m: string) => warned.push(m),
+    }
+    const weights = await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
+    expect(weights).toBeUndefined()
+    expect(warned).toEqual([
+      '[vx] schedule-history: ordering falls back to the baseline: disk on fire',
+    ])
   })
 })

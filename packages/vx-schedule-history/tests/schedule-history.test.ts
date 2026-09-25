@@ -161,3 +161,31 @@ describe('criticalPathPriorities — assumed durations for the cold run', () => 
     expect(p.get('vx#test')).toBe(200)
   })
 })
+
+// Item 805's sweep: each row fails with one line of critical-path.ts undone.
+describe('criticalPathPriorities — what the sweep found unheld', () => {
+  it('the workspace median is the numeric middle, not the first or the lexical one', () => {
+    // Sorted as numbers the middle of 50, 900 and 1000 is 900; sorted as
+    // strings it is 50 ("1000" < "50" < "900"), and so is the smallest.
+    const nodes = [node('a#t'), node('b#t'), node('c#t'), node('d#t')]
+    const history: HistoryTable = new Map([
+      ['a#t', hist(1000)],
+      ['b#t', hist(50)],
+      ['c#t', hist(900)],
+    ])
+    expect(criticalPathPriorities(nodes, history).get('d#t')).toBe(900)
+  })
+
+  it('a node on a cycle, which the reverse walk never releases, still gets its own duration', () => {
+    const nodes = [node('a#t', ['b#t']), node('b#t', ['a#t'])]
+    const history: HistoryTable = new Map([
+      ['a#t', hist(300)],
+      ['b#t', hist(700)],
+    ])
+    const out = criticalPathPriorities(nodes, history)
+    expect([...out]).toEqual([
+      ['a#t', 300],
+      ['b#t', 700],
+    ])
+  })
+})

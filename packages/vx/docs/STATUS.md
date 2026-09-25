@@ -572,6 +572,32 @@ test is telling the truth.
       longer throw on a missing `got.txt`; it reads as `<no got.txt>`.
       A mutant that forwards SIGTERM for SIGINT printed the whole
       picture.
+805.  DONE (2026-09-25, sweep of `@vzn/vx-schedule-history`). First pass:
+      35 mutations over the package's three suites, 20 caught, 15
+      survived. The survivors pointed at three defects, fixed:
+      - The history memo was dead weight. Core calls `schedule` once
+        per run, so dropping the memo changed nothing; its comment named
+        a `graph` hook the plugin does not have. Removed.
+      - The window, the headroom, `resources: false` and the memory
+        budget were each read twice, once for a run's hooks and once for
+        `vx history`, so either copy could drift unseen. Each is now
+        read in one helper both paths call.
+      - `vx history`'s pretty table and its unit breaks could only be
+        reached through a run. It is `renderHistory` in
+        `src/history-view.ts` now, a pure function.
+        New rows:
+      - the numeric workspace median;
+      - a node on a cycle;
+      - a reservation of exactly one 64 MB step;
+      - a zero-cost axis beside an over-budget task;
+      - the admit hook installed for declared reservations alone;
+      - the fail-open warning when the history read throws;
+      - the table's listing, its count line, the p50 and peak unit
+        breaks, and the budget's label;
+      - an e2e row turning the window and the headroom, then learning
+        off.
+        After the refactor, 41 mutations over `critical-path.ts`,
+        `index.ts` and `history-view.ts` are all caught.
 
 ## In flight
 
