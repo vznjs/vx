@@ -306,6 +306,32 @@ test is telling the truth.
         answered in place: `expect(…).rejects` held a gRPC call to its
         deadline under `bun test`.
 
+828.  DONE (2026-09-25, `vx-reapi`'s `executor.ts`, last slice: the
+      helpers). 45 mutations: 15 caught by 827's rows and
+      `executor.test.ts`, 29 held now, 1 equivalent. Held in
+      `tests/executor-helpers-sweep.test.ts`:
+      - the command line, RUN by `/bin/sh` rather than compared as a
+        string: the root climbed to from the project, `$PWD` from the
+        input root, both `node_modules/.bin` dirs leading PATH, forwarded
+        args quoted (one holding a quote), and a missing project dir
+        stopping the script with exit 1 before the command runs;
+      - the environment: an unset input stays unset, a define wins;
+      - the record's decomposition: a literal glob recorded whole without
+        reading its Tree, an unreadable or rootless Tree recorded whole
+        with its warning, a glob matching nothing or with a partial
+        wildcard recorded whole, and each match recorded once, its Tree
+        carrying every descendant past a hole and uploaded when the probe
+        fails;
+      - server logs: only human-readable ones up to 64 KiB, and one that
+        cannot be read left out rather than failing the message;
+      - materialisation: files past 1 MiB kept out of the batch, the
+        executable bit and `unix_mode` applied, a symlink replacing a
+        file, and under a literal capture a missing Tree, a rootless one,
+        a missing child and a missing file each refusing by name.
+        Equivalent: `globToOutputPath`'s literal return, since joining
+        the split segments rebuilds the glob. `vx-reapi`'s `src/` is now
+        swept file by file.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
