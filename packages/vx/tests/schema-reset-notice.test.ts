@@ -102,6 +102,24 @@ describe('a schema reset says so once', () => {
     expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
   })
 
+  it('`vx why` says it too', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeVersion('v0')
+    process.chdir(root)
+    let stderr = ''
+    const orig = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += String(chunk)
+      return true
+    }) as typeof process.stderr.write
+    try {
+      await expect(cli(['why', 'app#build'])).rejects.toThrow(/no recorded runs/)
+    } finally {
+      process.stderr.write = orig
+    }
+    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
+  })
+
   // Roadmap 3.3 (item 671): a CACHE_VERSION bump keeps the index but moves
   // every key; the all-miss run it causes is announced like a reset.
   function pokeFormat(value: string | null): void {

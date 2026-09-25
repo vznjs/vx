@@ -3,7 +3,8 @@
 // The fixture runs a real task twice with a changed input file so the
 // persisted entry_inputs rows carry a genuine component-level diff.
 
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, unlink, writeFile } from 'node:fs/promises'
+import { Database } from 'bun:sqlite'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
@@ -407,6 +408,172 @@ describe('vx why (e2e) — answers from the database alone', () => {
       // flag the workspace file IS evaluated, so this same command fails.
       const noFlag = await vx(root, ['why', 'app#build'])
       expect(`${noFlag.err}${noFlag.out}`).toContain('WORKSPACE FILE EVALUATED')
+    },
+    TIMEOUT,
+  )
+})
+
+// The exact lines `vx why` prints: target resolution and its refusals, the
+// component rows with their signs and padding, and the fallbacks an older or
+// thinned database reaches (rows with no run id, no cache-hit column, no
+// entry inputs). Each assertion is a whole line or a whole message.
+describe('vx why (e2e) — the exact lines', () => {
+  let root: string
+  const UNCACHED = (tasks: string[]) =>
+    `export default { tasks: { ${tasks.map((t) => `${t}: { exec: { command: 'true' } }`).join(', ')} } }\n`
+  const APP = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'cat src/*.txt > out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        },
+      },
+    }
+  `
+  const err = (r: VxResult): string => r.err.trim()
+  beforeAll(async () => {
+    root = await makeWorkspaceRoot({ prefix: 'vx-why-lines-', git: false })
+    const projects: Array<[string, string]> = [
+      ['app', APP],
+      ['a', UNCACHED(['build', 'lint'])],
+      ['b', UNCACHED(['build', 'prelint'])],
+      ['c', UNCACHED(['build'])],
+      ['d', UNCACHED(['build'])],
+    ]
+    for (const [name, config] of projects) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
+      await writeFile(path.join(dir, 'vx.config.mjs'), config)
+    }
+    const app = path.join(root, 'packages', 'app')
+    await writeFile(path.join(app, 'src', 'input.txt'), 'v1\n')
+    await writeFile(path.join(app, 'src', 'old.txt'), 'old\n')
+    const git = gitIn(root)
+    git('init', '-q')
+    git('add', '-A')
+    await vx(root, ['run', 'build', 'lint', 'prelint', '--all'])
+    // The second run: a file removed, a file added, and the package bumped.
+    await unlink(path.join(app, 'src', 'old.txt'))
+    await writeFile(path.join(app, 'src', 'new.txt'), 'new\n')
+    await writeFile(
+      path.join(app, 'package.json'),
+      JSON.stringify({ name: 'app', version: '0.0.1' }),
+    )
+    await vx(root, ['run', 'build', '--all'])
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a bare name matches the whole task name, not its tail',
+    async () => {
+      const r = await vx(root, ['why', 'lint'])
+      expect(r.code).toBe(0)
+      expect(r.out.split('\n')[0]).toMatch(/^a#lint — run \S+$/)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a bare name several projects ran lists them, and a typo hints three',
+    async () => {
+      const many = await vx(root, ['why', 'build'])
+      expect(many.code).toBe(1)
+      expect(err(many)).toBe(
+        'vx why: "build" ran in 5 projects — pick one:\n  a#build\n  app#build\n  b#build\n  c#build\n  d#build',
+      )
+      const typo = await vx(root, ['why', 'buld'])
+      expect(err(typo)).toBe(
+        'vx why: no recorded runs for task "buld" — did you mean a#build, app#build, b#build?',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an id with no runs and no near miss is refused without a hint; no target is refused',
+    async () => {
+      const none = await vx(root, ['why', 'app#zzzzzzzz'])
+      expect(none.code).toBe(1)
+      expect(err(none)).toBe('vx why: no recorded runs for "app#zzzzzzzz"')
+      const bare = await vx(root, ['why'])
+      expect(bare.code).toBe(1)
+      expect(err(bare)).toBe('vx why: <task> required (e.g. vx why app#build, or vx why build)')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an added row carries +, a removed row -, and every kind is padded to the longest',
+    async () => {
+      const r = await vx(root, ['why', 'app#build'])
+      expect(r.code).toBe(0)
+      const lines = r.out.split('\n')
+      expect(lines).toContain('  what changed (3 components, 3 unchanged):')
+      const rows = lines.filter((l) => l.startsWith('    '))
+      expect(rows).toHaveLength(3)
+      expect(rows[0]).toMatch(/^ {4}added {3}file {5}packages\/app\/src\/new\.txt {2}\+ [0-9a-f]+$/)
+      expect(rows[1]).toMatch(/^ {4}removed file {5}packages\/app\/src\/old\.txt {2}- [0-9a-f]+$/)
+      expect(rows[2]).toMatch(/^ {4}changed package {2}package\.json {2}[0-9a-f]+ → [0-9a-f]+$/)
+    },
+    TIMEOUT,
+  )
+
+  // The rows below edit the database the way an older vx left it; each
+  // runs after the one before, and the order is the fixture.
+  const edit = (sql: string): void => {
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    try {
+      db.run(sql)
+    } finally {
+      db.close()
+    }
+  }
+
+  it(
+    'a run whose cache-hit column is unknown is not called executed',
+    async () => {
+      edit("UPDATE runs SET cache_hit = NULL WHERE project = 'app' AND task = 'build'")
+      const r = await vx(root, ['why', 'app#build'])
+      expect(r.out.split('\n')[1]).toMatch(/^ {2}this run {3}\S+ · success · key [0-9a-f]+$/)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a changed key with no recorded components says why there is no list',
+    async () => {
+      edit('DELETE FROM entry_inputs')
+      const r = await vx(root, ['why', 'app#build'])
+      expect(r.code).toBe(0)
+      expect(r.out).not.toContain('what changed')
+      expect(r.out.split('\n').filter((l) => l.startsWith('  detail     '))).toHaveLength(1)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'runs with no run id fall back to the latest entry, in both formats, and to nothing',
+    async () => {
+      edit('UPDATE runs SET run_id = NULL')
+      const pretty = await vx(root, ['why', 'app#build'])
+      expect(pretty.code).toBe(0)
+      const [first, second] = pretty.out.split('\n')
+      expect(first).toBe(
+        'app#build: recorded runs carry no run id — showing the latest cache entry instead',
+      )
+      expect(second).toMatch(/^ {2}hash [0-9a-f]+ · \$ cat src\/\*\.txt > out\.txt$/)
+      const json = await vx(root, ['why', 'app#build', '--format', 'json'])
+      const parsed = JSON.parse(json.out) as Record<string, unknown>
+      expect(Object.keys(parsed)).toEqual(['taskId', 'why', 'diff', 'explanation'])
+      expect([parsed['why'], parsed['diff']]).toEqual([null, null])
+      edit('DELETE FROM entries')
+      const bare = await vx(root, ['why', 'app#build'])
+      expect(bare.code).toBe(0)
+      expect(bare.out.split('\n')[1]).toBe('  (no cache entry either)')
     },
     TIMEOUT,
   )
