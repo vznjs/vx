@@ -897,6 +897,16 @@ graph`, and a missed input is a stale hit on every run.
       says the lead is one rep each; the committed `RESULTS.md` (the
       3,270-task run) is unchanged.
 
+758.  DONE (2026-09-25, the 3,270-task Linux row re-run after items
+      744, 753 and 754; `compare.ts 100 11 1`, the fixed harness, one
+      rep). vx 3m 40s cold, 359 / 653 ms warm (no restore / restore),
+      16.05 s cold CPU; Turbo 5m 4s, 431 / 722 ms, 33.27 s; Nx 6m 59s,
+      4.50 / 4.60 s, 20m 55s. The day before, Turbo led both warm
+      columns (496 / 856 against 678 / 971); vx now leads every column
+      at 476 and 3,270 tasks on this box. `benchmarks.md` carries the
+      table; the committed `RESULTS.md` stays the macOS run the site
+      reads, since which run the site quotes is Next 18's, the owner's.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1125,9 +1135,10 @@ next?".
     from the harness that gave Nx npm; npm was two thirds of Nx's cold
     run at that size on the Linux box. OWNER: re-run `compare.ts 100 11
 1` on the macOS machine and `update-site.ts`, or take the Linux run
-    in `benchmarks.md` for the site (at 476 packages vx now leads both
-    warm columns there, item 757; the 3,270-task Linux row predates
-    items 753–754).
+    in `benchmarks.md` for the site. The Linux run of this exact shape
+    (`compare.ts 100 11 1`, 2026-09-25, item 758) has vx leading every
+    column; its generated `RESULTS.md` / `results.json` were not
+    committed over the macOS run the site reads.
 19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
     sandbox (Linux, found in 736).** The command runs in a session of
     its own inside the sandbox.
