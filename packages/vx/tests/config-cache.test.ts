@@ -6,6 +6,7 @@ import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { xxh3 } from '../src/util/index.js'
@@ -668,8 +669,16 @@ describe('Cache as a ConfigEvalStore', () => {
     noWrite.close()
     const noRead = new Cache(path.join(root, 'nr'), { read: false, write: true })
     noRead.putConfigEval('k', '{}')
+    noRead.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs'])
+    // The write landed; neither read serves it — the batched one is the one
+    // a run's config load uses.
     expect(noRead.getConfigEval('k')).toBeNull()
+    expect(noRead.getConfigEvals(['k']).size).toBe(0)
+    expect(noRead.getConfigClosures(['/p/vx.config.mjs']).size).toBe(0)
     noRead.close()
+    const readBack = new Cache(path.join(root, 'nr'))
+    expect(readBack.getConfigEvals(['k']).get('k')).toBe('{}')
+    readBack.close()
   })
   it('the batched puts honour the write axis and land as the single puts do', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-batch-'))
@@ -702,6 +711,44 @@ describe('Cache as a ConfigEvalStore', () => {
       ).toEqual(['/p/vx.config.mjs', '/p/preset.mjs'])
       expect(rw.getConfigEval('k2')).toBe('{"tasks":{"a":{}}}') // the single read sees the batched write
       rw.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('a re-learned closure replaces the old one and restarts its retention clock', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-reclose-'))
+    try {
+      const first = new Cache(dir)
+      first.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs'])
+      first.close()
+      // Age the row past retention, as a config indexed long ago would be.
+      const db = new Database(path.join(dir, 'cache.db'))
+      db.run('UPDATE config_closures SET created_at = 0')
+      db.close()
+      const again = new Cache(dir)
+      again.putConfigClosures([['/p/vx.config.mjs', ['/p/vx.config.mjs', '/p/preset.mjs']]])
+      again.close() // retention prunes on close
+      const reopened = new Cache(dir)
+      expect(reopened.getConfigClosures(['/p/vx.config.mjs']).get('/p/vx.config.mjs')).toEqual([
+        '/p/vx.config.mjs',
+        '/p/preset.mjs',
+      ])
+      reopened.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('the batched reads answer every key across the 900-parameter chunks', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-chunks-'))
+    try {
+      const cache = new Cache(dir)
+      const keys = Array.from({ length: 1801 }, (_, i) => `k${i}`)
+      const configs = keys.map((k) => `/w/${k}/vx.config.mjs`)
+      cache.putConfigEvals(keys.map((k) => [k, `"${k}"`] as const))
+      cache.putConfigClosures(configs.map((c) => [c, [c]] as const))
+      expect(cache.getConfigEvals(keys).size).toBe(1801)
+      expect(cache.getConfigClosures(configs).size).toBe(1801)
+      cache.close()
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

@@ -697,6 +697,30 @@ graph`, and a missed input is a stale hit on every run.
       ms, median 111.3 → 112.1; 1,000 projects, min 195.5 → 195.3,
       median 243.4 → 235.0. A tie at both sizes: the lock's five calls
       (same count as before, item 759) cost what the old ones did.
+773.  DONE (2026-09-25, sweeps of the two files no STATUS entry had named
+      that feed the keys: `workspace/fingerprint.ts` and
+      `cache/config-evals.ts`). The fingerprint: 17 mutations, 16 caught
+      — every lockfile in the table, every fold of name and bytes on
+      both digests, the claim skip and the digests' order are held. The
+      one survivor: a CLAIMED lockfile's bytes left out of `files`, the
+      map the mid-run watch (item 750) compares against. Its effect is
+      a false "moved" — the watch finds the file with nothing to compare
+      and withholds every later save and restore of the run, for a
+      file no task touched — in a workspace with a lockfile plugin,
+      which this repo is. A row in `tests/in-run-writes.test.ts` builds
+      the watch from a claimed read: untouched, nothing moved; rewritten,
+      moved. The evaluation store: 16 mutations, 11 caught, 4 held now,
+      1 equivalent (`INSERT OR IGNORE` for `OR REPLACE`: a key names its
+      bytes, and a put follows only a miss). Held now: the BATCHED read
+      ignoring the local read axis (`--cache=local:w` served cached
+      evaluations; the row read only the single-key getter, which a run's
+      load does not use), a re-learned closure kept as the old one or
+      under its old retention clock (each is a stale index the slow path
+      re-learns on every run), and a key dropped from each 900-parameter
+      chunk (no row asked for more than 900). The retention comment and
+      `config-cache.md` said rows "unused" / "not loaded" for 30 days are
+      pruned; a hit refreshes nothing (a write per config per warm run),
+      so it is rows not WRITTEN for 30 days, and both say so.
 
 ## In flight
 
