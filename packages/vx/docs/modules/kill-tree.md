@@ -18,7 +18,20 @@ does not matter.
 export type Child = ReturnType<typeof Bun.spawn>
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void
 export async function untilGroupsGone(children: readonly Child[], graceMs: number): Promise<Child[]>
+export function signalThrough(child: Child, fd: number): void
+export function closeSignalChannel(child: Child): void
 ```
+
+`signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx
+owns, instead of to its group: a Linux sandboxed task (item 752). Its
+group is bwrap's, whose monitor died of the SIGTERM and took the
+namespace down with SIGKILL (`--die-with-parent`), so a sandboxed
+command's trap never ran; a watcher inside reads the signal's name and
+signals the command's group (`sandbox-runtime.md`). SIGKILL still goes to
+the group, and a write the reader is gone for (EPIPE) falls back to it.
+`closeSignalChannel` runs once the child has exited, and drops the entry
+before it closes the descriptor, so a later kill never writes to a
+number the process has since reused.
 
 `untilGroupsGone` is the wait between the polite signal and SIGKILL: it
 resolves when every child's GROUP is gone, or at the grace with the

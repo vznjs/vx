@@ -791,6 +791,33 @@ false`, the first failure failing the task; `commands: []` a no-op;
       `--die-with-parent` SIGKILLs the namespace, so a sandboxed
       command's `trap … TERM` never runs (Next 20).
 
+752.  DONE (2026-09-25, Next 20 as it stood: a cancelled sandboxed
+      task got no TERM grace). vx's group signal reached bwrap's
+      monitor, which died of it, and `--die-with-parent` SIGKILLed the
+      namespace: a sandboxed command's trap never ran, on a timeout, a
+      Ctrl-C or the end-of-run persistent teardown. bwrap forwards no
+      signal, and a spare descriptor was probed to reach the command
+      through bwrap, SRT's shells and apply-seccomp; so a sandboxed
+      spawn gets fd 3, a pipe vx owns, and `killTree` writes SIGINT's or
+      SIGTERM's name down it (`signalThrough`) instead of signalling the
+      group. Inside, a watcher forked before `exec setsid bash -c` reads
+      the name and signals the command's group, `$$` (the exec keeps the
+      shell's pid). SIGKILL at the grace's end still goes to bwrap's
+      group. The first form backgrounded the command and waited: SIGTERM
+      rows passed and SIGINT rows did not, since an `&` command starts
+      with SIGINT ignored and a shell cannot trap what it inherited
+      ignored; the foreground `exec` fixed both. Rows: SIGINT and SIGTERM
+      to vx reach a sandboxed one-shot and a ready sandboxed persistent
+      task by their own trap (the four rows `signal-handling.test.ts`
+      holds unsandboxed), and a timeout reaches a TERM trap while a
+      command that ignores TERM is SIGKILLed at the grace. All six fail
+      without the fix; dropping the persistent spawn's channel alone
+      reddens the two persistent rows. A timed-out sandboxed task now
+      exits 143 with its own status, no longer the tracer's signal death.
+      `closeSignalChannel` drops a child's entry before it closes the
+      descriptor: Bun leaves the pipe open after exit, and a kill after
+      the close must not write to a reused number.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1023,15 +1050,9 @@ next?".
 19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
     sandbox (Linux, found in 736).** The command runs in a session of
     its own inside the sandbox.
-20. **A cancelled sandboxed task gets no TERM grace (Linux, found in
-    751).** vx's group SIGTERM reaches bwrap's monitor, which dies of
-    it, and `--die-with-parent` SIGKILLs the namespace: a sandboxed
-    command's `trap … TERM` never runs, and a sandboxed dev server's
-    Ctrl-C cleanup neither (measured 2026-09-25, `runSandboxed` with
-    `timeoutMs`, and a direct group SIGTERM with and without strace).
-    Carry the signal past the monitor (bwrap forwards none): a pipe vx
-    holds that the in-sandbox shell reads, or bwrap in a group of its
-    own with a forwarder in front, and keep SIGKILL at the grace's end.
+20. DONE as item 752 — **A cancelled sandboxed task got no TERM grace
+    (Linux, found in 751).** SIGINT and SIGTERM reach the command's
+    group through fd 3; SIGKILL stays the group's.
 
 ## Decisions (this arc)
 
