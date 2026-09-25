@@ -102,6 +102,27 @@ describe('a schema reset says so once', () => {
     expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
   })
 
+  it('`vx show` says it too, from the staged load the reading verbs share', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeVersion('v0')
+    process.chdir(root)
+    let stderr = ''
+    const origErr = process.stderr.write.bind(process.stderr)
+    const origOut = process.stdout.write.bind(process.stdout)
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += String(chunk)
+      return true
+    }) as typeof process.stderr.write
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    try {
+      await cli(['show'])
+    } finally {
+      process.stderr.write = origErr
+      process.stdout.write = origOut
+    }
+    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
+  })
+
   it('`vx why` says it too', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v0')
