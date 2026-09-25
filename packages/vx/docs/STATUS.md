@@ -378,6 +378,32 @@ test is telling the truth.
         every config.
       - That same load prints the schema-reset notice: a `vx show` row
         beside `vx why`'s in `tests/schema-reset-notice.test.ts`.
+796.  DONE (2026-09-25, sweeps of `cli/plugin-commands.ts` and
+      `cli/completions.ts`, never named in a sweep).
+      `plugin-commands.ts`: 11 mutations, 5 caught, 5 held now, 1
+      equivalent (listing a verb once in help: the schema refuses two
+      plugins on one verb). Held now in `tests/plugin-commands.test.ts`:
+      - A verb only a later plugin declares is found (a `break` for the
+        `continue` stopped at the first plugin without it).
+      - A plugin verb's `ctx.warn` reaches stderr.
+      - The help line's padding.
+      - A broken workspace offers no plugin verbs.
+      - The load error is its message, not its class name in front of
+        it.
+        `completions.ts`: 15 mutations, 4 caught, 10 held now, 1
+        equivalent (the dedup against plugin verbs, which can never repeat
+        a core one). The suite read the scripts as text; the new rows run
+        the bash script in bash and read `COMPREPLY`:
+      - The first word's verbs.
+      - `cache prune` and the three shells after `completions`.
+      - Only `--help` after a plugin verb.
+      - An unknown verb offering nothing even after a call that offered
+        something (`COMPREPLY` is global).
+      - The early `return` at the first word, without which the `*)`
+        arm wiped the verb list.
+        Also held: the zsh verb list as words, the order `vx completions`
+        emits (core verbs, `help`, `version`, then plugin verbs), and its
+        refusals of a second shell.
 
 ## In flight
 

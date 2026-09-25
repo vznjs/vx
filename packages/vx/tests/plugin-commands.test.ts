@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { run as cli } from '../src/cli/index.js'
+import { pluginVerbs } from '../src/cli/plugin-commands.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 
@@ -182,6 +183,35 @@ describe('plugin commands', () => {
     expect(text).toContain('says hi (org/hello)')
   })
 
+  it('a verb only a later plugin declares is found past the ones before it', async () => {
+    const OTHER = pluginSource(
+      'org/other',
+      `{ commands: { other: { description: 'not hello', run() { return 3 } } } }`,
+    )
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([OTHER, HELLO]))
+    expect(await cli(['hello'])).toBe(7)
+  })
+
+  it("a plugin verb's warnings reach stderr, one line each", async () => {
+    await Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/warner',
+          `{ commands: { warn: { description: 'warns', run(argv, ctx) { ctx.warn('careful'); return 0 } } } }`,
+        ),
+      ]),
+    )
+    expect(await cli(['warn'])).toBe(0)
+    expect(err).toEqual(['careful\n'])
+  })
+
+  it('the help line pads the verb to one column', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    expect(await cli(['help'])).toBe(0)
+    expect(out.join('').split('\n')).toContain(`  vx ${'hello'.padEnd(17)} says hi (org/hello)`)
+  })
+
   it('outside a workspace the verb is unknown, not an error about workspaces', async () => {
     const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-bare-'))
     try {
@@ -212,6 +242,10 @@ describe('plugin commands', () => {
     const text = err.join('')
     expect(text).toContain('unknown command: hello')
     expect(text).toMatch(/plugins\[0\]\.commands\.hello/)
+    // The load error's message, not its class name in front of it.
+    expect(text).toContain(
+      `(plugin verbs could not be looked up: vx.workspace failed to load: ${root}/vx.workspace.mjs: `,
+    )
   })
 })
 
@@ -226,6 +260,8 @@ describe('a broken workspace file', () => {
     expect(text).toContain('unknown command: nope')
     expect(text).toContain('plugin verbs could not be looked up')
     expect(text).toContain('vx.workspace')
+    // Nothing to offer: a broken file declares no verbs to hint at.
+    expect(await pluginVerbs(root)).toEqual([])
   })
 })
 
