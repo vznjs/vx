@@ -42,6 +42,8 @@ export interface OutputWriter {
    * `setStatus`; the two share one display slot.
    */
   setRegion(lines: readonly string[], opts?: { force?: boolean }): void
+  /** Hand over what `coalesce` holds and write straight through from now on. */
+  settle(): void
   /** Permanently remove the status display; later set* is a no-op. */
   clearStatus(): void
 }
@@ -61,6 +63,13 @@ export interface OutputWriterOptions {
   forceFloorMs?: number
   /** Injectable clock for tests. */
   now?: () => number
+  /**
+   * Off a TTY, hold writes and hand them to the stream once per turn of
+   * the event loop until `settle()`. A warm 476-package run wrote each of
+   * its 952 task lines as its own syscall (item 753). Off by default: a
+   * caller reading its stream right after a write sees it.
+   */
+  coalesce?: boolean
 }
 
 export function createOutputWriter(
@@ -71,6 +80,17 @@ export function createOutputWriter(
   const minRedrawMs = opts.minRedrawMs ?? 100
   const forceFloorMs = opts.forceFloorMs ?? 30
   const now = opts.now ?? Date.now
+  // The coalesced writes not yet handed over; null once settled or when
+  // not coalescing.
+  let held: string[] | null = !enabled && opts.coalesce === true ? [] : null
+  let flushQueued = false
+  const flushHeld = (): void => {
+    flushQueued = false
+    if (held === null || held.length === 0) return
+    const text = held.join('')
+    held.length = 0
+    stream.write(text)
+  }
 
   let current: readonly string[] | null = null
   let shown = false
@@ -169,7 +189,15 @@ export function createOutputWriter(
     enabled,
     write(chunk) {
       if (!enabled) {
-        stream.write(chunk)
+        if (held === null) {
+          stream.write(chunk)
+          return
+        }
+        held.push(chunk)
+        if (!flushQueued) {
+          flushQueued = true
+          setImmediate(flushHeld)
+        }
         return
       }
       if (shown) {
@@ -186,6 +214,10 @@ export function createOutputWriter(
     },
     setRegion(lines, o = {}) {
       set(lines, o)
+    },
+    settle() {
+      flushHeld()
+      held = null
     },
     clearStatus() {
       if (!enabled || dead) return
