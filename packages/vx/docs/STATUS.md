@@ -774,6 +774,26 @@ request` (-32600), and the session goes on. The new row sends
         Sharing it drops only a duplicate glob, which resolves to the
         same files.
 
+813.  DONE (2026-09-25, `vx-migrate`'s `nx-command.ts`, the fifth
+      slice). 55 mutations: 24 caught, 29 held now, 2 unreachable.
+      Held now, in `tests/nx-command-sweep.test.ts`, by exact line:
+      - quoting: `shellQuote` on the empty word and a single quote,
+        and the appended `--name=value` for a lone `"`, a value already
+        single-quoted, and a value holding double quotes;
+      - the `args` option as yargs-parser reads it: a leading zero, an
+        exponent, camel case, repeats joined with a comma, a dotted
+        name, `--no-name`, a flag before a flag, an object option;
+      - `{projectName}` twice, an empty project dir, an empty
+        `envFile`, an empty `command` beside `commands`, a `command`
+        array, a non-string command entry, a mixed `readyWhen` list;
+      - `prefixColor` and `bgColor` alone, an empty `__unparsed__`, an
+        `args` array and a quoted `args` string;
+      - one command of a parallel list, a non-object `env`, and a
+        `color` other than `true`.
+        Unreachable: `nxQuoteArg`'s branch for a word without `=` and
+        its `--` test. Its one caller passes `--name=value`, so the
+        function now takes only that shape, with the same output.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
