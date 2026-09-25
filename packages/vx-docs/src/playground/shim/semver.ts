@@ -4,7 +4,9 @@
 // own range grammar admits: `Bun.semver` answers true for text that is no
 // range at all, and core never passes it one. So this is node-semver's
 // `satisfies` (non-loose, prereleases excluded) over that grammar, which is
-// what Bun 1.4.2 implements for it. Parity with Bun is held by
+// what Bun 1.4.2 implements for it, but for the two upper bounds Bun
+// closes at the release where node-semver closes below its prereleases
+// (a `<` wildcard bound and a hyphen's partial end). Parity with Bun is held by
 // tests/playground-semver.test.ts in this package.
 
 interface Version {
@@ -116,6 +118,9 @@ function xRange(op: string, p: PartialVersion): Comparator[] {
   if (M === undefined) return op === '>' || op === '<' ? [['<', v(0, 0, 0, [0])]] : [null]
   if (op !== '' && anyX) {
     let major = M
+    // Bun closes `<3.x` at 3.0.0, so 3.0.0-beta is below it, and `<=2.x`
+    // below 3.0.0's prereleases, as node-semver closes both (item 831).
+    let belowPre = false
     const xm = m === undefined
     m ??= 0
     pt = 0
@@ -127,10 +132,11 @@ function xRange(op: string, p: PartialVersion): Comparator[] {
       } else m += 1
     } else if (op === '<=') {
       op = '<'
+      belowPre = true
       if (xm) major += 1
       else m += 1
     }
-    return [[op as '<' | '>=', v(major, m, pt, op === '<' ? [0] : [])]]
+    return [[op as '<' | '>=', v(major, m, pt, belowPre ? [0] : [])]]
   }
   if (m === undefined) return [['>=', v(M, 0, 0)], below(M + 1, 0, 0)]
   if (pt === undefined) return [['>=', v(M, m, 0)], below(M, m + 1, 0)]
@@ -153,8 +159,10 @@ function hyphen(fromText: string, toText: string): Comparator[] {
     ])
   }
   if (t.major !== undefined) {
-    if (t.minor === undefined) out.push(below(t.major + 1, 0, 0))
-    else if (t.patch === undefined) out.push(below(t.major, t.minor + 1, 0))
+    // A partial end closes at the release, not below its prereleases:
+    // Bun admits 3.0.0-beta to `3.0.0-alpha - 2` (item 831).
+    if (t.minor === undefined) out.push(['<', v(t.major + 1, 0, 0)])
+    else if (t.patch === undefined) out.push(['<', v(t.major, t.minor + 1, 0)])
     else out.push(['<=', v(t.major, t.minor, t.patch, t.pre)])
   }
   return out.length === 0 ? [null] : out

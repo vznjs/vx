@@ -91,6 +91,22 @@ const NAMED = [
   '>1.x',
   '>1.2.x',
   '>=1.x <2',
+  // Item 831's sweep: each reaches a line the random grammar rarely does.
+  '1.0.0  -   2.0.0',
+  '^0.0.1',
+  '>=1.2.3-alpha.1',
+  '<1.2.3-alpha.1',
+  '<=1.2.3-alpha.1',
+  '>=1.2.3-beta.2',
+  '>=3.0.0-alpha <3.x',
+  '3.0.0-alpha - 2',
+  '>=3.1.0-alpha <3.1',
+  '>=3.1.0-alpha <3.1.x',
+  '>=3.0.0-alpha <=2.x',
+  '>=2.2.0-alpha <=2.1',
+  '2.2.0-alpha - 2.1',
+  '2.2.0-alpha - 2.1.x',
+  '2.2.0-alpha - 2.1.9',
 ]
 const VERSIONS = [
   '0.0.0',
@@ -106,6 +122,21 @@ const VERSIONS = [
   '2.0.0-rc.1',
   '2.0.0-0',
   '3.1.4',
+  '0.0.2',
+  '1.2.3-alpha',
+  '1.2.3-alpha.1.2',
+  '1.2.3-beta.10',
+  '3.0.0-beta',
+  '3.1.0-beta',
+  '2.2.0-beta',
+  // A manifest's version as written: prefixed, with build metadata,
+  // padded, or no version at all.
+  'v1.2.3',
+  '=1.2.3',
+  '1.2.3+build.5',
+  ' 1.2.3 ',
+  'latest',
+  '1.2',
 ]
 
 describe('the playground semver', () => {

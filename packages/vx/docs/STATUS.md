@@ -366,6 +366,29 @@ test is telling the truth.
         lock costs nothing measurable. The plan's D2 (the streaming
         remote seam) is struck through, since it shipped as item 662.
 
+831.  DONE (2026-09-25, the playground's `semver.ts`, a browser port no
+      sweep had named). A defect, fixed: the port disagreed with
+      `Bun.semver` on ranges core admits. It closed a `<` bound over a
+      partial (`<3.x`, `<3.1`) and a hyphen range's partial end below
+      the release's prereleases, as node-semver does. Bun closes both
+      at the release, so it admits `3.0.0-beta` to
+      `>=3.0.0-alpha <3.x` and to `3.0.0-alpha - 2`, and the site's
+      graph drew those edges differently from the CLI's. `<=` over a
+      partial keeps node-semver's bound in Bun too. The claim this
+      exposed is corrected in place: core hands Bun only the grammar
+      "where the two agree", and in that corner they do not (npm 7.6.0
+      and node-semver 7.8.5 say false). `package-graph.ts` and
+      `modules/package-graph.md` now name it; behaviour is unchanged.
+      The sweep: 47 mutations, 39 held by the Bun-oracle test. Its
+      manifest shapes gained the multi-space hyphen, `^0.0.N`,
+      prereleases of unequal length and numeric identifiers, the two
+      corners, and versions written with `v`, `=`, build metadata,
+      padding, or none at all. 8 are equivalent inside core's grammar,
+      where they cannot be reached: a wildcard major after `^`, `<` or
+      `>`, whitespace inside a partial, an empty set, a hyphen with no
+      numeric end, the `m = 0` already set, and a partial's absent
+      patch and prerelease when its minor is absent.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
