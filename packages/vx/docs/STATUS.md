@@ -881,6 +881,24 @@ request` (-32600), and the session goes on. The new row sends
         `stdout_raw` never reaches it, and `JSON.parse('')` lands in
         the same `undefined`), and `exit_code: 0` (proto3's default).
 
+819.  DONE (2026-09-25, `vx-reapi`'s `index.ts`, the plugin). 17
+      mutations: 7 caught, 8 held now, 2 not held. Held now, in
+      `tests/plugin-sweep.test.ts` against an in-process Capabilities
+      stub that sets `exec_enabled` per row and records each request's
+      instance name:
+      - an empty endpoint declines;
+      - the `endpoint` option wins over `VX_REAPI_ENDPOINT`, and
+        `VX_REAPI_INSTANCE` names the instance on the wire;
+      - a cache-only server is declined with its exact warning and its
+        client closed;
+      - an execution server gets the executor with its `capacity`, and
+        teardown closes its client;
+      - an unreachable server's client is closed before the refusal.
+        Not held: `platform` and `executeTimeoutMs` reaching the
+        executor. Both act only inside a remote `Execute`, and no suite,
+        live or offline, passes them through `reapi()`. The executor
+        slice needs an Execute stub, and these two rows go with it.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
