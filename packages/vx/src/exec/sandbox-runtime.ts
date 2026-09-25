@@ -56,6 +56,7 @@ import {
   unique,
 } from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
+import { closeSignalChannel, signalThrough } from './kill-tree.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
@@ -570,6 +571,8 @@ export async function wrapSandboxedCommand(
   tag: string
   taggedCommand: string
   baselines: CanonicalBaselines
+  /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
+  forwardsSignals: boolean
 }> {
   const { SandboxManager } = await loadSrt()
   const userCommand =
@@ -587,15 +590,19 @@ export async function wrapSandboxedCommand(
   // user command, so it goes INTO the sandboxed command; the host side is
   // spawned here and released when the task's process ends.
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
-  const grouped = process.platform === 'linux' ? ownGroupCommand(tag, userCommand) : taggedCommand
-  const inner = ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped}` : grouped
+  const grouped =
+    process.platform === 'linux'
+      ? ownGroupCommand(tag, userCommand)
+      : { command: taggedCommand, forwards: false }
+  const inner =
+    ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
   let wrapped = await SandboxManager.wrapWithSandbox(inner, undefined, customConfig)
   if (process.platform === 'darwin') {
     const rules = macProfileRules(args.config)
     if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
   }
   if (ports.length > 0) spawnHostBridges(ports, tag)
-  return { wrapped, tag, taggedCommand, baselines }
+  return { wrapped, tag, taggedCommand, baselines, forwardsSignals: grouped.forwards }
 }
 
 /**
@@ -603,24 +610,37 @@ export async function wrapSandboxedCommand(
  * own. bwrap's `--new-session` puts the runtime's shells (the proxy
  * bridges' script, the seccomp step's) in ONE group with the command, and
  * `kill 0` reaches a group's members across the nested pid namespace: a
- * command that signals its own group ended the runtime's shell, bwrap
+ * command that signalled its own group ended the runtime's shell, bwrap
  * exited 143 and the namespace's teardown SIGKILLed the rest mid-trap
- * (item 751). `setsid` from a shell's child is no group leader, so it
- * calls setsid() and execs without a fork: the shell waits on the command
- * itself and its status, a signal death included, is the command's.
+ * (item 751). The shell `exec`s `setsid`, which is no group leader here,
+ * so it calls setsid() and execs without a fork: the command keeps the
+ * shell's pid, and its status, a signal death included, is the one the
+ * runtime waits on.
+ *
+ * The same group is where a cancellation lands. vx's group signal reaches
+ * bwrap's monitor, which dies of it, and the namespace goes with SIGKILL,
+ * so vx sends a polite signal's name down fd 3 instead (`signalThrough`)
+ * and a watcher forked before the `exec` signals the group, `$$`, with it
+ * (item 752). The command runs in the foreground because an `&` command
+ * starts with SIGINT ignored, and a shell cannot trap what it inherited
+ * ignored. The command does not get fd 3; a caller that passed none
+ * forwards nothing, silently.
+ *
  * Tools resolve on vx's own PATH; without `setsid` the command keeps the
- * shared group, as before.
+ * shared group, as before, and `forwards` says the channel is not there.
  */
-function ownGroupCommand(tag: string, userCommand: string): string {
+function ownGroupCommand(tag: string, userCommand: string): { command: string; forwards: boolean } {
   let setsid: string
   let bash: string
   try {
     setsid = executablePath('setsid')
     bash = executablePath('bash')
   } catch {
-    return `: 'vx-${tag}'; ${userCommand}`
+    return { command: `: 'vx-${tag}'; ${userCommand}`, forwards: false }
   }
-  return `: 'vx-${tag}'; ${shellQuote(setsid)} ${shellQuote(bash)} -c ${shellQuote(userCommand)}`
+  const watch = `{ IFS= read -r s && kill -s "$s" -- "-$$"; } 2>/dev/null <&3 3<&- &`
+  const run = `exec ${shellQuote(setsid)} ${shellQuote(bash)} -c ${shellQuote(userCommand)} 3<&-`
+  return { command: `: 'vx-${tag}'; ${watch} ${run}`, forwards: true }
 }
 
 /** The ports a list grants, deduped; `true` bridges nothing (the host sees no port on Linux). */
@@ -701,7 +721,8 @@ export function releaseBridges(tag: string): void {
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
-  const { wrapped, tag, taggedCommand, baselines } = await wrapSandboxedCommand(args)
+  const { wrapped, tag, taggedCommand, baselines, forwardsSignals } =
+    await wrapSandboxedCommand(args)
 
   // Linux: SRT's SandboxViolationStore is macOS-only, so structured
   // detection on Linux requires us to wrap the spawn with strace and
@@ -752,12 +773,12 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       argv0: straceLog ? 'strace' : 'sh',
       cwd: args.cwd,
       env: args.env as Record<string, string>,
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
+      // fd 3 is the signal channel the in-sandbox watcher reads.
+      stdio: forwardsSignals ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
       // As the unsandboxed spawn: its own process group (kill-tree.ts).
       detached: true,
     })
+    if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
     const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
     args.onStderr?.(stderr)
@@ -783,6 +804,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   if (cut) args.onStderr?.(POST_EXIT_CUT_LINE)
   const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
   args.liveChildren?.delete(proc)
+  closeSignalChannel(proc)
   releaseBridges(tag)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
 

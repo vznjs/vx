@@ -10,15 +10,56 @@
 // every non-cgroup runner shares); under a sandbox the pid namespace
 // takes even that.
 
-import { readdirSync, readFileSync } from 'node:fs'
+import { closeSync, readdirSync, readFileSync, writeSync } from 'node:fs'
 import { procfsIsOwn } from '../util/index.js'
 
 export type Child = ReturnType<typeof Bun.spawn>
+
+/**
+ * A child whose polite signals go down a pipe instead of to its group: a
+ * Linux sandboxed task. The group there is bwrap's, whose monitor dies of
+ * a SIGTERM and takes the namespace down with SIGKILL (`--die-with-parent`),
+ * so the command's own cleanup never ran; a shell inside reads the
+ * signal's name off the pipe and signals the command's group (item 752).
+ * SIGKILL still goes to the group: bwrap's death is the hard stop.
+ */
+const channels = new Map<Child, number>()
+
+/** Route `child`'s SIGINT and SIGTERM through `fd`, an end vx owns. */
+export function signalThrough(child: Child, fd: number): void {
+  channels.set(child, fd)
+}
+
+/**
+ * Close `child`'s channel once it has exited. The entry goes before the
+ * descriptor, so a later kill never writes to a number the process has
+ * since reused.
+ */
+export function closeSignalChannel(child: Child): void {
+  const fd = channels.get(child)
+  if (fd === undefined) return
+  channels.delete(child)
+  try {
+    closeSync(fd)
+  } catch {
+    // already closed
+  }
+}
 
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
   if (!(child.pid > 0)) return
+  const fd = signal === 'SIGKILL' ? undefined : channels.get(child)
+  if (fd !== undefined) {
+    try {
+      writeSync(fd, `${signal.slice(3)}\n`)
+      return
+    } catch {
+      // The reader is gone (EPIPE): so is the command. The group signal
+      // below finds what is left, or nothing.
+    }
+  }
   try {
     process.kill(-child.pid, signal)
   } catch (err) {

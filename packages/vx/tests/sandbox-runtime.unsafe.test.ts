@@ -3316,8 +3316,27 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const r = await runSandboxed(args('sleep 10', { timeoutMs: 300 }))
     expect(r.timedOut).toBe(true)
     expect(Date.now() - t0).toBeLessThan(5000)
-    // The tracer dies of the SIGTERM itself, so the exit is the signal's.
-    expect([r.exitCode, r.signal]).toEqual([143, 'SIGTERM'])
+    // The SIGTERM goes down the signal channel to the command's group
+    // (item 752); the command dies of it and the runtime exits with its
+    // status. Before, the tracer died of the SIGTERM itself.
+    expect([r.exitCode, r.signal]).toEqual([143, undefined])
+  })
+
+  it("a timeout reaches the command's TERM trap, and a command that ignores it is killed at the grace (item 752)", async () => {
+    const trapped = await runSandboxed(
+      args(`trap 'echo trapped > got.txt; exit 0' TERM; echo up; while :; do sleep 0.05; done`, {
+        baseAllowWrite: [dir],
+        timeoutMs: 300,
+      }),
+    )
+    const got = existsSync(path.join(dir, 'got.txt'))
+      ? readFileSync(path.join(dir, 'got.txt'), 'utf8').trim()
+      : null
+    expect([trapped.timedOut, trapped.exitCode, got]).toEqual([true, 0, 'trapped'])
+    const deaf = await runSandboxed(
+      args(`trap '' TERM; echo up; while :; do sleep 0.05; done`, { timeoutMs: 300 }),
+    )
+    expect([deaf.timedOut, deaf.exitCode, deaf.signal]).toEqual([true, 137, 'SIGKILL'])
   })
 
   it("a command that signals its own group ends its own tree, not the runtime's shell (item 751)", async () => {
@@ -3732,6 +3751,85 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(await readFile(path.join(dir, 'g', 'a.txt'), 'utf8')).toBe('OUT\n')
         expect(fixture.log.join('\n')).not.toContain('Read-only file system')
       },
+      TIMEOUT,
+    )
+  },
+)
+
+// A cancellation reaches a sandboxed command as the signal vx got, and its
+// trap runs (item 752). vx's group signal used to land on bwrap's monitor,
+// which died of it; `--die-with-parent` then SIGKILLed the namespace, so no
+// trap ran and `got.txt` stayed empty. The polite signal now goes down the
+// task's fd 3 to a watcher in the sandbox. Each title a literal, as in
+// signal-handling.test.ts, whose unsandboxed rows these mirror.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a signal to vx reaches a sandboxed task',
+  () => {
+    const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const TRAPS =
+      "trap 'echo SIGINT > got.txt; exit 0' INT; trap 'echo SIGTERM > got.txt; exit 0' TERM"
+    let root = ''
+    beforeEach(async () => {
+      root = await makeWorkspaceRoot({ prefix: 'vx-sbx-sig-' })
+    })
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true })
+    })
+
+    const reaches =
+      (signal: 'SIGINT' | 'SIGTERM', code: number, persistent: boolean) => async () => {
+        const dir = await addProject(
+          root,
+          'app',
+          `
+            export default {
+              tasks: {
+                t: {
+                  exec: {
+                    command: "${TRAPS}; echo up > ready.txt; echo READY; while :; do sleep 0.05; done",
+                    sandbox: { allow: { read: ['.'], write: ['got.txt', 'ready.txt'] } },
+                    ${persistent ? "persistent: { readyWhen: 'READY' }," : ''}
+                  },
+                },
+              },
+            }
+          `,
+        )
+        const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        // The write grant pre-creates the file empty: "started" is its text.
+        const ready = path.join(dir, 'ready.txt')
+        const deadline = Date.now() + 20_000
+        while (Date.now() < deadline) {
+          if (existsSync(ready) && readFileSync(ready, 'utf8').trim() === 'up') break
+          await Bun.sleep(20)
+        }
+        proc.kill(signal)
+        expect(await proc.exited).toBe(code)
+        expect(readFileSync(path.join(dir, 'got.txt'), 'utf8').trim()).toBe(signal)
+      }
+
+    it(
+      'SIGINT to vx reaches a sandboxed one-shot task as SIGINT',
+      reaches('SIGINT', 130, false),
+      TIMEOUT,
+    )
+    it(
+      'SIGINT to vx reaches a ready sandboxed persistent task as SIGINT',
+      reaches('SIGINT', 130, true),
+      TIMEOUT,
+    )
+    it(
+      'SIGTERM to vx reaches a sandboxed one-shot task as SIGTERM',
+      reaches('SIGTERM', 143, false),
+      TIMEOUT,
+    )
+    it(
+      'SIGTERM to vx reaches a ready sandboxed persistent task as SIGTERM',
+      reaches('SIGTERM', 143, true),
       TIMEOUT,
     )
   },

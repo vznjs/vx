@@ -45,6 +45,8 @@ export function signalExitCode(signal: NodeJS.Signals): number
 // `capture` is a runCommand concept — a persistent task returns no RunResult.
 export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'capture'> {
   readyWhen?: string // string regex; matched against streamed output
+  timeoutMs?: number // bounds the readiness wait
+  signalChannel?: boolean // fd 3 carries SIGINT/SIGTERM (a Linux sandboxed command, item 752)
 }
 
 export interface PersistentSpawn {

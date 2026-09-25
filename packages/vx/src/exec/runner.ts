@@ -7,7 +7,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import { executablePath, isExecutableMissing, killGraceMs } from '../util/index.js'
-import { killTree, untilGroupsGone } from './kill-tree.js'
+import { closeSignalChannel, killTree, signalThrough, untilGroupsGone } from './kill-tree.js'
 
 export interface RunResult {
   exitCode: number
@@ -334,6 +334,12 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
    * resolves before the timer can fire).
    */
   timeoutMs?: number
+  /**
+   * Spawn it with fd 3 as its signal channel and route its polite signals
+   * there (`signalThrough`): a Linux sandboxed command, whose group signal
+   * would kill bwrap instead (`wrapSandboxedCommand`'s `forwardsSignals`).
+   */
+  signalChannel?: boolean
 }
 
 /**
@@ -364,14 +370,18 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       // would steal each other's keystrokes, and a CI's /dev/null stdin
       // is the same EOF. The one-shot spawn below keeps 'ignore', so a
       // task that reads stdin can never hang CI.
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdio:
+        opts.signalChannel === true ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
       // Its own session and process group, so a kill reaches what it
       // forked (kill-tree.ts). stdin is a pipe, so a background group
       // never stops on a terminal read.
       detached: true,
     })
+    if (opts.signalChannel === true) {
+      signalThrough(child, child.stdio[3] as number)
+      const spawned = child
+      void spawned.exited.then(() => closeSignalChannel(spawned))
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return {

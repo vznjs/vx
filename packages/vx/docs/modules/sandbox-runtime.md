@@ -146,7 +146,13 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
 export function wrapSandboxedCommand(
   args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config'> &
     Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseAllowWrite' | 'baseDenyRead'>,
-): Promise<{ wrapped: string; tag: string; taggedCommand: string; baselines: CanonicalBaselines }>
+): Promise<{
+  wrapped: string
+  tag: string
+  taggedCommand: string
+  baselines: CanonicalBaselines
+  forwardsSignals: boolean // the command reads its polite signals off fd 3 (item 752)
+}>
 
 // Release the port bridges a tagged run held. Paired with the wrap above:
 // runSandboxed does it itself, a caller that wrapped must do it.
@@ -235,7 +241,7 @@ export function isMountableLiteral(grant: string): boolean
 
 `wrapSandboxedCommand` is the enforcement half on its own — the tagged command under SRT's wrapper, vx's seatbelt rules appended on macOS — and the persistent path spawns through it (`executePersistentTask`): a dev server declaring `exec.sandbox` gets the same walls and no violation report, since the report reads the trace after exit.
 
-On Linux the command runs in a session, and so a process group, of its own inside the sandbox: `: 'vx-<tag>'; setsid bash -c '<command>'`, both tools resolved on vx's own PATH. bwrap's `--new-session` puts the runtime's shells (the proxy bridges' script, the seccomp step's) in one group with the command, and `kill 0` reaches a group's members across the nested pid namespace, so a command that signalled its own group ended the runtime's shell: bwrap exited 143 and the namespace's teardown SIGKILLed the rest mid-trap (item 751). `setsid` from a shell's child is no group leader, so it execs without a fork and the shell waits on the command itself: an exit status and a signal death (137) are the command's, as before. The cost is a `setsid` exec and a second `bash`, about 3 ms on a 35 ms sandboxed `true` (min of 15, three interleaved pairs). A cancellation still reaches a sandboxed task as bwrap's death: the group signal ends bwrap's monitor, and `--die-with-parent` SIGKILLs the namespace, so a `trap … TERM` in a sandboxed command never runs (measured 2026-09-25, `timeoutMs` and a direct group SIGTERM, with and without strace).
+On Linux the command runs in a session, and so a process group, of its own inside the sandbox: `: 'vx-<tag>'; { read -r s <&3 && kill -s "$s" -- -$$; } & exec setsid bash -c '<command>' 3<&-`, both tools resolved on vx's own PATH. bwrap's `--new-session` puts the runtime's shells (the proxy bridges' script, the seccomp step's) in one group with the command, and `kill 0` reaches a group's members across the nested pid namespace, so a command that signalled its own group ended the runtime's shell: bwrap exited 143 and the namespace's teardown SIGKILLed the rest mid-trap (item 751). The shell `exec`s `setsid`, which is no group leader there, so it execs without a fork and the command keeps the shell's pid: an exit status and a signal death (137) are the command's, as before. The cost is a `setsid` exec and a second `bash`, about 3 ms on a 35 ms sandboxed `true` (min of 15, three interleaved pairs). A cancellation reaches the command the same way (item 752): vx's group signal would end bwrap's monitor, and `--die-with-parent` SIGKILLs the namespace, so a `trap … TERM` never ran. The watcher forked before the `exec` reads a signal's name off fd 3, which vx writes for SIGINT and SIGTERM (`signalThrough`, `kill-tree.md`), and signals the command's group, `$$`; SIGKILL at the grace's end still goes to bwrap's group. The command runs in the foreground because an `&` command starts with SIGINT ignored, which a shell cannot trap; it does not get fd 3. `wrapSandboxedCommand` says so in `forwardsSignals`, and both spawns (`runSandboxed`, and `runPersistent` with `signalChannel`) pass fd 3 when it is set.
 
 A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). `punchWritePaths` warns naming the grant; the fix is to keep writable caches out of `node_modules` (astro's `cacheDir`, vite's `cacheDir`), since SRT's config has no `--symlink`.
 

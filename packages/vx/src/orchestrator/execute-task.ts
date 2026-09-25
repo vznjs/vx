@@ -269,6 +269,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // (Until 2026-09-09 the block was accepted and silently ignored.)
   let command = plainCommand
   let bridgeTag: string | undefined
+  let signalChannel = false
   // The empty files the request pre-created for a literal write grant; a
   // server that never writes one gets it taken back when it exits, and a
   // server that dies before readiness is told the directory spelling — the
@@ -287,6 +288,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
+    signalChannel = wrapped.forwardsSignals
   }
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
     command,
@@ -295,6 +297,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     onStdout: (chunk) => log.taskStdout(node, chunk),
     onStderr: (chunk) => log.taskStderr(node, chunk),
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
+    ...(signalChannel ? { signalChannel } : {}),
   }
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
