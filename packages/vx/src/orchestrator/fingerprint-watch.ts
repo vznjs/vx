@@ -9,7 +9,7 @@
 // fact only after a task that may have written one ran (`wrote`), so a run
 // with no such task never touches the files again.
 
-import { lstatSync, readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { FILE_HASH_RACY_MS } from '../cache/index.js'
 import { WORKSPACE_FINGERPRINT_FILES, type WorkspaceFingerprints } from '../workspace/index.js'
@@ -35,9 +35,12 @@ export class FingerprintWatch {
   /**
    * The fingerprinted files that no longer hold what the run read, or
    * undefined. Once one has, the run stays moved: every key already taken
-   * folded the old bytes. One `lstat` per table entry after each writer; a
+   * folded the old bytes. One `stat` per table entry after each writer; a
    * file written since the read (by ctime, with git's racy window) is read
-   * and compared.
+   * and compared. The stat follows a link as both reads do: a lockfile
+   * that is a symlink, rewritten through it, moves its target's ctime and
+   * never the link's, and an `lstat` here skipped it once the link had
+   * aged past the window — a stale hit on every later run (item 760).
    */
   moved(): readonly string[] | undefined {
     if (this.movedFiles !== undefined || !this.pending) return this.movedFiles
@@ -48,7 +51,7 @@ export class FingerprintWatch {
       const before = this.read.files.get(f)
       let ctimeMs: number
       try {
-        ctimeMs = lstatSync(abs).ctimeMs
+        ctimeMs = statSync(abs).ctimeMs
       } catch {
         if (before !== undefined) moved.push(f)
         continue

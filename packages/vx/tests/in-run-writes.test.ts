@@ -10,7 +10,7 @@
 //     fingerprint folded (`pnpm install` without `--frozen-lockfile`).
 // Every row but the controls failed on the tree before the fix.
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { CachePolicy } from '../src/cache/index.js'
@@ -271,6 +271,23 @@ describe('a task that rewrites the lockfile the workspace fingerprint folded', (
       const app = await fixture(
         `{ exec: { command: '${INSTALL} && echo ready && exec sleep 30', persistent: { readyWhen: 'ready' } } }`,
       )
+      expect(await builds(app, ['A', 'B', 'B', 'A', 'A'])).toEqual(['A', 'B', 'B', 'A', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a lockfile that is a symlink, rewritten through it, the same',
+    async () => {
+      // `cp` writes through the link into its target: the link's own ctime
+      // never moves, and a watch that stat'ed the link rather than what the
+      // run read through it skipped the file once the link aged past the
+      // racy window — every run after the first.
+      const app = await fixture()
+      await mkdir(path.join(root, 'locks'))
+      await rename(path.join(root, 'pnpm-lock.yaml'), path.join(root, 'locks', 'pnpm-lock.yaml'))
+      await symlink(path.join('locks', 'pnpm-lock.yaml'), path.join(root, 'pnpm-lock.yaml'))
+      commit()
       expect(await builds(app, ['A', 'B', 'B', 'A', 'A'])).toEqual(['A', 'B', 'B', 'A', 'A'])
     },
     TIMEOUT,

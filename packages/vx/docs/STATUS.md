@@ -946,6 +946,20 @@ graph`, and a missed input is a stale hit on every run.
       killed pid 1's leftover after a container restart and refuse
       every run — it carries a random suffix.
 
+760.  DONE (2026-09-25, `fingerprint-watch.ts`, unmentioned in any
+      sweep). A stale hit: the watch that catches a task rewriting the
+      lockfile mid-run (item 750) gated its re-read on `lstat`'s ctime,
+      while both reads — the fingerprint's and its own — follow links.
+      A lockfile that is a symlink, rewritten through it (`cp` writes
+      the target in place), moved the target's ctime and never the
+      link's, so once the link aged past the 50 ms racy window every
+      rewrite went unseen: item 750's A, B, B, A, A sequence built A, B,
+      B, B, B. `statSync` now; the row is item 750's with the lockfile
+      a symlink (red before). The class, grepped: `movedInput` in
+      `task-hash.ts` keeps `lstat`, correctly — an input symlink folds
+      its target STRING as git does (`file-hashes.ts`), so the link's
+      own ctime is the fact its digest names.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
