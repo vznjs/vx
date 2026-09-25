@@ -622,6 +622,22 @@ describe('tieredReverseDepCount', () => {
     expect(computeReverseDepCount(m).get('r2#b')).toBe(1)
   })
 
+  it('a restore feeding several exec tasks counts every one of them, not the last one seen', () => {
+    // r1 feeds e1 (which feeds e2) and e3: 1 + 1 for e1's line, 1 for e3.
+    const m = nodes(
+      node('r1#b'),
+      node('e1#b', ['r1#b']),
+      node('e2#b', ['e1#b']),
+      node('e3#b', ['r1#b']),
+    )
+    expect(Object.fromEntries(tieredReverseDepCount(m, new Set(['r1#b'])))).toEqual({
+      'e1#b': 1,
+      'e2#b': 0,
+      'e3#b': 0,
+      'r1#b': 3,
+    })
+  })
+
   it('an exec task whose only dependent is a restore blocks nothing, and yields to one that does', async () => {
     // Whole-graph counts tie e1 and e2 at one dependent each and the
     // insertion order started e1 first; e1's dependent is a restore that
