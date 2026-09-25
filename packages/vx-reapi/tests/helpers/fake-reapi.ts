@@ -66,6 +66,8 @@ export interface ExecutePlan {
   metadataBytes?: Uint8Array[]
   /** A gRPC status to end the stream with instead of a final operation. */
   error?: { code: grpc.status; details: string }
+  /** A final operation that carries `Operation.error` instead of a response. */
+  opError?: { code: number; message: string }
   /** End the stream without sending the final operation (a server that goes away). */
   endEarly?: boolean
   /** Hold the stream open until this settles (a queued action). */
@@ -244,7 +246,10 @@ export async function startFakeReapi(): Promise<FakeReapi> {
     ) => {
       if (enter('FindMissingBlobs', call, unaryErr(cb))) return
       cb(null, {
-        missing_blob_digests: call.request.blob_digests.filter((d) => !fake.blobs.has(d.hash)),
+        // The spec's rule: the empty blob is always present, stored or not.
+        missing_blob_digests: call.request.blob_digests.filter(
+          (d) => Number(d.size_bytes) > 0 && !fake.blobs.has(d.hash),
+        ),
       })
     }) as grpc.UntypedHandleCall,
     BatchUpdateBlobs: ((
@@ -466,7 +471,8 @@ export async function startFakeReapi(): Promise<FakeReapi> {
         call.emit('error', { ...plan.error, metadata: new grpc.Metadata() })
         return
       }
-      if (!plan.endEarly) call.write(operation(name, 'COMPLETED', plan.response ?? {}))
+      if (plan.opError !== undefined) call.write({ name, done: true, error: plan.opError })
+      else if (!plan.endEarly) call.write(operation(name, 'COMPLETED', plan.response ?? {}))
       call.end()
     }
   server.addService(v2['Execution']!.service, {

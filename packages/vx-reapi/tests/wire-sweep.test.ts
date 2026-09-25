@@ -346,13 +346,15 @@ describe.if(CHUNKING_SUPPORTED)('writes', () => {
         `vx/reapi: chunked write of ${d.hash.slice(0, 12)} hit the 131072-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
       ])
       expect(fake.writes.at(-1)!.sizes.every((n) => n <= SAFE_CHUNK_BYTES)).toBe(true)
-    })
-    // Its own client: on the one above, this write waited out the 30 s
-    // deadline under bun test (not standalone) — an open question, not this row's.
-    await using({}, async (c) => {
       const small = bytes('one message')
       fake.fail('Write', grpc.status.DEADLINE_EXCEEDED)
-      await expect(c.writeBlob(c.digestOf(small), small)).rejects.toThrow('DEADLINE_EXCEEDED')
+      // `.then`, not `expect(…).rejects`: under bun test the latter held this
+      // call until its 30 s deadline (item 827).
+      const refused = await c.writeBlob(c.digestOf(small), small).then(
+        () => 'written',
+        (e: Error) => e.message,
+      )
+      expect(refused).toContain('DEADLINE_EXCEEDED')
     })
   })
 

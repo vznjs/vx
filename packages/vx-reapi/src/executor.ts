@@ -16,12 +16,10 @@ import { isLiteralPattern, normalizeGlob, UserError } from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
-  decodeTree,
   decodeTreeWithBytes,
   DigestCache,
   encodeAction,
   encodeCommand,
-  encodeDirectory,
   encodeTree,
   sha256,
   type Blob,
@@ -556,7 +554,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               : []
           if (gone.length === 0) {
             const priorStdout = await this_readStream(client, prior.stdout_raw, prior.stdout_digest)
-            if (req.capture.stdout !== false && priorStdout.length > 0) req.onStdout(priorStdout)
+            // Delivered whatever `capture` says, as on the execute path below:
+            // a deferred producer saves nothing, so its replay had printed
+            // nothing at all (item 827).
+            if (priorStdout.length > 0) req.onStdout(priorStdout)
             // The record's paths are WORKSPACE-relative (rebased when it was
             // written), so the anchor is the workspace root, not the cwd.
             const fromRecord = (): Promise<void> =>
@@ -1142,10 +1143,14 @@ export async function materialiseOutputs(
   for (const f of files) {
     const abs = path.join(req.cwd, f.path)
     await mkdir(path.dirname(abs), { recursive: true })
+    // Inlined only when it has bytes: an ActionResult read back through
+    // proto-loader (the execution-record replay) carries `contents` as an
+    // EMPTY Buffer on every file, and taking that as inline wrote each
+    // replayed output empty (item 827). An empty file is the next branch.
     const bytes =
-      f.contents !== undefined
+      f.contents !== undefined && f.contents.length > 0
         ? f.contents // inlined by the server (`inline_output_files`): zero fetches
-        : f.digest.size_bytes === 0
+        : Number(f.digest.size_bytes) === 0
           ? new Uint8Array()
           : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
     if (bytes === null) {
@@ -1192,15 +1197,17 @@ async function materialiseTree(
     missing('tree', treeDigest.hash)
     return
   }
-  const tree = decodeTree(blob)
+  const tree = decodeTreeWithBytes(blob)
   if (tree.root === undefined) {
     missing('tree (no root directory)', treeDigest.hash)
     return
   }
-  // Children are addressed by their own Directory digest, so index them the
-  // same way the server did — by the digest of the encoded Directory.
+  // Children are addressed by the digest of the bytes the WORKER encoded.
+  // Re-encoding our parse reproduces it only when both encoders agree byte
+  // for byte, and a child that did not was "not present in the Tree blob"
+  // (item 827), the miss decomposeOutputDir's own comment measured.
   const byDigest = new Map<string, Directory>()
-  for (const child of tree.children) byDigest.set(sha256(encodeDirectory(child)).hash, child)
+  tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
 
   const walk = async (dir: Directory, at: string): Promise<void> => {
     await mkdir(at, { recursive: true })

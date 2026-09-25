@@ -213,11 +213,12 @@ test is telling the truth.
         own deadline. Equivalent: the floor's `patch < 0` (MIN_BUN's
         patch is 0) and the short-write check's expected size on the
         compressed path (`committed > 0` decides there).
-        Open, unproven: a one-message write, on the same client whose
-        large write was just failed with DEADLINE_EXCEEDED, waited out the
-        30 s deadline under `bun test`, but not in a standalone script or
-        a one-row test file. The row uses a fresh client. Whether a real
-        server can put the client there is not known.
+        A one-message write refused with DEADLINE_EXCEEDED waited out
+        the 30 s deadline under `bun test`. Item 827 proved the cause is
+        the test, not the client: awaiting the call through
+        `expect(…).rejects` held it until its deadline (30,002 ms), while
+        `.then(ok, err)` on the same call settled in 2 ms. The row is back
+        on one client and uses `.then`.
 
 824.  DONE (2026-09-25, `vx-reapi`'s `wire.ts`, second slice: Execute,
       split, splice, GetTree). A defect, fixed: `getTree` hung on every
@@ -267,6 +268,43 @@ test is telling the truth.
       (804); `vx-schedule-history`, `vx-github`, `vx-otel` and `vx-mcp`
       (805–808); `vx-migrate` end to end (809–817); and `vx-reapi`'s cache
       layer and plugin (818–819). Next trim when the loop passes forty.
+
+827.  DONE (2026-09-25, `vx-reapi`'s `executor.ts`, second slice: the run
+      path of `reapiExecutor`). Three defects, fixed, each row failing
+      without its fix:
+      - a record replay wrote EMPTY output files. It took inline
+        `contents` whenever the field was present, and the decoder hands
+        an empty buffer for an absent one, so every replayed file was
+        zero bytes. Now only non-empty contents count, and a zero-size
+        digest (a string "0" once decoded) is written empty without a
+        read;
+      - `materialiseTree` looked children up by re-encoding its own
+        parse, so a Tree whose child bytes were not vx's encoding (a
+        server's field order, an unknown field) lost the directories
+        below the first level ("not present"). It now keys them by the
+        worker's own bytes, as 820 did for grafts;
+      - a record replay delivered stdout only when `capture.stdout` was
+        set. `capture` governs retention, not delivery, as the execute
+        path already says; a deferred producer saves nothing, so its
+        replay printed nothing at all.
+        The sweep: 48 run-path mutations plus the three fixes'
+        differentials; 47 held, in `tests/executor-sweep.test.ts`
+        (replay, its misses and its deferral; the Action's platform,
+        timeout, salt and priority, and the Command's platform; the
+        action id on every call; the stall bound's precedence; operation
+        errors, failed statuses with logs, no result; delivery and the
+        worker; the record's paths, bits, symlinks, per-match
+        decomposition and a failed write; upstream grafts from disk,
+        from a record, empty, evicted and shadowing; root-anchored
+        outputs). This also holds 819's I10 and I12 (the plugin's
+        platform and execute timeout reach the executor), 820's
+        executor-side graft, and 825's D33. Equivalent: the stall
+        timer's re-arm guard (a lost timer fires at the same moment and
+        later aborts a settled signal). The fake learned an operation
+        that ends in `Operation.error`, and treats the empty blob as
+        always present, as the spec says. Item 823's open question is
+        answered in place: `expect(…).rejects` held a gRPC call to its
+        deadline under `bun test`.
 
 ## In flight
 
