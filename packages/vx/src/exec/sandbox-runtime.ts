@@ -585,6 +585,14 @@ export async function wrapSandboxedCommand(
     const rules = macProfileRules(args.config)
     if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
   }
+  // Linux: the shell execs bwrap, so bwrap is the spawn itself and its
+  // `--die-with-parent` is keyed to vx. Behind a shell that waited on it,
+  // a `kill -9` of vx left the shell alive, bwrap never heard, and a
+  // sandboxed server and all it forked outlived vx (turborepo#9666). Now
+  // the namespace goes with vx, a `setsid` daemon inside included. A
+  // strace-traced spawn keeps strace as bwrap's parent: that residual is
+  // a one-shot task's, and a persistent one is never traced.
+  if (process.platform === 'linux' && wrapped.startsWith('bwrap ')) wrapped = `exec ${wrapped}`
   if (ports.length > 0) spawnHostBridges(ports, tag)
   return { wrapped, tag, taggedCommand, baselines, forwardsSignals: grouped.forwards }
 }

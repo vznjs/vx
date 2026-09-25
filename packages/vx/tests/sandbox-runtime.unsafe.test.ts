@@ -7,7 +7,7 @@
 // skipping, because a skipped suite reports green and this one covers
 // the isolation boundary. A local host without the deps still skips.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -39,6 +39,7 @@ import {
 } from '../src/exec/sandbox-violations.js'
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { isAlive, waitForDead } from './helpers/alive.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import * as violations from '../src/exec/sandbox-violations.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
@@ -3829,6 +3830,97 @@ describe.skipIf(!available || process.platform !== 'linux')(
     it(
       'SIGTERM to vx reaches a ready sandboxed persistent task as SIGTERM',
       reaches('SIGTERM', 143, true),
+      TIMEOUT,
+    )
+  },
+)
+
+// A `kill -9` of vx runs no teardown (kill-tree.md). A sandboxed task's
+// bwrap is vx's own child — the shell `exec`s it — so its
+// `--die-with-parent` fires with vx, and the pid namespace takes every
+// descendant down, one that left the task's group with `setsid` included
+// (turborepo#9666). Behind a waiting shell, bwrap's parent was the shell,
+// which outlived vx, and the server's tree ran on under init. The
+// unsandboxed control is the documented limit: its grandchild survives.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a SIGKILLed vx takes a sandboxed task’s whole tree with it',
+  () => {
+    const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    let root = ''
+    beforeEach(async () => {
+      root = await makeWorkspaceRoot({ prefix: 'vx-sbx-kill9-' })
+    })
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true })
+    })
+
+    /** Host pids whose command line is exactly `sleep <arg>`: a pid namespace hides the task's own `$!`. */
+    const sleepers = (arg: string): number[] =>
+      readdirSync('/proc')
+        .filter((d) => /^\d+$/.test(d))
+        .filter((d) => {
+          try {
+            return readFileSync(`/proc/${d}/cmdline`, 'utf8') === `sleep\0${arg}\0`
+          } catch {
+            return false
+          }
+        })
+        .map(Number)
+
+    const survivors = async (sandboxed: boolean): Promise<{ started: number; alive: number[] }> => {
+      const nonce = `${1000 + Math.floor(Math.random() * 1000)}.${process.pid}`
+      await addProject(
+        root,
+        'app',
+        `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: 'sleep ${nonce} & setsid sleep ${nonce} & echo READY; wait',
+                  persistent: { readyWhen: 'READY' },
+                  ${sandboxed ? 'sandbox: {},' : ''}
+                },
+              },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'ignore',
+      })
+      let pids: number[] = []
+      const deadline = Date.now() + 20_000
+      while (Date.now() < deadline) {
+        pids = sleepers(nonce)
+        if (pids.length === 2) break
+        await Bun.sleep(20)
+      }
+      process.kill(proc.pid, 'SIGKILL')
+      expect(await proc.exited).toBe(137)
+      await Promise.all(pids.map((p) => waitForDead(p, 2_000)))
+      const alive = pids.filter(isAlive)
+      for (const p of alive) process.kill(p, 'SIGKILL')
+      return { started: pids.length, alive }
+    }
+
+    it(
+      'a sandboxed server’s backgrounded and setsid children die with vx',
+      async () => {
+        expect(await survivors(true)).toEqual({ started: 2, alive: [] })
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'CONTROL: unsandboxed, the same children outlive vx (the documented limit)',
+      async () => {
+        const { started, alive } = await survivors(false)
+        expect(started).toBe(2)
+        expect(alive).toHaveLength(2)
+      },
       TIMEOUT,
     )
   },
