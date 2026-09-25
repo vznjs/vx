@@ -140,6 +140,74 @@ describe('workspace digests (npm)', () => {
   })
 })
 
+// What moves a digest, one input at a time (item 798's rows for bun.lock):
+// an input the digest does not read is a stale hit on every run changing it.
+describe('every input the npm digest must read', () => {
+  const doc = (packages: Record<string, unknown>) =>
+    JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'ws' }, ...packages } })
+  const movedDirs = (before: string, after: string): string[] => {
+    const b = digests(before)
+    const a = digests(after)
+    return [...a.keys()].filter((k) => a.get(k) !== b.get(k))
+  }
+
+  it('an optional and a peer dependency are followed like any other', () => {
+    for (const field of ['optionalDependencies', 'peerDependencies']) {
+      const text = (v: string) =>
+        doc({
+          'packages/a': { name: 'a', [field]: { opt: '^1' } },
+          'node_modules/opt': { version: v, resolved: `https://r/opt-${v}`, integrity: `sha-${v}` },
+        })
+      expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
+    }
+  })
+
+  it.each([
+    ['version', { version: '1.0.1' }],
+    ['resolved', { resolved: 'https://mirror/x-1.0.0.tgz' }],
+    ['integrity', { integrity: 'sha512-other' }],
+  ])('the %s alone moves the package', (_, change) => {
+    const text = (over: Record<string, string>) =>
+      doc({
+        'packages/a': { name: 'a', dependencies: { x: '^1' } },
+        'node_modules/x': {
+          version: '1.0.0',
+          resolved: 'https://r/x-1.0.0.tgz',
+          integrity: 'sha512-x',
+          ...over,
+        },
+      })
+    expect(movedDirs(text({}), text(change))).toEqual(['packages/a'])
+  })
+
+  it('a dependency resolves at the nearest ancestor that holds it, level by level', () => {
+    const text = (v: string) =>
+      doc({
+        'packages/a': { name: 'a', dependencies: { x: '^1' } },
+        'node_modules/x': { version: '1.0.0', integrity: 'x', dependencies: { y: '^1' } },
+        'node_modules/x/node_modules/y': {
+          version: '1.0.0',
+          integrity: 'y',
+          dependencies: { z: '^1' },
+        },
+        'node_modules/x/node_modules/z': { version: v, integrity: `z${v}` },
+        'node_modules/z': { version: '9.0.0', integrity: 'z9' },
+      })
+    expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
+  })
+
+  it('an unresolved dependency and a dangling link still fold what they name', () => {
+    const spec = (s: string) => doc({ 'packages/a': { name: 'a', dependencies: { ghost: s } } })
+    expect(movedDirs(spec('^1'), spec('^2'))).toEqual(['packages/a'])
+    const link = (to: string) =>
+      doc({
+        'packages/a': { name: 'a', dependencies: { l: '*' } },
+        'node_modules/l': { link: true, resolved: to },
+      })
+    expect(movedDirs(link('packages/gone-1'), link('packages/gone-2'))).toEqual(['packages/a'])
+  })
+})
+
 describe('npm() declared', () => {
   let root: string
   const BUILD =
