@@ -10,7 +10,7 @@ import { getEventListeners } from 'node:events'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { isAlive, waitForDead } from './helpers/alive.js'
+import { describePid, isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
 import { terminateChildren } from '../src/orchestrator/signals.js'
@@ -429,7 +429,12 @@ describe('signal handling during vx run (e2e)', () => {
         )
         proc.kill(signal)
         const code = await proc.exited
-        const alive = pids.filter((p) => isAlive(p))
+        // Named by the file each pid came from, so a failure says WHICH
+        // process outlived vx (it went red once under a full gate's load,
+        // STATUS Next 23), and in what state.
+        const alive = pids.flatMap((p, i) =>
+          isAlive(p) ? [`${['dev', 'slow', 'child'][i]}: ${describePid(p)}`] : [],
+        )
         const closed = await Promise.race([streams, Bun.sleep(1_000).then(() => null)])
         expect({ signal, code, alive, closed: closed !== null }).toEqual({
           signal,
