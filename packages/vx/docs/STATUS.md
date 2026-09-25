@@ -839,6 +839,24 @@ false`, the first failure failing the task; `commands: []` a no-op;
       writes that carry task lines (twenty with coalescing off). The
       profile's other findings, ranked, are Next 21.
 
+754.  DONE (2026-09-25, Next 21's first: scheduler priorities over the
+      exec tier). A restore-tier task never waits on its deps, so it
+      blocks only the exec-tier tasks that depend on it, and the
+      whole-graph closure ranked by edges nothing waits on. With a
+      restore tier, `tieredReverseDepCount` takes an exec task's count
+      exactly over the exec tier, and a restore's as the sum over its
+      direct exec dependents of one plus theirs (a rank that can count a
+      diamond twice, among restores only), so a restore feeding pending
+      work still goes first. A cold run has no restore tier and ranks as
+      before. At 476 packages the warm run-graph stage went 48.1 → 37.7
+      ms (min of 6, `VX_TIMING`); wall, compiled, interleaved, min of
+      21: 180.0 → 172.0 ms, median 192.0 → 189.6 (an N=15 pass read no
+      difference: the stage saving sits near the wall's noise). Rows:
+      the exact tiered counts with the whole-graph control, an exec task
+      whose only dependent is a restore yielding to one that blocks work
+      (red on the whole-graph count), and a restore feeding pending work
+      restoring first (red with restore weights zeroed).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1076,9 +1094,8 @@ next?".
     group through fd 3; SIGKILL stays the group's.
 21. **The rest of the 476-package warm profile (item 753).** In order
     of measured saving, each on a patched copy (interleaved, stage
-    mins): scheduler priorities over the exec tier only (a restored task
-    blocks nothing; `computeReverseDepCount` ORs 45-word bitsets over
-    12.8k edges, 6 ms); one multi-row insert for the run's history rows
+    mins): scheduler priorities over the exec tier only (DONE as item
+    754); one multi-row insert for the run's history rows
     (952 statements, 5 ms); `node:readline/promises` imported only by
     the picker (2.5 ms on every run); `git rev-parse` in the enumeration
     as an async spawn beside the others (2 to 3 ms on the main thread);

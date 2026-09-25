@@ -1,5 +1,5 @@
 import { describe, expect, it, spyOn } from 'bun:test'
-import { computeReverseDepCount } from '../src/graph/priorities.js'
+import { computeReverseDepCount, tieredReverseDepCount } from '../src/graph/priorities.js'
 import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import { machineParallelism } from '../src/util/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -588,6 +588,74 @@ describe('priority computation scale', () => {
     }
     expect(best).toBeLessThan(1500)
   }, 120_000)
+})
+
+// A restore-tier task never waits on its deps, so it blocks only the
+// exec-tier tasks that depend on it (item 754): an exec task's count is
+// over the exec tier alone, and a restore's is the sum over its direct
+// exec dependents of one plus theirs.
+describe('tieredReverseDepCount', () => {
+  it('counts what each task actually blocks when restores wait on nothing', () => {
+    const m = nodes(
+      node('r1#b'),
+      node('e1#b', ['r1#b']),
+      node('e2#b', ['e1#b']),
+      node('r2#b'),
+      node('r3#b', ['r2#b']),
+      node('e3#b'),
+      node('e5#b'),
+      node('r4#b', ['e5#b']),
+    )
+    const tier = new Set(['r1#b', 'r2#b', 'r3#b', 'r4#b'])
+    expect(Object.fromEntries(tieredReverseDepCount(m, tier))).toEqual({
+      'e1#b': 1,
+      'e2#b': 0,
+      'e3#b': 0,
+      'e5#b': 0,
+      'r1#b': 2,
+      'r2#b': 0,
+      'r3#b': 0,
+      'r4#b': 0,
+    })
+    // CONTROL: the whole-graph count ranks by edges a restore never waits on.
+    expect(computeReverseDepCount(m).get('e5#b')).toBe(1)
+    expect(computeReverseDepCount(m).get('r2#b')).toBe(1)
+  })
+
+  it('an exec task whose only dependent is a restore blocks nothing, and yields to one that does', async () => {
+    // Whole-graph counts tie e1 and e2 at one dependent each and the
+    // insertion order started e1 first; e1's dependent is a restore that
+    // never waits for it.
+    const order: string[] = []
+    await runGraph({
+      nodes: nodes(node('e1#b'), node('e2#b'), node('r9#b', ['e1#b']), node('e3#b', ['e2#b'])),
+      concurrency: 1,
+      restoreTier: new Set(['r9#b']),
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'r9#b'
+          ? { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+          : success(n)
+      },
+    })
+    expect(order.indexOf('e2#b')).toBeLessThan(order.indexOf('e1#b'))
+  })
+
+  it('CONTROL: a restore that feeds pending work restores before one that feeds none', async () => {
+    const order: string[] = []
+    await runGraph({
+      nodes: nodes(node('rA#b'), node('rB#b'), node('eX#b', ['rB#b'])),
+      concurrency: 1,
+      restoreTier: new Set(['rA#b', 'rB#b']),
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'eX#b'
+          ? success(n)
+          : { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+      },
+    })
+    expect(order.indexOf('rB#b')).toBeLessThan(order.indexOf('rA#b'))
+  })
 })
 
 describe('runGraph restore-tier (local short-circuit)', () => {

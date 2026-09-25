@@ -7,6 +7,34 @@
 import type { TaskNode } from './task-graph.js'
 
 /**
+ * `computeReverseDepCount` for a run with a restore tier (item 754). A
+ * restore-tier task is a confirmed hit that never waits on its deps, so it
+ * blocks only the exec-tier tasks that depend on it: an exec-tier task's
+ * count is taken over the exec tier alone, which is exact, and a restore's
+ * is the sum over its direct exec-tier dependents of one plus theirs, so a
+ * restore that feeds pending work still goes first. A warm run's exec tier
+ * is its group tasks with no edges among them, and the closure over the
+ * whole graph (476 packages: 1,428 nodes, 12.8k edges of 45-word bitsets)
+ * was 6 ms of the run-graph stage for a ranking the restores never needed.
+ */
+export function tieredReverseDepCount(
+  nodes: Map<string, TaskNode>,
+  restoreTier: ReadonlySet<string>,
+): Map<string, number> {
+  const exec = new Map<string, TaskNode>()
+  for (const [id, node] of nodes) if (!restoreTier.has(id)) exec.set(id, node)
+  const counts = computeReverseDepCount(exec)
+  for (const node of exec.values()) {
+    const weight = 1 + counts.get(node.id)!
+    for (const dep of node.deps) {
+      if (restoreTier.has(dep) && nodes.has(dep)) counts.set(dep, (counts.get(dep) ?? 0) + weight)
+    }
+  }
+  for (const id of restoreTier) if (nodes.has(id) && !counts.has(id)) counts.set(id, 0)
+  return counts
+}
+
+/**
  * Compute, for each task in the graph, how many OTHER tasks are
  * transitively blocked on it. Tasks with the highest count are the
  * most valuable to schedule first — finishing them unlocks the most

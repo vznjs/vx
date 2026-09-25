@@ -1,5 +1,5 @@
 import { fsRefusalHint, isFsRefusal, isUserError } from '../util/index.js'
-import { computeReverseDepCount, mergePriorities } from './priorities.js'
+import { computeReverseDepCount, mergePriorities, tieredReverseDepCount } from './priorities.js'
 import type { TaskNode } from './task-graph.js'
 
 /**
@@ -350,7 +350,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // priorities map (e.g. from history-aware critical-path estimation),
   // use those weights. Falls back to the reverse-deps-count heuristic
   // for nodes the caller didn't score, so partial coverage works.
-  const baseline = computeReverseDepCount(nodes)
+  const baseline =
+    options.restoreTier !== undefined && options.restoreTier.size > 0
+      ? tieredReverseDepCount(nodes, options.restoreTier)
+      : computeReverseDepCount(nodes)
   const priority: ReadonlyMap<string, number> = options.priorities
     ? mergePriorities(baseline, options.priorities)
     : baseline
