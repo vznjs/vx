@@ -6,8 +6,10 @@ import {
   Cache,
   ChainedCache,
   LayeredCache,
-  type RemoteCacheLayer,
+  type CacheEntry,
+  type CacheLayer,
   type InvocationRecord,
+  type RemoteCacheLayer,
 } from '../src/cache/index.js'
 import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
 import { testPlugin } from './helpers/plugin.js'
@@ -282,5 +284,144 @@ describe('ChainedCache — layers sharing one local handle', () => {
       for (const c of [a, b, src]) c.cache.close()
       for (const d of [a.dir, b.dir, src.dir, proj]) rmSync(d, { recursive: true, force: true })
     }
+  })
+})
+
+// Every chain method over layers that only record what reached them: the
+// rows above drive real caches, which answer from one layer at a time, so a
+// broadcast narrowed to the first layer or an answer forgotten by `has()`
+// changed nothing they could see (item 775).
+type FileRows =
+  ReturnType<CacheLayer['loadOutputFilesBatch']> extends Map<string, infer R> ? R : never
+interface Fake {
+  name: string
+  calls: string[]
+  layer: CacheLayer
+}
+function fake(
+  name: string,
+  opts: {
+    hits?: string[]
+    remote?: boolean
+    remoteHas?: string[] | null
+    local?: object
+    rows?: Record<string, string>
+    closeThrows?: boolean
+  } = {},
+): Fake {
+  const calls: string[] = []
+  const hits = new Set(opts.hits ?? [])
+  const layer = {
+    hasRemote: opts.remote === true,
+    local: opts.local,
+    get: async (h: string) => {
+      calls.push(`get ${h}`)
+      return hits.has(h) ? ({ hash: h, from: name } as unknown as CacheEntry) : null
+    },
+    has: async (h: string) => (hits.has(h) ? 'local' : null),
+    prefetch: async (h: string) => hits.has(h),
+    ...(opts.remoteHas !== undefined
+      ? {
+          remoteHasMany: async () => (opts.remoteHas === null ? null : new Set(opts.remoteHas)),
+        }
+      : {}),
+    markRemoteAbsent: (hs: Iterable<string>) => calls.push(`absent ${[...hs].join(',')}`),
+    drainUploads: async () => {
+      calls.push('drain')
+    },
+    loadOutputFilesBatch: (hs: readonly string[]) =>
+      new Map(
+        hs
+          .filter((h) => opts.rows?.[h] !== undefined)
+          .map((h) => [h, [{ path: opts.rows![h]! }] as unknown as FileRows]),
+      ),
+    restoreOutputs: async (h: string) => {
+      calls.push(`restore ${h}`)
+    },
+    outputsPath: (h: string) => `${name}/${h}`,
+    save: async (args: { skipLocalWrite?: boolean }) => {
+      calls.push(args.skipLocalWrite === true ? 'save skip' : 'save write')
+    },
+    close: () => {
+      calls.push('close')
+      if (opts.closeThrows === true) throw new Error(`${name} close`)
+    },
+  }
+  return { name, calls, layer: layer as unknown as CacheLayer }
+}
+
+describe('ChainedCache — each method over recording layers', () => {
+  it('get asks in declaration order and stops at the first layer that answers', async () => {
+    const a = fake('a', { hits: ['h'] })
+    const b = fake('b', { hits: ['h'] })
+    const chained = new ChainedCache([a.layer, b.layer])
+    expect(((await chained.get('h')) as unknown as { from: string }).from).toBe('a')
+    expect(b.calls).toEqual([])
+  })
+
+  it('has() and prefetch() remember the layer that answered: restore and outputsPath go there', async () => {
+    const a = fake('a')
+    const b = fake('b', { hits: ['viaHas', 'viaPrefetch'] })
+    const chained = new ChainedCache([a.layer, b.layer])
+    expect(await chained.has('viaHas')).toBe('local')
+    await chained.restoreOutputs('viaHas', '/p')
+    expect(await chained.prefetch('viaPrefetch')).toBe(true)
+    expect(chained.outputsPath('viaPrefetch')).toBe('b/viaPrefetch')
+    expect({ a: a.calls, b: b.calls }).toEqual({ a: [], b: ['restore viaHas'] })
+  })
+
+  it('remoteHasMany: local layers are not asked, each remote marks its own complement, the union returns', async () => {
+    const local = fake('local')
+    const r1 = fake('r1', { remote: true, remoteHas: ['x'] })
+    const r2 = fake('r2', { remote: true, remoteHas: ['y'] })
+    const chained = new ChainedCache([local.layer, r1.layer, r2.layer])
+    expect([...((await chained.remoteHasMany(['x', 'y', 'z'])) ?? [])].sort()).toEqual(['x', 'y'])
+    expect({ local: local.calls, r1: r1.calls, r2: r2.calls }).toEqual({
+      local: [],
+      r1: ['absent y,z'],
+      r2: ['absent x,z'],
+    })
+  })
+
+  it('markRemoteAbsent and drainUploads reach every layer', async () => {
+    const layers = [fake('a'), fake('b'), fake('c')]
+    const chained = new ChainedCache(layers.map((l) => l.layer))
+    chained.markRemoteAbsent(['h'])
+    await chained.drainUploads()
+    expect(layers.map((l) => l.calls)).toEqual([
+      ['absent h', 'drain'],
+      ['absent h', 'drain'],
+      ['absent h', 'drain'],
+    ])
+  })
+
+  it("loadOutputFilesBatch: the first layer's rows win; a later layer fills only what earlier ones lack", async () => {
+    const a = fake('a', { rows: { both: 'from-a' } })
+    const b = fake('b', { rows: { both: 'from-b', onlyB: 'from-b' } })
+    const got = new ChainedCache([a.layer, b.layer]).loadOutputFilesBatch(['both', 'onlyB'])
+    expect(Object.fromEntries([...got].map(([h, rows]) => [h, rows.map((r) => r.path)]))).toEqual({
+      both: ['from-a'],
+      onlyB: ['from-b'],
+    })
+  })
+
+  it('save: a layer over a DIFFERENT local handle writes it; only a repeat of the same handle skips', async () => {
+    const x = {}
+    const y = {}
+    const layers = [fake('a', { local: x }), fake('b', { local: y }), fake('c', { local: x })]
+    await new ChainedCache(layers.map((l) => l.layer)).save({} as never)
+    expect(layers.map((l) => l.calls)).toEqual([['save write'], ['save write'], ['save skip']])
+  })
+
+  it('close closes every layer even after one throws, then throws the first error', () => {
+    const layers = [fake('a', { closeThrows: true }), fake('b', { closeThrows: true }), fake('c')]
+    expect(() => new ChainedCache(layers.map((l) => l.layer)).close()).toThrow('a close')
+    expect(layers.map((l) => l.calls)).toEqual([['close'], ['close'], ['close']])
+  })
+
+  it('fewer than two layers is refused: one layer is that layer, not a chain', () => {
+    expect(() => new ChainedCache([fake('a').layer])).toThrow(
+      'ChainedCache needs at least two layers',
+    )
   })
 })
