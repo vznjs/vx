@@ -445,6 +445,23 @@ test is telling the truth.
         folds the root's reach.
       - A non-tuple entry is passed over, not a crash.
         `npm.ts`, `pnpm.ts` and `yarn.ts` are next, one item each.
+799.  DONE (2026-09-25, sweep of `@vzn/vx-lockfile`'s `npm.ts`, as 798
+      did `bun.ts`). 18 mutations over `npm.test.ts` and `bun.test.ts`: 7
+      caught, 8 held now, 3 equivalent. Held now, in `tests/npm.test.ts`,
+      each row changing one input:
+      - An optional and a peer dependency are followed.
+      - `version`, `resolved` and `integrity` each move a package alone:
+        the fixture moved all three together, so any one could drop out.
+      - The level-by-level walk through nested `node_modules`.
+      - An unresolved dependency's specifier and a dangling link's target
+        are folded.
+        Equivalent:
+      - The link test's operand order.
+      - A link entry's dependency pass: npm writes a `link: true` entry
+        with no dependency map.
+      - The node's path in its material: what a workspace can import is
+        its reach, and a package moved without a byte or an edge changing
+        names the same bytes.
 
 ## In flight
 
