@@ -721,6 +721,26 @@ graph`, and a missed input is a stale hit on every run.
       `config-cache.md` said rows "unused" / "not loaded" for 30 days are
       pruned; a hit refreshes nothing (a write per config per warm run),
       so it is rows not WRITTEN for 30 days, and both say so.
+774.  DONE (2026-09-25, the auto-install refusal in
+      `workspace/config-imports.ts`; its `--affected` half was swept in
+      item 649). 16 mutations: 12 caught, 3 held now, 1 equivalent (the
+      ESM scan forced to the TS loader: TS parses a superset). Held now:
+      a DYNAMIC `import('pkg')` dropped from the textual pass — the
+      form a config uses to load a package lazily reached no refusal at
+      all, and Bun installs what it cannot find from the registry, the
+      download item 239 exists to refuse; an absolute specifier looked up
+      as a package, which refused a config importing a helper by path
+      beside a real package; and unparseable source reported as a missing
+      import in place of its syntax error (the row that pinned "empty on
+      unparseable" named no package, so the textual pass returned before
+      the scan it meant to reach). Three rows in
+      `tests/config-missing-import.test.ts`, each red against its mutant.
+      The gate for this item went red once on item 752's TERM-trap row:
+      its 300 ms timeout counts from the spawn, so it is also the window
+      bwrap, the tracer and `sh` have to set the trap in, and the loaded
+      gate delivered TERM first (exit 143, no `got.txt`; 12 reps under
+      six CPU burners did not reproduce it, the gate's many sandboxes
+      did). Both halves of the row now time out at 1,000 ms.
 
 ## In flight
 
