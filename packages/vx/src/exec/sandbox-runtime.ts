@@ -387,13 +387,15 @@ export interface SandboxedRunArgs {
   /** See `CaptureConfig` — which streams are retained on the result. */
   capture?: CaptureConfig
   /**
-   * Baseline reads — paths the sandbox unconditionally allows. The
-   * caller builds this from resolved `cache.inputs.files`.
+   * Baseline reads — paths the sandbox allows beside the task's own
+   * `allow.read`. Core passes the project's and the root's
+   * `node_modules` and the workspace dependencies linked from them
+   * (sandbox-request.ts); nothing is derived from `cache`.
    */
   baseAllowRead: readonly string[]
   /**
-   * Baseline writes — paths the sandbox unconditionally allows for
-   * writes. Built from the static prefix of `cache.outputs.files`.
+   * Baseline writes, beside the task's own `allow.write`. Core passes
+   * none: a declared `cache.outputs` is not a write grant (config.ts).
    */
   baseAllowWrite: readonly string[]
   /**
