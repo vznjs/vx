@@ -184,20 +184,26 @@ point — the committed `packages/vx-bench/RESULTS.md` is the 3,270-task run bel
 | turbo       | 1m 40s       | 342 ms (1.2×)     | 612 ms (1.5×)  |
 | nx          | 3m 23s       | 1.38 s (4.7×)     | 1.33 s (3.2×)  |
 
-The same size on the four-core Linux container (2026-09-24, item 735,
-the fixed harness, median of 1; ideal schedule 1m 36s):
+The same size on the four-core Linux container (2026-09-25, after items
+744, 753 and 754, the fixed harness, median of 1; ideal schedule 1m 36s):
 
-| Runner      | Fresh (cold) | Warm (no restore) | Warm (restore)    | CPU, cold |
-| ----------- | ------------ | ----------------- | ----------------- | --------- |
-| vx          | 1m 37s       | 376 ms            | 478 ms            | 7.98 s    |
-| vx (frozen) | 1m 37s       | 321 ms            | 543 ms            | 8.06 s    |
-| turbo       | 1m 39s       | **303 ms** (0.8×) | **446 ms** (0.9×) | 13.92 s   |
-| nx          | 2m 47s       | 2.59 s (6.9×)     | 2.51 s (5.2×)     | 8m 38s    |
+| Runner      | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold |
+| ----------- | ------------ | ----------------- | -------------- | --------- |
+| vx          | 1m 37s       | **225 ms**        | **367 ms**     | 7.06 s    |
+| vx (frozen) | 1m 37s       | 209 ms            | 377 ms         | 6.94 s    |
+| turbo       | 1m 39s       | 247 ms (1.1×)     | 392 ms (1.1×)  | 13.84 s   |
+| nx          | 2m 27s       | 1.84 s (8.2×)     | 1.89 s (5.2×)  | 7m 23s    |
 
-Read it honestly: on this box Turbo 2.11 wins both warm columns at 476
-packages (two runs of one rep each: 255 and 303 ms against vx's 334 and
-376), where vx won them on the macOS machine against Turbo 2.10. Item
-744 found the cost in vx's stable-key pass; after it, warm reads vx 0.35 s against Turbo 0.35 here (min of 9, interleaved), a tie.
+Read it honestly: the 2026-09-24 run on this box had Turbo 2.11 winning
+both warm columns (303 and 446 ms against vx's 376 and 478). Item 744
+found the cost in vx's stable-key pass (a string set copied per task per
+dep, now a bitset), item 753 coalesced the 952 task lines into a write
+per turn of the event loop, and item 754 ranked a warm run's tasks over
+the work that actually waits; vx now leads both warm columns, by 10%
+and 7% in one rep each, which this container's noise can close. The
+min-of-N interleaved read of the warm no-op on the same workspace, with
+compiled binaries, is vx 165–175 ms against Turbo 226 ms (item 753's
+profile).
 
 ### Why Nx is slower
 

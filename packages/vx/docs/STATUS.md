@@ -887,6 +887,16 @@ rev-parse`). The profile's numbers for them came from a source run
       exact-repeat runs only, part of the saving reappears in `run
 graph`, and a missed input is a stale hit on every run.
 
+757.  DONE (2026-09-25, the 476-package Linux row re-run after items
+      744, 753 and 754; `compare.ts 20 25 1`, the fixed harness, one
+      rep). vx 225 / 367 ms warm (no restore / restore) against Turbo
+      247 / 392 and Nx 1.84 / 1.89 s; cold 1m 37s against 1m 39s and
+      2m 27s, vx's cold CPU 7.06 s against Turbo's 13.84. The day
+      before, the same row read Turbo ahead on both warm columns (303 /
+      446 against 376 / 478). `benchmarks.md` carries the new table and
+      says the lead is one rep each; the committed `RESULTS.md` (the
+      3,270-task run) is unchanged.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1115,7 +1125,9 @@ next?".
     from the harness that gave Nx npm; npm was two thirds of Nx's cold
     run at that size on the Linux box. OWNER: re-run `compare.ts 100 11
 1` on the macOS machine and `update-site.ts`, or take the Linux run
-    in `benchmarks.md` (where Turbo wins warm, Next 17) for the site.
+    in `benchmarks.md` for the site (at 476 packages vx now leads both
+    warm columns there, item 757; the 3,270-task Linux row predates
+    items 753–754).
 19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
     sandbox (Linux, found in 736).** The command runs in a session of
     its own inside the sandbox.
