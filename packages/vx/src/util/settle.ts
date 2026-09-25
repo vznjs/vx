@@ -47,9 +47,11 @@ export function killGraceMs(defaultMs: number): number {
 }
 
 /**
- * Await `p`, giving up after `ms`. Returns true when `p` settled first,
+ * Await `p`, giving up after `ms`. Returns true when `p` fulfilled first,
  * false when the deadline won — the caller decides whether a lost result
- * is worth reporting.
+ * is worth reporting. A rejection before the deadline is not a timeout: it
+ * propagates, so the caller reports the failure rather than a hang
+ * (`tests/util-settle.test.ts`).
  */
 export async function settleWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined
