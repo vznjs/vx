@@ -536,6 +536,30 @@ test is telling the truth.
       - The key order: it differs only when a version string is itself
         another snapshot's key, which pnpm writes for no plain
         dependency.
+803.  DONE (2026-09-25, sweep of `@vzn/vx-lockfile`'s `yarn.ts`, the
+      last of the four parsers). 31 mutations over `yarn.test.ts`: 11
+      caught, 14 held now, 6 equivalent. Held now, in `tests/yarn.test.ts`,
+      each row changing one input:
+      - berry: an entry with no `resolution` is keyed by its descriptors
+        and never merged with another;
+      - berry: peer dependencies;
+      - berry: an entry's checksum;
+      - berry: the second descriptor of a multi-descriptor key;
+      - berry: the metadata version;
+      - berry: a `workspace:` range the keys do not list;
+      - berry: a bare range resolving to its `npm:` entry;
+      - berry: an unresolved range;
+      - classic: `version`, `resolved` and `integrity`, each alone;
+      - classic: `optionalDependencies` and a quoted scoped name;
+      - classic: CRLF line endings and entry order.
+        Equivalent:
+      - The two berry detections (`__metadata:`, `version: N`) mask each
+        other: yarn writes both at the top of every file, and dropping
+        both is caught.
+      - Classic dependency lines are never indented past four spaces.
+      - Classic's early `[]` and the `:`-range `[]`: every later branch
+        finds nothing for those inputs.
+      - Classic's global is a constant.
 
 ## In flight
 

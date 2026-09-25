@@ -427,3 +427,103 @@ describe('yarn() declared', () => {
     )
   })
 })
+
+// The mutation sweep of item 803: each row changes one input the digest
+// must read and names the workspaces whose key must move. Before it, each
+// could be dropped from yarn.ts with the suite green.
+describe('every input the yarn digest must read', () => {
+  const ALL = ['.', 'packages/a', 'packages/b', 'packages/c']
+
+  it('an entry with no `resolution` is keyed by its descriptors, never merged with another', () => {
+    const strip = (text: string) =>
+      text
+        .replace(/\n {2}resolution: "bar@npm:[^"]*"/, '')
+        .replace(/\n {2}resolution: "baz@npm:[^"]*"/, '')
+    expect(strip(berry())).not.toContain('resolution: "bar@')
+    expect(movedDirs(strip(berry()), strip(berry({ baz: '3.0.1' })))).toEqual([
+      'packages/b',
+      'packages/c',
+    ])
+  })
+
+  it('a peer dependency is followed like any other', () => {
+    const peer = (text: string) =>
+      text.replace(
+        '"baz@npm:^3":\n  version:',
+        '"baz@npm:^3":\n  peerDependencies:\n    bar: "npm:^2"\n  version:',
+      )
+    expect(movedDirs(peer(berry()), peer(berry({ bar: '2.0.1' })))).toEqual(ALL.slice(1))
+  })
+
+  it("an entry's checksum alone moves what reaches it", () => {
+    expect(
+      movedDirs(berry(), berry().replace('checksum: 10c0/foo\n', 'checksum: 10c0/foo2\n')),
+    ).toEqual(['packages/a'])
+  })
+
+  it('a dependency resolves through the second descriptor of a multi-descriptor key', () => {
+    const second = (text: string) => text.replace('    foo: "npm:^1"\n', '    foo: "npm:^1.0.0"\n')
+    expect(second(berry())).not.toBe(berry())
+    expect(movedDirs(second(berry()), second(berry({ bar: '2.0.1' })))).toEqual(['packages/a'])
+  })
+
+  it('the metadata version alone moves every workspace', () => {
+    expect(movedDirs(berry(), berry().replace('  version: 8\n', '  version: 9\n'))).toEqual(ALL)
+  })
+
+  it('a `workspace:` range the keys do not list resolves to the workspace by name', () => {
+    const caret = (text: string) => text.replace('    b: "workspace:*"\n', '    b: "workspace:^"\n')
+    expect(caret(berry())).not.toBe(berry())
+    expect(movedDirs(caret(berry()), caret(berry({ baz: '3.0.1' })))).toEqual([
+      'packages/b',
+      'packages/c',
+    ])
+  })
+
+  it('a bare range resolves to the entry keyed with `npm:`', () => {
+    const bare = (text: string) => text.replace('    foo: "npm:^1"\n', '    foo: "^1"\n')
+    expect(movedDirs(bare(berry()), bare(berry({ bar: '2.0.1' })))).toEqual(['packages/a'])
+  })
+
+  it('an unresolved dependency still folds its range', () => {
+    const ghost = (range: string) =>
+      berry().replace('    foo: "npm:^1"\n', `    foo: "npm:^1"\n    ghost: "npm:${range}"\n`)
+    expect(movedDirs(ghost('^9'), ghost('^10'))).toEqual(['packages/a'])
+  })
+
+  it.each([
+    ['version', '  version "2.0.0"\n', '  version "2.0.9"\n'],
+    [
+      'resolved',
+      '  resolved "https://r/bar-2.0.0.tgz#abc"\n',
+      '  resolved "https://r/bar-2.0.0.tgz#abd"\n',
+    ],
+    ['integrity', '  integrity sha512-bar2.0.0\n', '  integrity sha512-bar2.0.9\n'],
+  ])('classic: the `%s` field alone moves the root digest', (_field, before, after) => {
+    const text = classic()
+    expect(text).toContain(before)
+    expect(digests(text.replace(before, after)).get('.')).not.toBe(digests(text).get('.'))
+  })
+
+  it('classic: optional dependencies and a quoted scoped name are read', () => {
+    const text = classic().replace(
+      '  dependencies:\n    bar "^2"\n',
+      '  dependencies:\n    "@s/x" "^1"\n  optionalDependencies:\n    bar "^2"\n',
+    )
+    const deps = parseLockfile(text).entries.get('foo@^1')!.deps
+    expect([...deps]).toEqual([
+      ['@s/x', '^1'],
+      ['bar', '^2'],
+    ])
+  })
+
+  it('classic: CRLF line endings and entry order never move the digest', () => {
+    const text = classic()
+    const crlf = text.replaceAll('\n', '\r\n')
+    const [header, ...entries] = text.split('\n\n\n')
+    const swapped = [header, entries.join('').split('\n\n').reverse().join('\n\n')].join('\n\n\n')
+    expect(swapped).not.toBe(text)
+    expect(digests(crlf)).toEqual(digests(text))
+    expect(digests(swapped)).toEqual(digests(text))
+  })
+})
