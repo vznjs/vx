@@ -250,20 +250,22 @@ two thirds of the old harness's Nx number there, which is the run the
 site quoted. The site's Nx column (34m 44s cold, § A real monorepo, the
 macOS machine) paid npm per task and is not a fair one; its vx and Turbo
 columns are unaffected. Next 18 re-runs it. The whole 3,270-task shape
-on this box with the fixed harness (2026-09-24, median of 1; ideal
-schedule 3m 38s):
+on this box with the fixed harness (2026-09-25, after items 744, 753 and
+754, median of 1; ideal schedule 3m 38s):
 
-| Runner      | Fresh (cold)  | Warm (no restore) | Warm (restore)    | CPU, cold       |
-| ----------- | ------------- | ----------------- | ----------------- | --------------- |
-| vx          | **3m 40s**    | 678 ms            | 971 ms            | **17.53 s**     |
-| vx (frozen) | 3m 40s        | 674 ms            | 1.05 s            | 18.15 s         |
-| turbo       | 5m 2s (1.4×)  | **496 ms** (0.7×) | **856 ms** (0.9×) | 29.87 s (1.7×)  |
-| nx          | 7m 18s (2.0×) | 6.19 s (9.1×)     | 6.11 s (6.3×)     | 22m 59s (78.7×) |
+| Runner      | Fresh (cold)  | Warm (no restore) | Warm (restore) | CPU, cold       |
+| ----------- | ------------- | ----------------- | -------------- | --------------- |
+| vx          | **3m 40s**    | **359 ms**        | **653 ms**     | **16.05 s**     |
+| vx (frozen) | 3m 41s        | 292 ms            | 651 ms         | 16.46 s         |
+| turbo       | 5m 4s (1.4×)  | 431 ms (1.2×)     | 722 ms (1.1×)  | 33.27 s (2.1×)  |
+| nx          | 6m 59s (1.9×) | 4.50 s (12.5×)    | 4.60 s (7.0×)  | 20m 55s (78.2×) |
 
-Here too Turbo 2.11 won the warm columns. Item 744 found why: vx's
-stable-key pass copied a string set per task per dep; as bitsets, vx's
-warm run on this box is 0.56 s against Turbo's 0.71 (min of 7), and
-0.35 s against 0.35 at 476 packages (min of 9).
+The day before, Turbo 2.11 won both warm columns here (496 and 856 ms
+against vx's 678 and 971). Item 744 found why: vx's stable-key pass
+copied a string set per task per dep, now a bitset; items 753 and 754
+then took the per-line stdout writes and the whole-graph priority
+closure off the warm path. vx now leads every column at this size, in
+one rep each.
 
 Refuted, each within ±0.3 s of the fixed harness's 21.2 s cold: the
 per-task pseudo-terminal (`NX_NATIVE_COMMAND_RUNNER=false`) and the
