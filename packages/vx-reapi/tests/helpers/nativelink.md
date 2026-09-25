@@ -18,6 +18,12 @@ docker run -d --name vx-nl -p 51051:50051 -v "$PWD/exec.json5:/config.json5" vx-
 VX_REAPI_EXEC_ENDPOINT=127.0.0.1:51051 bun test tests/exec-e2e.test.ts
 ```
 
+The base is the Docker Official busybox image, and any mirror of it works:
+`mirror.gcr.io/library/busybox:musl` or `docker.io/library/busybox:musl`
+when AWS's mirror refuses. CI tries all three, in two rounds, because one
+registry's outage (Docker Hub's 500s in 2026-08, AWS's `429 Data limit
+exceeded` in 2026-09) should not red a job that changed nothing.
+
 `exec.json5` is the all-in-one config (CAS + AC + scheduler + one local
 worker); the copy CI uses lives at `tests/helpers/nativelink-exec.json5`.
 
