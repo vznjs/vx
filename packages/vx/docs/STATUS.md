@@ -320,6 +320,25 @@ test is telling the truth.
         as its own text, an empty endpoint printed as none, a bare origin
         printed without a trailing slash, and with no reporter the line on
         stderr.
+793.  DONE (2026-09-25, sweeps of five small never-named utilities).
+      `util/task-id.ts` 3 of 3 and `util/bun-version.ts` 6 of 6 caught.
+      `util/which.ts`: 7, 6 caught, 1 equivalent (the error's `path`,
+      whose one reader, `isTmpdirRefusal`, never finds the temp
+      directory in a bare tool name). `util/verbs.ts`: 6, 3 caught, 3
+      held now. Dropping `completions`, `help` or the `stats` alias from
+      the verbs a plugin may not declare survived every row, and each
+      would have let a plugin verb load and sit dead behind the
+      dispatcher. `tests/dispatched-verbs.test.ts` reads the list
+      against the dispatcher's own `case` labels in both directions.
+      `util/procfs.ts`: 4, none caught bare:
+      - The `/proc/self` comparison is held only in the sandbox: under
+        `@vzn/vx#test.bun.shard-12`, run sandboxed in a worktree,
+        dropping it turned the four `task-tree-kill` / `armTimeout` rows
+        red that item 787's gate mutant did.
+      - The memo is a cost.
+      - The Linux test is equivalent, since `readlink` throws elsewhere.
+      - The unreadable `/proc` answer (false, not true) differs only
+        where `/proc` is missing: macOS, a job this gate cannot run.
 
 ## In flight
 
