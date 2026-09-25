@@ -100,7 +100,11 @@ export class ConfigEvalTable {
     })()
   }
 
-  /** Retention: a config not loaded since `cutoff` was edited or its project left. */
+  /**
+   * Retention: a row not WRITTEN since `cutoff`. A hit does not refresh it
+   * (that would be a write per config on every warm run), so a config that
+   * hit for thirty days is evaluated once more and stored again.
+   */
   pruneOlderThan(cutoff: number): void {
     this.db.prepare('DELETE FROM config_evals WHERE created_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM config_closures WHERE created_at < ?').run(cutoff)

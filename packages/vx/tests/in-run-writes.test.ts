@@ -751,4 +751,30 @@ describe('FingerprintWatch — which fingerprinted files moved since the run rea
     watch.wrote()
     expect(watch.moved()).toBeUndefined()
   })
+
+  // A lockfile plugin claims its file out of the key digest (`fingerprint`
+  // seam), but its per-project parts are read from the same bytes, so the
+  // watch compares a claimed file too — against what the run read, not
+  // against nothing, which reads every claimed lockfile as moved after any
+  // writer and withholds the rest of the run for a file no one touched.
+  it('a claimed lockfile is watched against what the run read, like any other', async () => {
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
+    const claimed = new Set(['pnpm-lock.yaml'])
+    const untouched = new FingerprintWatch(
+      root,
+      await computeWorkspaceFingerprints(root, claimed),
+      Date.now(),
+    )
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
+    untouched.wrote()
+    expect(untouched.moved()).toBeUndefined()
+    const rewritten = new FingerprintWatch(
+      root,
+      await computeWorkspaceFingerprints(root, claimed),
+      Date.now(),
+    )
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'Y')
+    rewritten.wrote()
+    expect(rewritten.moved()).toEqual(['pnpm-lock.yaml'])
+  })
 })

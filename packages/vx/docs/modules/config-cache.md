@@ -115,7 +115,9 @@ false negative costs one evaluation, never a stale key.
   directions, even when an `evalCache` is passed beside it.
 - The store honours the run's local read/write axes: `--cache=local:`
   neither reads nor writes it.
-- Rows unused for 30 days are pruned on `Cache.close()`.
+- Rows not written for 30 days are pruned on `Cache.close()`. A hit does not
+  refresh a row (a write per config on every warm run), so a config that hit
+  for thirty days is evaluated once more and stored again.
 
 ## Tests
 
