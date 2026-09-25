@@ -332,6 +332,25 @@ test is telling the truth.
         the split segments rebuilds the glob. `vx-reapi`'s `src/` is now
         swept file by file.
 
+829.  DONE (2026-09-25, `vx-migrate`'s `nx-env.cjs` and `nx-dotenv.cjs`,
+      the last `src/` files no sweep had named). 22 mutations: 8 caught
+      by the rows already there and `nx.test.ts`, 9 held now, 5
+      equivalent. Held in `tests/nx-dotenv.test.ts`: each usage error
+      named (a flag with no value, no command after `--`), `--help` and
+      `-h` printing the usage with exit 0, no `nx` refused by name with
+      exit 1, Nx's loader never required when there is nothing to load
+      (an Nx that moved `task-env` still runs a plain line), a shell
+      killed by a signal reported as 128 plus its number, and no `sh`
+      on PATH exit 1 by name. Equivalent: the quoting's empty-string
+      and safe-character shortcuts (the shell reads the same words),
+      `r.status ?? 1` (a null status without a signal comes only with
+      `r.error`, which returns first), resolving the `.env` paths (the
+      loader resolves them against the same cwd), and unloading the
+      `envFile` first (Nx unloads only names equal to the file's own
+      values, which the load puts back). The core and plugin `src/`
+      trees are now all named by a sweep; the loop goes to STATUS's
+      Next list.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
