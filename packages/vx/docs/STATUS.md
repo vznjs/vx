@@ -300,6 +300,26 @@ test is telling the truth.
       - The same outcome another way: the second `mkdir` rethrows the
         code the first did; the prune loop ends at its top either way;
         a link cycle is refused at hop 400,000 as at 40, only later.
+792.  DONE (2026-09-25, sweep of `cache/layered-cache.ts` beyond the
+      degrade paths and temp cleanups item 489 swept). 44 mutations over
+      the 15 files that drive the remote seam, the vx-migrate wires and
+      vx-reapi's plugin suite among them: 32 caught, 11 held now by rows
+      in `tests/layered-cache.test.ts`, 1 equivalent (`close()` clearing
+      its failure classes; a run closes the layer once). Held now:
+      - The upload pool is four wide and the fifth waits (a pool of one
+        passed everything).
+      - A `get()` that joins an in-flight pull after `markRemoteAbsent`
+        still waits for it: the existing row held the pull's own promise,
+        which survives the clobber, not the joiner.
+      - A pulled entry carries the caller's task id, and an upload carries
+        the entry's duration.
+      - `has()` with remote reads off never probes.
+      - A `hasMany()` resolving `undefined` is no batch info, not
+        `undefined`.
+      - The messages: a `{ body: null }` named as `null`, a thrown string
+        as its own text, an empty endpoint printed as none, a bare origin
+        printed without a trailing slash, and with no reporter the line on
+        stderr.
 
 ## In flight
 

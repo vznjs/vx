@@ -489,6 +489,80 @@ describe('LayeredCache', () => {
     expect(await local.get('h-race')).not.toBeNull()
   })
 
+  it('a get() issued while a pull is in flight waits for it, after markRemoteAbsent too', async () => {
+    // The pull's own promise survives the clobber either way; what a late
+    // `false` would break is the get() that joins the pull mid-flight.
+    await saveSample(makeLayered(), 'h-join')
+    await wipeLocal()
+    const layered = makeLayered()
+    remote.getLatencyMs = 40
+    const pull = layered.prefetch('h-join', { taskId: 'pkg#build', command: 'echo produced' })
+    layered.markRemoteAbsent(['h-join'])
+    const hit = await layered.get('h-join', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(hit?.source).toBe('remote')
+    expect(await pull).toBe(true)
+  })
+
+  it("the pulled entry carries the caller's task id, and the upload the entry's duration", async () => {
+    const metas: Array<{ durationMs?: number }> = []
+    const layer: RemoteCacheLayer = {
+      ...remote.layer,
+      put: async (hash, body, meta) => {
+        metas.push({ ...meta })
+        await remote.layer.put(hash, body, meta)
+      },
+    }
+    const saver = new LayeredCache(local, layer, { onRemoteError: () => {} })
+    await saveSample(saver, 'h-meta')
+    expect(metas).toEqual([{ durationMs: 5 }])
+    await wipeLocal()
+    const hit = await makeLayered().get('h-meta', { taskId: 'app#build', command: 'x' })
+    expect(hit?.taskId).toBe('app#build')
+  })
+
+  it('has() with remote reads off never probes the remote', async () => {
+    await saveSample(makeLayered(), 'h-probe')
+    await wipeLocal()
+    const layered = new LayeredCache(local, remote.layer, {
+      policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
+      onRemoteError: () => {},
+    })
+    remote.heads = 0
+    expect(await layered.has('h-probe')).toBeNull()
+    expect(remote.heads).toBe(0)
+  })
+
+  it('remoteHasMany() reads a hasMany() that resolves undefined as no batch info', async () => {
+    const layered = new LayeredCache(
+      local,
+      { ...remote.layer, hasMany: async () => undefined as unknown as Set<string> },
+      { onRemoteError: () => {} },
+    )
+    expect(await layered.remoteHasMany(['h1'])).toBeNull()
+  })
+
+  it('runs four uploads at once, and the fifth waits', async () => {
+    let release!: () => void
+    remote.putGate = new Promise<void>((r) => (release = r))
+    const layered = makeLayered()
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    for (let i = 0; i < 5; i++) {
+      await writeFile(outFile, `produced-${i}`)
+      await layered.save({
+        hash: `h-pool-${i}`,
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
+      })
+    }
+    await Bun.sleep(0)
+    expect(remote.puts).toBe(4)
+    release()
+    await layered.drainUploads()
+    expect(remote.puts).toBe(5)
+  })
+
   it('key() is identical to local.key()', async () => {
     const layered = makeLayered()
     const input = {
@@ -921,6 +995,45 @@ describe('LayeredCache', () => {
       ])
     })
 
+    it('a body of null is named, a thrown string is its own message, and an empty endpoint is none', async () => {
+      const errors: Error[] = []
+      const layered = new LayeredCache(
+        local,
+        {
+          endpoint: '',
+          has: async () => {
+            throw 'boom'
+          },
+          get: async () => ({ body: null }) as never,
+          put: async () => {},
+        },
+        { onRemoteError: (e) => errors.push(e) },
+      )
+      await layered.has('h1')
+      await layered.get('h2')
+      expect(errors.map((e) => e.message)).toEqual([
+        'probe h1 failed: boom',
+        'download h2 failed: remote cache layer returned an invalid result: get() resolved body is null (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
+      ])
+    })
+
+    it('with no reporter, the line goes to stderr', async () => {
+      const writes: string[] = []
+      const spy = spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        writes.push(String(chunk))
+        return true
+      })
+      try {
+        await new LayeredCache(
+          local,
+          failing(() => new Error('down'), ENDPOINT),
+        ).has('h1')
+      } finally {
+        spy.mockRestore()
+      }
+      expect(writes).toEqual([`[vx] remote cache: probe h1 at ${ENDPOINT} failed: down\n`])
+    })
+
     it('the endpoint is printed without its credentials, query or fragment', async () => {
       const said = async (endpoint: string): Promise<string[]> => {
         const errors: Error[] = []
@@ -941,6 +1054,11 @@ describe('LayeredCache', () => {
       ])
       expect(await said('grpc.example.com:443')).toEqual([
         'probe h1 at grpc.example.com:443 failed: down',
+      ])
+      // A bare origin has nothing to strip, so it is not re-serialised
+      // (which would add a trailing slash).
+      expect(await said('https://cache.example.com')).toEqual([
+        'probe h1 at https://cache.example.com failed: down',
       ])
     })
   })
