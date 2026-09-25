@@ -40,6 +40,7 @@ export interface RunOptions {
   telemetrySinks?: readonly TelemetrySink[] // an embedder's sinks, ahead of the plugins'
   command?: string // the invocation as recorded (`vx run …`)
   remoteCache?: RemoteCacheLayer // an injected remote layer; wins over the cache seam
+  artifactCeiling?: number // the 2 GiB artifact ceiling, lowered only by a test
 }
 export interface RunSummary {
   ok: boolean

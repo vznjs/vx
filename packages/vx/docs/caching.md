@@ -937,7 +937,14 @@ output length for the one-call decode, a running count for the stream.
 A frame that declares no content size (what a streaming compressor
 writes — vx's own saves above 4 MiB) is always decoded as a stream, so
 a sizeless bomb has nowhere to expand and vx's artifacts ingest
-anywhere.
+anywhere. A save meets the same ceiling first: the pack plans the tar
+from one stat per output, and a tar past 2 GiB is refused before a byte
+is compressed — the run stays green, one status line names the task
+(`[vx] cache save failed: <task> is not cached: its outputs pack to …,
+past the 2.0 GB artifact ceiling a restore enforces`), and nothing is
+stored for a later run to hit and fail to restore. Left to the scan, a
+2.2 GB output paid the whole compress and a decode (6 to 14 s) to learn
+the same thing and called the task's outputs a corrupt artifact.
 
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares

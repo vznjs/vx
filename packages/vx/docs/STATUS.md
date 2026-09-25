@@ -462,6 +462,28 @@ test is telling the truth.
       - The node's path in its material: what a workspace can import is
         its reach, and a package moved without a byte or an edge changing
         names the same bytes.
+800.  DONE (2026-09-25, the ledger's `remote:large-upload` row,
+      nx#36943 / nx#30335, untested → covered). The 2 GiB artifact
+      ceiling was a module constant, so no test could reach it. It is
+      now `Cache`'s `artifactCeiling`, set only through
+      `RunOptions.artifactCeiling`; no config, flag or variable reaches
+      it. The save refuses an output set whose tar is past it from the
+      plan's stats, before a byte is compressed. The run stays green,
+      and one status line names the task, the packed size and the
+      ceiling. Before this, the scan found the same overage only after
+      the whole compress and a decode (6 to 14 s on the 2.2 GB probe),
+      and it called the task's outputs a corrupt artifact.
+      Six mutations, all caught: the precheck alone and with the scan's
+      cap, the scan's cap alone (an ingest's only guard), the restore's
+      cap, the threading in `prepare.ts`, and `>` → `>=`. The ledger has
+      no `untested` row left, and its law's verdict set drops the name.
+      `tests/artifact-ceiling.test.ts` holds five rows:
+      - the refusal at save;
+      - its control;
+      - exactly the ceiling is cached and hit (inclusive, as at restore);
+      - a restore under a lowered ceiling fails loudly (a local fault,
+        not a miss);
+      - an ingest past it never lands.
 
 ## In flight
 

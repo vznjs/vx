@@ -29,9 +29,18 @@ import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { UserError, isDiskFull, isFsRefusal, relPosix, span, splitTaskId } from '../util/index.js'
+import {
+  UserError,
+  formatBytes,
+  isDiskFull,
+  isFsRefusal,
+  relPosix,
+  span,
+  splitTaskId,
+} from '../util/index.js'
 import {
   ArchiveSecurityError,
+  type ArtifactPlan,
   type ExecUsage,
   extractArtifactStream,
   scanArtifact,
@@ -58,7 +67,13 @@ import {
   type SaveArgs,
   type TaskInputRow,
 } from './layer.js'
-import { bytesOf, decodedTar, STREAM_DECODE_FROM, zstdEncoder } from './zstd.js'
+import {
+  bytesOf,
+  decodedTar,
+  MAX_DECOMPRESSED_ARTIFACT_BYTES,
+  STREAM_DECODE_FROM,
+  zstdEncoder,
+} from './zstd.js'
 import { ConfigEvalTable } from './config-evals.js'
 import { FileHashStore } from './file-hashes.js'
 import { OutputIndex } from './output-index.js'
@@ -341,6 +356,12 @@ export class Cache implements CacheLayer {
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     /** The workspace root, where the file hasher asks git for the object format (file-hashes.ts). */
     repoDir?: string,
+    /**
+     * The largest artifact, decoded, this cache saves, ingests or
+     * restores (zstd.ts). Lowered only by a test, through
+     * `RunOptions.artifactCeiling`: 2 GiB of output is out of a test's reach.
+     */
+    private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
   ) {
     this.read = localPolicy.read
     // The directory exists before the DB opens — bun:sqlite won't create
@@ -924,7 +945,7 @@ export class Cache implements CacheLayer {
       // 0.62 ms sequential, 2026-09-10) and 30% slower in the run, where
       // four workers overlap their round trips and a blocking one stalls
       // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
-      const tar = await decodedTar(Bun.file(src), hash)
+      const tar = await decodedTar(Bun.file(src), hash, this.artifactCeiling)
       await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
@@ -1134,14 +1155,32 @@ export class Cache implements CacheLayer {
     // stdout is ALWAYS present in the artifact, even if empty, so the
     // layout is predictable: a successful read finds `stdout` and
     // zero-or-more `outputs/<rel>` / `workspace-outputs/<rel>` entries.
+    const plan = await this.planWithin(args)
+    if (plan.size <= STREAM_DECODE_FROM)
+      return await Bun.zstdCompress(await packArtifactBytes(plan))
+    return bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
+  }
+
+  /**
+   * The artifact's plan, refused when its tar — exactly the bytes a restore
+   * decodes — is past the ceiling every restore enforces. Refused here, it
+   * costs a stat per output; left to the scan, it cost the whole compress
+   * and a decode of a 2.2 GB output (6 to 14 s) to learn the same thing
+   * and call the task's own outputs a "corrupt artifact".
+   */
+  private async planWithin(args: Parameters<Cache['packArtifact']>[0]): Promise<ArtifactPlan> {
     const plan = await planArtifact({
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
       exec: usageOfEntry(args.entry),
     })
-    if (plan.size <= STREAM_DECODE_FROM)
-      return await Bun.zstdCompress(await packArtifactBytes(plan))
-    return bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
+    if (plan.size > this.artifactCeiling) {
+      throw new Error(
+        `${args.entry.taskId} is not cached: its outputs pack to ${formatBytes(plan.size)}, past the ` +
+          `${formatBytes(this.artifactCeiling)} artifact ceiling a restore enforces — narrow cache.outputs.files`,
+      )
+    }
+    return plan
   }
 
   /**
@@ -1157,11 +1196,7 @@ export class Cache implements CacheLayer {
     tmpPath: string,
     args: Parameters<Cache['packArtifact']>[0],
   ): Promise<Uint8Array | { tmpPath: string }> {
-    const plan = await planArtifact({
-      stdout: args.entry.stdout ?? '',
-      outputs: this.outputsOf(args),
-      exec: usageOfEntry(args.entry),
-    })
+    const plan = await this.planWithin(args)
     if (plan.size <= STREAM_DECODE_FROM)
       return await Bun.zstdCompress(await packArtifactBytes(plan))
     const sink = Bun.file(tmpPath).writer()
@@ -1235,7 +1270,7 @@ export class Cache implements CacheLayer {
           ? compressed
           : Bun.file(tmpPath)
       const endScan = span('save: scan')
-      scanned = await scanArtifact(await decodedTar(source, hash))
+      scanned = await scanArtifact(await decodedTar(source, hash, this.artifactCeiling))
       endScan()
       // v17 invariant: every artifact carries a `stdout` entry. Its
       // absence means the bytes decompressed but aren't a vx artifact.
