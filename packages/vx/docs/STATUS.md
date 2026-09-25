@@ -655,6 +655,24 @@ graph`, and a missed input is a stale hit on every run.
       its mutant. `deferred-outputs.ts` was swept in item 643; the sweeps
       now run in a scratch worktree, so the tree a stop check reads stays
       clean.
+770.  DONE (2026-09-25, the sweep of `exec/local-executor.ts`, the last
+      file STATUS named once). 14 mutations: 13 caught, 1 equivalent. The
+      eight fields the local executor forwards to the runner (command
+      args, streams, capture, live children, timeout, env, the empty
+      violation list) were each dropped against fourteen run-path suites
+      as root; the sandbox branch's six (the branch itself and each
+      baseline) against the sandbox suite as `probe` with
+      `VX_REQUIRE_SANDBOX=1`, in a `probe`-owned worktree under `/tmp/vx-*`
+      (bwrap cannot create a mount point in a root-owned directory, which
+      failed two rows of the unmutated baseline until the tree changed
+      owner). The equivalent: `baseAllowWrite` emptied, because core
+      passes `[]` for it on every request (a declared output is not a
+      write grant, owner 2026-09-05). The runtime's doc comments said the
+      opposite for both baselines — reads "built from resolved
+      `cache.inputs.files`", writes "from the static prefix of
+      `cache.outputs.files`" — the claim item 443 corrected in
+      `config.ts` and missed here; both now say what core passes. Removing
+      the always-empty field from the executor seam is Next 22.
 
 ## In flight
 
@@ -918,6 +936,14 @@ next?".
     last run's stable keys, is designed and DEFERRED (item 756).
     (`vx-bench/strace-vx.ts` counting git's worker threads as vx: fixed
     in item 755.) DONE through items 753–756.
+22. **`baseAllowWrite` has one value (item 770).** Core sends `[]` on
+    every sandboxed request, so the field on `ExecuteSandbox` and
+    `SandboxedRunArgs` is a knob no producer turns; an executor plugin
+    reading it learns nothing. Remove it from the seam and let the
+    runtime's own write set be `allow.write` alone. Three runtime rows
+    pass it as a direct write grant (two of them macOS `sandbox-exec`
+    rows, which this box cannot run) and move to `allow.write` in the
+    same change, proven on the darwin CI job.
 
 ## Decisions (this arc)
 
