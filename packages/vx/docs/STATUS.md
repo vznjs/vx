@@ -978,6 +978,15 @@ graph`, and a missed input is a stale hit on every run.
       `tests/doc-comments-attached.unsafe.test.ts` (red with one orphan
       put back).
 
+762.  DONE (2026-09-25, the rest of the unswept-file pass: `nested-dirs.ts`,
+      `tail.ts`, `settle.ts`, `colors.ts`, `completions.ts` read sound).
+      One comment claimed more than the code: `settleWithin` "returns
+      true when `p` settled first", while a rejection before the deadline
+      propagates by design (a row pins it). The doc says fulfilled, and
+      that a rejection throws. Considered and left: `completions.ts`
+      interpolates plugin verb names into the shell scripts unquoted —
+      the plugin supplying such a name already runs code in vx.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
