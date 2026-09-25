@@ -351,6 +351,21 @@ test is telling the truth.
       trees are now all named by a sweep; the loop goes to STATUS's
       Next list.
 
+830.  DONE (2026-09-25, Next 6's warm A/B, owed since the last measured
+      commit). Items 759 (the run lock, taken on every run) and 760
+      changed the run path with no number beside them. Current main
+      (30191b66) was measured against 7ee7fa27, the commit of the last
+      warm-path work, on `run build --all` over a pre-warmed
+      synthetic workspace per arm. The arms ran interleaved, with an A/A
+      arm on main as the control, under Bun 1.4.2 on 4 CPUs:
+      - 1,000 projects, 11 reps: before 271.5 ms min (290.8 median),
+        main 268.0 (301.1), A/A 273.8 (293.8);
+      - 100 projects, 15 reps: before 127.5 (135.5), main 128.5
+        (133.9), A/A 128.0 (136.1).
+        A tie at both sizes: every gap is inside the A/A spread. The run
+        lock costs nothing measurable. The plan's D2 (the streaming
+        remote seam) is struck through, since it shipped as item 662.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -450,7 +465,7 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 285 (2026-09-16, a tie; 274 was the one before), and the
+   item 830 (2026-09-25, a tie at 100 and 1,000 projects; 285 was the one before), and the
    restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
