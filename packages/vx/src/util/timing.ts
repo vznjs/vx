@@ -3,7 +3,8 @@
 // The CPU profiler attributes a tight loop's cost unreliably and hides
 // where an `await` waited; a stage table answers "where did the warm run
 // go?" directly, and costs one boolean check per mark when off. Marks are
-// cumulative from process start; the table shows each stage's own share.
+// cumulative from this module's load — process start and the imports ahead
+// of it sit outside the table; the table shows each stage's own share.
 
 const enabled = process.env.VX_TIMING !== undefined && process.env.VX_TIMING !== ''
 const t0 = Bun.nanoseconds()
