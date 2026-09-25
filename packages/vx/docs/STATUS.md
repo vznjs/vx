@@ -1043,6 +1043,21 @@ request` (-32600), and the session goes on. The new row sends
         The fake learned SplitBlob, SpliceBlob, a streaming GetTree,
         raw stage metadata and a count of cancelled Executes.
 
+825.  DONE (2026-09-25, `vx-reapi`'s `executor.ts`, first slice: the
+      hand-written `ExecuteResponse` decoders). 33 mutations: 18 caught,
+      14 held now, 1 left for the run-path slice (a response with no
+      bytes, reachable only through a run). Held now, in
+      `tests/decode-sweep.test.ts`:
+      - from protobufjs: a negative exit code, the stderr digest, a
+        digest size past 16 bits, and the execution-start and -completed
+        timestamps chosen over the input-fetch ones, with nanos;
+      - by hand, for what an encoder never writes: an explicit
+        `cached_result`, `human_readable` and `is_executable` of 0 read
+        as false, empty `contents` as none, fixed-width fields vx does
+        not read stepped over at both levels, an output directory's tree
+        digest after a varint field, and a server log with no digest
+        dropped rather than listed as `undefined`.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
