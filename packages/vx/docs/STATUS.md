@@ -552,6 +552,19 @@ exit`.
         Both fail without the fix, and the second fails with only the
         exit-hook listing removed.
 
+878.  DONE (2026-09-26, macOS CI on #954). `signal-handling.test.ts` ›
+      "a second signal exit leaves no run-lock entry behind" waited its
+      10 s for the task's INT trap marker and failed. The task was spawned
+      with the file's 200 ms `VX_KILL_GRACE_MS`, the class items 852 and
+      853 fixed in its twins: a loaded runner SIGKILLs the shell before
+      its trap runs.
+      - The two-signal case gets a 5 s grace; its second signal follows
+        the marker, so the row does not wait the grace out. The
+        one-signal case keeps 200 ms: its trap never ends the task, so
+        the grace is its whole wait.
+      - Not reproducible on Linux, and so not proven: the rows it copies
+        have held since 853.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
