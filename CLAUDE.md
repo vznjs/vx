@@ -425,6 +425,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (868). Drive such a window with the async call held pending (a
   mocked `node:fs/promises`), never with a count of microtasks, which
   missed it (868).
+- A ready marker a task writes to a declared write path exists before
+  the task runs: vx creates a missing write file empty so the sandbox
+  can mount it. A probe that waited for such a file to EXIST fetched
+  before the server had started, and a bridge "gap" was filed on it
+  (item 876). Wait on the marker's content.
 - Await a gRPC call's refusal with `.then(ok, err)`, never
   `expect(…).rejects`: under `bun test` the latter held a call that
   needed more I/O until its 30 s deadline, and the same call settled in

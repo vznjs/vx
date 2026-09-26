@@ -520,6 +520,25 @@ exit`.
         budget, `HEAVY_ROW_MS`, instead of the default.
       - Item 873's note about the first timeout is this one.
 
+876.  DONE (2026-09-26, the review's last lead and the gap its probe
+      seemed to show, both refuted; no code change).
+      - The lead: a retry of a sandboxed task with a `localBinding` port
+        rebinds the host bridge while the old socat, SIGTERMed and not
+        awaited, still listens. A probe (the server writes `up.txt`, then
+        a host `curl` of the port) failed 3 to 6 runs in 10 with a retry,
+        without one, and on the tree before item 873. The retry was
+        never the cause.
+      - The gap it seemed to show (a fetch right at the ready mark
+        fails; "Couldn't connect" or "Empty reply") was the probe's own.
+        `up.txt` is a declared write path, so vx creates it empty before
+        the task starts (schema.md, "A write grant's shape"). The probe
+        waited for the file to exist and fetched before the server had
+        started. It is 0 bytes at first sight in 3 runs of 3. Waiting
+        for its content instead gives 10 fetches in 10 on the unchanged
+        tree, at ~5 ms to the first byte.
+      - A patch that awaited both socats' readiness before the command
+        was written and dropped: no row fails without it.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
