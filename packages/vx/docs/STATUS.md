@@ -387,6 +387,17 @@ echo A; echo B` went green after a failed pre hook, and a cache
         (three). With the old leading-token rule put back in the new
         code, those three fail and nothing else does. The review's repro
         now restores `coverage/packages/app/lcov.info` on a hit.
+913.  DONE (2026-09-26, the nx() review's lead 4). Nx runs a
+      `{ runtime }` input at the workspace root; the mapper put it in
+      `cache.inputs.runtime`, which runs in the project dir. So
+      `cat tools/version.txt` failed a run Nx passes, and a command that
+      runs in both places hashed a different fact.
+      - It is `workspaceRuntime` now, which also runs each command once
+        per run, not once per project. The `.env` probe stays in
+        `runtime`: its paths are project-relative. schema.md no longer
+        calls `runtime` the Nx input's equivalent.
+      - Row: `migrate.test.ts` › pkg-a covers … (the runtime line), red
+        without the fix; the review's repro now succeeds.
 
 ## In flight
 
