@@ -274,6 +274,39 @@ describe('TurboRemoteCache against the spec server', () => {
       expect(await readdir(tempDir)).toEqual([])
     })
 
+    it('a process exit with a verified body unread leaves no temp', async () => {
+      // Core's signal exit is `process.exit`, which awaits no stream (item
+      // 848): the exit itself must take the temp.
+      const dir = await mkdtemp(path.join(tmpdir(), 'vx-turbo-exit-'))
+      try {
+        const script = `
+          import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from ${JSON.stringify(PLUGIN_INDEX)}
+          import { readdirSync } from 'node:fs'
+          const body = new Uint8Array(1024).fill(7)
+          const tag = await artifactTag(Buffer.from(${JSON.stringify(KEY)}), 'ab90', 'team_1', new Blob([body]))
+          const fetchImpl = async () => new Response(body, { headers: { 'x-artifact-tag': tag } })
+          const config = resolveTurboCacheConfig(
+            { apiUrl: 'http://turbo.invalid', token: 't', teamId: 'team_1', signatureKey: ${JSON.stringify(KEY)} },
+            {},
+          )
+          const got = await new TurboRemoteCache(config, fetchImpl, ${JSON.stringify(dir)}).get('ab90')
+          console.log(got === null ? 'miss' : readdirSync(${JSON.stringify(dir)}).length)
+          process.exit(130)
+        `
+        const p = Bun.spawnSync([process.execPath, '-e', script], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        expect(p.stderr.toString()).toBe('')
+        expect(p.exitCode).toBe(130)
+        // The positive first: the temp existed when the process left.
+        expect(p.stdout.toString().trim()).toBe('1')
+        expect(await readdir(dir)).toEqual([])
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+
     it('an untagged download is refused unread: its body is cancelled, no temp is written', async () => {
       let cancelled = false
       const untagged = (async () =>

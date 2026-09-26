@@ -55,6 +55,7 @@
 // them and left by the last to release.
 
 import { readFileSync, realpathSync } from 'node:fs'
+import { rmdirSync, unlinkSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -64,6 +65,29 @@ import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, xxh3hex } from '../util/inde
 const heldHere = new Map<string, number>()
 /** The entry this process's taking of each held lock wrote. */
 const takers = new Map<string, string>()
+
+/**
+ * A signal exit is `process.exit` (signals.ts): no finally runs and nothing
+ * is awaited, so a Ctrl-C left this process's entry, and the lock
+ * directory, in the temp dir for the next run to reclaim (item 848). The
+ * process's own `exit` event is the one step every exit path passes, and
+ * it runs synchronously.
+ */
+let exitHooked = false
+function releaseOnExit(): void {
+  if (exitHooked) return
+  exitHooked = true
+  process.on('exit', () => {
+    for (const [lockDir, entry] of takers) {
+      try {
+        unlinkSync(path.join(lockDir, entry))
+        rmdirSync(lockDir)
+      } catch {
+        // reclaimed already, or another run took the emptied name
+      }
+    }
+  })
+}
 
 /** Polling cadence while another run holds the lock. */
 const POLL_MS = 50
@@ -271,6 +295,7 @@ export async function acquireRunLock(
       if (entry !== null) {
         heldHere.set(lockDir, 1)
         takers.set(lockDir, entry)
+        releaseOnExit()
         return release
       }
       h = await holder(lockDir)

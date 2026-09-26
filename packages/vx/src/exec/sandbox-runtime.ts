@@ -25,6 +25,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
+import { unlinkSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig } from '../config.js'
 import {
@@ -282,6 +283,29 @@ function sandboxTmpdir(): string {
   // the original, so a late assignment would be invisible.
   const named = process.env['CLAUDE_CODE_TMPDIR'] ?? process.env['CLAUDE_TMPDIR']
   return named !== undefined && named !== '' ? named : '/tmp/claude'
+}
+
+/**
+ * The strace logs of tasks still running. A signal exit is `process.exit`
+ * (orchestrator/signals.ts), which never reaches a task's own unlink, so
+ * a Ctrl-C left one log per sandboxed task in the temp dir (item 848);
+ * the process's `exit` event removes what is still listed.
+ */
+const liveTraceLogs = new Set<string>()
+let traceExitHooked = false
+function traceLogsOnExit(log: string): void {
+  liveTraceLogs.add(log)
+  if (traceExitHooked) return
+  traceExitHooked = true
+  process.on('exit', () => {
+    for (const f of liveTraceLogs) {
+      try {
+        unlinkSync(f)
+      } catch {
+        // never written, or gone
+      }
+    }
+  })
 }
 
 /** Whether SRT is up in this process — set by `initSandbox`, cleared by `resetSandbox`. */
@@ -734,6 +758,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // structurally; we just lose the structured violation list.
   const useStrace = await wantsStraceDetection()
   const straceLog = useStrace ? path.join(os.tmpdir(), `vx-strace-${tag}.log`) : undefined
+  if (straceLog) traceLogsOnExit(straceLog)
   // We trace only `openat` — it's the actual file-read attempt, the
   // signal the user cares about. `statx` / `newfstatat` / `access`
   // are mostly shell PATH-walking and stat probes that aren't
@@ -863,7 +888,10 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   const linuxViolations: SandboxViolation[] = straceLog
     ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
     : []
-  if (straceLog) await unlink(straceLog).catch(() => undefined)
+  if (straceLog) {
+    liveTraceLogs.delete(straceLog)
+    await unlink(straceLog).catch(() => undefined)
+  }
 
   // Apply the task's own ignoreViolations on top of the global defaults.
   // SRT's wrapCommandWithSandboxMacOS doesn't actually thread customConfig.

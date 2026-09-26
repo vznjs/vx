@@ -230,7 +230,12 @@ out of `run()` (item 759, `tests/run-lock.test.ts` › "contending
 processes never hold it at once…", with holders that die holding it). A
 second process polls every 50 ms, after a second says
 `[vx] waiting for another vx run (pid N) on this workspace to finish…`,
-and reclaims a lock whose pid is gone. A pid comes back, too: the temp
+and reclaims a lock whose pid is gone. A signal exit is `process.exit`
+(`signals.ts`), which runs no `finally`, so the process's `exit` event
+also removes the entry this process still holds, synchronously: a
+Ctrl-C left it for the next run to reclaim (item 848,
+`tests/signal-handling.test.ts` › "a signal exit leaves no run-lock
+entry behind"); a `kill -9` still does. A pid comes back, too: the temp
 directory outlives a container restart, and the restarted container's
 vx got the dead run's pid (1) and waited for itself forever (nx#36473,
 reproduced on vx 2026-09-24). So a lock naming this process's OWN pid
