@@ -620,6 +620,21 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Row: `nx-map-sweep.test.ts` › a manifest path through another
         project is no implicit dep, with the control that drops the
         middle entry. Red without the fix.
+932.  DONE (2026-09-26, Next 25's measurement). Loading configs for a
+      run walks the package-graph closure of each project a cross
+      `pkg#task` edge names. It skipped the walk once every project was
+      pending, but it read that off `pending`, which each round empties.
+      So after the first round every cross edge walked its target's whole
+      closure again: 1,500 walks for `nx()`'s twins at 300 projects.
+      - A count of the projects considered replaces the length, and a
+        closure is walked once per project.
+      - A/B on the 300-project Nx workspace (warm, CLI, interleaved,
+        before arm an item-931 worktree): `load configs` 130.7 → 107.9 ms
+        at min (N=11); the wall 516 → 502 ms at min and 562 → 546 at
+        median (N=31).
+      - Row: `scoped-config-loading.test.ts` › a closure is walked once
+        per project, and not at all once every project is in. Red without
+        the fix, and red with either guard removed.
 
 ## In flight
 
@@ -963,7 +978,8 @@ next?".
     `run graph` +15, `build graph` +9, `record history` +4. A key-only
     kind saves the run and the row, about 19 ms. The rest is what every
     task costs to load and key, so the lever is per-task cost in those
-    two stages, not a new kind.
+    two stages, not a new kind. Item 932 took 23 ms of the load share
+    back: a guard that stopped holding after the first round.
 
 ## Decisions (this arc)
 

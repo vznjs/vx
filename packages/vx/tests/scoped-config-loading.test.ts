@@ -268,6 +268,54 @@ describe('scoped config loading', () => {
   )
 
   it(
+    'a closure is walked once per project, and not at all once every project is in',
+    async () => {
+      // Item 932: the guard read `pending.length`, which a round empties,
+      // so every cross edge after the first round walked its target's
+      // whole closure again — 1,500 walks at 300 projects under nx().
+      // d is out of the scoped run, so its count never trips the guard
+      // and only the memo stops the repeat walks.
+      for (const n of ['a', 'b', 'c', 'd']) await addProject(n, GOOD)
+      const metas = await listProjects(await loadWorkspace(root))
+      const cross = { dependsOn: ['a#build', 'b#build'], exec: { command: 'true' } }
+      const staged = new Map<string, ProjectEntry>(
+        ['a', 'b', 'c', 'd'].map((n) => [
+          n,
+          {
+            name: n,
+            dir: path.join(root, 'packages', n),
+            config: { tasks: n === 'c' ? { x: cross, y: cross, z: cross } : { build: {} } },
+          },
+        ]),
+      )
+      const walks: Record<string, string[]> = {}
+      for (const seeds of ['all', ['c']] as const) {
+        const asked: string[] = []
+        const graph = buildPackageGraph([...metas])
+        await loadProjects({
+          workspaceRoot: root,
+          cacheDir: path.join(root, '.vx/cache'),
+          plugins: [],
+          projectMetas: metas,
+          packageGraph: {
+            ...graph,
+            transitiveDeps: (name) => (asked.push(name), graph.transitiveDeps(name)),
+          },
+          seeds,
+          closure: true,
+          lock: null,
+          evalCache: undefined,
+          warn: () => {},
+          staged,
+        })
+        walks[String(seeds)] = asked
+      }
+      expect(walks).toEqual({ all: [], c: ['c', 'a', 'b'] })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a malformed cross spec is the GRAPH BUILDER’s error, naming the task',
     async () => {
       // Config loading walks `dependsOn` to find `pkg#task` targets whose
