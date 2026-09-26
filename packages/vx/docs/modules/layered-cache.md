@@ -149,6 +149,11 @@ local concerns.
   timeouts all live inside the `RemoteCacheLayer` implementation
   (e.g. `@vzn/vx-reapi`'s CAS client).
 - No write-batching or retry on transient errors. Fire-and-forget.
+- No deadline of its own. Every call is awaited: a `get` that never
+  settles holds its task, and a `put` holds `drainUploads()`, which the
+  run awaits before it closes. The layer bounds its own requests: the
+  first-party layers do, and the plugin guide's example shows how
+  (item 856).
 
 ## Tests
 

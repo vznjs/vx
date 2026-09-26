@@ -163,24 +163,30 @@ Implement core's `RemoteCacheLayer`: `has`, `get` and `put`, plus an
 optional `hasMany`. Wrap it in `LayeredCache`, and a remote error is a
 miss and one warning per kind of failure, naming the request, the
 artifact and the layer's `endpoint` (`download <hash> from <endpoint>
-failed: HTTP 500`):
+failed: HTTP 500`). Core awaits every call and bounds none: a `get` that
+never settles holds its task, and a `put` holds the end of the run. So
+give every request a deadline; a timeout is an error, and an error is a
+miss:
 
 ```ts
 import { definePlugin, defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
+const deadline = () => AbortSignal.timeout(30_000) // core bounds no call
+
 class AcmeRemote implements RemoteCacheLayer {
   constructor(readonly endpoint: string) {} // printed in warnings: no credentials in it
   async has(hash: string) {
-    return (await fetch(`${this.endpoint}/${hash}`, { method: 'HEAD' })).ok
+    const res = await fetch(`${this.endpoint}/${hash}`, { method: 'HEAD', signal: deadline() })
+    return res.ok
   }
   async get(hash: string) {
-    const res = await fetch(`${this.endpoint}/${hash}`)
+    const res = await fetch(`${this.endpoint}/${hash}`, { signal: deadline() })
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`HTTP ${res.status}`) // a throw is a miss
     return { body: res, durationMs: undefined } // streamed to disk
   }
   async put(hash: string, body: Blob) {
-    await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body })
+    await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body, signal: deadline() })
   }
 }
 

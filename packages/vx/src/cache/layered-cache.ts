@@ -45,6 +45,11 @@ import { FULL_CACHE_POLICY, type OutputDirRow } from './cache.js'
  * local `<hash>.tar.zst` verbatim. The wires live in plugin packages
  * (`@vzn/vx-migrate`'s `turboCache()` and `nxCache()`, `@vzn/vx-reapi`); see
  * docs/modules/layered-cache.md.
+ *
+ * Core awaits every call and bounds none: a `get` that never settles
+ * holds its task and a `put` the run's upload drain, so each request
+ * carries the layer's own deadline (every first-party layer has one; the
+ * plugin guide's example shows it).
  */
 export interface RemoteCacheLayer {
   /**
