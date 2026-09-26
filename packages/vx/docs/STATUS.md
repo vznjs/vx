@@ -539,6 +539,19 @@ exit`.
       - A patch that awaited both socats' readiness before the command
         was written and dropped: no row fails without it.
 
+877.  DONE (2026-09-26, found while probing 876). Every run of a task
+      with a `localBinding` port list left its bridge socket,
+      `vx-port-<tag>-<port>.sock`, in the sandbox tmpdir. The task's
+      socat binds it and dies with the namespace without unlinking it:
+      176 had piled up in this box's `/tmp/claude`.
+      - `releaseBridges` unlinks each port's socket, and the sockets are
+        listed with the strace logs on the exit hook (item 848's), so a
+        signal exit mid-task removes them too.
+      - Rows: `sandbox-bridge-socket.unsafe.test.ts`, "is removed when
+        the task ends" and "is removed by an exit while the task runs".
+        Both fail without the fix, and the second fails with only the
+        exit-hook listing removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

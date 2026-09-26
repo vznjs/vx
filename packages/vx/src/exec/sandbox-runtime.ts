@@ -292,19 +292,20 @@ function sandboxTmpdir(): string {
 }
 
 /**
- * The strace logs of tasks still running. A signal exit is `process.exit`
- * (orchestrator/signals.ts), which never reaches a task's own unlink, so
- * a Ctrl-C left one log per sandboxed task in the temp dir (item 848);
- * the process's `exit` event removes what is still listed.
+ * The temp files of tasks still running: strace logs and port-bridge
+ * sockets. A signal exit is `process.exit` (orchestrator/signals.ts),
+ * which never reaches a task's own unlink, so a Ctrl-C left one log per
+ * sandboxed task in the temp dir (item 848); the process's `exit` event
+ * removes what is still listed.
  */
-const liveTraceLogs = new Set<string>()
-let traceExitHooked = false
-function traceLogsOnExit(log: string): void {
-  liveTraceLogs.add(log)
-  if (traceExitHooked) return
-  traceExitHooked = true
+const liveTempFiles = new Set<string>()
+let tempExitHooked = false
+function unlinkOnExit(file: string): void {
+  liveTempFiles.add(file)
+  if (tempExitHooked) return
+  tempExitHooked = true
   process.on('exit', () => {
-    for (const f of liveTraceLogs) {
+    for (const f of liveTempFiles) {
       try {
         unlinkSync(f)
       } catch {
@@ -704,7 +705,10 @@ export function portBridgeHostArgv(tag: string, port: number): string[] {
   ]
 }
 
-const hostBridges = new Map<string, Array<ReturnType<typeof Bun.spawn>>>()
+const hostBridges = new Map<
+  string,
+  { ports: readonly number[]; procs: Array<ReturnType<typeof Bun.spawn>> }
+>()
 
 function spawnHostBridges(ports: readonly number[], tag: string): void {
   const procs: Array<ReturnType<typeof Bun.spawn>> = []
@@ -730,15 +734,33 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       // see above
     }
   }
-  if (procs.length > 0) hostBridges.set(tag, procs)
+  if (procs.length > 0) {
+    hostBridges.set(tag, { ports, procs })
+    for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
+  }
 }
 
-/** Stop the host side of a task's port bridges; idempotent. */
+/**
+ * Stop the host side of a task's port bridges and remove their sockets;
+ * idempotent. Called once the task's process has exited, so the socat
+ * that listened on each socket is gone with the namespace, and never
+ * unlinked it: one socket per bridged run stayed in the temp dir (item
+ * 877).
+ */
 export function releaseBridges(tag: string): void {
-  const procs = hostBridges.get(tag)
-  if (procs === undefined) return
+  const bridges = hostBridges.get(tag)
+  if (bridges === undefined) return
   hostBridges.delete(tag)
-  for (const p of procs) {
+  for (const port of bridges.ports) {
+    const sock = portBridgeSocket(tag, port)
+    try {
+      unlinkSync(sock)
+    } catch {
+      // never bound, or gone
+    }
+    liveTempFiles.delete(sock)
+  }
+  for (const p of bridges.procs) {
     // The group: a socat forks one child per connection. Listed on the
     // guard until it has gone (item 867's order).
     killTree(p, 'SIGTERM')
@@ -770,7 +792,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // structurally; we just lose the structured violation list.
   const useStrace = await wantsStraceDetection()
   const straceLog = useStrace ? path.join(os.tmpdir(), `vx-strace-${tag}.log`) : undefined
-  if (straceLog) traceLogsOnExit(straceLog)
+  if (straceLog) unlinkOnExit(straceLog)
   // We trace only `openat` — it's the actual file-read attempt, the
   // signal the user cares about. `statx` / `newfstatat` / `access`
   // are mostly shell PATH-walking and stat probes that aren't
@@ -907,7 +929,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   if (straceLog) {
     // Listed until the unlink lands, as the run lock's taking (item 868).
     await unlink(straceLog).catch(() => undefined)
-    liveTraceLogs.delete(straceLog)
+    liveTempFiles.delete(straceLog)
   }
 
   // Apply the task's own ignoreViolations on top of the global defaults.
