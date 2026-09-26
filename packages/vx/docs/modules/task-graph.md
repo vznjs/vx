@@ -105,7 +105,11 @@ promoted to `requested: true` — never demoted.
 `excludeDependencies` narrows the schedule after the `graph` and `key`
 stages have seen the whole graph:
 
-- `'all'` — drop every edge. Only `requested` nodes stay scheduled.
+- `'all'` — drop every edge but a group's: a group is its members,
+  so the requested tasks and the members of any group among them
+  (nested groups too) stay scheduled, without their dependencies.
+  Before item 894 a requested group was scheduled alone and the run
+  ran nothing, exit 0.
 - `string[]` — drop edges whose target task name appears. Works
   uniformly across same-project, deps-bucket, and cross-project edges,
   and per expanded name for a pattern.
