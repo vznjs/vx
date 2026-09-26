@@ -34,7 +34,7 @@ const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies'] a
 export function parseLockfile(text: string): Lockfile {
   const doc = Bun.YAML.parse(text) as Yaml | null
   if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
-    throw new Error('pnpm-lock.yaml is not a YAML document')
+    throw new Error('pnpm-lock.yaml: not a YAML document')
   }
   const version = scalar(doc['lockfileVersion'])
   const major = Number.parseInt(version, 10)
