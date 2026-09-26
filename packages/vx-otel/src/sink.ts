@@ -29,12 +29,16 @@ import {
  *  errors are the sink's to swallow. */
 export type PostFn = (url: string, body: string, headers: Record<string, string>) => Promise<void>
 
+export type OtelSignal = 'traces' | 'metrics' | 'logs'
+
 export interface OtelSinkConfig {
   tracesUrl: string
   metricsUrl: string
   logsUrl: string
   serviceName: string
   headers: Record<string, string>
+  /** Per signal, over `headers`. */
+  signalHeaders?: Partial<Record<OtelSignal, Record<string, string>>>
   metricsEnabled: boolean
   logsEnabled: boolean
   timeoutMs: number
@@ -145,6 +149,7 @@ export class OtelSink implements TelemetrySink {
       logsUrl: config.logsUrl,
       serviceName: config.serviceName,
       headers: config.headers,
+      signalHeaders: config.signalHeaders ?? {},
       metricsEnabled: config.metricsEnabled,
       logsEnabled: config.logsEnabled,
       timeoutMs: config.timeoutMs,
@@ -245,7 +250,7 @@ export class OtelSink implements TelemetrySink {
   private async shipTraces(vxVersion: string): Promise<void> {
     if (this.spans.length === 0) return
     const body = JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, this.spans))
-    await this.send(this.cfg.tracesUrl, body)
+    await this.send('traces', this.cfg.tracesUrl, body)
   }
 
   private async shipMetrics(): Promise<void> {
@@ -253,7 +258,7 @@ export class OtelSink implements TelemetrySink {
     const body = JSON.stringify(
       buildMetricsRequest(this.cfg.serviceName, this.summary, nanos(this.summary.endedAt)),
     )
-    await this.send(this.cfg.metricsUrl, body)
+    await this.send('metrics', this.cfg.metricsUrl, body)
   }
 
   private async shipLogs(vxVersion: string): Promise<void> {
@@ -273,13 +278,14 @@ export class OtelSink implements TelemetrySink {
         spanIdFor: (taskId) => this.taskSpanId.get(taskId),
       }),
     )
-    await this.send(this.cfg.logsUrl, body)
+    await this.send('logs', this.cfg.logsUrl, body)
   }
 
-  private async send(url: string, body: string): Promise<void> {
+  private async send(signal: OtelSignal, url: string, body: string): Promise<void> {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       ...this.cfg.headers,
+      ...this.cfg.signalHeaders[signal],
     }
     try {
       await this.cfg.post(url, body, headers)

@@ -22,7 +22,7 @@ export interface OtelPluginOptions {
   logsEndpoint?: string
   /** Service name. Falls back to `OTEL_SERVICE_NAME`, else `'vx'`. */
   serviceName?: string
-  /** Extra OTLP headers, merged over `OTEL_EXPORTER_OTLP_HEADERS`. */
+  /** Extra OTLP headers, merged over `OTEL_EXPORTER_OTLP_HEADERS` and each signal's own. */
   headers?: Record<string, string>
   /** Emit run/task metrics in addition to traces. Default: true. */
   metrics?: boolean
@@ -39,15 +39,28 @@ export interface OtelPluginOptions {
   post?: PostFn
 }
 
-/** Parse an `OTEL_EXPORTER_OTLP_HEADERS`-style `k=v,k=v` string. */
+/**
+ * Parse an `OTEL_EXPORTER_OTLP_HEADERS`-style `k=v,k=v` string. The spec's
+ * format is W3C Baggage's, so keys and values are percent-decoded:
+ * `Authorization=Basic%20…`, as vendors document it, was sent literally and
+ * every export was refused 401 (item 923). A malformed escape is kept as
+ * written.
+ */
 export function parseOtlpHeaders(raw: string | undefined): Record<string, string> {
   if (!raw) return {}
+  const decode = (s: string): string => {
+    try {
+      return decodeURIComponent(s)
+    } catch {
+      return s
+    }
+  }
   const out: Record<string, string> = {}
   for (const pair of raw.split(',')) {
     const eq = pair.indexOf('=')
     if (eq <= 0) continue
-    const key = pair.slice(0, eq).trim()
-    const value = pair.slice(eq + 1).trim()
+    const key = decode(pair.slice(0, eq).trim())
+    const value = decode(pair.slice(eq + 1).trim())
     if (key) out[key] = value
   }
   return out
@@ -119,6 +132,14 @@ export function resolveOtelConfig(
     logsUrl: logsUrl ?? tracesUrl,
     serviceName: present(opts.serviceName) ?? present(env['OTEL_SERVICE_NAME']) ?? 'vx',
     headers: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers },
+    // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the
+    // shared ones, as the spec orders them; they were not read (item 923).
+    // The plugin's `headers` option stays on top of both.
+    signalHeaders: {
+      traces: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_TRACES_HEADERS']), ...opts.headers },
+      metrics: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_METRICS_HEADERS']), ...opts.headers },
+      logs: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers },
+    },
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,
     timeoutMs: opts.timeoutMs ?? 15_000,
