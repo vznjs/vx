@@ -71,8 +71,10 @@ turborepo#9666). A group kill reaches what the task forked, so a
   interleaved, one workspace copy per arm; medians 4,575 and 4,543): a
   tie. The cost is the one `sh` and two pipe writes per spawn.
 - A teardown holds its groups (`holdGroups`) until its SIGKILL sweep
-  has settled: the signal stop (`terminateChildren`) and the end-of-run
-  persistent shutdown. The runner lets a group go when its LEADER
+  has settled: the signal stop (`terminateChildren`), the end-of-run
+  persistent shutdown, and a readiness timeout, which holds until its
+  SIGKILL. That SIGKILL waits on an unref'd timer, so a vx that exits
+  inside the grace leaves the held group to the guard. The runner lets a group go when its LEADER
   exits, and a shell that died on the signal while its child ran out
   the grace let the group go mid-grace; a `kill -9` of vx there left
   the child under init (item 865, both reproduced). A release that
@@ -159,7 +161,8 @@ sandboxed one-shot task’s children die with vx" (strace outlived vx
 before the guard), and the unsandboxed control has the backgrounded
 child die and the `setsid` one live. In `keep-alive.test.ts`, "a kill -9 in
 a Ctrl-C’s grace…" and "a kill -9 in the persistent shutdown’s grace…"
-each fail without the hold.
+and "a never-ready server a dead shell left goes with a vx that exits
+inside the grace" each fail without the hold.
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
