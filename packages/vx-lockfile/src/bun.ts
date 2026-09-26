@@ -33,6 +33,9 @@ export interface Entry {
 }
 
 type Json = Record<string, unknown>
+/** The top-level fields the digest reads per workspace. */
+const PER_WORKSPACE = new Set(['workspaces', 'packages'])
+
 const DEP_FIELDS = [
   'dependencies',
   'devDependencies',
@@ -70,14 +73,13 @@ export function parseLockfile(text: string): Lockfile {
       resolution: typeof resolution === 'string' ? resolution : '',
     })
   }
-  const global = JSON.stringify({
-    lockfileVersion: d['lockfileVersion'],
-    configVersion: d['configVersion'],
-    overrides: d['overrides'],
-    patchedDependencies: d['patchedDependencies'],
-    catalog: d['catalog'],
-    catalogs: d['catalogs'],
-  })
+  // Every top-level field but the two read per workspace, so a field this
+  // parser has not heard of moves every workspace rather than none: an
+  // allow-list dropped `trustedDependencies`, which decides whose install
+  // scripts run (item 933).
+  const rest: Json = {}
+  for (const [k, v] of Object.entries(d)) if (!PER_WORKSPACE.has(k)) rest[k] = v
+  const global = JSON.stringify(rest)
   return { version: String(d['lockfileVersion']), workspaces, workspaceDirs, packages, global }
 }
 

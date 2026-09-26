@@ -12,6 +12,7 @@
 // reach through the descriptors the file resolves.
 
 import { reachDigests } from '@vzn/vx'
+import { stable } from './pnpm.js'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -60,9 +61,17 @@ function parseBerry(text: string): Lockfile {
     if (keys === '__metadata') continue
     const e = record(raw) ?? {}
     const resolution = typeof e['resolution'] === 'string' ? e['resolution'] : keys
+    // Every field of the entry but the dependencies it links, so a field
+    // this parser has not heard of moves what reaches the entry: reading
+    // the resolution and checksum alone dropped the root workspace's
+    // `dependenciesMeta` (`built`, `unplugged`), which governs the whole
+    // install (item 933).
+    const material = Object.fromEntries(
+      Object.entries(e).filter(([k]) => k !== 'dependencies' && k !== 'peerDependencies'),
+    )
     entries.set(resolution, {
       deps: depsOf(e, ['dependencies', 'peerDependencies']),
-      resolution: `${resolution}\0${typeof e['checksum'] === 'string' ? e['checksum'] : ''}`,
+      resolution: `${resolution}\0${stable(material)}`,
     })
     for (const k of keys.split(',')) {
       const descriptor = k.trim()

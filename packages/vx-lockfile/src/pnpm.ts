@@ -31,6 +31,20 @@ type Yaml = Record<string, unknown>
 
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies'] as const
 
+/**
+ * The top-level fields the digest reads per importer: the importers, the
+ * packages and snapshots they reach, their patches, and the catalogs their
+ * specifiers resolved. (v5's lone importer, written at the top, may fold
+ * as global too: it is the only importer there is.)
+ */
+const PER_IMPORTER = new Set([
+  'importers',
+  'packages',
+  'snapshots',
+  'patchedDependencies',
+  'catalogs',
+])
+
 export function parseLockfile(text: string): Lockfile {
   const doc = Bun.YAML.parse(text) as Yaml | null
   if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
@@ -71,14 +85,13 @@ export function parseLockfile(text: string): Lockfile {
     patches.set(name, e === undefined ? scalar(entry) : scalar(e['hash']) || stable(e))
   }
 
-  const global = stable({
-    lockfileVersion: version,
-    settings: doc['settings'],
-    overrides: doc['overrides'],
-    packageExtensionsChecksum: doc['packageExtensionsChecksum'],
-    pnpmfileChecksum: doc['pnpmfileChecksum'],
-    ignoredOptionalDependencies: doc['ignoredOptionalDependencies'],
-  })
+  // Every top-level field but those read per importer above, so a field
+  // this parser has not heard of moves every importer rather than none: an
+  // allow-list dropped v6's `onlyBuiltDependencies`, which decides whether
+  // install scripts run anywhere (item 933).
+  const rest: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(doc)) if (!PER_IMPORTER.has(k)) rest[k] = v
+  const global = stable({ lockfileVersion: version, rest })
   return { version, importers, snapshots, resolutions, patches, global }
 }
 
@@ -118,7 +131,7 @@ function record(v: unknown): Yaml | undefined {
 }
 
 /** JSON with sorted keys, so YAML key order cannot move a digest. */
-function stable(v: unknown): string {
+export function stable(v: unknown): string {
   return JSON.stringify(v, (_k, val: unknown) =>
     val !== null && typeof val === 'object' && !Array.isArray(val)
       ? Object.fromEntries(Object.entries(val as Yaml).sort(([a], [b]) => (a < b ? -1 : 1)))
