@@ -698,7 +698,7 @@ describe('the from-turborepo pages map every turbo.json key the mapper knows', (
   })
   it('the global fields it names are the ones the mapper reads', () => {
     const globals = [...src.matchAll(/rootCfg\.(global\w+)/g)].map((x) => x[1]!)
-    expect(globals.length).toBe(3)
+    expect(globals.length).toBe(4)
     for (const g of globals) expect(page).toContain('`' + g + '`')
   })
   it('what it says a bare `--continue` does is what run.ts does', () => {

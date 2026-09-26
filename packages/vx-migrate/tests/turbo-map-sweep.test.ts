@@ -93,6 +93,49 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect((t.task!['cache'] as { inputs: unknown }).inputs).toEqual({ files })
   })
 
+  // Item 937: a wildcard in a global env list reached core, whose refusal
+  // failed every task of the run; it is a note now, the rest still map.
+  it('a global env wildcard is a note, and the explicit names still key and pass', async () => {
+    const m = await map(
+      {
+        globalEnv: ['NEXT_PUBLIC_*', 'API'],
+        globalPassThroughEnv: ['!SECRET', 'HOME_DIR'],
+        tasks: { build: {} },
+      },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const task = m.projects[0]!.tasks[0]!.task!
+    expect({
+      env: (task['cache'] as { inputs: { env?: unknown } }).inputs.env,
+      pass: (task['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
+      notes: m.notes,
+    }).toEqual({
+      env: ['API'],
+      pass: ['API', 'HOME_DIR'],
+      notes: [
+        'globalEnv "NEXT_PUBLIC_*": wildcards are not supported in vx env names — list explicit names',
+        'globalPassThroughEnv "!SECRET": wildcards are not supported in vx env names — list explicit names',
+      ],
+    })
+  })
+
+  // Item 937: Turbo 1 hashes `globalDotEnv` into every task and a task's
+  // `dotEnv` into that task; both were read as nothing, the task's with a
+  // todo and the global's in silence.
+  it('turbo 1’s `globalDotEnv` and a task `dotEnv` key the task', async () => {
+    const t = await taskOf(
+      {
+        globalDotEnv: ['.env'],
+        pipeline: { build: { inputs: ['src/**'], dotEnv: ['.env.local'] } },
+      },
+      { a: { scripts: { build: 'b' } } },
+    )
+    expect({ inputs: (t.task!['cache'] as { inputs: unknown }).inputs, todos: t.todos }).toEqual({
+      inputs: { files: ['src/**', '.env.local'], workspaceFiles: ['.env'] },
+      todos: [],
+    })
+  })
+
   it('two tasks on one output path: the second runs uncached', async () => {
     const m = await map(
       { tasks: { build: { outputs: ['dist/**'] }, bundle: { outputs: ['dist/**'] } } },

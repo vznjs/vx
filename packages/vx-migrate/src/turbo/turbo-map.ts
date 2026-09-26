@@ -35,6 +35,8 @@ interface TurboJson {
   globalDependencies?: string[]
   globalEnv?: string[]
   globalPassThroughEnv?: string[]
+  /** Turbo 1.10–1.13: root-relative `.env` files every task hashes. */
+  globalDotEnv?: string[]
 }
 
 const KNOWN_TASK_KEYS = new Set([
@@ -47,6 +49,7 @@ const KNOWN_TASK_KEYS = new Set([
   'persistent',
   'extends',
   'outputLogs',
+  'dotEnv',
 ])
 
 // Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.
@@ -194,10 +197,33 @@ export async function mapTurboWorkspace(
   // task's `dependsOn`); read as a file it was a glob that matched nothing,
   // and the var re-keyed nothing (item 909).
   const globalDeps = rootCfg.globalDependencies ?? []
+  const notes: string[] = []
+  // A wildcard or `!` entry names no one variable: core refuses it, and in
+  // a global list that refusal failed every task of the run (item 937).
+  // Reported once, as a task's own `env` wildcard is per task.
+  const envNames = (field: string, names: readonly string[]): string[] =>
+    names.filter((e) => {
+      if (!/[*?[\]!]/.test(e)) return true
+      notes.push(
+        `${field} ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
+          'list explicit names',
+      )
+      return false
+    })
   const globals = {
-    inputs: globalDeps.filter((d) => envDependency(d) === null),
-    env: [...(rootCfg.globalEnv ?? []), ...globalDeps.flatMap((d) => envDependency(d) ?? [])],
-    pass: rootCfg.globalPassThroughEnv ?? [],
+    // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies`
+    // are, and mapped the same way; unread, an edit to one re-keyed
+    // nothing (item 937). One git does not report is core's refusal to
+    // explain, as for a `globalDependencies` entry: it cannot be keyed.
+    inputs: [
+      ...globalDeps.filter((d) => envDependency(d) === null),
+      ...(rootCfg.globalDotEnv ?? []),
+    ],
+    env: [
+      ...envNames('globalEnv', rootCfg.globalEnv ?? []),
+      ...globalDeps.flatMap((d) => envDependency(d) ?? []),
+    ],
+    pass: envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
   }
 
   const pkgTasksByName = new Map<string, Record<string, TurboTask>>()
@@ -208,7 +234,6 @@ export async function mapTurboWorkspace(
     }
   }
 
-  const notes: string[] = []
   for (const key of Object.keys(rootTasks)) {
     if (key.startsWith('//#')) {
       notes.push(`note: root task ${key} not migrated — vx has no workspace-root tasks`)
@@ -467,6 +492,12 @@ function buildTask(
       if (files.length > 0 && files.every((f) => typeof f === 'string' && f.startsWith('!'))) {
         files.unshift('**/*')
       }
+    }
+    // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes. An
+    // unset `inputs` already reads every file git reports.
+    const dotEnv = (def as { dotEnv?: unknown }).dotEnv
+    if (def.inputs !== undefined && def.inputs.length > 0 && Array.isArray(dotEnv)) {
+      files.push(...dotEnv.filter((f) => typeof f === 'string'))
     }
 
     const outFiles: string[] = []
