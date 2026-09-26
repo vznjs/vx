@@ -4,7 +4,7 @@
 // that cannot be made is a warning, not a refusal. A lock naming this
 // process's own pid is stale; one another process now wears is too, where
 // procfs gives start times (run-lock-recycled.unsafe.test.ts).
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -55,6 +55,23 @@ describe('the run lock', () => {
   /** The holders the lock names, each entry without its taking's number; [] when there is no lock. */
   const held = async (): Promise<string[]> =>
     (await readdir(lockDir()).catch(() => [])).map((e) => e.replace(/-\d+$/, ''))
+
+  it('an exit while a release is under way still removes the lock', async () => {
+    // A release unlinks its entry, then the directory, asynchronously. A
+    // signal exit between the two (the second Ctrl-C of a run whose tasks
+    // had just ended) found no taker listed and left the directory: the
+    // release had unlisted its taking before it began (item 867, macOS
+    // CI). The exit hook runs synchronously, so the directory is gone the
+    // moment the event returns.
+    const release = await acquireRunLock('/w/app', { dir, log })
+    expect(existsSync(lockDir())).toBe(true)
+    const releasing = release()
+    process.emit('exit', 0)
+    const left = existsSync(lockDir())
+    await releasing
+    expect(left).toBe(false)
+    expect(lines).toEqual([])
+  })
 
   /** Another live process holding the lock: a sleeping child whose entry is in it. */
   async function otherHolder(): Promise<{ pid: number; end: () => void }> {

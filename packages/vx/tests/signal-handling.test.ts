@@ -146,7 +146,11 @@ describe('signal handling during vx run (e2e)', () => {
         proc.kill('SIGINT')
       }
       expect(await proc.exited).toBe(130)
-      expect(readdirSync(tmp).filter((n) => n.startsWith('vx-run-'))).toEqual([])
+      // With what each leftover holds: its entry (the hook never ran) or
+      // nothing (the directory's removal was skipped). macOS CI left one
+      // once (item 867).
+      const left = readdirSync(tmp).filter((n) => n.startsWith('vx-run-'))
+      expect(left.map((n) => [n, readdirSync(path.join(tmp, n))])).toEqual([])
     } finally {
       await rm(tmp, { recursive: true, force: true })
     }
