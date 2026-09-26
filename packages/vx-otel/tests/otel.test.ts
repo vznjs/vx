@@ -65,6 +65,14 @@ describe('parseOtlpHeaders', () => {
     expect(parseOtlpHeaders(undefined)).toEqual({})
     expect(parseOtlpHeaders('')).toEqual({})
   })
+  // Item 923: the spec's format is W3C Baggage's, percent-encoded.
+  it('percent-decodes keys and values, and keeps a malformed escape as written', () => {
+    expect(parseOtlpHeaders('Authorization=Basic%20dTpw,x%2Dscope=a%2Cb,bad=100%')).toEqual({
+      Authorization: 'Basic dTpw',
+      'x-scope': 'a,b',
+      bad: '100%',
+    })
+  })
 })
 
 describe('resolveOtelConfig', () => {
@@ -1202,5 +1210,34 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
     end(sink, 1050, 40)
     await sink.flush()
     expect(seen).toEqual([{ 'content-type': 'application/json', authorization: 'Bearer k' }])
+  })
+
+  // Item 923: `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` was not read.
+  it('a signal’s own headers ride its POSTs over the shared ones; the option tops both', async () => {
+    const seen: Record<string, Record<string, string>> = {}
+    const cfg = resolveOtelConfig(
+      {
+        logs: false,
+        headers: { 'x-top': 'opt' },
+        post: async (url, _b, headers) => void (seen[url] = headers),
+      },
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_HEADERS: 'a=shared,x-top=env',
+        OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'a=traces%20only',
+      },
+    )!
+    const sink = new OtelSink(cfg)
+    start(sink, 1000)
+    end(sink, 1050, 40)
+    await sink.flush()
+    // `a` is the traces header's, over the shared one; `x-top` the option's.
+    expect(seen).toEqual({
+      'http://c/v1/traces': {
+        'content-type': 'application/json',
+        a: 'traces only',
+        'x-top': 'opt',
+      },
+    })
   })
 })

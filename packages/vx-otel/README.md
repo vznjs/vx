@@ -31,7 +31,8 @@ to declare in every environment:
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`    | full logs URL override                            |
 | `OTEL_LOGS_EXPORTER=none`             | export traces + metrics only                      |
 | `OTEL_SERVICE_NAME`                   | service name (default `vx`)                       |
-| `OTEL_EXPORTER_OTLP_HEADERS`          | `k=v,k=v` headers (e.g. auth)                     |
+| `OTEL_EXPORTER_OTLP_HEADERS`          | `k=v,k=v` headers (e.g. auth), percent-encoded    |
+| `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` | one signal's headers, over the shared ones        |
 
 Each signal ships only to its own URL: the base endpoint's `/v1/<signal>`,
 or its override. With only a traces URL set, metrics and logs are not

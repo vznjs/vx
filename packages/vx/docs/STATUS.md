@@ -521,6 +521,17 @@ echo A; echo B` went green after a failed pre hook, and a cache
         plugin stage prints (both spellings), red without the fix. The
         server grew to 179 lines, and the four "about N lines" claims the
         site test holds moved to 180.
+923.  DONE (2026-09-26, the observability review's lead 3).
+      `OTEL_EXPORTER_OTLP_HEADERS` is W3C Baggage format, percent-encoded,
+      and vendors document auth as `Authorization=Basic%20…`; vx-otel sent
+      it literally, so the collector refused every export 401 behind one
+      warning. `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` was not read at all.
+      - Keys and values are percent-decoded (a malformed escape kept as
+        written); a signal's own headers ride its POSTs over the shared
+        ones, and the plugin's `headers` option tops both.
+      - Rows: `otel.test.ts` › percent-decodes keys and values; a
+        signal's own headers ride its POSTs over the shared ones. Both red
+        without the fix.
 
 ## In flight
 
