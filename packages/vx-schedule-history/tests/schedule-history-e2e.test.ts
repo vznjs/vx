@@ -344,4 +344,42 @@ describe('schedule-history plugin end to end', () => {
     },
     TIMEOUT,
   )
+
+  // Item 930: a NaN or a string assumption became a weight core refuses as
+  // a UserError, so an ordering hint failed the run.
+  it(
+    'an assumption that is no finite number is dropped by name; the run and the rest stand',
+    async () => {
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
+      )
+      await pkg(
+        'b',
+        "export default { tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
+      )
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource([
+            "scheduleHistoryPlugin({ assume: { 'a#build': Number(undefined), 'a#test': '50000', 'b#build': 30000 } })",
+          ]),
+      )
+      const lines: string[] = []
+      const log = { ...silent(), status: (m: string) => lines.push(m) }
+      const summary = await run({
+        cwd: root,
+        tasks: ['test'],
+        concurrency: 1,
+        log,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(log.started[0]).toBe('b#build')
+      expect(lines.filter((l) => l.includes('schedule-history'))).toEqual([
+        '[vx] schedule-history: assume ignores "a#build", "a#test" — each must be a finite number of ms',
+      ])
+    },
+    TIMEOUT,
+  )
 })

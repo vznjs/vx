@@ -596,6 +596,16 @@ echo A; echo B` went green after a failed pre hook, and a cache
       Only an object without an `error` field counts now.
       - Row: `turbo-cache-sweep.test.ts` › a batch query holds only the
         hashes answered with artifact info.
+930.  DONE (2026-09-26, the schedule-history review). `assume` values
+      reached the critical path unchecked: a NaN (`Number()` of an unset
+      variable) became a NaN weight and a string from an untyped `.mjs`
+      config a string weight, and core refused both as a UserError outside
+      the plugin's fail-open, so an ordering hint failed the run.
+      - A value that is not a finite non-negative number is dropped with
+        one warning naming its task ids; the rest still order the run.
+        The README says so.
+      - Row: `schedule-history-e2e.test.ts` › an assumption that is no
+        finite number is dropped by name; the run and the rest stand.
 
 ## In flight
 

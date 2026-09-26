@@ -21,7 +21,7 @@ export default {
 }
 ```
 
-A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. vx's own CI declares exactly this one — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
+A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares exactly this one — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
 
 ## Reservations learned from history
 
