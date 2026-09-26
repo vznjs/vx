@@ -6,11 +6,11 @@
 // decision log 2026-08-24). That mode never reproduced locally, so this
 // canary runs on every darwin CI pass, drives N sandboxed executions of a
 // deliberately leaky task THROUGH THE REAL `run()` PATH (a first draft that
-// hand-assembled runSandandboxed args reported NOT_ENFORCED 12/12 at idle —
+// hand-assembled runSandboxed args reported NOT_ENFORCED 12/12 at idle —
 // a harness artifact, since the real suites pass on the same machine; the
 // canary must exercise exactly what production exercises), classifies each,
-// and prints a machine-greppable summary. It ALWAYS exits 0 — its job is to
-// turn the next occurrence into data in the job log, never to gate main.
+// and prints a machine-greppable summary. Since 2026-08-25 it is a gate: see
+// the exit rules at the end.
 //
 //   bun tests/helpers/sandbox-canary.ts [iterations]
 
@@ -54,13 +54,22 @@ async function fixture(): Promise<string> {
   await writeFile(path.join(root, 'secret.txt'), 'undeclared\n')
   await writeFile(
     path.join(root, 'proj', 'vx.config.mjs'),
-    `export default { tasks: { leak: {
-       exec: {
-         command: 'cat ../secret.txt > out.txt',
-         sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
+    `export default { tasks: {
+       leak: {
+         exec: {
+           command: 'cat ../secret.txt > out.txt',
+           sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
+         },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
        },
-       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-     } } }`,
+       control: {
+         exec: {
+           command: 'cat src/ok.txt > control.txt',
+           sandbox: { allow: { read: ['.'], write: ['control.txt'] } },
+         },
+         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['control.txt'] } },
+       },
+     } }`,
   )
   await writeFile(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
   const git = (...a: string[]) => Bun.spawnSync({ cmd: ['git', ...a], cwd: root })
@@ -86,21 +95,36 @@ for (let i = 0; i < ITERATIONS; i++) {
     const r = await run({
       cwd: root,
       projects: ['proj'],
-      tasks: ['leak'],
+      tasks: ['control', 'leak'],
       log: silent,
       handleSignals: false,
     })
     const outcome = r.outcomes.find((o) => o.node.id === 'proj#leak')
+    const control = r.outcomes.find((o) => o.node.id === 'proj#control')
+    const read = (f: string) =>
+      Bun.file(path.join(root, 'proj', f))
+        .text()
+        .catch(() => '')
+    // The positive first (item 845): the same sandbox must run a task that
+    // reads what it declares. A leak task that FAILED means nothing when a
+    // declared read fails too — the sandbox never ran the command, and
+    // counting that as enforcement is how a broken runtime reads green.
+    const controlRan = control?.status === 'success' && (await read('control.txt')) === 'declared\n'
+    // And the artifact, not only the status: the secret reaching out.txt is
+    // a leak whatever the task's exit said.
+    const leaked = (await read('out.txt')).includes('undeclared')
     let verdict: Verdict
-    if (outcome === undefined) verdict = 'RUN_ERROR'
-    else if (r.ok && outcome.status !== 'failed') verdict = 'NOT_ENFORCED'
+    if (outcome === undefined || !controlRan) verdict = 'RUN_ERROR'
+    else if (leaked || (r.ok && outcome.status !== 'failed')) verdict = 'NOT_ENFORCED'
     else if ((outcome.sandboxViolations ?? 0) > 0) verdict = 'ENFORCED_REPORTED'
     else verdict = 'ENFORCED_UNREPORTED'
     counts[verdict]++
     if (verdict === 'NOT_ENFORCED') {
-      console.log(`[canary] NOT_ENFORCED at iteration ${i} — the leaky task PASSED`)
       console.log(
-        `[canary] outcome: ${JSON.stringify({ status: outcome?.status, exit: outcome?.exitCode })}`,
+        `[canary] NOT_ENFORCED at iteration ${i} — the secret leaked or the leaky task passed`,
+      )
+      console.log(
+        `[canary] outcome: ${JSON.stringify({ status: outcome?.status, exit: outcome?.exitCode, leaked })}`,
       )
       console.log(`[canary] uname: ${Bun.spawnSync(['uname', '-av']).stdout.toString().trim()}`)
     }

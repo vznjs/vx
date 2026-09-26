@@ -650,6 +650,17 @@ test is telling the truth.
       fire in-process, because both verdicts are memoised per process;
       they now share the pinned rule.
 
+845.  DONE (2026-09-26, the darwin sandbox canary judges by a control and
+      the artifact). `tests/helpers/sandbox-canary.ts` counted any failed
+      leak task as enforcement, so a sandbox that never ran a command at
+      all read as ENFORCED, and a leak whose task failed for another
+      reason too. Each iteration now runs a `control` task that reads a
+      declared file under the same sandbox; unless it succeeds with the
+      declared bytes, the iteration is RUN_ERROR. And the secret in
+      `out.txt` is NOT_ENFORCED whatever the status said. Probed both
+      ways on Linux: 3 iterations enforced, and a control pointed at the
+      undeclared file turned the run into RUN_ERROR, exit 1.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
