@@ -556,6 +556,15 @@ echo A; echo B` went green after a failed pre hook, and a cache
         strace's. What the floods do to strace stays unproven (11 local
         runs clean, bare and sandboxed); if the error recurs elsewhere,
         the trigger was not this file, and Next 24 says so.
+926.  DONE (2026-09-26, the observability review's lead 7). JSON-RPC 2.0
+      never answers a notification. `vx mcp` stayed silent for one that
+      succeeded or named an unknown method, but a `tools/call`
+      notification with a bad name, or one whose tool crashed, was
+      answered with `id: null`.
+      - Every error path goes through one helper that is silent for a
+        notification.
+      - Row: `server.test.ts` › a notification gets no reply even when it
+        fails; the same call with an id does. Red without the fix.
 
 ## In flight
 

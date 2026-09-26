@@ -47,6 +47,10 @@ export async function handleMessage(raw: string, ctx: ToolContext): Promise<Resp
   const isNotification = msg.id === undefined
   const reply = (result: unknown): Response | null =>
     isNotification ? null : { jsonrpc: '2.0', id, result }
+  // Errors too: JSON-RPC 2.0 never answers a notification, and a bad tool
+  // name or a tool's crash was answered with `id: null` (item 925).
+  const fail = (code: number, message: string): Response | null =>
+    isNotification ? null : { jsonrpc: '2.0', id, error: { code, message } }
   try {
     switch (msg.method) {
       case 'initialize': {
@@ -67,13 +71,7 @@ export async function handleMessage(raw: string, ctx: ToolContext): Promise<Resp
         return reply({ tools: listTools() })
       case 'tools/call': {
         const name = msg.params?.['name']
-        if (typeof name !== 'string') {
-          return {
-            jsonrpc: '2.0',
-            id,
-            error: { code: -32602, message: 'tools/call: name must be a string' },
-          }
-        }
+        if (typeof name !== 'string') return fail(-32602, 'tools/call: name must be a string')
         try {
           const result = await handleToolCall(name, msg.params?.['arguments'], ctx)
           return reply({ content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] })
@@ -89,19 +87,10 @@ export async function handleMessage(raw: string, ctx: ToolContext): Promise<Resp
         }
       }
       default:
-        if (isNotification) return null
-        return {
-          jsonrpc: '2.0',
-          id,
-          error: { code: -32601, message: `method not found: ${msg.method}` },
-        }
+        return fail(-32601, `method not found: ${msg.method}`)
     }
   } catch (err) {
-    return {
-      jsonrpc: '2.0',
-      id,
-      error: { code: -32603, message: err instanceof Error ? err.message : String(err) },
-    }
+    return fail(-32603, err instanceof Error ? err.message : String(err))
   }
 }
 
