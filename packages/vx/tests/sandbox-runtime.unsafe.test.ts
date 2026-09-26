@@ -9,6 +9,7 @@
 
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { createConnection } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -3187,6 +3188,66 @@ describe.skipIf(!available || process.platform !== 'linux')(
         },
       }
     `
+
+    /** Does anything on the host accept a connection on `port`? */
+    function accepts(port: number): Promise<boolean> {
+      return new Promise((resolve) => {
+        const sock = createConnection({ host: '127.0.0.1', port })
+        sock.once('connect', () => {
+          sock.destroy()
+          resolve(true)
+        })
+        sock.once('error', () => resolve(false))
+      })
+    }
+
+    it(
+      'a kill -9 of vx takes the host side of a port bridge with it',
+      async () => {
+        // The host socat was a plain child of vx, in no group the guard
+        // lists (kill-tree.ts): a `kill -9` of vx left it listening on the
+        // port under init, and the next run's bridge could not bind it
+        // (item 873). It is spawned guarded now.
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port),
+          config: serverConfig(`[${port}]`),
+        })
+        const proc = Bun.spawn(
+          [
+            process.execPath,
+            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            'run',
+            'serve',
+            '--all',
+          ],
+          { cwd: fixture.root, env: { ...process.env }, stdout: 'ignore', stderr: 'ignore' },
+        )
+        const deadline = Date.now() + 20_000
+        while (!(await accepts(port)) && Date.now() < deadline) await Bun.sleep(50)
+        // The positive first: the bridge was up while vx ran.
+        expect(await accepts(port)).toBe(true)
+        process.kill(proc.pid, 'SIGKILL')
+        expect(await proc.exited).toBe(137)
+        const until = Date.now() + 3_000
+        while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
+        const left = await accepts(port)
+        if (left) {
+          // Leave no socat behind for the rest of the suite.
+          for (const pid of readdirSync('/proc').filter((d) => /^\d+$/.test(d))) {
+            try {
+              if (readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`TCP-LISTEN:${port},`)) {
+                process.kill(Number(pid), 'SIGKILL')
+              }
+            } catch {
+              // gone
+            }
+          }
+        }
+        expect(left).toBe(false)
+      },
+      TIMEOUT,
+    )
 
     it(
       'a listed port is reachable from outside the sandbox while the server runs, and closed after the run',
