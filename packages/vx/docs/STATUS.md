@@ -619,6 +619,21 @@ test is telling the truth.
       spelled, links with their anchors and same-page anchors, and no
       URL of any scheme.
 
+843.  DONE (2026-09-26, the Turbo / Nx parity suites' shared workspace,
+      `tests/helpers/parity.ts`). 10 mutations against the parity, filter
+      and output-shape suites: 7 caught (the dependency shape, `^build`
+      and `build`, the commit a `[ref]` filter reads, the sort, the `--`
+      split). One survivor was a row that proved less than its title:
+      the Nx `{workspaceRoot}/tsconfig.base.json` row passed with the
+      fixture's file never written, because creating the file moves the
+      key too. It now reads the committed file before editing it, so
+      it holds what it names: an edit to a tracked root file. Not held:
+      `dry()`'s own throw on a non-zero exit (the empty stdout's parse
+      fails either way) and the helper blanking `CI` and
+      `GITHUB_ACTIONS`. No assertion in these suites turns on vx's CI
+      mode, even with `CI=true` set around the run. It stays as the
+      defence for the day one does.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
