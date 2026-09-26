@@ -967,8 +967,25 @@ export class ReapiClient {
     await done
   }
 
-  /** Read a blob via ByteStream; `null` on NOT_FOUND. */
-  readBlob(digest: Digest): Promise<Uint8Array | null> {
+  /**
+   * Read a blob via ByteStream; `null` on NOT_FOUND. A transient status is
+   * retried as a unary call's is (the read is whole and idempotent): one
+   * UNAVAILABLE reading a finished action's stdout or outputs failed the
+   * task after the action succeeded (item 919).
+   */
+  async readBlob(digest: Digest): Promise<Uint8Array | null> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.readBlobOnce(digest)
+      } catch (err) {
+        const delay = RETRY_DELAYS_MS[attempt]
+        if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
+        await Bun.sleep(delay)
+      }
+    }
+  }
+
+  private readBlobOnce(digest: Digest): Promise<Uint8Array | null> {
     const segment = this.compression
       ? `compressed-blobs/zstd/${digest.hash}/${digest.size_bytes}`
       : `blobs/${digest.hash}/${digest.size_bytes}`
@@ -1016,18 +1033,28 @@ export class ReapiClient {
    */
   async readBlobStream(digest: Digest): Promise<ReadableStream<Uint8Array> | null> {
     const resource = `${this.instance ? `${this.instance}/` : ''}blobs/${digest.hash}/${digest.size_bytes}`
-    const call = (this.svc.bs as unknown as Record<string, Function>)['read']!(
-      { resource_name: resource, read_offset: 0, read_limit: 0 },
-      this.meta(),
-      this.bounded(),
-    ) as AsyncIterable<{ data: Uint8Array }> & { cancel(): void }
-    const messages = call[Symbol.asyncIterator]()
+    // Until the first message nothing has reached a reader, so a transient
+    // status there is retried as `readBlob`'s is; past it, the stream errors.
+    let call: AsyncIterable<{ data: Uint8Array }> & { cancel(): void }
+    let messages: AsyncIterator<{ data: Uint8Array }>
     let first: IteratorResult<{ data: Uint8Array }>
-    try {
-      first = await messages.next()
-    } catch (err) {
-      if ((err as grpc.ServiceError).code === NOT_FOUND) return null
-      throw err
+    for (let attempt = 0; ; attempt++) {
+      call = (this.svc.bs as unknown as Record<string, Function>)['read']!(
+        { resource_name: resource, read_offset: 0, read_limit: 0 },
+        this.meta(),
+        this.bounded(),
+      ) as AsyncIterable<{ data: Uint8Array }> & { cancel(): void }
+      messages = call[Symbol.asyncIterator]()
+      try {
+        first = await messages.next()
+        break
+      } catch (err) {
+        const code = (err as grpc.ServiceError).code
+        if (code === NOT_FOUND) return null
+        const delay = RETRY_DELAYS_MS[attempt]
+        if (delay === undefined || !isRetryable(code)) throw err
+        await Bun.sleep(delay)
+      }
     }
     const hasher = hasherFor(this.digestFunction)
     let size = 0

@@ -207,6 +207,11 @@ Once a worker reports EXECUTING, the task's `exec.timeout` (or
 re-attach: firing during the backoff between a dropped stream and its
 `WaitExecution`, it ends the task there rather than being lost.
 
+A ByteStream Read, like every unary call, retries UNAVAILABLE and
+RESOURCE_EXHAUSTED three times (100, 400 and 1600 ms) before it counts as
+failed; a streamed read retries only until its first message reaches a
+reader.
+
 A failed READ is never a failed task. The execution-record lookup is a
 shortcut past the worker, so a transport error there means "no usable record"
 and the task executes normally, with a warning naming why. The UPSTREAM record

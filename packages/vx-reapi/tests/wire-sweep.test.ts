@@ -263,6 +263,37 @@ describe.if(CHUNKING_SUPPORTED)('integrity and errors', () => {
     expect(methods).toEqual(['FindMissingBlobs', 'FindMissingBlobs'])
   })
 
+  // Item 919: a Read had no retry, unlike every unary call, so one
+  // UNAVAILABLE reading a finished action's outputs failed the task.
+  it("a transient Read is retried, whole or before a stream's first message", async () => {
+    const d = fake.put(bytes('read me'))
+    const reads = () => fake.calls.filter((x) => x.method === 'Read').length
+    const before = reads()
+    await using({}, async (c) => {
+      fake.fail('Read', grpc.status.UNAVAILABLE, 1)
+      expect(new TextDecoder().decode((await c.readBlob(d))!)).toBe('read me')
+      fake.fail('Read', grpc.status.RESOURCE_EXHAUSTED, 1)
+      const stream = (await c.readBlobStream(d))!
+      expect(await new Response(stream).text()).toBe('read me')
+    })
+    expect(reads() - before).toBe(4)
+  })
+
+  it('a Read that stays unavailable fails once the retry budget is spent', async () => {
+    const d = fake.put(bytes('never'))
+    const reads = () => fake.calls.filter((x) => x.method === 'Read').length
+    const before = reads()
+    await using({}, async (c) => {
+      fake.fail('Read', grpc.status.UNAVAILABLE, 4)
+      const got = await c.readBlob(d).then(
+        () => 'resolved',
+        (e: Error) => e.message,
+      )
+      expect(got).toContain('UNAVAILABLE')
+    })
+    expect(reads() - before).toBe(4)
+  })
+
   it('a refusal other than NOT_FOUND is an error, not a miss', async () => {
     await using({}, async (c) => {
       const d = fake.put(bytes('denied'))
