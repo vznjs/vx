@@ -117,17 +117,33 @@ describe('the run lock', () => {
   })
 
   it('a wait longer than a second names the holder once', async () => {
+    // Waits for the notice rather than sleeping past it: a fixed 1.3 s sleep
+    // left 300 ms over the threshold, and the row went red once on a loaded
+    // macOS runner with nothing in the log to say which side moved (item
+    // 895). The claim is the threshold, so the row measures it.
     const other = await otherHolder()
-    const second = acquireRunLock('/w/app', { dir, log })
-    await new Promise((r) => setTimeout(r, 1_300))
-    expect(lines).toEqual([
-      `[vx] waiting for another vx run (pid ${other.pid}) on this workspace to finish…`,
-    ])
+    const started = Date.now()
+    let saidAfter = -1
+    const second = acquireRunLock('/w/app', {
+      dir,
+      log: (line) => {
+        if (saidAfter < 0) saidAfter = Date.now() - started
+        log(line)
+      },
+    })
+    const deadline = Date.now() + 4_000
+    while (lines.length === 0 && Date.now() < deadline) await Bun.sleep(20)
+    const waiting = `[vx] waiting for another vx run (pid ${other.pid}) on this workspace to finish…`
+    expect(lines).toEqual([waiting])
+    expect(saidAfter).toBeGreaterThanOrEqual(1_000)
+    // Several more polls while the holder lives, so "once" is a claim about
+    // them: a slow runner polls fewer times here, never more.
+    await Bun.sleep(300)
     other.end()
     await (
       await second
     )()
-    expect(lines).toHaveLength(1)
+    expect(lines).toEqual([waiting])
   })
 
   it('runs in one process share the lock; the last release removes it', async () => {
