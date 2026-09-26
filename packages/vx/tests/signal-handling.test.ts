@@ -107,14 +107,18 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
-  // A signal exit is `process.exit`: no finally runs, so the run lock's
-  // entry stayed in the temp dir for the next run to reclaim (item 848).
-  // The second signal is the immediate exit, which skips even the grace.
+  // A signal exit is `process.exit`, which runs no finally, so the run
+  // lock's entry stayed in the temp dir for the next run to reclaim (item
+  // 848). Since item 849 a first signal lets run() leave through its
+  // finally, which releases the lock; the second signal is the immediate
+  // exit, and there only the exit hook removes the entry. It is sent once
+  // the task has heard the first: two signals sent back to back can land
+  // as one, and the row then never reached the second (item 862).
   const leavesNoLock = (signals: number) => async () => {
     await addProject(
       fixture.root,
       'app',
-      `export default { tasks: { slow: { exec: { command: "trap '' INT; echo up > up.txt; sleep 30" } } } }`,
+      `export default { tasks: { slow: { exec: { command: "trap 'echo int > int.txt' INT; echo up > up.txt; while :; do sleep 0.05; done" } } } }`,
     )
     const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-sig-tmp-'))
     try {
@@ -133,7 +137,14 @@ describe('signal handling during vx run (e2e)', () => {
       expect(readdirSync(path.join(tmp, locks[0]!))).toEqual([
         expect.stringMatching(new RegExp(`^h-${proc.pid}-`)),
       ])
-      for (let i = 0; i < signals; i++) proc.kill('SIGINT')
+      proc.kill('SIGINT')
+      if (signals === 2) {
+        const heard = path.join(fixture.root, 'packages', 'app', 'int.txt')
+        const until = Date.now() + 10_000
+        while (!existsSync(heard) && Date.now() < until) await Bun.sleep(20)
+        expect(existsSync(heard)).toBe(true)
+        proc.kill('SIGINT')
+      }
       expect(await proc.exited).toBe(130)
       expect(readdirSync(tmp).filter((n) => n.startsWith('vx-run-'))).toEqual([])
     } finally {
