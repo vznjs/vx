@@ -175,3 +175,41 @@ describe('a token anywhere in a path interpolates as Nx does', () => {
     ])
   })
 })
+
+// Item 914: vx has no character classes or extglobs, so `*.[jt]s`
+// matched nothing and Nx's default `production` negation excluded
+// nothing; and item 912 read a brace set as an unknown token.
+describe('Nx glob grammar in inputs', () => {
+  it('a brace set is a glob, not a token', () => {
+    const got = inputs(['{projectRoot}/**/*.{ts,tsx}', '{workspaceRoot}/{a,b}.json'])
+    expect([got.files, got.wsFiles, got.todos]).toEqual([['**/*.{ts,tsx}'], ['{a,b}.json'], []])
+  })
+
+  it('a class is a brace set, with the literal kept where only more inputs can follow', () => {
+    const got = inputs(['{projectRoot}/src/**/*.[jt]s', '!{projectRoot}/**/*.[jt]sx'])
+    expect([got.files, got.todos]).toEqual([['src/**/*.{[jt],j,t}s', '!**/*.{j,t}sx'], []])
+  })
+
+  it('Nx’s default production negation excludes the spec files', () => {
+    const got = inputs(['!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)'])
+    expect([got.files, got.todos]).toEqual([['!**/{*.,}{spec,test}.{j,t}s{x,}'], []])
+  })
+
+  it('what has no safe form is a todo', () => {
+    const got = inputs([
+      '{projectRoot}/+(a|b).ts',
+      '!{projectRoot}/!(a).ts',
+      '{projectRoot}/[a-z].ts',
+      '{projectRoot}/[!a].ts',
+    ])
+    expect([got.files, got.todos]).toEqual([
+      [],
+      [
+        'input "{projectRoot}/+(a|b).ts": glob syntax vx cannot take — map manually',
+        'input "!{projectRoot}/!(a).ts": glob syntax vx cannot take — map manually',
+        'input "{projectRoot}/[a-z].ts": glob syntax vx cannot take — map manually',
+        'input "{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
+      ],
+    ])
+  })
+})

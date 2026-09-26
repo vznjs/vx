@@ -27,7 +27,7 @@ function dirGlob(rel: string): string {
  * output. Only a leading token was read before item 912, so that output
  * became the literal glob `coverage/{projectRoot}/**`, saved nothing, and a
  * hit restored nothing. Null when a token is left or the path leaves the
- * workspace.
+ * workspace; a brace set is no token (item 914 — 912 read one as a gap).
  */
 export function nxWorkspacePath(s: string, projectRel: string, projectName: string): string | null {
   const rel = projectRel === '.' ? '' : projectRel
@@ -35,7 +35,8 @@ export function nxWorkspacePath(s: string, projectRel: string, projectName: stri
     .replaceAll('{workspaceRoot}', '')
     .replaceAll('{projectRoot}', rel)
     .replaceAll('{projectName}', projectName)
-  if (p.includes('{')) return null
+  // A token left over is a gap; a brace set (`*.{ts,tsx}`) is a glob.
+  if (/\{[\w.]+\}/.test(p)) return null
   const n = path.posix.normalize(p.replace(/^\/+/, '')).replace(/^\.\//, '')
   return n === '.' || n === '..' || n.startsWith('../') ? null : n
 }
