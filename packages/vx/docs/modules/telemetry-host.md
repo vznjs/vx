@@ -28,7 +28,9 @@ A plugin's `telemetry` may return one sink or an array. Each is checked
 before it is kept: an object, `wants` an array when present, and at
 least one of `onRecord` / `onRunSummary` a function — anything else is
 refused with the shape that arrived named. A plugin that throws during
-consultation is logged and skipped.
+consultation is logged and skipped, and so is one whose `telemetry()`
+does not settle within `teardownTimeoutMs()` (item 921: it held the run
+before its first task, and a drained loop exited 0).
 
 ## Invariants
 

@@ -10,6 +10,8 @@ registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>
 
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
+let settled = false
+
 async function main(): Promise<void> {
   try {
     const code = await run(process.argv.slice(2))
@@ -49,7 +51,22 @@ async function main(): Promise<void> {
     // reader most needs whole.
     process.exitCode = 1
   }
+  settled = true
 }
+
+// The loop drained while the verb was still pending: something it awaits
+// can never settle (a plugin hook whose promise is never resolved), and
+// with no exit code set Bun exits 0 — a run whose task failed reported
+// green, and its task had not even run (item 921). An exit that no
+// verdict reached is a failure, and says so.
+process.on('beforeExit', () => {
+  if (settled) return
+  settled = true
+  process.stderr.write(
+    'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)\n',
+  )
+  process.exitCode = 1
+})
 
 // A reader that leaves is not the run's failure. `vx run build | head -1`
 // closes the pipe after one line; every later write gets EPIPE, which Bun

@@ -4,7 +4,8 @@
 
 A plugin's flush or teardown is I/O a third party wrote; it must not
 hold the run's exit hostage. This is the deadline every end-of-run
-await goes through (`plugin-host.ts`, `telemetry-host.ts`).
+await goes through (`plugin-host.ts`, `telemetry-host.ts`), and a
+plugin's `telemetry()` consultation before the run too (item 921).
 
 ```ts
 teardownTimeoutMs(): number                       // default 3000
