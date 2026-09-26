@@ -726,8 +726,50 @@ describe('cacheKeyDiff', () => {
       expect(diff.found).toBe(true)
       expect(diff.previousRunId).toBe('r-1')
       expect(diff.entries).toEqual([])
-      expect(diff.note).toContain('unavailable')
+      expect(diff.note).toBe(
+        'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
+      )
     })
+  })
+
+  it('names the run that failed, not a prune, when its side saved no entry (item 898)', () => {
+    // `cli.md` names "the run failed and never saved one" as a cause; the
+    // note blamed a prune for it. Each side in turn fails, the other keeps
+    // its rows.
+    const note = (failed: 'this' | 'previous') => {
+      let out = ''
+      withCache((cache) => {
+        cache.recordRun(
+          mkRun({
+            hash: 'hA',
+            project: 'pkg',
+            task: 'test',
+            runId: 'r-1',
+            startedAt: 1000,
+            ...(failed === 'previous' ? { status: 'failed', exitCode: 1 } : {}),
+          }),
+        )
+        cache.recordRun(
+          mkRun({
+            hash: 'hB',
+            project: 'pkg',
+            task: 'test',
+            runId: 'r-2',
+            startedAt: 2000,
+            ...(failed === 'this' ? { status: 'failed', exitCode: 1 } : {}),
+          }),
+        )
+        seedEntryInputs(cache, failed === 'this' ? 'hA' : 'hB', [
+          { kind: 'file', name: 'a.ts', hash: 'x' },
+        ])
+        out = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test').note
+      })
+      return out
+    }
+    expect([note('this'), note('previous')]).toEqual([
+      'cache key changed but input fingerprints are unavailable — this run ended failed and saved no entry; only the key change is known',
+      'cache key changed but input fingerprints are unavailable — the previous run ended failed and saved no entry; only the key change is known',
+    ])
   })
 })
 

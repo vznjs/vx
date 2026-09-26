@@ -16,6 +16,7 @@ import { KEYED_RUNS_SQL } from '../cache/index.js'
 import { splitTaskId } from '../graph/index.js'
 import { clampInt } from '../util/index.js'
 import type { TaskInputComponent } from './task-hash.js'
+import { isPassStatus } from './telemetry.js'
 
 // ---------------------------------------------------------------------------
 // Run listing + detail
@@ -581,10 +582,10 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      'SELECT hash, cached, started_at AS startedAt FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+      'SELECT hash, cached, status, started_at AS startedAt FROM runs WHERE run_id = ? AND project = ? AND task = ?',
     )
     .get(runId, project, task) as
-    | { hash: string; cached: number | null; startedAt: number }
+    | { hash: string; cached: number | null; status: string; startedAt: number }
     | undefined
   if (!this_) {
     return {
@@ -615,11 +616,13 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
 
   const prev = db
     .query(
-      `SELECT run_id AS runId, hash FROM runs
+      `SELECT run_id AS runId, hash, status FROM runs
        WHERE project = ? AND task = ? AND started_at < ? AND ${KEYED_RUNS_SQL}
        ORDER BY started_at DESC LIMIT 1`,
     )
-    .get(project, task, this_.startedAt) as { runId: string | null; hash: string } | undefined
+    .get(project, task, this_.startedAt) as
+    | { runId: string | null; hash: string; status: string }
+    | undefined
 
   if (!prev) {
     return {
@@ -652,6 +655,14 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   // either side's rows are gone, we can name the hash change but not the
   // component-level diff.
   if (cur.length === 0 || old.length === 0) {
+    // A run that did not pass saved no entry, so it kept no fingerprints:
+    // that is the cause to name, not a prune (item 898).
+    const unsaved =
+      cur.length === 0 && !isPassStatus(this_.status)
+        ? `this run ended ${this_.status}`
+        : old.length === 0 && !isPassStatus(prev.status)
+          ? `the previous run ended ${prev.status}`
+          : null
     return {
       runId,
       taskId,
@@ -664,7 +675,9 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
           ? // The verdict already says the task is uncached; this line says
             // what moved a key that declares nothing.
             'no `cache` block declares its inputs, so its key folds every file in its project — a file it wrote, or any untracked file, moves it — and no fingerprints are kept to say which'
-          : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
+          : unsaved !== null
+            ? `cache key changed but input fingerprints are unavailable — ${unsaved} and saved no entry; only the key change is known`
+            : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
     }
   }
 
