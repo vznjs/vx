@@ -7,6 +7,15 @@
 // RSS; the assertions are DIFFERENTIAL — the bounded shape against the
 // unbounded one, on the same machine, in the same test run — so they do
 // not encode this container's absolute numbers.
+//
+// `.unsafe` (item 925): three times on Linux CI a shard hosting this file
+// under the sandbox ended with no failed row, its last line strace's own
+// `ptrace(PTRACE_LISTEN…): Input/output error`, each time right after the
+// stream-capture row, where the four concurrent floods start and are
+// SIGKILLed. A traced task's exit code is strace's, so strace's internal
+// failure was the shard's. Not reproduced locally (11 runs, bare and
+// sandboxed); what the flood does to strace is unproven. Nothing here
+// needs the sandbox: every row is a child's RSS.
 
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'bun:test'

@@ -545,6 +545,17 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Rows: `github.test.ts` › the check-run clamp cuts on a character
         and fits the cap in bytes (four offsets); resolveCheckRunEnv's
         empty API URL. Both red without the fix.
+925.  DONE (2026-09-26, Next 24's third hit, CI on #997). The shard
+      that hosts `output-memory.test.ts` ended three times on Linux CI with
+      no failed row, its last line strace's own
+      `ptrace(PTRACE_LISTEN…): Input/output error`, each time right after
+      the stream-capture row — where the four concurrent stdout floods
+      start and are SIGKILLed.
+      - The file is `output-memory.unsafe.test.ts` now: every row is a
+        child's RSS and needs no sandbox, and a traced task's exit code is
+        strace's. What the floods do to strace stays unproven (11 local
+        runs clean, bare and sandboxed); if the error recurs elsewhere,
+        the trigger was not this file, and Next 24 says so.
 
 ## In flight
 
@@ -873,6 +884,9 @@ next?".
     same strace flags, bare, was clean 6 of 6, and the shard itself
     through vx's sandbox (bwrap under strace, as CI runs it) was clean
     5 of 5 on this box: the trigger is the CI runner's, not reproduced.
+    Third hit (CI on #997), the same place; item 925 moved the file to
+    the unsandboxed suite. This entry closes if no shard ends this way
+    again.
 25. **A key-only task for `nx()`'s `nx-input:<name>` twins (item 910).**
     A twin runs `true` so that its key, the project's `^` input, folds
     into its dependants. At 300 projects the 598 twins cost 97 ms of a

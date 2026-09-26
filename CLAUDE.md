@@ -116,8 +116,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   sandbox's own tests (seatbelt cannot nest), the cross-project law
   (a project may read only its own directory), the disk-full suite
   (a sandboxed task sees a mount it did not make as read-only), the
-  repo-wide laws that read other packages and `.github/`, and the
-  liveness helper (the runtime's PID namespace hides a zombie). The
+  repo-wide laws that read other packages and `.github/`, the
+  liveness helper (the runtime's PID namespace hides a zombie), and
+  the output-memory floods (strace's own `PTRACE_LISTEN` error ended
+  the shard around them three times on CI, item 925). The
   shards exclude them in the dealer itself — `testFiles()` in
   `scripts/test-shard.ts` drops the name, so the shard command never
   sees the file; `test.bun.unsafe` runs them. It and
