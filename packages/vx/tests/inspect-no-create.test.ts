@@ -3,7 +3,7 @@
 // then said "no recorded runs yet"; so did `why`, `info` and a dry prune,
 // and on a fresh workspace each of them created `.vx` before any run.
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -33,7 +33,9 @@ async function vx(cwd: string, args: string[]): Promise<{ code: number; err: str
 describe('a reading verb makes nothing on disk', () => {
   let root = ''
   beforeEach(async () => {
-    root = await makeWorkspace({ prefix: 'vx-inspect-' })
+    // Canonical: the verb names the directory as its cwd resolves it, and
+    // macOS's temp dir is a symlink (/var -> /private/var).
+    root = realpathSync(await makeWorkspace({ prefix: 'vx-inspect-' }))
     await addProject(root, 'app', {
       config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     })
