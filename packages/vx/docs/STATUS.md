@@ -261,6 +261,23 @@ test is telling the truth.
         close on the second signal's exit survived and is unproven either
         way: no row observes it. `signals.md` records each.
 
+862.  DONE (2026-09-26, the run lock's exit hook from item 848, swept).
+      Three of five mutants survived: without the unlink, without the
+      rmdir, and without the hook itself. The row meant to hold them,
+      `signal-handling.test.ts` › "a second signal exit leaves no run-lock
+      entry behind", sent its two SIGINTs back to back. A process can
+      receive them as one, so the row ran the first-signal path. That
+      path leaves through run()'s finally since item 849, which releases
+      the lock, so the exit hook never ran.
+      - The row now sends the second signal once the task's `trap … INT`
+        has written that it heard the first. All three mutants are
+        caught.
+      - Equivalent: the hook's once-only flag, since a second hook's
+        unlink finds nothing and is caught.
+      - Class grep: the other second-signal rows already space their
+        signals (100 ms, or a teardown marker), and item 861's sweep
+        showed they catch their mutants.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
