@@ -9,6 +9,7 @@ import { constants as osConstants } from 'node:os'
 import { executablePath, isExecutableMissing, killGraceMs } from '../util/index.js'
 import {
   closeSignalChannel,
+  holdGroups,
   killTree,
   releaseGroup,
   signalThrough,
@@ -498,14 +499,19 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
             'timeout',
           ),
         )
+        // Listed on the group guard until the SIGKILL: the shell may die
+        // on the SIGTERM and let the group go while the server runs out
+        // the grace, and a vx that exits inside it (the timer is unref'd)
+        // leaves the server to the guard (kill-tree.ts, item 865).
+        const letGo = holdGroups([child])
         killTree(child, 'SIGTERM')
         // Same escalation as `armTimeout`: a server that traps TERM and
         // never became ready is not in the persistent registry, so nothing
         // else would ever kill it — it outlived the run under init.
-        const killTimer = setTimeout(
-          () => killTree(child, 'SIGKILL'),
-          killGraceMs(TIMEOUT_SIGKILL_GRACE_MS),
-        )
+        const killTimer = setTimeout(() => {
+          killTree(child, 'SIGKILL')
+          letGo()
+        }, killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
         killTimer.unref?.()
       }
     }, opts.timeoutMs)

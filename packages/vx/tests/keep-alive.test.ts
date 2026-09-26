@@ -377,6 +377,31 @@ Bun.spawn = (cmd, opts) => {
     expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
   }, 20_000)
 
+  it('a never-ready server a dead shell left goes with a vx that exits inside the grace', async () => {
+    // The readiness timeout SIGTERMs the group; the `& wait` shell dies at
+    // once and lets the group go, and the server traps the signal. Its
+    // SIGKILL waits on an unref'd timer, so a vx whose run ended first
+    // exited and left the server under init. The timeout holds the group
+    // until its SIGKILL, and vx's exit hands it to the guard (item 865).
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt; sleep 1; echo late > late.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & wait', timeout: 300, persistent: { readyWhen: 'NEVER' } } },
+      } }`,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+      cwd: root,
+      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    expect(await proc.exited).toBe(1)
+    expect(existsSync(path.join(dir, 'term.txt'))).toBe(true)
+    await Bun.sleep(2_000)
+    expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
+  }, 20_000)
+
   it('CONTROL: a group vx finished with is not the guard’s when vx exits', async () => {
     // A one-shot task that leaves a process behind keeps it after vx's
     // clean exit, as before the guard: vx strikes the group from the list

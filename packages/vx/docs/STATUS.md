@@ -338,6 +338,15 @@ exit`.
         3): "a kill -9 in a Ctrl-C’s grace takes the child of a shell that
         died on the signal", and "a kill -9 in the persistent shutdown’s
         grace takes the server a dead shell left".
+      - The class, grepped: the readiness timeout of a persistent task
+        had the same gap, and a wider one. Its SIGKILL waits on an
+        unref'd timer, so a vx whose run ended inside the grace exited
+        with no kill at all, and a server that trapped TERM behind a dead
+        shell lived on. It holds the group until its SIGKILL now, and
+        vx's exit hands the group to the guard. Row: "a never-ready
+        server a dead shell left goes with a vx that exits inside the
+        grace", failing without the hold (2 of 2). The one-shot timeout
+        already releases only after its grace settles.
       - The second row's first draft passed without the fix: its escaped
         quotes broke the server's trap, so no server was ever there to
         leave behind. It waits for the shell's death too, since a vx
