@@ -603,6 +603,22 @@ test is telling the truth.
         Equivalent: the two `dx`/`dy === 0` guards in the exit point
         (`r.w / 2 / 0` is `Infinity` without them).
 
+842.  DONE (2026-09-26, the doc laws' Markdown reader,
+      `tests/helpers/markdown-anchors.ts`). The site's code with logic in
+      it is swept (items 831–841; `one-run.ts`, `sections.ts` and
+      `choosing-matrix.ts` are data, held by the landing, sidebar and
+      compare pins). So the loop turned to the helpers core's laws stand
+      on, where a lenient helper makes a law pass vacuously. Against
+      the two `doc-references` laws, 4 of 13 mutations of this reader
+      were caught. One survivor dropped every link's anchor, and the
+      laws stayed green while they checked no anchor at all.
+      `tests/markdown-anchors.test.ts` now holds all 13: slugs as
+      github-slugger renders them at every level (closing hashes
+      dropped, punctuation and dots removed, one hyphen per space), a
+      repeat suffixed `-1`, `-2`, fences skipped however indented or
+      spelled, links with their anchors and same-page anchors, and no
+      URL of any scheme.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
