@@ -239,6 +239,23 @@ function isRetryable(code: number | undefined): boolean {
 
 const RETRY_DELAYS_MS = [100, 400, 1600]
 
+const executionAborted = (): Error => new Error('reapi: execution aborted')
+
+/** A backoff an abort ends at once: the caller's deadline may fire mid-wait. */
+function abortableSleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(executionAborted())
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 /**
  * Promisified unary call with bounded retry on transient failure. Every
  * unary REAPI call is idempotent by construction (CAS writes are
@@ -1085,7 +1102,7 @@ export class ReapiClient {
       } catch (err) {
         const delay = RETRY_DELAYS_MS[attempt]
         if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
-        await Bun.sleep(delay)
+        await abortableSleep(delay, signal)
       }
     }
   }
@@ -1107,6 +1124,10 @@ export class ReapiClient {
     onName?: (name: string) => void,
   ): Promise<Operation> {
     return new Promise((resolve, reject) => {
+      // An aborted signal never fires `abort` again, and the stream has no
+      // deadline of its own (time QUEUED is unbounded), so a listener added
+      // after the abort would wait on a wedged server forever.
+      if (signal?.aborted === true) return reject(executionAborted())
       const stream = (this.svc.exec as unknown as Record<string, Function>)[method]!(
         req,
         this.meta(),
@@ -1114,7 +1135,7 @@ export class ReapiClient {
       let last: Operation | undefined
       const onAbort = (): void => {
         stream.cancel()
-        reject(new Error('reapi: execution aborted'))
+        reject(executionAborted())
       }
       signal?.addEventListener('abort', onAbort, { once: true })
       stream.on('data', (op: Operation) => {

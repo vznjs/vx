@@ -199,6 +199,10 @@ the same status is counted, not repeated: the run ends with
 Execution streams are deliberately NOT bounded by either: queueing behind a
 busy worker pool is legitimate and unbounded. A wedged server still cannot
 reach Execute, because the deadline-bounded Capabilities call runs first.
+Once a worker reports EXECUTING, the task's `exec.timeout` (or
+`executeTimeoutMs`) bounds the wait, and the bound holds across a
+re-attach: firing during the backoff between a dropped stream and its
+`WaitExecution`, it ends the task there rather than being lost.
 
 A failed READ is never a failed task. The execution-record lookup is a
 shortcut past the worker, so a transport error there means "no usable record"
