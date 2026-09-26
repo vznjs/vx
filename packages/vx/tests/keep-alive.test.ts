@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { runLockPath } from '../src/orchestrator/run-lock.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
@@ -54,6 +55,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     root = await makeWorkspace({ prefix: 'vx-keepalive-' })
   })
   afterEach(async () => {
+    // A vx this file SIGKILLs leaves its run lock in the temp dir, keyed by the root.
+    await rm(runLockPath(root), { recursive: true, force: true })
     await rm(root, { recursive: true, force: true })
   })
 
@@ -120,6 +123,8 @@ describe('a persistent task keeps an open stdin', () => {
     root = await makeWorkspace({ prefix: 'vx-keepalive-stdin-' })
   })
   afterEach(async () => {
+    // A vx this file SIGKILLs leaves its run lock in the temp dir, keyed by the root.
+    await rm(runLockPath(root), { recursive: true, force: true })
     await rm(root, { recursive: true, force: true })
   })
 
@@ -202,6 +207,8 @@ describe('a SIGKILLed vx takes the groups it holds with it', () => {
     root = await makeWorkspace({ prefix: 'vx-keepalive-' })
   })
   afterEach(async () => {
+    // A vx this file SIGKILLs leaves its run lock in the temp dir, keyed by the root.
+    await rm(runLockPath(root), { recursive: true, force: true })
     await rm(root, { recursive: true, force: true })
   })
 

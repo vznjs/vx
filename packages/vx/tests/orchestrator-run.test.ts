@@ -1292,12 +1292,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
           }
         `,
       })
-      const f1 = await makeWorkspace().then((f) => ({
-        ...f,
-        log: fixture.log,
-        err: fixture.err,
-      }))
-      void f1 // reuse the shared fixture for both runs (same root)
+      // Both runs share the one fixture, so the one cache dir.
       const [r1, r2] = await Promise.all([
         run({ cwd: fixture.root, tasks: ['a'], log: silentLogger(fixture) }),
         run({ cwd: fixture.root, tasks: ['b'], log: silentLogger(fixture) }),

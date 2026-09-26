@@ -9,7 +9,7 @@
 // be tested on both.
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from '../src/util/index.js'
 import { collectInfo } from '../src/orchestrator/index.js'
@@ -58,7 +58,9 @@ describe('the doctor reports the runtime verdict, and nothing else does', () => 
     // before it reports anything (the gate caught exactly that).
     const root = mkdtempSync(path.join(tmpdir(), 'vx-bunver-'))
     await Bun.write(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
-    const facts = await collectInfo(root, { cacheDir: path.join(root, 'cache') })
+    const facts = await collectInfo(root, { cacheDir: path.join(root, 'cache') }).finally(() =>
+      rmSync(root, { recursive: true, force: true }),
+    )
     // `bun` stays the bare version — `--format json` is a machine surface and
     // show-info.test.ts holds it to `Bun.version` exactly. The verdict is its
     // own boolean, and the prose lives only in the rendered row.

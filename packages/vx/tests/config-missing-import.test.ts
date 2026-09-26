@@ -135,6 +135,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
   })
   afterEach(async () => {
     await rm(real, { recursive: true, force: true })
+    await rm(path.dirname(root), { recursive: true, force: true })
   })
 
   const owners = async (changed: string[]): Promise<string[]> =>

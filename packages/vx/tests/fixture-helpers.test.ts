@@ -4,7 +4,15 @@
 // written, a commit that tracks nothing, a scoped name on the wrong path)
 // would move every one of those fixtures at once.
 import { afterEach, describe, expect, it } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  utimesSync,
+} from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -369,5 +377,32 @@ describe('the watch fixture', () => {
     const pid = Number(seen.at(-1))
     expect(Number.isInteger(pid)).toBe(true)
     expect(isAlive(pid)).toBe(false)
+  })
+})
+
+describe('the plugin helper’s per-process root', () => {
+  it('sweeps a root idle for an hour even when its pid is alive', async () => {
+    // Inside the sandbox every shard's test process is pid 2 in a namespace
+    // of its own, so a pid says nothing there, and 478 live-pid roots
+    // piled up in one box's temp dir (item 879). This process's pid is alive
+    // for sure: the root idle for two hours goes, the fresh one stays.
+    const tmp = scratch()
+    const old = path.join(tmp, `vx-plugin-pkgs-${process.pid}-old`)
+    const fresh = path.join(tmp, `vx-plugin-pkgs-${process.pid}-fresh`)
+    mkdirSync(old)
+    mkdirSync(fresh)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    utimesSync(old, twoHoursAgo, twoHoursAgo)
+    const helper = path.join(import.meta.dir, 'helpers', 'plugin.ts')
+    const proc = Bun.spawn(
+      ['bun', '-e', `import { pluginOrigin } from ${JSON.stringify(helper)}; pluginOrigin('x')`],
+      { env: { ...process.env, TMPDIR: tmp }, stdout: 'ignore', stderr: 'pipe' },
+    )
+    const [code, err] = await Promise.all([proc.exited, new Response(proc.stderr).text()])
+    expect({ code, err }).toEqual({ code: 0, err: '' })
+    const left = readdirSync(tmp).filter((n) => n.startsWith('vx-plugin-pkgs-'))
+    expect(left.filter((n) => !n.startsWith(`vx-plugin-pkgs-${proc.pid}-`)).sort()).toEqual([
+      path.basename(fresh),
+    ])
   })
 })
