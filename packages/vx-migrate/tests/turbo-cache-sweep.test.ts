@@ -100,6 +100,22 @@ describe('what a status means', () => {
     expect(await cacheWith(fetchImpl).hasMany(['aa'])).toBeNull()
   })
 
+  // Item 929: the batch query answers each hash with ArtifactInfo, null, or
+  // an error entry, and an error entry was counted as present.
+  it('a batch query holds only the hashes answered with artifact info', async () => {
+    const { fetchImpl } = stub(() =>
+      Response.json({
+        aa: { size: 1, taskDurationMs: 2, tag: '' },
+        bb: null,
+        cc: { error: { message: 'not found' } },
+        dd: 'nonsense',
+      }),
+    )
+    expect(await cacheWith(fetchImpl).hasMany(['aa', 'bb', 'cc', 'dd', 'ee'])).toEqual(
+      new Set(['aa']),
+    )
+  })
+
   it('a duration header of 0 or Infinity is no duration', async () => {
     for (const d of ['0', 'Infinity']) {
       const { fetchImpl } = stub(() => new Response('x', { headers: { 'x-artifact-duration': d } }))
