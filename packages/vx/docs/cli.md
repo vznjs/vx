@@ -1721,7 +1721,8 @@ exits 1 — unless a declared plugin claims the verb through the
 Replay a recorded run's summary from the local history — no
 re-execution, no cache probe, no config evaluation. With the
 self-hosted dashboard gone (2026-08-23), this is THE run-replay
-surface.
+surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
+so `vx last` still shows the run before it.
 
 ```
 vx last [runId] [--list[=N]] [--format pretty|json] [--cache-dir <path>]

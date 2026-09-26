@@ -392,6 +392,11 @@ async function runOnBus(
   const forwardAbort = (): void => stopRun.abort(options.signal?.reason)
   if (options.signal?.aborted === true) forwardAbort()
   else options.signal?.addEventListener('abort', forwardAbort, { once: true })
+  // A run a process signal stopped records no history: until item 849 the
+  // handler exited before any outcome landed, and a Ctrl-C'd run then read
+  // in `vx last` as FAILED with 0 tasks (item 854). An embedder's abort is
+  // its own call and keeps its record.
+  let stoppedBySignal = false
   let leftRun = (): void => {}
   const runLeft = new Promise<void>((resolve) => {
     leftRun = resolve
@@ -402,7 +407,10 @@ async function runOnBus(
     cache,
     liveChildren,
     persistentRegistry,
-    stop: (signal) => stopRun.abort(signal),
+    stop: (signal) => {
+      stoppedBySignal = true
+      stopRun.abort(signal)
+    },
     done: runLeft,
     // The grace, then one flush and each teardown at their own bound, and
     // slack for the summary and the cache close.
@@ -856,7 +864,7 @@ async function runOnBus(
       withTelemetry: telemetry !== undefined,
     })
     try {
-      cache.recordRunBundle(records)
+      if (!stoppedBySignal) cache.recordRunBundle(records)
     } catch (err) {
       // History is observability: a full cache disk at the very end must
       // not turn a finished run's verdict into a stack and exit 1 (seen as

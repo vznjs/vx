@@ -784,6 +784,19 @@ test is telling the truth.
       the likely link, and 23(b) that its row ran on a 2 s grace until
       item 849.
 
+854.  DONE (2026-09-26, a Ctrl-C'd run no longer lands in `vx last`).
+      Before item 849 the signal handler exited before any outcome was
+      recorded, so a stopped run left no history, which is what
+      `aborted-outcome.test.ts`'s header described. Since 849 the
+      stopped run finishes its own path, and `vx last` showed it as
+      FAILED with 0 tasks, hiding the run the user wanted. A run the
+      process signal stopped now skips the history record; an
+      embedder's `RunOptions.signal` abort keeps its record, as before.
+      A schema column for "stopped" was the alternative, and it was
+      declined: a `SCHEMA_VERSION` bump drops every table. Row:
+      `signal-handling.test.ts` › "a Ctrl-C leaves the history as it
+      was", which fails without the guard.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

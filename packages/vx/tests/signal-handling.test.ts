@@ -423,6 +423,47 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
+  // A Ctrl-C'd run records no history: since item 849 the stopped run
+  // finishes its own path, and it landed in `vx last` as FAILED with 0
+  // tasks, hiding the run the user wanted to look at (item 854).
+  it(
+    'a Ctrl-C leaves the history as it was',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: {
+        quick: { exec: { command: 'true' } },
+        slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
+      } }`,
+      )
+      const vx = (...args: string[]) =>
+        Bun.spawn([process.execPath, BIN, ...args], {
+          cwd: fixture.root,
+          env: { ...process.env },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+      const list = async (): Promise<string[]> => {
+        const p = vx('last', '--list')
+        const out = await new Response(p.stdout).text()
+        await p.exited
+        return out
+          .trim()
+          .split('\n')
+          .map((l) => l.split(/\s+/)[0]!)
+      }
+      expect(await vx('run', 'quick', '--all').exited).toBe(0)
+      expect(await list()).toEqual(['ok'])
+      const proc = vx('run', 'slow', '--all')
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      expect(await list()).toEqual(['ok'])
+    },
+    TIMEOUT,
+  )
+
   it('SIGINT to vx reaches a one-shot task as SIGINT', reaches('SIGINT', 130, false), TIMEOUT)
   it(
     'SIGINT to vx reaches a ready persistent task as SIGINT',
