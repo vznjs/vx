@@ -562,6 +562,25 @@ test is telling the truth.
       mention of another package's test, and a hypothetical in a
       comment. So there is no law; the scan is recorded here instead.
 
+840.  DONE (2026-09-26, the playground page's model,
+      `src/components/demos/model/playground-view.ts`: the Run, the
+      results table's words, the env and task fields, the static table).
+      46 mutations: 35 caught by the rows there, 11 held now, none
+      equivalent. Held in `tests/playground-view.test.ts`, over a fake
+      planner where the real one cannot reach the case:
+      - a discovery that throws is refused with its message;
+      - only projects with a config file are evaluated;
+      - tasks sort by config task order within a project;
+      - the cache keeps the keys it held;
+      - a plan with no task is refused in the CLI's words;
+      - an env line with no `=` is refused;
+      - `^task` names only used packages that declare it, and
+        `pkg#task` is taken as named;
+      - a config needs its manifest and a manifest its config;
+      - `uses` names only workspace packages.
+        The worktree runs these against a planner built into its
+        `dist/`, as the site's `build` task does.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
