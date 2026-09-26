@@ -327,6 +327,17 @@ echo A; echo B` went green after a failed pre hook, and a cache
         `bun build`, `pnpm install`, `yarn add` stay commands, and
         `bun dev` still delegates. They fail without the fix, and an old
         row that pinned `bun x` as `x` is corrected. `cli.md` says so.
+909.  DONE (2026-09-26, the same review's lead 2). A stale hit in
+      `turbo()`. Turbo 1 names an env dependency as `$NAME` in a task's
+      `dependsOn` and in `globalDependencies`. The mapper dropped the first
+      and read the second as a workspace glob that matched nothing, so a
+      changed `API_URL` replayed the old `dist`.
+      - Both now join `cache.inputs.env` and `exec.env.passThrough`.
+        `$TURBO_ROOT$` and a `$` inside a name are not env names (a
+        control row).
+      - Row: `turbo-map-sweep.test.ts` › turbo 1 `$NAME` env
+        dependencies. It fails without the fix, and the review's repro
+        now misses on a changed var. The vx-migrate README says so.
 
 ## In flight
 

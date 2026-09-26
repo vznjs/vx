@@ -182,3 +182,38 @@ describe('turbo-map: a package overlay that extends an inherited list', () => {
     expect(task.cache?.inputs?.files).toEqual(['lib/**'])
   })
 })
+
+// Item 909: Turbo 1 names an env dependency as `$NAME` in a task's
+// `dependsOn` and in `globalDependencies`. The first was dropped and the
+// second became a workspace glob matching nothing, so a changed var hit
+// the cache with the old bytes.
+describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
+  it('re-key the task and reach it, from `dependsOn` and `globalDependencies`', async () => {
+    const t = await taskOf(
+      {
+        globalDependencies: ['$GLOBAL_TOKEN', 'tsconfig.json'],
+        pipeline: { build: { dependsOn: ['^build', '$API_URL'], outputs: ['dist/**'] } },
+      },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const task = t.task as {
+      dependsOn: string[]
+      exec: { env: { passThrough: string[] } }
+      cache: { inputs: { env: string[]; workspaceFiles: string[] } }
+    }
+    expect(task.dependsOn).toEqual(['^build'])
+    expect(task.cache.inputs.env).toEqual(['GLOBAL_TOKEN', 'API_URL'])
+    expect(task.cache.inputs.workspaceFiles).toEqual(['tsconfig.json'])
+    expect(task.exec.env.passThrough).toEqual(['GLOBAL_TOKEN', 'API_URL'])
+    expect(t.todos).toEqual([])
+  })
+
+  it('CONTROL: `$TURBO_ROOT$` and a `$` mid-entry are not env names', async () => {
+    const t = await taskOf(
+      { globalDependencies: ['$TURBO_ROOT$/x.json', 'a$B'], tasks: { build: {} } },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const inputs = (t.task!['cache'] as { inputs: { env?: string[] } } | undefined)?.inputs
+    expect(inputs?.env).toBeUndefined()
+  })
+})
