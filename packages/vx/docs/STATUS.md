@@ -627,6 +627,11 @@ next?".
     SIGTERM leaves the task running either way. What strace does on its
     own `PTRACE_LISTEN` error is the one path that differs, and nothing
     here reaches it, so `-D` is not shipped without a failing row.
+    Second hit (CI on #978): shard 9 again, in the same place — right
+    after `output-memory.test.ts` › "an opted-down stream does not grow
+    with the volume the child writes", where the next rows start four
+    `awk` floods at once and SIGKILL each. That file alone under the
+    same strace flags, bare, was clean 6 of 6.
 
 ## Decisions (this arc)
 
