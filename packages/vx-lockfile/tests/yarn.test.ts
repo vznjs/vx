@@ -508,6 +508,20 @@ describe('every input the yarn digest must read', () => {
     expect(movedDirs(bare(berry()), bare(berry({ bar: '2.0.1' })))).toEqual(['packages/a'])
   })
 
+  it('a descriptor an override rewrote reaches the entry it names (item 903)', () => {
+    // A root `resolutions` to a patch leaves no `foo@npm:^1` key: the entry
+    // is keyed by its `patch:` descriptor, and nothing in the file points
+    // at it. Before, `a` reached no foo at all, so a patch edit (a new
+    // hash and checksum on that entry) re-keyed nothing.
+    const patched = (hash: string) =>
+      berry().replace(
+        '"foo@npm:^1, foo@npm:^1.0.0":\n  version: 1.0.0\n  resolution: "foo@npm:1.0.0"',
+        `"foo@patch:foo@npm%3A1.0.0#./p.patch::version=1.0.0&hash=${hash}":\n  version: 1.0.0\n  resolution: "foo@patch:foo@npm%3A1.0.0#./p.patch::version=1.0.0&hash=${hash}"`,
+      )
+    expect(patched('aaa')).not.toBe(berry())
+    expect(movedDirs(patched('aaa'), patched('bbb'))).toEqual(['packages/a'])
+  })
+
   it('an unresolved dependency still folds its range', () => {
     const ghost = (range: string) =>
       berry().replace('    foo: "npm:^1"\n', `    foo: "npm:^1"\n    ghost: "npm:${range}"\n`)

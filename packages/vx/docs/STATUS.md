@@ -248,6 +248,19 @@ test is telling the truth.
       - Row: `yarn.test.ts` (item 902), with the reordered-header control.
         It fails without the fix. On the review's repro the run misses
         and `--affected` names both projects.
+903.  DONE (2026-09-26, the same review's lead 2). A stale hit in the
+      yarn berry parser. A root `resolutions` override to a `patch:`
+      leaves no `is-number@npm:^7.0.0` key in `yarn.lock`, so the
+      dependency that asks for it resolved to nothing. The patched entry
+      installed in its place was reached by no workspace, and a patch
+      edit, which rewrites that entry's hash and checksum, re-keyed
+      nothing.
+      - A berry descriptor the file does not key now reaches every entry
+        of its package name, as a catalog range already did: a bump of
+        any of them moves the workspace, never a bump of none.
+      - Row: `yarn.test.ts` (item 903), a patch entry with no `npm:` key
+        whose hash changes. It fails without the fix. On the review's
+        real Yarn 4 repro the run misses. The README says so.
 
 ## In flight
 
@@ -562,8 +575,13 @@ next?".
     same head passed the shard in the local gate and on macOS. Candidate
     fix, to measure first: `strace -D` makes the traced command vx's own
     child (its exit code, and bwrap's `--die-with-parent` on vx), with
-    strace a detached grandchild, at the price of waiting for the log
-    another way.
+    strace a detached grandchild. Probed (item 903's commit): with
+    `-D` the log was whole when read at the command's exit (200 of
+    200). But no row tells the two apart: a SIGKILL of strace ends the
+    task either way (strace starts its tracee to die with it), and a
+    SIGTERM leaves the task running either way. What strace does on its
+    own `PTRACE_LISTEN` error is the one path that differs, and nothing
+    here reaches it, so `-D` is not shipped without a failing row.
 
 ## Decisions (this arc)
 
