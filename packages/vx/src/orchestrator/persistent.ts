@@ -5,7 +5,7 @@
 
 import type { TaskNode } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
-import { killTree, untilGroupsGone } from '../exec/index.js'
+import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
 
 type Child = ReturnType<typeof Bun.spawn>
 
@@ -64,7 +64,12 @@ export async function shutdownPersistent(
   const kept = new Set(keepAlive)
   const dying = [...registry.values()].filter((c) => !kept.has(c))
   if (dying.length === 0) return
-  for (const child of dying) killTree(child, 'SIGTERM')
-  for (const child of await untilGroupsGone(dying, graceMs)) killTree(child, 'SIGKILL')
-  await Promise.allSettled(dying.map((c) => c.exited))
+  const letGo = holdGroups(dying)
+  try {
+    for (const child of dying) killTree(child, 'SIGTERM')
+    for (const child of await untilGroupsGone(dying, graceMs)) killTree(child, 'SIGKILL')
+    await Promise.allSettled(dying.map((c) => c.exited))
+  } finally {
+    letGo()
+  }
 }

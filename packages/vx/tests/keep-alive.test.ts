@@ -314,6 +314,69 @@ Bun.spawn = (cmd, opts) => {
     expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
   }, 20_000)
 
+  it('a kill -9 in a Ctrl-C’s grace takes the child of a shell that died on the signal', async () => {
+    // The shell dies on the SIGINT; the child it backgrounded ignores it
+    // and runs out the grace. The runner let the group go when the shell
+    // exited, so a `kill -9` of vx inside the grace left the child to
+    // nobody: the teardown holds its groups until its SIGKILL sweep is
+    // done (item 865).
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: '(trap "" INT TERM; sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo $! > pid.txt; wait' } } } }`,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+      cwd: root,
+      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      stdout: 'ignore',
+      stderr: 'ignore',
+      detached: true,
+    })
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    process.kill(-proc.pid, 'SIGINT')
+    await Bun.sleep(200)
+    process.kill(proc.pid, 'SIGKILL')
+    expect(await proc.exited).toBe(137)
+    await Bun.sleep(2_000)
+    expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
+  }, 20_000)
+
+  it('a kill -9 in the persistent shutdown’s grace takes the server a dead shell left', async () => {
+    // The end-of-run shutdown SIGTERMs a persistent dependency; its
+    // `& wait` shell dies at once and the server traps the signal and
+    // cleans up slowly. The runner let the group go at the shell's exit;
+    // the shutdown now holds it until its SIGKILL sweep (item 865). The
+    // server marks the SIGTERM, then writes a second later.
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt; sleep 1; echo late > late.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $$ > shell.pid; echo READY; wait', persistent: { readyWhen: 'READY' } } },
+        e2e: { dependsOn: ['dev'], exec: { command: 'true' } },
+      } }`,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
+      cwd: root,
+      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    const term = path.join(dir, 'term.txt')
+    const until = Date.now() + 10_000
+    while (!existsSync(term) && Date.now() < until) await Bun.sleep(20)
+    expect(existsSync(term)).toBe(true)
+    // The shell reaped, and its exit (where the runner lets the group go)
+    // handled: killed before that, vx still held the group anyway.
+    expect(await waitForDead(await waitForPid(path.join(dir, 'shell.pid'), 1_000), 2_000)).toBe(
+      true,
+    )
+    await Bun.sleep(100)
+    process.kill(proc.pid, 'SIGKILL')
+    expect(await proc.exited).toBe(137)
+    await Bun.sleep(2_000)
+    expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
+  }, 20_000)
+
   it('CONTROL: a group vx finished with is not the guard’s when vx exits', async () => {
     // A one-shot task that leaves a process behind keeps it after vx's
     // clean exit, as before the guard: vx strikes the group from the list
