@@ -60,10 +60,15 @@ export async function shutdownPersistent(
   registry: ReadonlyMap<string, Child>,
   keepAlive: readonly Child[],
   graceMs: number = killGraceMs(PERSISTENT_SHUTDOWN_GRACE_MS),
-): Promise<void> {
+): Promise<CrashedPersistent[]> {
   const kept = new Set(keepAlive)
+  const crashed: CrashedPersistent[] = []
+  for (const [id, child] of registry) {
+    if (kept.has(child) || !hasEnded(child) || child.exitCode === 0) continue
+    crashed.push({ id, code: child.exitCode ?? child.signalCode ?? 'unknown' })
+  }
   const dying = [...registry.values()].filter((c) => !kept.has(c))
-  if (dying.length === 0) return
+  if (dying.length === 0) return crashed
   const letGo = holdGroups(dying)
   try {
     for (const child of dying) killTree(child, 'SIGTERM')
@@ -72,4 +77,23 @@ export async function shutdownPersistent(
   } finally {
     letGo()
   }
+  return crashed
+}
+
+/**
+ * A dependency-only persistent task that ended on its own, not by the stop
+ * at the end of the graph, and not cleanly. Its dependants may still have
+ * passed, and until item 892 the run did too: the server was reported
+ * `success` and its crash was said nowhere, while a requested server's
+ * crash failed the run.
+ */
+export interface CrashedPersistent {
+  id: string
+  /** The exit code, or the signal that killed it. */
+  code: number | string
+}
+
+/** The child has exited or been killed; Bun sets these once it reaps it. */
+export function hasEnded(child: Child): boolean {
+  return child.exitCode !== null || child.signalCode !== null
 }
