@@ -651,91 +651,111 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
     expect(peakRssBytes(0)).toBe(0)
   })
 
-  it('reads a known allocation back as bytes, on THIS platform', async () => {
-    // The unit is Bun's to normalize and ours to trust only once measured:
-    // a pure-function pin enshrined "kilobytes on Linux" for a year of
-    // Linux peaks recorded 1024× too big. A child that allocates and
-    // touches N MB must report a peak between that and a few times it
-    // (the runtime's own footprint on top) — a kilobyte value read as
-    // bytes would land at ~N KB, a byte value multiplied by 1024 at
-    // ~N GB, and either fails. N sits 200 MB ABOVE this process's own
-    // mark, not at a fixed 200 MB: the floor withholds a peak under the
-    // parent's, and `bun test` runs a shard's files in one process whose
-    // mark is whatever the files before this one left — a re-dealt shard
-    // put a heavier file first and the fixed 200 MB read as no peak at
-    // all (CI, 2026-09-16).
-    const MB = 1024 * 1024
-    const mb = Math.ceil(ownRssHighWater() / MB) + 200
-    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-rss-'))
-    try {
-      const result = await runCommand({
-        command: `bun -e "const b = Buffer.alloc(${mb} * 1024 * 1024, 1); console.log(b.length)"`,
-        cwd,
-        env: { PATH: process.env.PATH ?? '' },
-      })
-      expect(result.exitCode).toBe(0)
-      expect(result.peakRssBytes!).toBeGreaterThanOrEqual(mb * MB)
-      expect(result.peakRssBytes!).toBeLessThan(mb * MB * 4)
-    } finally {
-      await rm(cwd, { recursive: true, force: true })
-    }
-  })
+  // These rows allocate hundreds of MB and spawn a bun that burns or
+  // allocates more; alone the heaviest takes about 0.6 s. Under the gate's
+  // twelve shards it ran past bun's 5 s default twice (2026-09-26, item
+  // 875), its neighbour 30 times its own time, the slowdown's cause
+  // unproven. They make no claim about time, so their budget is the
+  // work's under load, not the default.
+  const HEAVY_ROW_MS = 20_000
 
-  it('the peak is the child’s own, never the parent’s footprint handed back', async () => {
-    // Linux folds the forking parent's RSS high-water mark into a child's
-    // ru_maxrss at exec, so a `true` spawned from a 300 MB parent read
-    // 328 MB (2026-09-12). Hold 300 MB here, then: a trivial task reports
-    // no peak (it would read ≥ 300 MB without the floor), and a task that
-    // outweighs this process reports its own. The mark is monotonic, so
-    // this hold stays after the allocation pin above (which sizes itself
-    // from the mark either way).
-    const MB = 1024 * 1024
-    const hold = Buffer.alloc(300 * MB, 1)
-    expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
-    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-floor-'))
-    try {
-      const env = { PATH: process.env.PATH ?? '' }
-      const light = await runCommand({ command: 'true', cwd, env })
-      expect(light.exitCode).toBe(0)
-      expect(light.cpuMs).toBeDefined()
-      expect(light.peakRssBytes).toBeUndefined()
-      const heavy = await runCommand({
-        command: `bun -e "const b = Buffer.alloc(600 * 1024 * 1024, 1); console.log(b.length)"`,
-        cwd,
-        env,
-      })
-      expect(heavy.exitCode).toBe(0)
-      expect(heavy.peakRssBytes!).toBeGreaterThanOrEqual(600 * MB)
-      expect(heavy.peakRssBytes!).toBeLessThan(2000 * MB)
-    } finally {
-      await rm(cwd, { recursive: true, force: true })
-    }
-    expect(hold.length).toBe(300 * MB)
-  })
+  it(
+    'reads a known allocation back as bytes, on THIS platform',
+    async () => {
+      // The unit is Bun's to normalize and ours to trust only once measured:
+      // a pure-function pin enshrined "kilobytes on Linux" for a year of
+      // Linux peaks recorded 1024× too big. A child that allocates and
+      // touches N MB must report a peak between that and a few times it
+      // (the runtime's own footprint on top) — a kilobyte value read as
+      // bytes would land at ~N KB, a byte value multiplied by 1024 at
+      // ~N GB, and either fails. N sits 200 MB ABOVE this process's own
+      // mark, not at a fixed 200 MB: the floor withholds a peak under the
+      // parent's, and `bun test` runs a shard's files in one process whose
+      // mark is whatever the files before this one left — a re-dealt shard
+      // put a heavier file first and the fixed 200 MB read as no peak at
+      // all (CI, 2026-09-16).
+      const MB = 1024 * 1024
+      const mb = Math.ceil(ownRssHighWater() / MB) + 200
+      const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-rss-'))
+      try {
+        const result = await runCommand({
+          command: `bun -e "const b = Buffer.alloc(${mb} * 1024 * 1024, 1); console.log(b.length)"`,
+          cwd,
+          env: { PATH: process.env.PATH ?? '' },
+        })
+        expect(result.exitCode).toBe(0)
+        expect(result.peakRssBytes!).toBeGreaterThanOrEqual(mb * MB)
+        expect(result.peakRssBytes!).toBeLessThan(mb * MB * 4)
+      } finally {
+        await rm(cwd, { recursive: true, force: true })
+      }
+    },
+    HEAVY_ROW_MS,
+  )
 
-  it('reads a known CPU burn back as milliseconds, on THIS platform', async () => {
-    // Same rule for the other unit: Bun's `cpuTime` is typed as
-    // microseconds and the converter divides by 1000. A child that spins
-    // for 500 ms of wall time reports up to 500 ms of CPU — less by
-    // however much a loaded runner deschedules it (a macOS CI runner gave
-    // 357 ms, 2026-09-12), so the floor is generous: the pin is on the
-    // UNIT, which is off by a thousand either way. A value in
-    // milliseconds divided by 1000 would read as 0.5, one in nanoseconds
-    // as 500,000; neither is inside [50, 2000].
-    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-cpu-'))
-    try {
-      const result = await runCommand({
-        command: `bun -e "const t = Date.now(); while (Date.now() - t < 500) {}"`,
-        cwd,
-        env: { PATH: process.env.PATH ?? '' },
-      })
-      expect(result.exitCode).toBe(0)
-      expect(result.cpuMs!).toBeGreaterThanOrEqual(50)
-      expect(result.cpuMs!).toBeLessThan(2000)
-    } finally {
-      await rm(cwd, { recursive: true, force: true })
-    }
-  })
+  it(
+    'the peak is the child’s own, never the parent’s footprint handed back',
+    async () => {
+      // Linux folds the forking parent's RSS high-water mark into a child's
+      // ru_maxrss at exec, so a `true` spawned from a 300 MB parent read
+      // 328 MB (2026-09-12). Hold 300 MB here, then: a trivial task reports
+      // no peak (it would read ≥ 300 MB without the floor), and a task that
+      // outweighs this process reports its own. The mark is monotonic, so
+      // this hold stays after the allocation pin above (which sizes itself
+      // from the mark either way).
+      const MB = 1024 * 1024
+      const hold = Buffer.alloc(300 * MB, 1)
+      expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
+      const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-floor-'))
+      try {
+        const env = { PATH: process.env.PATH ?? '' }
+        const light = await runCommand({ command: 'true', cwd, env })
+        expect(light.exitCode).toBe(0)
+        expect(light.cpuMs).toBeDefined()
+        expect(light.peakRssBytes).toBeUndefined()
+        const heavy = await runCommand({
+          command: `bun -e "const b = Buffer.alloc(600 * 1024 * 1024, 1); console.log(b.length)"`,
+          cwd,
+          env,
+        })
+        expect(heavy.exitCode).toBe(0)
+        expect(heavy.peakRssBytes!).toBeGreaterThanOrEqual(600 * MB)
+        expect(heavy.peakRssBytes!).toBeLessThan(2000 * MB)
+      } finally {
+        await rm(cwd, { recursive: true, force: true })
+      }
+      expect(hold.length).toBe(300 * MB)
+    },
+    HEAVY_ROW_MS,
+  )
+
+  it(
+    'reads a known CPU burn back as milliseconds, on THIS platform',
+    async () => {
+      // Same rule for the other unit: Bun's `cpuTime` is typed as
+      // microseconds and the converter divides by 1000. A child that spins
+      // for 500 ms of wall time reports up to 500 ms of CPU — less by
+      // however much a loaded runner deschedules it (a macOS CI runner gave
+      // 357 ms, 2026-09-12), so the floor is generous: the pin is on the
+      // UNIT, which is off by a thousand either way. A value in
+      // milliseconds divided by 1000 would read as 0.5, one in nanoseconds
+      // as 500,000; neither is inside [50, 2000].
+      const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-cpu-'))
+      try {
+        const result = await runCommand({
+          command: `bun -e "const t = Date.now(); while (Date.now() - t < 500) {}"`,
+          cwd,
+          env: { PATH: process.env.PATH ?? '' },
+        })
+        expect(result.exitCode).toBe(0)
+        expect(result.cpuMs!).toBeGreaterThanOrEqual(50)
+        expect(result.cpuMs!).toBeLessThan(2000)
+      } finally {
+        await rm(cwd, { recursive: true, force: true })
+      }
+    },
+    HEAVY_ROW_MS,
+  )
 })
 
 describe('execWrap — grandchild-orphan mitigation', () => {

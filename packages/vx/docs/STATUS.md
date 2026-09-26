@@ -508,6 +508,18 @@ exit`.
         `process.kill`, sees SIGTERM and signal-0 probes to `-pid`
         without the fix, and only the exit's own probe with it.
 
+875.  DONE (2026-09-26, a gate row past bun's 5 s default twice today).
+      `runner.test.ts` › "the peak is the child’s own, never the parent’s
+      footprint handed back" holds 300 MB and spawns a bun that allocates
+      600 MB. Alone it takes about 0.6 s. Under the gate's twelve shards
+      it ran past 5 s in two gates today, and its neighbour, "reads a
+      known allocation back as bytes", took 2.3 s against its usual
+      ~70 ms. The whole shard was slow there; why is unproven.
+      - These rows make no claim about time. The three heavy peak rows
+        (the allocation, the parent floor, the CPU burn) get a 20 s
+        budget, `HEAVY_ROW_MS`, instead of the default.
+      - Item 873's note about the first timeout is this one.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
