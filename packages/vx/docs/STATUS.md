@@ -760,6 +760,21 @@ test is telling the truth.
       payload's three cases and the verdict glyph (vx-github); the span
       attribute (vx-otel).
 
+852.  DONE (2026-09-26, a Ctrl-C of a dev server no longer reads as a
+      crash). Item 849 lets a stopped run finish its own path, and the
+      foreground keep-alive then named the server "exited with code
+      130" after every Ctrl-C of `vx run dev`. That line is now printed
+      only when the run was not stopped. The row (`signal-handling.test.ts`
+      › "a Ctrl-C of a foreground server does not report it as exited;
+      a server that exits is") carries its control, a server that exits
+      3 on its own is named, and it fails without the guard. The PR's
+      macOS job then failed "SIGINT to vx reaches a one-shot task as
+      SIGINT": `got.txt` was never written. Item 849 put the file on the
+      200 ms grace it had always claimed, and a loaded runner SIGKILLed
+      the shell before its trap ran. The four `reaches` rows test which
+      signal arrives, not the escalation, so they now pass a 5 s grace;
+      vx exits when the child does.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
