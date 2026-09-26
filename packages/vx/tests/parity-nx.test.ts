@@ -227,6 +227,10 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
   it(
     "`{workspaceRoot}/tsconfig.base.json` — a root file as one target's input (vx `workspaceFiles`), nobody else's",
     async () => {
+      // An edit to the committed root file, not its creation (item 843).
+      expect(await Bun.file(path.join(root, 'tsconfig.base.json')).text()).toBe(
+        '{"compilerOptions":{}}\n',
+      )
       const before = new Map((await dry(root, ['ts', 'lint', '--all'])).map((t) => [t.id, t.hash]))
       await writeFile(
         path.join(root, 'tsconfig.base.json'),
