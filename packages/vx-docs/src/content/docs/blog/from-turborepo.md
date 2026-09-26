@@ -76,7 +76,8 @@ already doing.
 | `extends`                                      | a package task merges over the root's; `false` alone opts out, `false` + keys runs on those alone |
 | `outputLogs`                                   | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
-| `globalDependencies`, `globalEnv`, `globalPassThroughEnv` | a generated `vx-preset.ts` you import and spread |
+| `dotEnv` (Turbo 1)                              | `cache.inputs.files`                                    |
+| `globalDependencies`, `globalEnv`, `globalPassThroughEnv`, `globalDotEnv` | a generated `vx-preset.ts` you import and spread |
 
 Those are every key the mapper knows. Any other key in a task becomes
 a TODO naming it, so nothing is dropped silently.

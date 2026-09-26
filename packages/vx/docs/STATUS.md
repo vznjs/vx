@@ -164,6 +164,26 @@ test is telling the truth.
       - Rows: `turbo-map-sweep.test.ts` › inputs `[]` and `["!**/*.md"]`,
         each red without the fix, plus a control that a list with a
         positive entry is left as it is.
+937.  DONE (2026-09-26, the turbo() review's leads 5 and 6). Two
+      turbo.json global fields mapped wrong.
+      - A wildcard or `!` entry in `globalEnv` / `globalPassThroughEnv`
+        reached core. Core refused it, and every task in the run failed.
+        A task's own `env` wildcard was already a todo.
+      - Turbo 1's `globalDotEnv` was never read, so an edit to one of its
+        files re-keyed nothing and nothing was reported. A task's `dotEnv`
+        was only an unknown-key todo.
+      - A global wildcard is now a note, and the explicit names still key
+        and pass through. `globalDotEnv` joins `workspaceFiles` the way
+        `globalDependencies` does, and a task's `dotEnv` joins its `files`
+        when it narrows `inputs`.
+      - A gitignored `.env` among them gets core's existing refusal, as a
+        `globalDependencies` literal already did: vx cannot key a file git
+        does not report. The README, the migrate guide and the
+        from-turborepo post name the new fields. The site law that counts
+        the global fields the mapper reads now expects four.
+      - Rows: `turbo-map-sweep.test.ts` › a global env wildcard is a note,
+        and turbo 1's `globalDotEnv` and task `dotEnv` key the task. Each
+        is red without the fix.
 
 ## In flight
 

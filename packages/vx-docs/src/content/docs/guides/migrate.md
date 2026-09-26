@@ -33,9 +33,10 @@ export default defineWorkspace({ plugins: [turbo()] })
 | `cache: false`                                              | no `cache` block: the task always runs                                   |
 | `persistent: true`                                          | `exec.persistent: { … }`                                                 |
 | `outputLogs`                                                | `"new-only"` is the default; other values are the run's `--output-logs` |
+| `dotEnv` (Turbo 1)                                          | `cache.inputs.files`                                                     |
 | `extends`                                                   | nothing: a package task merges over the root's, field by field           |
 | `$TURBO_ROOT$/file`                                         | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
-| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` | a generated `vx-preset.ts` you import                                    |
+| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | a generated `vx-preset.ts` you import; a wildcard env name is reported, not mapped |
 
 The command itself comes from your `package.json` script, with its
 `pre<name>` / `post<name>` hooks folded in.
