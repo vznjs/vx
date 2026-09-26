@@ -11,7 +11,7 @@
 // takes even that.
 
 import { closeSync, readdirSync, readFileSync, writeSync } from 'node:fs'
-import { procfsIsOwn } from '../util/index.js'
+import { executablePath, procfsIsOwn } from '../util/index.js'
 
 export type Child = ReturnType<typeof Bun.spawn>
 
@@ -44,6 +44,86 @@ export function closeSignalChannel(child: Child): void {
   } catch {
     // already closed
   }
+}
+
+/**
+ * The groups vx must take down if it dies without running a line: a
+ * `kill -9`, the OOM killer. Nothing in vx runs then, so the kill has to
+ * live outside it — one `sh` per vx process, its own group, reading a
+ * pipe only vx holds the write end of. `+<pgid>` and `-<pgid>` lines keep
+ * its list; when vx dies the kernel closes the pipe, the read hits EOF,
+ * and every group still listed is SIGKILLed — what bwrap's
+ * `--die-with-parent` does for a Linux sandboxed task, extended to the
+ * rest. A group signal reaches what the task forked, which
+ * `PR_SET_PDEATHSIG` never did (kill-tree.md). Started just before the
+ * first spawn, so a run that spawns nothing (a warm run) never starts
+ * it; a normal exit leaves the list empty, so the EOF then kills nothing.
+ * `undefined` until then, `null` once it could not start or write: the
+ * guard is best-effort, and its failure is the documented limit, never a
+ * failed task.
+ */
+let guardFd: number | null | undefined
+
+const GUARD_SCRIPT = [
+  "g=' '",
+  'while IFS= read -r l; do',
+  '  case $l in',
+  '    +*) g="$g${l#+} " ;;',
+  '    -*) p=${l#-}; case $g in *" $p "*) g="${g%% $p *} ${g#* $p }" ;; esac ;;',
+  '  esac',
+  'done <&3',
+  'for p in $g; do kill -s KILL -- "-$p"; done 2>/dev/null',
+].join('\n')
+
+function startGuard(): void {
+  if (guardFd !== undefined) return
+  guardFd = null
+  try {
+    const guard = Bun.spawn([executablePath('sh'), '-c', GUARD_SCRIPT], {
+      argv0: 'vx-group-guard',
+      stdio: ['ignore', 'ignore', 'ignore', 'pipe'],
+      // Out of vx's group, so a Ctrl-C at the terminal leaves it to the
+      // pipe; vx's own teardown owns that path.
+      detached: true,
+    })
+    guard.unref()
+    guardFd = guard.stdio[3] as number
+  } catch {
+    // The limit as it was: nothing takes the groups down.
+  }
+}
+
+function guardWrite(line: string): void {
+  if (typeof guardFd !== 'number') return
+  try {
+    writeSync(guardFd, line)
+  } catch {
+    guardFd = null
+  }
+}
+
+/**
+ * Spawn a task child and list its group for the guard to kill if vx dies
+ * holding it. The guard starts BEFORE the spawn: started after it, the
+ * guard's own spawn was a window in which the task ran and a `kill -9`
+ * of vx found its group unlisted — under a traced sandbox, a third of
+ * the kills landed there. What is left is the step from the spawn's
+ * return to one pipe write.
+ */
+export function spawnGuarded(spawn: () => Child): Child {
+  startGuard()
+  const child = spawn()
+  if (child.pid > 0) guardWrite(`+${child.pid}\n`)
+  return child
+}
+
+/**
+ * Strike `child`'s group from the guard's list: vx is done with it. What
+ * it left running is left as before, and a pid the kernel reuses is
+ * never killed on the old task's account.
+ */
+export function releaseGroup(child: Child): void {
+  if (child.pid > 0) guardWrite(`-${child.pid}\n`)
 }
 
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {

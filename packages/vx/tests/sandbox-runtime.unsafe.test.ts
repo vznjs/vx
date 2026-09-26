@@ -3883,7 +3883,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
 // descendant down, one that left the task's group with `setsid` included
 // (turborepo#9666). Behind a waiting shell, bwrap's parent was the shell,
 // which outlived vx, and the server's tree ran on under init. The
-// unsandboxed control is the documented limit: its grandchild survives.
+// unsandboxed control is the limit that remains: the group guard
+// (kill-tree.ts) takes the task's group, so the backgrounded child dies
+// and the one that left the group with `setsid` survives.
 describe.skipIf(!available || process.platform !== 'linux')(
   'a SIGKILLed vx takes a sandboxed task’s whole tree with it',
   () => {
@@ -3909,7 +3911,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
         })
         .map(Number)
 
-    const survivors = async (sandboxed: boolean): Promise<{ started: number; alive: number[] }> => {
+    const survivors = async (
+      sandboxed: boolean,
+      persistent = true,
+    ): Promise<{ started: number; alive: number[]; leaders: number[] }> => {
       const nonce = `${1000 + Math.floor(Math.random() * 1000)}.${process.pid}`
       await addProject(
         root,
@@ -3920,7 +3925,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
               dev: {
                 exec: {
                   command: 'sleep ${nonce} & setsid sleep ${nonce} & echo READY; wait',
-                  persistent: { readyWhen: 'READY' },
+                  ${persistent ? "persistent: { readyWhen: 'READY' }," : ''}
                   ${sandboxed ? 'sandbox: {},' : ''}
                 },
               },
@@ -3944,24 +3949,41 @@ describe.skipIf(!available || process.platform !== 'linux')(
       expect(await proc.exited).toBe(137)
       await Promise.all(pids.map((p) => waitForDead(p, 2_000)))
       const alive = pids.filter(isAlive)
+      // A session leader's session id is its own pid: the `setsid` child.
+      const leaders = alive.filter(
+        (p) => Number(readFileSync(`/proc/${p}/stat`, 'utf8').split(') ')[1]!.split(' ')[3]) === p,
+      )
       for (const p of alive) process.kill(p, 'SIGKILL')
-      return { started: pids.length, alive }
+      return { started: pids.length, alive, leaders }
     }
 
     it(
       'a sandboxed server’s backgrounded and setsid children die with vx',
       async () => {
-        expect(await survivors(true)).toEqual({ started: 2, alive: [] })
+        expect(await survivors(true)).toEqual({ started: 2, alive: [], leaders: [] })
+      },
+      TIMEOUT,
+    )
+
+    // A one-shot sandboxed task is traced: strace, not bwrap, is the
+    // spawn and bwrap's parent, and strace outlived vx with the whole
+    // tree under it. The group guard's SIGKILL takes strace, and bwrap's
+    // `--die-with-parent` the rest (item 860).
+    it(
+      'a traced sandboxed one-shot task’s children die with vx',
+      async () => {
+        expect(await survivors(true, false)).toEqual({ started: 2, alive: [], leaders: [] })
       },
       TIMEOUT,
     )
 
     it(
-      'CONTROL: unsandboxed, the same children outlive vx (the documented limit)',
+      'CONTROL: unsandboxed, the backgrounded child dies with vx and the setsid one lives',
       async () => {
-        const { started, alive } = await survivors(false)
+        const { started, alive, leaders } = await survivors(false)
         expect(started).toBe(2)
-        expect(alive).toHaveLength(2)
+        expect(alive).toHaveLength(1)
+        expect(leaders).toEqual(alive)
       },
       TIMEOUT,
     )

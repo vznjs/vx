@@ -5,6 +5,7 @@
 // started fell over. Until 2026-09-10 the wait was for every server, so a
 // crash left the rest running under a run that never returned.
 
+import { existsSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -192,5 +193,114 @@ describe('a persistent task keeps an open stdin', () => {
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
     expect(await waitForDead(pid, 2_000)).toBe(true)
+  }, 20_000)
+})
+
+describe('a SIGKILLed vx takes the groups it holds with it', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-keepalive-' })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // The rest of a `kill -9`: vx's group guard (kill-tree.ts) holds the
+  // groups vx has not finished with and SIGKILLs them when vx's end of
+  // its pipe closes. Each row's grandchild watches nothing, so only the
+  // group kill takes it (turborepo#9666). It writes `late.txt` a second
+  // after it starts: a file, not a pid, because under a sandbox's pid
+  // namespace a killed orphan stays a zombie that signal 0 still finds.
+  async function outlivesVx(exec: string): Promise<boolean> {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: ${exec} } } }`,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+      cwd: root,
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    process.kill(proc.pid, 'SIGKILL')
+    expect(await proc.exited).toBe(137)
+    // Twice the grandchild's second: without the guard it writes at one.
+    await Bun.sleep(2_000)
+    return existsSync(path.join(dir, 'late.txt'))
+  }
+
+  it('a SIGKILLed vx takes an unsandboxed persistent task’s backgrounded server with it', async () => {
+    expect(
+      await outlivesVx(
+        `{ command: '(sleep 1; echo late > late.txt) & echo $! > pid.txt; echo READY; wait', persistent: { readyWhen: 'READY' } }`,
+      ),
+    ).toBe(false)
+  }, 20_000)
+
+  it('a SIGKILLed vx takes an unsandboxed one-shot task’s backgrounded child with it', async () => {
+    expect(
+      await outlivesVx(`{ command: '(sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' }`),
+    ).toBe(false)
+  }, 20_000)
+
+  it('a run that spawns no task starts no guard', async () => {
+    // The guard is the price of a spawn, not of a run: a warm run pays
+    // nothing. A preload logs every Bun.spawn's argv0; the guard's is
+    // `vx-group-guard`.
+    const log = path.join(root, 'spawns.log')
+    const preload = path.join(root, 'log-spawns.ts')
+    await Bun.write(
+      preload,
+      `import { appendFileSync } from 'node:fs'
+const spawn = Bun.spawn
+Bun.spawn = (cmd, opts) => {
+  appendFileSync(${JSON.stringify(log)}, String(opts?.argv0 ?? cmd[0]) + '\\n')
+  return spawn(cmd, opts)
+}
+`,
+    )
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } } } } }`,
+    )
+    const guards = async (): Promise<string[]> => {
+      await rm(log, { force: true })
+      const proc = Bun.spawn(
+        [process.execPath, '--preload', preload, BIN, 'run', 'build', '--all'],
+        {
+          cwd: root,
+          stdout: 'ignore',
+          stderr: 'ignore',
+        },
+      )
+      expect(await proc.exited).toBe(0)
+      const lines = existsSync(log) ? readFileSync(log, 'utf8').split('\n') : []
+      return lines.filter((l) => l === 'vx-group-guard' || l === 'sh')
+    }
+    expect(await guards()).toEqual(['vx-group-guard', 'sh'])
+    expect(await guards()).toEqual([])
+  }, 20_000)
+
+  it('CONTROL: a group vx finished with is not the guard’s when vx exits', async () => {
+    // A one-shot task that leaves a process behind keeps it after vx's
+    // clean exit, as before the guard: vx strikes the group from the list
+    // once the task is done, so the EOF of a clean exit kills nothing.
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: '(sleep 1; echo late > late.txt) >/dev/null 2>&1 &' } } } }`,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+      cwd: root,
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    expect(await proc.exited).toBe(0)
+    // The file, as in the rows above: the grandchild writes it a second
+    // after it starts, and the guard's EOF would have killed it first.
+    await Bun.sleep(2_000)
+    expect(existsSync(path.join(dir, 'late.txt'))).toBe(true)
   }, 20_000)
 })

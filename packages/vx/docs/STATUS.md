@@ -199,6 +199,40 @@ test is telling the truth.
       nothing that reads as a crash (852). The move paragraph above
       also gains item 826's batch, 779–819, which that trim left out.
 
+860.  DONE (2026-09-26, the ledger's `signal:parent-sigkill-orphans-children`
+      row, turborepo#9666, the owner's third ask). A `kill -9` of vx
+      left an unsandboxed task's tree under init. A group guard now takes
+      it down: one `sh` per vx process (`vx-group-guard`) reads a pipe
+      only vx writes. vx lists each spawn's group on it while it holds
+      the task, and when vx dies the kernel closes the pipe and the guard
+      SIGKILLs every group still listed (`kill-tree.md`).
+      - It is started just before the first spawn, so a warm run starts
+        nothing (strace: 0 guard execs warm, 1 cold). Started after the
+        spawn, the first draft left the guard's own spawn as a window in
+        which the task ran unlisted: in the gate's traced sandbox a third
+        of the `kill -9` rows found the group unlisted (instrumented: no
+        `+pid` line reached the guard). `spawnGuarded` fixed the order,
+        40 of 40 there since. A 300-project
+        `test --all --no-cache` run (600 tasks) took 4,462 ms against
+        4,473 on main (min of 9, interleaved): a tie.
+      - A per-spawn watcher in the task's shell was sketched first and
+        dropped: it is a job of that shell, so a bare `wait` in a task
+        waits on it.
+      - It closed a gap the probe found. A traced sandboxed one-shot
+        task's strace outlived vx with the whole tree under it
+        (reproduced on main); strace is in the guarded group, so bwrap's
+        `--die-with-parent` now fires.
+      - Rows: `keep-alive.test.ts`, a persistent and a one-shot task's
+        grandchild die with vx, and both fail without the guard. The
+        control, a released group that outlives a clean exit, fails
+        without the release, and "a run that spawns no task starts no
+        guard" fails on an eager guard. The unsafe suite's unsandboxed
+        control flipped (the backgrounded child dies, the `setsid` one
+        lives), and the traced one-shot row fails without the guard.
+      - The ledger row is `fixed-in-item-860`, the last open one, so
+        the ledger law's verdict set is now covered, fixed and n/a.
+      - What remains: a `setsid` daemon, unsandboxed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

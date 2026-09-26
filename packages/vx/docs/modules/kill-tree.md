@@ -20,6 +20,8 @@ export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL')
 export async function untilGroupsGone(children: readonly Child[], graceMs: number): Promise<Child[]>
 export function signalThrough(child: Child, fd: number): void
 export function closeSignalChannel(child: Child): void
+export function spawnGuarded(spawn: () => Child): Child
+export function releaseGroup(child: Child): void
 ```
 
 `signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx
@@ -42,6 +44,60 @@ pipe alive, and the end-of-run shutdown that waited for the shell alone
 never SIGKILLed the server — vx printed its summary and never exited
 (nx#8286 reproduced on vx, 2026-09-24). After the leaders exit the
 groups are polled every 20 ms, and only while one is left.
+
+## The group guard: a `kill -9` of vx
+
+A `kill -9` of vx, or the OOM killer, runs nothing in vx, so the kill
+has to live outside it. `spawnGuarded` wraps each task spawn and lists
+its group with the guard: one `sh` per vx process (argv0 `vx-group-guard`), its own group,
+reading a pipe on its fd 3 whose write end only vx holds. vx writes
+`+<pgid>` at a spawn and `-<pgid>` (`releaseGroup`) once it is done with
+the task, beside the `liveChildren` entry. When vx dies the kernel
+closes the write end, the guard's read ends, and it SIGKILLs every group
+still listed: the unsandboxed and the macOS sandboxed spawns get what
+bwrap's `--die-with-parent` gives a Linux sandboxed task (item 860,
+turborepo#9666). A group kill reaches what the task forked, so a
+`dev` script's runner and its server go together.
+
+- Started just before the first spawn: a run that spawns nothing, a
+  warm run, never starts it (`keep-alive.test.ts` › "a run that spawns
+  no task starts no guard", which also pins the order). Before, not
+  after: started after the first spawn, the guard's own spawn was a
+  window in which the task ran unlisted, and under the gate's traced
+  sandbox a third of the `kill -9` rows landed in it. What is left is
+  the step from a spawn's return to one pipe write. A 300-project `test --all --no-cache` run
+  (600 tasks) took 4,462 ms against 4,473 before it (min of 9,
+  interleaved, one workspace copy per arm; medians 4,575 and 4,543): a
+  tie. The cost is the one `sh` and two pipe writes per spawn.
+- A clean exit closes the pipe too, with the list empty, so the guard
+  kills nothing. A released group is left as before: a one-shot task's
+  `server &` outlives vx's clean exit, and a pid the kernel reuses is
+  never killed on an old task's account.
+- The guard is detached, so a terminal's Ctrl-C does not reach it; that
+  path is vx's own teardown (`signals.md`).
+- Best-effort: a guard that cannot start, or a write it is gone for,
+  stops the guarding for the process and never fails a task.
+- The pipe is not inherited: Bun opens it close-on-exec, and a task's
+  `/proc/self/fd` holds 0, 1 and 2 only (probed 2026-09-26).
+- A per-spawn watcher in the task's own shell was the first sketch and
+  is wrong: it is a job of that shell, so a task's bare `wait` waited on
+  it until vx wrote.
+
+`PR_SET_PDEATHSIG` was the other way, and was measured twice and
+refused:
+
+- 2026-09-24, a `bun:ffi` wrapper that calls prctl and then execve
+  (`Bun.spawn` has no pre-exec hook): a Bun start per spawn, 9.8 ms
+  against 1.0 ms for a bare `sh` (min of 10), Linux and glibc only.
+- 2026-09-25 (item 801), util-linux `setpriv --pdeathsig KILL --` in
+  front of the shell: 3.6 ms against 2.4 ms per spawn (min of 400,
+  interleaved), and the same 600-task run at 3,865 ms against 3,631
+  (+6.4%, min of 9, interleaved, one workspace copy per arm).
+
+Either way the death signal reaches the one process it was set on, and
+it does not survive a fork: `sh -c 'server & wait'` lost the shell and
+kept the server, and a plain command vx execs (`exec sleep`) died while
+whatever it forked lived on.
 
 ## Invariants
 
@@ -73,31 +129,23 @@ groups are polled every 20 ms, and only while one is left.
 
 - Reach a daemon that called `setsid` itself — the residual every
   non-cgroup runner shares; a sandbox's pid namespace takes even that.
-- Outlive a `kill -9` of vx, unsandboxed: nothing in vx runs to signal
-  the groups, so a persistent task survives under init (turborepo#9666
-  reproduced on vx, 2026-09-24). A persistent task's stdin is a pipe vx
-  holds, so a server that exits on stdin EOF (esbuild `--watch`) goes
-  with vx (`tests/keep-alive.test.ts`). A Linux SANDBOXED task goes
-  with vx whole: its bwrap is vx's own child, and `--die-with-parent`
-  takes the pid namespace down (item 801, `sandbox-runtime.md`).
-  `PR_SET_PDEATHSIG` is not the unsandboxed fix, measured twice:
-  - 2026-09-24, a `bun:ffi` wrapper that calls prctl and then execve
-    (`Bun.spawn` has no pre-exec hook): a Bun start per spawn, 9.8 ms
-    against 1.0 ms for a bare `sh` (min of 10), Linux and glibc only.
-  - 2026-09-25 (item 801), util-linux `setpriv --pdeathsig KILL --`
-    in front of the shell: 3.6 ms against 2.4 ms per spawn (min of 400,
-    interleaved), and a 300-project `test --all --no-cache` run (600
-    tasks) at 3,865 ms against 3,631 (+6.4%, min of 9, interleaved,
-    one workspace copy per arm).
-    Either way the death signal reaches the one process it was set on,
-    and it does not survive a fork: `sh -c 'server & wait'` lost the
-    shell and kept the server, and a plain command vx execs (`exec
-sleep`) died while whatever it forked lived on. A package manager's
-    `dev` script is that shape — the runner dies, the server does not.
-    The price buys the case that needs it least.
+- Outlive a `kill -9` of vx in a process that left the task's group:
+  a `setsid` daemon, as above. The guard itself can be killed too (a
+  `pkill` of its name); then a `kill -9` of vx leaves the groups under
+  init, as before item 860.
 - Reap: the caller awaits `exited` as before.
 
 ## Tests
+
+`tests/keep-alive.test.ts`, "a SIGKILLed vx takes the groups it holds
+with it": a persistent and a one-shot task's backgrounded grandchild die
+with a `kill -9` of vx, and both fail without the guard. The control, a
+one-shot task's leftover that outlives vx's clean exit, fails without the
+release, and "a run that spawns no task starts no guard" fails on a guard
+started at load. In `sandbox-runtime.unsafe.test.ts`, "a traced
+sandboxed one-shot task’s children die with vx" (strace outlived vx
+before the guard), and the unsandboxed control has the backgrounded
+child die and the `setsid` one live.
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
