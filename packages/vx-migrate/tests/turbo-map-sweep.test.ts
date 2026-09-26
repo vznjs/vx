@@ -77,6 +77,22 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(inputs).toEqual([{ files: ['**/*'] }, { files: ['src/**'], env: ['X'] }])
   })
 
+  // Item 936: `inputs: []` is Turbo's default (every package file), and
+  // an exclusion-only list narrows every file; the first keyed on nothing,
+  // the second failed the whole run. CONTROL: a list with a positive entry
+  // is left as it is.
+  it.each([
+    [[], ['**/*']],
+    [['!**/*.md'], ['**/*', '!**/*.md']],
+    [
+      ['src/**', '!**/*.md'],
+      ['src/**', '!**/*.md'],
+    ],
+  ])('inputs %j key on %j', async (inputs, files) => {
+    const t = await taskOf({ tasks: { build: { inputs } } }, { a: { scripts: { build: 'b' } } })
+    expect((t.task!['cache'] as { inputs: unknown }).inputs).toEqual({ files })
+  })
+
   it('two tasks on one output path: the second runs uncached', async () => {
     const m = await map(
       { tasks: { build: { outputs: ['dist/**'] }, bundle: { outputs: ['dist/**'] } } },
