@@ -100,7 +100,16 @@ describe('mapNxDeps', () => {
   const byNode = new Map([['ui', ui]])
   const deps = (entries: unknown[]) => {
     const todos: string[] = []
-    return { deps: mapNxDeps(entries, byNode, () => null, todos), todos }
+    return {
+      deps: mapNxDeps(
+        entries,
+        byNode,
+        (t) => t.startsWith('test:'),
+        () => null,
+        todos,
+      ),
+      todos,
+    }
   }
 
   it('a colon at the start is no project separator; an empty target after one is dropped', () => {
@@ -108,6 +117,17 @@ describe('mapNxDeps', () => {
       deps: [':x'],
       todos: [
         'dependsOn "ui:" names "ui", which is not a workspace package in this graph — edge dropped',
+      ],
+    })
+  })
+
+  // Item 915: Nx splits at the colon only when the head names a project;
+  // `bare:build`, neither a package nor a target here, keeps its todo.
+  it('a colon string whose head is no package is this project’s target when it has one', () => {
+    expect(deps(['test:unit', 'test:unit:ci', 'ui:build', 'bare:build'])).toEqual({
+      deps: ['test:unit', 'test:unit:ci', '@acme/ui#build'],
+      todos: [
+        'dependsOn "bare:build" names "bare", which is not a workspace package in this graph — edge dropped',
       ],
     })
   })

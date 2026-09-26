@@ -14,6 +14,7 @@ export type TaskNameFor = (project: string, target: string, configuration: strin
 export function mapNxDeps(
   entries: readonly unknown[],
   metaByNode: ReadonlyMap<string, ProjectMeta>,
+  ownTarget: (name: string) => boolean,
   taskNameFor: TaskNameFor,
   todos: string[],
 ): string[] {
@@ -27,6 +28,14 @@ export function mapNxDeps(
       }
       const [project = '', targetPart, configuration] = d.split(':')
       const m = metaByNode.get(project)
+      // Nx splits at the colon only when the head names a project; else
+      // the whole string is a target of this project (`test:unit`, as
+      // script-inferred targets are named). It was read as project `test`
+      // and the edge dropped (item 915).
+      if (m === undefined && ownTarget(d)) {
+        deps.push(d)
+        continue
+      }
       if (m === undefined || targetPart === undefined || targetPart === '') {
         todos.push(
           `dependsOn ${JSON.stringify(d)} names ${JSON.stringify(project)}, which is not a ` +
