@@ -614,8 +614,21 @@ describe('signal handling during vx run (e2e)', () => {
         // Named by the file each pid came from, so a failure says WHICH
         // process outlived vx (it went red once under a full gate's load,
         // STATUS Next 23), and in what state.
-        const alive = pids.flatMap((p, i) =>
-          isAlive(p) ? [`${['dev', 'slow', 'child'][i]}: ${describePid(p)}`] : [],
+        const aliveAt = pids.flatMap((p, i) =>
+          isAlive(p) ? [[`${['dev', 'slow', 'child'][i]}: ${describePid(p)}`, p] as const] : [],
+        )
+        // Under a sandbox's procfs a zombie reads as alive (helpers/alive.ts).
+        // vx released every group before it exited, so its group guard kills
+        // nothing now: a process that was alive and is gone within 3 s was a
+        // zombie awaiting its reaper; one still here was a leak. The failure
+        // says which (Next 23).
+        const since = Date.now()
+        while (aliveAt.some(([, p]) => isAlive(p)) && Date.now() - since < 3_000)
+          await Bun.sleep(20)
+        const alive = aliveAt.map(([what, p]) =>
+          isAlive(p)
+            ? `${what}, still alive 3 s after the exit`
+            : `${what}, gone within ${Date.now() - since} ms`,
         )
         const closed = await Promise.race([streams, Bun.sleep(1_000).then(() => null)])
         expect({ signal, code, alive, closed: closed !== null }).toEqual({

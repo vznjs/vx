@@ -306,7 +306,20 @@ test is telling the truth.
       trap has fired. The mutant fails it in 6 of 6 runs, and the fixed
       row passes 5 of 5. Two mutant runs before those passed, each
       exiting at the 2 s grace, i.e. by the first signal's path. That did
-      not recur, and the cause is unproven. With the run lock's
+      not recur, and the cause is unproven.
+
+864.  DONE (2026-09-26, Next 23(b), evidence for the next failure). The
+      row "at the moment vx exits on a signal every task process is gone
+      and its pipes are closed" still cannot reproduce its one red: 60
+      sandboxed runs were clean, 30 idle and 30 beside six CPU burners.
+      Its leading suspect is a zombie read as alive through a sandbox's
+      procfs, and nothing told that apart from a leak. Now, for each
+      process alive at the exit, the row polls 3 s and says "gone within
+      N ms" or "still alive 3 s after the exit". vx released every group
+      before it exited, so its guard (item 860) kills nothing there to
+      blur the two. Driven with a leak (signals.ts without its SIGKILL
+      sweep), the row names `child: … sleep 30, still alive 3 s after the
+exit`. With the run lock's
       (862), all three of item 848's exit hooks are now held.
 
 ## In flight
@@ -603,7 +616,12 @@ next?".
     (`Bun.spawn` without `env` passes the startup environment), so the
     failure was seen at 2 s. Both rows now print what they saw on a mismatch (item 804); the
     next failure names the process and what vx said, and this entry
-    closes on that evidence.
+    closes on that evidence. Item 864: 60 sandboxed runs of (b) (30 idle,
+    30 beside six CPU burners) were clean, and (b) now also says, for
+    each process alive at the exit, whether it was gone within 3 s (a
+    zombie awaiting its reaper) or still alive (a leak). vx releases every
+    group before it exits, so its guard kills nothing there to blur the
+    two.
 
 ## Decisions (this arc)
 
