@@ -342,6 +342,27 @@ describe('Checks API', () => {
     expect(resolveCheckRunEnv({ ...ENV, GITHUB_API_URL: 'https://ghe.corp/api/v3' })!.apiUrl).toBe(
       'https://ghe.corp/api/v3',
     )
+    // Item 924: an empty one is absent too, not a relative URL.
+    expect(resolveCheckRunEnv({ ...ENV, GITHUB_API_URL: '' })!.apiUrl).toBe(
+      'https://api.github.com',
+    )
+  })
+
+  // Item 924: the cut was in UTF-16 units and could split an emoji into a
+  // lone surrogate; the cap is held in UTF-8 bytes, on a character boundary.
+  it('the check-run clamp cuts on a character and fits the cap in bytes', async () => {
+    const { clampSummary } = await import('../src/checks.js')
+    for (let pad = 0; pad < 4; pad++) {
+      const clamped = clampSummary('x'.repeat(pad) + '🛑'.repeat(40_000))
+      expect({
+        wellFormed: !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          clamped,
+        ),
+        replaced: clamped.includes('\uFFFD'),
+        fits: Buffer.byteLength(clamped, 'utf8') <= 65_535,
+        tell: clamped.endsWith('(65535-char Checks API limit)'),
+      }).toEqual({ wellFormed: true, replaced: false, fits: true, tell: true })
+    }
   })
 
   it('payload: conclusion follows exitOk; summary is the job markdown; 65535 cap holds', async () => {

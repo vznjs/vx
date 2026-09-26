@@ -38,15 +38,34 @@ export function resolveCheckRunEnv(env: Record<string, string | undefined>): Che
   ) {
     return null
   }
-  return { token, repository, sha, apiUrl: env['GITHUB_API_URL'] ?? 'https://api.github.com' }
+  // The same for the API URL: `??` kept an empty one, and the POST went to a
+  // relative URL fetch refuses (item 924).
+  const apiUrl = env['GITHUB_API_URL']
+  return {
+    token,
+    repository,
+    sha,
+    apiUrl: apiUrl === undefined || apiUrl === '' ? 'https://api.github.com' : apiUrl,
+  }
 }
 
-/** GitHub caps `output.summary` at 65535 characters; truncate with a tell. */
+/**
+ * GitHub caps `output.summary` at 65535 characters; truncate with a tell.
+ * Counted in UTF-8 bytes, which is never fewer than the characters, so
+ * the page fits whichever unit GitHub counts. The cut was in UTF-16 units
+ * and split an emoji (the aborted label 🛑) into a lone surrogate the JSON
+ * body carried (item 924); it now backs off a continuation byte, as the job
+ * summary's does.
+ */
 export function clampSummary(markdown: string): string {
   const MAX = 65_535
-  if (markdown.length <= MAX) return markdown
+  if (markdown.length * 3 <= MAX) return markdown
+  const bytes = new TextEncoder().encode(markdown)
+  if (bytes.byteLength <= MAX) return markdown
   const suffix = '\n\n…truncated by @vzn/vx-github (65535-char Checks API limit)'
-  return markdown.slice(0, MAX - suffix.length) + suffix
+  let end = MAX - new TextEncoder().encode(suffix).byteLength
+  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
+  return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
 }
 
 export function buildCheckRunPayload(args: {
