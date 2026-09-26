@@ -162,6 +162,67 @@ describe('telemetry flush is time-bounded', () => {
   }, 30_000)
 })
 
+// Item 921: a plugin's telemetry() was awaited with no deadline, so a hook
+// that never settles held the run before its first task; Bun then drained
+// the loop and exited 0 on a run whose task would have failed.
+describe('a hook that never settles', () => {
+  async function fixture(hooks: string): Promise<string> {
+    const root = workspace('vx-hook-hang-')
+    await Bun.write(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
+    )
+    await writeLocalWorkspace(root)
+    await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
+    await Bun.write(
+      path.join(root, 'pkg-a/vx.config.mjs'),
+      `export default { tasks: { boom: { exec: { command: 'exit 3' } } } }`,
+    )
+    await Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([pluginSource('org/hang', hooks)]),
+    )
+    gitInitCommit(root)
+    return root
+  }
+
+  it('in telemetry(): the plugin is dropped with a warning and the run runs', async () => {
+    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '200'
+    const root = await fixture(`{ telemetry() { return new Promise(() => {}) } }`)
+    const lines: string[] = []
+    const summary = await run({
+      cwd: root,
+      projects: ['pkg-a'],
+      tasks: ['boom'],
+      log: { ...silentLogger(), status: (m: string) => lines.push(m) },
+      handleSignals: false,
+    })
+    expect([summary.ok, summary.outcomes.map((o) => o.status)]).toEqual([false, ['failed']])
+    expect(lines.filter((l) => l.includes("plugin 'org/hang'"))).toEqual([
+      "[vx] plugin 'org/hang' telemetry failed to initialize; disabled for this run: did not initialize within 200 ms",
+    ])
+  }, 10_000)
+
+  it('anywhere else: the process exits non-zero and says why, not 0', async () => {
+    const root = await fixture(`{ setup() { return new Promise(() => {}) } }`)
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, '../src/bin.ts'),
+        'run',
+        'boom',
+        '--all',
+      ],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
+      1,
+      'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)\n',
+    ])
+  }, 30_000)
+})
+
 describe('the telemetry task set matches what the terminal reports', () => {
   async function summaryOf(root: string, task: string): Promise<RunSummaryRecord> {
     let captured: RunSummaryRecord | undefined

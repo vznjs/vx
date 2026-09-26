@@ -495,6 +495,19 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Row: `executor-sweep.test.ts` › a record graft keeps the
         upstream's symlinks, red without the fix. That closes the
         vx-reapi review.
+921.  DONE (2026-09-26, an observability review agent's lead 1). A
+      failed run that exited 0. A plugin's `telemetry()` was awaited with
+      no deadline, unlike its flush and teardown: a hook that never
+      settled held the run before its first task, and once the loop
+      drained Bun exited 0 — the task never ran and CI went green.
+      - The consultation goes through `settleWithin(teardownTimeoutMs())`
+        and drops the plugin with a warning, as a throwing one is.
+      - The class: `bin.ts` fails any process whose loop drains before
+        the verb returned, with a line saying so, so a hook that never
+        settles anywhere else (a `setup`, any stage) exits 1, never 0.
+      - Rows: `telemetry-lifecycle.test.ts` › a hook that never settles
+        (in `telemetry()`: dropped, the run runs; elsewhere: exit 1 and
+        the line), each red with its own fix undone.
 
 ## In flight
 

@@ -18,6 +18,7 @@ import type {
   TelemetryContext,
   TelemetrySink,
 } from './telemetry.js'
+import { settleWithin, teardownTimeoutMs } from '../util/index.js'
 import { createTelemetrySource } from './telemetry.js'
 import type { VxPlugin } from './plugin.js'
 
@@ -79,7 +80,18 @@ export async function subscribeTelemetry(
     // check sits INSIDE the try so a throwing `wants` getter is caught too.
     let accepted: TelemetrySink[]
     try {
-      const result = await plugin.telemetry(ctx)
+      // Bounded as flush and teardown are: a hook that never settles held
+      // the run before its first task, forever or until the loop drained
+      // and Bun exited 0 (item 921).
+      let result: Awaited<ReturnType<NonNullable<VxPlugin['telemetry']>>> | undefined
+      const ms = teardownTimeoutMs()
+      const arrived = await settleWithin(
+        Promise.resolve(plugin.telemetry(ctx)).then((r) => {
+          result = r
+        }),
+        ms,
+      )
+      if (!arrived) throw new Error(`did not initialize within ${ms} ms`)
       const list = result === undefined ? [] : Array.isArray(result) ? result : [result]
       accepted = list.map((sink) => checkSink(sink))
     } catch (err) {
