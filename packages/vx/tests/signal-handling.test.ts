@@ -126,7 +126,15 @@ describe('signal handling during vx run (e2e)', () => {
         cwd: fixture.root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, TMPDIR: tmp },
+        // Two signals: the second waits on the trap's marker, and a loaded
+        // macOS runner ran past the file's 200 ms grace before the trap ran
+        // (item 878, as 852 and 853). One signal keeps it: its trap never
+        // ends the task, so the grace is the row's whole wait.
+        env: {
+          ...process.env,
+          TMPDIR: tmp,
+          ...(signals === 2 ? { VX_KILL_GRACE_MS: '5000' } : {}),
+        },
       })
       const up = path.join(fixture.root, 'packages', 'app', 'up.txt')
       const deadline = Date.now() + 10_000
