@@ -398,6 +398,11 @@ reset. That server's `releaseBridges`, on its exit, runs the deferred
 reset. Before item 882, a foreground `vx run dev` or a `vx watch` held a
 server past a reset that had already released its port and SRT's
 proxies, and the port went dark ~40 ms after the summary.
+
+That deferred reset runs unawaited from the server's exit, and a watch
+cycle stops its server and starts its next run at once. `initSandbox`
+therefore waits for a reset in flight: an init under it found SRT up,
+hot-reloaded it, and had it torn down after (item 884).
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.

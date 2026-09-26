@@ -3328,6 +3328,61 @@ describe.skipIf(!available || process.platform !== 'linux')(
     )
 
     it(
+      'the next run’s sandbox starts after the reset a stopped server deferred, never under it',
+      async () => {
+        // A watch cycle stops the held server and starts its run at once.
+        // The server's exit runs the deferred reset unawaited, so the new
+        // run's `initSandbox` found SRT still up and hot-reloaded it, and
+        // the reset landing after tore it down under the cycle (item
+        // 884). The reset is held 300 ms so the order is the claim.
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port),
+          config: serverConfig(`[${port}]`),
+        })
+        await addProject(fixture.root, 'other', {
+          config: `export default { tasks: { t: { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } } } }`,
+        })
+        const held = await run({
+          cwd: fixture.root,
+          tasks: ['srv#serve'],
+          holdPersistent: true,
+          log: collectingLogger(fixture),
+        })
+        const order: string[] = []
+        const realReset = SandboxManager.reset.bind(SandboxManager)
+        const reset = spyOn(SandboxManager, 'reset').mockImplementation(async () => {
+          order.push('reset')
+          await Bun.sleep(300)
+          await realReset()
+          order.push('reset done')
+        })
+        const realInit = SandboxManager.initialize.bind(SandboxManager)
+        const init = spyOn(SandboxManager, 'initialize').mockImplementation(
+          async (...a: Parameters<typeof SandboxManager.initialize>) => {
+            order.push('initialize')
+            return realInit(...a)
+          },
+        )
+        try {
+          await held.persistent?.stop('SIGTERM')
+          // What a watch cycle does next: its run, straight away.
+          const later = await run({
+            cwd: fixture.root,
+            tasks: ['other#t'],
+            log: collectingLogger(fixture),
+          })
+          expectOk(later, fixture)
+          expect(order.slice(0, 3)).toEqual(['reset', 'reset done', 'initialize'])
+        } finally {
+          reset.mockRestore()
+          init.mockRestore()
+        }
+      },
+      TIMEOUT,
+    )
+
+    it(
       'control: `localBinding: true` binds inside the namespace and the host sees nothing',
       async () => {
         const port = freePort()
