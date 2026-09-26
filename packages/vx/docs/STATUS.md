@@ -581,6 +581,28 @@ test is telling the truth.
         The worktree runs these against a planner built into its
         `dist/`, as the site's `build` task does.
 
+841.  DONE (2026-09-26, the site's diagram kit,
+      `src/components/guide/diagram/diagram.ts`: box sizes, arrow
+      routing, the drawn stretch, timeline lanes, the phone layout). The
+      kit's laws (`diagram-kit.test.ts`, `landing.test.ts`) read the
+      built pages, so they see a change here only after a site build. A
+      worktree cannot build the site: astro refuses the symlinked
+      `node_modules` from outside the project. Against the pages already
+      built, those laws held 1 of 32 mutations; what a full rebuild
+      would hold went unmeasured. `tests/diagram-geometry.test.ts` holds
+      30 directly, with numbers worked out by hand:
+      - sizes: 130 × 52 boxes, 60 with a sub line, 0.6 em a glyph;
+      - arrows: the 3 and 5 gaps, the label's offsets across and down,
+        45 degrees counting as across, waypoints aimed at by each end
+        with the label on the middle stretch, an unknown box refused;
+      - the drawn stretch: 14 of padding around boxes, notes, frames,
+        waypoints and labels, stopping at 0 and at the picture's height;
+      - lanes: rows, names, bar widths, labels and subs dropped when
+        too narrow (margin included), titles and tones kept;
+      - the phone layout: named apart, or none.
+        Equivalent: the two `dx`/`dy === 0` guards in the exit point
+        (`r.w / 2 / 0` is `Infinity` without them).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
