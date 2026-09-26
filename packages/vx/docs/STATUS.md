@@ -411,6 +411,24 @@ exit`.
       inside a sandboxed run and no hook reaches it. The other `.delete`
       sites clear kill registries, not exit-cleanup lists.
 
+869.  DONE (2026-09-26, a survivor of the item 849 sweep, re-driven). In
+      `run.ts`, the `await aborting` before `leftRun()` (the signal
+      stop's teardown finishing before the handler may exit) survived
+      the targeted mutants of 849. It was never recorded.
+      - On main now, it is caught by `task-tree-kill.test.ts` › "a
+        grandchild's SIGTERM cleanup gets the grace after its shell has
+        exited" and › "SIGHUP gives the grandchild its SIGTERM cleanup,
+        not only a death".
+      - Item 865 made it observable. Without the await, vx exits
+        mid-grace, and the guard SIGKILLs the still-held group and cuts
+        the cleanup short. Before 865 the grandchild outlived vx and
+        finished its cleanup unseen.
+      - Its sibling there, `holdPersistent` on a stopped run, stays
+        equivalent as 857 recorded.
+      - Audited with the same lens: `vx watch` stops its held servers
+        through `terminateChildren`, so 865's hold covers watch too.
+        Nothing new.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
