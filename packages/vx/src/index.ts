@@ -115,6 +115,7 @@ export type { ProjectEntry } from './workspace/index.js'
 // `@vzn/vx-migrate` (Turbo, Nx) and any other adoption tool use it from here.
 export {
   applyMigration,
+  foldScriptHooks,
   PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
   quoteTsLiteral,

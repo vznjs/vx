@@ -39,6 +39,32 @@ export const PERSISTENT_TASK_NAMES: ReadonlySet<string> = new Set([
   'preview',
 ])
 
+/**
+ * A package.json script with the `pre<name>` / `post<name>` hooks npm runs
+ * around it, as ONE sh command. Each part runs in its own subshell, so a
+ * `;` or an `exit` in one ends that part alone, and the chain stops at the
+ * first that fails, as npm stops. The parts sit in a function the
+ * forwarded `--` args are appended to, and only the body takes them, as
+ * npm appends them to the script and never to its hooks. A plain ` && `
+ * join handed them to the post hook, and `test -f x && echo A; echo B` ran
+ * `echo B` after a failed pre hook and went green (item 905). Each part
+ * ends on its own line, so a trailing `# comment` cannot swallow the
+ * paren. A script with no hooks is its body, verbatim.
+ */
+export function foldScriptHooks(
+  pre: string | undefined,
+  body: string,
+  post: string | undefined,
+): string {
+  if (pre === undefined && post === undefined) return body
+  const parts = [
+    ...(pre === undefined ? [] : [`(${pre}\n)`]),
+    `(${body} "$@"\n)`,
+    ...(post === undefined ? [] : [`(${post}\n)`]),
+  ]
+  return `vx_script() {\n${parts.join(' && ')}\n}\nvx_script`
+}
+
 /** The one wording every mapper emits for a task it made persistent. */
 export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +

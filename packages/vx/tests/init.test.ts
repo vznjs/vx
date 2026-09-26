@@ -274,7 +274,9 @@ describe('migrateScripts', () => {
     // A group over ITSELF is a cycle.
     expect(tasks['loop']).toEqual({ exec: { command: 'npm run loop' } })
     // A group has no command, so a folded hook would be dropped silently.
-    expect(tasks['hooked']).toEqual({ exec: { command: 'echo pre && npm run b' } })
+    expect(tasks['hooked']).toEqual({
+      exec: { command: 'vx_script() {\n(echo pre\n) && (npm run b "$@"\n)\n}\nvx_script' },
+    })
     // CONTROL, on its own fixture: none of those problems, so still a group.
     expect(mapped({ b: 'real', d: 'npm run b' })['d']).toEqual({ dependsOn: ['b'] })
   })
@@ -698,7 +700,9 @@ describe('vx init (package.json scripts)', () => {
       // `pretest` wraps nothing (no `test`), so it stays a task of its own;
       // `prepack` is an npm lifecycle hook and is never a task.
       expect(Object.keys(tasks).sort()).toEqual(['build', 'pack', 'pretest'])
-      expect(tasks['build']!.exec?.command).toBe('rimraf dist && tsc -b && cp -r assets dist/')
+      expect(tasks['build']!.exec?.command).toBe(
+        'vx_script() {\n(rimraf dist\n) && (tsc -b "$@"\n) && (cp -r assets dist/\n)\n}\nvx_script',
+      )
       expect(tasks['pack']!.exec?.command).toBe('echo pack')
       const text = await Bun.file(path.join(hooked, 'packages', 'app', 'vx.config.ts')).text()
       expect(text).toContain(
@@ -741,7 +745,9 @@ describe('vx init (package.json scripts)', () => {
         // CONTROLS — each of these stays a real command:
         expect(tasks['check']!.exec?.command).toBe('pnpm lint && pnpm typecheck') // a chain
         // Arguments make it a real command, and its hook folds in front.
-        expect(tasks['release']!.exec?.command).toBe('echo pre-release && npm run build -- --prod')
+        expect(tasks['release']!.exec?.command).toBe(
+          'vx_script() {\n(echo pre-release\n) && (npm run build -- --prod "$@"\n)\n}\nvx_script',
+        )
         // Delegating to a script that is itself hooked is still a plain group.
         expect(tasks['publishit']!.exec).toBeUndefined()
         expect(tasks['publishit']!.dependsOn).toEqual(['release'])

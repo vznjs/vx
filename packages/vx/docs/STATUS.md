@@ -271,6 +271,27 @@ test is telling the truth.
         each manager's whole refusal, file named once, the install that
         fixes it, and the side it came from. Only pnpm's entry fails
         without the fix.
+905.  DONE (2026-09-26, an init/migrate review agent's leads 3 and 4).
+      `vx init` and `@vzn/vx-migrate` fold a script's `pre<name>` /
+      `post<name>` hooks into its command. They did it with a plain
+      `&&` join, and that mis-ran two ways:
+      - Forwarded `--` args are appended to the command, so they landed
+        on the post hook: `echo POST --flag`.
+      - A body holding a `;` split the chain, so `test -f ready.flag &&
+echo A; echo B` went green after a failed pre hook, and a cache
+        block would have saved that success.
+      - The fix is one function, `foldScriptHooks`, on the migration seam
+        (façade, 46 runtime symbols), that both mappers call. Each part
+        is its own subshell, and each ends on its own line so a trailing
+        `# comment` cannot swallow the paren. The chain sits in a
+        `vx_script` function that the forwarded args reach, and only the
+        body takes them, as npm does. A script with no hooks is still its
+        body, verbatim.
+      - Rows: four behaviour rows in `migration.test.ts` run the fold
+        through `sh` as the runner does (args, a failing pre hook with a
+        `;` body, a failing body, trailing comments), with the no-hook
+        control. Three fail against the old join. The review's three
+        repros now match `bun run`.
 
 ## In flight
 

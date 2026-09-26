@@ -16,6 +16,8 @@
 //   through `yarn run <name>`, exactly as Nx and Turbo run it — and yarn
 //   ≥ 2 runs no pre/post hooks, so none are folded there either.
 
+import { foldScriptHooks } from '@vzn/vx'
+
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
 
@@ -32,5 +34,5 @@ export function scriptCommand(
     !LIFECYCLE.test(h) && usable(scripts[h]) ? scripts[h] : undefined
   const parts = [hook(`pre${name}`), body, hook(`post${name}`)]
   if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return `yarn run ${name}`
-  return parts.filter((p): p is string => p !== undefined).join(' && ')
+  return foldScriptHooks(parts[0], body, parts[2])
 }

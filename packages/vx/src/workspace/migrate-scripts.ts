@@ -26,6 +26,7 @@
 
 import type { ProjectMeta } from './workspace.js'
 import {
+  foldScriptHooks,
   type GeneratedProject,
   type GeneratedTask,
   type MigrationPlan,
@@ -96,11 +97,11 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
         continue
       }
 
-      const command = [
-        ...(hook(`pre${name}`) ? [scripts[`pre${name}`] as string] : []),
+      const command = foldScriptHooks(
+        hook(`pre${name}`) ? (scripts[`pre${name}`] as string) : undefined,
         own,
-        ...(hook(`post${name}`) ? [scripts[`post${name}`] as string] : []),
-      ].join(' && ')
+        hook(`post${name}`) ? (scripts[`post${name}`] as string) : undefined,
+      )
       if (hooks.length > 0) {
         todos.push(
           `npm ran ${hooks.map((h) => `\`${h}\``).join(' and ')} around this script without being asked; folded into the command in that order`,

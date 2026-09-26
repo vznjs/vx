@@ -9,12 +9,14 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import {
   applyMigration,
+  foldScriptHooks,
   quoteTsLiteral,
   type ApplyMigrationArgs,
   type GeneratedTask,
   type MigrationPlan,
 } from '../src/workspace/index.js'
 import { UserError } from '../src/util/index.js'
+import { shellQuote } from '../src/exec/index.js'
 
 let root: string
 let stdout: string
@@ -193,5 +195,48 @@ describe('applyMigration', () => {
         '    },',
       ].join('\n'),
     )
+  })
+})
+
+// Item 905: npm runs `pre<x>`, `x` and `post<x>` as three scripts. The fold
+// is one sh command, run the way the runner runs a task: `sh -c` over the
+// command with the forwarded args appended, quoted (runner.ts).
+describe('foldScriptHooks runs the hooks as npm does', () => {
+  const run = async (command: string, args: string[] = []) => {
+    const full = args.length > 0 ? `${command} ${args.map(shellQuote).join(' ')}` : command
+    const p = Bun.spawn(['sh', '-c', full], { stdout: 'pipe', stderr: 'ignore' })
+    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
+    return { code, out: out.trim().split('\n') }
+  }
+
+  it('hands the forwarded args to the body alone, not the post hook', async () => {
+    expect(
+      await run(foldScriptHooks('echo PRE', 'echo BODY', 'echo POST'), ['--flag', 'a b']),
+    ).toEqual({ code: 0, out: ['PRE', 'BODY --flag a b', 'POST'] })
+  })
+
+  it('stops at a failing pre hook even when the body holds a `;`', async () => {
+    expect(await run(foldScriptHooks('false', 'echo A; echo B', 'echo POST'))).toEqual({
+      code: 1,
+      out: [''],
+    })
+  })
+
+  it('runs no post hook after a failing body, and keeps the body’s code', async () => {
+    expect(await run(foldScriptHooks(undefined, 'echo A; exit 3', 'echo POST'))).toEqual({
+      code: 3,
+      out: ['A'],
+    })
+  })
+
+  it('survives a trailing comment in any part', async () => {
+    expect(await run(foldScriptHooks('echo PRE # c', 'echo BODY # c', 'echo POST # c'))).toEqual({
+      code: 0,
+      out: ['PRE', 'BODY', 'POST'],
+    })
+  })
+
+  it('CONTROL: a script with no hooks is its body, verbatim', () => {
+    expect(foldScriptHooks(undefined, 'tsc -b && echo x', undefined)).toBe('tsc -b && echo x')
   })
 })
