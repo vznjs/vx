@@ -817,6 +817,32 @@ test is telling the truth.
       every request and says why. The contract's comment and
       `layered-cache.md` state the duty. Docs and a comment only.
 
+857.  DONE (2026-09-26, the signal path's own sweep, and a Ctrl-C in CI
+      that lost output). Items 849–854's code in `signals.ts` and
+      `run.ts`, 14 mutations. Caught at once: the stop call, the wait
+      for `run()`, the exit code, the forwarded signal's kind, the
+      history guard, the keep-alive line and the scheduler's signal.
+      Caught once the suite list was widened: SIGHUP
+      (`task-tree-kill.test.ts`) and the awaited abort teardown. Three
+      findings:
+      - The SIGKILL at exit and the second signal's immediate exit
+        survived the second-signal rows. Their child trapped only TERM,
+        and since 2026-09-24 a Ctrl-C forwards as SIGINT, so the child
+        died on the first signal and the rows tested nothing. Both now
+        `trap '' INT TERM`, and both catch both mutants.
+      - The stdout drain survived, and the row written to hold it
+        (2 MiB printed as the task stops, read only after vx exits)
+        passed without it, but failed in the gate. With `CI=true` a
+        Ctrl-C lost 0.8 of the 2 MiB: the drain's empty `write` called
+        back before the pipe took the bytes. The handler now ends
+        stdout and exits in `end`'s callback, the form `bin.ts`
+        documents for Bun ≥ 1.4, bounded at 2 s for a reader that has
+        gone. The row runs in CI mode, passes 3 of 3 with the fix and
+        fails 2 of 2 with the old write. It also fails on the code
+        before 849, which never printed the stopped task's frame.
+      - `holdPersistent` on an aborted run is equivalent: the abort
+        teardown kills those children either way.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

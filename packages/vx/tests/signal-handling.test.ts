@@ -236,7 +236,7 @@ describe('signal handling during vx run (e2e)', () => {
           export default {
             tasks: {
               stubborn: {
-                exec: { command: "trap '' TERM; echo $$ > pid.txt; exec sleep 30" },
+                exec: { command: "trap '' INT TERM; echo $$ > pid.txt; exec sleep 30" },
               },
             },
           }
@@ -277,7 +277,7 @@ describe('signal handling during vx run (e2e)', () => {
           export default {
             tasks: {
               stubborn: {
-                exec: { command: "trap '' TERM; echo $$ > pid.txt; exec sleep 30" },
+                exec: { command: "trap '' INT TERM; echo $$ > pid.txt; exec sleep 30" },
               },
             },
           }
@@ -419,6 +419,41 @@ describe('signal handling during vx run (e2e)', () => {
       expect(await out('echo $$ > pid.txt; echo READY; exec sleep 30', true)).not.toContain(
         'exited with code',
       )
+    },
+    TIMEOUT,
+  )
+
+  // What a task prints while it stops reaches the terminal, 2 MiB of it,
+  // then the summary. Before item 849 the handler exited on the kill and the
+  // frame never printed; after it, a CI-mode run lost 0.8 of the 2 MiB to
+  // `process.exit`, because the drain's empty write called back before the
+  // pipe took the bytes (item 857). The reader starts only after vx has
+  // exited, so the pipe is full when the exit lands.
+  it(
+    'a Ctrl-C exit loses none of what the run wrote',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { big: { exec: {
+        command: "trap 'yes | head -c 2097152; echo END-OF-BIG; exit 0' INT; echo $$ > pid.txt; while :; do sleep 0.05; done",
+      } } } }`,
+      )
+      // Focused, so the task's own output is printed (a broad run shows news).
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#big'], {
+        cwd: fixture.root,
+        // CI mode is where the empty write lost the tail.
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000', CI: 'true' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      const out = await new Response(proc.stdout).text()
+      // On a line of its own: the frame's header echoes the command too.
+      expect(out).toContain('\nEND-OF-BIG\n')
+      expect(out.trimEnd().split('\n').at(-1)).toMatch(/^ *time /)
     },
     TIMEOUT,
   )

@@ -133,9 +133,12 @@ export function forwardSignals(args: {
     }
     args.stop(signal)
     void settleWithin(args.done, args.boundMs)
-      // The run's summary may still be in the pipe: `process.exit` drops
-      // what a reader has not taken (CLAUDE.md), so exit once it drains.
-      .then(() => new Promise<void>((r) => process.stdout.write('', () => r())))
+      // The run's output may still be in the pipe: `process.exit` drops
+      // what a reader has not taken (CLAUDE.md). An empty `write`'s
+      // callback fired early, and a CI-mode run lost 0.8 of 2 MiB (item
+      // 857); `end`'s waits for the pipe on Bun >= 1.4 (bin.ts). Bounded,
+      // for a reader that has gone and never takes it.
+      .then(() => settleWithin(new Promise<void>((r) => process.stdout.end(() => r())), 2_000))
       .then(() => exit(signal))
   }
   const onSigint = (): void => onSignal('SIGINT')
