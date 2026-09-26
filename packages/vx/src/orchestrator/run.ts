@@ -969,12 +969,17 @@ async function runOnBus(
       )
       const node = keepAlive.nodes[first.i]!
       const others = keepAlive.nodes.length - 1
-      log.status(
-        `vx: ${node.id} exited with code ${first.code}` +
-          (others > 0
-            ? `; stopping ${others} other persistent task${others === 1 ? '' : 's'}`
-            : ''),
-      )
+      // Not when the run was stopped: the server ended because the user
+      // stopped it, and "exited with code 130" read as a crash after every
+      // Ctrl-C once a stop let run() finish its own path (item 852).
+      if (!stopRun.signal.aborted) {
+        log.status(
+          `vx: ${node.id} exited with code ${first.code}` +
+            (others > 0
+              ? `; stopping ${others} other persistent task${others === 1 ? '' : 's'}`
+              : ''),
+        )
+      }
       await terminateChildren(() => keepAlive.children)
       return { ok: ok && first.code === 0, outcomes: list }
     }

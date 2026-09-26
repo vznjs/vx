@@ -364,9 +364,12 @@ describe('signal handling during vx run (e2e)', () => {
           }
         `,
     )
+    // The trap is the subject, not the escalation: at the file's 200 ms a
+    // loaded macOS runner SIGKILLed the shell before its trap wrote got.txt
+    // (PR #929). vx exits when the child does, so a long grace costs nothing.
     const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
       cwd: fixture.root,
-      env: { ...process.env },
+      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -376,6 +379,49 @@ describe('signal handling during vx run (e2e)', () => {
     expect((await Bun.file(path.join(dir, 'got.txt')).text()).trim()).toBe(signal)
     expect(await waitForDead(pid, 3_000)).toBe(true)
   }
+
+  // The foreground keep-alive names the server that ended the session and
+  // its code. Once a stop let run() finish its own path (item 849), every
+  // Ctrl-C of a dev server printed "exited with code 130" as if it had
+  // crashed (item 852). The control: a server that ends on its own is named.
+  it(
+    'a Ctrl-C of a foreground server does not report it as exited; a server that exits is',
+    async () => {
+      const out = async (command: string, signal: boolean): Promise<string> => {
+        await addProject(
+          fixture.root,
+          'app',
+          `export default { tasks: { dev: { exec: {
+            command: ${JSON.stringify(command)},
+            persistent: { readyWhen: 'READY' },
+          } } } }`,
+        )
+        const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+          cwd: fixture.root,
+          env: { ...process.env },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const text = Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ])
+        if (signal) {
+          await waitForPid(path.join(fixture.root, 'packages', 'app', 'pid.txt'), 10_000)
+          proc.kill('SIGINT')
+        }
+        await proc.exited
+        return (await text).join('')
+      }
+      expect(await out('echo READY; sleep 0.3; exit 3', false)).toContain(
+        'vx: app#dev exited with code 3',
+      )
+      expect(await out('echo $$ > pid.txt; echo READY; exec sleep 30', true)).not.toContain(
+        'exited with code',
+      )
+    },
+    TIMEOUT,
+  )
 
   it('SIGINT to vx reaches a one-shot task as SIGINT', reaches('SIGINT', 130, false), TIMEOUT)
   it(
