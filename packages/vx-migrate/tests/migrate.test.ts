@@ -511,11 +511,11 @@ describe('vx migrate (nx)', () => {
       // {env: X} → cache input AND passThrough (isolated child env).
       expect(build.cache?.inputs.env).toEqual(['NODE_ENV'])
       expect(build.exec?.env?.passThrough).toEqual(['NODE_ENV'])
-      // {runtime: "<cmd>"} → cache.inputs.runtime, which schema.md calls
-      // the Nx runtime input's equivalent. It used to reach the
-      // fall-through and be reported "not representable in vx"
-      // (2026-09-20).
-      expect(build.cache?.inputs.runtime).toEqual(['node --version'])
+      // {runtime: "<cmd>"} → cache.inputs.workspaceRuntime: Nx runs it at
+      // the workspace root (item 913). It used to reach the fall-through
+      // and be reported "not representable in vx" (2026-09-20).
+      expect(build.cache?.inputs.workspaceRuntime).toEqual(['node --version'])
+      expect(build.cache?.inputs.runtime).toBeUndefined()
       // outputs: dir heuristic (a leading dot is a hidden directory, not
       // an extension — a bare `.output` would save nothing, the output
       // scan lists files), {options.*} resolution + project-prefix strip,

@@ -293,7 +293,7 @@ export function planNxUpstream(
         const cacheInputs: Record<string, unknown> = { files: inputs.files }
         if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
         if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
-        if (inputs.runtimeCmds.length > 0) cacheInputs.runtime = inputs.runtimeCmds
+        if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds
         const task: Record<string, unknown> = { exec: { command: 'true' } }
         if (edges.size > 0) task.dependsOn = [...edges].sort()
         task.cache = { inputs: cacheInputs, outputs: { files: [] } }

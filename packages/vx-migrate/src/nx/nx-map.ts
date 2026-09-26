@@ -473,8 +473,9 @@ function buildTask(
     if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
     // The `.env` files the task loads are inputs, and gitignored ones
     // (`.env.local`) are invisible to a glob: their bytes, read per run.
-    if (mapped.envInputs.length > 0) inputs.runtimeCmds.push(envProbe(mapped.envInputs))
-    if (inputs.runtimeCmds.length > 0) cacheInputs.runtime = inputs.runtimeCmds
+    // Their paths are project-relative: `runtime`, in the project dir.
+    if (mapped.envInputs.length > 0) cacheInputs.runtime = [envProbe(mapped.envInputs)]
+    if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds
     const outputs: Record<string, unknown> = { files: outFiles }
     if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
     task.cache = { inputs: cacheInputs, outputs }

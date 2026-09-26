@@ -677,9 +677,11 @@ the names, and each value, with "unset" folded apart from every value
 ##### `inputs.runtime` (optional, default `[]`)
 
 Shell commands whose **combined, trimmed stdout + stderr** is folded
-into the cache key — the runtime-output analog of `inputs.env`. The Nx
-[`runtime` input](https://nx.dev/recipes/running-tasks/configure-inputs)
-equivalent (Turbo has no built-in for this — see
+into the cache key — the runtime-output analog of `inputs.env`. It runs
+in the project dir; the Nx
+[`runtime` input](https://nx.dev/recipes/running-tasks/configure-inputs),
+which Nx runs at the workspace root, is `workspaceRuntime` below (Turbo
+has no built-in for this — see
 [vercel/turborepo#4124](https://github.com/vercel/turborepo/issues/4124)).
 Use it for tool/runtime versions, OS info, or a project-local probe
 script whose value should bust the cache when it changes.

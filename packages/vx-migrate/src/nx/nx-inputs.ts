@@ -14,10 +14,12 @@ export interface NxInputs {
   readonly wsFiles: string[]
   readonly envNames: string[]
   /**
-   * Nx's `{ runtime: "<cmd>" }` hashes the command's output, which is
-   * exactly `cache.inputs.runtime` — schema.md calls it "the Nx `runtime`
-   * input equivalent". It was reaching the fall-through and being reported
-   * as "not representable in vx" (walked the Nx path, 2026-09-20).
+   * Nx's `{ runtime: "<cmd>" }` hashes the command's output, run at the
+   * WORKSPACE ROOT (`hash_runtime.rs`): `cache.inputs.workspaceRuntime`.
+   * It was mapped to `runtime`, which runs in the project dir, so
+   * `cat tools/version.txt` failed the run and a command that runs in both
+   * hashed a different fact (item 913). It was once reported "not
+   * representable in vx" (walked the Nx path, 2026-09-20).
    */
   readonly runtimeCmds: string[]
   /** `^name` / `{ input, dependencies | projects }`: whose `name` to fold. */
