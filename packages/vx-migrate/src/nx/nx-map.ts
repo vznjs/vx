@@ -273,7 +273,7 @@ export async function mapNxWorkspace(
   // Named, not just counted: "1 implicit Nx dep" sends a reader looking
   // through the whole graph for it, and the pair is what they need to
   // write the `dependsOn` by hand (walked the Nx path, 2026-09-20).
-  const implicit = implicitDeps(g?.dependencies, metaByNode)
+  const implicit = implicitDeps(g?.dependencies, metas, metaByNode)
   if (implicit.length > 0) {
     const shown = implicit.slice(0, 5).join(', ')
     const rest = implicit.length > 5 ? ` and ${implicit.length - 5} more` : ''
@@ -675,25 +675,31 @@ function persistentTarget(target: NxTarget): boolean {
 /** `a → b` for every graph edge vx's package graph cannot see. */
 function implicitDeps(
   dependencies: unknown,
+  metas: readonly ProjectMeta[],
   metaByNode: ReadonlyMap<string, ProjectMeta>,
 ): string[] {
   if (typeof dependencies !== 'object' || dependencies === null) return []
+  // Whether vx sees sm → tm is vx's rule, not a name lookup: a
+  // `"b": "^1.0.0"` beside a local b@2 is a registry dependency and no
+  // edge. One graph of the workspace answers it, and a manifest path
+  // through a third project reaches tm as a direct entry does: `^build`
+  // runs tm's first and sm's key folds it. A two-project graph per edge
+  // saw only the direct entry, at 36 ms a warm run for 1,474 edges
+  // (item 931).
+  const graph = buildPackageGraph([...metas])
+  const reach = new Map<string, ReadonlySet<string>>()
   const pairs: string[] = []
   for (const [source, edges] of Object.entries(dependencies as Record<string, NxEdge[]>)) {
     const sm = metaByNode.get(source)
     if (!sm || !Array.isArray(edges)) continue
-    const seen = new Set<string>()
+    let seen = reach.get(sm.name)
+    if (seen === undefined) reach.set(sm.name, (seen = new Set(graph.transitiveDeps(sm.name))))
+    const named = new Set<string>()
     for (const edge of edges) {
       const tm = typeof edge?.target === 'string' ? metaByNode.get(edge.target) : undefined
-      if (!tm || tm === sm || seen.has(tm.name)) continue
-      seen.add(tm.name)
-      // Whether sm's manifest links tm is vx's rule, not a name lookup: a
-      // `"b": "^1.0.0"` beside a local b@2 is a registry dependency and no
-      // edge. A graph of the two alone has the edge iff tm is in sm's
-      // closure, and the rule reads nothing but sm's manifest and tm.
-      if (!buildPackageGraph([sm, tm]).transitiveDeps(sm.name).includes(tm.name)) {
-        pairs.push(`${sm.name} → ${tm.name}`)
-      }
+      if (!tm || tm === sm || named.has(tm.name)) continue
+      named.add(tm.name)
+      if (!seen.has(tm.name)) pairs.push(`${sm.name} → ${tm.name}`)
     }
   }
   return pairs

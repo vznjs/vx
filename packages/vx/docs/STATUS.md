@@ -606,6 +606,20 @@ echo A; echo B` went green after a failed pre hook, and a cache
         The README says so.
       - Row: `schedule-history-e2e.test.ts` › an assumption that is no
         finite number is dropped by name; the run and the rest stand.
+931.  DONE (2026-09-26, Next 25's measurement). `nx()`'s implicit-dep
+      note built a two-project package graph for every Nx edge, on every
+      run: 1,474 graphs, 36 ms cold, at 300 projects.
+      - One graph of the workspace answers every edge. A manifest path
+        through a third project reaches the target too: `^build` runs it
+        first and the key folds it, so such an edge is no longer reported.
+      - A/B on the 300-project Nx workspace (warm, CLI, interleaved,
+        before arm a `main` worktree): `load configs` 141.0 → 118.8 ms
+        at min (N=11); the wall 524 → 504 ms at min and 563 → 532 at
+        median (N=31). A first 21-rep wall pass read 505 → 502 at min,
+        555 → 541 at median.
+      - Row: `nx-map-sweep.test.ts` › a manifest path through another
+        project is no implicit dep, with the control that drops the
+        middle entry. Red without the fix.
 
 ## In flight
 
@@ -943,7 +957,13 @@ next?".
     159 ms warm run. A task kind that is a key and nothing else (no
     spawn on a miss, no history row, not printed) would take most of it
     back. Measure the twins' share first: is it the key, the lookup or
-    the row?
+    the row? Measured (item 931, stage mins over 9 interleaved CLI runs,
+    the same workspace without `^` inputs as the control): the twins add
+    about 120 ms. `load configs` +46, `classify + probe` +45,
+    `run graph` +15, `build graph` +9, `record history` +4. A key-only
+    kind saves the run and the row, about 19 ms. The rest is what every
+    task costs to load and key, so the lever is per-task cost in those
+    two stages, not a new kind.
 
 ## Decisions (this arc)
 
