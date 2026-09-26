@@ -21,6 +21,7 @@ import {
 import {
   formatBytes,
   mark,
+  killGraceMs,
   MAX_TIMEOUT_MS,
   parseDuration,
   parseSize,
@@ -29,6 +30,7 @@ import {
   nearest,
   UserError,
   machineParallelism,
+  teardownTimeoutMs,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { prepareSandbox } from './sandbox-request.js'
@@ -49,7 +51,12 @@ import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
-import { forwardedSignal, forwardSignals, terminateChildren } from './signals.js'
+import {
+  forwardedSignal,
+  forwardSignals,
+  SIGNAL_SHUTDOWN_GRACE_MS,
+  terminateChildren,
+} from './signals.js'
 import {
   hasPooledExecutor,
   placeTasks,
@@ -377,23 +384,46 @@ async function runOnBus(
   // repeated run() calls (test suites) never stack listeners.
   const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
   const persistentRegistry = new Map<string, ReturnType<typeof Bun.spawn>>()
+  // One stop for the run: an embedder's `RunOptions.signal` and a process
+  // signal both abort it. The scheduler stops dispatching (it reads the
+  // signal), the children are torn down, and run() returns through its own
+  // end-of-run path. Detached in the finally below.
+  const stopRun = new AbortController()
+  const forwardAbort = (): void => stopRun.abort(options.signal?.reason)
+  if (options.signal?.aborted === true) forwardAbort()
+  else options.signal?.addEventListener('abort', forwardAbort, { once: true })
+  let leftRun = (): void => {}
+  const runLeft = new Promise<void>((resolve) => {
+    leftRun = resolve
+  })
   const signals = forwardSignals({
     enabled: options.handleSignals ?? true,
     log,
     cache,
     liveChildren,
     persistentRegistry,
+    stop: (signal) => stopRun.abort(signal),
+    done: runLeft,
+    // The grace, then one flush and each teardown at their own bound, and
+    // slack for the summary and the cache close.
+    boundMs:
+      killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS) +
+      teardownTimeoutMs() * (1 + prepared.plugins.filter((p) => p.teardown).length) +
+      2_000,
   })
-  // `RunOptions.signal`: the same teardown the process handler runs, minus
-  // the exit — the scheduler stops dispatching (it reads the signal) and
-  // run() returns to its caller. Detached in the finally below.
+  // Awaited before run() leaves: a task's shell can die of the signal at
+  // once while a child it backgrounded ignores it and dies only to the
+  // SIGKILL after the grace, and a run that returned first left that child
+  // running past vx's exit (turborepo#14043's class).
+  let aborting: Promise<void> | undefined
   const onAbort = (): void => {
-    void terminateChildren(
+    aborting = terminateChildren(
       () => [...liveChildren, ...persistentRegistry.values()],
-      forwardedSignal(options.signal?.reason),
+      forwardedSignal(stopRun.signal.reason),
     )
   }
-  options.signal?.addEventListener('abort', onAbort, { once: true })
+  if (stopRun.signal.aborted) onAbort()
+  else stopRun.signal.addEventListener('abort', onAbort, { once: true })
   // The cache handle must be released on EVERY exit path, not just the
   // happy one: `close()` is also where the run's deferred `accessed_at`
   // bumps are flushed, so a throw between opening the cache and the
@@ -421,7 +451,7 @@ async function runOnBus(
   // before the schedule: from here on tasks clean, restore and write.
   const releaseRunLock = await acquireRunLock(prepared.workspaceRoot, {
     log: (m) => log.status(m),
-    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    signal: stopRun.signal,
   })
   try {
     // One run-id per `vx run` invocation. Every task in the resulting
@@ -691,7 +721,7 @@ async function runOnBus(
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
-      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      signal: stopRun.signal,
       onStart: (node) => {
         log.taskStart?.(node)
       },
@@ -717,7 +747,7 @@ async function runOnBus(
     // expect run() to return, not block on a server.
     const foreground = options.log === undefined && (options.handleSignals ?? true)
     // An aborted run's children are already being torn down: nothing to hold.
-    const hold = options.holdPersistent === true && options.signal?.aborted !== true
+    const hold = options.holdPersistent === true && !stopRun.signal.aborted
     const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
     await shutdownPersistent(persistentRegistry, keepAlive.children)
 
@@ -959,7 +989,8 @@ async function runOnBus(
     // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
     signals.remove()
-    options.signal?.removeEventListener('abort', onAbort)
+    options.signal?.removeEventListener('abort', forwardAbort)
+    stopRun.signal.removeEventListener('abort', onAbort)
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()
@@ -974,6 +1005,9 @@ async function runOnBus(
     } catch {
       // teardown must not throw on the way out
     }
+    await aborting?.catch(() => {})
+    // Last: a process signal waits for this before it exits.
+    leftRun()
   }
 }
 

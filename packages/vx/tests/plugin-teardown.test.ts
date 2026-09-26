@@ -187,6 +187,98 @@ describe('the lifecycle is reached on a run that FAILED', () => {
   })
 })
 
+// A signal exit is `process.exit`, which runs no `finally`: a Ctrl-C skipped
+// every sink's flush and every plugin's teardown, which plugin.md promises
+// at the end of every run (item 849). The CLI in a child, since the exit is
+// the subject.
+describe('the lifecycle is reached on a run a signal stops', () => {
+  const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  let root: string
+
+  beforeEach(async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'vx-plugin-signal-'))
+    await Bun.write(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['a'] }),
+    )
+    await Bun.write(path.join(root, 'a/package.json'), JSON.stringify({ name: 'a' }))
+    await Bun.write(
+      path.join(root, 'a/vx.config.mjs'),
+      `export default { tasks: { slow: { exec: { command: 'echo up > up.txt; sleep 30' } } } }`,
+    )
+    gitInitCommit(root, 'i')
+  })
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  /** Each step appends its name to `lifecycle.txt`; `teardown` is the plugin's body. */
+  const workspace = (teardown: string): Promise<number> => {
+    const log = JSON.stringify(path.join(root, 'lifecycle.txt'))
+    return Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/probe',
+            `{ telemetry() { return { onRecord(){}, async flush() { appendFileSync(${log}, 'flush\\n') } } },
+               ${teardown},
+             }`,
+          ),
+        ],
+        `import { appendFileSync } from 'node:fs'
+`,
+      ),
+    )
+  }
+
+  // The suite's own 120 ms bound would end a hung teardown before any
+  // second signal could: 10 s here, so the second signal is what ends it.
+  const started = async (): Promise<ReturnType<typeof Bun.spawn>> => {
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, VX_KILL_GRACE_MS: '200', VX_TEARDOWN_TIMEOUT_MS: '10000' },
+    })
+    const up = path.join(root, 'a', 'up.txt')
+    const deadline = Date.now() + 10_000
+    while (!(await Bun.file(up).exists()) && Date.now() < deadline) await Bun.sleep(20)
+    return proc
+  }
+  const lifecycle = async (): Promise<string[]> => {
+    const f = Bun.file(path.join(root, 'lifecycle.txt'))
+    return (await f.exists()) ? (await f.text()).trim().split('\n') : []
+  }
+
+  it('SIGINT flushes the sinks and tears the plugins down before vx exits 130', async () => {
+    await workspace(
+      `teardown() { appendFileSync(${JSON.stringify(path.join(root, 'lifecycle.txt'))}, 'teardown\\n') }`,
+    )
+    const proc = await started()
+    expect(await lifecycle()).toEqual([])
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    expect(await lifecycle()).toEqual(['flush', 'teardown'])
+  }, 20_000)
+
+  it('a second signal exits without waiting for a teardown that hangs', async () => {
+    await workspace(
+      `teardown() { appendFileSync(${JSON.stringify(path.join(root, 'lifecycle.txt'))}, 'teardown\\n'); return new Promise(() => {}) }`,
+    )
+    const proc = await started()
+    proc.kill('SIGINT')
+    const deadline = Date.now() + 10_000
+    while (!(await lifecycle()).includes('teardown') && Date.now() < deadline) await Bun.sleep(20)
+    const t0 = Date.now()
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    expect(Date.now() - t0).toBeLessThan(1_500)
+    expect(await lifecycle()).toEqual(['flush', 'teardown'])
+  }, 20_000)
+})
+
 // `RunOptions.bus` is the surface seam: an embedder's bus outlives the run
 // it is handed to. Everything run() subscribes on it — the terminal
 // renderer, a plugin's setup subscription, the telemetry source — must

@@ -37,7 +37,8 @@ behavior lives in the plugin package (vite-style), not in core.
   everything else is crash-isolated (observability never breaks a run).
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely
-  on them to drain buffers. (The older `eventSink` seam is gone since
+  on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no
+  exception (item 849); a second signal, or a `kill -9`, is. (The older `eventSink` seam is gone since
   pipeline v2; `setup(ctx)` on the bus and `telemetry` are the two
   observe paths.)
 - **No defaults, one floor.** Core applies no plugin on its own; its

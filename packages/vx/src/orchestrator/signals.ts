@@ -1,6 +1,9 @@
-// A SIGINT/SIGTERM mid-run forwards that signal to everything live, waits
-// a bounded grace for it to go, SIGKILLs what is still there, closes the
-// cache handle, and exits 128+signo (130/143). Without the forward, a
+// A SIGINT/SIGTERM mid-run stops the run the way `RunOptions.signal` does
+// — the scheduler dispatches nothing more, and the signal is forwarded to
+// everything live, SIGKILLed after a bounded grace — then waits, bounded,
+// for run() to leave its own end-of-run path (telemetry flush, each
+// plugin's teardown, the cache close), and exits 128+signo (130/143). A
+// second signal exits at once. Without the forward, a
 // programmatic signal to the vx process alone (CI cancellation,
 // `kill <pid>`) orphans every running child — terminal Ctrl-C only worked
 // via process-group propagation. Without the escalation (added
@@ -11,7 +14,7 @@
 // them to the runner around every spawn.
 
 import { signalExitCode } from '../exec/index.js'
-import { killGraceMs } from '../util/index.js'
+import { killGraceMs, settleWithin } from '../util/index.js'
 import { killTree, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
@@ -30,7 +33,7 @@ type Child = ReturnType<typeof Bun.spawn>
  * terminal closing no longer reaches it — only vx hears the hang-up,
  * and vx must pass it on or the tree outlives the window.
  */
-type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
+export type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
 
 /** What a teardown sends a task's group before the SIGKILL. */
 export type ForwardedSignal = 'SIGINT' | 'SIGTERM'
@@ -84,6 +87,20 @@ export function forwardSignals(args: {
   enabled: boolean
   log: Logger
   cache: { close(): void }
+  /**
+   * Stop the run as `RunOptions.signal` would: the scheduler stops
+   * dispatching and run()'s abort listener tears the children down.
+   */
+  stop: (signal: StopSignal) => void
+  /**
+   * Settles when run() has left its `finally`. A signal waits for it
+   * before exiting: `process.exit` runs no `finally`, and plugin.md
+   * promises a plugin its teardown and a sink its flush at the end of
+   * every run — a Ctrl-C skipped both (item 849).
+   */
+  done: Promise<void>
+  /** How long a signal waits for `done` before it exits anyway. */
+  boundMs: number
   /** In-flight children; the runner adds and removes each around its spawn. */
   liveChildren: ReadonlySet<Child>
   /** Ready persistent tasks the orchestrator owns until the graph finishes. */
@@ -114,7 +131,12 @@ export function forwardSignals(args: {
     } catch {
       // teardown must not throw on the way out
     }
-    void terminateChildren(everyChild, forwardedSignal(signal)).then(() => exit(signal))
+    args.stop(signal)
+    void settleWithin(args.done, args.boundMs)
+      // The run's summary may still be in the pipe: `process.exit` drops
+      // what a reader has not taken (CLAUDE.md), so exit once it drains.
+      .then(() => new Promise<void>((r) => process.stdout.write('', () => r())))
+      .then(() => exit(signal))
   }
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')

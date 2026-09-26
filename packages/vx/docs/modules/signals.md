@@ -7,9 +7,23 @@ signal it received — SIGINT as SIGINT, SIGTERM as SIGTERM, SIGHUP as
 SIGTERM — to every live child's process group and every ready
 persistent task's,
 waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) for those GROUPS to go,
-SIGKILLs every group with a member left, closes the cache handle, and
-exits 128 + signo
-(130 / 143 / 129); a second signal during the grace SIGKILLs at once.
+SIGKILLs every group with a member left, lets `run()` leave through its
+own end-of-run path, and exits 128 + signo
+(130 / 143 / 129); a second signal SIGKILLs and exits at once.
+
+The signal stops the run the way `RunOptions.signal` does (item 849):
+`run()` holds one `AbortController`, which the embedder's signal and the
+process handler both abort, so the scheduler dispatches nothing more and
+the abort listener runs `terminateChildren`. `run()` awaits that teardown
+before it leaves, then the handler waits for `done` (bounded by
+`boundMs`: the grace, one telemetry flush and each plugin's teardown at
+`VX_TEARDOWN_TIMEOUT_MS`, and 2 s of slack) and for stdout to drain, and
+exits. Until item 849 the handler exited straight after the kill:
+`process.exit` runs no `finally`, so a Ctrl-C skipped every sink's flush
+and every plugin's teardown, which `plugin.md` promises at the end of
+every run, and the summary raced the exit
+(`tests/plugin-teardown.test.ts` › "SIGINT flushes the sinks and tears
+the plugins down before vx exits 130").
 The group, not the pid (`exec/kill-tree.ts`, item 236): a task is
 spawned into its own session, so what it forked dies with it — and so
 the terminal closing reaches vx alone, which is why SIGHUP is handled
@@ -60,6 +74,9 @@ export function forwardSignals(args: {
   cache: { close(): void }
   liveChildren: ReadonlySet<Subprocess> // the runner's in-flight children
   persistentRegistry: ReadonlyMap<string, Subprocess>
+  stop: (signal: StopSignal) => void // aborts run()'s own controller
+  done: Promise<void> // settles once run() has left its finally
+  boundMs: number // how long a signal waits for `done`
 }): { remove(): void }
 ```
 
@@ -71,9 +88,9 @@ the process's signals passes `handleSignals: false`.
 
 ## What it does NOT do
 
-- Return: the process handler exits once the children are gone. The
-  end-of-run shutdown of dependency-only persistent children is
-  `persistent.ts`, with the same grace.
+- Return: the process handler exits once `run()` has left (or its bound
+  has passed). The end-of-run shutdown of dependency-only persistent
+  children is `persistent.ts`, with the same grace.
 - Run under a custom logger's control beyond `runEnd()`: the status
   region is cleared so a TTY is not left with a frozen frame.
 
@@ -88,7 +105,9 @@ ignores TERM is SIGKILLed after the grace; a second signal skips the
 grace; the in-process lifecycle: handlers removed after every run,
 `handleSignals: false` installs none; a one-shot and a ready persistent
 task each hear the signal as vx forwards it, a Ctrl-C as SIGINT; a
-task is its own session leader); `tests/abort.test.ts`
+task is its own session leader); `tests/plugin-teardown.test.ts` (a
+SIGINT flushes the sinks and tears the plugins down before the exit; a
+second signal does not wait for a teardown that hangs); `tests/abort.test.ts`
 (`RunOptions.signal`: the running child and its dependents `aborted`,
 a stubborn child SIGKILLed, an already-aborted signal runs nothing);
 `tests/keep-alive.test.ts` (one requested server exiting ends the
