@@ -358,6 +358,22 @@ echo A; echo B` went green after a failed pre hook, and a cache
         inputs, `projects`, a missing input, a transparent node, a
         cycle). Each fails without the fix, and the review's two
         end-to-end repros now re-run. The design doc and README say so.
+911.  DONE (2026-09-26, a vx-reapi review agent's lead 1). Wrong bytes
+      cached through remote execution. The execution record splits an
+      output directory the worker returned whole by the declared globs,
+      and its walk followed directories only: `dist/*` recorded `dist/sub`
+      and dropped `dist/index.js`, so a replay returned exit 0 without it
+      and core saved the short tree under the pure-input key.
+      - The last segment matches files and symlinks too, recorded as the
+        record's output files and symlinks, as the local glob saves them.
+      - Same class, same function: a glob the walk cannot split
+        (`dist/*.js`) was skipped while its sibling split, so
+        `['dist/*.js', 'dist/*/gen']` recorded only `gen`. Any such glob
+        now keeps the entry whole.
+      - Rows: `executor-helpers-sweep.test.ts` › the record's output
+        directories (three new, each failing without its fix; the
+        directory-only rows are controls). Found, not fixed: a graft
+        takes a record's files and directories, not its symlinks.
 
 ## In flight
 
