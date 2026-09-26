@@ -413,6 +413,18 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `VX_KILL_GRACE_MS` at the top and every vx it spawned ran on the 2 s
   default, and one row passed only by a race (item 849). A test that
   sets an env var for a child passes `env: { ...process.env, … }`.
+- Two signals sent back to back can land as one: a "second signal"
+  row that sent two SIGINTs in a row ran the first-signal path, and
+  three mutants of the exit hook it named survived (items 862, 863).
+  Send the second once the task has proved it heard the first (its
+  `trap … INT` writes a marker).
+- An exit hook's list drops an entry only after the cleanup it stands
+  for has landed: a release that unlisted the run lock before its async
+  unlink and rmdir left the directory to a signal exit in between
+  (item 867, macOS CI), and the same shape sat in two more places
+  (868). Drive such a window with the async call held pending (a
+  mocked `node:fs/promises`), never with a count of microtasks, which
+  missed it (868).
 - Await a gRPC call's refusal with `.then(ok, err)`, never
   `expect(…).rejects`: under `bun test` the latter held a call that
   needed more I/O until its 30 s deadline, and the same call settled in
