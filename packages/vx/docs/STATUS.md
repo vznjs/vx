@@ -177,6 +177,19 @@ test is telling the truth.
         control where the config does declare `constructor`.
         `show-info.test.ts` covers both show forms. Both rows fail
         without the fix.
+898.  DONE (2026-09-26, the same review's leads 4 and 5). `vx why`
+      misdescribed a run that did not execute cleanly.
+      - A skipped task read `skipped · executed · key ` with nothing
+        after "key". It never ran and derived no key, so it now reads
+        `skipped · no key`.
+      - A failed run saves no entry and keeps no fingerprints, but the
+        detail line said "the entry was pruned". `cli.md` names "the
+        run failed and never saved one" as a cause. The note now names
+        whichever side ended without passing: "this run ended failed
+        and saved no entry", or "the previous run …".
+      - Rows: `why.test.ts` covers the skipped line; `metrics.test.ts`
+        covers the failed side, both ways round. Both fail without the
+        fix. The pruned row now pins its exact sentence as the control.
 
 ## In flight
 

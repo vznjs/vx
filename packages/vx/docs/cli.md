@@ -1689,6 +1689,7 @@ app#build — run 019f5a02-…
 
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
+A skipped task never ran and derived no key: its line is `skipped · no key`.
 A row's kind is what the key folded: `file` (an input file, by blob
 id), `env` (a declared variable, by digest), `runtime` and
 `ws-runtime` (a declared command's output, `inputs.runtime` and

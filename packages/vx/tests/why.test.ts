@@ -544,6 +544,35 @@ describe('vx why (e2e) — the exact lines', () => {
   )
 
   it(
+    'a skipped run is not called executed and shows no empty key (item 898)',
+    async () => {
+      // The latest run becomes the shape a skip records (no key, never a
+      // hit), then goes back: the rows below read the fixture as it was.
+      const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+      const latest =
+        "rowid = (SELECT max(rowid) FROM runs WHERE project = 'app' AND task = 'build')"
+      const was = db.query(`SELECT status, hash, cache_hit FROM runs WHERE ${latest}`).get() as {
+        status: string
+        hash: string
+        cache_hit: number | null
+      }
+      db.run(`UPDATE runs SET status = 'skipped', hash = '', cache_hit = 0 WHERE ${latest}`)
+      db.close()
+      try {
+        const r = await vx(root, ['why', 'app#build'])
+        expect(r.out.split('\n')[1]).toMatch(/^ {2}this run {3}\S+ · skipped · no key$/)
+      } finally {
+        const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+        back
+          .query(`UPDATE runs SET status = ?, hash = ?, cache_hit = ? WHERE ${latest}`)
+          .run(was.status, was.hash, was.cache_hit)
+        back.close()
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a changed key with no recorded components says why there is no list',
     async () => {
       edit('DELETE FROM entry_inputs')
