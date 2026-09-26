@@ -497,11 +497,12 @@ const lastCommand = () => {
 /** Every entry of the last Execute's input root, by path. */
 const inputRoot = () => {
   const action = lastAction() as { inputRootDigest: { hash: string } }
-  const entries = new Map<string, { is_executable: boolean } | 'dir'>()
+  const entries = new Map<string, { is_executable: boolean } | { target: string } | 'dir'>()
   const walk = (hash: string, at: string) => {
     // An empty Directory is the empty blob, which the spec says is never uploaded.
     const dir = decodeDirectory(fake.blobs.get(hash) ?? new Uint8Array())
     for (const f of dir.files) entries.set(at + f.name, f)
+    for (const sl of dir.symlinks) entries.set(at + sl.name, { target: sl.target })
     for (const d of dir.directories) {
       entries.set(at + d.name, 'dir')
       walk(d.digest.hash, `${at}${d.name}/`)
@@ -787,6 +788,20 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs, the edges', () => {
     })
     await withExecutor((run) => run(withUpstream(upstream('up-x', ['lib/dist/a.js']))))
     expect(inputRoot().get('lib/dist/a.js')).toMatchObject({ is_executable: true })
+  })
+
+  // Item 920: the graft took a record's files and directories, not its
+  // symlinks, so a consumer of a remote-only upstream ran without them.
+  it('a record graft keeps the upstream’s symlinks', async () => {
+    fake.actions.set(execDigestFor('up-link').hash, {
+      exit_code: 0,
+      output_files: [{ path: 'lib/dist/a.js', digest: put('x'), is_executable: false }],
+      output_symlinks: [{ path: 'lib/dist/index.js', target: 'a.js' }],
+    })
+    await withExecutor((run) =>
+      run(withUpstream(upstream('up-link', ['lib/dist/a.js', 'lib/dist/index.js']))),
+    )
+    expect(inputRoot().get('lib/dist/index.js')).toEqual({ target: 'a.js' })
   })
 
   it('an upstream with no record, or a record whose Tree is empty, adds nothing and runs', async () => {

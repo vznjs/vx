@@ -160,6 +160,8 @@ export async function buildInputTree(args: {
   ensureDirs?: readonly string[]
   /** Files referenced by digest — upstream outputs already in the CAS. */
   fileGrafts?: readonly FileGraft[]
+  /** An upstream record's symlinks, by workspace-relative path. */
+  symlinkGrafts?: readonly { path: string; target: string }[]
   /** Directories grafted from upstream output Trees, re-canonicalised. */
   treeGrafts?: readonly TreeGraft[]
 }): Promise<InputTree> {
@@ -242,6 +244,10 @@ export async function buildInputTree(args: {
     const { node, leaf } = insertAt(graft.path)
     node.files.set(leaf, { name: leaf, digest: graft.digest, is_executable: graft.isExecutable })
     fileCount++
+  }
+  for (const graft of args.symlinkGrafts ?? []) {
+    const { node, leaf } = insertAt(graft.path)
+    node.symlinks.set(leaf, { name: leaf, target: graft.target })
   }
   for (const dir of args.ensureDirs ?? []) {
     if (dir === '') continue
