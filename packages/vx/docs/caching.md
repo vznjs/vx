@@ -245,8 +245,15 @@ over (in order):
     repos), memoized in `file_hashes` on `(mtime, size, ctime, ino)`.
     That is the same value the index holds whenever no filter applies,
     so a file's contribution doesn't flip across dirty↔clean
-    transitions. Folded as `(relPath, oid)` pairs, sorted for
-    stability across OSes and walk orders.
+    transitions. Folded as `(relPath, identity)` pairs, sorted for
+    stability across OSes and walk orders. The identity is the OID
+    prefixed by the file's git mode unless that mode is a plain
+    file's: `100755:<oid>` for an executable, `120000:<oid>` for a
+    symlink, the bare OID for 100644. The index gives the mode for a
+    clean file, and the stat gives it for any other file (owner
+    execute bit). A blob OID holds no mode, so until item 887 a
+    `chmod +x`, or a symlink swapped for a file holding its target
+    string, kept the key that `git status` and `--affected` saw move.
 
     A **symlink** folds as git folds it: the blob of its target
     _string_ (its mode-120000 index OID), whether it points at a file,
@@ -254,8 +261,11 @@ over (in order):
     bytes behind a link to a directory, or to a file outside the
     project, do not — `git diff` and `--affected` cannot see them
     either, so declare them with `workspaceFiles`. A link to a file
-    inside the project tracks that file's content because the file is
-    an input of its own. (Before 2026-09-09 a file link folded the
+    inside the project tracks that file's content only when the file
+    matches the task's input globs too: it is then an input of its own.
+    A link under `src/**` to `other/data.txt` folds the link, not
+    `other/data.txt`; name the target in the globs to track it.
+    (Before 2026-09-09 a file link folded the
     bytes behind it and a directory or dangling link fell out of the
     input set entirely, so retargeting one was a stale hit.)
 
