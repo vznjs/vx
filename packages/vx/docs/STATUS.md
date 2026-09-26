@@ -661,6 +661,21 @@ test is telling the truth.
       ways on Linux: 3 iterations enforced, and a control pointed at the
       undeclared file turned the run into RUN_ERROR, exit 1.
 
+846.  DONE (2026-09-26, the fixture helpers every suite builds on).
+      `tests/fixture-helpers.test.ts` pins `tests/helpers/workspace.ts`,
+      `local-workspace.ts` and `plugin.ts`: each `makeWorkspace` option,
+      `gitIn`'s throw and its signing-off flags, `addProject`'s manifest,
+      scoped path and empty maps, the workspace source, and the plugin
+      root's dead-pid sweep (driven in a child under its own `TMPDIR`).
+      42 mutations: 40 caught (one re-expressed after it failed to run),
+      two equivalent (the name memo recomputes the same directory). Four
+      survivors on the first pass drove rows: an empty config string, a
+      hooks text that is not `{}`, a name holding the prefix mid-way,
+      and the helper's own signing flags. The sweep taught
+      method 8 of the sweep doc: one mutant of the dead-root check
+      removed every entry of the host's `/tmp`, so every mutant now runs
+      under its own scratch `TMPDIR`.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

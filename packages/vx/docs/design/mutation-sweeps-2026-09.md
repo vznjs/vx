@@ -35,6 +35,14 @@ memory because they are only useful while sweeping.
    survivor.
 7. **A row for a real survivor carries a control** that passes with the
    guard present, past any coarse gate that would hold it anyway.
+8. **Every mutant runs under its own scratch `TMPDIR`.** A helper that
+   removes things under the temp directory is a delete whose guard the
+   sweep is about to break: a mutant of `tests/helpers/plugin.ts`'s
+   dead-root check (`alive(Number(m?.[1]))`, the name test gone)
+   removed every entry of the host's `/tmp`, the sweep's own worktree
+   and pinned Bun with it (item 846). The harness sets `TMPDIR` per
+   mutant and removes it after; a row whose subject deletes gets a
+   temp root it owns.
 
 ## The rules, as CLAUDE.md recorded them
 
