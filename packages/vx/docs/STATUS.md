@@ -414,6 +414,18 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Rows: `nx-helpers-sweep.test.ts` › Nx glob grammar in inputs
         (four). Undoing the translation fails three; undoing the token
         rule fails the brace-set row.
+915.  DONE (2026-09-26, the nx() review's lead 5). Nx splits `a:b`
+      into project and target only when `a` names a project; otherwise the
+      whole string is a target of the same project, which is how
+      script-inferred targets are named. `dependsOn: ["test:unit"]` was
+      read as project `test` and dropped with a todo, so `ci` ran without
+      its tests first.
+      - A colon string whose head is no workspace package is this
+        project's own target when it has one; neither is the old todo, not
+        a same-project edge core would refuse at load.
+      - Row: `nx-helpers-sweep.test.ts` › mapNxDeps › a colon string whose
+        head is no package, red with the branch disabled. That closes the
+        nx() review.
 
 ## In flight
 

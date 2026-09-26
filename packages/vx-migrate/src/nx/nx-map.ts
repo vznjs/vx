@@ -233,6 +233,7 @@ export async function mapNxWorkspace(
             nodeNameOf.get(meta)!,
             upstream,
             metaByNode,
+            nodeMap,
             taskNameFor,
             mapOpts,
             listing === null ? null : dotenvFor(listing, targetName, v.configuration),
@@ -378,6 +379,7 @@ function buildTask(
   nodeName: string,
   upstream: NxUpstream,
   metaByNode: ReadonlyMap<string, ProjectMeta>,
+  nodeMap: Readonly<Record<string, NxNode>>,
   taskNameFor: TaskNameFor,
   opts: MapNxOptions,
   dotenv: readonly string[] | null,
@@ -407,7 +409,13 @@ function buildTask(
     projectName,
     todos,
   )
-  const deps = mapNxDeps(target.dependsOn ?? [], metaByNode, taskNameFor, todos)
+  const deps = mapNxDeps(
+    target.dependsOn ?? [],
+    metaByNode,
+    (t) => Object.hasOwn(nodeMap[nodeName]?.data?.targets ?? {}, t),
+    taskNameFor,
+    todos,
+  )
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`
   // (Nx ≥ 17 writes it into the graph from `cacheableOperations` too —
