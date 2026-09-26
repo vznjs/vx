@@ -527,6 +527,20 @@ next?".
     zombie awaiting its reaper) or still alive (a leak). vx releases every
     group before it exits, so its guard kills nothing there to blur the
     two.
+24. **strace's own ptrace error ended a sandboxed task (2026-09-26,
+    CI on #972).** `@vzn/vx#test.bun.shard-9` exited 1 on the Linux job
+    with no failed row. Its output stopped before bun test's summary,
+    and its last line was strace's own error:
+    `ptrace(PTRACE_LISTEN,pid:…,sig:0): Input/output error`.
+    A traced task's exit code is strace's, and strace is bwrap's
+    parent, so an internal strace failure is the task's failure.
+    `PTRACE_LISTEN` is issued for a tracee in group-stop; no row of that
+    shard sends a stop signal, so what stopped a tracee is unproven. The
+    same head passed the shard in the local gate and on macOS. Candidate
+    fix, to measure first: `strace -D` makes the traced command vx's own
+    child (its exit code, and bwrap's `--die-with-parent` on vx), with
+    strace a detached grandchild, at the price of waiting for the log
+    another way.
 
 ## Decisions (this arc)
 
