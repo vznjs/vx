@@ -101,16 +101,29 @@ function record(v: unknown): Json | undefined {
  * package sits at its own name (`@vzn/vx`) and resolves from there.
  */
 function resolve(lock: Lockfile, from: string, name: string): string | undefined {
-  let base = from
-  for (;;) {
+  // A scoped name (`@s/x`) is one level at ANY depth: `foo/@s/y` → `foo` →
+  // ''. Only a root-level scope was joined, so `foo/@s/y` stepped to
+  // `foo/@s` and its `bar` resolved to `foo/@s/bar`, another package
+  // (`@s/bar`); the root `bar` it installs was never folded (item 901).
+  const levels = packageLevels(from)
+  for (let n = levels.length; ; n--) {
+    const base = levels.slice(0, n).join('/')
     const key = base === '' ? name : `${base}/${name}`
     if (lock.packages.has(key)) return key
-    if (base === '') return undefined
-    const slash = base.lastIndexOf('/')
-    // A scoped segment (`@s/x`) is one level; `@s/x/y/z` → `@s/x/y` → `@s/x` → ''.
-    base = slash === -1 ? '' : base.slice(0, slash)
-    if (base.startsWith('@') && !base.includes('/')) base = ''
+    if (n === 0) return undefined
   }
+}
+
+/** A node_modules path's package levels: `foo/@s/y/z` → foo, @s/y, z. */
+function packageLevels(path: string): string[] {
+  if (path === '') return []
+  const parts = path.split('/')
+  const out: string[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!
+    out.push(part.startsWith('@') && i + 1 < parts.length ? `${part}/${parts[++i]}` : part)
+  }
+  return out
 }
 
 /**
