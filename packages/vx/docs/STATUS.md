@@ -445,6 +445,22 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Found, not fixed: `readBlob` / `readBlobStream` have no retry on
         UNAVAILABLE, unlike the unary calls, so on the execute path one
         transient Read of a finished action's outputs fails the task.
+917.  DONE (2026-09-26, the vx-reapi review's lead 3). A remote-execution
+      hang with no deadline. When the stall timer (`exec.timeout` /
+      `executeTimeoutMs`) fired while `execute` slept in the backoff
+      between a dropped stream and its `WaitExecution`, the re-attach
+      subscribed to an already-aborted signal whose listener never fires,
+      and the stream has no deadline of its own: a wedged server held the
+      task forever.
+      - `operationStream` refuses at once on an aborted signal, before it
+        opens a stream, and the backoff sleep is abortable.
+      - Rows: `wire-exec-sweep.test.ts` › an abort that came before the
+        stream is heard without opening it; `executor-sweep.test.ts` › a
+        stall that fires during the re-attach backoff still bounds the
+        task (elapsed under 350 ms against a 200 ms bound, measured
+        202–210). Each fix is held on its own: a plain sleep with the
+        pre-check kept is caught (515 ms), and the pre-check removed is
+        caught by the wire row.
 
 ## In flight
 

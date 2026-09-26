@@ -120,6 +120,38 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
     }
   })
 
+  it('an abort that came before the stream is heard without opening it', async () => {
+    let release!: () => void
+    fake.onExecute = () => ({
+      stages: ['QUEUED'],
+      hold: new Promise<void>((r) => {
+        release = r
+      }),
+    })
+    try {
+      await using(async (c) => {
+        const ctl = new AbortController()
+        ctl.abort()
+        const mark = fake.calls.length
+        // The listener an aborted signal never fires is the hang; bounded so
+        // the row fails instead of holding the file open.
+        const refused = await Promise.race([
+          c.execute(c.digestOf(bytes('pre-aborted')), {}, ctl.signal),
+          Bun.sleep(1000).then(() => 'the abort was not heard'),
+        ]).then(
+          (v) => (typeof v === 'string' ? v : 'resolved'),
+          (e: Error) => e.message,
+        )
+        expect([refused, fake.calls.slice(mark).map((x) => x.method)]).toEqual([
+          'reapi: execution aborted',
+          [],
+        ])
+      })
+    } finally {
+      release?.()
+    }
+  })
+
   it('no stage is no report; an unnamed stage is STAGE_n; a stage past a digest field still reads', async () => {
     // `stage = 1` after `action_digest = 2`: valid protobuf, not the order an
     // encoder writes, so the reader must skip the digest to reach the stage.

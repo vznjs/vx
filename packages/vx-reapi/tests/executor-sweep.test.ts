@@ -644,6 +644,45 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
     }
   })
 
+  it('a stall that fires during the re-attach backoff still bounds the task', async () => {
+    // Execute and the first WaitExecution each drop at once, so the stall
+    // (200 ms from Execute's EXECUTING) fires inside the second backoff,
+    // 100 → 500 ms; the WaitExecution after it would hold forever. Heard in
+    // the backoff it lands near 200 ms; heard only when the backoff ends,
+    // near 500.
+    let release!: () => void
+    const forever = new Promise<void>((r) => {
+      release = r
+    })
+    let waits = 0
+    let t0 = 0
+    fake.onExecute = (_r, method) => {
+      if (method === 'Execute') t0 = Date.now()
+      return method === 'Execute' || waits++ === 0
+        ? { stages: ['EXECUTING'], error: { code: grpc.status.UNAVAILABLE, details: 'drop' } }
+        : { stages: ['EXECUTING'], hold: forever }
+    }
+    try {
+      const refused = await withExecutor(
+        (run) =>
+          refusal(
+            Promise.race([
+              run(request()),
+              Bun.sleep(1000).then(() => {
+                throw new Error('the stall was lost in the backoff')
+              }),
+            ]),
+          ),
+        { executeTimeoutMs: 200 },
+      )
+      const elapsed = Date.now() - t0
+      expect(refused).toContain('was still executing 200ms after the worker started it')
+      expect([waits, elapsed < 350]).toEqual([1, true])
+    } finally {
+      release()
+    }
+  })
+
   it('an operation that ends in an error refuses with its message', async () => {
     fake.onExecute = () => ({ opError: { code: 9, message: 'precondition' } })
     expect(await withExecutor((run) => refusal(run(request())))).toContain(
