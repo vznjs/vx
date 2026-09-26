@@ -635,6 +635,29 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Row: `scoped-config-loading.test.ts` › a closure is walked once
         per project, and not at all once every project is in. Red without
         the fix, and red with either guard removed.
+933.  DONE (2026-09-26, the vx-lockfile review). Each parser folded a
+      named list of install-wide fields into every project, and a field
+      off the list moved no key and `--affected` selected nothing. Three
+      such fields decide whose install scripts run, each reproduced with a
+      real package manager: bun.lock's `trustedDependencies` (Bun 1.4.2),
+      a pnpm 8 v6 lockfile's `onlyBuiltDependencies` /
+      `neverBuiltDependencies`, and yarn 4's root-workspace
+      `dependenciesMeta`. A workspace other than the root replayed output
+      built under the old install.
+      - pnpm and bun fold every top-level field except the ones they read
+        per project. A berry entry folds every field except its dependency
+        lists. So a field the parsers have never seen falls on the safe
+        side. `DIGEST_VERSION` 3 → 4.
+      - Rows: `bun.test.ts`, `pnpm.test.ts` and `yarn.test.ts` each have
+        the reproduced field and a field no parser knows; all seven are red
+        without the fix. Controls: removing any per-project exclusion
+        reddens an existing row, and a new bun row does the same for
+        `workspaces` (a workspace's own entry moves only it and what links
+        it). v5's top-level lone importer stays in the global fold; it is
+        the only importer, so nothing tells the two apart.
+      - The configure guide's lockfile table says so. The site law that
+        held its cell to the old list now holds it to the set each parser
+        skips; it goes red when the cell drops one.
 
 ## In flight
 

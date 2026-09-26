@@ -781,6 +781,27 @@ packages:
     ])
   })
 
+  // Item 933: the install-wide fields were an allow-list, and pnpm 8's v6
+  // lockfile records `onlyBuiltDependencies` / `neverBuiltDependencies`
+  // (which decide whose install scripts run) at the top, where it read
+  // nothing. Every top-level field outside the per-importer ones now folds.
+  it.each([
+    ['onlyBuiltDependencies', v6, "lockfileVersion: '6.0'\n", 'onlyBuiltDependencies:\n  - foo\n'],
+    [
+      'neverBuiltDependencies',
+      v6,
+      "lockfileVersion: '6.0'\n",
+      'neverBuiltDependencies:\n  - foo\n',
+    ],
+    ['a field no parser knows', () => v9(), "lockfileVersion: '9.0'\n", 'someFutureField: x\n'],
+  ])('the install-wide `%s` alone moves every importer', (_field, make, at, block) => {
+    const before = make()
+    const after = before.replace(at, `${at}\n${block}`)
+    expect(after).not.toBe(before)
+    expect(movedDirs(before, after).sort()).toEqual([...digests(before).keys()].sort())
+    expect(digests(before).size).toBeGreaterThan(1)
+  })
+
   it('the lockfile version alone moves every importer', () => {
     const text = v9()
     expect(

@@ -34,7 +34,14 @@ function silent(): Logger {
  * `b`. `bar` at the root is the knob the tests turn.
  */
 function lock(
-  opts: { bar?: string; baz?: string; nestedBar?: string; override?: string; ts?: string } = {},
+  opts: {
+    bar?: string
+    baz?: string
+    nestedBar?: string
+    override?: string
+    ts?: string
+    top?: string
+  } = {},
 ): string {
   const bar = opts.bar ?? '2.0.0'
   const ts = opts.ts ?? '5.0.0'
@@ -69,7 +76,7 @@ function lock(
       },
     },
   },
-${opts.override === undefined ? '' : `  "overrides": { "zod": "${opts.override}" },\n`}  "packages": {
+${opts.override === undefined ? '' : `  "overrides": { "zod": "${opts.override}" },\n`}${opts.top === undefined ? '' : `  ${opts.top}\n`}  "packages": {
     "a": ["a@workspace:packages/a"],
     "b": ["b@workspace:packages/b"],
     "c": ["c@workspace:packages/c"],
@@ -216,6 +223,31 @@ describe('workspace digests', () => {
     const before = digests(lock())
     const after = digests(lock({ override: '4.0.0' }))
     for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
+  })
+
+  // Item 933: the install-wide fields were an allow-list, and it left out
+  // `trustedDependencies`, which decides whose install scripts run.
+  it.each([
+    ['trustedDependencies', '"trustedDependencies": ["bar"],'],
+    ['a field no parser knows', '"someFutureField": 1,'],
+  ])('the install-wide `%s` alone moves every workspace', (_field, top) => {
+    const before = digests(lock())
+    const after = digests(lock({ top }))
+    expect(before.size).toBe(4)
+    for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
+  })
+
+  it("a workspace's own manifest entry moves that workspace and what links it, no other", () => {
+    const before = lock()
+    // b gains a dependency on foo, which a already reaches.
+    const after = before.replace('"bar": "^1",', '"bar": "^1",\n        "foo": "^1",')
+    expect(after).not.toBe(before)
+    const b = digests(before)
+    const a = digests(after)
+    expect([...a.keys()].filter((dir) => a.get(dir) !== b.get(dir)).sort()).toEqual([
+      'packages/b',
+      'packages/c',
+    ])
   })
 
   it('reads a scoped nested path level by level', () => {

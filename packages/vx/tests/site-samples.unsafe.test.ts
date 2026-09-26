@@ -1259,27 +1259,31 @@ describe('the tasks guide uses the status words the scheduler sets', () => {
 // BUN one, which describes the same install-wide material, was not — it named
 // three of six and left out `lockfileVersion` and `configVersion`, so the two
 // paragraphs read as if bun folded less than pnpm (item 380, 2026-09-19). The
-// npm and yarn paragraphs enumerate nothing, by design, and are not here.
+// npm and yarn parsers skip no top-level set, and their rows are not here.
 describe.each(['pnpm', 'bun'])(
   'the lockfiles guide lists what a %s install folds into every digest',
   (manager) => {
-    it('its install-wide list is the parser’s global object', () => {
+    it('its install-wide cell is every top-level field but the parser’s per-project ones', () => {
       const src = readFileSync(
         path.resolve(import.meta.dir, '..', '..', 'vx-lockfile', 'src', `${manager}.ts`),
         'utf8',
       )
-      const global = /const global = (?:stable|JSON\.stringify)\(\{([\s\S]*?)\n  \}\)/.exec(src)
-      expect(global).not.toBeNull()
-      const keys = [...global![1]!.matchAll(/^\s+(\w+):/gm)].map((m) => m[1]!)
-      expect(keys.length).toBe(6)
+      // A deny-list since item 933: the cell names what is NOT folded into
+      // every digest, so it is held to the set the parser skips.
+      const set = /const PER_\w+ = new Set\(\[([\s\S]*?)\]\)/.exec(src)
+      expect(set).not.toBeNull()
+      const keys = [...set![1]!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
+      expect(keys.length).toBe(manager === 'pnpm' ? 5 : 2)
       const page = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Lockfiles')
-      // That manager's OWN row, not the page: both list `lockfileVersion`,
-      // so a whole-page search lets one row cover for the other's omission
-      // — which is how the bun list lost two keys while the pnpm list
-      // carried them. (Paragraphs until the short site made them a table.)
+      // That manager's OWN row, not the page: a whole-page search lets one
+      // row cover for the other's omission — which is how the bun list lost
+      // two keys while the pnpm list carried them.
       const row = new RegExp('^\\| `' + manager + '\\(\\)` +\\|.*$', 'm').exec(page)
       expect(row).not.toBeNull()
-      for (const key of keys) expect(row![0]).toContain('`' + key + '`')
+      const cell = row![0].split('|')[3]!
+      expect(cell).toContain('every top-level field but')
+      const named = [...cell.split('(')[0]!.matchAll(/`(\w+)`/g)].map((m) => m[1]!)
+      expect(named.sort()).toEqual([...keys].sort())
     })
   },
 )

@@ -249,6 +249,31 @@ describe('workspace digests (yarn berry)', () => {
     expect(after.get('packages/a')).toBe(before.get('packages/a'))
   })
 
+  // Item 933: an entry folded its resolution and checksum alone, so the
+  // root workspace's `dependenciesMeta` (`built`, `unplugged`, which govern
+  // the whole install) moved nothing. Every field but the dependency lists
+  // folds now: the root's moves the root's digest, which the claim folds
+  // into every project (the root devDependency row below holds that
+  // fold), and a field on a package entry moves what depends on it.
+  it("the root workspace's dependenciesMeta moves the root's digest", () => {
+    const root = '  resolution: "ws@workspace:."\n'
+    const before = berry()
+    const after = before.replace(
+      root,
+      `${root}  dependenciesMeta:\n    typescript@5.0.0:\n      built: false\n`,
+    )
+    expect(after).not.toBe(before)
+    expect(movedDirs(before, after)).toEqual(['.'])
+  })
+
+  it('a field no parser knows on a package entry moves what reaches it', () => {
+    const entry = '  resolution: "bar@npm:2.0.0"\n'
+    const before = berry()
+    const after = before.replace(entry, `${entry}  someFutureField: x\n`)
+    expect(after).not.toBe(before)
+    expect(movedDirs(before, after)).toEqual(['packages/a'])
+  })
+
   it('the metadata cache key moves every workspace', () => {
     const before = digests(berry())
     const after = digests(berry({ cacheKey: '11c0' }))
