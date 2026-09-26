@@ -1,11 +1,12 @@
 // An Nx target's `inputs` as vx's cache inputs. Named inputs expand from
-// nx.json; `{projectRoot}/…` is a project glob, `{workspaceRoot}/…` a
-// workspace one; `{ env }` and `{ runtime }` map to their vx twins; what
-// vx folds through `dependsOn` already (`^x`, `dependentTasksOutputFiles`,
-// `externalDependencies`) is a todo saying so. Extracted from `buildTask`
-// in item 606; the rules are unchanged.
+// the project's scope (nx.json's merged under its own); `{projectRoot}/…`
+// is a project glob, `{workspaceRoot}/…` a workspace one; `{ env }` and
+// `{ runtime }` map to their vx twins; `^x` is recorded for the mapper to
+// resolve over the project graph (nx-upstream.ts). What vx folds through `dependsOn` already
+// (`dependentTasksOutputFiles`, `externalDependencies`) is a todo saying
+// so. Extracted from `buildTask` in item 606.
 
-interface NxInputs {
+export interface NxInputs {
   readonly files: string[]
   readonly wsFiles: string[]
   readonly envNames: string[]
@@ -16,16 +17,18 @@ interface NxInputs {
    * as "not representable in vx" (walked the Nx path, 2026-09-20).
    */
   readonly runtimeCmds: string[]
+  /** `^name` / `{ input, dependencies | projects }`: whose `name` to fold. */
+  readonly upstream: Array<{ readonly name: string; readonly of: 'deps' | readonly string[] }>
 }
 
 export function emptyNxInputs(): NxInputs {
-  return { files: [], wsFiles: [], envNames: [], runtimeCmds: [] }
+  return { files: [], wsFiles: [], envNames: [], runtimeCmds: [], upstream: [] }
 }
 
 /** Expands `entries` into `into`; a gap is a line in `todos`. */
 export function expandNxInputs(
   entries: readonly unknown[],
-  namedInputs: Record<string, unknown[]> | null,
+  named: Readonly<Record<string, unknown[]>>,
   into: NxInputs,
   todos: string[],
 ): void {
@@ -46,12 +49,11 @@ export function expandNxInputs(
         return
       }
       if (s.startsWith('^')) {
-        todos.push(
-          // Principle 5: the cascade folds each upstream task's KEY (its
-          // inputs), never its outputs — the old text said the reverse.
-          `deps-input ${JSON.stringify(entry)}: vx already folds each dependency's cache key ` +
-            '(its inputs, never its outputs) through dependsOn — usually safe to drop',
-        )
+        if (neg !== '') {
+          todos.push(`input ${JSON.stringify(entry)}: a negated dependency input — map manually`)
+          return
+        }
+        into.upstream.push({ name: s.slice(1), of: 'deps' })
         return
       }
       if (s.includes('{')) {
@@ -59,16 +61,16 @@ export function expandNxInputs(
         return
       }
       // Bare string = named-input reference.
-      const named = namedInputs?.[s]
-      if (named === undefined) {
+      const members = named[s]
+      if (members === undefined) {
         todos.push(
-          `named input ${JSON.stringify(s)} not found in nx.json — declare its globs manually`,
+          `named input ${JSON.stringify(s)} not found in nx.json or the project — declare its globs manually`,
         )
         return
       }
       if (seen.has(s)) return
       seen.add(s)
-      for (const e of named) expand(e, seen)
+      for (const e of members) expand(e, seen)
       return
     }
     if (entry && typeof entry === 'object') {
@@ -100,10 +102,17 @@ export function expandNxInputs(
         return
       }
       if (typeof o.input === 'string') {
-        if (o.dependencies === true || o.projects !== undefined) {
-          todos.push(
-            `deps-input ${JSON.stringify(entry)}: vx folds upstream via dependsOn automatically`,
-          )
+        if (o.dependencies === true) {
+          into.upstream.push({ name: o.input, of: 'deps' })
+          return
+        }
+        if (o.projects !== undefined) {
+          const of = typeof o.projects === 'string' ? [o.projects] : o.projects
+          if (!Array.isArray(of) || !of.every((p) => typeof p === 'string')) {
+            todos.push(`input ${JSON.stringify(entry)} not representable in vx`)
+            return
+          }
+          into.upstream.push({ name: o.input, of: of as string[] })
           return
         }
         expand(o.input, seen)

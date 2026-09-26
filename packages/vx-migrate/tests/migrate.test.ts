@@ -529,7 +529,15 @@ describe('vx migrate (nx)', () => {
       ])
       expect(build.cache?.outputs.workspaceFiles).toEqual(['reports/build.json'])
       // dependsOn object forms.
-      expect(build.dependsOn).toEqual(['^build', 'codegen', '^prebuild', 'pkg-b#tool', 'fmt'])
+      // ^production is pkg-b's `nx-input:production` twin (item 910).
+      expect(build.dependsOn).toEqual([
+        '^build',
+        'codegen',
+        '^prebuild',
+        'pkg-b#tool',
+        'fmt',
+        'pkg-b#nx-input:production',
+      ])
 
       // cache absent + no inputs/outputs → no cache block.
       expect(tasks.codegen!.cache).toBeUndefined()
@@ -564,14 +572,11 @@ describe('vx migrate (nx)', () => {
     expect(text).toContain('{"port":4200}')
   })
 
-  it("the cascade TODO says what vx folds: each dependency's key, never its outputs", async () => {
-    // pkg-a's build carries the `^production` input (the fixture above); the
-    // todo it earns must not claim the reverse of principle 5.
+  it('a `^` input is no todo: it resolves to the dependency’s files (item 910)', async () => {
+    // It was dropped as "vx already folds each dependency's key through
+    // dependsOn", which holds only along a `^` edge Nx does not require.
     const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
-    expect(text).toContain(
-      `deps-input "^production": vx already folds each dependency's cache key (its inputs, never its outputs) through dependsOn`,
-    )
-    expect(text).not.toContain('upstream outputs')
+    expect(text).not.toContain('deps-input')
   })
 
   it(
@@ -604,7 +609,7 @@ describe('vx migrate (nx)', () => {
   )
 
   it('reports nx TODO reasons per task', () => {
-    expect(result.out).toMatch(/pkg-a#build: .*\^production/)
+    expect(result.out).not.toMatch(/\^production/)
     // {workspaceRoot}/<path> entries map to workspaceFiles — no TODO.
     expect(result.out).not.toMatch(/pkg-a#build: .*workspaceRoot/)
     expect(result.out).toMatch(/pkg-a#build: .*externalDependencies/)

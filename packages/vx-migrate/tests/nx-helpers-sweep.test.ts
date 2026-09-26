@@ -6,7 +6,7 @@ import { emptyNxInputs, expandNxInputs } from '../src/nx/nx-inputs.js'
 import { mapNxOutputs } from '../src/nx/nx-outputs.js'
 import { mapNxDeps } from '../src/nx/nx-deps.js'
 
-function inputs(entries: unknown[], named: Record<string, unknown[]> | null = null) {
+function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
   const into = emptyNxInputs()
   const todos: string[] = []
   expandNxInputs(entries, named, into, todos)
@@ -35,14 +35,24 @@ describe('expandNxInputs', () => {
         { fileset: '{projectRoot}/lib/**' },
         { input: 'prod' },
         { input: 'prod', dependencies: true },
+        { input: 'prod', projects: ['x', 'y'] },
+        { input: 'prod', projects: 'z' },
+        '^prod',
+        '!^prod',
         { externalDependencies: ['react'] },
         { dependentTasksOutputFiles: '**/*.d.ts' },
       ],
       { prod: ['{projectRoot}/src/**'] },
     )
     expect(got.files).toEqual(['lib/**', 'src/**'])
+    expect(got.upstream).toEqual([
+      { name: 'prod', of: 'deps' },
+      { name: 'prod', of: ['x', 'y'] },
+      { name: 'prod', of: ['z'] },
+      { name: 'prod', of: 'deps' },
+    ])
     expect(got.todos).toEqual([
-      'deps-input {"input":"prod","dependencies":true}: vx folds upstream via dependsOn automatically',
+      'input "!^prod": a negated dependency input — map manually',
       'input {externalDependencies: ["react"]}: vx hashes the project\'s package.json into every key — usually safe to drop',
       "input {dependentTasksOutputFiles: …}: vx already folds each dependency's cache key (its inputs, never its outputs) through dependsOn — a change upstream is a key change here",
     ])

@@ -35,6 +35,7 @@ import {
   nonAtomizedTargetOf,
 } from './nx-dotenv.js'
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
+import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
 import { mapNxOutputs } from './nx-outputs.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
@@ -57,6 +58,7 @@ interface NxNode {
   name?: string
   data?: {
     root?: string
+    namedInputs?: Record<string, unknown[]>
     targets?: Record<string, NxTarget>
     metadata?: { targetGroups?: unknown }
   }
@@ -132,11 +134,13 @@ export async function mapNxWorkspace(
   for (const meta of metas) metaByRel.set(normRel(relPosix(root, meta.dir)), meta)
   const metaByNode = new Map<string, ProjectMeta>()
   const nodeByMeta = new Map<ProjectMeta, NxNode>()
+  const nodeNameOf = new Map<ProjectMeta, string>()
   for (const [nodeName, node] of Object.entries(nodeMap)) {
     const meta = metaByRel.get(normRel(node?.data?.root ?? ''))
     if (meta) {
       metaByNode.set(nodeName, meta)
       nodeByMeta.set(meta, node)
+      nodeNameOf.set(meta, nodeName)
     }
   }
 
@@ -166,7 +170,10 @@ export async function mapNxWorkspace(
     allMetas.push(synthetic)
     metaByNode.set(nodeName, synthetic)
     nodeByMeta.set(synthetic, node)
+    nodeNameOf.set(synthetic, nodeName)
   }
+
+  const upstream = planNxUpstream(nodeMap, g.dependencies, namedInputs, metaByNode)
 
   const taskNameFor: TaskNameFor = (project, target, configuration) => {
     const t = nodeMap[project]?.data?.targets?.[target]
@@ -223,7 +230,8 @@ export async function mapNxWorkspace(
             targetName,
             target,
             v,
-            namedInputs,
+            nodeNameOf.get(meta)!,
+            upstream,
             metaByNode,
             taskNameFor,
             mapOpts,
@@ -233,6 +241,15 @@ export async function mapNxWorkspace(
       }
     }
     mapped.push({ meta, tasks })
+  }
+  // The `nx-input:<name>` twins the `^` inputs above asked for, in every
+  // project a graph node owns — one with no targets too.
+  const byMeta = new Map(mapped.map((m) => [m.meta, m]))
+  for (const [nodeName, list] of upstream.inputTasks()) {
+    const meta = metaByNode.get(nodeName)!
+    const entry = byMeta.get(meta)
+    if (entry !== undefined) entry.tasks.push(...list)
+    else mapped.push({ meta, tasks: list })
   }
 
   // Nx gives `^name` no edges when no project runs the target; core refuses
@@ -358,7 +375,8 @@ function buildTask(
   targetName: string,
   target: NxTarget,
   variant: Variant,
-  namedInputs: Record<string, unknown[]> | null,
+  nodeName: string,
+  upstream: NxUpstream,
   metaByNode: ReadonlyMap<string, ProjectMeta>,
   taskNameFor: TaskNameFor,
   opts: MapNxOptions,
@@ -380,7 +398,7 @@ function buildTask(
   )
 
   const inputs = emptyNxInputs()
-  expandNxInputs(target.inputs ?? [], namedInputs, inputs, todos)
+  expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), inputs, todos)
   const { outFiles, wsOutFiles } = mapNxOutputs(target.outputs ?? [], options, projectRel, todos)
   const deps = mapNxDeps(target.dependsOn ?? [], metaByNode, taskNameFor, todos)
 
@@ -398,6 +416,18 @@ function buildTask(
   const cacheEnabled = !persistent && cacheWanted
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
+  }
+  if (cacheEnabled && mapped !== null) {
+    // No `inputs` is Nx's `default` and `^default`: the project's
+    // `default` named input (its whole tree unless declared) and each
+    // dependency's. No gap to report (487 lines per run on refine,
+    // 2026-09-22).
+    if (target.inputs === undefined)
+      expandNxInputs(['default', '^default'], upstream.namedOf(nodeName), inputs, todos)
+    if (inputs.files.length === 0 && target.inputs === undefined) inputs.files.push('**/*')
+    // Before the env block: a dependency's `{ env }` passes through too.
+    for (const edge of upstream.resolve(nodeName, inputs, todos))
+      if (!deps.includes(edge)) deps.push(edge)
   }
 
   if (mapped === null) {
@@ -431,14 +461,6 @@ function buildTask(
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
   if (cacheEnabled) {
-    // No `inputs` is Nx's `default` named input when nx.json declares
-    // one, else the project's whole tree — the same set either way, so
-    // it is no gap to report (487 lines per run on refine, 2026-09-22).
-    if (target.inputs === undefined) {
-      if (namedInputs?.['default'] !== undefined)
-        expandNxInputs(['default'], namedInputs, inputs, todos)
-      if (inputs.files.length === 0) inputs.files.push('**/*')
-    }
     const cacheInputs: Record<string, unknown> = { files: inputs.files }
     if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
     if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
