@@ -55,9 +55,14 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
       config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
     })
 
-  async function bound(port: number): Promise<string> {
+  /**
+   * The socket THIS run binds: a box that ran bridged tasks before item
+   * 877 holds sockets for other tags, and a free port can be one of
+   * theirs (the gate after 877 found one).
+   */
+  async function bound(port: number, before: readonly string[]): Promise<string> {
     for (let i = 0; i < 200; i++) {
-      const [sock] = sockets(port)
+      const sock = sockets(port).find((s) => !before.includes(s))
       if (sock !== undefined) return sock
       await Bun.sleep(10)
     }
@@ -66,18 +71,19 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
 
   it('is removed when the task ends', async () => {
     const port = freePort()
+    const before = sockets(port)
     const running = run(port, 'sleep 1')
     // The positive first: the socket is there while the task runs.
-    const sock = await bound(port)
+    const sock = await bound(port, before)
     expect(existsSync(sock)).toBe(true)
     expect((await running).exitCode).toBe(0)
-    expect(sockets(port)).toEqual([])
+    expect(sockets(port)).toEqual(before)
   })
 
   it('is removed by an exit while the task runs', async () => {
     const port = freePort()
     const running = run(port, 'sleep 2')
-    const sock = await bound(port)
+    const sock = await bound(port, sockets(port))
     expect(existsSync(sock)).toBe(true)
     process.emit('exit', 0)
     const left = existsSync(sock)
