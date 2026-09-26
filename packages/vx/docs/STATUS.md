@@ -798,6 +798,28 @@ serve.ts` under bwrap, some parented to init.
       - Lead 2 (the config cache replaying a config that calls
         `machineParallelism()`) is item 888.
 
+888.  DONE (2026-09-26, the same review's lead 2, reproduced). The config
+      evaluation cache counted every import from `@vzn/vx` as pure, on
+      the ground that `defineProject` / `defineWorkspace` are identity
+      functions. Core also exports what reads the machine
+      (`machineParallelism`, `machineMemoryBytes`, `collectInfo`) and the
+      disk. A config computing `jobs=${machineParallelism()}` ran under
+      `taskset -c 0` (`jobs=1`), and a plain run on the 4-core box then
+      read `up-to-date` with `jobs=1`: the cached config kept the task's
+      key.
+      - An `@vzn/vx` import is pure now only when every value it takes is
+        in `PURE_CORE_EXPORTS`: `defineProject`, `defineWorkspace`,
+        `splitTaskId`, `normalizeGlob`, `isLiteralPattern` and three
+        constant tables. Types are always fine. Any other name, a
+        namespace or default import, or an `export *` of the package
+        evaluates live.
+      - Rows in `config-cache.test.ts` (item 888): the pure spellings
+        still key (an alias, a multi-line list, types); seven impure
+        spellings do not, and that row fails with the check removed. A
+        third row holds every allowlisted name to a real export of
+        `src/index.ts`.
+      - The CLI repro reads `miss` with `jobs=4` on the second run.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
