@@ -145,6 +145,25 @@ test is telling the truth.
         on Linux were green before the change.
       - A re-run of the job was refused (403), so the row went into
         #967 rather than a PR of its own.
+896.  DONE (2026-09-26, an inspection-verb review agent's lead 1). A
+      reading verb reset the cache index. `vx last`, `vx why`, `vx info`
+      and `vx cache prune --dry-run` dropped every table of a `cache.db`
+      whose schema they could not read, entries and run history alike.
+      They did it to a NEWER schema too, and said "vx upgraded" after
+      the downgrade. So did a run: an older vx binary beside a newer one
+      (a global install and a workspace's own) wiped the newer one's
+      index.
+      - Now only an earlier schema is reset, and only by a writing
+        opener. `Cache.inspect(dir)`, used by the four reading verbs,
+        refuses any schema it cannot read. Every opener refuses a newer
+        one. Each refusal is a `UserError` naming the directory and both
+        versions, and leaves the index as it was.
+      - Rows: `schema-reset-notice.test.ts`. One per reading verb over an
+        earlier schema, plus a newer schema refused by a run and by
+        `last`, each comparing the index before and after. All five fail
+        without the fix. The old `last` and `why` rows, which pinned the
+        reset notice, are replaced; `vx show` still shares the run's
+        loader and resets like a run.
 
 ## In flight
 

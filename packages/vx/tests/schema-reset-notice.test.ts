@@ -43,6 +43,43 @@ async function runOnce(): Promise<string[]> {
   return lines.filter((l) => l.includes('cache index reset') || l.includes('cache format changed'))
 }
 
+/** The index as a reader finds it: the recorded schema and how many entries and runs it holds. */
+function index(): { version: string; entries: number; runs: number } {
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  try {
+    return db
+      .query(
+        "SELECT (SELECT value FROM schema_meta WHERE key = 'version') AS version, (SELECT count(*) FROM entries) AS entries, (SELECT count(*) FROM invocations) AS runs",
+      )
+      .get() as { version: string; entries: number; runs: number }
+  } finally {
+    db.close()
+  }
+}
+
+/** Runs a verb with stderr captured; resolves to what it threw (or null) and what it wrote. */
+async function verb(args: string[]): Promise<{ threw: string | null; stderr: string }> {
+  process.chdir(root)
+  let stderr = ''
+  const origErr = process.stderr.write.bind(process.stderr)
+  const origOut = process.stdout.write.bind(process.stdout)
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    stderr += String(chunk)
+    return true
+  }) as typeof process.stderr.write
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  let threw: string | null = null
+  try {
+    await cli(args)
+  } catch (err) {
+    threw = (err as Error).message
+  } finally {
+    process.stderr.write = origErr
+    process.stdout.write = origOut
+  }
+  return { threw, stderr }
+}
+
 function pokeVersion(value: string): void {
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
   db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(value)
@@ -82,24 +119,45 @@ describe('a schema reset says so once', () => {
     expect(await runOnce()).toEqual([])
   })
 
-  it('a reading verb says it on stderr', async () => {
+  // Item 896: a reading verb never resets the index. `vx last`, `vx why`,
+  // `vx info` and a dry prune dropped every table of an earlier schema, and
+  // of a NEWER one too, announcing "vx upgraded" after a downgrade.
+  for (const args of [
+    ['last'],
+    ['why', 'app#build'],
+    ['info'],
+    ['cache', 'prune', '--older-than', '1d', '--dry-run'],
+  ]) {
+    it(`\`vx ${args[0]}${args[0] === 'cache' ? ' prune --dry-run' : ''}\` refuses an earlier schema and leaves it untouched`, async () => {
+      expect(await runOnce()).toEqual([])
+      pokeVersion('v0')
+      const before = index()
+      const { threw, stderr } = await verb(args)
+      expect({ threw, stderr, after: index() }).toEqual({
+        threw: expect.stringContaining(
+          'holds index schema v0 from an earlier vx',
+        ) as unknown as string,
+        stderr: '',
+        after: before,
+      })
+      expect(before.entries).toBe(1)
+    })
+  }
+
+  it('every opener, a run too, refuses a NEWER schema and leaves it untouched', async () => {
     expect(await runOnce()).toEqual([])
-    pokeVersion('v0')
-    process.chdir(root)
-    let stderr = ''
-    const orig = process.stderr.write.bind(process.stderr)
-    process.stderr.write = ((chunk: string | Uint8Array) => {
-      stderr += String(chunk)
-      return true
-    }) as typeof process.stderr.write
+    pokeVersion('v999')
+    const before = index()
+    let threw: unknown
     try {
-      // The reset took the history with it, so `vx last` has nothing to
-      // show — and the notice, already on stderr, is what explains that.
-      await expect(cli(['last'])).rejects.toThrow(/no recorded runs yet/)
-    } finally {
-      process.stderr.write = orig
+      await runOnce()
+    } catch (err) {
+      threw = err
     }
-    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
+    expect((threw as Error).message).toContain('holds index schema v999, written by a newer vx')
+    expect((await verb(['last'])).threw).toContain('written by a newer vx')
+    expect(index()).toEqual(before)
+    expect(before).toEqual({ version: 'v999', entries: 1, runs: 1 })
   })
 
   it('`vx show` says it too, from the staged load the reading verbs share', async () => {
@@ -119,24 +177,6 @@ describe('a schema reset says so once', () => {
     } finally {
       process.stderr.write = origErr
       process.stdout.write = origOut
-    }
-    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
-  })
-
-  it('`vx why` says it too', async () => {
-    expect(await runOnce()).toEqual([])
-    pokeVersion('v0')
-    process.chdir(root)
-    let stderr = ''
-    const orig = process.stderr.write.bind(process.stderr)
-    process.stderr.write = ((chunk: string | Uint8Array) => {
-      stderr += String(chunk)
-      return true
-    }) as typeof process.stderr.write
-    try {
-      await expect(cli(['why', 'app#build'])).rejects.toThrow(/no recorded runs/)
-    } finally {
-      process.stderr.write = orig
     }
     expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
   })

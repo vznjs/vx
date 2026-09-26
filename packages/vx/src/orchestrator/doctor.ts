@@ -120,7 +120,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
     opts.cacheDir === undefined
       ? resolveCacheDir(root, workspaceConfig)
       : path.resolve(cwd, opts.cacheDir)
-  const cache = new Cache(cacheDir)
+  const cache = Cache.inspect(cacheDir)
   noteSchemaReset(cache, warn)
   let stats
   let orphans

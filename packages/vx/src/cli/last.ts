@@ -166,7 +166,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
   if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`)
 
   const root = await findWorkspaceRoot(process.cwd())
-  const cache = new Cache(await cliCacheDir(root, parsed.cacheDir))
+  const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
   noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()

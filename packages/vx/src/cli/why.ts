@@ -135,7 +135,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   }
 
   const root = await findWorkspaceRoot(process.cwd())
-  const cache = new Cache(await cliCacheDir(root, parsed.cacheDir))
+  const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
   noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()
