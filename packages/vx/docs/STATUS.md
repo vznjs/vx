@@ -679,6 +679,21 @@ serve.ts` under bwrap, some parented to init.
         Open, cause unknown; the next leak is read from the survivor's
         `NSpid` and children before it is killed.
 
+884.  DONE (2026-09-26, reviewing 882's lifecycle). 882's deferred reset
+      raced the next run. A held server's exit starts the reset unawaited,
+      and a watch cycle stops its server and starts its run straight
+      away, so the run's `initSandbox` found SRT still up and hot-reloaded
+      it, and the reset landed after and tore SRT down under the cycle.
+      - `initSandbox` now waits for a reset in flight.
+      - Row: `sandbox-runtime.unsafe.test.ts` › "the next run’s sandbox
+        starts after the reset a stopped server deferred, never under it".
+        It holds `SandboxManager.reset` for 300 ms and pins the order.
+        Without the wait it reads `reset`, `initialize`, `reset`.
+      - A `vx watch` probe (a sandboxed server on a `localBinding` port,
+        a sandboxed build, two cycles, then Ctrl-C) kept the port up
+        across both cycles. After the exit it found no host socat, no
+        socket and no process of the workspace's left.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

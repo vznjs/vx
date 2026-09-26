@@ -365,6 +365,10 @@ export async function initSandbox(opts?: {
    */
   allowAllUnixSockets?: boolean
 }): Promise<void> {
+  // A reset a server's exit started unawaited: a watch cycle stops its
+  // server and starts its run at once, and an init under that reset
+  // found SRT up, hot-reloaded it, and had it torn down after (item 884).
+  await resetting
   // Before SRT starts, so the very first task already has one.
   await mkdir(sandboxTmpdir(), { recursive: true })
   const { SandboxManager } = await loadSrt()
@@ -406,6 +410,8 @@ export async function initSandbox(opts?: {
  */
 const liveServers = new Set<string>()
 let resetDeferred = false
+/** The reset in flight, settled either way; `initSandbox` waits for it. */
+let resetting: Promise<void> | undefined
 
 export async function resetSandbox(): Promise<void> {
   for (const tag of [...hostBridges.keys()]) if (!liveServers.has(tag)) releaseBridges(tag)
@@ -414,11 +420,22 @@ export async function resetSandbox(): Promise<void> {
     return
   }
   resetDeferred = false
-  const { SandboxManager } = await loadSrt()
-  await SandboxManager.reset()
-  srtUp = false
-  availabilityCache.clear()
-  straceAvailableCache = undefined
+  const reset = (async () => {
+    const { SandboxManager } = await loadSrt()
+    await SandboxManager.reset()
+    srtUp = false
+    availabilityCache.clear()
+    straceAvailableCache = undefined
+  })()
+  const settled = reset.then(
+    () => {},
+    () => {},
+  )
+  resetting = settled
+  void settled.then(() => {
+    if (resetting === settled) resetting = undefined
+  })
+  await reset
 }
 
 export interface SandboxedRunArgs {
