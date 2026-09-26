@@ -47,10 +47,38 @@ const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepubli
  */
 export function delegatedScript(command: string): string | null {
   const m =
-    /^(?:(?:npm run|pnpm(?: run)?|yarn(?: run)?|bun(?: run)?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
+    /^(?:(?:npm run|(pnpm|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
       command.trim(),
     )
-  return m === null ? null : (m[1] ?? m[2])!
+  if (m === null) return null
+  if (m[4] !== undefined) return m[4]
+  const [, manager, run, name] = m
+  // Bare, the manager's own command wins over a script of that name:
+  // `bun test` is Bun's test runner and `bun build` its bundler, never the
+  // `test` / `build` script, and a group over the script ran the wrong
+  // thing (item 908). `pnpm test` and `yarn test` do run the script.
+  if (manager !== undefined && run === undefined && OWN_COMMANDS[manager]!.has(name!)) return null
+  return name!
+}
+
+/** What `<manager> <name>`, with no `run`, runs as the manager's own command. */
+const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  // `bun --help`, Bun 1.4.2, with the short aliases.
+  bun: new Set(
+    'run test x repl exec install i add a remove rm update audit outdated link unlink publish patch pm info why build init create c upgrade feedback lint'.split(
+      ' ',
+    ),
+  ),
+  pnpm: new Set(
+    'add install i update up remove rm link unlink import rebuild prune fetch patch audit list ls outdated why exec dlx create init publish pack store env setup config root bin licenses deploy doctor'.split(
+      ' ',
+    ),
+  ),
+  yarn: new Set(
+    'add install remove upgrade up info init link unlink pack publish why workspace workspaces config cache dlx exec bin node plugin set version constraints npm patch explain dedupe'.split(
+      ' ',
+    ),
+  ),
 }
 
 function scriptsOf(meta: ProjectMeta): Record<string, unknown> {

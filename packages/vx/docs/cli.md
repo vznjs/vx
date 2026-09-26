@@ -1468,7 +1468,11 @@ A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
 caches the target instead of a package-manager subprocess it cannot
-see. Arguments, flags or a `&&` chain make it a real command again and
+see. Bare, a package manager's own command is not a script: `bun test`
+is Bun's test runner, `bun build` its bundler, `pnpm install` and `yarn
+add` the managers' verbs, so each stays a command (item 908); `pnpm
+test` and `yarn test` do run the script. Arguments, flags or a `&&`
+chain make it a real command again and
 it is left verbatim.
 
 ## `vx migrate`
