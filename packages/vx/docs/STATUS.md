@@ -408,8 +408,7 @@ exit`.
       that window, and fails without the fix. An earlier draft timed the
       exit with twenty microtasks, and it passed without the fix: the
       cancel awaits the file reader first, so the window was never
-      reached. The strace-log twin has no row, since the window sits
-      inside a sandboxed run and no hook reaches it. The other `.delete`
+      reached. The strace-log twin got its row in item 871. The other `.delete`
       sites clear kill registries, not exit-cleanup lists.
 
 869.  DONE (2026-09-26, a survivor of the item 849 sweep, re-driven). In
@@ -444,6 +443,13 @@ exit`.
         guard's.
       - All three mutants of `kill-tree.ts`'s hold are caught by the new
         file (the release that ignores the hold as well).
+
+871.  DONE (2026-09-26, item 868's strace-log fix, given its row). The
+      window sits inside a sandboxed run, and an in-process one reaches
+      it. `tests/sandbox-trace-exit.unsafe.test.ts` mocks
+      `node:fs/promises` so the trace log's unlink stays pending, runs a
+      task through `runSandboxed`, and emits `exit` once the removal has
+      begun. The log is gone with the fix and left without it.
 
 ## In flight
 
