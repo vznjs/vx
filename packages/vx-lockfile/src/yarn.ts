@@ -97,9 +97,15 @@ function parseClassic(text: string): Lockfile {
   const flush = (): void => {
     if (keys === null) return
     const id = keys[0]!
+    // The descriptors an entry satisfies are part of what the file records:
+    // `foo@^1.0.0` moving from the 1.0.0 entry to the 1.1.0 one (a
+    // deduplication, `yarn upgrade`) changes what a workspace installs
+    // while every entry's version, url and integrity stay as they were, and
+    // the digest did not move (item 902). Classic has no workspace entries
+    // to carry that edge, so each entry carries its own descriptors.
     entries.set(id, {
       deps,
-      resolution: `${fields['version'] ?? ''}\0${fields['resolved'] ?? ''}\0${fields['integrity'] ?? ''}`,
+      resolution: `${fields['version'] ?? ''}\0${fields['resolved'] ?? ''}\0${fields['integrity'] ?? ''}\0${[...keys].sort().join(',')}`,
     })
     for (const k of keys) descriptors.set(k, id)
     keys = null
