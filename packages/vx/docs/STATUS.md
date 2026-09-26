@@ -805,6 +805,18 @@ test is telling the truth.
       own end, with the summary, the flushes and the teardowns. Both
       steps now say so.
 
+856.  DONE (2026-09-26, the remote-layer contract names who owns the
+      deadline). Core awaits every `RemoteCacheLayer` call and bounds
+      none. A `get` that never settles holds its task, and a `put` holds
+      the upload drain the run awaits before it closes; since item 849 a
+      stopped run waits there too, until the signal's bound. Every
+      first-party layer carries its own deadline (turboCache and
+      nxCache default to 30 s per request, and reapi bounds every
+      call). But the plugin guide's example, which authors copy, used a
+      bare `fetch`. The example now passes `AbortSignal.timeout` on
+      every request and says why. The contract's comment and
+      `layered-cache.md` state the duty. Docs and a comment only.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
