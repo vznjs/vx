@@ -20,6 +20,7 @@ import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs, type NxInputs } from './nx-inputs.js'
 
 interface GraphNode {
+  name?: string
   data?: { root?: string; namedInputs?: Record<string, unknown[]> }
 }
 
@@ -181,7 +182,8 @@ export function planNxUpstream(
       )
       return
     }
-    expandNxInputs([name], namedOf(node), into, todos)
+    const at = { rel: normRel(nodes[node]?.data?.root ?? ''), name: nodes[node]?.name ?? node }
+    expandNxInputs([name], namedOf(node), at, into, todos)
   }
 
   const merge = (from: NxInputs, into: NxInputs): void => {

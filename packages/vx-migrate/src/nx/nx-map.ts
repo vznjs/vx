@@ -398,8 +398,15 @@ function buildTask(
   )
 
   const inputs = emptyNxInputs()
-  expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), inputs, todos)
-  const { outFiles, wsOutFiles } = mapNxOutputs(target.outputs ?? [], options, projectRel, todos)
+  const at = { rel: projectRel, name: projectName }
+  expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
+  const { outFiles, wsOutFiles } = mapNxOutputs(
+    target.outputs ?? [],
+    options,
+    projectRel,
+    projectName,
+    todos,
+  )
   const deps = mapNxDeps(target.dependsOn ?? [], metaByNode, taskNameFor, todos)
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`
@@ -423,7 +430,7 @@ function buildTask(
     // dependency's. No gap to report (487 lines per run on refine,
     // 2026-09-22).
     if (target.inputs === undefined)
-      expandNxInputs(['default', '^default'], upstream.namedOf(nodeName), inputs, todos)
+      expandNxInputs(['default', '^default'], upstream.namedOf(nodeName), at, inputs, todos)
     if (inputs.files.length === 0 && target.inputs === undefined) inputs.files.push('**/*')
     // Before the env block: a dependency's `{ env }` passes through too.
     for (const edge of upstream.resolve(nodeName, inputs, todos))
