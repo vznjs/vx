@@ -236,6 +236,20 @@ describe('migrateScripts', () => {
     expect(tasks['build']).toEqual({ exec: { command: 'tsc -b' }, dependsOn: ['^build'] })
   })
 
+  it('a `build` that only delegates puts `^build` on the task that works (item 907)', () => {
+    // `build: pnpm run compile` is a group over `compile`, and the group
+    // carried no `^build` at all: `app#compile` ran before `lib#build`.
+    const tasks = mapped({ build: 'pnpm run compile', compile: 'tsc -b', test: 'v' })
+    expect({ build: tasks['build'], compile: tasks['compile'] }).toEqual({
+      build: { dependsOn: ['compile'] },
+      compile: { exec: { command: 'tsc -b' }, dependsOn: ['^build'] },
+    })
+    // Through a chain of groups, to the first command.
+    const chained = mapped({ build: 'npm run b1', b1: 'npm run b2', b2: 'tsc' })
+    expect(chained['b2']).toEqual({ exec: { command: 'tsc' }, dependsOn: ['^build'] })
+    expect(chained['b1']).toEqual({ dependsOn: ['b2'] })
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.

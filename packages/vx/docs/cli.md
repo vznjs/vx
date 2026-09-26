@@ -1431,7 +1431,9 @@ into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 `.mjs` is outside that include. `@vzn/vx-migrate` takes the same flag.
 
 Each script becomes a task with its command verbatim. `build` gets
-`dependsOn: ['^build']` and **no cache block** — under a
+`dependsOn: ['^build']` (a `build` that only delegates, `pnpm run
+compile`, is a group, and the edge goes on the script that does the
+work) and **no cache block** — under a
 `TODO(vx-migrate)` showing the block to add with the package's real
 inputs and outputs. A task without a cache block always runs; a block
 with EMPTY outputs is not "uncached" but a no-output task that hits on

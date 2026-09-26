@@ -61,6 +61,29 @@ function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   return raw as Record<string, unknown>
 }
 
+/**
+ * A `build` that only delegates (`build: pnpm run compile`) is a group over
+ * its target, and the `^build` edge every `build` carries belongs on the
+ * task that does the work: the group ran `compile` with no edge at all, so
+ * a package compiled before the ones it imports had built (item 907). On
+ * the group itself it would not hold — the group waits on both, `compile`
+ * on neither. Followed through a chain of groups to the first command.
+ */
+function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
+  const byName = new Map(tasks.map((t) => [t.name, t]))
+  const seen = new Set<string>()
+  let at = byName.get('build')
+  while (at?.task !== undefined && at.task !== null && !('exec' in at.task)) {
+    if (seen.has(at.name)) return
+    seen.add(at.name)
+    const deps = at.task['dependsOn']
+    at = Array.isArray(deps) ? byName.get(String(deps[0])) : undefined
+  }
+  if (at === undefined || at.name === 'build' || at.task === null || at.task === undefined) return
+  const deps = Array.isArray(at.task['dependsOn']) ? (at.task['dependsOn'] as string[]) : []
+  if (!deps.includes('^build')) at.task['dependsOn'] = ['^build', ...deps]
+}
+
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   const projects: GeneratedProject[] = []
   for (const meta of metas) {
@@ -122,6 +145,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       }
       tasks.push({ name, todos, task })
     }
+    upstreamBuildOnWorker(tasks)
     if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
   }
   return {

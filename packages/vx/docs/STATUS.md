@@ -306,6 +306,16 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Rows: `turbo-map-sweep.test.ts`, the three fields at once, with
         the replace control. It fails without the fix, and the review's
         repro now misses. The vx-migrate README says so.
+907.  DONE (2026-09-26, the same review's lead 5). `vx init` made a
+      `build` that only delegates (`build: pnpm run compile`) a group over
+      `compile`, and a group carries no `^build`. So `app#compile` ran
+      before `lib#build`, and read a `dist` that was not there.
+      - The edge goes on the task that does the work, followed through
+        a chain of groups to the first command. On the group itself it
+        would not hold: the group waits on both, `compile` on neither.
+      - Row: `init.test.ts` › `migrateScripts` (item 907), direct and
+        chained. It fails without the fix, and the review's repro now
+        builds `lib` first. `cli.md` says so.
 
 ## In flight
 
@@ -631,7 +641,9 @@ next?".
     after `output-memory.test.ts` › "an opted-down stream does not grow
     with the volume the child writes", where the next rows start four
     `awk` floods at once and SIGKILL each. That file alone under the
-    same strace flags, bare, was clean 6 of 6.
+    same strace flags, bare, was clean 6 of 6, and the shard itself
+    through vx's sandbox (bwrap under strace, as CI runs it) was clean
+    5 of 5 on this box: the trigger is the CI runner's, not reproduced.
 
 ## Decisions (this arc)
 
