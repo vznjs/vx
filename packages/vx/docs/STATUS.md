@@ -533,6 +533,24 @@ test is telling the truth.
       the duplicate-output guard (unreachable while `outRelFor` is
       right; it stays as the defence).
 
+838.  DONE (2026-09-26, `vx-docs`'s `scripts/build-playground.ts`, the
+      build of the planner bundle). 15 mutations: 6 caught by core's
+      parity rows, 4 held now, 5 equivalent. Held in
+      `tests/playground-build.test.ts`, from a fresh build:
+      - each of the seven platform specifiers the planner's graph names
+        is met as the shim, the polyfill or a stub (`bun:sqlite` as the
+        shim);
+      - each names its importers relative to `packages/`;
+      - no stub export survives tree-shaking (without `@__PURE__`, the
+        `node:module` stub's dozens of exports stayed);
+      - the file is minified (60 lines, against 5,842).
+        Equivalent: the aliases for bare `fs`, `fs/promises` and `path`
+        (nothing in today's graph imports those spellings; they stay for
+        the day something does), the stub proxy's `then` guard (a stub
+        is never awaited on the plan's path), and the refusal of a failed
+        build (it rejects either way, only with another message).
+        `vx-docs`'s scripts are now swept.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
