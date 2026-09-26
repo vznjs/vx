@@ -589,6 +589,13 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Rows: one per package (the turbo-cache and nx-cache sweeps,
         `otel.test.ts`, `github.test.ts`, `wire-sweep.test.ts`), each
         pinning the exact refusal or warning, which names no token.
+929.  DONE (2026-09-26, the remote-cache adapters review).
+      `turboCache()`'s batch query answers each hash with ArtifactInfo,
+      null, or an `{ error }` entry, and `hasMany` counted anything not
+      null as present: an error entry became a hit whose GET drew a 404.
+      Only an object without an `error` field counts now.
+      - Row: `turbo-cache-sweep.test.ts` › a batch query holds only the
+        hashes answered with artifact info.
 
 ## In flight
 

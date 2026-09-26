@@ -299,7 +299,15 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     if (res === undefined) return new Set()
     if (res.status !== 200) return null
     const info = (await res.json()) as Record<string, unknown>
-    return new Set(hashes.filter((h) => info[h] !== null && info[h] !== undefined))
+    // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
+    // error entry is not a stored artifact, and it was counted as one (a GET
+    // spent on a 404, item 929).
+    return new Set(
+      hashes.filter((h) => {
+        const v = info[h]
+        return typeof v === 'object' && v !== null && !('error' in v)
+      }),
+    )
   }
 
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
