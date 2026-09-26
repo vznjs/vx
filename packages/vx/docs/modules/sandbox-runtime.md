@@ -389,6 +389,15 @@ with the namespace and never removes it, so every bridged run left one
 socket in the tmpdir (176 on one box, item 877). The sockets are listed
 with the exit hook that removes strace logs, so a Ctrl-C mid-task takes
 them too (`sandbox-bridge-socket.unsafe.test.ts`).
+
+A persistent task's sandbox outlives its run. `wrapSandboxedCommand`
+takes `server: true` from the persistent path and lists the tag as a
+live server. `resetSandbox`, which every run calls at its end, releases
+only the bridges no live server owns, and while one runs it defers SRT's
+reset. That server's `releaseBridges`, on its exit, runs the deferred
+reset. Before item 882, a foreground `vx run dev` or a `vx watch` held a
+server past a reset that had already released its port and SRT's
+proxies, and the port went dark ~40 ms after the summary.
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.

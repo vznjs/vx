@@ -1,8 +1,7 @@
 // A sandboxed task's port bridge listens on a unix socket in the sandbox
 // temp dir. The socat that binds it dies with the task's namespace and
 // never unlinks it, so every bridged run left one socket behind (item
-// 877: 176 of them in one box's `/tmp/claude`). Its own file because the
-// exit row emits `exit`, which runs every exit hook the process holds.
+// 877: 176 of them in one box's `/tmp/claude`).
 
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -81,13 +80,51 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
   })
 
   it('is removed by an exit while the task runs', async () => {
+    // In a child: `exit` runs every hook a process holds, SRT's `reset()`
+    // among them, and emitted in the suite's own process it broke a later
+    // file's bridge (item 881). The child exits the way a signal exit
+    // does, `process.exit` with the task still running, once it has seen
+    // the socket bound.
     const port = freePort()
-    const running = run(port, 'sleep 2')
-    const sock = await bound(port, sockets(port))
-    expect(existsSync(sock)).toBe(true)
-    process.emit('exit', 0)
-    const left = existsSync(sock)
-    await running
-    expect(left).toBe(false)
-  })
+    const script = `
+      import { readdirSync } from 'node:fs'
+      import path from 'node:path'
+      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/index.ts'))})
+      const { portBridgeSocket } = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/sandbox-runtime.ts'))})
+      await exec.initSandbox({ allowAllUnixSockets: true })
+      const dir = ${JSON.stringify(dir)}
+      const tmp = path.dirname(portBridgeSocket('t', ${port}))
+      const mine = (n) => n.startsWith('vx-port-') && n.endsWith('-${port}.sock')
+      const before = readdirSync(tmp).filter(mine)
+      void exec.runSandboxed({
+        command: 'sleep 5', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [],
+        reportWithin: dir, reportLinked: [],
+        config: exec.resolveSandboxConfig({ allow: { localBinding: [${port}] } }, dir),
+      })
+      for (let i = 0; i < 500; i++) {
+        const n = readdirSync(tmp).filter(mine).find((x) => !before.includes(x))
+        if (n !== undefined) { console.log(path.join(tmp, n)); process.exit(0) }
+        await Bun.sleep(10)
+      }
+      process.exit(3)
+    `
+    const proc = Bun.spawn([process.execPath, '-e', script], {
+      env: { ...process.env },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const sock = out.trim()
+    // The positive is the child's: it printed the socket once it existed.
+    expect({ code, err, named: sock.endsWith(`-${port}.sock`) }).toEqual({
+      code: 0,
+      err: '',
+      named: true,
+    })
+    expect(existsSync(sock)).toBe(false)
+  }, 20_000)
 })
