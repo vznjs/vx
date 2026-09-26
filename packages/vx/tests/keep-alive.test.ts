@@ -15,6 +15,19 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
+// Every vx a row spawns, SIGKILLed after the row if it still runs: a row
+// that fails before its own kill left a vx holding its servers in the
+// foreground for good (item 883).
+const spawnedVx: Array<ReturnType<typeof Bun.spawn>> = []
+function track<T extends ReturnType<typeof Bun.spawn>>(proc: T): T {
+  spawnedVx.push(proc)
+  return proc
+}
+afterEach(() => {
+  for (const p of spawnedVx.splice(0))
+    if (p.exitCode === null && p.signalCode === null) p.kill('SIGKILL')
+})
+
 async function waitForPid(file: string, timeoutMs: number): Promise<number> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -66,12 +79,14 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   ] as const) {
     it(`a server exiting ${exitCode} tears the other down and vx exits ${expected}`, async () => {
       const dir = await addProject(root, 'app', config(exitCode))
-      const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
-      })
+      const proc = track(
+        Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+        }),
+      )
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(isAlive(pid)).toBe(true)
       const [out, err, code] = await Promise.all([
@@ -93,12 +108,14 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // did not end the run.
   it('SIGINT after the summary exits 130 and takes the server down', async () => {
     const dir = await addProject(root, 'app', config(0))
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
-      cwd: root,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+      }),
+    )
     let out = ''
     const reading = (async () => {
       for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
@@ -149,12 +166,14 @@ describe('a persistent task keeps an open stdin', () => {
         }
       `,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-      cwd: root,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...process.env, VX_KILL_GRACE_MS: '200' },
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+      }),
+    )
     const out = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     // Under 'ignore' the shell saw EOF and vx exited within 50 ms of this.
@@ -188,11 +207,13 @@ describe('a persistent task keeps an open stdin', () => {
         }
       `,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-      cwd: root,
-      stdout: 'ignore',
-      stderr: 'ignore',
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }),
+    )
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     expect(isAlive(pid)).toBe(true)
     process.kill(proc.pid, 'SIGKILL')
@@ -224,11 +245,13 @@ describe('a SIGKILLed vx takes the groups it holds with it', () => {
       'app',
       `export default { tasks: { dev: { exec: ${exec} } } }`,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-      cwd: root,
-      stdout: 'ignore',
-      stderr: 'ignore',
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }),
+    )
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
@@ -279,13 +302,12 @@ Bun.spawn = (cmd, opts) => {
       )
     const guards = async (): Promise<string[]> => {
       await rm(log, { force: true })
-      const proc = Bun.spawn(
-        [process.execPath, '--preload', preload, BIN, 'run', 'build', '--all'],
-        {
+      const proc = track(
+        Bun.spawn([process.execPath, '--preload', preload, BIN, 'run', 'build', '--all'], {
           cwd: root,
           stdout: 'ignore',
           stderr: 'ignore',
-        },
+        }),
       )
       expect(await proc.exited).toBe(0)
       const lines = existsSync(log) ? readFileSync(log, 'utf8').split('\n') : []
@@ -305,13 +327,15 @@ Bun.spawn = (cmd, opts) => {
       'app',
       `export default { tasks: { dev: { exec: { command: 'trap "" INT TERM; (sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' } } } }`,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-      cwd: root,
-      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
-      stdout: 'ignore',
-      stderr: 'ignore',
-      detached: true,
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        stdout: 'ignore',
+        stderr: 'ignore',
+        detached: true,
+      }),
+    )
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     process.kill(-proc.pid, 'SIGINT')
     await Bun.sleep(200)
@@ -332,13 +356,15 @@ Bun.spawn = (cmd, opts) => {
       'app',
       `export default { tasks: { dev: { exec: { command: '(trap "" INT TERM; sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo $! > pid.txt; wait' } } } }`,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-      cwd: root,
-      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
-      stdout: 'ignore',
-      stderr: 'ignore',
-      detached: true,
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        stdout: 'ignore',
+        stderr: 'ignore',
+        detached: true,
+      }),
+    )
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     process.kill(-proc.pid, 'SIGINT')
     await Bun.sleep(200)
@@ -362,12 +388,14 @@ Bun.spawn = (cmd, opts) => {
         e2e: { dependsOn: ['dev'], exec: { command: 'true' } },
       } }`,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
-      cwd: root,
-      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
-      stdout: 'ignore',
-      stderr: 'ignore',
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
+        cwd: root,
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }),
+    )
     const term = path.join(dir, 'term.txt')
     const until = Date.now() + 10_000
     while (!existsSync(term) && Date.now() < until) await Bun.sleep(20)
@@ -397,12 +425,14 @@ Bun.spawn = (cmd, opts) => {
         dev: { exec: { command: 'sh -c "echo s > started.txt; trap \\\\"echo t > term.txt; sleep 1; echo late > late.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & wait', timeout: 300, persistent: { readyWhen: 'NEVER' } } },
       } }`,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-      cwd: root,
-      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
-      stdout: 'ignore',
-      stderr: 'ignore',
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }),
+    )
     expect(await proc.exited).toBe(1)
     // The server ran. Not its SIGTERM mark: the trap waits for the
     // loop's sleep, and a vx that exits first hands the group to the
@@ -421,11 +451,13 @@ Bun.spawn = (cmd, opts) => {
       'app',
       `export default { tasks: { dev: { exec: { command: '(sleep 1; echo late > late.txt) >/dev/null 2>&1 &' } } } }`,
     )
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-      cwd: root,
-      stdout: 'ignore',
-      stderr: 'ignore',
-    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }),
+    )
     expect(await proc.exited).toBe(0)
     // The file, as in the rows above: the grandchild writes it a second
     // after it starts, and the guard's EOF would have killed it first.

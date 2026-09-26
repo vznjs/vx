@@ -3223,11 +3223,17 @@ describe.skipIf(!available || process.platform !== 'linux')(
           ],
           { cwd: fixture.root, env: { ...process.env }, stdout: 'ignore', stderr: 'ignore' },
         )
-        const deadline = Date.now() + 20_000
-        while (!(await accepts(port)) && Date.now() < deadline) await Bun.sleep(50)
-        // The positive first: the bridge was up while vx ran.
-        expect(await accepts(port)).toBe(true)
-        process.kill(proc.pid, 'SIGKILL')
+        // A failed positive below must not leave vx behind: it holds its
+        // server in the foreground forever, and sixteen such runs sat under
+        // init with their sandboxes (item 883).
+        try {
+          const deadline = Date.now() + 20_000
+          while (!(await accepts(port)) && Date.now() < deadline) await Bun.sleep(50)
+          // The positive first: the bridge was up while vx ran.
+          expect(await accepts(port)).toBe(true)
+        } finally {
+          process.kill(proc.pid, 'SIGKILL')
+        }
         expect(await proc.exited).toBe(137)
         const until = Date.now() + 3_000
         while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)

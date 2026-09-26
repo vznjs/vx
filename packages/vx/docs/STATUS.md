@@ -654,9 +654,30 @@ exit`.
         suite's own process, which runs SRT's hooks. That was not the
         cause (the kill -9 row failed alone too); the move stays because
         it tests the real exit.
-      - Seen, not yet chased: this box holds dozens of leaked sandboxes,
-        `bun serve.ts` under bwrap, some parented to init, left by probe
-        and test runs that `kill -9`ed vx.
+      - Seen, and chased in 883: this box held leaked sandboxes, `bun
+serve.ts` under bwrap, some parented to init.
+
+883.  DONE (2026-09-26, the leaks 882 saw). Two sources.
+      - Sixteen `vx run serve` processes sat under init, each holding a
+        sandboxed server in the foreground. They were the kill -9 row's
+        own vx: the row failed its positive check (882's bug) before
+        reaching its `SIGKILL`, and nothing else ever stopped them. The
+        class: `keep-alive.test.ts` (eleven spawns) and
+        `task-tree-kill.test.ts` (`spawnVx`) also kill vx only after
+        their assertions. Each now tracks the vx it spawns and SIGKILLs
+        any still running in `afterEach`. The kill -9 row kills vx in a
+        `finally`. Probe: a failure injected after a keep-alive spawn
+        leaves 0 vx with the tracking and 1 without it.
+      - Five sandboxes survived a `kill -9` of vx, and one more in 6 runs
+        of the kill -9 row while the box still held those orphans. In
+        the one inspected, the survivor was the namespace's init, the
+        inner `bwrap`, in its own session (`--new-session`) and holding
+        only the inner port socat. The guard's group kill reaches the
+        outer `bwrap` alone, and the inner one did not die of
+        `--die-with-parent`. It did not reproduce after the orphans were
+        cleared: 0 in 25 runs of the row and 0 in 15 of a CLI probe.
+        Open, cause unknown; the next leak is read from the survivor's
+        `NSpid` and children before it is killed.
 
 ## In flight
 
