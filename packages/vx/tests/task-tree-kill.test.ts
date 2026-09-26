@@ -202,4 +202,20 @@ describe('a task dies with everything it forked', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'SIGHUP gives the grandchild its SIGTERM cleanup, not only a death',
+    async () => {
+      // Without vx's SIGHUP handler vx dies of the hang-up and its group
+      // guard SIGKILLs the task (kill-tree.md): the grandchild is gone
+      // either way, so only the cleanup tells the handled hang-up apart.
+      const proc = spawnVx(root, 'graceful', 5000)
+      const gc = await grandchildPid(root)
+      leaked.push(gc)
+      process.kill(proc.pid, 'SIGHUP')
+      expect(await proc.exited).toBe(129)
+      expect(existsSync(path.join(root, 'packages', 'app', 'cleanup.txt'))).toBe(true)
+    },
+    TIMEOUT,
+  )
 })

@@ -99,7 +99,10 @@ the process's signals passes `handleSignals: false`.
 `tests/task-tree-kill.test.ts` (a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild; each fails on a pid-only
 kill; a grandchild's cleanup gets the grace after its shell exits, and
-the wait ends when the group is gone); `tests/signal-handling.test.ts` (SIGINT → 130 and SIGTERM → 143 with
+the wait ends when the group is gone; a SIGHUP gives the grandchild its
+SIGTERM cleanup, the one thing that tells the handled hang-up from a vx
+the hang-up killed, whose group guard SIGKILLs the task anyway);
+`tests/signal-handling.test.ts` (SIGINT → 130 and SIGTERM → 143 with
 the one-shot child and the ready persistent child dead; a child that
 ignores TERM is SIGKILLed after the grace; a second signal skips the
 grace; the in-process lifecycle: handlers removed after every run,
@@ -114,3 +117,15 @@ a stubborn child SIGKILLed, an already-aborted signal runs nothing);
 foreground session: the other is torn down, exit 1 on a crash, 0 on a
 clean exit); `tests/cache-hygiene.test.ts` (an interrupted run
 publishes nothing).
+
+A sweep of this file (item 861, 19 mutants) found the group guard
+(`kill-tree.md`) standing in for two of its guarantees: without the
+SIGHUP handler, or without the second signal's SIGKILL, the guard's
+kill at vx's exit took the tree down, and the rows saw a dead
+grandchild either way. Each is held as a pair with the guard off, and
+the SIGHUP handler alone by the cleanup row. Equivalent: the persistent
+registry in the second signal's sweep (a ready server is in
+`liveChildren` for its whole life) and `runEnd` before the stop (the
+run's own end clears the region, and the handler waits for it). The
+cache close on that exit survived too and is not proven equivalent: no
+row observes it, and it stays as the one close a second signal gets.
