@@ -20,7 +20,7 @@ import {
   type ConfigEvalStore,
 } from '../src/workspace/index.js'
 import { stripLiterals } from '../src/workspace/config-cache.js'
-import { CONFIG_EVAL_VERSION } from '../src/workspace/config-cache.js'
+import { CONFIG_EVAL_VERSION, PURE_CORE_EXPORTS } from '../src/workspace/config-cache.js'
 
 let root: string
 beforeEach(async () => {
@@ -900,5 +900,44 @@ describe('the eval-cache loader keeps its round to one call per question (item 6
     rows.set(key!, JSON.stringify({ tasks: { build: { exec: { command: 'stored' } } } }))
     const [c] = await loadProjectConfigs([cfg], { evalCache })
     expect(c?.tasks?.build?.exec?.command).toBe('stored')
+  })
+})
+
+describe('which @vzn/vx imports a pure config may take (item 888)', () => {
+  // `@vzn/vx` also exports what reads the machine: a config calling
+  // `machineParallelism()` was replayed from the store with the first
+  // box's answer, and its tasks kept that box's key.
+  const cfg = (imp: string) =>
+    write('packages/a/vx.config.mjs', `${imp}\nexport default defineProject({ tasks: {} })\n`)
+
+  it('keys a config that takes only the pure helpers, types included', async () => {
+    for (const imp of [
+      "import { defineProject } from '@vzn/vx'",
+      "import { defineProject, splitTaskId as split } from '@vzn/vx'",
+      "import { defineProject, type TaskConfig } from '@vzn/vx'\nimport type { ProjectConfig } from '@vzn/vx'",
+      "import {\n  defineProject,\n  normalizeGlob,\n} from '@vzn/vx'",
+    ]) {
+      expect({ imp, keyed: (await keyOf(await cfg(imp))) !== null }).toEqual({ imp, keyed: true })
+    }
+  })
+
+  it('evaluates live a config that takes anything else, or takes the package whole', async () => {
+    for (const imp of [
+      "import { defineProject, machineParallelism } from '@vzn/vx'",
+      "import { defineProject, machineParallelism as cores } from '@vzn/vx'",
+      "import { defineProject, machineMemoryBytes } from '@vzn/vx'",
+      "import { defineProject, collectInfo } from '@vzn/vx'",
+      "import * as vx from '@vzn/vx'\nconst defineProject = vx.defineProject",
+      "import vx, { defineProject } from '@vzn/vx'",
+      "import { defineProject } from '@vzn/vx'\nexport * from '@vzn/vx'",
+    ]) {
+      expect({ imp, keyed: (await keyOf(await cfg(imp))) !== null }).toEqual({ imp, keyed: false })
+    }
+  })
+
+  it('names only values core really exports, each of them a value', async () => {
+    const core = (await import('../src/index.js')) as Record<string, unknown>
+    const missing = [...PURE_CORE_EXPORTS].filter((n) => !(n in core) || core[n] === undefined)
+    expect(missing).toEqual([])
   })
 })

@@ -137,6 +137,50 @@ const IMPORT_RE =
 /** The one bare specifier a pure config may import: core's identity helpers and types. */
 const PURE_PACKAGE = '@vzn/vx'
 
+/**
+ * The `@vzn/vx` values a pure config may import. Core exports far more, and
+ * some of it reads the machine: a config calling `machineParallelism()` was
+ * replayed from the store on a box with another core count, and its tasks
+ * kept the key the first box's answer gave them (item 888). Types are
+ * always fine; a name outside this list, a namespace or default import, or
+ * an `export *` of the package evaluates live.
+ */
+export const PURE_CORE_EXPORTS: ReadonlySet<string> = new Set([
+  'defineProject',
+  'defineWorkspace',
+  'splitTaskId',
+  'normalizeGlob',
+  'isLiteralPattern',
+  'PLUGIN_HOOKS',
+  'TASK_STATUSES',
+  'PERSISTENT_TASK_NAMES',
+])
+
+/** Whether an `import`/`export … from '@vzn/vx'` statement takes only pure values. */
+function importsOnlyPure(statement: string): boolean {
+  const clause = statement
+    .replace(/^[\s;]*(?:import|export)\s+/, '')
+    .replace(/\bfrom\s*['"][^'"]+['"]\s*$/, '')
+  if (/^type\b/.test(clause)) return true
+  if (clause.includes('*')) return false
+  const braces = /\{([^}]*)\}/.exec(clause)
+  // Anything outside the braces is a default import.
+  if (
+    clause
+      .replace(/\{[^}]*\}/, '')
+      .replace(/,/g, '')
+      .trim() !== ''
+  )
+    return false
+  for (const part of (braces?.[1] ?? '').split(',')) {
+    const spec = part.trim()
+    if (spec === '' || /^type\s/.test(spec)) continue
+    const name = spec.split(/\s+as\s+/)[0]!.trim()
+    if (!PURE_CORE_EXPORTS.has(name)) return false
+  }
+  return true
+}
+
 const decoder = new TextDecoder()
 
 /**
@@ -286,7 +330,10 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
     closure.push(file)
     for (const m of source.matchAll(IMPORT_RE)) {
       const spec = m[1] ?? m[2]!
-      if (spec === PURE_PACKAGE) continue
+      if (spec === PURE_PACKAGE) {
+        if (m[1] !== undefined && !importsOnlyPure(m[0])) return null
+        continue
+      }
       if (!spec.startsWith('./') && !spec.startsWith('../')) return null
       if (!EXPLICIT_EXT.test(spec)) indexable = false
       let resolved: string

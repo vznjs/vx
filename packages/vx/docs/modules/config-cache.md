@@ -80,8 +80,14 @@ though the config's own bytes did not change.
 The key is `null` — evaluate live, store nothing — unless the whole
 closure is provably pure:
 
-- every import is relative, or exactly `@vzn/vx` (whose `defineProject`
-  / `defineWorkspace` are identity functions);
+- every import is relative, or exactly `@vzn/vx` taking only the values
+  in `PURE_CORE_EXPORTS` (`defineProject` / `defineWorkspace`, identity
+  functions, and a few pure helpers and constants) or types. Core also
+  exports what reads the machine (`machineParallelism`,
+  `machineMemoryBytes`, `collectInfo`): a config calling one was replayed
+  from the store with another box's answer (item 888). Any other name, a
+  namespace or default import, or an `export *` of the package evaluates
+  live;
 - no relative import resolves into `node_modules` (a workspace symlink
   can move without the lockfile moving);
 - the closure has ≤ 32 files;
