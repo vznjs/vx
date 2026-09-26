@@ -58,6 +58,7 @@ export type { LoadReads } from './load-reads.js'
 // The migration seam (see migration.ts) and core's own mapper, the scripts one.
 export {
   applyMigration,
+  foldScriptHooks,
   PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
   quoteTsLiteral,

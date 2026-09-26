@@ -52,6 +52,15 @@ export function applyMigration(args: ApplyMigrationArgs): Promise<number>
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TASK_NAMES: ReadonlySet<string>
 export const PERSISTENT_TODO: string
+// A script with the pre/post hooks npm runs around it, as one sh command:
+// each part a subshell, the chain stopping at the first that fails, and the
+// forwarded `--` args reaching the body alone (item 905). No hooks: the
+// body, verbatim. `vx init` and `@vzn/vx-migrate` both fold through it.
+export function foldScriptHooks(
+  pre: string | undefined,
+  body: string,
+  post: string | undefined,
+): string
 
 // migrate-scripts.ts — the package.json-scripts mapper `vx init` runs through the seam
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan

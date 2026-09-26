@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { foldScriptHooks } from '@vzn/vx'
 import { scriptCommand } from '../src/script-command.js'
 
 describe('scriptCommand — a script body becomes the task command', () => {
@@ -25,7 +26,7 @@ describe('scriptCommand — a script body becomes the task command', () => {
       install: 'node-gyp rebuild',
     }
     expect(scriptCommand('build', 'tsup', scripts)).toBe(
-      'cp a.css a.directcss && tsup && rm a.directcss',
+      foldScriptHooks('cp a.css a.directcss', 'tsup', 'rm a.directcss'),
     )
     expect(scriptCommand('test', 'vitest', scripts)).toBe('vitest')
     expect(scriptCommand('install', 'node-gyp rebuild', scripts)).toBe('node-gyp rebuild')

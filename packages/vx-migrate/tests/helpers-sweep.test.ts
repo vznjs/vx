@@ -18,7 +18,7 @@ describe('scriptCommand: the package manager’s own lifecycle hooks never ride 
 
   it('CONTROL: an ordinary task’s hooks are folded around it', () => {
     expect(scriptCommand('build', 'tsc', { prebuild: 'gen', postbuild: 'copy' })).toBe(
-      'gen && tsc && copy',
+      'vx_script() {\n(gen\n) && (tsc "$@"\n) && (copy\n)\n}\nvx_script',
     )
   })
 })

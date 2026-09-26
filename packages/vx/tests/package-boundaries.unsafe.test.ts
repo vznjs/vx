@@ -139,6 +139,7 @@ describe('package boundaries', () => {
       'escapeMarkdownCell',
       'exitSignal',
       'findWorkspaceRoot',
+      'foldScriptHooks',
       'isCacheHit',
       // Widened 2026-09-23 (item 667): `@vzn/vx-reapi` maps declared output
       // globs to literal REAPI paths, and its own wildcard class read the
