@@ -18,6 +18,7 @@ import { CONFIG_TEXTS, ENV, FILES, TASKS } from '../src/playground/workspace.js'
 import {
   PLAYGROUND_ROOT,
   changeCell,
+  configTextsOf,
   describeChange,
   diffRuns,
   envText,
@@ -430,5 +431,108 @@ describe("the page's Run, over the planner the site ships", () => {
       ok: false,
       errors: ['no projects declare task(s): lint.'],
     })
+  })
+})
+
+// Item 840's sweep: what runPlayground adds to the planner, over a fake
+// one, and the static table's edges.
+describe("the page's Run, around the planner", () => {
+  type Plan = Awaited<ReturnType<Planner['planPlayground']>>
+  const fake = (over: Partial<Planner> = {}, plan: Partial<Plan> = {}) => {
+    const evaluated: string[] = []
+    const planner: Planner = {
+      listPlaygroundProjects: async () => [
+        { name: 'bare', configFile: null },
+        { name: 'b', configFile: 'b/vx.config.mjs' },
+      ],
+      evaluateConfig: async (text) => {
+        evaluated.push(text)
+        return { ok: true, config: { tasks: { build: {}, test: {} } } }
+      },
+      planPlayground: async () => ({
+        tasks: [task('b#test', 'h2'), task('b#build', 'h1')],
+        unresolvedTasks: [],
+        priorities: {},
+        dispatchOrder: [],
+        platformCalls: {},
+        vfsReads: 0,
+        ...plan,
+      }),
+      diffKeyComponents: () => ({ entries: [], unchangedCount: 0 }),
+      ...over,
+    }
+    return { planner, evaluated }
+  }
+  const input = {
+    files: { 'b/vx.config.mjs': 'the text' },
+    env: {},
+    tasks: ['build'],
+    cached: new Set(['old']),
+  }
+
+  it('evaluates only the projects with a config, orders by config task order, keeps the cache', async () => {
+    const { planner, evaluated } = fake()
+    const outcome = await runPlayground(planner, input)
+    expect(evaluated).toEqual(['the text'])
+    if (!outcome.ok) throw new Error(outcome.errors.join())
+    expect(outcome.tasks.map((t) => t.id)).toEqual(['b#build', 'b#test'])
+    expect([...outcome.cached].sort()).toEqual(['h1', 'h2', 'old'])
+  })
+
+  it('a discovery that throws, and a plan with no task, are refusals', async () => {
+    const throwing = fake({
+      listPlaygroundProjects: async () => {
+        throw new Error('no package.json')
+      },
+    })
+    expect(await runPlayground(throwing.planner, input)).toEqual({
+      ok: false,
+      errors: ['no package.json'],
+    })
+    expect(await runPlayground(fake({}, { tasks: [] }).planner, input)).toEqual({
+      ok: false,
+      errors: ['no projects declare task(s): build.'],
+    })
+  })
+})
+
+describe('the static table and its inputs, at the edges', () => {
+  it('a line with no `=` is not an env line', () => {
+    expect(parseEnv('API_URL')).toEqual({
+      ok: false,
+      error: "env line 1: expected NAME=value, got 'API_URL'",
+    })
+  })
+
+  it('^task names only the used packages that declare it; pkg#task is taken as named', () => {
+    const rows = staticTable(
+      [
+        { name: 'lib', uses: [], config: { tasks: { test: {} } } },
+        { name: 'gen', uses: [], config: { tasks: { build: {} } } },
+        {
+          name: 'app',
+          uses: ['lib', 'gen'],
+          config: { tasks: { build: { dependsOn: ['^build', 'lib#test'] } } },
+        },
+      ],
+      ['app#build'],
+    )
+    expect(rows.find((r) => r.id === 'app#build')!.waitsFor).toEqual(['gen#build', 'lib#test'])
+  })
+
+  it('a config needs its manifest, a manifest its config, and uses name only workspace packages', () => {
+    const files = {
+      'packages/a/package.json': JSON.stringify({
+        name: '@x/a',
+        dependencies: { '@x/b': '*', react: '*' },
+      }),
+      'packages/a/vx.config.mjs': 'a',
+      'packages/b/package.json': JSON.stringify({ name: '@x/b' }),
+      'packages/c/vx.config.mjs': 'c',
+    }
+    expect(configTextsOf(files)).toEqual({ '@x/a': 'a' })
+    expect(staticProjects(files, { '@x/a': {} })).toEqual([
+      { name: '@x/a', uses: ['@x/b'], config: {} },
+    ])
   })
 })
