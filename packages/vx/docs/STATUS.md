@@ -220,6 +220,11 @@ test is telling the truth.
         resolves one that does, and a new row pins the refusal. A first
         draft put the check in `collectInfo` and broke the doctor's bun
         row, which is how the `vx mcp` caller came to light.
+      - macOS CI then failed the refusal row: the fixture root came from
+        `mkdtemp` (`/var/…`, a symlink), while the verb names the path its
+        cwd resolves (`/private/var/…`). Reproduced on Linux with a
+        `TMPDIR` reached through a symlink; the fixture root is now
+        canonical.
 
 ## In flight
 
