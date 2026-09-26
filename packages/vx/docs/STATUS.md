@@ -842,6 +842,31 @@ serve.ts` under bwrap, some parented to init.
         defect, one wasted GET under `local:,remote:rw` after a batch
         probe had answered absent.
 
+890.  DONE (2026-09-26, a scheduler review agent's one reproduced lead).
+      `cli.md` lists `--filter '...^<pattern>'` as "only the transitive
+      dependents, excluding the matched package", but `parseFilter`
+      stripped the `...` and left the `^` in the name glob. So `...^a`
+      matched no package, and the run refused with "no projects matched
+      filter(s)" (exit 1).
+      - The parser now reads `...^` as `onlyDependents`, and the expansion
+        leaves the matched package out, as `^...` does for dependencies.
+      - Rows: `filter.test.ts` (item 890), for the parse and for the
+        selection over a three-package chain (`...^utils` → app, ui;
+        `...^app` → nothing). Both fail without the fix. On the review's
+        fixture the CLI now runs b, c and e's tests and a's build, not
+        a's test.
+      - The same review found the scheduler consistent with the docs. It
+        checked `^build` ordering across all four dependency kinds and
+        cycles, the `dependsOn` forms and groups, `--continue`'s three
+        modes, `--concurrency` peaks (exact over 18 tasks), no double
+        runs, retries with the cache, and the other `--filter` forms.
+      - Open, unspecified rather than contradicted: a persistent server
+        pulled in only as a dependency that crashes after readiness,
+        while its dependant still runs, leaves the run green if the
+        dependant passes, and the end-of-run pin still lists it as
+        running. And `vx run g --all --exclude-dependencies` on a group
+        runs nothing and exits 0.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

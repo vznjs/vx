@@ -30,6 +30,7 @@ describe('parseFilter', () => {
       withDeps: false,
       withDependents: false,
       onlyDeps: false,
+      onlyDependents: false,
       isPath: false,
       matcher: 'foo',
     })
@@ -52,6 +53,15 @@ describe('parseFilter', () => {
     expect(p.onlyDeps).toBe(true)
     expect(p.withDeps).toBe(false)
     expect(p.matcher).toBe('foo')
+  })
+
+  it('parses ...^pattern as onlyDependents (item 890)', () => {
+    const p = parseFilter('...^foo', ROOT)
+    expect({ d: p.withDependents, o: p.onlyDependents, m: p.matcher }).toEqual({
+      d: true,
+      o: true,
+      m: 'foo',
+    })
   })
 
   it('parses !pattern as negate', () => {
@@ -154,6 +164,16 @@ describe('applyFilters', () => {
         ...applyFilters({ filters: [parseFilter('...app', ROOT)], projects: withE2e, graph: g2 }),
       ].sort(),
     ).toEqual(['app'])
+  })
+
+  it('...^pkg includes only the dependents, not the package itself (item 890)', () => {
+    // cli.md listed the form; the `^` stayed in the name glob, so it matched
+    // nothing and the run refused with "no projects matched".
+    const sel = (raw: string) =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects, graph })].sort()
+    expect(sel('...^utils')).toEqual(['app', 'ui'])
+    expect(sel('...^ui')).toEqual(['app'])
+    expect(sel('...^app')).toEqual([])
   })
 
   it('pkg^... includes only the deps, not the package itself', () => {

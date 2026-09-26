@@ -15,6 +15,7 @@ export interface ParsedFilter {
   withDeps: boolean // pattern...
   withDependents: boolean // ...pattern
   onlyDeps: boolean // pattern^...
+  onlyDependents: boolean // ...^pattern (item 890)
   isPath: boolean // ./<dir> or {<dir>}
   matcher: string // glob (name) or absolute path
   gitSince?: string // [<git-ref>]
@@ -46,6 +47,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 | `<pattern>...`        | Match + all transitive workspace dependencies.                                                                                                                                                                                                                |
 | `...<pattern>`        | Match + all transitive workspace dependents.                                                                                                                                                                                                                  |
 | `<pattern>^...`       | Only the transitive deps of pattern (excluding the matched pkg).                                                                                                                                                                                              |
+| `...^<pattern>`       | Only the transitive dependents of pattern (excluding the matched pkg; item 890).                                                                                                                                                                              |
 | `!<pattern>`          | Exclude.                                                                                                                                                                                                                                                      |
 | `[<git-ref>]`         | Projects affected since `<git-ref>`. Resolved by caller via                                                                                                                                                                                                   |
 |                       | `workspace/affected.ts:affectedProjects`.                                                                                                                                                                                                                     |
