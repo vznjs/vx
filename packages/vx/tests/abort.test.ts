@@ -9,7 +9,9 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { run, type Logger, type RunSummaryRecord } from '../src/orchestrator/index.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 
 process.env['VX_KILL_GRACE_MS'] = '200'
 
@@ -73,6 +75,51 @@ describe('RunOptions.signal aborts a run in flight', () => {
     ])
     expect(Date.now() - started).toBeLessThan(10_000)
     expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
+  it('the summary a sink hears counts the aborted tasks, which its task list leaves out', async () => {
+    // Aborted tasks are not real runs and stay out of `tasks`; without the
+    // count a stopped run reads as a failure with nothing failed (item 851).
+    await Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/summary-probe',
+          `{ telemetry() { return { onRecord() {}, onRunSummary(s) { globalThis.__vxAbortSummary = s } } } }`,
+        ),
+      ]),
+    )
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
+            after: { dependsOn: ['slow'], exec: { command: 'echo never' } },
+          },
+        }
+      `,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['after'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    ac.abort()
+    await running
+    const s = (globalThis as { __vxAbortSummary?: RunSummaryRecord }).__vxAbortSummary!
+    expect({
+      exitOk: s.exitOk,
+      failedCount: s.failedCount,
+      abortedCount: s.abortedCount,
+      tasks: s.tasks.length,
+    }).toEqual({ exitOk: false, failedCount: 0, abortedCount: 2, tasks: 0 })
   }, 20_000)
 
   it('a child that ignores SIGTERM is SIGKILLed after the grace', async () => {

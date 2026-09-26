@@ -3,7 +3,7 @@
 ## Purpose
 
 THE versioned, serializable contract every telemetry consumer speaks
-(`TELEMETRY_SCHEMA_VERSION = 2`). Exporters (otel, a custom sink) receive
+(`TELEMETRY_SCHEMA_VERSION = 3`). Exporters (otel, a custom sink) receive
 these records instead of re-deriving facts from the rendering-oriented
 `WireEvent` stream — `cacheSource` is derived once, git/CI/host context
 is pre-folded, bigint wallclock spans are decimal strings.
@@ -14,7 +14,10 @@ is pre-folded, bigint wallclock spans are decimal strings.
   `task.log` / `task.end` / `run.end`.
 - `RunSummaryRecord` — one per run: `RunContextRecord` + totals +
   per-task `TaskTelemetry[]`. What every telemetry sink receives at
-  end of run.
+  end of run. `abortedCount` (v3, item 851) counts the tasks a
+  shutdown signal or an embedder's abort killed; they are not in the
+  task list, which holds real runs only, so without it a stopped run
+  read as a failure with nothing failed.
 - `deriveCacheSource(status)` — `'local' | 'remote' | 'miss' | null`.
 - `taskTelemetryOf(outcome)` — the one projection of a `TaskOutcome` into
   `TaskTelemetry`, used by the streaming `task.end` record and the

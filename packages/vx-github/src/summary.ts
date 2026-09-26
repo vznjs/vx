@@ -65,7 +65,8 @@ export function clampJobSummary(markdown: string): string {
 /** Render the whole job summary. Deterministic for a given record. */
 export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string {
   const failed = summary.tasks.filter((t) => t.status === 'failed')
-  const verdict = summary.exitOk ? '✅' : '❌'
+  const cancelled = !summary.exitOk && summary.failedCount === 0 && summary.abortedCount > 0
+  const verdict = summary.exitOk ? '✅' : cancelled ? '⏹️' : '❌'
   const lines: string[] = []
   lines.push(`## ${verdict} ${title}`)
   lines.push('')
@@ -78,6 +79,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     `**${summary.hitCount}** cache hit${summary.hitCount === 1 ? '' : 's'}` +
       (summary.hitRemoteCount > 0 ? ` (${summary.hitRemoteCount} remote)` : ''),
     ...(summary.failedCount > 0 ? [`**${summary.failedCount}** failed`] : []),
+    ...(summary.abortedCount > 0 ? [`**${summary.abortedCount}** aborted`] : []),
     fmtMs(summary.totalDurationMs),
   ]
   lines.push(stats.join(' · '))

@@ -187,7 +187,7 @@ zero-overhead.
 ## The telemetry contract
 
 `orchestrator/telemetry.ts` is THE canonical, versioned export shape
-(`TELEMETRY_SCHEMA_VERSION = 2`) every exporter reads — OTel, the
+(`TELEMETRY_SCHEMA_VERSION = 3`) every exporter reads — OTel, the
 GitHub plugin, or a third-party sink:
 
 - **`TelemetryRecord`** — streaming, one per lifecycle event
