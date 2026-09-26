@@ -337,6 +337,19 @@ export function runGitLsFiles(cwd: string): GitLsResult {
   return parseLsFilesOutput(text, undecodable)
 }
 
+/**
+ * A file's identity as the key folds it: its blob OID, prefixed by its git
+ * mode unless that is a plain file's (100644). A blob OID holds no mode, so
+ * a `chmod +x` or a symlink swapped for a file of its target's bytes kept
+ * the key while `git status` and `--affected` saw the change, and the task
+ * replayed the old output (item 887). The plain mode stays unprefixed, so
+ * only executables and symlinks moved key. `hashFile` spells it the same
+ * way from a stat.
+ */
+export function fileIdentity(mode: string, oid: string): string {
+  return mode === '100644' ? oid : `${mode}:${oid}`
+}
+
 // Each `ls-files -s -v` record is `[<flag> ]<mode> <oid> <stage>\t<path>` —
 // the staged-entry form, with an optional cache-state letter (`H`, `S`,
 // `h`, …) in front. `--others` paths print bare; with `-z`, core.quotePath
@@ -359,7 +372,7 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
     const mode = m[2]!
     const stage = m[4]!
     if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === '0') {
-      oids.set(filePath, m[3]!)
+      oids.set(filePath, fileIdentity(mode, m[3]!))
     }
     // A LOWERCASE letter means skip-worktree or assume-unchanged (`S` is the
     // older spelling of skip-worktree): git has been told to stop looking at

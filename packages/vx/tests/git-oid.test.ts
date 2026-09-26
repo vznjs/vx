@@ -118,10 +118,11 @@ describe('Cache.hashFile — git blob OID domain', () => {
     const dangling = path.join(root, 'dangling')
     await symlink('nowhere', dangling)
     git(root, 'add', '-A')
-    // Every link's fallback hash equals git's index OID for it.
-    expect(await cache.hashFile(fileLink)).toBe(indexOid(root, 'file-link'))
-    expect(await cache.hashFile(dirLink)).toBe(indexOid(root, 'dir-link'))
-    expect(await cache.hashFile(dangling)).toBe(indexOid(root, 'dangling'))
+    // Every link's fallback hash equals git's index OID for it, under the
+    // symlink's mode (item 887: an OID holds no mode).
+    expect(await cache.hashFile(fileLink)).toBe(`120000:${indexOid(root, 'file-link')}`)
+    expect(await cache.hashFile(dirLink)).toBe(`120000:${indexOid(root, 'dir-link')}`)
+    expect(await cache.hashFile(dangling)).toBe(`120000:${indexOid(root, 'dangling')}`)
     // Differential: a file link is NOT its target's content hash.
     expect(await cache.hashFile(fileLink)).not.toBe(await cache.hashFile(target))
     // A retargeted link is a different blob.
@@ -188,7 +189,7 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     // A clean symlink's OID is the blob of its target STRING — the same
     // value hashFile computes for it, so trusting it is sound.
     const linkAbs = path.join(pkgDir, 'src', 'link.ts')
-    expect(oids!.get(linkAbs)).toBe(indexOid(root, 'pkg/src/link.ts'))
+    expect(oids!.get(linkAbs)).toBe(`120000:${indexOid(root, 'pkg/src/link.ts')}`)
     expect(oids!.has(path.join(pkgDir, 'src', 'gone.ts'))).toBe(false) // deleted → untrusted
   })
 
@@ -293,8 +294,8 @@ describe('populateGitFilesCache — index OID harvesting', () => {
       gitlink: trusted('sub'),
     }).toEqual({
       plain: indexOid(root, 'pkg/plain.ts'),
-      exec: indexOid(root, 'pkg/run.sh'),
-      link: indexOid(root, 'pkg/link.ts'),
+      exec: `100755:${indexOid(root, 'pkg/run.sh')}`,
+      link: `120000:${indexOid(root, 'pkg/link.ts')}`,
       gitlink: undefined,
     })
   })

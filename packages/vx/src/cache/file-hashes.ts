@@ -9,7 +9,7 @@
 import type { Database } from 'bun:sqlite'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
-import { repoFacts } from './git-inputs.js'
+import { fileIdentity, repoFacts } from './git-inputs.js'
 import { FILE_HASH_RACY_MS } from './layer.js'
 
 export class FileHashStore {
@@ -84,11 +84,19 @@ export class FileHashStore {
     // is its mode-120000 index OID. Not the bytes behind it — a link to a
     // directory has none, a dangling one has none, and a link to a file
     // outside the project would fold bytes `git diff` and `--affected`
-    // cannot see. A link to a file inside the project still tracks that
-    // file's content, because the file is an input in its own right. No
+    // cannot see. A link to a file inside the project tracks that file's
+    // content only when the file matches the task's globs too. No
     // memo: readlink is one syscall, and the row would be keyed on the
     // link's own stat, not its target's.
-    if (st.isSymbolicLink()) return this.hashBytes(new TextEncoder().encode(readlinkSync(filePath)))
+    if (st.isSymbolicLink()) {
+      return fileIdentity(
+        '120000',
+        this.hashBytes(new TextEncoder().encode(readlinkSync(filePath))),
+      )
+    }
+    // git's mode for a regular file: 100755 when the owner may execute it.
+    // The memo below holds the content alone; the mode rides this stat.
+    const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'
     const mtimeMs = Math.floor(st.mtimeMs)
     const size = st.size
     // ctime + ino are what make this memo SAFE, not merely fast. mtime is
@@ -117,7 +125,7 @@ export class FileHashStore {
       row.ctime_ms === ctimeMs &&
       row.ino === ino
     ) {
-      return row.content_hash
+      return fileIdentity(mode, row.content_hash)
     }
     const ch = await this.hashFileFromDisk(filePath)
     // git's racy-clean rule, applied to the memo: a stat taken in the same
@@ -131,7 +139,7 @@ export class FileHashStore {
     if (this.write && Date.now() - ctimeMs >= FILE_HASH_RACY_MS) {
       this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
     }
-    return ch
+    return fileIdentity(mode, ch)
   }
 
   /**
@@ -148,6 +156,8 @@ export class FileHashStore {
     const out = new Map<string, string>()
     if (paths.length === 0) return out
     interface Stat {
+      /** git's mode for it, as `hashFile` spells the identity. */
+      mode: string
       mtimeMs: number
       size: number
       ctimeMs: number
@@ -167,10 +177,14 @@ export class FileHashStore {
         if (st.isSymbolicLink()) {
           // No memo, for `hashFile`'s reason: the row would be keyed on
           // the link's own stat, not its target's.
-          out.set(p, this.hashBytes(new TextEncoder().encode(readlinkSync(p))))
+          out.set(
+            p,
+            fileIdentity('120000', this.hashBytes(new TextEncoder().encode(readlinkSync(p)))),
+          )
           continue
         }
         stats.set(p, {
+          mode: (st.mode & 0o100) !== 0 ? '100755' : '100644',
           mtimeMs: Math.floor(st.mtimeMs),
           size: st.size,
           ctimeMs: Math.floor(st.ctimeMs),
@@ -209,7 +223,7 @@ export class FileHashStore {
           row.ctime_ms === st.ctimeMs &&
           row.ino === st.ino
         ) {
-          out.set(p, row.content_hash)
+          out.set(p, fileIdentity(st.mode, row.content_hash))
         } else misses.push(p)
       }
     }
@@ -224,7 +238,7 @@ export class FileHashStore {
         if (digest === undefined) continue
         const p = misses[i]!
         const st = stats.get(p)!
-        out.set(p, digest)
+        out.set(p, fileIdentity(st.mode, digest))
         // The same racy-clean rule as `hashFile`: a stat taken within the
         // window of the file's last change is not memoised.
         if (this.write && now - st.ctimeMs >= FILE_HASH_RACY_MS) {

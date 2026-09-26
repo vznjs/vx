@@ -9,6 +9,7 @@
 // reproduced against the pre-fix tree before the fix landed.
 
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
@@ -18,6 +19,7 @@ import {
   writeFile,
   utimes,
   stat,
+  symlink,
 } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -94,6 +96,54 @@ afterEach(async () => {
 })
 
 describe('stale cache hits', () => {
+  it(
+    'a mode change re-keys the task: an executable bit, a symlink swapped for a file',
+    async () => {
+      // A blob OID holds no mode, so both kept the key while `git status`
+      // and `--affected` saw the change, and the task replayed its old
+      // output, committed or not (item 887). The index path (clean) and
+      // the stat path (dirty) must spell the mode alike: the committed
+      // state after a dirty miss is a hit.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', 'p')
+      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
+      await write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
+      await write(path.join(pkg, 'src', 't.txt'), 'real')
+      await symlink('t.txt', path.join(pkg, 'src', 'l.txt'))
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o && cat src/l.txt >> dist/o' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      const out = path.join(pkg, 'dist', 'o')
+      const step = async (): Promise<[string, string]> => {
+        const word = /1 (miss|up-to-date)/.exec(vx(root, 'run', 'build', '--all'))?.[1] ?? '?'
+        return [word, (await readFile(out, 'utf8')).replace(/\n/g, ' ')]
+      }
+      const seen: Array<[string, string]> = [await step()]
+      await chmod(path.join(pkg, 'src', 'run.sh'), 0o755)
+      seen.push(await step())
+      git(root, 'commit', '-q', '-am', 'exec')
+      seen.push(await step())
+      await rm(path.join(pkg, 'src', 'l.txt'))
+      await write(path.join(pkg, 'src', 'l.txt'), 't.txt')
+      seen.push(await step())
+      expect(seen).toEqual([
+        ['miss', 'plain real'],
+        ['miss', 'exec real'],
+        ['up-to-date', 'exec real'],
+        ['miss', 'exec t.txt'],
+      ])
+    },
+    TIMEOUT,
+  )
   it(
     'a round trip between two entries whose outputs carry one fixed mtime restores the right bytes',
     async () => {

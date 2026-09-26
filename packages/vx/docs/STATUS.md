@@ -767,6 +767,37 @@ serve.ts` under bwrap, some parented to init.
         at the throw or 300 ms later: git finishes before the config
         refusal.
 
+887.  DONE (2026-09-26, a key review agent's lead, reproduced). A file's
+      git mode was not in the key. The fold took `(relPath, oid)`, and a
+      blob OID holds no mode. A `chmod +x` on an input, dirty or
+      committed, kept the key while `git status` and `--affected` saw
+      `M`, and the task replayed its old output. So did a symlink
+      replaced by a file holding its target string (`T`).
+      - The identity folded is now the OID prefixed by the git mode
+        unless that is a plain file's: `100755:<oid>`, `120000:<oid>`,
+        the bare OID for 100644 (`fileIdentity`, git-inputs.ts). The
+        `ls-files` parse spells it from the index, and `hashFile` from
+        the lstat it already takes (owner execute bit). A plain file's
+        key is unchanged, so only executables and symlinks re-key once;
+        no `CACHE_VERSION` bump (a self-healing key fix).
+      - `hashFiles`, the batch form the config closures use, spells it the
+        same way. The gate's "agrees on a symlink too" row caught the
+        first draft, which had left it bare.
+      - Row: `stale-hit.test.ts` › "a mode change re-keys the task: an
+        executable bit, a symlink swapped for a file". It reads `miss`
+        on the chmod, `up-to-date` once committed (the index path and the
+        stat path agree), and `miss` on the swap. It fails without the
+        fix, and with either source left unprefixed. `git-oid.test.ts`'s
+        pins now carry the prefix.
+      - The same review's lead 3 was a docs claim: `caching.md` said a
+        link to an in-project file tracks that file. It does only when
+        the file matches the task's globs, and the sentence and the
+        `file-hashes.ts` comment now say so.
+      - Warm A/B, 1,000 projects, min-of-15: main min 393.1 ms / median
+        416.6, head 370.4 / 409.5, A/A 368.0 / 398.3. A tie.
+      - Lead 2 (the config cache replaying a config that calls
+        `machineParallelism()`) is item 888.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
