@@ -89,6 +89,54 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
     })
   })
 
+  it('a stream that ends before its operation is done re-attaches by name', async () => {
+    fake.onExecute = (_r, method) =>
+      method === 'Execute'
+        ? { stages: ['QUEUED', 'EXECUTING'], endEarly: true }
+        : { response: { result: { exit_code: 7 } } }
+    const mark = fake.calls.length
+    const op = await using((c) => c.execute(c.digestOf(bytes('ends early'))))
+    const calls = fake.calls.slice(mark)
+    expect([op.done, calls.map((x) => x.method)]).toEqual([true, ['Execute', 'WaitExecution']])
+    expect(calls[1]!.request['name']).toBe(op.name)
+  })
+
+  it('re-attaching to a stream that keeps ending early spends the retry budget, then refuses', async () => {
+    fake.onExecute = () => ({ stages: ['EXECUTING'], endEarly: true })
+    const mark = fake.calls.length
+    const refused = await using((c) =>
+      c.execute(c.digestOf(bytes('never done'))).then(
+        () => 'resolved',
+        (e: Error) => e.message,
+      ),
+    )
+    const calls = fake.calls.slice(mark)
+    expect(calls.map((x) => x.method)).toEqual([
+      'Execute',
+      'WaitExecution',
+      'WaitExecution',
+      'WaitExecution',
+    ])
+    expect(refused).toBe(
+      `reapi: execution stream for ${String(calls[1]!.request['name'])} closed before the operation finished`,
+    )
+  })
+
+  it('an unfinished operation with no name cannot be re-attached and is refused', async () => {
+    fake.onExecute = () => ({ stages: ['EXECUTING'], endEarly: true, unnamed: true })
+    const mark = fake.calls.length
+    const refused = await using((c) =>
+      c.execute(c.digestOf(bytes('unnamed'))).then(
+        () => 'resolved',
+        (e: Error) => e.message,
+      ),
+    )
+    expect([refused, fake.calls.slice(mark).map((x) => x.method)]).toEqual([
+      'reapi: execution stream closed before the operation finished',
+      ['Execute'],
+    ])
+  })
+
   it('an abort cancels the stream and says so', async () => {
     let release!: () => void
     fake.onExecute = () => ({

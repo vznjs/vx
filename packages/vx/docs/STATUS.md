@@ -461,6 +461,19 @@ echo A; echo B` went green after a failed pre hook, and a cache
         202–210). Each fix is held on its own: a plain sleep with the
         pre-check kept is caught (515 ms), and the pre-check removed is
         caught by the wire row.
+918.  DONE (2026-09-26, the vx-reapi review's lead 4). A stream that
+      ended cleanly after QUEUED or EXECUTING resolved with that last,
+      unfinished operation, and the executor failed the task with
+      "returned no ActionResult" while the action was still running on the
+      server.
+      - `execute` returns only a `done` operation: a clean end on an
+        unfinished, named one re-attaches with `WaitExecution` on the
+        dropped-stream budget (three, backing off 100/400/1600 ms), then
+        refuses by name; an unnamed one cannot be re-attached and is
+        refused at once. A stream with no operation is refused as before.
+      - Rows: `wire-exec-sweep.test.ts` (three: re-attaches by name,
+        spends the budget then refuses, an unnamed one is refused), each
+        red without the fix; the no-operation row is the control.
 
 ## In flight
 

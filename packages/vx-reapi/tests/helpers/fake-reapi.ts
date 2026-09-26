@@ -72,6 +72,8 @@ export interface ExecutePlan {
   endEarly?: boolean
   /** Hold the stream open until this settles (a queued action). */
   hold?: Promise<void>
+  /** Send every operation with an empty name (one that cannot be re-attached). */
+  unnamed?: boolean
 }
 
 export interface FakeCall {
@@ -456,8 +458,11 @@ export async function startFakeReapi(): Promise<FakeReapi> {
         fake.executesCancelled++
       })
       const plan = fake.onExecute(call.request, method)
-      const name =
-        method === 'WaitExecution' ? String(call.request['name']) : `operations/${++operations}`
+      const name = plan.unnamed
+        ? ''
+        : method === 'WaitExecution'
+          ? String(call.request['name'])
+          : `operations/${++operations}`
       for (const stage of plan.stages ?? []) call.write(operation(name, stage))
       for (const value of plan.metadataBytes ?? []) {
         call.write({

@@ -1054,9 +1054,10 @@ export class ReapiClient {
   /**
    * `Execute` — a SERVER-STREAMING call yielding `Operation`s until one is
    * `done`. Resolves with the terminal operation. If the stream drops
-   * mid-flight with a transient status, the call RE-ATTACHES to the same
-   * operation through `WaitExecution` instead of re-running the action —
-   * that is exactly what the RPC exists for.
+   * mid-flight with a transient status, or ends before the operation is
+   * done, the call RE-ATTACHES to the same operation through
+   * `WaitExecution` instead of re-running the action — that is exactly what
+   * the RPC exists for.
    *
    * `skip_cache_lookup` is TRUE by design: vx has already decided this is a
    * miss (it owns the cache key and consulted its own layers), so letting the
@@ -1088,22 +1089,38 @@ export class ReapiClient {
     }
     let operationName = ''
     for (let attempt = 0; ; attempt++) {
+      let failure: unknown
       try {
-        return operationName === ''
-          ? await this.operationStream('execute', req, signal, opts.onStage, (n) => {
-              operationName = n
-            })
-          : await this.operationStream(
-              'waitExecution',
-              { name: operationName },
-              signal,
-              opts.onStage,
-            )
+        const op =
+          operationName === ''
+            ? await this.operationStream('execute', req, signal, opts.onStage, (n) => {
+                operationName = n
+              })
+            : await this.operationStream(
+                'waitExecution',
+                { name: operationName },
+                signal,
+                opts.onStage,
+              )
+        if (op.done) return op
+        // A stream can END cleanly on an operation still QUEUED or EXECUTING
+        // (a server or proxy cutting long streams); the operation lives on,
+        // so it is re-attached as a dropped stream is, on the same budget.
+        // An unnamed one cannot be re-attached, and a plain Error is not
+        // retried.
+        if (operationName === '') {
+          throw new Error('reapi: execution stream closed before the operation finished')
+        }
+        failure = new Error(
+          `reapi: execution stream for ${operationName} closed before the operation finished`,
+        )
       } catch (err) {
-        const delay = RETRY_DELAYS_MS[attempt]
-        if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
-        await abortableSleep(delay, signal)
+        if (!isRetryable((err as grpc.ServiceError).code)) throw err
+        failure = err
       }
+      const delay = RETRY_DELAYS_MS[attempt]
+      if (delay === undefined) throw failure
+      await abortableSleep(delay, signal)
     }
   }
 
