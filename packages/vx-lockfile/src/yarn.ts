@@ -194,9 +194,17 @@ function resolveDescriptor(lock: Lockfile, name: string, range: string): readonl
     return []
   }
   if (range.startsWith('catalog:')) return lock.names.get(name) ?? []
-  if (range.includes(':')) return []
-  const bare = lock.descriptors.get(`${name}@npm:${range}`)
-  return bare === undefined ? [] : [bare]
+  if (!range.includes(':')) {
+    const bare = lock.descriptors.get(`${name}@npm:${range}`)
+    if (bare !== undefined) return [bare]
+  }
+  // A descriptor the file does not key: a root `resolutions` override
+  // rewrote it (to a `patch:`, another range), so what is installed is an
+  // entry nothing in the file points at. Edges to nowhere left that entry
+  // outside every workspace's reach, and a patch edit re-keyed nothing
+  // (item 903). Every entry of the name, as for a catalog: a bump of any
+  // of them moves the workspace, never a bump of none.
+  return lock.names.get(name) ?? []
 }
 
 /**
