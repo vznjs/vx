@@ -338,6 +338,26 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Row: `turbo-map-sweep.test.ts` › turbo 1 `$NAME` env
         dependencies. It fails without the fix, and the review's repro
         now misses on a changed var. The vx-migrate README says so.
+910.  DONE (2026-09-26, an nx() review agent's leads 1 and 2). A stale
+      hit in `nx()`. Nx hashes `^production` over the project graph
+      whether or not a task edge exists, and the mapper dropped it as
+      "folded through dependsOn": the stock `test` (`default`,
+      `^production`, no `dependsOn`) hit after a dependency's source
+      changed. Project-level `namedInputs` were not read either.
+      - Each project gets an `nx-input:<name>` twin keyed on its own
+        input and chained along the Nx graph; a task reading `^name`
+        depends on its direct dependencies' twins. No `inputs` is
+        `default` + `^default`, as in Nx.
+      - A first cut listed the closure's globs on every task: 2.5
+        million globs, mapping 91 → 1,535 ms at 1,000 projects. The
+        twins: 91 → 144 ms, and a warm 300-project run 159 → 256 ms (598
+        twins, about 0.16 ms each; the "before" arm is the stale key).
+        Next 25 is the follow-up.
+      - Rows: `nx-map-sweep.test.ts` › `^` inputs fold over the project
+        graph (seven: chained twins, implicit `^default`, project named
+        inputs, `projects`, a missing input, a transparent node, a
+        cycle). Each fails without the fix, and the review's two
+        end-to-end repros now re-run. The design doc and README say so.
 
 ## In flight
 
@@ -666,6 +686,13 @@ next?".
     same strace flags, bare, was clean 6 of 6, and the shard itself
     through vx's sandbox (bwrap under strace, as CI runs it) was clean
     5 of 5 on this box: the trigger is the CI runner's, not reproduced.
+25. **A key-only task for `nx()`'s `nx-input:<name>` twins (item 910).**
+    A twin runs `true` so that its key, the project's `^` input, folds
+    into its dependants. At 300 projects the 598 twins cost 97 ms of a
+    159 ms warm run. A task kind that is a key and nothing else (no
+    spawn on a miss, no history row, not printed) would take most of it
+    back. Measure the twins' share first: is it the key, the lookup or
+    the row?
 
 ## Decisions (this arc)
 

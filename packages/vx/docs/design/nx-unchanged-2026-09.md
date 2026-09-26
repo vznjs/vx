@@ -261,6 +261,37 @@ environment at map time drops the files and `envFile`, as Nx does.
 `nx-env` takes `--envFile`, not `--env-file`: Node 22 reads `--env-file`
 from anywhere on its command line and exits 9 when the file is missing.
 
+## `^` inputs over the project graph (2026-09-26, item 910)
+
+Nx hashes `^production` as each dependency's `production` input,
+transitively over the PROJECT graph, whether or not the task has a `^`
+edge (`hash_planner.rs`, `gather_dependency_inputs`). The mapper dropped
+it as "folded through dependsOn", which holds only along a task edge, so
+the stock `test: { inputs: ['default', '^production'] }` hit after a
+dependency's source changed. It also read `namedInputs` from nx.json
+alone; Nx merges an implicit `default` (`{projectRoot}/**/*`), nx.json's
+and the project's own, in that order.
+
+Listing the closure's globs on every task is correct and does not scale:
+2.5 million workspace globs and 1.5 s of mapping at 1,000 projects in a
+deep graph. So each project gets an `nx-input:<name>` twin — `true`,
+cached, keyed on its own `name` input, with an edge to each Nx
+dependency's twin — and a task reading `^name` depends on its direct
+dependencies' twins. vx folds upstream keys along edges, so the closure
+reaches the key with each project hashed once. The edges are explicit
+`pkg#nx-input:<name>` on the Nx graph's edges (vx's `^` follows
+package.json, and an Nx edge from a tsconfig path has no manifest
+entry). A graph node with no vx project is walked through, its files
+joining as workspace globs; inside a project cycle, which vx's task
+graph refuses, a twin carries its peers' files and edges only out of the
+cycle.
+
+Measured (Linux box, interleaved, min of 15): mapping at 1,000 projects
+91 → 144 ms; a warm run of `build test lint` at 300 projects in a deep
+graph 159 → 256 ms, the 598 twins at about 0.16 ms each. The "before"
+arm is the stale-hit mapping. A key-only node in core (no spawn, no
+history row) would take most of it back; STATUS Next.
+
 ## What it does not do
 
 - Nx's configuration propagation (`^build` under `--configuration
