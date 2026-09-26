@@ -158,6 +158,27 @@ describe('workspace digests', () => {
     expect(after.get('.')).toBe(before.get('.'))
   })
 
+  it('a scoped package nested under another resolves past its own scope, to the root (item 901)', () => {
+    // `foo/@s/y` depends on `bar`. Its parent level is `foo`, then the root;
+    // stepping to `foo/@s` found `foo/@s/bar`, another package, and the
+    // root `bar` it installs was never folded.
+    const scoped = (bar: string, sibling = true) =>
+      JSON.stringify({
+        lockfileVersion: 1,
+        workspaces: { '': { name: 'root', dependencies: { foo: '1.0.0' } } },
+        packages: {
+          foo: ['foo@1.0.0', '', { dependencies: { '@s/y': '1.0.0', '@s/bar': '2.0.0' } }, 'h-foo'],
+          'foo/@s/y': ['@s/y@1.0.0', '', { dependencies: { bar: '*' } }, 'h-y'],
+          ...(sibling ? { 'foo/@s/bar': ['@s/bar@2.0.0', '', {}, 'h-sbar'] } : {}),
+          bar: [`bar@${bar}`, '', {}, `h-bar-${bar}`],
+        },
+      })
+    const root = (text: string) => importerDigests(parseLockfile(text)).get('.')
+    expect(root(scoped('2.0.0'))).not.toBe(root(scoped('1.0.0')))
+    // CONTROL: with no scoped sibling to mistake, the bump moved it before too.
+    expect(root(scoped('2.0.0', false))).not.toBe(root(scoped('1.0.0', false)))
+  })
+
   it('a nested package moves only the workspace it is nested under', () => {
     const before = digests(lock())
     const after = digests(lock({ nestedBar: '1.0.1' }))

@@ -225,6 +225,17 @@ test is telling the truth.
         cwd resolves (`/private/var/…`). Reproduced on Linux with a
         `TMPDIR` reached through a symlink; the fixture root is now
         canonical.
+901.  DONE (2026-09-26, a lockfile-plugin review agent's lead 3). A stale
+      hit in `@vzn/vx-lockfile`'s bun parser. A dependency of a scoped
+      package nested under another (`foo/@s/y` → `bar`) stepped up to
+      `foo/@s` rather than past it, and resolved to `foo/@s/bar`, another
+      package. The root `bar` it installs was never folded, so bumping it
+      re-keyed nothing.
+      - The resolver now walks package levels, a scoped name being one
+        level at any depth, not only at the root.
+      - Row: `bun.test.ts` (item 901), with the control of the same bump
+        and no scoped sibling to mistake. It fails without the fix.
+      - The same review reproduced two yarn stale hits (items 902, 903).
 
 ## In flight
 
