@@ -676,6 +676,20 @@ test is telling the truth.
       removed every entry of the host's `/tmp`, so every mutant now runs
       under its own scratch `TMPDIR`.
 
+847.  DONE (2026-09-26, the orchestrator and watch-loop fixtures).
+      `tests/fixture-helpers.test.ts` now also pins
+      `tests/helpers/orchestrator-fixture.ts` and `watch-loop.ts`:
+      `NO_CACHE` and `FORCE` equal what `parseRunArgs` resolves
+      `--no-cache` and `--force` to, the silent logger's order and
+      per-task bodies, the stamp command, `until`'s await and its
+      timeout message, `executions` and `initialOnly`, and the watch
+      fixture's app, its build, and its teardown (the case's watch is
+      killed and both directories go). 30 mutations: 29 caught, three of
+      them after rows for first-pass survivors (a promise judged truthy
+      unawaited, zero executions passing `initialOnly`, a stale
+      `f.watch`). One is equivalent: the kill grace set before or after
+      the caller's env, which no caller overrides.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
