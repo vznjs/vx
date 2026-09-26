@@ -292,6 +292,20 @@ echo A; echo B` went green after a failed pre hook, and a cache
         `;` body, a failing body, trailing comments), with the no-hook
         control. Three fail against the old join. The review's three
         repros now match `bun run`.
+906.  DONE (2026-09-26, the same review's lead 1). A stale hit in
+      `turbo()`. A package `turbo.json` overlay array holding
+      `$TURBO_EXTENDS$` (Turbo 2.5+) means the inherited list plus the
+      overlay's own entries. The mapper spread the overlay whole, so the
+      token became a literal input glob and env name, and the root's
+      `inputs`, `env` and `dependsOn` were gone. An edit to `src/`, and a
+      change of `MODE`, hit the cache with the old output, and
+      `lib#build` never ran first.
+      - `withOverlay` keeps the inherited list and appends for any
+        overlay array that holds the token; one without it still
+        replaces.
+      - Rows: `turbo-map-sweep.test.ts`, the three fields at once, with
+        the replace control. It fails without the fix, and the review's
+        repro now misses. The vx-migrate README says so.
 
 ## In flight
 

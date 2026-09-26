@@ -145,6 +145,27 @@ function taskNamesFor(
 }
 
 /**
+ * A package overlay on the task it inherits. A field the overlay sets
+ * replaces the inherited one, except an array holding `$TURBO_EXTENDS$`
+ * (Turbo 2.5+): that is the inherited list plus the overlay's other
+ * entries. Spread whole, the token stayed as a literal input glob and
+ * env name and the root's `inputs`, `env` and `dependsOn` were gone, so a
+ * source edit was a hit (item 906).
+ */
+function withOverlay(inherited: TurboTask, overlay: TurboTask | undefined): TurboTask {
+  if (overlay === undefined) return inherited
+  const out: Record<string, unknown> = { ...inherited, ...overlay }
+  for (const [field, value] of Object.entries(overlay)) {
+    if (!Array.isArray(value) || !value.includes(TURBO_EXTENDS)) continue
+    const base = (inherited as Record<string, unknown>)[field]
+    out[field] = [...(Array.isArray(base) ? base : []), ...value.filter((v) => v !== TURBO_EXTENDS)]
+  }
+  return out as TurboTask
+}
+
+const TURBO_EXTENDS = '$TURBO_EXTENDS$'
+
+/**
  * A per-package `{ "extends": false }` with nothing else is Turbo's
  * opt-out: the package's script exists, the root defines the task, and
  * Turbo 2.9 runs nothing for it (n8n's `@n8n/storybook` on `build` and
@@ -230,7 +251,7 @@ export async function mapTurboWorkspace(
       const def: TurboTask =
         overlay?.extends === false
           ? { ...overlay }
-          : { ...rootTasks[name], ...rootTasks[`${meta.name}#${name}`], ...overlay }
+          : withOverlay({ ...rootTasks[name], ...rootTasks[`${meta.name}#${name}`] }, overlay)
       delete def.extends
       tasks.push(
         buildTask(
