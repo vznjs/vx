@@ -694,6 +694,27 @@ serve.ts` under bwrap, some parented to init.
         across both cycles. After the exit it found no host socat, no
         socket and no process of the workspace's left.
 
+885.  DONE (2026-09-26, Next 6 re-measured after the day's items 873–884;
+      the run path gained 880's `--no-optional-locks` and the sandbox
+      lifecycle of 873, 882 and 884). Warm, 1,000 projects, `run build
+--all`, source runs, interleaved min-of-15, one workspace copy per
+      arm pre-warmed by that arm:
+      - item 863's head (67eab83a): min 393.8 ms, median 422.2;
+      - head (item 884's branch): min 379.5, median 433.2;
+      - A/A control (head against a third copy): min 375.9, median 422.3.
+
+      A tie: the gap is inside the A/A spread, and a warm run spawns no
+      sandbox. The absolute figures are this container's under the
+      day's load, above item 863's 530 ms and below it in no comparable
+      way.
+
+      The lifecycle review 884 came out of found nothing further:
+      - `vx mcp` handles one message at a time and its tools are
+        read-only, so the doctor's `resetSandbox` never overlaps a run;
+      - `vx watch` restarts a sandboxed server each cycle, as `cli.md`
+        documents, and on Ctrl-C leaves no host socat, bridge socket or
+        process of the workspace's.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -793,7 +814,7 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 863 (2026-09-26, item 860's group guard on the spawn path, a tie at 1,000 projects; 850 was the one before), and the
+   item 885 (2026-09-26, the day's items 873–884, a tie at 1,000 projects; 863 was the one before), and the
    restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
