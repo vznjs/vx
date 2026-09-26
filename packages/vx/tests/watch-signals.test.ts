@@ -121,11 +121,15 @@ describe('vx watch under a signal (e2e)', () => {
         }
       `,
     )
+    // The trap is the subject, not the escalation: at 200 ms a loaded macOS
+    // runner SIGKILLed the shell of `signal-handling.test.ts`'s twin row
+    // before its trap wrote got.txt (PR #929, item 853). The loop exits when
+    // the child does, so a long grace costs nothing.
     const proc = Bun.spawn([process.execPath, BIN, 'watch', 't', '--all'], {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
     })
     let out = ''
     const reader = (async () => {

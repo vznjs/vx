@@ -775,6 +775,15 @@ test is telling the truth.
       signal arrives, not the escalation, so they now pass a 5 s grace;
       vx exits when the child does.
 
+853.  DONE (2026-09-26, the watch loop's SIGINT rows get the grace their
+      trap needs). `watch-signals.test.ts`'s two `reachesAsSigint` rows
+      are item 852's `reaches` rows run through `vx watch`: a TERM/INT
+      trap writes `got.txt` inside a 200 ms grace. That shape failed on
+      #929's macOS job with the file missing. These rows test which
+      signal arrives, so they now pass a 5 s grace. Next 23(a) records
+      the likely link, and 23(b) that its row ran on a 2 s grace until
+      item 849.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -1049,7 +1058,11 @@ next?".
     (2026-09-25).** (a) `watch-signals.test.ts` › "SIGINT during the
     initial run reaches its task as SIGINT", on the macOS job of #878.
     The recap cut the assertion, it passed on the same code in #879, and
-    it passed 49 of 49 Linux repetitions. (b) `signal-handling.test.ts`
+    it passed 49 of 49 Linux repetitions. Its twin in `signal-handling.test.ts` failed
+    the same way on the macOS job of #929 with the assertion in the log:
+    `got.txt` missing, the shell SIGKILLed at the 200 ms grace before
+    its trap ran. Both rows now pass a 5 s grace (items 852, 853). That
+    (a) was the same cause is likely, not proven. (b) `signal-handling.test.ts`
     › "at the moment vx exits on a signal every task process is gone and
     its pipes are closed", in a full local gate. On SIGINT one task pid
     was alive at vx's exit; the shard passed 4 of 4 alone and a gate
@@ -1057,7 +1070,10 @@ next?".
     test's `isAlive` counts a zombie, and `slow`'s `sleep 30 &` starts
     with SIGINT ignored and dies only to the SIGKILL. An orphan zombie
     that init has not reaped yet is the leading suspect, not a proven
-    one. Both rows now print what they saw on a mismatch (item 804); the
+    one. One fact since: until item 849 every vx that file
+    spawned ran on the 2 s default grace, not the 200 ms it set
+    (`Bun.spawn` without `env` passes the startup environment), so the
+    failure was seen at 2 s. Both rows now print what they saw on a mismatch (item 804); the
     next failure names the process and what vx said, and this entry
     closes on that evidence.
 
