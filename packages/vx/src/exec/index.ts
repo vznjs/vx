@@ -30,7 +30,7 @@ export {
 export { type DeniedCall } from './sandbox-violations.js'
 export { isMountableLiteral, MOUNT_WILDCARDS } from './sandbox-paths.js'
 export { localExecutor } from './local-executor.js'
-export { killTree, untilGroupsGone } from './kill-tree.js'
+export { holdGroups, killTree, untilGroupsGone } from './kill-tree.js'
 export {
   assertExecuteResult,
   selectExecutor,

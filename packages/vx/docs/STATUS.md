@@ -306,7 +306,8 @@ test is telling the truth.
       trap has fired. The mutant fails it in 6 of 6 runs, and the fixed
       row passes 5 of 5. Two mutant runs before those passed, each
       exiting at the 2 s grace, i.e. by the first signal's path. That did
-      not recur, and the cause is unproven.
+      not recur, and the cause is unproven. With the run lock's (862),
+      all three of item 848's exit hooks are now held.
 
 864.  DONE (2026-09-26, Next 23(b), evidence for the next failure). The
       row "at the moment vx exits on a signal every task process is gone
@@ -319,8 +320,31 @@ test is telling the truth.
       before it exited, so its guard (item 860) kills nothing there to
       blur the two. Driven with a leak (signals.ts without its SIGKILL
       sweep), the row names `child: … sleep 30, still alive 3 s after the
-exit`. With the run lock's
-      (862), all three of item 848's exit hooks are now held.
+exit`.
+
+865.  DONE (2026-09-26, a gap in item 860's guard, found by reading it
+      again). The runner lets a group go when its LEADER exits. In a
+      teardown the leader is often the first to go: a shell dies on the
+      signal while the child it backgrounded ignores it, or traps it,
+      and runs out the grace. The group was off the guard's list
+      mid-grace, and a `kill -9` of vx there left the child under init.
+      - Reproduced for a Ctrl-C of a one-shot task and for the end-of-run
+        persistent shutdown.
+      - `holdGroups` now keeps a teardown's groups listed until its
+        SIGKILL sweep has settled. A release that arrives meanwhile is
+        written when the hold ends. Holds count, so two teardowns over
+        one server let it go once.
+      - Rows in `keep-alive.test.ts`, each failing without the hold (3 of
+        3): "a kill -9 in a Ctrl-C’s grace takes the child of a shell that
+        died on the signal", and "a kill -9 in the persistent shutdown’s
+        grace takes the server a dead shell left".
+      - The second row's first draft passed without the fix: its escaped
+        quotes broke the server's trap, so no server was ever there to
+        leave behind. It waits for the shell's death too, since a vx
+        killed before handling that exit still held the group.
+      - Also: item 863's closing sentence (all three of item 848's exit
+        hooks held) had landed at the end of item 864, because 864 was
+        inserted mid-way through 863's text. It is back under 863.
 
 ## In flight
 

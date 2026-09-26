@@ -22,6 +22,7 @@ export function signalThrough(child: Child, fd: number): void
 export function closeSignalChannel(child: Child): void
 export function spawnGuarded(spawn: () => Child): Child
 export function releaseGroup(child: Child): void
+export function holdGroups(children: readonly Child[]): () => void
 ```
 
 `signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx
@@ -69,6 +70,14 @@ turborepo#9666). A group kill reaches what the task forked, so a
   (600 tasks) took 4,462 ms against 4,473 before it (min of 9,
   interleaved, one workspace copy per arm; medians 4,575 and 4,543): a
   tie. The cost is the one `sh` and two pipe writes per spawn.
+- A teardown holds its groups (`holdGroups`) until its SIGKILL sweep
+  has settled: the signal stop (`terminateChildren`) and the end-of-run
+  persistent shutdown. The runner lets a group go when its LEADER
+  exits, and a shell that died on the signal while its child ran out
+  the grace let the group go mid-grace; a `kill -9` of vx there left
+  the child under init (item 865, both reproduced). A release that
+  comes while a group is held is written when the hold ends; holds
+  count, so two teardowns over one group let it go once both are done.
 - A clean exit closes the pipe too, with the list empty, so the guard
   kills nothing. A released group is left as before: a one-shot task's
   `server &` outlives vx's clean exit, and a pid the kernel reuses is
@@ -148,7 +157,9 @@ teardown grace, and the one-shot row's child ignores SIGTERM, so a
 guard that sent it fails. In `sandbox-runtime.unsafe.test.ts`, "a traced
 sandboxed one-shot task’s children die with vx" (strace outlived vx
 before the guard), and the unsandboxed control has the backgrounded
-child die and the `setsid` one live.
+child die and the `setsid` one live. In `keep-alive.test.ts`, "a kill -9 in
+a Ctrl-C’s grace…" and "a kill -9 in the persistent shutdown’s grace…"
+each fail without the hold.
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner

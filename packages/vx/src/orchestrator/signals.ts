@@ -15,7 +15,7 @@
 
 import { signalExitCode } from '../exec/index.js'
 import { killGraceMs, settleWithin } from '../util/index.js'
-import { killTree, untilGroupsGone } from '../exec/index.js'
+import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
 /**
@@ -70,11 +70,19 @@ export async function terminateChildren(
   graceMs: number = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS),
 ): Promise<void> {
   const children = live()
-  for (const child of children) killTree(child, signal)
-  const left = await untilGroupsGone(children, graceMs)
-  const survivors = [...new Set([...left, ...live()])]
-  for (const child of survivors) killTree(child, 'SIGKILL')
-  await Promise.allSettled(survivors.map((c) => c.exited))
+  // On the group guard's list until the sweep below is done: a shell that
+  // dies on the signal lets its group go while what it forked runs out
+  // the grace (kill-tree.ts, `holdGroups`).
+  const letGo = holdGroups(children)
+  try {
+    for (const child of children) killTree(child, signal)
+    const left = await untilGroupsGone(children, graceMs)
+    const survivors = [...new Set([...left, ...live()])]
+    for (const child of survivors) killTree(child, 'SIGKILL')
+    await Promise.allSettled(survivors.map((c) => c.exited))
+  } finally {
+    letGo()
+  }
 }
 
 export interface SignalForwarding {

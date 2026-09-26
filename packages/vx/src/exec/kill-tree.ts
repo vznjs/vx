@@ -120,10 +120,43 @@ export function spawnGuarded(spawn: () => Child): Child {
 /**
  * Strike `child`'s group from the guard's list: vx is done with it. What
  * it left running is left as before, and a pid the kernel reuses is
- * never killed on the old task's account.
+ * never killed on the old task's account. A group a teardown holds is
+ * struck when the teardown lets it go.
  */
 export function releaseGroup(child: Child): void {
-  if (child.pid > 0) guardWrite(`-${child.pid}\n`)
+  if (!(child.pid > 0)) return
+  const hold = holds.get(child.pid)
+  if (hold !== undefined) hold.released = true
+  else guardWrite(`-${child.pid}\n`)
+}
+
+/** Groups a teardown is still taking down: how many hold each, and whether its runner let it go. */
+const holds = new Map<number, { count: number; released: boolean }>()
+
+/**
+ * Keep `children`'s groups on the guard's list until the returned
+ * function runs. A teardown signals a group and waits out a grace for it,
+ * and the runner lets a group go when its LEADER exits: a shell that died
+ * on the signal while a child that ignores it ran on released the group
+ * mid-grace, and a `kill -9` of vx there left that child to nobody (item
+ * 865). The caller lets go once its SIGKILL sweep has settled.
+ */
+export function holdGroups(children: readonly Child[]): () => void {
+  const pids = children.map((c) => c.pid).filter((pid) => pid > 0)
+  for (const pid of pids) {
+    const hold = holds.get(pid)
+    if (hold === undefined) holds.set(pid, { count: 1, released: false })
+    else hold.count++
+  }
+  return () => {
+    for (const pid of pids) {
+      const hold = holds.get(pid)
+      if (hold === undefined) continue
+      if (--hold.count > 0) continue
+      holds.delete(pid)
+      if (hold.released) guardWrite(`-${pid}\n`)
+    }
+  }
 }
 
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
