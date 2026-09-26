@@ -98,6 +98,31 @@ const reservationsFor = (
 const memoryBudgetMb = (options: ScheduleHistoryOptions): number =>
   options.memory ?? Math.floor(machineMemoryBytes() / MB)
 
+/**
+ * The `assume` durations that are finite non-negative numbers. A NaN
+ * (`Number(process.env.X)` with X unset) became a NaN weight and a string
+ * (an untyped `.mjs` config) string weights, and core refused both as a
+ * UserError: an ordering hint failed the run (item 930). The rest are
+ * dropped by name, as a broken history read costs only the ordering.
+ */
+function assumptions(
+  options: ScheduleHistoryOptions,
+  warn: (m: string) => void,
+): Readonly<Record<string, number>> {
+  const ok: Record<string, number> = {}
+  const bad: string[] = []
+  for (const [id, ms] of Object.entries(options.assume ?? {})) {
+    if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) ok[id] = ms
+    else bad.push(id)
+  }
+  if (bad.length > 0) {
+    warn(
+      `[vx] schedule-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a finite number of ms`,
+    )
+  }
+  return ok
+}
+
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
   const hooks: Parameters<typeof definePlugin>[1] = {
     commands: {
@@ -122,7 +147,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         return undefined
       }
       reservations = reservationsFor(nodes.keys(), table, options)
-      return criticalPathPriorities([...nodes.values()], table, options.assume)
+      return criticalPathPriorities([...nodes.values()], table, assumptions(options, ctx.warn))
     },
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
