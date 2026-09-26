@@ -190,6 +190,15 @@ test is telling the truth.
       - Rows: `why.test.ts` covers the skipped line; `metrics.test.ts`
         covers the failed side, both ways round. Both fail without the
         fix. The pruned row now pins its exact sentence as the control.
+899.  DONE (2026-09-26, the same review's lead 3). `vx last --list 1`
+      read the `1` as a run id. `--list` then ignored that id, and ten
+      runs came back with exit 0. Only `--list=1` worked, though every
+      other value flag on these verbs takes the space form.
+      - `--list` now takes the next argument as its count when it is a
+        bare integer; a run id never is one.
+      - A run id beside `--list` is refused, rather than dropped.
+      - Row: `last.test.ts` › `parseLastArgs`, with the exact results of
+        the forms side by side. It fails without the fix.
 
 ## In flight
 

@@ -274,6 +274,32 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['--nope']).error).toMatch(/unknown flag/)
     expect(parseLastArgs(['a', 'b']).error).toMatch(/unexpected argument/)
   })
+
+  it('--list N takes its count in the space form, and a run id beside --list is refused (item 899)', () => {
+    // `--list 1` read the 1 as a run id that --list then dropped, and ten
+    // runs came back.
+    const pick = (args: string[]) => {
+      const p = parseLastArgs(args)
+      return { list: p.list, runId: p.runId, error: p.error }
+    }
+    expect([
+      pick(['--list', '1']),
+      pick(['--list', '1', '--format', 'json']),
+      pick(['--list', '--format', 'json']),
+      pick(['--list', '0']),
+    ]).toEqual([
+      { list: 1, runId: undefined, error: undefined },
+      { list: 1, runId: undefined, error: undefined },
+      { list: 10, runId: undefined, error: undefined },
+      { list: undefined, runId: undefined, error: 'invalid --list: 0 (expected 1..500)' },
+    ])
+    expect(pick(['01a0dee9-run', '--list']).error).toBe(
+      'a run id and --list do not combine: replay 01a0dee9-run, or list runs',
+    )
+    expect(pick(['--list=3', 'r1']).error).toBe(
+      'a run id and --list do not combine: replay r1, or list runs',
+    )
+  })
 })
 
 // A thousand-task warm run replayed as a thousand rows put the one failure

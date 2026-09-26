@@ -32,7 +32,14 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
     if (a === '--list' || a.startsWith('--list=')) {
-      const lv = a === '--list' ? '10' : a.slice(7)
+      // `--list 5` is the count, like every other value flag's space form:
+      // it read as a run id, which `--list` then ignored, and ten runs came
+      // back (item 899). A run id is never a bare integer, so the next
+      // argument is taken only when it is one.
+      const next = args[i + 1]
+      const spaced = a === '--list' && next !== undefined && /^\d+$/.test(next)
+      const lv = a === '--list' ? (spaced ? next : '10') : a.slice(7)
+      if (spaced) i++
       const n = Number(lv)
       if (!Number.isInteger(n) || n < 1 || n > 500) {
         return { ...out, error: `invalid --list: ${lv} (expected 1..500)` }
@@ -58,6 +65,13 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('last')}` }
     if (out.runId !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     out.runId = a
+  }
+  // One run's replay or a list of runs, not both: the id was dropped.
+  if (out.runId !== undefined && out.list !== undefined) {
+    return {
+      ...out,
+      error: `a run id and --list do not combine: replay ${out.runId}, or list runs`,
+    }
   }
   return out
 }
