@@ -1136,7 +1136,8 @@ interface WorkspaceConfig {
   `olderThan` (`30d`, `12h`, `90m`, `45s`) go first, then the
   least-recently-used until the cache is under `maxSize` (`10G`,
   `500MB`, a byte count). Either or both. It runs after the run's saves
-  and uploads have landed, only when something is due (a run with
+  and uploads have landed, never on a run a signal or an abort stopped
+  (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
   nothing to evict pays one scan of the index), and says what it
   evicted in one line (`vx: cache retention evicted 3 entries
 (1.2 GB)`); an entry the run just used is never due. The prune's

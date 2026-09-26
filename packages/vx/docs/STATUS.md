@@ -843,6 +843,23 @@ test is telling the truth.
       - `holdPersistent` on an aborted run is equivalent: the abort
         teardown kills those children either way.
 
+858.  DONE (2026-09-26, a stopped run no longer prunes the cache). Since
+      item 849 a stopped run finishes its own end-of-run path, and that
+      path applies `cacheRetention`. A Ctrl-C while a run waited on
+      another run's workspace lock stops it before it holds the lock.
+      Its prune then evicted an entry while the other run held the lock,
+      the overlap the lock exists to rule out (`vx cache prune` takes it
+      too). Reproduced with two live runs and an aged entry the waiter
+      did not touch: "vx: cache retention evicted 1 entry". An
+      embedder's abort during the wait had the same gap before 849.
+      Retention now runs only on a run that was not stopped, and
+      `schema.md` says so. Row: `cache-retention.test.ts` › "a stopped
+      run evicts nothing", an aborted signal, fails without the guard.
+      The row beside it, which evicts, is the control. The rest of a
+      stopped run's end prunes nothing shared: the output-dir snapshots
+      need a finished task, and the history write is SQLite's own
+      concurrency.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
