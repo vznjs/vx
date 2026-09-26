@@ -29,7 +29,33 @@ const cacheWith = (
   extra: Parameters<typeof resolveTurboCacheConfig>[0] = {},
 ) => new TurboRemoteCache(resolveTurboCacheConfig({ ...BASE, ...extra }, {})!, fetchImpl)
 
+const refusal = (f: () => unknown): string => {
+  try {
+    f()
+    return '(no refusal)'
+  } catch (err) {
+    return (err as Error).message
+  }
+}
+
 describe('resolveTurboCacheConfig, exactly', () => {
+  // Item 928: fetch refuses a token no header can carry and QUOTES it in its
+  // error, which every degrade warning printed.
+  it('a token no header can carry is refused, and not printed', () => {
+    const msg = (token: string) => refusal(() => resolveTurboCacheConfig({ ...BASE, token }, {}))
+    expect([
+      msg('ghp_SECRET\nline2'),
+      msg('ghp_SECRET€'),
+      msg('ghp_SECRET\n'),
+      msg('sécret'),
+    ]).toEqual([
+      'vx/turbo-cache: the token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'vx/turbo-cache: the token holds a character past Latin-1, which no HTTP header can carry — check the secret (it is not printed)',
+      '(no refusal)',
+      '(no refusal)',
+    ])
+  })
+
   it('a signature key is measured in bytes, and exactly 32 is enough', () => {
     for (const signatureKey of ['€'.repeat(11), 'k'.repeat(32)]) {
       expect(

@@ -68,6 +68,26 @@ describe('the Bun floor', () => {
 })
 
 describe.if(CHUNKING_SUPPORTED)('what every call carries', () => {
+  // Item 928: grpc-js refuses such a value on every call and quotes it in the
+  // error each degrade warning printed.
+  it('a header gRPC metadata cannot carry is refused at construction, its value unprinted', () => {
+    const refusal = (headers: Record<string, string>): string => {
+      try {
+        new ReapiClient({ endpoint: fake.endpoint, headers }).close()
+        return '(no refusal)'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    const refused = (k: string) =>
+      `reapi: header ${JSON.stringify(k)} holds a character gRPC metadata cannot carry (printable ASCII only) — check it (its value is not printed)`
+    expect([
+      refusal({ authorization: 'Bearer SECRET\nline2' }),
+      refusal({ 'x-token': 'SECRET€' }),
+      refusal({ authorization: 'Bearer SECRET ~ok' }),
+    ]).toEqual([refused('authorization'), refused('x-token'), '(no refusal)'])
+  })
+
   it('RequestMetadata is protobuf’s own encoding, empty fields omitted; headers ride along', async () => {
     await using(
       {

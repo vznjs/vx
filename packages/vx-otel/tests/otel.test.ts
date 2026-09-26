@@ -76,6 +76,28 @@ describe('parseOtlpHeaders', () => {
 })
 
 describe('resolveOtelConfig', () => {
+  // Item 928: fetch refuses a header no request can carry and QUOTES its
+  // value in the error the export warning printed — an auth secret.
+  it('a header value no request can carry is dropped by name, its value unprinted', () => {
+    const warns: string[] = []
+    const c = resolveOtelConfig(
+      {},
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20SECRET%0Aline2,x-ok=1',
+        OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'Authorization=Bearer%20SECRET%0Aline2',
+      },
+      (m) => warns.push(m),
+    )!
+    expect([c.headers, c.signalHeaders?.traces, warns]).toEqual([
+      { 'x-ok': '1' },
+      {},
+      [
+        '[vx-otel] header "Authorization" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+      ],
+    ])
+  })
+
   it('an EMPTY env var declines like a missing one, on every signal', () => {
     // A CI workflow writing `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${{ secrets.X }}`
     // with the secret unset exports an EMPTY STRING, not an unset var. `??`

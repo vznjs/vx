@@ -79,6 +79,21 @@ function present(v: string | undefined): string | undefined {
   return v === undefined || v.trim() === '' ? undefined : v
 }
 
+/**
+ * Why a string cannot be an HTTP header value, or null. Bun's `fetch`
+ * refuses a line break, a NUL or a character past Latin-1 once it has
+ * trimmed the ends (measured on 1.4.2), and quotes the value in its error.
+ */
+function headerValueFault(value: string): string | null {
+  let past = false
+  for (const ch of value.trim()) {
+    const c = ch.codePointAt(0)!
+    if (c === 0x0a || c === 0x0d || c === 0) return 'a line break or NUL'
+    if (c > 0xff) past = true
+  }
+  return past ? 'a character past Latin-1' : null
+}
+
 function joinSignal(base: string, signal: string): string {
   return `${base.replace(/\/+$/, '')}/v1/${signal}`
 }
@@ -126,19 +141,43 @@ export function resolveOtelConfig(
     }
   }
 
+  // A header value fetch refuses is refused here, by name: fetch's error
+  // quotes the whole value, and the export warning printed it — an auth
+  // header's secret in the log (item 928).
+  const dropped = new Set<string>()
+  const clean = (h: Record<string, string>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(h)) {
+      const fault = headerValueFault(v)
+      if (fault === null) out[k] = v
+      else if (!dropped.has(k)) {
+        dropped.add(k)
+        warn?.(
+          `[vx-otel] header ${JSON.stringify(k)} holds ${fault}, which no HTTP header can carry — not sent (its value is not printed)`,
+        )
+      }
+    }
+    return out
+  }
   return {
     tracesUrl,
     metricsUrl: metricsUrl ?? tracesUrl,
     logsUrl: logsUrl ?? tracesUrl,
     serviceName: present(opts.serviceName) ?? present(env['OTEL_SERVICE_NAME']) ?? 'vx',
-    headers: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers },
+    headers: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers }),
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the
     // shared ones, as the spec orders them; they were not read (item 923).
     // The plugin's `headers` option stays on top of both.
     signalHeaders: {
-      traces: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_TRACES_HEADERS']), ...opts.headers },
-      metrics: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_METRICS_HEADERS']), ...opts.headers },
-      logs: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers },
+      traces: clean({
+        ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_TRACES_HEADERS']),
+        ...opts.headers,
+      }),
+      metrics: clean({
+        ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_METRICS_HEADERS']),
+        ...opts.headers,
+      }),
+      logs: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers }),
     },
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,

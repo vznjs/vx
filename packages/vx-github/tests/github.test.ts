@@ -323,6 +323,48 @@ describe('Checks API', () => {
     expect(warns.some((w) => w.includes('ENOSPC'))).toBe(true)
   })
 
+  // Item 928: fetch refuses a token no header can carry and QUOTES it in the
+  // error the check-run warning printed.
+  it('a GITHUB_TOKEN no header can carry skips the check-run, and is not printed', async () => {
+    const saved = {
+      t: process.env['GITHUB_TOKEN'],
+      r: process.env['GITHUB_REPOSITORY'],
+      s: process.env['GITHUB_SHA'],
+    }
+    process.env['GITHUB_TOKEN'] = 'ghs_SECRET\nline2'
+    process.env['GITHUB_REPOSITORY'] = 'vznjs/vx'
+    process.env['GITHUB_SHA'] = 'abc123'
+    const warns: string[] = []
+    const posted: string[] = []
+    try {
+      const sink = github({
+        summaryFile: '/tmp/sumfile.md',
+        append: async () => {},
+        fetchFn: async (url: string) => {
+          posted.push(url)
+          return { ok: true, status: 201, text: async () => '' }
+        },
+      }).telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      await sink.flush!()
+    } finally {
+      for (const [k, v] of [
+        ['GITHUB_TOKEN', saved.t],
+        ['GITHUB_REPOSITORY', saved.r],
+        ['GITHUB_SHA', saved.s],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+    expect({ posted, warns }).toEqual({
+      posted: [],
+      warns: [
+        'vx-github: GITHUB_TOKEN holds a line break or NUL, which no HTTP header can carry — no check-run will be created (the token is not printed)',
+      ],
+    })
+  })
+
   it('resolveCheckRunEnv needs all three vars and defaults the API url', async () => {
     const { resolveCheckRunEnv } = await import('../src/checks.js')
     expect(resolveCheckRunEnv({})).toBeNull()

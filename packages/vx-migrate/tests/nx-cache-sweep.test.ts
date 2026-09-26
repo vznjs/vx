@@ -20,7 +20,27 @@ function stub(respond: () => Response): { fetchImpl: typeof fetch; calls: Call[]
 
 const SERVER = 'http://nx.invalid'
 
+const refusal = (f: () => unknown): string => {
+  try {
+    f()
+    return '(no refusal)'
+  } catch (err) {
+    return (err as Error).message
+  }
+}
+
 describe('resolveNxCacheConfig, exactly', () => {
+  // Item 928: the same token leak as turboCache's.
+  it('an access token no header can carry is refused, and not printed', () => {
+    const msg = (accessToken: string) =>
+      refusal(() => resolveNxCacheConfig({ server: SERVER, accessToken }, {}))
+    expect([msg('SECRET\r\nX: y'), msg('SECRET\0'), msg('SECRET')]).toEqual([
+      'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      '(no refusal)',
+    ])
+  })
+
   it('every trailing slash is stripped, and a server of only slashes or nothing declines', () => {
     expect(resolveNxCacheConfig({ server: `${SERVER}//` }, {})?.server).toBe(SERVER)
     expect(resolveNxCacheConfig({ server: '' }, {})).toBeUndefined()

@@ -19,6 +19,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
+import { headerValueFault } from '../remote-token.js'
 
 export interface NxCacheOptions {
   /** Base URL of the cache server, or `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. */
@@ -52,6 +53,11 @@ export function resolveNxCacheConfig(
       )
   }
   const accessToken = options.accessToken ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
+  const fault = accessToken ? headerValueFault(accessToken) : null
+  if (fault !== null)
+    throw new Error(
+      `vx/nx-cache: the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
+    )
   return {
     server,
     ...(accessToken ? { accessToken } : {}),

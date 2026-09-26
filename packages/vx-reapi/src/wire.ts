@@ -413,6 +413,16 @@ export class ReapiClient {
     )
     this.instance = opts.instanceName ?? ''
     this.headers = opts.headers ?? {}
+    // grpc-js refuses a metadata value outside printable ASCII on EVERY call
+    // and quotes it in the error, so an auth header's secret reached each
+    // degrade warning (item 928). Refused once, here, by key alone.
+    for (const [k, v] of Object.entries(this.headers)) {
+      if (!/^[ -~]*$/.test(v)) {
+        throw new Error(
+          `reapi: header ${JSON.stringify(k)} holds a character gRPC metadata cannot carry (printable ASCII only) — check it (its value is not printed)`,
+        )
+      }
+    }
     this.toolName = opts.toolName ?? 'vx'
     this.toolVersion = opts.toolVersion ?? '0.0.0'
     this.correlatedInvocationsId = opts.correlatedInvocationsId ?? ''
