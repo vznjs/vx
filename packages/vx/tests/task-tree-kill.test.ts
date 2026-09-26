@@ -70,13 +70,28 @@ async function grandchildPid(root: string): Promise<number> {
   throw new Error('the task never wrote its grandchild pid')
 }
 
+// Every vx a row spawns, SIGKILLed after the row if it still runs: a row
+// that fails before its own kill left a vx holding its servers in the
+// foreground for good (item 883).
+const spawnedVx: Array<ReturnType<typeof Bun.spawn>> = []
+function track<T extends ReturnType<typeof Bun.spawn>>(proc: T): T {
+  spawnedVx.push(proc)
+  return proc
+}
+afterEach(() => {
+  for (const p of spawnedVx.splice(0))
+    if (p.exitCode === null && p.signalCode === null) p.kill('SIGKILL')
+})
+
 function spawnVx(root: string, task: string, graceMs = 200): ReturnType<typeof Bun.spawn> {
-  return Bun.spawn([process.execPath, BIN, 'run', task, '--all'], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: String(graceMs) },
-  })
+  return track(
+    Bun.spawn([process.execPath, BIN, 'run', task, '--all'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: String(graceMs) },
+    }),
+  )
 }
 
 describe('a task dies with everything it forked', () => {
