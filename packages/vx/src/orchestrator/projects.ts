@@ -114,19 +114,28 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   const metaByName = new Map<string, ProjectMeta>(configured.map((m) => [m.name, m]))
   const needed = new Set<string>()
   const pending: ProjectMeta[] = []
+  // Counted, not read off `pending`: a round empties `pending`, and a guard
+  // on its length let every cross edge after the first round walk its
+  // whole closure again (1,500 walks at 300 projects, item 932).
+  let neededConfigured = 0
   const consider = (name: string): void => {
     if (needed.has(name)) return
     needed.add(name)
     const meta = metaByName.get(name)
-    if (meta) pending.push(meta)
+    if (meta) {
+      pending.push(meta)
+      neededConfigured++
+    }
   }
+  const walked = new Set<string>()
   const considerWithDeps = (name: string): void => {
     consider(name)
-    // Every config-bearing project already pending: the closure can add
-    // nothing, and asking for it would build the package graph's
+    // Every config-bearing project already considered: the closure can
+    // add nothing, and asking for it would build the package graph's
     // transitive bitsets — a cost the unscoped run (every project a seed)
-    // otherwise never pays.
-    if (pending.length === metaByName.size) return
+    // otherwise never pays. A closure already walked adds nothing either.
+    if (neededConfigured === metaByName.size || walked.has(name)) return
+    walked.add(name)
     for (const dep of packageGraph.transitiveDeps(name)) consider(dep)
   }
   const seeds = args.seeds === 'all' ? metaByName.keys() : [...args.seeds]
