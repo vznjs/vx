@@ -893,6 +893,27 @@ serve.ts` under bwrap, some parented to init.
       - Still open: a `pnpm-workspace.yaml` edit that adds a new base
         directory is a cycle, but the base is watched only after a
         restart.
+892.  DONE (2026-09-26, item 890's open note on persistent servers).
+      A persistent server that became ready and then died on its own
+      while its dependants ran:
+      - Dependency-only, the run stayed green and said nothing: the
+        server's outcome is `success` (it became ready), and the SIGTERM
+        at the end of the graph went to a process already gone.
+      - Requested (`vx run srv e2e`), the run did fail, but the pin after
+        the summary still listed it as running.
+      - Now `shutdownPersistent` returns the dependency-only servers that
+        ended on their own and not cleanly (a non-zero exit or a signal),
+        read before the stop so the SIGTERM's own 143 is never one. Each
+        fails the run, and vx names it (`vx: <id> exited with code <n>`,
+        then "before the run stopped it"). The pin lists only the servers
+        still up. An exit 0 on its own stays green (a daemon that forks
+        and returns).
+      - Rows: `keep-alive.test.ts` (item 892). The two crash rows fail
+        without the fix. The control (exit 0 on its own, and a server the
+        run stops) catches two mutants: dropping the exit-0 exemption, and
+        dropping the has-ended check.
+      - Still open from item 890: `vx run g --all --exclude-dependencies`
+        on a group runs nothing and exits 0.
 
 ## In flight
 

@@ -341,6 +341,11 @@ Semantics:
   ```
 - **Exit before ready ⇒ failed.** If the persistent task crashes or
   exits before `readyWhen` matches, the task is reported as `failed`.
+- **Crash after ready ⇒ failed run.** A persistent task that exits
+  non-zero (or is killed) on its own after it became ready fails the
+  run, and vx names it: `vx: <id> exited with code <n>`. Its own
+  outcome stays `success`, because it did become ready. An exit 0 on
+  its own is fine (a daemon that forks and returns).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
   (success OR failure of downstream), the orchestrator sends `SIGTERM`
   to every persistent subprocess and waits for them to exit before

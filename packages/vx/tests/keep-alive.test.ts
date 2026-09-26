@@ -134,6 +134,85 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   }, 20_000)
 })
 
+// Item 892: a persistent server that became ready and then died on its own
+// while its dependants ran. Dependency-only, the run was green and said
+// nothing of it; requested, the pin after the summary still listed it as
+// running. The dependant waits for the server's own exit marker, so the
+// crash has landed before the graph ends.
+describe('a persistent server that dies before the run stops it', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-srvcrash-' })
+  })
+  afterEach(async () => {
+    await rm(runLockPath(root), { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const crashing = (srv: string) => `
+    export default {
+      tasks: {
+        srv: {
+          exec: { command: ${JSON.stringify(srv)}, persistent: { readyWhen: 'READY' } },
+        },
+        e2e: {
+          dependsOn: ['srv'],
+          exec: { command: 'while [ ! -f gone ]; do sleep 0.02; done; sleep 0.2' },
+        },
+      },
+    }
+  `
+  const run = async (dir: string, tasks: string[]) => {
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', ...tasks, '--all', '--output-logs=none'], {
+        cwd: dir,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const lines = (out + err).split('\n')
+    return {
+      code,
+      said: lines.filter((l) => l.startsWith('vx: ')),
+      pinned: lines.filter((l) => l.trim().startsWith('▸')),
+    }
+  }
+
+  it('a dependency-only server that exits non-zero fails the run and says so', async () => {
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
+    expect(await run(root, ['e2e'])).toEqual({
+      code: 1,
+      said: ['vx: app#srv exited with code 3 before the run stopped it'],
+      pinned: [],
+    })
+  }, 20_000)
+
+  it('CONTROL: one that exits 0 on its own, and one the run stops, leave the run green', async () => {
+    // The stopped server's own exit is the SIGTERM's (143): read after the
+    // stop, it would fail every run that used a server.
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 0'))
+    expect(await run(root, ['e2e'])).toEqual({ code: 0, said: [], pinned: [] })
+    await rm(path.join(root, 'packages', 'app', 'gone'), { force: true })
+    await addProject(root, 'app', crashing('touch gone; echo READY; exec sleep 30'))
+    expect(await run(root, ['e2e'])).toEqual({ code: 0, said: [], pinned: [] })
+  }, 20_000)
+
+  it('a requested server that died while its dependant ran is not pinned as running', async () => {
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
+    expect(await run(root, ['srv', 'e2e'])).toEqual({
+      code: 1,
+      said: ['vx: app#srv exited with code 3'],
+      pinned: [],
+    })
+  }, 20_000)
+})
+
 describe('a persistent task keeps an open stdin', () => {
   let root: string
   beforeEach(async () => {

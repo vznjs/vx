@@ -76,7 +76,7 @@ import { startRemotePrefetch } from './remote-prefetch.js'
 import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
 
 import { assembleRunRecords } from './run-records.js'
-import { selectKeepAlive, shutdownPersistent } from './persistent.js'
+import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import {
@@ -757,14 +757,14 @@ async function runOnBus(
     // An aborted run's children are already being torn down: nothing to hold.
     const hold = options.holdPersistent === true && !stopRun.signal.aborted
     const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
-    await shutdownPersistent(persistentRegistry, keepAlive.children)
+    const crashedPersistent = await shutdownPersistent(persistentRegistry, keepAlive.children)
 
     mark('run graph')
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
 
     const list = [...outcomes.values()]
-    const ok = list.every((o) => isPassStatus(o.status))
+    const ok = list.every((o) => isPassStatus(o.status)) && crashedPersistent.length === 0
 
     // The summary + artifact writers + recordRun pass all exclude group
     // tasks via the shared tallyOutcomes helper. We pass the full
@@ -773,13 +773,20 @@ async function runOnBus(
     const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
     // Foreground dev mode: between the task frame and the footer, list
     // the persistent tasks still running (see the keep-alive block below).
-    if (keepAlive.nodes.length > 0) {
-      for (const line of formatPersistentList(keepAlive.nodes, colors)) log.status(line)
+    // Only the ones still up: a requested server that crashed while its
+    // dependants ran is dead, and the wait below says so.
+    const stillUp = keepAlive.nodes.filter((_, i) => !hasEnded(keepAlive.children[i]!))
+    if (stillUp.length > 0) {
+      for (const line of formatPersistentList(stillUp, colors)) log.status(line)
     }
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
     // A task killed by a shutdown signal is in no bucket above, yet it makes
     // `ok` false — name it, or the red exit is undiagnosable.
     for (const line of formatAbortedSection(list)) log.status(line)
+    // Likewise a dependency-only server that died before the end of the
+    // graph stopped it: its outcome says `success` (it became ready).
+    for (const c of crashedPersistent)
+      log.status(`vx: ${c.id} exited with code ${c.code} before the run stopped it`)
     // The footer's "N skipped" names no task; this names each under the
     // failure that blocked it.
     for (const line of formatSkippedSection(list)) log.status(line)

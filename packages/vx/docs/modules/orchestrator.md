@@ -104,6 +104,12 @@ export interface RunSummary {
     other persistent child's group and waits for the groups, SIGKILLing
     whatever is left after a 2 s grace (`VX_KILL_GRACE_MS` shortens it;
     see util-settle.md, kill-tree.md).
+    Before the SIGTERM it returns the children that already ended on
+    their own, not cleanly (`CrashedPersistent`: a non-zero exit or a
+    signal): each fails the run, and a status line names it
+    (`vx: <id> exited with code <n>`, item 892). Read before the stop,
+    so the SIGTERM's own 143 is never one. The pin after the
+    summary lists only the kept servers still up (`hasEnded`).
     The foreground then blocks until ONE kept-alive server exits, tears
     the others down the same way (`terminateChildren`, signals.md) and
     returns `ok && exit === 0` — a crashed dev server fails the run.
