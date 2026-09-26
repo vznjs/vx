@@ -459,6 +459,27 @@ test is telling the truth.
         `,` or `}` outside every group);
       - the unterminated group's skip (past the glob either way).
 
+835.  DONE (2026-09-26, the playground's `entry.ts`, what the bundle adds
+      to core's planner). 21 mutations: 12 held by the parity rows, 6
+      held now, 3 equivalent. Held in
+      `tests/playground-parity.unsafe.test.ts` § item 835, against the
+      built bundle (core's source reads the host's `node:fs` unless it
+      is bundled behind the shim):
+      - a key the simulated cache holds is a hit, the others unmoved;
+      - a package with no config file is planned around;
+      - an invalid config is refused naming its file;
+      - an unknown task is reported unresolved, and reads are counted;
+      - a project listing started in the same tick as a plan waits for
+        it, so each sees its own workspace.
+        Equivalent: cloning the caller's configs (core's plan never
+        writes to them; the row's snapshot stays as the control), the
+        missing-file refusal in the OID reader (every VFS file is tracked
+        and clean, so the fold takes its trusted OID and never asks), and
+        `closure: false` (with every project a seed, the closure branch
+        never runs). A first cut of the listing row awaited the configs
+        before the plan started, so the two never overlapped. The
+        mutation survived until both started in one tick.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
