@@ -7,7 +7,9 @@
 // (watch loop, bun test).
 
 import { getEventListeners } from 'node:events'
-import { rm } from 'node:fs/promises'
+import { existsSync, readdirSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { describePid, isAlive, waitForDead } from './helpers/alive.js'
@@ -100,6 +102,43 @@ describe('signal handling during vx run (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  // A signal exit is `process.exit`: no finally runs, so the run lock's
+  // entry stayed in the temp dir for the next run to reclaim (item 848).
+  // The second signal is the immediate exit, which skips even the grace.
+  const leavesNoLock = (signals: number) => async () => {
+    await addProject(
+      fixture.root,
+      'app',
+      `export default { tasks: { slow: { exec: { command: "trap '' INT; echo up > up.txt; sleep 30" } } } }`,
+    )
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-sig-tmp-'))
+    try {
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+        cwd: fixture.root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, TMPDIR: tmp },
+      })
+      const up = path.join(fixture.root, 'packages', 'app', 'up.txt')
+      const deadline = Date.now() + 10_000
+      while (!existsSync(up) && Date.now() < deadline) await Bun.sleep(20)
+      // The positive first: the running vx holds an entry here.
+      const locks = readdirSync(tmp).filter((n) => n.startsWith('vx-run-'))
+      expect(locks.length).toBe(1)
+      expect(readdirSync(path.join(tmp, locks[0]!))).toEqual([
+        expect.stringMatching(new RegExp(`^h-${proc.pid}-`)),
+      ])
+      for (let i = 0; i < signals; i++) proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      expect(readdirSync(tmp).filter((n) => n.startsWith('vx-run-'))).toEqual([])
+    } finally {
+      await rm(tmp, { recursive: true, force: true })
+    }
+  }
+
+  it('a signal exit leaves no run-lock entry behind', leavesNoLock(1), TIMEOUT)
+  it('a second signal exit leaves no run-lock entry behind', leavesNoLock(2), TIMEOUT)
 
   it(
     'SIGTERM kills a ready persistent child and exits 143',

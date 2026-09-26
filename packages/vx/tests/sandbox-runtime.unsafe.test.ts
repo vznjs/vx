@@ -3832,6 +3832,48 @@ describe.skipIf(!available || process.platform !== 'linux')(
       reaches('SIGTERM', 143, true),
       TIMEOUT,
     )
+
+    // A signal exit is `process.exit`, which never reaches the task's own
+    // unlink: one strace log per sandboxed task stayed in the temp dir
+    // (item 848). A short TMPDIR, directly under the temp dir: the
+    // runtime's socket lives there too, and `sun_path` is 108 bytes.
+    it(
+      'a signal exit leaves no strace log behind',
+      async () => {
+        const dir = await addProject(
+          root,
+          'app',
+          `export default { tasks: { t: { exec: {
+            command: 'echo up > ready.txt; sleep 30',
+            sandbox: { allow: { read: ['.'], write: ['ready.txt'] } },
+          } } } }`,
+        )
+        const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-st-'))
+        try {
+          const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+            cwd: root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, TMPDIR: tmp },
+          })
+          const ready = path.join(dir, 'ready.txt')
+          const deadline = Date.now() + 20_000
+          while (Date.now() < deadline) {
+            if (existsSync(ready) && readFileSync(ready, 'utf8').trim() === 'up') break
+            await Bun.sleep(20)
+          }
+          const logs = (): string[] => readdirSync(tmp).filter((n) => n.startsWith('vx-strace-'))
+          // The positive first: the running task has its log here.
+          expect(logs().length).toBe(1)
+          proc.kill('SIGINT')
+          expect(await proc.exited).toBe(130)
+          expect(logs()).toEqual([])
+        } finally {
+          await rm(tmp, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
   },
 )
 

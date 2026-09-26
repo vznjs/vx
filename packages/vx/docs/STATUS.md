@@ -690,6 +690,22 @@ test is telling the truth.
       `f.watch`). One is equivalent: the kill grace set before or after
       the caller's env, which no caller overrides.
 
+848.  DONE (2026-09-26, a Ctrl-C left vx's temp files behind). A signal
+      exit is `process.exit` in `signals.ts`, which runs no `finally`
+      and awaits nothing, so three files outlived it: the run lock's
+      `h-<pid>-…` entry (and its directory), each running sandboxed
+      task's `vx-strace-<tag>.log`, and a signed Turbo download's
+      `vx-turbo-*` temp in `@vzn/vx-migrate`. Found in the audit after
+      the item 846 wipe: two gates had left strace logs in `/tmp`.
+      Reproduced with a sandboxed `sleep 30` and SIGINT. Each owner now
+      lists what it holds and removes it synchronously on the process's
+      `exit` event, the one step every exit path passes. Rows: the lock
+      after one signal and after the immediate second, the strace log,
+      and a child process that exits with a verified body unread. Each
+      row checks the file exists before the signal, and each fails
+      without its hook. A `kill -9` still leaves all three, which the
+      lock reclaims.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

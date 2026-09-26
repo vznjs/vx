@@ -11,6 +11,7 @@
 //
 // Imports core only through the public `@vzn/vx` specifier.
 import { createHmac, randomUUID, timingSafeEqual, type Hmac } from 'node:crypto'
+import { unlinkSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -91,10 +92,38 @@ export async function artifactTag(
   return mac.digest('base64')
 }
 
+/**
+ * The temps not yet removed. Core's signal exit is `process.exit`, which
+ * awaits nothing, so a Ctrl-C between the download and the last read left
+ * the artifact's temp behind (item 848); the process's `exit` event
+ * removes what is still listed.
+ */
+const liveTemps = new Set<string>()
+let exitHooked = false
+function trackTemp(file: string): void {
+  liveTemps.add(file)
+  if (exitHooked) return
+  exitHooked = true
+  process.on('exit', () => {
+    for (const f of liveTemps) {
+      try {
+        unlinkSync(f)
+      } catch {
+        // never written, or gone
+      }
+    }
+  })
+}
+
+async function removeTemp(file: string): Promise<void> {
+  liveTemps.delete(file)
+  await unlink(file).catch(() => undefined)
+}
+
 /** The verified temp as a body that deletes the temp once read to the end or cancelled. */
 function unlinkingStream(file: string): ReadableStream<Uint8Array> {
   const reader = Bun.file(file).stream().getReader()
-  const remove = () => unlink(file).catch(() => undefined)
+  const remove = () => removeTemp(file)
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
@@ -294,12 +323,13 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       throw refused()
     }
     const temp = path.join(this.tempDir, `vx-turbo-${hash}-${randomUUID()}`)
+    trackTemp(temp)
     try {
       await Bun.write(temp, res)
       const expected = await artifactTag(key, hash, this.config.teamId ?? '', Bun.file(temp))
       if (!tagsEqual(expected, tag)) throw refused()
     } catch (err) {
-      await unlink(temp).catch(() => undefined)
+      await removeTemp(temp)
       throw err
     }
     return new Response(unlinkingStream(temp))
