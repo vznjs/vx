@@ -474,6 +474,18 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Rows: `wire-exec-sweep.test.ts` (three: re-attaches by name,
         spends the budget then refuses, an unnamed one is refused), each
         red without the fix; the no-operation row is the control.
+919.  DONE (2026-09-26, found fixing item 916). Every unary REAPI call
+      retries UNAVAILABLE and RESOURCE_EXHAUSTED on a bounded budget; a
+      ByteStream Read did not, so one transient status reading a finished
+      action's stdout or outputs failed the task after the action had
+      succeeded.
+      - `readBlob` retries on the same budget (100/400/1600 ms);
+        `readBlobStream` retries until its first message reaches a
+        reader, never after.
+      - Rows: `wire-sweep.test.ts` › a transient Read is retried (whole
+        and streamed) and a Read that stays unavailable fails once the
+        budget is spent, both red without the fix. Item 916's replay rows
+        inject INTERNAL now, which still reaches the fall-through.
 
 ## In flight
 

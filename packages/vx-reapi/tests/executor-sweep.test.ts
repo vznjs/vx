@@ -158,7 +158,8 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     })
   })
 
-  it('a replay whose stdout Read fails transiently executes instead of failing the task', async () => {
+  // INTERNAL, not UNAVAILABLE: a transient Read is retried since item 919.
+  it('a replay whose stdout Read fails executes instead of failing the task', async () => {
     fake.actions.set(execDigestFor('k-stdout').hash, {
       exit_code: 0,
       stdout_digest: put('recorded stdout'),
@@ -166,7 +167,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     let printed = ''
     await withExecutor(async (run, warns) => {
       const before = executes()
-      fake.fail('Read', grpc.status.UNAVAILABLE, 1)
+      fake.fail('Read', grpc.status.INTERNAL, 1)
       const res = await refusal(
         run(request({ cacheKey: 'k-stdout', onStdout: (c: string) => (printed += c) })),
       )
@@ -196,7 +197,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     let printed = ''
     await withExecutor(async (run) => {
       // The tree is the replay's first ByteStream Read, after the files landed.
-      fake.fail('Read', grpc.status.UNAVAILABLE, 1)
+      fake.fail('Read', grpc.status.INTERNAL, 1)
       const res = await run(
         request({
           cacheKey: 'k-part',
