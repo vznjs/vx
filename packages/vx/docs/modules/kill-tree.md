@@ -142,7 +142,10 @@ with it": a persistent and a one-shot task's backgrounded grandchild die
 with a `kill -9` of vx, and both fail without the guard. The control, a
 one-shot task's leftover that outlives vx's clean exit, fails without the
 release, and "a run that spawns no task starts no guard" fails on a guard
-started at load. In `sandbox-runtime.unsafe.test.ts`, "a traced
+started at load, after the spawn, or once per spawn. A terminal's Ctrl-C
+(SIGINT to vx's group) leaves the guard alive for a `kill -9` in the
+teardown grace, and the one-shot row's child ignores SIGTERM, so a
+guard that sent it fails. In `sandbox-runtime.unsafe.test.ts`, "a traced
 sandboxed one-shot task’s children die with vx" (strace outlived vx
 before the guard), and the unsandboxed control has the backgrounded
 child die and the `setsid` one live.

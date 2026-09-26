@@ -229,6 +229,15 @@ test is telling the truth.
         guard" fails on an eager guard. The unsafe suite's unsandboxed
         control flipped (the backgrounded child dies, the `setsid` one
         lives), and the traced one-shot row fails without the guard.
+      - Swept (13 mutants): 6 caught by the rows above, 3 held by rows
+        added for them, 4 equivalent. Held: a guard per spawn (the
+        warm row's cold run has two tasks and one guard), a guard in
+        vx's group (a terminal's Ctrl-C killed it; "a terminal’s Ctrl-C
+        leaves the guard…" SIGKILLs vx in the teardown grace), and a
+        TERM for the KILL (the one-shot row's child ignores TERM).
+        Equivalent: the list-membership check on a release, keeping a
+        dead descriptor, and the pid checks, each reachable only once
+        the guard is off or on a pid Bun never returns.
       - The ledger row is `fixed-in-item-860`, the last open one, so
         the ledger law's verdict set is now covered, fixed and n/a.
       - What remains: a `setsid` daemon, unsandboxed.

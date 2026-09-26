@@ -240,7 +240,10 @@ describe('a SIGKILLed vx takes the groups it holds with it', () => {
 
   it('a SIGKILLed vx takes an unsandboxed one-shot task’s backgrounded child with it', async () => {
     expect(
-      await outlivesVx(`{ command: '(sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' }`),
+      // It ignores SIGTERM, as a server's cleanup might: only a SIGKILL takes it.
+      await outlivesVx(
+        `{ command: '(trap "" INT TERM; sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' }`,
+      ),
     ).toBe(false)
   }, 20_000)
 
@@ -260,11 +263,13 @@ Bun.spawn = (cmd, opts) => {
 }
 `,
     )
-    await addProject(
-      root,
-      'app',
-      `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } } } } }`,
-    )
+    // Two tasks, one guard: it is the process's, not the spawn's.
+    for (const name of ['app', 'lib'])
+      await addProject(
+        root,
+        name,
+        `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } } } } }`,
+      )
     const guards = async (): Promise<string[]> => {
       await rm(log, { force: true })
       const proc = Bun.spawn(
@@ -279,8 +284,34 @@ Bun.spawn = (cmd, opts) => {
       const lines = existsSync(log) ? readFileSync(log, 'utf8').split('\n') : []
       return lines.filter((l) => l === 'vx-group-guard' || l === 'sh')
     }
-    expect(await guards()).toEqual(['vx-group-guard', 'sh'])
+    expect(await guards()).toEqual(['vx-group-guard', 'sh', 'sh'])
     expect(await guards()).toEqual([])
+  }, 20_000)
+
+  it('a terminal’s Ctrl-C leaves the guard, so a kill -9 in the teardown still takes the task', async () => {
+    // A terminal signals its foreground group: vx and, were it in vx's
+    // group, the guard, which a SIGINT kills. vx's teardown then waits
+    // out the grace on a task that ignores the signal, and a `kill -9`
+    // there left the task to nobody.
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: 'trap "" INT TERM; (sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' } } } }`,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+      cwd: root,
+      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      stdout: 'ignore',
+      stderr: 'ignore',
+      detached: true,
+    })
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    process.kill(-proc.pid, 'SIGINT')
+    await Bun.sleep(200)
+    process.kill(proc.pid, 'SIGKILL')
+    expect(await proc.exited).toBe(137)
+    await Bun.sleep(2_000)
+    expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
   }, 20_000)
 
   it('CONTROL: a group vx finished with is not the guard’s when vx exits', async () => {
