@@ -242,6 +242,25 @@ test is telling the truth.
         the ledger law's verdict set is now covered, fixed and n/a.
       - What remains: a `setsid` daemon, unsandboxed.
 
+861.  DONE (2026-09-26, `orchestrator/signals.ts` swept again after
+      items 849–858 reshaped it). 19 mutants: 14 caught, 1 held now, 3
+      equivalent, 1 unobserved. The guard from item 860 was standing in for two
+      guarantees. Without the SIGHUP handler, vx died of the hang-up and
+      the guard SIGKILLed the task. Without the second signal's SIGKILL,
+      the guard's kill at exit did the same. Either way the rows saw a
+      dead grandchild.
+      - Driven with the guard off, both are caught, so each is held as a
+        pair.
+      - The SIGHUP handler is also held alone now by
+        `task-tree-kill.test.ts` › "SIGHUP gives the grandchild its
+        SIGTERM cleanup, not only a death". The ledger's SIGHUP row cites
+        it.
+      - Equivalent: the persistent registry in the second signal's sweep
+        (a ready server is in `liveChildren` its whole life) and `runEnd`
+        before the stop (the run's own end clears the region). The cache
+        close on the second signal's exit survived and is unproven either
+        way: no row observes it. `signals.md` records each.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
