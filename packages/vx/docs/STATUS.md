@@ -402,6 +402,31 @@ test is telling the truth.
       64-bit seed mask (its only caller, `bunXxHash3`, has already cut
       the seed to 32 bits).
 
+833.  DONE (2026-09-26, the playground's platform shims: `vfs.ts`,
+      `node-fs.ts`, `node-fs-promises.ts`, `platform.ts`). Core's parity
+      rows plan whole workspaces through them and held 4 of 28
+      mutations: the directories a file implies, a listing's
+      subdirectories, the hash's seed, and `setEnv`'s assignment. The
+      rest were reachable and unheld. `tests/playground-shim.test.ts` in
+      `vx-docs` now holds 25, each answer as the real call gives it:
+      - the VFS: `.`/`..` normalised, reads recorded normalised, a
+        directory's stat, a file's size, a listing's own entries only
+        (not a sibling sharing its prefix), the root, a missing
+        directory, ENOENT codes;
+      - `node:fs`: `throwIfNoEntry: false`, `existsSync` true for a
+        directory, bytes without an encoding;
+      - `node:fs/promises`: ENOENT from all four readers, names or
+        entries from `readdir`, bytes without an encoding;
+      - `Bun`: `file().exists()` false for a directory, a missing
+        read's ENOENT, `semver.satisfies` answering the range, and
+        `setEnv` dropping the last environment.
+        Equivalent: `process.platform` as `darwin`. Discovery's two
+        per-platform strategies answer identically by design
+        (`findConfigFile`), and parity agrees. The worktree's
+        `playground-view.test.ts` needs a built `dist/`, so it failed
+        at load under every mutant; its column was read as no signal,
+        not as a catch.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
