@@ -45,8 +45,10 @@ layer, so it cannot.
 
 MCP over stdio is newline-delimited JSON-RPC 2.0 and three methods
 (`initialize`, `tools/list`, `tools/call`). `src/server.ts` speaks it in
-about 150 lines with no dependencies, where the reference SDK pulls
+about 180 lines with no dependencies, where the reference SDK pulls
 in an HTTP stack this transport never touches. `@vzn/vx` is the only peer.
+Stdout carries nothing but replies: what a config or plugin stage prints
+while a tool loads the workspace goes to stderr.
 
 ## Troubleshooting
 
