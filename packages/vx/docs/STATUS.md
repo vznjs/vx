@@ -398,6 +398,22 @@ echo A; echo B` went green after a failed pre hook, and a cache
         calls `runtime` the Nx input's equivalent.
       - Row: `migrate.test.ts` › pkg-a covers … (the runtime line), red
         without the fix; the review's repro now succeeds.
+914.  DONE (2026-09-26, the nx() review's lead 6, and a regression of
+      912). vx has no character classes (a bracket is literal, item 667)
+      and no extglobs, so an Nx input `src/**/*.[jt]s` matched no file — a
+      stale hit on any source edit — and Nx's own default `production`
+      negation, `?(*.)+(spec|test).[jt]s?(x)`, excluded nothing. And 912
+      read a brace set (`*.{ts,tsx}`) as an unknown token, dropping that
+      input with a todo.
+      - A class is a brace set, plus the literal in a positive glob (the
+        route dir may be meant; more inputs only cost hits). `?()` and
+        `@()` are brace sets; `+()` and `*()` narrow to one repetition
+        only inside a negation, which then excludes fewer files, never
+        more. A range, a negated class, `!()` or nesting is a todo.
+      - A leftover token is `{name}` with no comma; a brace set is a glob.
+      - Rows: `nx-helpers-sweep.test.ts` › Nx glob grammar in inputs
+        (four). Undoing the translation fails three; undoing the token
+        rule fails the brace-set row.
 
 ## In flight
 
