@@ -3835,17 +3835,22 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     // A signal exit is `process.exit`, which never reaches the task's own
     // unlink: one strace log per sandboxed task stayed in the temp dir
-    // (item 848). A short TMPDIR, directly under the temp dir: the
-    // runtime's socket lives there too, and `sun_path` is 108 bytes.
+    // (item 848). Since item 849 a first signal lets the run end and read
+    // the log, so only the second signal's immediate exit leaves it to the
+    // exit hook. The second goes once the task has heard the first; a task
+    // that died on the first ended the run the normal way, and the row
+    // held nothing (item 863). A short TMPDIR, directly under the temp
+    // dir: the runtime's socket lives there too, and `sun_path` is 108
+    // bytes.
     it(
-      'a signal exit leaves no strace log behind',
+      'a second signal exit leaves no strace log behind',
       async () => {
         const dir = await addProject(
           root,
           'app',
           `export default { tasks: { t: { exec: {
-            command: 'echo up > ready.txt; sleep 30',
-            sandbox: { allow: { read: ['.'], write: ['ready.txt'] } },
+            command: "trap 'echo int > int.txt' INT; echo up > ready.txt; while :; do sleep 0.05; done",
+            sandbox: { allow: { read: ['.'], write: ['ready.txt', 'int.txt'] } },
           } } } }`,
         )
         const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-st-'))
@@ -3865,6 +3870,11 @@ describe.skipIf(!available || process.platform !== 'linux')(
           const logs = (): string[] => readdirSync(tmp).filter((n) => n.startsWith('vx-strace-'))
           // The positive first: the running task has its log here.
           expect(logs().length).toBe(1)
+          proc.kill('SIGINT')
+          const heard = path.join(dir, 'int.txt')
+          const until = Date.now() + 10_000
+          while (!existsSync(heard) && Date.now() < until) await Bun.sleep(20)
+          expect(existsSync(heard)).toBe(true)
           proc.kill('SIGINT')
           expect(await proc.exited).toBe(130)
           expect(logs()).toEqual([])

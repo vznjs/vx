@@ -278,6 +278,37 @@ test is telling the truth.
         signals (100 ms, or a teardown marker), and item 861's sweep
         showed they catch their mutants.
 
+863.  DONE (2026-09-26, Next 6 re-measured after item 860, and the last
+      exit hook item 848 added swept). Warm, 1,000 projects, source runs,
+      interleaved min-of-15, one workspace copy per arm pre-warmed by that
+      arm:
+      - before item 860 (60ef0159): min 530.8 ms, median 579.6;
+      - main: min 528.7, median 574.3;
+      - A/A control (main against a third copy): min 521.1, median 561.3.
+
+      A tie: the warm path spawns nothing, so it never starts the guard,
+      and the gap is inside the A/A spread. The cold number is item
+      860's own (a tie at 600 tasks).
+
+      `vx-migrate`'s `turbo-cache` temp hook, 4 mutants:
+      - caught (2): the exit hook's unlink and `trackTemp`, both by
+        "a process exit with a verified body unread leaves no temp";
+      - equivalent (2): the delete from the live set (the exit then
+        unlinks paths already gone, each with a random UUID) and the
+        once-only flag (a second hook finds nothing).
+
+      The sandbox's strace-log hook had item 862's flaw. Its row sent one
+      SIGINT, the task died of it, and the run ended the normal way,
+      which reads and removes the log. The hook's unlink mutated away
+      still passed (control and mutant both green under a short
+      `TMPDIR`). The row, renamed "a second signal exit leaves no strace
+      log behind", now traps INT and sends the second signal once the
+      trap has fired. The mutant fails it in 6 of 6 runs, and the fixed
+      row passes 5 of 5. Two mutant runs before those passed, each
+      exiting at the 2 s grace, i.e. by the first signal's path. That did
+      not recur, and the cause is unproven. With the run lock's
+      (862), all three of item 848's exit hooks are now held.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -377,7 +408,7 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 850 (2026-09-26, items 848–849's run-path change, a tie at 1,000 projects; 830 was the one before), and the
+   item 863 (2026-09-26, item 860's group guard on the spawn path, a tie at 1,000 projects; 850 was the one before), and the
    restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
