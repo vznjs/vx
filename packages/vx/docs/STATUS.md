@@ -369,7 +369,8 @@ exit`.
       - The second needs two teardowns holding one live group while a
         release lands between them: a signal stop overlapping the
         end-of-run persistent shutdown, a timing race no row drives.
-      - Neither has a row. Each is recorded here, and not claimed held.
+      - Neither had a row then. Both are held since item 870, driven
+        directly.
 
 867.  DONE (2026-09-26, two of today's rows red on macOS CI, on #943).
       - Keep-alive's "a never-ready server a dead shell left goes with a
@@ -428,6 +429,21 @@ exit`.
       - Audited with the same lens: `vx watch` stops its held servers
         through `terminateChildren`, so 865's hold covers watch too.
         Nothing new.
+
+870.  DONE (2026-09-26, the two `holdGroups` mutants item 866 left
+      unheld, driven directly). No end-to-end run reaches them, but a
+      child process can. `tests/kill-tree-hold.test.ts` has a child spawn
+      a guarded task, hold and release its group by hand, then SIGKILL
+      itself; the guard's EOF kill decides whether the task's grandchild
+      writes `late.txt`.
+      - "a release deferred by a hold is written when the hold ends"
+        catches the release that is never written.
+      - "a group two teardowns hold stays listed until both let go"
+        catches the count that lets go at the first of two holds.
+      - The control, a held group whose release never came, is the
+        guard's.
+      - All three mutants of `kill-tree.ts`'s hold are caught by the new
+        file (the release that ignores the hold as well).
 
 ## In flight
 
