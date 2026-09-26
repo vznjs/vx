@@ -820,6 +820,28 @@ serve.ts` under bwrap, some parented to init.
         `src/index.ts`.
       - The CLI repro reads `miss` with `jobs=4` on the second run.
 
+889.  DONE (2026-09-26, a remote-cache review agent's one reproduced lead).
+      With two remote cache plugins over one local store (`turboCache()`,
+      `nxCache()`), and the artifact only in the second remote, the
+      prefetch pulled it into the shared store through the second layer.
+      The task's own lookup walked from the first layer, which found the
+      copy locally and returned `source: 'local'`. So the outcome read
+      `cache-hit` instead of `cache-hit-remote`, the summary said
+      "1 local", and telemetry counted the saving as local, against
+      caching.md's promise that provenance survives. The bytes were right.
+      - `ChainedCache.get` now asks first the layer a prefetch recorded
+        for the hash.
+      - Row: `chained-cache.test.ts` › "a hit a later layer prefetched
+        into the shared store still reports remote". It fails without the
+        fix.
+      - The same review found nothing else, and checked these: the cache
+        policy flags end to end against a fake Turbo server; integrity (a
+        truncated or garbage body degrades to a miss); no upload of a
+        failed or stale task; every remote error degrading to a miss;
+        tokens staying out of logs and keys. It also noted, not as a
+        defect, one wasted GET under `local:,remote:rw` after a batch
+        probe had answered absent.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

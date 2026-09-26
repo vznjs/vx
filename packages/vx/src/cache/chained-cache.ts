@@ -43,6 +43,15 @@ export class ChainedCache implements CacheLayer {
   }
 
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
+    // The layer that pulled this hash in a prefetch answers first. Layers
+    // may share one local store, and an earlier layer found the pulled copy
+    // there and called it a local hit: a second remote's hit was counted as
+    // saved locally, in the outcome, the summary and telemetry (item 889).
+    const owner = this.hitLayer.get(hash)
+    if (owner !== undefined) {
+      const entry = await owner.get(hash, ctx)
+      if (entry !== null) return entry
+    }
     for (const layer of this.layers) {
       const entry = await layer.get(hash, ctx)
       if (entry !== null) {

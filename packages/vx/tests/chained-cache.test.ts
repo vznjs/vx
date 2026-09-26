@@ -240,6 +240,46 @@ describe('ChainedCache — layers sharing one local handle', () => {
     }
   })
 
+  it('a hit a later layer prefetched into the shared store still reports remote', async () => {
+    // `turboCache(), nxCache()` over one local store: the prefetch finds the
+    // hash in the SECOND remote and pulls it into the shared store. The
+    // task's own lookup then walked from the first layer, which found the
+    // pulled copy locally and called it a local hit (item 889).
+    const { cache: local, dir } = tmpCache('prov')
+    const src = tmpCache('prov-src')
+    const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
+    try {
+      await saveEntry(src.cache, 'h-prov', proj)
+      const artifact = await Bun.file(src.cache.outputsPath('h-prov')).bytes()
+      const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+      const first: RemoteCacheLayer = {
+        has: async () => false,
+        get: async () => null,
+        put: async () => undefined,
+      }
+      const second: RemoteCacheLayer = {
+        has: async () => true,
+        get: async () => ({ body: new Blob([artifact]), durationMs: 1 }),
+        put: async () => undefined,
+      }
+      const chained = new ChainedCache([
+        new LayeredCache(local, first, { policy }),
+        new LayeredCache(local, second, { policy }),
+      ])
+      const ctx = { taskId: 'p#t', command: 'echo' }
+      expect(await chained.prefetch('h-prov', ctx)).toBe(true)
+      const entry = await chained.get('h-prov', ctx)
+      expect({ hash: entry?.hash, source: entry?.source }).toEqual({
+        hash: 'h-prov',
+        source: 'remote',
+      })
+    } finally {
+      local.close()
+      src.cache.close()
+      for (const d of [dir, src.dir, proj]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+
   it('a batch-probe answer from one layer must not poison a layer that cannot batch', async () => {
     // The remote-prefetch caller treats remoteHasMany's result as
     // authoritative: complement = absent, broadcast via markRemoteAbsent.

@@ -21,7 +21,10 @@ below; `key` goes to the first layer, like the run index.
 ## Rules
 
 - **Lookup walks the layers** (`get` / `has` / `prefetch`) until one
-  answers; the answering layer is remembered per hash.
+  answers; the answering layer is remembered per hash, and `get` asks a
+  remembered layer first. Layers can share one local store, and an
+  earlier layer found a copy a later one had prefetched there and
+  reported that remote's hit as local (item 889).
 - **Save reaches every layer**, in order — but a layer whose `local` handle
   an EARLIER layer already saved to gets `skipLocalWrite`: the shared
   artifact is packed and written once, and the later layer does only its
