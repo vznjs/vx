@@ -168,6 +168,12 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
         output_directories: { path: string; tree_digest: { hash: string } }[]
       }
     ).output_directories
+  const fullRecordOf = (key: string) =>
+    fake.actions.get(execDigestFor(key).hash) as {
+      output_directories: { path: string }[]
+      output_files: { path: string; digest: { hash: string }; is_executable?: boolean }[]
+      output_symlinks: { path: string; target: string }[]
+    }
   const executeReturning = (dirPath: string, tree: { hash: string; size_bytes: number }) => {
     fake.onExecute = () => ({
       response: {
@@ -236,6 +242,94 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     expect(recorded.map((d) => d.path)).toEqual(['pkg/mods/a/gen', 'pkg/mods/b/gen'])
     const treeA = decodeTreeWithBytes(fake.blobs.get(recorded[0]!.tree_digest.hash)!)
     expect(treeA.children.map((c) => c.files.map((f) => f.name))).toEqual([[], ['d']])
+    const record = fullRecordOf('k-each')
+    expect(record.output_files ?? []).toEqual([])
+    expect(record.output_symlinks ?? []).toEqual([])
+  })
+
+  // `dist/` with files, a symlink, and directories; `gen` is a file in `a` and
+  // a directory in `b`, and the local glob saves both.
+  const mixedDist = () => {
+    const sub = dir(['chunk.js'])
+    const genB = dir(['g'])
+    const a = dir(['gen', 'other'])
+    const b = dir([], { gen: genB })
+    const top: Directory = {
+      files: [
+        { name: 'index.js', digest: put('index.js'), is_executable: true },
+        { name: 'lib.js', digest: put('lib.js'), is_executable: false },
+      ],
+      directories: [
+        { name: 'a', digest: sha256(encodeDirectory(a)) },
+        { name: 'b', digest: sha256(encodeDirectory(b)) },
+        { name: 'sub', digest: sha256(encodeDirectory(sub)) },
+      ],
+      symlinks: [{ name: 'link', target: 'index.js' }],
+    }
+    executeReturning('dist', fake.put(encodeTree(top, [a, b, genB, sub])))
+  }
+  const entries = (key: string) => {
+    const record = fullRecordOf(key)
+    return {
+      directories: record.output_directories.map((d) => d.path),
+      files: (record.output_files ?? []).map((f) => [
+        f.path,
+        f.digest.hash,
+        f.is_executable === true,
+      ]),
+      symlinks: (record.output_symlinks ?? []).map((sl) => [sl.path, sl.target]),
+    }
+  }
+
+  it('a literal last segment under a wildcard records a file match beside a directory one', async () => {
+    mixedDist()
+    await refusal(run('k-gen', ['dist/*/gen']))
+    expect(entries('k-gen')).toEqual({
+      directories: ['pkg/dist/b/gen'],
+      files: [['pkg/dist/a/gen', put('gen').hash, false]],
+      symlinks: [],
+    })
+  })
+
+  it('a glob the walk cannot split keeps the entry whole beside one it can', async () => {
+    mixedDist()
+    // `*.js` and `**` are not whole-segment wildcards; `*/gen` alone would split.
+    await refusal(run('k-js', ['dist/*.js', 'dist/*/gen']))
+    expect(entries('k-js').directories).toEqual(['pkg/dist'])
+    mixedDist()
+    await refusal(run('k-star2', ['dist/*/gen', 'dist/**']))
+    expect(entries('k-star2').directories).toEqual(['pkg/dist'])
+  })
+
+  it('a wildcard last segment records files and symlinks too, and a replay restores them', async () => {
+    mixedDist()
+    await refusal(run('k-files', ['dist/*']))
+    expect(entries('k-files')).toEqual({
+      directories: ['pkg/dist/a', 'pkg/dist/b', 'pkg/dist/sub'],
+      files: [
+        ['pkg/dist/index.js', put('index.js').hash, true],
+        ['pkg/dist/lib.js', put('lib.js').hash, false],
+      ],
+      symlinks: [['pkg/dist/link', 'index.js']],
+    })
+
+    // The replay: no worker, and every matched entry back on disk.
+    await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+    let executed = 0
+    fake.onExecute = () => {
+      executed++
+      return { response: { result: { exit_code: 0 } } }
+    }
+    await run('k-files', ['dist/*'])
+    expect(executed).toBe(0)
+    const dist = path.join(root, 'pkg', 'dist')
+    expect(await readFile(path.join(dist, 'index.js'), 'utf8')).toBe('index.js')
+    expect((await stat(path.join(dist, 'index.js'))).mode & 0o111).not.toBe(0)
+    expect(await readFile(path.join(dist, 'lib.js'), 'utf8')).toBe('lib.js')
+    expect(await readlink(path.join(dist, 'link'))).toBe('index.js')
+    expect(await readFile(path.join(dist, 'sub', 'chunk.js'), 'utf8')).toBe('chunk.js')
+    expect(await readFile(path.join(dist, 'a', 'gen'), 'utf8')).toBe('gen')
+    expect(await readFile(path.join(dist, 'b', 'gen', 'g'), 'utf8')).toBe('g')
   })
 })
 

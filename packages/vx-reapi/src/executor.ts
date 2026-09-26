@@ -44,6 +44,11 @@ import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './
  * else, and replacement stays exactly what it was — it just lands at the path
  * the user actually declared.
  *
+ * The glob's LAST segment matches files and symlinks as well as directories,
+ * as the local glob does (`dist/*` saves `dist/index.js`): those become
+ * output files and symlinks of the record, or a replay drops them and core
+ * saves the short tree under the pure-input key.
+ *
  * Nothing reads the submitter's filesystem: the matches come from the tree the
  * worker returned, so the record is a function of the action's own result.
  */
@@ -52,25 +57,34 @@ async function decomposeOutputDir(
   entry: { path: string; tree_digest: Digest },
   globs: readonly string[],
   warn: (m: string) => void,
-): Promise<Array<{ path: string; tree_digest: Digest }>> {
+): Promise<DecomposedOutputs> {
+  const whole: DecomposedOutputs = { directories: [entry], files: [], symlinks: [] }
   // Only globs that COLLAPSED to this entry are interesting; a literal glob
   // already names its own path.
-  const wild = globs.filter((g) => globToOutputPath(g) === entry.path && g !== entry.path)
-  if (wild.length === 0) return [entry]
+  const wild = globs
+    .filter((g) => globToOutputPath(g) === entry.path && g !== entry.path)
+    .map((g) => g.slice(entry.path.length + 1).split('/'))
+  if (wild.length === 0) return whole
+  // Only whole-segment wildcards are walked. One glob the walk cannot follow
+  // (`*.js`, `**`) keeps the entry whole: splitting for its siblings would
+  // record their matches and drop its own.
+  if (wild.some((rest) => rest.some((seg) => seg !== '*' && !isLiteralPattern(seg)))) return whole
 
   const blob = await client.readBlob(entry.tree_digest)
   if (blob === null) {
     warn(`vx/reapi: could not read the Tree for ${entry.path} — recording it whole`)
-    return [entry]
+    return whole
   }
   // Keyed by the WORKER's own bytes, not by re-encoding our parse of them —
   // see decodeTreeWithBytes. Re-encoding resolved 4 of 649 directories here.
   const tree = decodeTreeWithBytes(blob)
-  if (tree.root === undefined) return [entry]
+  if (tree.root === undefined) return whole
   const byDigest = new Map<string, Directory>()
   tree.children.forEach((c, i) => byDigest.set(tree.childDigests[i]!, c))
 
   const out: Array<{ path: string; tree_digest: Digest }> = []
+  const files: DecomposedOutputs['files'] = []
+  const symlinks: DecomposedOutputs['symlinks'] = []
   const seen = new Set<string>()
 
   // Every transitive child of `dir`, which is what a Tree message must carry.
@@ -93,23 +107,31 @@ async function decomposeOutputDir(
       return
     }
     const [head, ...rest] = segments
+    const matches = (name: string): boolean => head === '*' || name === head
+    if (rest.length === 0) {
+      for (const f of dir.files) {
+        const at = `${prefix}/${f.name}`
+        if (!matches(f.name) || seen.has(at)) continue
+        seen.add(at)
+        files.push({ path: at, digest: f.digest, is_executable: f.is_executable })
+      }
+      for (const sl of dir.symlinks) {
+        const at = `${prefix}/${sl.name}`
+        if (!matches(sl.name) || seen.has(at)) continue
+        seen.add(at)
+        symlinks.push({ path: at, target: sl.target })
+      }
+    }
     for (const d of dir.directories) {
-      // A wildcard segment matches every directory at this level; anything
-      // else has to match by name. Only whole-segment wildcards are handled —
-      // a partial one (`node_*`) falls through and the entry stays whole.
-      if (head !== '*' && d.name !== head) continue
+      if (!matches(d.name)) continue
       const child = byDigest.get(d.digest.hash)
       if (child === undefined) continue
       walk(child, rest, `${prefix}/${d.name}`)
     }
   }
 
-  for (const glob of wild) {
-    const rest = glob.slice(entry.path.length + 1).split('/')
-    if (rest.some((seg) => seg !== '*' && !isLiteralPattern(seg))) continue
-    walk(tree.root, rest, entry.path)
-  }
-  if (out.length === 0) return [entry]
+  for (const rest of wild) walk(tree.root, rest, entry.path)
+  if (out.length + files.length + symlinks.length === 0) return whole
 
   // Upload the Tree blobs the new entries point at. ByteStream rather than a
   // batch: a Tree for a real dependency directory is megabytes, and batching
@@ -119,7 +141,17 @@ async function decomposeOutputDir(
     const missing = await client.findMissingBlobs([e.tree_digest]).catch(() => [e.tree_digest])
     if (missing.length > 0) await client.writeBlob(e.tree_digest, data)
   }
-  return out.map((e) => ({ path: e.path, tree_digest: e.tree_digest }))
+  return {
+    directories: out.map((e) => ({ path: e.path, tree_digest: e.tree_digest })),
+    files,
+    symlinks,
+  }
+}
+
+interface DecomposedOutputs {
+  directories: Array<{ path: string; tree_digest: Digest }>
+  files: Array<{ path: string; digest: Digest; is_executable: boolean }>
+  symlinks: Array<{ path: string; target: string }>
 }
 
 /** `ExecuteRequest.inputs` past the executor's own undefined guard. Derived
@@ -881,25 +913,32 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           ...req.outputs.workspaceFiles,
           ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
         ].map((g) => normalizeGlob(g))
-        const recordedDirs: Array<{ path: string; tree_digest: Digest }> = []
+        const recorded: DecomposedOutputs = {
+          directories: [],
+          files: (result.output_files ?? []).map((f) => ({
+            path: rebase(f.path),
+            digest: f.digest,
+            is_executable: f.is_executable === true,
+          })),
+          symlinks: (result.output_symlinks ?? []).map((sl) => ({
+            path: rebase(sl.path),
+            target: sl.target,
+          })),
+        }
         for (const d of result.output_directories ?? []) {
           const rebased = { path: rebase(d.path), tree_digest: d.tree_digest }
-          recordedDirs.push(...(await decomposeOutputDir(client, rebased, declaredGlobs, warn)))
+          const split = await decomposeOutputDir(client, rebased, declaredGlobs, warn)
+          recorded.directories.push(...split.directories)
+          recorded.files.push(...split.files)
+          recorded.symlinks.push(...split.symlinks)
         }
         await client
           .updateActionResult(execDigestFor(req.cacheKey), {
             exit_code: 0,
             ...(stdoutDigest === undefined ? {} : { stdout_digest: stdoutDigest }),
-            output_files: (result.output_files ?? []).map((f) => ({
-              path: rebase(f.path),
-              digest: f.digest,
-              is_executable: f.is_executable === true,
-            })),
-            output_directories: recordedDirs,
-            output_symlinks: (result.output_symlinks ?? []).map((sl) => ({
-              path: rebase(sl.path),
-              target: sl.target,
-            })),
+            output_files: recorded.files,
+            output_directories: recorded.directories,
+            output_symlinks: recorded.symlinks,
           })
           .catch((err: Error) =>
             warn(`vx/reapi: could not record execution for ${req.taskId}: ${err.message}`),
