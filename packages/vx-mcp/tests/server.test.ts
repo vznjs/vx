@@ -84,6 +84,40 @@ describe('handleMessage', () => {
     expect(garbage.error.code).toBe(-32700)
   })
 
+  // Item 925: a notification's bad tool name and a tool's crash were
+  // answered with `id: null`; JSON-RPC 2.0 never answers a notification.
+  it('a notification gets no reply even when it fails; the same call with an id does', async () => {
+    const crashing = {
+      workspaceRoot: root,
+      get cacheDir(): string {
+        throw new Error('boom')
+      },
+    }
+    const call = (params: unknown, id?: number) =>
+      JSON.stringify({
+        jsonrpc: '2.0',
+        ...(id === undefined ? {} : { id }),
+        method: 'tools/call',
+        params,
+      })
+    const got = [
+      await handleMessage(call({ name: 42 }), ctx),
+      await handleMessage(call({ name: 'getCacheStats', arguments: {} }), crashing),
+      await handleMessage(call({ name: 42 }, 8), ctx),
+      await handleMessage(call({ name: 'getCacheStats', arguments: {} }, 9), crashing),
+    ]
+    expect(got).toEqual([
+      null,
+      null,
+      {
+        jsonrpc: '2.0',
+        id: 8,
+        error: { code: -32602, message: 'tools/call: name must be a string' },
+      },
+      { jsonrpc: '2.0', id: 9, error: { code: -32603, message: 'boom' } },
+    ])
+  })
+
   it('tools/list advertises the six tools with object schemas', async () => {
     const r = (await handleMessage(req(4, 'tools/list'), ctx)) as {
       result: { tools: Array<{ name: string; inputSchema: { type: string } }> }
