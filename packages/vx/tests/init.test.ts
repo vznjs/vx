@@ -175,7 +175,7 @@ describe('delegatedScript', () => {
     ['yarn run x', 'x'],
     ['yarn x', 'x'],
     ['bun run x', 'x'],
-    ['bun x', 'x'],
+    ['bun dev', 'dev'],
     ['npm test', 'test'],
     ['npm start', 'start'],
     ['  npm run test:unit  ', 'test:unit'],
@@ -185,6 +185,15 @@ describe('delegatedScript', () => {
     ['npm run x && npm run y', null],
     ['NODE_ENV=1 npm run x', null],
     ['npm run $SCRIPT', null],
+    // Item 908: bare, a manager's own command is not a script.
+    ['bun x', null], // bunx, the package runner
+    ['bun test', null],
+    ['bun build', null],
+    ['bun run test', 'test'],
+    ['pnpm install', null],
+    ['pnpm test', 'test'],
+    ['yarn add', null],
+    ['yarn test', 'test'],
   ])('%s → %p', (command, expected) => {
     expect(delegatedScript(command)).toBe(expected)
   })

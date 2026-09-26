@@ -316,6 +316,17 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Row: `init.test.ts` › `migrateScripts` (item 907), direct and
         chained. It fails without the fix, and the review's repro now
         builds `lib` first. `cli.md` says so.
+908.  DONE (2026-09-26, the same review's lead 6). `vx init` read a
+      script that runs the package manager's own command as a delegation
+      to a script of that name. `bun x tsc` became a group over a script
+      `x`, and `bun test` / `pnpm install` / `yarn add` did the same.
+      - Only `npm run`, `npm test` / `npm start`, `<pm> run <name>` and a
+        bare `<pm> <name>` that is not one of that manager's own
+        commands delegate now. Each other command stays a command.
+      - Rows: `init.test.ts` › `delegatedScript`: `bun x`, `bun test`,
+        `bun build`, `pnpm install`, `yarn add` stay commands, and
+        `bun dev` still delegates. They fail without the fix, and an old
+        row that pinned `bun x` as `x` is corrected. `cli.md` says so.
 
 ## In flight
 
