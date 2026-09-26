@@ -144,6 +144,12 @@ function taskNamesFor(
   return names.filter((n) => !optedOut(pkgTasks?.[n]))
 }
 
+/** Turbo 1's env dependency, `$NAME`, as the name; null for anything else, `$TURBO_…$` tokens included. */
+function envDependency(entry: string): string | null {
+  const m = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(entry)
+  return m === null ? null : m[1]!
+}
+
 /**
  * A package overlay on the task it inherits. A field the overlay sets
  * replaces the inherited one, except an array holding `$TURBO_EXTENDS$`
@@ -184,9 +190,13 @@ export async function mapTurboWorkspace(
   const rootCfg = await readTurboJson(path.join(root, 'turbo.json'), root)
   const rootTasks = tasksOf(rootCfg)
 
+  // Turbo 1 lists an env var as `$NAME` among `globalDependencies` (and a
+  // task's `dependsOn`); read as a file it was a glob that matched nothing,
+  // and the var re-keyed nothing (item 909).
+  const globalDeps = rootCfg.globalDependencies ?? []
   const globals = {
-    inputs: rootCfg.globalDependencies ?? [],
-    env: rootCfg.globalEnv ?? [],
+    inputs: globalDeps.filter((d) => envDependency(d) === null),
+    env: [...(rootCfg.globalEnv ?? []), ...globalDeps.flatMap((d) => envDependency(d) ?? [])],
     pass: rootCfg.globalPassThroughEnv ?? [],
   }
 
@@ -347,7 +357,13 @@ function buildTask(
   }
 
   const deps: string[] = []
+  const envDeps: string[] = []
   for (const d of def.dependsOn ?? []) {
+    const envName = envDependency(d)
+    if (envName !== null) {
+      envDeps.push(envName)
+      continue
+    }
     if (d.includes('$TURBO_ROOT$')) {
       todos.push(
         `dependsOn ${JSON.stringify(d)} uses $TURBO_ROOT$ — vx has no workspace-root tasks; ` +
@@ -377,7 +393,7 @@ function buildTask(
     if (own.has(d)) deps.push(d)
   }
 
-  const envNames: string[] = []
+  const envNames: string[] = [...envDeps]
   for (const e of def.env ?? []) {
     if (/[*?[\]!]/.test(e)) {
       todos.push(
