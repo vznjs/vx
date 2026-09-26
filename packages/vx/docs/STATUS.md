@@ -577,6 +577,18 @@ echo A; echo B` went green after a failed pre hook, and a cache
         the sink's metrics POST carries the run's start and end; each red
         without its part of the fix (the sink row catches the end passed
         as the start).
+928.  DONE (2026-09-26, the remote-cache adapters review). Bun's fetch
+      refuses a header value holding a line break, a NUL or a character
+      past Latin-1, grpc-js anything outside printable ASCII, and both
+      QUOTE the value in the error: a token read from a two-line secret
+      file reached every degrade warning as `Bearer <token>`.
+      - `turboCache()` / `nxCache()` refuse such a token when configured,
+        naming the variable, never the value; vx-otel drops the header
+        and warns with its key; vx-github skips the check run with a
+        warning; vx-reapi's wire refuses the header at construction.
+      - Rows: one per package (the turbo-cache and nx-cache sweeps,
+        `otel.test.ts`, `github.test.ts`, `wire-sweep.test.ts`), each
+        pinning the exact refusal or warning, which names no token.
 
 ## In flight
 
