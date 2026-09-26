@@ -129,6 +129,22 @@ test is telling the truth.
       - Rows: `task-graph.test.ts` (item 894). The `'all'` row over a
         nested group fails without the fix; the name-list control passes
         both ways.
+895.  DONE (2026-09-26, macOS CI on #967). `run-lock.test.ts` › "a wait
+      longer than a second names the holder once" went red once on
+      macOS, at 2001 ms, in code #967 does not touch. The recap tail
+      held no assertion text, so which side moved is unproven. The row
+      slept a fixed 1.3 s against the notice's 1 s threshold, a 300 ms
+      margin on a loaded runner.
+      - It now waits for the notice (up to 4 s), measures it came at
+        1 s or later, lets several more polls pass while the holder
+        lives, and compares the exact lines at both ends, so an extra
+        line would show in the failure.
+      - Mutants caught: a zero threshold, and a notice on every poll.
+        The first draft missed the second, because it ended the holder
+        right after the first notice. 25 runs of the file under CPU load
+        on Linux were green before the change.
+      - A re-run of the job was refused (403), so the row went into
+        #967 rather than a PR of its own.
 
 ## In flight
 
