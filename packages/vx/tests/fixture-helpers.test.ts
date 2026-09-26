@@ -1,6 +1,6 @@
-// The fixture helpers every suite builds on (item 846): tests/helpers/
-// workspace.ts, local-workspace.ts and plugin.ts. Eighty-odd files lean on
-// them, so a helper that quietly drops an option (a workspace file never
+// The fixture helpers every suite builds on (items 846, 847): tests/helpers/
+// workspace.ts, local-workspace.ts, plugin.ts, orchestrator-fixture.ts and
+// watch-loop.ts. Eighty-odd files lean on them, so a helper that quietly drops an option (a workspace file never
 // written, a commit that tracks nothing, a scoped name on the wrong path)
 // would move every one of those fixtures at once.
 import { afterEach, describe, expect, it } from 'bun:test'
@@ -14,7 +14,26 @@ import {
   PLUGIN_IMPORT,
   writeLocalWorkspace,
 } from './helpers/local-workspace.js'
+import { parseRunArgs } from '../src/cli/index.js'
+import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import { isAlive } from './helpers/alive.js'
+import {
+  FORCE,
+  type Fixture,
+  makeWorkspace as makeOrchestratorWorkspace,
+  NO_CACHE,
+  silentLogger,
+  STAMP_CMD,
+} from './helpers/orchestrator-fixture.js'
 import { pluginOrigin, pluginSource, testPlugin } from './helpers/plugin.js'
+import {
+  executions,
+  initialOnly,
+  startWatch,
+  until,
+  useWatchFixture,
+  type Watch,
+} from './helpers/watch-loop.js'
 import { addProject, gitIn, gitInit, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const made: string[] = []
@@ -209,5 +228,146 @@ describe('test plugins', () => {
     expect(existsSync(other)).toBe(true)
     expect(existsSync(inner)).toBe(true)
     expect(existsSync(dead)).toBe(false)
+  })
+})
+
+describe('the orchestrator fixture', () => {
+  it('holds the policies the CLI resolves --no-cache and --force to', () => {
+    expect(parseRunArgs(['build', '--no-cache']).cache).toEqual({ ...NO_CACHE })
+    expect(parseRunArgs(['build', '--force']).cache).toEqual({ ...FORCE })
+  })
+
+  it('records status lines, stderr, and one body per task at completion', () => {
+    const f: Fixture = { root: '', log: [], err: [] }
+    const logger = silentLogger(f)
+    const a = { id: 'p#a' } as TaskNode
+    const b = { id: 'p#b' } as TaskNode
+    logger.status('started')
+    logger.taskStdout(a, 'a1 ')
+    logger.taskStderr(b, 'b-err\n')
+    logger.taskStdout(a, 'a2\n')
+    logger.taskComplete(a, { status: 'success' } as TaskOutcome)
+    logger.taskComplete(b, { status: 'failed' } as TaskOutcome)
+    // A second completion of the same id carries no stale body.
+    logger.taskComplete(a, { status: 'cache-hit' } as TaskOutcome)
+    // Whitespace only is no body.
+    logger.taskStdout(b, ' \n')
+    logger.taskComplete(b, { status: 'success' } as TaskOutcome)
+    expect(f.log).toEqual([
+      'started',
+      'task p#a success',
+      'a1 a2',
+      'task p#b failed',
+      'b-err',
+      'task p#a cache-hit',
+      'task p#b success',
+    ])
+    expect(f.err).toEqual(['b-err'])
+  })
+
+  it('makes a git workspace under its prefix, and a stamp that differs per run', async () => {
+    const f = await makeOrchestratorWorkspace()
+    track(f.root)
+    expect(path.basename(f.root)).toStartWith('nxt-e2e-')
+    expect(existsSync(path.join(f.root, '.git'))).toBe(true)
+    expect(f.log).toEqual([])
+    expect(f.err).toEqual([])
+    expect(path.basename(track((await makeOrchestratorWorkspace('mine-')).root))).toStartWith(
+      'mine-',
+    )
+    const stamp = async (): Promise<string> => {
+      Bun.spawnSync(['sh', '-c', STAMP_CMD], { cwd: f.root })
+      return text(path.join(f.root, 'out.txt'))
+    }
+    const one = await stamp()
+    await Bun.sleep(2)
+    expect(one).toMatch(/^\d{13}$/)
+    expect(await stamp()).not.toBe(one)
+  })
+})
+
+describe('the watch-loop helpers', () => {
+  it('until returns once the condition holds and names what it waited for', async () => {
+    let n = 0
+    await until(() => ++n === 3, 'three')
+    expect(n).toBe(3)
+    await until(async () => true, 'async')
+    // An async condition is awaited, not judged by its promise.
+    expect(
+      await until(async () => false, 'never', 60).then(
+        () => 'ok',
+        () => 'timed out',
+      ),
+    ).toBe('timed out')
+    const t0 = Date.now()
+    expect(
+      await until(() => false, 'the moon', 60).then(
+        () => 'ok',
+        (e: Error) => e.message,
+      ),
+    ).toBe('timed out waiting for the moon')
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(55)
+  })
+
+  it('counts executions as the log lines that are exactly `run`', async () => {
+    const dir = scratch()
+    const log = path.join(dir, 'runs.log')
+    expect(await executions(log)).toBe(0)
+    await Bun.write(log, 'run\nrunning\nrun\n run\n\nrun')
+    expect(await executions(log)).toBe(3)
+    const w = { out: () => 'OUTPUT' } as Watch
+    expect(
+      await initialOnly(w, log).then(
+        () => 'ok',
+        (e: Error) => e.message,
+      ),
+    ).toBe('expected the initial run only (1 execution), saw 3; watch output:\nOUTPUT')
+    await Bun.write(log, 'run\n')
+    await initialOnly(w, log)
+    await Bun.write(log, '')
+    expect(
+      await initialOnly(w, log).then(
+        () => 'ok',
+        (e: Error) => e.message,
+      ),
+    ).toStartWith('expected the initial run only (1 execution), saw 0;')
+  })
+})
+
+describe('the watch fixture', () => {
+  const f = useWatchFixture()
+  const seen: string[] = []
+  it('writes an app whose build concatenates src into dist and logs outside', async () => {
+    seen.push(f.root, path.dirname(f.log))
+    expect(f.dir).toBe(path.join(f.root, 'packages', 'app'))
+    expect(path.basename(f.root)).toStartWith('vx-watch-loop-')
+    expect(f.log.startsWith(f.root)).toBe(false)
+    expect(await text(path.join(f.dir, 'src', 'a.txt'))).toBe('a1\n')
+    const config = await text(path.join(f.dir, 'vx.config.mjs'))
+    const command = /command: '([^']+)'/.exec(config)![1]!
+    await Bun.write(path.join(f.dir, 'src', 'b.txt'), 'b1\n')
+    Bun.spawnSync(['sh', '-c', command], { cwd: f.dir })
+    Bun.spawnSync(['sh', '-c', command], { cwd: f.dir })
+    expect(await text(path.join(f.dir, 'dist', 'out.txt'))).toBe('a1\nb1\n')
+    expect(await executions(f.log)).toBe(2)
+    expect(config).toContain("inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }")
+    expect(f.watch).toBeUndefined()
+  })
+
+  it('ends the case watch and removes both directories after each case', async () => {
+    expect(seen.length).toBe(2)
+    for (const d of seen) expect(existsSync(d)).toBe(false)
+    expect(existsSync(f.root)).toBe(true)
+    f.watch = startWatch(f.root)
+    await until(() => f.watch!.out().includes('watching'), 'the watch to start')
+    expect(f.watch.cycles()).toBe(0)
+    seen.push(String(f.watch.proc.pid))
+  })
+
+  it('killed the previous case watch', async () => {
+    expect(f.watch).toBeUndefined()
+    const pid = Number(seen.at(-1))
+    expect(Number.isInteger(pid)).toBe(true)
+    expect(isAlive(pid)).toBe(false)
   })
 })
