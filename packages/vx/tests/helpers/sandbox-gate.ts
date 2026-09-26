@@ -30,12 +30,9 @@
 // and an unrunnable suite gets ignored rather than fixed.
 
 import { probeSandbox } from '../../src/exec/index.js'
+import { envFlag } from './env.js'
 
-/** Same truthiness rule as the logger's CI check — `0`/`false`/empty are off. */
-function required(): boolean {
-  const v = process.env['VX_REQUIRE_SANDBOX']
-  return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
-}
+const required = (): boolean => envFlag('VX_REQUIRE_SANDBOX')
 
 /**
  * Resolve whether the OS sandbox can run here.

@@ -13,3 +13,13 @@ export function restoreEnv(saved: Readonly<Record<string, string | undefined>>):
     else process.env[key] = value
   }
 }
+
+/**
+ * Whether a `VX_REQUIRE_*` gate is armed: set, and not empty, `0` or
+ * `false` (any case). The one rule every gate reads, so a gate cannot
+ * disagree with the others about what "set" means.
+ */
+export function envFlag(name: string): boolean {
+  const v = process.env[name]
+  return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
+}
