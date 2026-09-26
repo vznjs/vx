@@ -127,6 +127,9 @@ export class ChainedCache implements CacheLayer {
   recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void> {
     return this.layers[0]!.recordOutputDirs?.(hash, projectDir, prefixes) ?? Promise.resolve()
   }
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
+    this.layers[0]!.recordOutputStamps?.(hash, projectDir, workspaceRoot)
+  }
 
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
     return this.layers[0]!.loadOutputDirsBatch?.(hashes) ?? new Map()

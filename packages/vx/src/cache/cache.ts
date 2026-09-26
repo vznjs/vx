@@ -66,6 +66,7 @@ import {
   type RunRecord,
   type SaveArgs,
   type TaskInputRow,
+  WORKSPACE_OUTPUT_PREFIX,
 } from './layer.js'
 import {
   bytesOf,
@@ -154,7 +155,14 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        tell the history what the task needs. The cache KEY and the
 //        artifact container are unchanged (no CACHE_VERSION bump: an
 //        artifact without the field reads as before).
-export const SCHEMA_VERSION = 'v27'
+//   v28: output_files.ino + .ctime_ms — the skip-restore check's guard
+//        against another entry's bytes. Two entries whose outputs carry
+//        one fixed mtime (`tar -x`, `cp -p`, SOURCE_DATE_EPOCH) and one
+//        size matched each other's (size, mode, mtime) rows, so a hit left
+//        the last entry's bytes on disk under a green run (item 886). A row
+//        is current only with the inode and ctime recorded after the save
+//        or restore that wrote it. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v28'
 
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.
@@ -180,17 +188,6 @@ export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
  * inputs changed. Mirrors the `hash <> ''` guards in the cloud analytics copy.
  */
 export const KEYED_RUNS_SQL = "hash <> ''"
-
-/**
- * Artifact + `output_files` namespace prefix for workspace-root-
- * anchored outputs (`cache.outputs.workspaceFiles`). Project outputs
- * keep their bare project-relative `path` rows; workspace rows store
- * the full `workspace-outputs/<rel-to-root>` tar entry name as the
- * discriminator — least-invasive row format, no schema change. A
- * project output dir literally named `workspace-outputs/` would
- * collide with the namespace; the name is reserved.
- */
-export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
 // The contract, the policy grammar and the zstd framing live beside this
 // file; they are re-exported here so an importer of `./cache.js` — the
@@ -560,6 +557,10 @@ export class Cache implements CacheLayer {
         size_bytes  INTEGER NOT NULL,
         mode        INTEGER NOT NULL,
         mtime_ms    INTEGER NOT NULL,
+        -- v28: the inode and ctime this machine saw after the save or
+        -- restore that left the file equal to the entry; NULL until then.
+        ino         INTEGER,
+        ctime_ms    INTEGER,
         PRIMARY KEY (entry_hash, path),
         FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
       );
@@ -870,6 +871,9 @@ export class Cache implements CacheLayer {
     prefixes: readonly string[],
   ): Promise<void> {
     await this.outputs.recordOutputDirs(hash, projectDir, prefixes)
+  }
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
+    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot)
   }
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
     return this.outputs.loadOutputDirsBatch(hashes)

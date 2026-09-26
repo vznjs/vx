@@ -95,6 +95,40 @@ afterEach(async () => {
 
 describe('stale cache hits', () => {
   it(
+    'a round trip between two entries whose outputs carry one fixed mtime restores the right bytes',
+    async () => {
+      // A task that sets its outputs' mtime (`tar -x`, `cp -p`,
+      // SOURCE_DATE_EPOCH; here `touch -t`) gives v1 and v2 identical
+      // (size, mode, mtime) rows. Back on v1 with v2's bytes on disk, the
+      // skip check matched v1's rows and reported up-to-date over v2's
+      // bytes (item 886).
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', 'p')
+      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && cp src/v.txt dist/v.txt && touch -t 200109090146.40 dist/v.txt' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      const out = path.join(pkg, 'dist', 'v.txt')
+      const seen: string[] = []
+      for (const v of ['v1', 'v2', 'v1', 'v2', 'v2']) {
+        await write(path.join(pkg, 'src', 'v.txt'), v)
+        vx(root, 'run', 'build', '--all')
+        seen.push(await readFile(out, 'utf8'))
+      }
+      expect(seen).toEqual(['v1', 'v2', 'v1', 'v2', 'v2'])
+      // The steady state still skips: the last run found v2's own stamp.
+      expect(vx(root, 'run', 'build', '--all')).toContain('1 up-to-date')
+    },
+    TIMEOUT,
+  )
+  it(
     'a corrupted WORKSPACE-anchored output is not "up-to-date" either',
     async () => {
       // The same short-circuit's fingerprint check is a conjunction over TWO

@@ -261,9 +261,12 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   })
 
   it('a file row is current only while the file is there with its recorded size', async () => {
+    // Stamped as the miss path does after a save (item 886).
+    cache.recordOutputStamps('h1', proj, proj)
     const files = cache.loadOutputFilesBatch(['h1']).get('h1')!
     expect(await cache.isOutputsCurrent(proj, files)).toBe(true)
-    // A different size under a forged identical mtime: the size is what tells.
+    // A different size under a forged identical mtime is not current (the
+    // size and, since item 886, the rewrite's ctime both tell).
     const a = path.join(proj, 'dist/a.js')
     writeFileSync(a, 'longer than before')
     utimesSync(a, new Date(files[0]!.mtimeMs), new Date(files[0]!.mtimeMs))

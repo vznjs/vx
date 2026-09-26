@@ -308,6 +308,17 @@ export interface PruneResult {
 }
 
 /**
+ * Artifact + `output_files` namespace prefix for workspace-root-
+ * anchored outputs (`cache.outputs.workspaceFiles`). Project outputs
+ * keep their bare project-relative `path` rows; workspace rows store
+ * the full `workspace-outputs/<rel-to-root>` tar entry name as the
+ * discriminator — least-invasive row format, no schema change. A
+ * project output dir literally named `workspace-outputs/` would
+ * collide with the namespace; the name is reserved.
+ */
+export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
+
+/**
  * Per-output-file fingerprint, scoped by the cache entry that
  * produced it. Batch-loaded once at the top of a run via
  * `loadOutputFilesBatch(hashes)` so the orchestrator's "is this
@@ -325,6 +336,14 @@ export interface OutputFileRow {
   size: number
   mode: number
   mtimeMs: number
+  /**
+   * The inode and ctime THIS machine saw the file carry after the save or
+   * restore that left it equal to the entry (`recordOutputStamps`).
+   * Absent until then, and from any ingest: a row without them is never
+   * current.
+   */
+  ino?: number
+  ctimeMs?: number
 }
 
 /** One directory under a whole-subtree output glob, as it stood after the last save or restore on THIS machine. */
@@ -536,6 +555,14 @@ export interface CacheLayer {
    * state, like the output rows: a remote ingest records none.
    */
   recordOutputDirs?(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void>
+  /**
+   * Stamp `hash`'s output rows with each file's inode and ctime once a
+   * save or restore has left the tree equal to the entry (optional — a
+   * layer without it has rows `isOutputsCurrent` never trusts, so every
+   * hit restores). Machine-local; skips a file that no longer matches its
+   * row.
+   */
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
   /**

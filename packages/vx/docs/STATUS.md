@@ -715,6 +715,58 @@ serve.ts` under bwrap, some parented to init.
         documents, and on Ctrl-C leaves no host socat, bridge socket or
         process of the workspace's.
 
+886.  DONE (2026-09-26, a stale hit found by a review agent and
+      reproduced on Bun 1.4.2). The skip-restore check compared an
+      output's size, mode and millisecond mtime with the entry's row. A
+      task that sets its outputs' mtime (`tar -x`, `cp -p`, `rsync -a`,
+      `SOURCE_DATE_EPOCH`) gives two entries identical rows when the
+      sizes agree. Back on v1 with v2's bytes on disk, vx reported
+      `1 up-to-date` and left v2's bytes: a green run with the wrong
+      output. A version bump of one length or a branch round trip is
+      enough to hit it.
+      - Each `output_files` row now carries the inode and ctime this
+        machine saw after the save or restore that wrote the file
+        (`recordOutputStamps`, called by miss-save and hit-restore,
+        written with the directory snapshots). `isOutputsCurrent`
+        requires them. No task sets a ctime and a restore's rename gives
+        a new inode, so a forged mtime (`touch -r`), the documented blind
+        spot until now, is caught too. A row with no stamp (a remote
+        ingest, or a file that had changed when the stamp was taken) is
+        never current: the hit restores and stamps.
+      - `SCHEMA_VERSION` v27 → v28 (the index resets once). The cache
+        key is unchanged and `CACHE_VERSION` is not bumped: every stored
+        artifact held the right bytes, and only the check that skipped
+        restoring them was wrong.
+      - Rows:
+        - `stale-hit.test.ts` › "a round trip between two entries whose
+          outputs carry one fixed mtime restores the right bytes";
+        - `cache.test.ts` › "two entries with one size and one fixed
+          mtime are told apart";
+        - `cache.test.ts` › "a forged mtime is caught", flipped from the
+          old "remains the documented blind spot";
+        - `cache-baseline.test.ts`'s forged-mtime tail, flipped the
+          same way.
+
+        All of them fail with the stamp dropped from the check. Six
+        existing rows fail without the stamp after a save; the round
+        trip's steady-state `up-to-date` needs the one after a restore.
+
+      - A/B at 1,000 projects, interleaved, one copy per arm (the schemas
+        differ):
+        - warm, min-of-15: main min 367.7 ms / median 424.2, head 387.3 /
+          420.5, A/A 363.4 / 412.7. A tie; the warm path takes no new
+          stat.
+        - cold, five reps: main 3,629.6 / 3,799.1, head 3,577.6 /
+          3,903.5. A tie inside a ~500 ms spread.
+
+        The warm run after a cold one reads 1000 up-to-date.
+
+      - Also probed and refuted: 879's leading suspect for its partly
+        removed roots, the early git enumeration outliving a refused
+        `prepareRun`. A refused run over 300 packages leaves no git child,
+        at the throw or 300 ms later: git finishes before the config
+        refusal.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

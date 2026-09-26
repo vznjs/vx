@@ -283,10 +283,19 @@ On a hit:
    own `.vx-meta.json` sidecar — recorded from a stat while packing —
    so the index rows and the restored tree carry the identical values
    whether the entry was saved locally or ingested from a remote, and
-   the comparison is exact in steady state. Residual blind spot,
-   accepted like every mtime-based check:
-   a same-size edit landing in the same millisecond as the recorded
-   write, or a deliberately forged mtime (`touch -r`).
+   the comparison is exact in steady state. The check also requires the
+   file's inode and ctime to equal the ones this machine recorded after
+   the save or restore that last wrote it (`recordOutputStamps`). Size,
+   mode and mtime alone cannot tell two entries apart when their
+   outputs carry one fixed mtime (`tar -x`, `cp -p`, `SOURCE_DATE_EPOCH`)
+   and one size: a v1 → v2 → v1 round trip reported up-to-date with v2's
+   bytes on disk (item 886). No task can set a ctime, a restore's rename
+   gives a new inode, and a forged mtime (`touch -r`) moves the ctime
+   too. A row with no stamp (an ingest from a remote, or a file that had
+   changed when the stamp was taken) is never current: the hit restores
+   and stamps. The residual: ctime ticks on the kernel's coarse clock
+   (4 ms at HZ=250), so a same-size rewrite in place (same inode) inside
+   the tick of vx's own write, with its mtime forged back, still matches.
 3. Otherwise the task's declared outputs are wiped from the project
    dir (`cleanOutputs`) — see
    [§ Strict output ownership](#strict-output-ownership) — and the
@@ -1018,7 +1027,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/cache.ts schema (SCHEMA_VERSION = 'v27')
+-- src/cache/cache.ts schema (SCHEMA_VERSION = 'v28')
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at'
@@ -1122,6 +1131,10 @@ CREATE TABLE output_files (
   size_bytes  INTEGER NOT NULL,
   mode        INTEGER NOT NULL,
   mtime_ms    INTEGER NOT NULL,
+  -- v28: inode + ctime after the save/restore that last wrote the file
+  -- (item 886); NULL until stamped, and a NULL row is never current.
+  ino         INTEGER,
+  ctime_ms    INTEGER,
   PRIMARY KEY (entry_hash, path),
   FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
 );
