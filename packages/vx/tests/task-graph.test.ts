@@ -398,6 +398,52 @@ describe('buildTaskGraph', () => {
     expect([...dropped]).toEqual([['app#build', ['lib#build']]])
   })
 
+  // Item 894: a group is its members, so its own edges survive the flag.
+  // Before, `vx run ci --exclude-dependencies` scheduled the group alone
+  // and the run ran nothing, exit 0.
+  const groupGraph = () =>
+    buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: cmd('build'),
+          lint: cmd('lint'),
+          test: { ...cmd('test'), dependsOn: ['build'] },
+          ci: { dependsOn: ['lint', 'test'] },
+          all: { dependsOn: ['ci'] },
+        }),
+      ),
+      packageGraph: packageGraph({ app: [] }),
+      requested: [{ project: 'app', task: 'all' }],
+    })
+
+  it('excludeDependencies: "all" runs a group\'s members, nested groups too, without their dependencies', () => {
+    const nodes = groupGraph()
+    const { keyOnly, dropped } = excludeDependencies(nodes, 'all')
+    expect({
+      scheduled: [...nodes.keys()].sort(),
+      keyOnly: [...keyOnly.keys()],
+      dropped: [...dropped],
+    }).toEqual({
+      scheduled: ['app#all', 'app#ci', 'app#lint', 'app#test'],
+      keyOnly: ['app#build'],
+      dropped: [['app#test', ['app#build']]],
+    })
+  })
+
+  it('CONTROL: a name list drops the group member it names, like any edge', () => {
+    const nodes = groupGraph()
+    const { keyOnly, dropped } = excludeDependencies(nodes, ['lint', 'build'])
+    expect({
+      scheduled: [...nodes.keys()].sort(),
+      keyOnly: [...keyOnly.keys()].sort(),
+      dropped: Object.fromEntries(dropped),
+    }).toEqual({
+      scheduled: ['app#all', 'app#ci', 'app#test'],
+      keyOnly: ['app#build', 'app#lint'],
+      dropped: { 'app#ci': ['app#lint'], 'app#test': ['app#build'] },
+    })
+  })
+
   // ─── dependsOn rejects wildcards/negation; cache.inputs.tasks accepts ──
   //
   // Turbo and Nx draw the same line: dependsOn adds edges to the

@@ -1057,6 +1057,10 @@ aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
 dependant's `^build`, by `vx run build --all` — and runs nothing.
+Bare `--exclude-dependencies` keeps a group's edges for the same reason:
+`vx run ci --exclude-dependencies` runs `ci`'s members without their own
+dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
+member it names, like any edge.
 
 ```ts
 // `vx run install --all`  →  fans out to `build` in every workspace dep

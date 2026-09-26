@@ -116,6 +116,19 @@ test is telling the truth.
       config imports (888), a remote's provenance (889), the
       `...^` filter (890), the watch loop's re-read (891) and a
       dependency-only server's crash (892).
+894.  DONE (2026-09-26, item 890's last open note). `vx run ci --all
+--exclude-dependencies` on a group ran nothing and exited 0. A group
+      is its members, and bare `--exclude-dependencies` dropped the group's
+      own edges with the rest, so only the group stayed scheduled.
+      - Now `'all'` keeps a group's edges (nested groups too) and drops
+        its members' dependencies: `ci` runs lint and test, not build.
+      - A name list still decides edge by edge, so
+        `--exclude-dependencies=lint.oxfmt` still takes one member out
+        of `lint`. The existing row for that form guarded this, and a
+        first draft that kept every group edge broke it.
+      - Rows: `task-graph.test.ts` (item 894). The `'all'` row over a
+        nested group fails without the fix; the name-list control passes
+        both ways.
 
 ## In flight
 

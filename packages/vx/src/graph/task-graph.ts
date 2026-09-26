@@ -491,6 +491,13 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
  * scheduled task that lost an edge is listed in `dropped` with the ids it
  * lost.
  *
+ * Under `'all'` a group's own edges stay: a group is its members (running
+ * one is running them), so `vx run ci --exclude-dependencies` runs what
+ * `ci` names without what THEY depend on. Dropping them left the group
+ * alone, and the run ran nothing and exited 0 (item 894). A name list
+ * still drops a group's edge it names: `--exclude-dependencies=lint.oxfmt`
+ * takes one member out of `lint`.
+ *
  * Run on the whole graph, after the `graph` and `key` stages, because a
  * dropped dependency is still KEYED: a key is a function of inputs, never of
  * the selection (nx#35234), so the caller derives each dropped task's key
@@ -501,14 +508,19 @@ export function excludeDependencies(
   exclude: 'all' | readonly string[],
 ): { keyOnly: Map<string, TaskNode>; dropped: Map<string, string[]> } {
   const names = exclude === 'all' ? null : new Set(exclude)
-  const kept = (dep: string): boolean => names !== null && !names.has(nodes.get(dep)!.taskName)
+  const keptBy =
+    (node: TaskNode) =>
+    (dep: string): boolean =>
+      names === null ? isGroupTask(node) : !names.has(nodes.get(dep)!.taskName)
   const scheduled = new Set<string>()
   const stack = [...nodes.values()].filter((n) => n.requested).map((n) => n.id)
   while (stack.length > 0) {
     const id = stack.pop()!
     if (scheduled.has(id)) continue
     scheduled.add(id)
-    for (const dep of nodes.get(id)!.deps) if (kept(dep)) stack.push(dep)
+    const node = nodes.get(id)!
+    const kept = keptBy(node)
+    for (const dep of node.deps) if (kept(dep)) stack.push(dep)
   }
   const keyOnly = new Map<string, TaskNode>()
   const dropped = new Map<string, string[]>()
@@ -517,6 +529,7 @@ export function excludeDependencies(
       keyOnly.set(id, node)
       continue
     }
+    const kept = keptBy(node)
     const lost = node.deps.filter((d) => !kept(d))
     if (lost.length === 0) continue
     dropped.set(id, lost)
