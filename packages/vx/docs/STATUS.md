@@ -426,6 +426,25 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Row: `nx-helpers-sweep.test.ts` › mapNxDeps › a colon string whose
         head is no package, red with the branch disabled. That closes the
         nx() review.
+916.  DONE (2026-09-26, the vx-reapi review's lead 2). A remote read
+      that failed the task instead of degrading. Replaying an execution
+      record is a cache read, and a failed record read already warned and
+      executed; but the replay's stdout Read and its output writes ran
+      outside any catch, so one transient UNAVAILABLE failed the task.
+      - Any failure on the replay path warns and executes for real. Core
+        cleaned the declared outputs once, before the executor, and not
+        again, so a replay that wrote part of the tree takes back what it
+        CREATED (the outermost new directory, a file `wx` could create, a
+        link whose name was free); what it overwrote was on disk before
+        and stays. Replayed stdout is delivered only once the replay has
+        landed, so a fall-through does not print twice.
+      - Rows: `executor-sweep.test.ts` › the execution record (two: a
+        transient stdout Read executes; a part-way failure takes back
+        what it created and only that), each red without the fix; the
+        cleanup's two mutants (none, everything written) are caught.
+      - Found, not fixed: `readBlob` / `readBlobStream` have no retry on
+        UNAVAILABLE, unlike the unary calls, so on the execute path one
+        transient Read of a finished action's outputs fails the task.
 
 ## In flight
 

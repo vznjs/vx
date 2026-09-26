@@ -584,18 +584,41 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             referenced.length > 0
               ? await client.findMissingBlobs(referenced).catch(() => referenced)
               : []
-          if (gone.length === 0) {
-            const priorStdout = await this_readStream(client, prior.stdout_raw, prior.stdout_digest)
+          // The record's paths are WORKSPACE-relative (rebased when it was
+          // written), so the anchor is the workspace root, not the cwd.
+          const fromRecord = (created?: string[]): Promise<void> =>
+            materialiseOutputs(client, { ...req, cwd: req.workspaceRoot }, prior, warn, created)
+          const deferRecord = req.remoteOnly !== true && req.download === 'deferred'
+          // The replay is still the cache read: a Read that fails on its
+          // stdout or on any output is a record that cannot be served, and
+          // the task executes. Core cleaned the declared outputs once, before
+          // this call, and does not again, so a replay that wrote part of the
+          // tree takes back what it CREATED — a real run that does not write
+          // those paths must not have them saved as its outputs. What it
+          // overwrote was on disk before (a whole-tree capture lists the
+          // inputs) and stays.
+          const created: string[] = []
+          const replay = async (): Promise<string> => {
+            const stdout = await this_readStream(client, prior.stdout_raw, prior.stdout_digest)
+            if (req.remoteOnly !== true && !deferRecord) await fromRecord(created)
+            return stdout
+          }
+          const priorStdout =
+            gone.length > 0
+              ? null
+              : await replay().catch(async (err: unknown) => {
+                  for (const p of created.reverse()) await rm(p, { recursive: true, force: true })
+                  warn(
+                    `vx/reapi: ${req.taskId} could not replay its execution record (${errText(err)}) — executing`,
+                  )
+                  return null
+                })
+          if (priorStdout !== null) {
             // Delivered whatever `capture` says, as on the execute path below:
             // a deferred producer saves nothing, so its replay had printed
-            // nothing at all (item 827).
+            // nothing at all (item 827). Only once the replay has landed, so
+            // a replay that falls through does not print twice.
             if (priorStdout.length > 0) req.onStdout(priorStdout)
-            // The record's paths are WORKSPACE-relative (rebased when it was
-            // written), so the anchor is the workspace root, not the cwd.
-            const fromRecord = (): Promise<void> =>
-              materialiseOutputs(client, { ...req, cwd: req.workspaceRoot }, prior, warn)
-            const deferRecord = req.remoteOnly !== true && req.download === 'deferred'
-            if (req.remoteOnly !== true && !deferRecord) await fromRecord()
             return {
               exitCode: 0,
               durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
@@ -603,7 +626,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               stderr: '',
               violations: [],
               ...(deferRecord
-                ? { outputs: { kind: 'deferred' as const, materialize: fromRecord } }
+                ? { outputs: { kind: 'deferred' as const, materialize: () => fromRecord() } }
                 : {}),
             }
           }
@@ -1152,6 +1175,7 @@ export async function materialiseOutputs(
   req: ExecuteRequest,
   result: ActionResult,
   warn: (m: string) => void,
+  created?: string[],
 ): Promise<void> {
   const files = result.output_files ?? []
   // A glob with a wildcard FIRST segment has no REAPI spelling, so it is sent
@@ -1181,7 +1205,7 @@ export async function materialiseOutputs(
 
   for (const f of files) {
     const abs = path.join(req.cwd, f.path)
-    await mkdir(path.dirname(abs), { recursive: true })
+    await makeDir(path.dirname(abs), created)
     // Inlined only when it has bytes: an ActionResult read back through
     // proto-loader (the execution-record replay) carries `contents` as an
     // EMPTY Buffer on every file, and taking that as inline wrote each
@@ -1196,7 +1220,7 @@ export async function materialiseOutputs(
       missing(f.path, f.digest.hash)
       continue
     }
-    await writeFile(abs, bytes)
+    await writeOutput(abs, bytes, created)
     // REAPI carries the executable bit per output; a build that produces a
     // script and a later task that runs it depends on it surviving.
     if (f.is_executable === true) await chmod(abs, 0o755)
@@ -1206,13 +1230,53 @@ export async function materialiseOutputs(
   // it as a copy would silently change what the next task sees.
   for (const sl of result.output_symlinks ?? []) {
     const abs = path.join(req.cwd, sl.path)
-    await mkdir(path.dirname(abs), { recursive: true })
-    await rm(abs, { force: true })
-    await symlink(sl.target, abs)
+    await makeDir(path.dirname(abs), created)
+    await placeSymlink(sl.target, abs, created)
   }
 
   for (const d of result.output_directories ?? []) {
-    await materialiseTree(client, path.join(req.cwd, d.path), d.tree_digest, missing)
+    await materialiseTree(client, path.join(req.cwd, d.path), d.tree_digest, missing, created)
+  }
+}
+
+/**
+ * The three ways materialisation touches disk. Given `created` (a replay that
+ * may have to be taken back), each also records what did not exist before it:
+ * the outermost directory `mkdir` made, a file `wx` could create, a link that
+ * found its name free. One syscall in the usual case, where core has cleaned.
+ */
+async function makeDir(dir: string, created: string[] | undefined): Promise<void> {
+  const first = await mkdir(dir, { recursive: true })
+  if (first !== undefined) created?.push(first)
+}
+
+async function writeOutput(
+  abs: string,
+  bytes: Uint8Array,
+  created: string[] | undefined,
+): Promise<void> {
+  if (created === undefined) return writeFile(abs, bytes)
+  try {
+    await writeFile(abs, bytes, { flag: 'wx' })
+    created.push(abs)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    await writeFile(abs, bytes)
+  }
+}
+
+async function placeSymlink(
+  target: string,
+  abs: string,
+  created: string[] | undefined,
+): Promise<void> {
+  try {
+    await symlink(target, abs)
+    created?.push(abs)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    await rm(abs, { force: true })
+    await symlink(target, abs)
   }
 }
 
@@ -1230,6 +1294,7 @@ async function materialiseTree(
   // Same policy as the file path: under a literal capture an unmaterialisable
   // entry is a hole in a DECLARED output directory, so it fails the task.
   missing: (what: string, hash: string) => void,
+  created: string[] | undefined,
 ): Promise<void> {
   const blob = await client.readBlob(treeDigest)
   if (blob === null) {
@@ -1249,7 +1314,7 @@ async function materialiseTree(
   tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
 
   const walk = async (dir: Directory, at: string): Promise<void> => {
-    await mkdir(at, { recursive: true })
+    await makeDir(at, created)
     const small = dir.files.filter(
       (f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024,
     )
@@ -1264,16 +1329,14 @@ async function materialiseTree(
         continue
       }
       const abs = path.join(at, f.name)
-      await writeFile(abs, bytes)
+      await writeOutput(abs, bytes, created)
       if (f.is_executable) await chmod(abs, 0o755)
       // NodeProperties.unix_mode is authoritative when the server sent it.
       const mode = f.node_properties?.unixMode
       if (mode !== undefined) await chmod(abs, mode & 0o7777)
     }
     for (const sl of dir.symlinks) {
-      const abs = path.join(at, sl.name)
-      await rm(abs, { force: true })
-      await symlink(sl.target, abs)
+      await placeSymlink(sl.target, path.join(at, sl.name), created)
     }
     for (const child of dir.directories) {
       const node = byDigest.get(child.digest.hash)
