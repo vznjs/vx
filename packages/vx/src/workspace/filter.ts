@@ -6,6 +6,7 @@
 //   <pattern>...     pattern + its transitive workspace dependencies
 //   ...<pattern>     pattern + its transitive workspace dependents
 //   <pattern>^...    only the transitive deps of pattern (excluding the matched package)
+//   ...^<pattern>    only the transitive dependents of pattern (excluding the matched package)
 //   !<pattern>       exclude packages matching pattern from the selection
 //   [<since>]        projects affected since the given git ref
 //                    (Turbo-style; resolved upstream of applyFilters via
@@ -26,6 +27,8 @@ export interface ParsedFilter {
   withDeps: boolean
   withDependents: boolean
   onlyDeps: boolean
+  /** `...^<pattern>`: the dependents alone, the matched package left out. */
+  onlyDependents: boolean
   isPath: boolean
   /** Glob pattern (for name match) or absolute path (for path match). */
   matcher: string
@@ -48,6 +51,10 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
 
   const withDependents = s.startsWith('...')
   if (withDependents) s = s.slice(3)
+  // `...^a`: cli.md listed it, and the `^` stayed in the name glob, so it
+  // matched no package and the run refused (item 890).
+  const onlyDependents = withDependents && s.startsWith('^')
+  if (onlyDependents) s = s.slice(1)
 
   let onlyDeps = false
   let withDeps = false
@@ -68,6 +75,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
       withDeps,
       withDependents,
       onlyDeps,
+      onlyDependents,
       isPath: false,
       matcher: '',
       gitSince: s.slice(1, -1),
@@ -102,6 +110,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     withDeps,
     withDependents,
     onlyDeps,
+    onlyDependents,
     isPath,
     matcher,
     ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
@@ -194,7 +203,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
     if (matched.length === 0) opts.onNoMatch?.(f)
     const expanded = new Set<string>()
     for (const name of matched) {
-      if (!f.onlyDeps) expanded.add(name)
+      if (!f.onlyDeps && !f.onlyDependents) expanded.add(name)
       if (f.withDeps || f.onlyDeps) {
         for (const d of opts.graph.transitiveDeps(name)) expanded.add(d)
       }
