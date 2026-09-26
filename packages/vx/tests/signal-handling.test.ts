@@ -19,7 +19,10 @@ import { terminateChildren } from '../src/orchestrator/signals.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
-// (`VX_KILL_GRACE_MS`, see util/settle.ts); children inherit it.
+// (`VX_KILL_GRACE_MS`, see util/settle.ts). Each spawn passes it in `env`:
+// `Bun.spawn` without one hands the child the process's STARTUP
+// environment, not `process.env` as written since (Bun 1.4.2), so until
+// item 849 every vx here ran on the 2 s default.
 process.env['VX_KILL_GRACE_MS'] = '200'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -88,6 +91,7 @@ describe('signal handling during vx run (e2e)', () => {
       )
       const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
         cwd: fixture.root,
+        env: { ...process.env },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -167,6 +171,7 @@ describe('signal handling during vx run (e2e)', () => {
       )
       const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', 'hold', '--all'], {
         cwd: fixture.root,
+        env: { ...process.env },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -204,6 +209,7 @@ describe('signal handling during vx run (e2e)', () => {
       )
       const proc = Bun.spawn([process.execPath, BIN, 'run', 'stubborn', '--all'], {
         cwd: fixture.root,
+        env: { ...process.env },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -315,6 +321,7 @@ describe('signal handling during vx run (e2e)', () => {
       )
       const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
         cwd: fixture.root,
+        env: { ...process.env },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -359,6 +366,7 @@ describe('signal handling during vx run (e2e)', () => {
     )
     const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
       cwd: fixture.root,
+      env: { ...process.env },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -404,6 +412,7 @@ describe('signal handling during vx run (e2e)', () => {
       )
       const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
         cwd: fixture.root,
+        env: { ...process.env },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -456,6 +465,7 @@ describe('signal handling during vx run (e2e)', () => {
         }
         const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', 'slow', '--all'], {
           cwd: fixture.root,
+          env: { ...process.env },
           stdout: 'pipe',
           stderr: 'pipe',
         })
@@ -517,6 +527,7 @@ describe('signal handling during vx run (e2e)', () => {
         await rm(path.join(dir, 'server.pid'), { force: true })
         const proc = Bun.spawn([process.execPath, BIN, 'run', 'hold', '--all'], {
           cwd: fixture.root,
+          env: { ...process.env },
           stdout: 'pipe',
           stderr: 'pipe',
         })

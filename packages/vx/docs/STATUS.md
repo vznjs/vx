@@ -706,6 +706,35 @@ test is telling the truth.
       without its hook. A `kill -9` still leaves all three, which the
       lock reclaims.
 
+849.  DONE (2026-09-26, a Ctrl-C skipped every plugin's teardown).
+      `plugin.md` promises each sink's `flush()` and each plugin's
+      `teardown()` at the end of every run. A signal exited through
+      `process.exit` straight after killing the children, so a Ctrl-C
+      or a CI cancel ran neither. Found by following item 848's class
+      one layer up, and reproduced with a plugin whose teardown writes
+      a file. `@vzn/vx-github` writes its job summary and posts its
+      check run in its sink's flush, so a cancelled CI run got neither.
+      Now `run()` holds one `AbortController` that both
+      `RunOptions.signal` and the process handler abort. The scheduler
+      stops dispatching, `run()` awaits its own abort teardown before
+      it leaves, and the handler waits for `run()` to leave (bounded by
+      the grace, one flush and each teardown at their bound, plus 2 s)
+      and for stdout to drain. Then it exits 128+signo; a second signal
+      still exits at once. The first cut ran a separate shutdown beside
+      the run's own path. It flushed twice, and it let vx exit before a
+      SIGINT-ignoring grandchild's SIGKILL; the kill-at-exit row caught
+      that on SIGINT, 3 of 3. Rows: SIGINT gives `flush`, `teardown`,
+      then exit 130; a second signal does not wait for a teardown that
+      hangs. Both fail on the old code. The first gate failed the
+      kill-at-exit row under the sandbox, 4 of 4, with `slow`'s TERM
+      trap printing after 0.5 s. The suite was not running at the grace
+      it claims: `Bun.spawn` without `env` passes the STARTUP
+      environment, not `process.env` as the file sets it (probed, Bun
+      1.4.2), so every vx the file spawned ran on the 2 s default. The
+      old code passed that row only because `process.exit` won the race
+      against the trap's output. Each spawn now passes `env`, and the
+      file runs at 200 ms.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -129,12 +129,13 @@ terminal and a task succeeding or failing. Read it alongside
  │                signal, forward it (SIGHUP as SIGTERM) to everything
  │                in liveChildren + persistentRegistry, wait
  │                VX_KILL_GRACE_MS (2 s) for their groups, SIGKILL
- │                what is still there, close the cache,
+ │                what is still there, let the run finish its own
+ │                end (flush, teardown, cache close), then
  │                exit 128+signo (SIGINT → 130, SIGTERM → 143,
  │                SIGHUP → 129). SIGHUP is registered because a task
  │                runs in its own session, so a closing terminal
- │                reaches vx and nothing else. A second signal during
- │                the grace SIGKILLs at once.
+ │                reaches vx and nothing else. A second signal
+ │                SIGKILLs and exits at once.
  │
  ├─ Cache acceleration (before scheduling)
  │    • REMOTE PREFETCH (LayeredCache runs only) — derive every

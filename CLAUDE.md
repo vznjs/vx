@@ -407,6 +407,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   A mutant runs under its own scratch `TMPDIR`
   (`docs/design/mutation-sweeps-2026-09.md`, method 8).
 
+- `Bun.spawn` without `env` hands the child the process's STARTUP
+  environment, not `process.env` as a test file has since written it
+  (probed on Bun 1.4.2): `signal-handling.test.ts` set
+  `VX_KILL_GRACE_MS` at the top and every vx it spawned ran on the 2 s
+  default, and one row passed only by a race (item 849). A test that
+  sets an env var for a child passes `env: { ...process.env, … }`.
 - Await a gRPC call's refusal with `.then(ok, err)`, never
   `expect(…).rejects`: under `bun test` the latter held a call that
   needed more I/O until its 30 s deadline, and the same call settled in
