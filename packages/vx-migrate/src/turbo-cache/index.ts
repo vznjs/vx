@@ -23,6 +23,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
+import { headerValueFault } from '../remote-token.js'
 
 export interface TurboCacheOptions {
   /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`; with a token and neither, Vercel's hosted cache, as for `turbo`. */
@@ -180,6 +181,11 @@ export function resolveTurboCacheConfig(
         'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
       )
   }
+  const fault = headerValueFault(token)
+  if (fault !== null)
+    throw new Error(
+      `vx/turbo-cache: the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
+    )
   const teamId = options.teamId ?? env['TURBO_TEAMID']
   const teamSlug = options.teamSlug ?? env['TURBO_TEAM']
   const signatureKey = options.signatureKey ?? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY']
