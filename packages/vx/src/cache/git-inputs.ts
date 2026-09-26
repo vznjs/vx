@@ -722,7 +722,11 @@ export async function startGitEnumeration(
   const spawnGit = async (args: string[], stdin?: string): Promise<GitRun | null> => {
     try {
       const proc = Bun.spawn({
-        cmd: [executablePath('git'), ...args],
+        // `status` refreshes the index when it can take `index.lock`, so
+        // the user's own `git add` or `commit` failed on the lock while a
+        // vx run held it (12 in 1,165 across 80 runs, item 880). Read-only, as
+        // editors and prompts run it; a clean tree costs the same.
+        cmd: [executablePath('git'), '--no-optional-locks', ...args],
         cwd: workspaceRoot,
         stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
         stdout: 'pipe',

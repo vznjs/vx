@@ -11,6 +11,14 @@ differ from the bytes on disk. Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
 
+Every enumeration spawn runs `git --no-optional-locks`. A plain `status`
+refreshes the index under `index.lock` when files are stat-dirty, and the
+user's own `git add` or `commit` failed on that lock while a vx run held
+it: 12 of 1,165 across 80 runs, 0 of 1,121 with the flag (item 880). A
+clean tree costs the same. The flag does not reach `--affected`'s
+`git diff <base>`, which git 2.43 refreshes regardless; the plumbing
+`diff-index` would report every stat-dirty file as changed.
+
 ## Public surface
 
 ```ts

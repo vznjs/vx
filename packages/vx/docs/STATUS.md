@@ -593,6 +593,29 @@ exit`.
         and `.git/info/exclude` (`prepare-run.test.ts`). Both files remove
         their root in `afterEach`, and neither reproduced alone.
 
+880.  DONE (2026-09-26, found chasing 879's open note). The input
+      enumeration's `git status` refreshed the index under `index.lock`
+      whenever tracked files were stat-dirty. A user's own `git add` run
+      beside vx failed on the lock: 12 of 1,165 across 80 runs of a
+      400-file workspace with the files touched between runs.
+      - Every enumeration spawn now runs `git --no-optional-locks`, as
+        editors and shell prompts do: 0 of 1,121.
+      - Warm A/B, 20 projects and 1,000 files, clean tree, interleaved:
+        min 142.0 against 143.3 ms and median 155.0 against 155.7, N=21
+        (a first pass of 15 split the other way). A tie. The cost moves
+        to a stat-dirty tree: git no longer caches the refresh, so each
+        run re-reads those files (98 ms for 5,000) until any git command
+        refreshes the index.
+      - Not fixed: `--affected`'s `git diff <base>` rewrites the index
+        with the flag too (git 2.43, probed), and the plumbing
+        `diff-index` would report every stat-dirty file as changed.
+      - Row: `git-optional-locks.test.ts`. Every tracked file is
+        stat-dirty; the enumeration leaves `.git/index` byte for byte,
+        then a bare `status` rewrites it. The row fails without the flag.
+      - 879's partly-removed roots are not proven to be this: the row
+        rules the enumeration out as a writer, and nothing yet ties it
+        to them.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
