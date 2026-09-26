@@ -2,9 +2,10 @@
 // of `reapiExecutor` undone. The fake (helpers/fake-reapi.ts) scripts what
 // each Execute answers; its CAS holds what a worker would have uploaded.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import * as grpc from '@grpc/grpc-js'
 import protobuf from 'protobufjs'
 import type { ExecuteRequest } from '@vzn/vx'
 import { execDigestFor } from '../src/cache.js'
@@ -155,6 +156,67 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
         warns.some((w) => w.startsWith('vx/reapi: pkg#gen could not read its execution record (')),
       ).toBe(true)
     })
+  })
+
+  it('a replay whose stdout Read fails transiently executes instead of failing the task', async () => {
+    fake.actions.set(execDigestFor('k-stdout').hash, {
+      exit_code: 0,
+      stdout_digest: put('recorded stdout'),
+    })
+    let printed = ''
+    await withExecutor(async (run, warns) => {
+      const before = executes()
+      fake.fail('Read', grpc.status.UNAVAILABLE, 1)
+      const res = await refusal(
+        run(request({ cacheKey: 'k-stdout', onStdout: (c: string) => (printed += c) })),
+      )
+      expect([res, executes() - before, printed]).toEqual(['resolved', 1, ''])
+      expect(
+        warns.filter((w) =>
+          w.startsWith('vx/reapi: pkg#gen could not replay its execution record ('),
+        ),
+      ).toHaveLength(1)
+    })
+  })
+
+  it('a replay that fails part-way takes back what it created, and only that', async () => {
+    const tree = put('never read')
+    fake.actions.set(execDigestFor('k-part').hash, {
+      exit_code: 0,
+      stdout_raw: bytes('recorded stdout'),
+      output_files: [
+        { path: 'pkg/out.txt', digest: put('replayed'), is_executable: false },
+        { path: 'pkg/fresh/deep.txt', digest: put('replayed deep'), is_executable: false },
+        // A whole-tree capture's record lists the inputs too; they were on
+        // disk before the replay and must survive its undo.
+        { path: 'pkg/src/in.txt', digest: put('in\n'), is_executable: false },
+      ],
+      output_directories: [{ path: 'pkg/gen', tree_digest: tree }],
+    })
+    let printed = ''
+    await withExecutor(async (run) => {
+      // The tree is the replay's first ByteStream Read, after the files landed.
+      fake.fail('Read', grpc.status.UNAVAILABLE, 1)
+      const res = await run(
+        request({
+          cacheKey: 'k-part',
+          outputs: { files: ['out.txt', 'fresh', 'gen'], workspaceFiles: [] },
+          onStdout: (c: string) => (printed += c),
+        }),
+      )
+      expect(res.exitCode).toBe(0)
+    })
+    const on = async (rel: string) => Bun.file(path.join(root, 'pkg', rel)).exists()
+    expect({
+      in: await readFile(path.join(root, 'pkg', 'src', 'in.txt'), 'utf8'),
+      out: await on('out.txt'),
+      deep: await on('fresh/deep.txt'),
+      fresh: await stat(path.join(root, 'pkg', 'fresh')).then(
+        () => true,
+        () => false,
+      ),
+      printed,
+    }).toEqual({ in: 'in\n', out: false, deep: false, fresh: false, printed: '' })
   })
 
   it('a remote-only replay restores nothing; a deferred one hands core the restore', async () => {

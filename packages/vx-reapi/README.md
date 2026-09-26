@@ -95,6 +95,10 @@ and the record is what makes the second run cheap. Records are checked
 against the CAS first (`FindMissingBlobs`) — the action cache and the
 CAS evict independently, so a record that outlived its blobs falls
 through to a real execution rather than "succeeding" with nothing.
+The replay itself is a cache read too: a transport failure reading the
+record, its stdout or any output warns and executes, after removing
+whatever the half-done replay created (core cleaned the outputs once,
+before the replay, and the real run's result must not inherit them).
 
 An UPSTREAM's evicted blobs get the opposite answer, because there is
 nothing to fall through to. When a dependency's outputs live only in
