@@ -355,7 +355,23 @@ exit`.
         hooks held) had landed at the end of item 864, because 864 was
         inserted mid-way through 863's text. It is back under 863.
 
-866.  DONE (2026-09-26, two of today's rows red on macOS CI, on #943).
+866.  DONE (2026-09-26, item 865's `holdGroups` and its three callers,
+      swept). 6 mutants: 4 caught, 2 unheld.
+      - Caught by the three rows 865 added: a release that ignores the
+        hold, and each caller letting go at once (the signal stop, the
+        persistent shutdown, the readiness timeout).
+      - Unheld: the deferred release never written, and the hold count
+        ignored.
+      - The first leaves a stale entry. Every held group is SIGKILLed
+        before its hold ends, so the entry's only reach is a later task
+        whose group gets that pid back in a long `vx watch` session, and
+        the guard would kill its leftovers at vx's exit.
+      - The second needs two teardowns holding one live group while a
+        release lands between them: a signal stop overlapping the
+        end-of-run persistent shutdown, a timing race no row drives.
+      - Neither has a row. Each is recorded here, and not claimed held.
+
+867.  DONE (2026-09-26, two of today's rows red on macOS CI, on #943).
       - Keep-alive's "a never-ready server a dead shell left goes with a
         vx that exits inside the grace" asserted the server's SIGTERM
         mark. The trap waits for the loop's `sleep 0.05`, and a vx that
