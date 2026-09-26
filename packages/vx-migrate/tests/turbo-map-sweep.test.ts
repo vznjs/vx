@@ -123,3 +123,62 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 })
+
+// Item 906: Turbo 2.5+'s `$TURBO_EXTENDS$` in an overlay array keeps the
+// inherited list and appends. Spread whole, the token was a literal glob and
+// env name and the root's inputs, env and `^build` were gone: a source edit
+// hit the cache and `lib#build` never ran first.
+describe('turbo-map: a package overlay that extends an inherited list', () => {
+  it('keeps the root’s entries and appends its own, for every array field', async () => {
+    const t = await taskOf(
+      {
+        tasks: {
+          build: {
+            dependsOn: ['^build'],
+            inputs: ['src/**'],
+            env: ['MODE'],
+            outputs: ['dist/**'],
+          },
+        },
+      },
+      {
+        a: {
+          scripts: { build: 'b' },
+          turbo: {
+            extends: ['//'],
+            tasks: {
+              build: {
+                inputs: ['$TURBO_EXTENDS$', 'config.json'],
+                env: ['$TURBO_EXTENDS$', 'EXTRA'],
+                dependsOn: ['$TURBO_EXTENDS$'],
+              },
+            },
+          },
+        },
+      },
+    )
+    const task = t.task as {
+      dependsOn?: string[]
+      cache?: { inputs?: { files?: string[]; env?: string[] } }
+    }
+    expect({
+      dependsOn: task.dependsOn,
+      files: task.cache?.inputs?.files,
+      env: task.cache?.inputs?.env,
+    }).toEqual({ dependsOn: ['^build'], files: ['src/**', 'config.json'], env: ['MODE', 'EXTRA'] })
+  })
+
+  it('CONTROL: an overlay array without the token replaces the inherited one', async () => {
+    const t = await taskOf(
+      { tasks: { build: { inputs: ['src/**'], outputs: ['dist/**'] } } },
+      {
+        a: {
+          scripts: { build: 'b' },
+          turbo: { extends: ['//'], tasks: { build: { inputs: ['lib/**'] } } },
+        },
+      },
+    )
+    const task = t.task as { cache?: { inputs?: { files?: string[] } } }
+    expect(task.cache?.inputs?.files).toEqual(['lib/**'])
+  })
+})
