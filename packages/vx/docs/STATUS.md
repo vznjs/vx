@@ -735,6 +735,16 @@ test is telling the truth.
       against the trap's output. Each spawn now passes `env`, and the
       file runs at 200 ms.
 
+850.  DONE (2026-09-26, the warm A/B for items 848–849). Both changed
+      the run path: an `exit` hook in the run lock and the sandbox
+      runtime, and a second `AbortController`, a promise and an awaited
+      teardown in `run()`. Base 52ae37c9 (before 848) against main
+      4785436a, source bins, 1,000 projects warm all-hit, one workspace
+      copy per arm pre-warmed by that arm, n=21 interleaved: base min
+      258.4 / median 285.4 ms, head 259.5 / 286.3. The A/A control
+      (head against both copies) reads 260.8 / 275.1 and 252.0 / 275.3:
+      an 8.8 ms spread at min against the 1.1 ms difference. A tie.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -834,7 +844,7 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 830 (2026-09-25, a tie at 100 and 1,000 projects; 285 was the one before), and the
+   item 850 (2026-09-26, items 848–849's run-path change, a tie at 1,000 projects; 830 was the one before), and the
    restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
