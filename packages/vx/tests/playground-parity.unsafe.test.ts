@@ -592,6 +592,87 @@ describe('the playground bundle plans what the CLI plans', () => {
   })
 })
 
+// Item 835's sweep of the entry (packages/vx-docs/src/playground/entry.ts):
+// what it adds to core's planner, one field at a time. The parity rows above
+// held 12 of 21 mutations; these hold the rest that can happen.
+describe("the bundle's entry, one field at a time (item 835)", () => {
+  type Entry = {
+    planPlayground: (input: Record<string, unknown>) => Promise<BundlePlan & { vfsReads: number }>
+    listPlaygroundProjects: (input: {
+      root: string
+      files: Record<string, string>
+    }) => Promise<Array<{ name: string; configFile: string | null }>>
+  }
+  const entry = () => bundle as Entry
+  const plan = async (over: Record<string, unknown> = {}) =>
+    entry().planPlayground({
+      root: '/ws',
+      files: FILES,
+      configs: await evaluateAll(CONFIG_TEXTS),
+      env: ENV,
+      tasks: TASKS,
+      ...over,
+    })
+  const refusal = (p: Promise<unknown>): Promise<string> =>
+    p.then(
+      () => 'resolved',
+      (e: Error) => e.message,
+    )
+
+  it('a key the simulated cache holds is a hit; the others stay misses', async () => {
+    const base = await plan()
+    const utils = base.tasks.find((t) => t.id === '@pg/utils#build')!
+    const again = await plan({ cached: [utils.hash] })
+    const statuses = (p: BundlePlan) =>
+      Object.fromEntries(p.tasks.map((t) => [t.id, t.cacheStatus]))
+    const changed = Object.entries(statuses(again)).filter(([id, st]) => statuses(base)[id] !== st)
+    expect(changed).toEqual([
+      ['@pg/utils#build', again.tasks.find((t) => t.id === '@pg/utils#build')!.cacheStatus],
+    ])
+    expect(statuses(base)['@pg/utils#build']).not.toBe(changed[0]![1])
+  })
+
+  it('a package with no config file is planned around, not refused', async () => {
+    const base = await plan()
+    const withBare = await plan({
+      files: { ...FILES, 'packages/bare/package.json': '{"name":"@pg/bare","version":"0.0.0"}' },
+    })
+    expect(withBare.tasks.map((t) => t.id).sort()).toEqual(base.tasks.map((t) => t.id).sort())
+  })
+
+  it('an invalid config is refused as the CLI refuses it; an unknown task is reported', async () => {
+    const configs = await evaluateAll(CONFIG_TEXTS)
+    const bad = { ...configs, '@pg/utils': { tasks: { build: { exec: { command: 1 } } } } }
+    expect(await refusal(plan({ configs: bad }))).toContain('packages/utils/vx.config.mjs')
+    const unknown = await plan({ tasks: ['no-such-task'] })
+    expect(unknown.unresolvedTasks).toEqual(['no-such-task'])
+    expect(unknown.vfsReads).toBeGreaterThan(0)
+  })
+
+  it('a project listing and a plan in flight together each see their own workspace', async () => {
+    const solo = comparable((await plan()).tasks)
+    const other = {
+      root: '/other',
+      files: {
+        'package.json': '{"name":"other","private":true,"workspaces":["pkgs/*"]}',
+        'pkgs/x/package.json': '{"name":"@o/x","version":"0.0.0"}',
+        'pkgs/x/vx.config.mjs': 'export default {}\n',
+      },
+    }
+    // Both calls start in the same tick: the listing must wait for the plan.
+    const configs = await evaluateAll(CONFIG_TEXTS)
+    const snapshot = JSON.stringify(configs)
+    const [planned, listed] = await Promise.all([
+      entry().planPlayground({ root: '/ws', files: FILES, configs, env: ENV, tasks: TASKS }),
+      entry().listPlaygroundProjects(other),
+    ])
+    // And the caller's configs come back as they went in.
+    expect(JSON.stringify(configs)).toBe(snapshot)
+    expect(comparable(planned.tasks)).toEqual(solo)
+    expect(listed).toEqual([{ name: '@o/x', configFile: 'pkgs/x/vx.config.mjs' }])
+  })
+})
+
 describe("the page evaluates a config's text as the CLI does (item 699)", () => {
   for (const v of CORE_VARIANTS) {
     it(`${v.name}: every task's key, cache status and deps`, () => {
