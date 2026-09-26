@@ -139,6 +139,18 @@ test is telling the truth.
       926–927) and the remote-cache adapters and schedule-history
       (928–930) — then Next 25's measurement and the two per-run costs it
       found (931, 932).
+935.  DONE (2026-09-26, a turbo() review agent's lead 1). A root
+      `pkg#task` in turbo.json was merged field by field over the generic
+      `task`. Turbo instead looks up `pkg#task` and falls back to `task`
+      only when it is missing. So an `app#build` that names no `inputs`
+      (Turbo's every file) inherited the generic task's `src/**`, and an
+      edit outside it replayed a stale build.
+      - The `pkg#task` definition replaces the generic one, and the
+        package's own turbo.json still overlays field by field. The
+        README's definition order says so.
+      - Row: `turbo-map-sweep.test.ts` › a root `pkg#task` replaces the
+        generic task for its package, while the others keep it. Red
+        without the fix.
 
 ## In flight
 

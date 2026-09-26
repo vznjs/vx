@@ -261,7 +261,12 @@ export async function mapTurboWorkspace(
       const def: TurboTask =
         overlay?.extends === false
           ? { ...overlay }
-          : withOverlay({ ...rootTasks[name], ...rootTasks[`${meta.name}#${name}`] }, overlay)
+          : // A root `pkg#task` REPLACES `task` for that package, as Turbo's
+            // `TurboJson::task` looks it up: merged field by field, the
+            // generic task's `inputs` narrowed a `pkg#task` that names none
+            // (Turbo's every file) and an edit outside them was a stale hit
+            // (item 935).
+            withOverlay({ ...(rootTasks[`${meta.name}#${name}`] ?? rootTasks[name]) }, overlay)
       delete def.extends
       tasks.push(
         buildTask(

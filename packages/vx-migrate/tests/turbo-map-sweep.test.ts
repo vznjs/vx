@@ -65,6 +65,18 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(m.projects[0]!.tasks.map((t) => t.name)).toEqual(['gen'])
   })
 
+  // Item 935: Turbo looks a package's task up as `pkg#task`, else `task`;
+  // it never merges the two. The merge gave `a#build` the generic task's
+  // `inputs`, so an edit outside them replayed a stale build.
+  it('a root `pkg#task` replaces the generic task for its package; the others keep it', async () => {
+    const m = await map(
+      { tasks: { build: { inputs: ['src/**'], env: ['X'] }, 'a#build': { outputs: ['dist/**'] } } },
+      { a: { scripts: { build: 'b' } }, b: { scripts: { build: 'b' } } },
+    )
+    const inputs = m.projects.map((p) => (p.tasks[0]!.task!['cache'] as { inputs: unknown }).inputs)
+    expect(inputs).toEqual([{ files: ['**/*'] }, { files: ['src/**'], env: ['X'] }])
+  })
+
   it('two tasks on one output path: the second runs uncached', async () => {
     const m = await map(
       { tasks: { build: { outputs: ['dist/**'] }, bundle: { outputs: ['dist/**'] } } },
