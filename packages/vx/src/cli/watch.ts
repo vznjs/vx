@@ -38,6 +38,7 @@ import {
   loadProjectConfig,
   loadWorkspace,
   memberBaseDirs,
+  PROJECT_CONFIG_FILENAMES,
   WORKSPACE_CONFIG_FILENAMES,
   WORKSPACE_FINGERPRINT_FILES,
   type ProjectEntry,
@@ -494,6 +495,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     workspaceInputs: swept.workspaceInputs,
     outputs: swept.outputs,
     memberBases: memberBaseDirs(workspace),
+    packageDirs: new Set(allProjects.map((p) => p.dir)),
     // The workspace as the cycle that just ran saw it: a package added or
     // removed since the loop armed joins or leaves the watched set. The
     // scope is the one resolved at start; a new package joins it only as a
@@ -502,7 +504,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       const all = await listProjects(await loadWorkspace(workspaceRoot))
       const sweep = await sweepConfigs(all, workspaceRoot, load)
       const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
-      return { projects: now, workspaceInputs: sweep.workspaceInputs, outputs: sweep.outputs }
+      return {
+        projects: now,
+        workspaceWide: sweep.workspaceWide,
+        workspaceInputs: sweep.workspaceInputs,
+        outputs: sweep.outputs,
+        packageDirs: new Set(all.map((p) => p.dir)),
+      }
     },
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir: opts.cacheDir ?? (await loadCliWorkspace(workspaceRoot)).cacheDir,
@@ -682,20 +690,44 @@ interface WatchLoopArgs {
   outputs: ReadonlyMap<string, readonly string[]>
   /** The directory each `<dir>/*` package glob names; a member coming or going there is a cycle. */
   memberBases: readonly string[]
-  /** The watched set again, after a cycle that followed a member event. */
+  /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
+  packageDirs: ReadonlySet<string>
+  /** The watched set again, after a cycle that followed an event which can change it. */
   rediscover: () => Promise<Rediscovered>
 }
 
 interface Rediscovered {
   projects: readonly ProjectMeta[]
+  workspaceWide: boolean
   workspaceInputs: readonly string[]
   outputs: ReadonlyMap<string, readonly string[]>
+  packageDirs: ReadonlySet<string>
 }
 
+const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
+
+/**
+ * A file whose edit can change what the loop watches: a `package.json`
+ * (a dependency added under `--filter` widens the closure), a project
+ * config (a task that starts declaring `workspaceFiles` needs the root
+ * watcher, a new output must stop being an event) or the workspace config
+ * (a plugin's `project` stage). Until item 891 only a member directory
+ * coming or going re-read the set, so each of these waited for a restart
+ * while the loop looked alive.
+ */
+function shapesWatchedSet(filename: string): boolean {
+  const base = path.basename(filename)
+  return base === 'package.json' || PROJECT_CONFIGS.has(base) || isWorkspaceConfigFile(base)
+}
+
+const CLOSED: WatchHandle = { close() {} }
+
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, stop, workspaceRoot, projects, workspaceWide, cacheDir, memberBases } = args
-  // The watched set as of the last cycle: `rearm` replaces these when a
-  // member came or went, and every filter below reads the current one.
+  const { opts, stop, workspaceRoot, projects, cacheDir, memberBases } = args
+  // The watched set as of the last cycle: `rearm` replaces these after an
+  // event that can change it, and every filter below reads the current one.
+  let workspaceWide = args.workspaceWide
+  let packageDirs = args.packageDirs
   let projectDirs = args.projectDirs
   let workspaceInputs = args.workspaceInputs
   let outputs = args.outputs
@@ -872,8 +904,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           const start = Date.now()
           held = (await runOrchestrator(opts)).persistent
           lastCycle = { start, end: Date.now() }
-          if (membersChanged && !stop.aborted) {
-            membersChanged = false
+          if (reread && !stop.aborted) {
+            reread = false
             await rearm()
           }
         } catch (err) {
@@ -908,8 +940,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // and vx's own cache writes would trigger a cycle that writes again.
   let isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
   let matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
-  /** A member came or went under a package glob's directory since the last cycle. */
-  let membersChanged = false
+  /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
+  let reread = false
 
   const watchers: WatchHandle[] = []
   const proofs: Promise<void>[] = []
@@ -928,53 +960,157 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     (dir: string) =>
     (rel: string): boolean =>
       isIgnoredPath(dir, rel)
-  const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): void => {
+  // By slot, not by handle: an OS watcher that never proves delivery is
+  // swapped for a poller in place, and a drop must close what is there.
+  const arm = (
+    dir: string,
+    recursive: boolean,
+    onEvent: (filename: string) => void,
+  ): WatchHandle => {
+    const at = watchers.length
+    const handle: WatchHandle = {
+      close: () => {
+        watchers[at]?.close()
+        watchers[at] = CLOSED
+      },
+    }
     if (forcePoll) {
       watchers.push(pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir)))
-      return
+      return handle
     }
     const armed = armWatcher(dir, recursive, onEvent)
     watchers.push(armed.watcher)
     proofs.push(
       armed.ready.then((ok) => {
         if (ok) return
+        armed.watcher.close()
+        // Dropped by a rearm before its proof settled: nothing to swap in.
+        if (watchers[at] !== armed.watcher) return
         // The watcher never proved delivery, so it is not one: an FSEvents
         // stream the OS refused, a filesystem that reports nothing. Swap in
         // the poller rather than run a loop that silently never fires.
-        armed.watcher.close()
-        watchers[watchers.indexOf(armed.watcher)] = pollWatcher(
-          dir,
-          recursive,
-          onEvent,
-          POLL_INTERVAL_MS,
-          skipUnder(dir),
-        )
+        watchers[at] = pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir))
         process.stderr.write(
           `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${POLL_INTERVAL_MS} ms instead\n`,
         )
       }),
     )
+    return handle
   }
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()
+  /** The root arm: recursive when workspace-wide, else the root's own files only. */
+  let rootArm: WatchHandle = CLOSED
   const armProject = (proj: ProjectMeta): void => {
     try {
-      const at = watchers.length
-      arm(proj.dir, true, (filename) => {
+      const handle = arm(proj.dir, true, (filename) => {
         if (isIgnoredPath(proj.dir, filename)) return
+        if (shapesWatchedSet(filename)) reread = true
         trigger(`${proj.name} ${filename}`, path.join(proj.dir, filename))
       })
-      // By slot, not by handle: an OS watcher that never proves delivery is
-      // swapped for a poller in place, and a drop must close what is there.
-      perProject.set(proj.dir, { close: () => watchers[at]?.close() })
+      perProject.set(proj.dir, handle)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       process.stderr.write(`vx watch: cannot watch ${proj.dir}: ${msg}\n`)
     }
   }
+  const armRoot = (): void => {
+    try {
+      rootArm = workspaceWide
+        ? // workspaceFiles inputs in play: a root-relative glob can name a
+          // file anywhere, so one recursive root watcher replaces the
+          // per-project ones (it also covers lockfile / pnpm-workspace.yaml
+          // edits). `matters` keeps the events a key can see — project
+          // trees, root fingerprint files, the declared globs — and drops
+          // the rest of the tree; the ignore filter then keeps node_modules
+          // / .git / .vx and declared outputs out of what remains.
+          arm(workspaceRoot, true, (filename) => {
+            if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
+            if (shapesWatchedSet(filename)) reread = true
+            trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+          })
+        : // The root itself, non-recursive, beside the per-project arms, so
+          // lockfile + pnpm-workspace.yaml edits trigger re-runs even when
+          // no project dir saw the change.
+          arm(workspaceRoot, false, (filename) => {
+            if (isWorkspaceFingerprintFile(filename) || isWorkspaceConfigFile(filename)) {
+              if (shapesWatchedSet(filename)) reread = true
+              trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+            }
+          })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
+    }
+  }
+  // One recursive watcher per project, unless workspace-wide: each project
+  // owns its own subtree; the root is never watched recursively for them
+  // (it would cover every project + node_modules + caches).
+  const armMode = (watched: readonly ProjectMeta[]): void => {
+    if (!workspaceWide) for (const proj of watched) armProject(proj)
+    armRoot()
+  }
+  const dropMode = (): void => {
+    for (const handle of perProject.values()) handle.close()
+    perProject.clear()
+    rootArm.close()
+    rootArm = CLOSED
+  }
+
+  /**
+   * A directory under a member base with no package in it yet. The base's
+   * own watcher is not recursive, so the `package.json` that makes it a
+   * package is an event only here; an editor or `git checkout` that makes
+   * the directory first and the manifest after left the package unwatched
+   * for good (item 891). On a rearm a new entry is armed before its
+   * manifest is checked, so one that landed after the re-read is an event
+   * or is seen by the check. At start there is no re-read to race, and a
+   * manifest already there is a directory the globs exclude.
+   */
+  const pending = new Map<string, WatchHandle>()
+  const armPending = (afterReread: boolean): void => {
+    const want = new Set<string>()
+    for (const base of memberBases)
+      for (const name of memberEntries(base)) {
+        const dir = path.join(base, name)
+        if (!packageDirs.has(dir)) want.add(dir)
+      }
+    for (const [dir, handle] of pending) {
+      if (want.has(dir)) continue
+      handle.close()
+      pending.delete(dir)
+    }
+    for (const dir of want) {
+      if (pending.has(dir)) continue
+      const manifest = path.join(dir, 'package.json')
+      const arrived = (): void => {
+        reread = true
+        trigger(path.relative(workspaceRoot, manifest), manifest)
+      }
+      try {
+        pending.set(
+          dir,
+          arm(dir, false, (filename) => {
+            if (filename === 'package.json') arrived()
+          }),
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`vx watch: cannot watch ${dir}: ${msg}\n`)
+        continue
+      }
+      if (afterReread && fs.existsSync(manifest)) arrived()
+    }
+  }
+
+  const watchingLine = (count: number): string =>
+    workspaceWide
+      ? 'vx watch: watching the workspace root (workspaceFiles inputs in use)'
+      : `vx watch: watching ${count} project(s)`
+
   const rearm = async (): Promise<void> => {
     let next: Rediscovered
     try {
@@ -987,9 +1123,17 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     projectDirs = next.projects.map((p) => p.dir)
     workspaceInputs = next.workspaceInputs
     outputs = next.outputs
+    packageDirs = next.packageDirs
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
     matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
-    if (!workspaceWide) {
+    if (next.workspaceWide !== workspaceWide) {
+      // A task started or stopped declaring `workspaceFiles`: the other
+      // arm's shape. Until item 891 the choice was made once, at start, and
+      // a root file a config newly named was never an event.
+      dropMode()
+      workspaceWide = next.workspaceWide
+      armMode(next.projects)
+    } else if (!workspaceWide) {
       const keep = new Set(projectDirs)
       for (const [dir, handle] of perProject) {
         if (keep.has(dir)) continue
@@ -997,50 +1141,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         perProject.delete(dir)
       }
       for (const proj of next.projects) if (!perProject.has(proj.dir)) armProject(proj)
-      // A new arm proves delivery like the first ones: an edit in the new
-      // package right after this cycle is seen, not lost in the gap.
-      await Promise.all(proofs)
     }
-    process.stdout.write(`vx watch: watching ${next.projects.length} project(s)\n`)
+    armPending(true)
+    // A new arm proves delivery like the first ones: an edit in the new
+    // package right after this cycle is seen, not lost in the gap.
+    await Promise.all(proofs)
+    process.stdout.write(`${watchingLine(next.projects.length)}\n`)
   }
 
-  if (workspaceWide) {
-    // workspaceFiles inputs in play: a root-relative glob can name a
-    // file anywhere, so one recursive root watcher replaces the
-    // per-project ones (it also covers lockfile / pnpm-workspace.yaml
-    // edits). `matters` keeps the events a key can see — project
-    // trees, root fingerprint files, the declared globs — and drops the
-    // rest of the tree; the ignore filter then keeps node_modules /
-    // .git / .vx and declared outputs out of what remains.
-    try {
-      arm(workspaceRoot, true, (filename) => {
-        if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
-        trigger(`root ${filename}`, path.join(workspaceRoot, filename))
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
-    }
-  } else {
-    // One recursive watcher per project. Each project owns its own
-    // subtree; we don't watch the workspace root recursively (would
-    // cover every project + node_modules + caches).
-    for (const proj of projects) armProject(proj)
-
-    // Plus the workspace root itself (non-recursive) so lockfile +
-    // pnpm-workspace.yaml edits trigger re-runs even when no project
-    // dir saw the change.
-    try {
-      arm(workspaceRoot, false, (filename) => {
-        if (isWorkspaceFingerprintFile(filename) || isWorkspaceConfigFile(filename)) {
-          trigger(`root ${filename}`, path.join(workspaceRoot, filename))
-        }
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
-    }
-  }
+  armMode(projects)
 
   // A package added while the loop runs is a directory entry appearing
   // under the glob's directory (`packages/` for `packages/*`); one
@@ -1062,7 +1171,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         const now = memberEntries(base)
         if (sameMembers(members, now)) return
         members = now
-        membersChanged = true
+        reread = true
         trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
       })
     } catch (err) {
@@ -1070,6 +1179,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       process.stderr.write(`vx watch: cannot watch ${base}: ${msg}\n`)
     }
   }
+  armPending(false)
 
   // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
   // closes over the RESOLVED cache dir (relocated or not) and the tasks'
@@ -1079,11 +1189,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // watcher has proved (or been given 2 s to prove) delivery first.
   await Promise.all(proofs)
 
-  process.stdout.write(
-    workspaceWide
-      ? `\nvx watch: watching the workspace root (workspaceFiles inputs in use); press Ctrl+C to stop\n`
-      : `\nvx watch: watching ${projects.length} project(s); press Ctrl+C to stop\n`,
-  )
+  process.stdout.write(`\n${watchingLine(projects.length)}; press Ctrl+C to stop\n`)
 
   return await new Promise<number>((resolve) => {
     const cleanup = async (): Promise<void> => {

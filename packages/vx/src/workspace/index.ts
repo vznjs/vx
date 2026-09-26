@@ -49,6 +49,7 @@ export {
   unreachedHint,
   unreachedPackages,
   memberBaseDirs,
+  PROJECT_CONFIG_FILENAMES,
   resolveCacheDir,
   type ProjectEntry,
   type ProjectMeta,

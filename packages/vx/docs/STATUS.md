@@ -866,6 +866,33 @@ serve.ts` under bwrap, some parented to init.
         dependant passes, and the end-of-run pin still lists it as
         running. And `vx run g --all --exclude-dependencies` on a group
         runs nothing and exits 0.
+891.  DONE (2026-09-26, a watch review agent's three reproduced leads).
+      `vx watch` re-read its watched set only after a member directory
+      came or went under a package glob's base. Three edits that change
+      the set waited for a restart while the loop looked alive:
+      - A package whose directory appeared before its `package.json`
+        (an editor, a `git checkout`) was never watched: the base's
+        non-recursive watcher heard the directory, the re-read found no
+        package, and the manifest written inside it was no event.
+        `armPending` now arms each such directory on its own.
+      - A dependency added to a `--filter` scope's `package.json` ran in
+        the next cycle, but its own edits were silence: the closure was
+        computed at start.
+      - A config that started declaring `workspaceFiles` kept the
+        per-project arms, so the declared root file was no event.
+      - The fix: a cycle started by a `package.json`, a project config or
+        the workspace config re-reads the set (`shapesWatchedSet`), and
+        the re-read re-decides the arm's shape (`dropMode` / `armMode`).
+        A dropped arm no longer swaps in a poller when its late proof
+        fails.
+      - Rows: three in `watch-loop-members.test.ts`, each failing
+        without the fix. Mutants of the pending arm, the manifest check,
+        the config check and the swap each fail their row.
+      - Also fixed: `cli-watch.md` listed `--verbosity` as passing
+        through, but watch refuses it above 0.
+      - Still open: a `pnpm-workspace.yaml` edit that adds a new base
+        directory is a cycle, but the base is watched only after a
+        restart.
 
 ## In flight
 
