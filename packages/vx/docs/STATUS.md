@@ -565,6 +565,18 @@ echo A; echo B` went green after a failed pre hook, and a cache
         notification.
       - Row: `server.test.ts` › a notification gets no reply even when it
         fails; the same call with an id does. Red without the fix.
+927.  DONE (2026-09-26, the observability review's lead 6). vx-otel sent
+      each run's task counts as CUMULATIVE monotonic sums with no start
+      time, on a series named only by service name and version: a backend
+      read two runs of 10 tasks as a series that never rose, and parallel
+      CI jobs interleaved on it.
+      - The counts are the run's own, so they are DELTA sums from the
+        run's start to its end; the cache hits are one metric with a point
+        per source, not two metrics of one name.
+      - Rows: `otel.test.ts` › the metrics request (exact envelope) and
+        the sink's metrics POST carries the run's start and end; each red
+        without its part of the fix (the sink row catches the end passed
+        as the start).
 
 ## In flight
 

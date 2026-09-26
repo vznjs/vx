@@ -130,8 +130,8 @@ export const VX_ATTR = {
 export const STATUS_UNSET = 0
 const STATUS_ERROR = 2
 export const SPAN_KIND_INTERNAL = 1
-// Metric aggregation temporality: 2 = CUMULATIVE.
-const AGG_CUMULATIVE = 2
+// Metric aggregation temporality: 1 = DELTA.
+const AGG_DELTA = 1
 
 export interface OtlpSpan {
   traceId: string
@@ -293,19 +293,27 @@ export function buildTraceRequest(
   }
 }
 
-/** Build an ExportMetricsServiceRequest from a run summary. */
+/**
+ * Build an ExportMetricsServiceRequest from a run summary. Each count is the
+ * RUN's, so it is a DELTA over the run's own interval: sent CUMULATIVE with
+ * no start time, two runs of 10 tasks read as a series that never rose, and
+ * parallel jobs interleaved on one series (item 927).
+ */
 export function buildMetricsRequest(
   serviceName: string,
   summary: RunSummaryRecord,
   nowUnixNano: string,
+  startUnixNano: string,
 ): unknown {
-  const sum = (name: string, value: number, attrs: KeyValue[] = []) => ({
+  const point = (value: number, attrs: KeyValue[] = []) => ({
+    asInt: String(value),
+    startTimeUnixNano: startUnixNano,
+    timeUnixNano: nowUnixNano,
+    attributes: attrs,
+  })
+  const sum = (name: string, dataPoints: ReturnType<typeof point>[]) => ({
     name,
-    sum: {
-      dataPoints: [{ asInt: String(value), timeUnixNano: nowUnixNano, attributes: attrs }],
-      aggregationTemporality: AGG_CUMULATIVE,
-      isMonotonic: true,
-    },
+    sum: { dataPoints, aggregationTemporality: AGG_DELTA, isMonotonic: true },
   })
   const gauge = (name: string, value: number) => ({
     name,
@@ -321,10 +329,14 @@ export function buildMetricsRequest(
           {
             scope: { name: 'vx', version: summary.run.vxVersion },
             metrics: [
-              sum('vx.tasks.total', summary.taskCount),
-              sum('vx.tasks.failed', summary.failedCount),
-              sum('vx.tasks.cache_hits', summary.hitLocalCount, [strAttr('source', 'local')]),
-              sum('vx.tasks.cache_hits', summary.hitRemoteCount, [strAttr('source', 'remote')]),
+              sum('vx.tasks.total', [point(summary.taskCount)]),
+              sum('vx.tasks.failed', [point(summary.failedCount)]),
+              // One metric, a point per source: two entries of one name
+              // are two metrics a backend may keep only one of.
+              sum('vx.tasks.cache_hits', [
+                point(summary.hitLocalCount, [strAttr('source', 'local')]),
+                point(summary.hitRemoteCount, [strAttr('source', 'remote')]),
+              ]),
               gauge('vx.run.duration_ms', summary.totalDurationMs),
             ],
           },
