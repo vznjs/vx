@@ -7,7 +7,13 @@
 // (packages/vx/tests/playground-parity.unsafe.test.ts).
 
 import { describe, expect, it } from 'bun:test'
-import { rewriteConfigImports } from '../src/playground/config-eval.js'
+import path from 'node:path'
+import {
+  NOT_AN_OBJECT,
+  evaluateConfig,
+  evaluateConfigInProcess,
+  rewriteConfigImports,
+} from '../src/playground/config-eval.js'
 
 const URL = 'blob:vx'
 const ONLY_VX = 'the playground evaluates a config on its own: it can import only @vzn/vx'
@@ -116,5 +122,89 @@ describe('every other import is refused by name', () => {
       ok: false,
       error: `cannot evaluate a computed import(): ${ONLY_VX}`,
     })
+  })
+})
+
+// Item 836's sweep of config-eval.ts: lexical cases the rows above did not
+// reach (found by a differential search over tokenizer fragments, then
+// written as a config would spell them), and the two evaluators' answers.
+describe('the tokenizer, past the rows above', () => {
+  const unchanged: Array<[string, string]> = [
+    ['a non-ASCII identifier ending in import', "const éimport = (s) => s\néimport('node:fs')\n"],
+    ['an escaped ${ in a template', "const s = `\\${import('node:fs')}`\n"],
+    ['an escaped / in a regular expression', "const re = /a\\/ + import('node:fs')/\n"],
+    ['a / in a regular expression class', "const re = /[/]import('node:fs')/\n"],
+    ['a regular expression that opens the module', "/import('node:fs')/.test(s)\n"],
+  ]
+  for (const [name, text] of unchanged) {
+    it(`left alone: ${name}`, () => {
+      expect(rewrite(text)).toEqual({ ok: true, text })
+    })
+  }
+  const refused: Array<[string, string]> = [
+    ['after an empty template', "const s = ``\nimport fs from 'node:fs'\n"],
+    [
+      'after an object inside a template expression',
+      "const s = `${({}, await import('node:fs'))}`\n",
+    ],
+    ['after a division of an index', "const half = xs[0] / 2; const m = await import('node:fs')\n"],
+    ['after a division of a template', "const n = `4` / 2; const m = await import('node:fs')\n"],
+  ]
+  for (const [name, text] of refused) {
+    it(`refused: ${name}`, () => {
+      expect(rewrite(text)).toEqual({ ok: false, error: `cannot import 'node:fs': ${ONLY_VX}` })
+    })
+  }
+
+  it('an import after a local export list is rewritten once', () => {
+    expect(rewrite("export { a }\nimport { defineProject } from '@vzn/vx'\n")).toEqual({
+      ok: true,
+      text: 'export { a }\nimport { defineProject } from "blob:vx"\n',
+    })
+  })
+
+  it('a dynamic import of @vzn/vx plus anything is computed', () => {
+    expect(rewrite("const vx = await import('@vzn/vx' + '')\n")).toEqual({
+      ok: false,
+      error: `cannot evaluate a computed import(): ${ONLY_VX}`,
+    })
+  })
+})
+
+describe('both evaluators answer as the CLI does', () => {
+  const evaluators = [
+    ['in a Worker', (t: string) => evaluateConfig(t, 5000)],
+    ['in process', evaluateConfigInProcess],
+  ] as const
+  for (const [where, evaluate] of evaluators) {
+    it(`${where}: null is not an object; a function is not JSON; a throw keeps its name`, async () => {
+      expect(await evaluate('export default null\n')).toEqual({ ok: false, error: NOT_AN_OBJECT })
+      expect(await evaluate('export default { f: () => 1 }\n')).toEqual({
+        ok: false,
+        error:
+          'vx.config.mjs: f is a function — a config must be JSON data, because the cache key folds its JSON',
+      })
+      expect(await evaluate("throw new TypeError('boom')\n")).toEqual({
+        ok: false,
+        error: 'TypeError: boom',
+      })
+    })
+  }
+
+  // The worker is terminated once it has answered: a config that leaves an
+  // interval running would otherwise keep the page's thread (here, the
+  // process) alive. A subprocess, so a regression fails this row, not the file.
+  it('a Worker left with a running interval is terminated', async () => {
+    const script = `const { evaluateConfig } = await import(${JSON.stringify(
+      path.resolve(import.meta.dir, '../src/playground/config-eval.ts'),
+    )})
+console.log(JSON.stringify(await evaluateConfig('setInterval(() => {}, 100)\\nexport default {}\\n', 5000)))`
+    const p = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' })
+    const exited = await Promise.race([p.exited, Bun.sleep(8000).then(() => 'still running')])
+    if (exited === 'still running') p.kill()
+    expect([exited, (await new Response(p.stdout).text()).trim()]).toEqual([
+      0,
+      '{"ok":true,"config":{}}',
+    ])
   })
 })

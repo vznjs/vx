@@ -480,6 +480,37 @@ test is telling the truth.
         before the plan started, so the two never overlapped. The
         mutation survived until both started in one tick.
 
+836.  DONE (2026-09-26, the playground's `config-eval.ts`: the reader's
+      config rewritten to import only `@vzn/vx`, then evaluated in a
+      Worker or in process). 34 mutations: 10 caught by the rows there,
+      16 held now, 8 not holdable (reasons below). The tokenizer's cases
+      were found by a differential search over lexical fragments, then
+      written as a config would spell them. Held in the site's
+      `tests/playground-config-eval.test.ts`:
+      - left alone: a non-ASCII identifier ending in `import`, an
+        escaped `${` in a template, an escaped `/` and a `/` in a class
+        inside a regular expression, a regular expression opening the
+        module;
+      - refused: an import after an empty template, after an object
+        inside a template expression, after a division of an index or
+        of a template, and `import('@vzn/vx' + …)` as computed;
+      - an import after a local export list rewritten once, not twice;
+      - both evaluators: `null` is not an object, a function is not
+        JSON, a throw keeps its name; and a Worker left with a running
+        interval is terminated (a subprocess row: without it the
+        process ran 10 s, against 17 ms).
+        Equivalent: the `${` depth push (balanced either way), a
+        comment's newline (whitespace), the non-JSON check before
+        `json` is read. Reachable only through text that is no module,
+        whose evaluation fails either way: an unterminated string at a
+        line's end, a regular expression opened at a line's end (its
+        flags read the next line's word), and two invalid import-clause
+        shapes. Not observable under Bun: the Worker error's
+        `preventDefault` (a browser's console only). The first cut of
+        the escaped-`/` row was held by the regex's own flags, which
+        swallowed the `import` right after it. The row now leaves a
+        space.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
