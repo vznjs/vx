@@ -79,11 +79,17 @@ function releaseOnExit(): void {
   exitHooked = true
   process.on('exit', () => {
     for (const [lockDir, entry] of takers) {
+      // The entry may be gone already: a release under way unlinked it and
+      // was still to remove the directory (item 867).
       try {
         unlinkSync(path.join(lockDir, entry))
+      } catch {
+        // reclaimed already, or released
+      }
+      try {
         rmdirSync(lockDir)
       } catch {
-        // reclaimed already, or another run took the emptied name
+        // another run took the emptied name: its entry is in it
       }
     }
   })
@@ -275,12 +281,18 @@ export async function acquireRunLock(
     }
     heldHere.delete(lockDir)
     const taker = takers.get(lockDir)
-    takers.delete(lockDir)
     // The unlink of this taking's own entry is the proof no later run
     // reclaimed the lock: had one, the entry is gone and nothing else is
     // touched. A run that joined another's taking in this process leaves
-    // through the taker's entry, whichever release comes last.
-    if (taker !== undefined) await leave(lockDir, taker)
+    // through the taker's entry, whichever release comes last. The taker
+    // stays listed until the directory is gone: a signal exit between the
+    // unlink and the rmdir left the directory behind, the exit hook having
+    // nothing to remove (item 867, macOS CI).
+    try {
+      if (taker !== undefined) await leave(lockDir, taker)
+    } finally {
+      if (takers.get(lockDir) === taker) takers.delete(lockDir)
+    }
   }
   for (;;) {
     if (opts.signal?.aborted === true) return async () => {}

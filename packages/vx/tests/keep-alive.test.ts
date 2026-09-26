@@ -387,7 +387,7 @@ Bun.spawn = (cmd, opts) => {
       root,
       'app',
       `export default { tasks: {
-        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt; sleep 1; echo late > late.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & wait', timeout: 300, persistent: { readyWhen: 'NEVER' } } },
+        dev: { exec: { command: 'sh -c "echo s > started.txt; trap \\\\"echo t > term.txt; sleep 1; echo late > late.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & wait', timeout: 300, persistent: { readyWhen: 'NEVER' } } },
       } }`,
     )
     const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
@@ -397,7 +397,10 @@ Bun.spawn = (cmd, opts) => {
       stderr: 'ignore',
     })
     expect(await proc.exited).toBe(1)
-    expect(existsSync(path.join(dir, 'term.txt'))).toBe(true)
+    // The server ran. Not its SIGTERM mark: the trap waits for the
+    // loop's sleep, and a vx that exits first hands the group to the
+    // guard, which may kill it before the mark (macOS CI, item 867).
+    expect(existsSync(path.join(dir, 'started.txt'))).toBe(true)
     await Bun.sleep(2_000)
     expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
   }, 20_000)

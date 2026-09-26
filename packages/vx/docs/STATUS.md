@@ -355,6 +355,29 @@ exit`.
         hooks held) had landed at the end of item 864, because 864 was
         inserted mid-way through 863's text. It is back under 863.
 
+866.  DONE (2026-09-26, two of today's rows red on macOS CI, on #943).
+      - Keep-alive's "a never-ready server a dead shell left goes with a
+        vx that exits inside the grace" asserted the server's SIGTERM
+        mark. The trap waits for the loop's `sleep 0.05`, and a vx that
+        exits first hands the held group to the guard, which may kill it
+        before the mark: the fix racing its own witness. It now checks a
+        mark the server writes on start, and still fails without the
+        hold.
+      - Signal-handling's "a second signal exit leaves no run-lock entry
+        behind" left the lock directory (entry unknown). Reading
+        run-lock.ts found a real race: `release()` unlisted its taking
+        before its async unlink and rmdir, so an exit between the two
+        found nothing to remove. Reproduced in-process: start a release,
+        emit `exit`, and the directory is still there.
+      - The taking now stays listed until the directory is gone, and the
+        exit hook tries the rmdir even when the entry is already
+        unlinked. Row: `run-lock.test.ts` › "an exit while a release is
+        under way still removes the lock", failing without the fix.
+      - Whether that race was the macOS red is not proven: the second
+        signal should come before the 200 ms grace ends the run. The
+        lock row now names what a leftover directory holds, so a
+        recurrence says whether the hook ran.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
