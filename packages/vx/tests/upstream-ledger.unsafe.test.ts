@@ -127,7 +127,9 @@ describe('docs/upstream-ledger.md', () => {
           .replace(/^open \(.+\)$/, 'open (id)'),
       ),
     )
-    expect([...verdicts].sort()).toEqual(['covered', 'fixed-in-item-N', 'n/a', 'open (id)'])
+    // No row is open since item 860 took the last one: an `open (id)` row
+    // added later belongs in this set too.
+    expect([...verdicts].sort()).toEqual(['covered', 'fixed-in-item-N', 'n/a'])
   })
 
   // The law's own control: each way a citation can rot is caught.

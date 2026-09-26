@@ -57,7 +57,7 @@ import {
   unique,
 } from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
-import { closeSignalChannel, signalThrough } from './kill-tree.js'
+import { closeSignalChannel, releaseGroup, signalThrough, spawnGuarded } from './kill-tree.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
@@ -796,15 +796,17 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
           wrapped,
         ]
       : [sh, '-c', wrapped]
-    proc = Bun.spawn(spawnArgv, {
-      argv0: straceLog ? 'strace' : 'sh',
-      cwd: args.cwd,
-      env: args.env as Record<string, string>,
-      // fd 3 is the signal channel the in-sandbox watcher reads.
-      stdio: forwardsSignals ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
-      // As the unsandboxed spawn: its own process group (kill-tree.ts).
-      detached: true,
-    })
+    proc = spawnGuarded(() =>
+      Bun.spawn(spawnArgv, {
+        argv0: straceLog ? 'strace' : 'sh',
+        cwd: args.cwd,
+        env: args.env as Record<string, string>,
+        // fd 3 is the signal channel the in-sandbox watcher reads.
+        stdio: forwardsSignals ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
+        // As the unsandboxed spawn: its own process group (kill-tree.ts).
+        detached: true,
+      }),
+    )
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
     const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
@@ -831,6 +833,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   if (cut) args.onStderr?.(POST_EXIT_CUT_LINE)
   const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
   args.liveChildren?.delete(proc)
+  releaseGroup(proc)
   closeSignalChannel(proc)
   releaseBridges(tag)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)

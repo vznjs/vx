@@ -7,7 +7,14 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import { executablePath, isExecutableMissing, killGraceMs } from '../util/index.js'
-import { closeSignalChannel, killTree, signalThrough, untilGroupsGone } from './kill-tree.js'
+import {
+  closeSignalChannel,
+  killTree,
+  releaseGroup,
+  signalThrough,
+  spawnGuarded,
+  untilGroupsGone,
+} from './kill-tree.js'
 
 export interface RunResult {
   exitCode: number
@@ -359,24 +366,26 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   let child: ReturnType<typeof Bun.spawn>
   try {
-    child = Bun.spawn([executablePath('sh'), '-c', execWrap(opts.command)], {
-      argv0: 'sh',
-      cwd: opts.cwd,
-      env: opts.env as Record<string, string>,
-      // A pipe vx holds and never writes: stdin stays open while vx
-      // lives and ends when it does. A dev server that exits on stdin
-      // EOF (esbuild --watch, Vite's case in turborepo#8915) became ready
-      // and exited 0 under 'ignore'. Not the terminal: several servers
-      // would steal each other's keystrokes, and a CI's /dev/null stdin
-      // is the same EOF. The one-shot spawn below keeps 'ignore', so a
-      // task that reads stdin can never hang CI.
-      stdio:
-        opts.signalChannel === true ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
-      // Its own session and process group, so a kill reaches what it
-      // forked (kill-tree.ts). stdin is a pipe, so a background group
-      // never stops on a terminal read.
-      detached: true,
-    })
+    child = spawnGuarded(() =>
+      Bun.spawn([executablePath('sh'), '-c', execWrap(opts.command)], {
+        argv0: 'sh',
+        cwd: opts.cwd,
+        env: opts.env as Record<string, string>,
+        // A pipe vx holds and never writes: stdin stays open while vx
+        // lives and ends when it does. A dev server that exits on stdin
+        // EOF (esbuild --watch, Vite's case in turborepo#8915) became ready
+        // and exited 0 under 'ignore'. Not the terminal: several servers
+        // would steal each other's keystrokes, and a CI's /dev/null stdin
+        // is the same EOF. The one-shot spawn below keeps 'ignore', so a
+        // task that reads stdin can never hang CI.
+        stdio:
+          opts.signalChannel === true ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
+        // Its own session and process group, so a kill reaches what it
+        // forked (kill-tree.ts). stdin is a pipe, so a background group
+        // never stops on a terminal read.
+        detached: true,
+      }),
+    )
     if (opts.signalChannel === true) {
       signalThrough(child, child.stdio[3] as number)
       const spawned = child
@@ -506,6 +515,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // — reject the ready promise so the caller can surface it.
   void child.exited.then((code) => {
     opts.liveChildren?.delete(child)
+    releaseGroup(child)
     if (readyTimer !== undefined) clearTimeout(readyTimer)
     if (readyAt === undefined) {
       rejectReady(
@@ -555,18 +565,20 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
 
   let proc: ReturnType<typeof Bun.spawn>
   try {
-    proc = Bun.spawn([executablePath('sh'), '-c', execWrap(fullCommand)], {
-      argv0: 'sh',
-      cwd: opts.cwd,
-      env: opts.env as Record<string, string>,
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-      // Its own session and process group, so a kill reaches what it
-      // forked (kill-tree.ts). stdin is ignored, so a background group
-      // never stops on a terminal read.
-      detached: true,
-    })
+    proc = spawnGuarded(() =>
+      Bun.spawn([executablePath('sh'), '-c', execWrap(fullCommand)], {
+        argv0: 'sh',
+        cwd: opts.cwd,
+        env: opts.env as Record<string, string>,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        // Its own session and process group, so a kill reaches what it
+        // forked (kill-tree.ts). stdin is ignored, so a background group
+        // never stops on a terminal read.
+        detached: true,
+      }),
+    )
   } catch (err) {
     const stderr = spawnFailureText(err, opts.cwd)
     opts.onStderr?.(stderr)
@@ -595,6 +607,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   if (cut) opts.onStderr?.(POST_EXIT_CUT_LINE)
   const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
   opts.liveChildren?.delete(proc)
+  releaseGroup(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
   return {
     exitCode,
