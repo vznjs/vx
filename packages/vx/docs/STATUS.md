@@ -164,6 +164,19 @@ test is telling the truth.
         without the fix. The old `last` and `why` rows, which pinned the
         reset notice, are replaced; `vx show` still shares the run's
         loader and resets like a run.
+897.  DONE (2026-09-26, the same review's lead 6). A task was looked up
+      as `tasks[name]` on a plain object, so a name that
+      Object.prototype carries was a task. `vx show constructor` printed
+      a group task for every project, `vx show a#toString` printed one,
+      and `vx run a#toString` ran nothing and exited 0, where an unknown
+      name is an error.
+      - `declaredTask(config, name)` in the graph module now looks a task
+        up by own property. The builder, the request helpers and
+        `vx show` all go through it. `select.ts` walks own keys already.
+      - Rows: `task-graph.test.ts` covers the request helpers, with a
+        control where the config does declare `constructor`.
+        `show-info.test.ts` covers both show forms. Both rows fail
+        without the fix.
 
 ## In flight
 

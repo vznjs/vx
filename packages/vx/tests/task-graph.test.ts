@@ -803,6 +803,20 @@ describe('the request helpers dedupe (item 646)', () => {
     const ps = projects(project('app', { build: cmd('b') }))
     expect(unresolvedRequests(['x', 'x', 'app#y', 'app#y'], ['app'], ps)).toEqual(['x', 'app#y'])
   })
+
+  it('a name Object.prototype carries is no task unless the config declares it (item 897)', () => {
+    const ps = projects(project('app', { build: cmd('b') }))
+    expect(
+      unresolvedRequests(['constructor', 'app#toString', 'app#hasOwnProperty'], ['app'], ps),
+    ).toEqual(['constructor', 'app#toString', 'app#hasOwnProperty'])
+    expect(expandRequested(['constructor', 'app#toString'], ['app'], ps)).toEqual([])
+    // CONTROL: a task the config does name `constructor` is one.
+    const own = projects(project('app', { constructor: cmd('c') }))
+    expect(expandRequested(['constructor'], ['app'], own)).toEqual([
+      { project: 'app', task: 'constructor' },
+    ])
+    expect(unresolvedRequests(['constructor'], ['app'], own)).toEqual([])
+  })
 })
 
 describe('splitTaskId', () => {

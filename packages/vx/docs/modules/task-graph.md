@@ -47,6 +47,12 @@ export function excludeDependencies(
 // not import the graph); re-exported here and on the façade.
 export function splitTaskId(id: string): [project: string, task: string]
 export function isGroupTask(node: TaskNode): boolean
+// The task a config declares under `name`, by OWN property: `constructor`
+// or `toString` is no task unless the config names it (item 897).
+export function declaredTask(
+  config: ProjectConfig | null | undefined,
+  name: string,
+): TaskConfig | undefined
 export function detectCycle(nodes: Map<string, TaskNode>): void
 // The refusal of a `^name` no project in the workspace declares; thrown by
 // the builder, or by `prepareRun` once a scoped run's other configs agree.

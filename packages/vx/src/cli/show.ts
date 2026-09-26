@@ -7,6 +7,7 @@
 // Deliberately NOT the lock — vx-lock.json is already the frozen JSON.
 
 import type { ProjectConfig, TaskConfig } from '../config.js'
+import { declaredTask } from '../graph/index.js'
 import { seeHelp } from './help.js'
 import { nearMatches, relPosix, UserError } from '../util/index.js'
 import { loadCliProjects } from './workspace-config.js'
@@ -86,7 +87,9 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   }
 
   if (bareTask) {
-    const declaring = [...projects.values()].filter((p) => p.config.tasks?.[projectName!])
+    const declaring = [...projects.values()].filter(
+      (p) => declaredTask(p.config, projectName!) !== undefined,
+    )
     if (declaring.length === 0) {
       const names = new Set<string>()
       for (const p of projects.values())
@@ -111,7 +114,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     return 0
   }
 
-  const task = config?.tasks?.[taskName]
+  const task = declaredTask(config, taskName)
   if (task === undefined) {
     throw new UserError(
       `unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}))}`,
