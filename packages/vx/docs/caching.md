@@ -1028,9 +1028,14 @@ hit replays it with pure SQL, never decompressing the artifact).
 
 ### SQLite tables
 
-`schema_meta.version` is the gate: an index written by another
+`schema_meta.version` is the gate: an index written by an EARLIER
 `SCHEMA_VERSION` is dropped whole — entries, history, memos — and
-recreated on the first open after an upgrade (pre-alpha: no migrations).
+recreated on the first run after an upgrade (pre-alpha: no migrations).
+Two openers leave it untouched and say why (item 896): a reading verb
+(`vx why`, `vx last`, `vx info`, `vx cache prune --dry-run`) refuses an
+index it cannot read, and every opener, a run too, refuses a NEWER
+schema. That one is another vx's index and history, and an older binary
+beside a newer one used to drop it.
 That open says so once, on the run's status line or the verb's stderr
 (`[vx] cache index reset: schema v24 → v25 (vx upgraded); …`), so the
 all-miss run that follows is explained; the artifacts it orphaned are

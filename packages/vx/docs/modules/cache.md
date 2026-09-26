@@ -466,7 +466,11 @@ Outputs` additionally refuses when the archive cannot produce an output
   modes lost at pack time, long entry names dropped at parse time).
 
 Bump `SCHEMA_VERSION` (independently — the gate drops + recreates
-tables) when the SQLite schema changes. The open that drops them says
+tables) when the SQLite schema changes. Only an earlier schema is
+dropped, and only by a writing opener: `Cache.inspect(dir)` (a reading
+verb) refuses any schema it cannot read, and every opener refuses a
+newer one, each with a `UserError` that names the directory and both
+versions and leaves the index as it was (item 896). The open that drops them says
 so: `Cache.schemaReset` carries `{ from, to }` on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
 status line, or a verb's stderr — `[vx] cache index reset: schema v24 →

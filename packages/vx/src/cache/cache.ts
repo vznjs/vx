@@ -164,6 +164,12 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        or restore that wrote it. The cache KEY is unchanged.
 export const SCHEMA_VERSION = 'v28'
 
+/** A schema version's number (`v28` → 28); one that is not `v<n>` is older than any. */
+function schemaOrdinal(version: string): number {
+  const m = /^v(\d+)$/.exec(version)
+  return m === null ? -1 : Number(m[1])
+}
+
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.
  *
@@ -348,6 +354,11 @@ export class Cache implements CacheLayer {
    */
   readonly formatChange: SchemaReset | null = null
 
+  /** A reading verb's open: it never resets the index (the constructor's `mode`). */
+  static inspect(cacheDir: string): Cache {
+    return new Cache(cacheDir, undefined, undefined, undefined, 'inspect')
+  }
+
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
@@ -359,6 +370,12 @@ export class Cache implements CacheLayer {
      * `RunOptions.artifactCeiling`: 2 GiB of output is out of a test's reach.
      */
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+    /**
+     * `'inspect'`: a reading verb (`why`, `last`, `info`, a dry prune). It
+     * never resets the index: a schema it cannot read is refused, named,
+     * and left as it was.
+     */
+    mode: 'open' | 'inspect' = 'open',
   ) {
     this.read = localPolicy.read
     // The directory exists before the DB opens — bun:sqlite won't create
@@ -411,26 +428,51 @@ export class Cache implements CacheLayer {
           | { value: string }
           | undefined
       )?.value
-    if (readVersion() !== SCHEMA_VERSION) {
-      this.schemaReset = this.db
-        .transaction((): SchemaReset | null => {
-          const found = readVersion()
-          if (found === undefined) {
+    // Only an EARLIER schema is reset, and only by an opener that may write
+    // it. A newer one is another vx's index and history: an older binary
+    // (a global install beside a workspace's own) dropped every table of it
+    // and announced "vx upgraded", and so did a reading verb, a dry prune
+    // among them (item 896).
+    const refuseUnreadable = (found: string): void => {
+      if (schemaOrdinal(found) > schemaOrdinal(SCHEMA_VERSION)) {
+        throw new UserError(
+          `the cache at ${cacheDir} holds index schema ${found}, written by a newer vx; this vx reads ${SCHEMA_VERSION} and leaves it untouched. Run the newer vx, or give this one another --cache-dir`,
+        )
+      }
+      if (mode === 'inspect') {
+        throw new UserError(
+          `the cache at ${cacheDir} holds index schema ${found} from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here. The next \`vx run\` resets it; a reading verb leaves it untouched`,
+        )
+      }
+    }
+    const current = readVersion()
+    if (current !== SCHEMA_VERSION) {
+      try {
+        if (current !== undefined) refuseUnreadable(current)
+        this.schemaReset = this.db
+          .transaction((): SchemaReset | null => {
+            const found = readVersion()
+            if (found !== undefined && found !== SCHEMA_VERSION) refuseUnreadable(found)
+            if (found === undefined) {
+              this.db
+                .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
+                .run(SCHEMA_VERSION)
+              return null
+            }
+            if (found === SCHEMA_VERSION) return null
+            this.db.exec(
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals;',
+            )
             this.db
-              .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
+              .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
               .run(SCHEMA_VERSION)
-            return null
-          }
-          if (found === SCHEMA_VERSION) return null
-          this.db.exec(
-            'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals;',
-          )
-          this.db
-            .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
-            .run(SCHEMA_VERSION)
-          return { from: found, to: SCHEMA_VERSION }
-        })
-        .immediate()
+            return { from: found, to: SCHEMA_VERSION }
+          })
+          .immediate()
+      } catch (err) {
+        this.db.close()
+        throw err
+      }
     }
 
     // Cached config evaluations (workspace/config-cache.ts): the validated

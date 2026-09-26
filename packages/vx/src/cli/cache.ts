@@ -141,7 +141,9 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   // `config` plugin's edit of it — `vx run` and `vx cache prune` must
   // operate on the same directory or prune silently no-ops against the
   // wrong path.
-  const cache = new Cache(await cliCacheDir(root, parsed.cacheDir))
+  // A dry run only reads: it never resets the index (item 896).
+  const dir = await cliCacheDir(root, parsed.cacheDir)
+  const cache = parsed.dryRun === true ? Cache.inspect(dir) : new Cache(dir)
   // A prune deletes rows and artifacts; a cache this user cannot write is
   // refused up front with the directory named, as a run refuses it, rather
   // than dying in the first DELETE with SQLite's "readonly database" and a
