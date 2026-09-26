@@ -68,6 +68,9 @@ export function unreachedHint(unreached: readonly string[]): string
 
 // The directories a recursive watch must cover to see every member.
 export function memberBaseDirs(workspace: Workspace): string[]
+
+// A project's config file names, in the order discovery prefers them.
+export const PROJECT_CONFIG_FILENAMES: string[]
 ```
 
 From `src/workspace/load-reads.ts`, what one load has read of the root:

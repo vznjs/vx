@@ -204,4 +204,124 @@ describe('vx watch loop (e2e): the watched set', () => {
     expect(w.cycles()).toBe(1)
     expect(await lines()).toEqual(['lib-a', 'lib-a', 'lib-b'])
   }, 40_000)
+
+  // Item 891: the watched set was re-read only when a member directory came
+  // or went, so every event below that changes it waited for a restart.
+  const occurrences = (text: string, what: string): number => text.split(what).length - 1
+  const buildLogging = (tag: string, extra = ''): string => `
+    export default {
+      tasks: {
+        build: {
+          ${extra}
+          exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo ${tag} >> ${f.log}' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+
+  it('a package whose directory appears before its package.json is watched once the manifest lands', async () => {
+    // An editor or `git checkout` makes the directory first. Its arrival is
+    // a cycle and a re-read that finds no package in it; the manifest after
+    // is a write INSIDE the member, which the base's non-recursive watcher
+    // never hears. Differential: without the arm on the pending directory,
+    // the manifest is silence and the second wait times out.
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    const bDir = path.join(f.root, 'packages', 'b')
+    await mkdir(path.join(bDir, 'src'), { recursive: true })
+    await writeFile(path.join(bDir, 'src', 'b.txt'), 'b1\n')
+    await writeFile(path.join(bDir, 'vx.config.mjs'), buildLogging('run'))
+    await until(
+      () => occurrences(w.out(), 'vx watch: watching 1 project(s)\n') === 1,
+      'the re-read after the directory appeared',
+    )
+    expect(await executions(f.log)).toBe(1)
+
+    await writeFile(
+      path.join(bDir, 'package.json'),
+      JSON.stringify({ name: 'b', version: '0.0.0' }),
+    )
+    await until(async () => (await executions(f.log)) === 2, 'the cycle after the manifest')
+    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'the re-armed set')
+    await Bun.sleep(SETTLE_MS)
+    expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b1\n')
+
+    await writeFile(path.join(bDir, 'src', 'b.txt'), 'b2\n')
+    await until(async () => (await executions(f.log)) === 3, 'the cycle after an edit in b')
+    await Bun.sleep(SETTLE_MS)
+    expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b2\n')
+  }, 40_000)
+
+  it('a dependency added under --filter joins the watched closure', async () => {
+    // The closure was computed at start: `app` alone. A `package.json` edit
+    // that makes `lib` its dependency runs `lib` in the cycle it triggers,
+    // and the re-read arms it. Differential: without the re-read on a
+    // manifest edit, the `lib` edit below is silence.
+    const lib = await addProject(f.root, 'lib', {
+      config: buildLogging('lib'),
+      files: { 'src/l.txt': 'l1\n' },
+    })
+    await writeFile(
+      path.join(f.dir, 'vx.config.mjs'),
+      buildLogging('run', "dependsOn: ['^build'],"),
+    )
+    f.watch = startWatch(f.root, ['--filter', 'app'])
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'app alone watched')
+    const lines = async () => (await readFile(f.log, 'utf8')).split('\n').filter((l) => l !== '')
+    expect(await lines()).toEqual(['run'])
+
+    const pkg = JSON.parse(await readFile(path.join(f.dir, 'package.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
+    pkg['dependencies'] = { lib: '0.0.0' }
+    await writeFile(path.join(f.dir, 'package.json'), JSON.stringify(pkg, null, 2))
+    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'lib joins the set')
+    await Bun.sleep(SETTLE_MS)
+    const afterDep = await lines()
+
+    await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
+    await until(
+      async () => (await lines()).length === afterDep.length + 2,
+      'the cycle after the upstream edit',
+    )
+    expect((await lines()).slice(afterDep.length)).toEqual(['lib', 'run'])
+  }, 40_000)
+
+  it('a config that starts declaring workspaceFiles swaps to the root watcher', async () => {
+    // The watcher's shape was fixed at start: per project, with the root's
+    // own fingerprint files only. Differential: without the swap, the
+    // declared root file's edit is silence.
+    await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":1}\n')
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'the per-project arm')
+    await initialOnly(w, f.log)
+
+    await writeFile(
+      path.join(f.dir, 'vx.config.mjs'),
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
+            cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] } },
+          },
+        },
+      }\n`,
+    )
+    await until(
+      () => w.out().includes('vx watch: watching the workspace root'),
+      'the swap to the root watcher',
+    )
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(f.log)).toBe(2)
+
+    await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":2}\n')
+    await until(async () => (await executions(f.log)) === 3, 'the cycle after the root file edit')
+  }, 40_000)
 })

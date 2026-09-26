@@ -52,8 +52,9 @@ that makes sense for a loop is supported. Rejected with exit 1:
 | (no task name)              | Watch needs an explicit task — no picker.      |
 
 Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
-`--no-cache`, `--exclude-dependencies`, `--verbosity`, forwarded
-`--` args) passes through unchanged.
+`--no-cache`, `--exclude-dependencies`, forwarded `--` args) passes
+through unchanged. `--report` / `--report-file` / `--verbosity` above 0
+are refused too: they format one run's result.
 
 ## Algorithm
 
@@ -98,6 +99,17 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      (`tests/watch-loop-members.test.ts`, the added-package pair). The scope
      is the one resolved at start; a glob of another shape has no
      such directory.
+   - The same re-read follows a cycle started by a file that shapes
+     the watched set (`shapesWatchedSet`): a `package.json` (a
+     dependency added under `--filter` widens the closure), a project
+     config (a task that starts or stops declaring `workspaceFiles`
+     swaps the arm between per-project and root, `dropMode` /
+     `armMode`) or the workspace config. And a directory under a
+     member base with no package in it yet gets a non-recursive arm
+     of its own (`armPending`): the base's watcher never hears the
+     `package.json` written inside it, so a directory made before its
+     manifest stayed unwatched for good. Until item 891 each of these
+     waited for a restart (the three item-891 rows).
    - Filter out `node_modules` / `.git` / `.vx` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
      cache directory (a relocated `cacheDir` would otherwise re-trigger
@@ -210,9 +222,9 @@ non-persistent tasks where each cycle should re-run cleanly.
 - Doesn't filter events through declared input globs.
 - Doesn't dedupe events by project — every file change triggers a
   re-run of the user's specified task across the entire scope.
-- Doesn't re-decide the watcher shape: a package added under a running
-  watch that declares the first `workspaceFiles` input keeps the
-  per-project arms until a restart.
+- Doesn't re-read the package globs: a `pnpm-workspace.yaml` edit that
+  adds a new base directory is a cycle, but the base is watched only
+  from the next start.
 - Doesn't keep a persistent task across a cycle: each cycle re-spawns it.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys
   are taken once per cycle. The run itself notices (item 750,

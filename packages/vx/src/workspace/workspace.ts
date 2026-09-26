@@ -39,7 +39,12 @@ export interface ProjectEntry {
   config: ProjectConfig
 }
 
-const CONFIG_FILENAMES = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
+export const PROJECT_CONFIG_FILENAMES = [
+  'vx.config.ts',
+  'vx.config.mts',
+  'vx.config.js',
+  'vx.config.mjs',
+]
 
 const decoder = new TextDecoder()
 
@@ -374,7 +379,7 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
 }
 
 /**
- * The project's config file, by `CONFIG_FILENAMES` precedence, or null.
+ * The project's config file, by `PROJECT_CONFIG_FILENAMES` precedence, or null.
  *
  * Two shapes, one per platform, each the measured winner there across
  * 1,000 projects with the manifest read in flight alongside:
@@ -397,7 +402,7 @@ async function findConfigFile(dir: string): Promise<string | null> {
       return null
     }
     const byName = new Map(entries.map((e) => [e.name, e]))
-    for (const name of CONFIG_FILENAMES) {
+    for (const name of PROJECT_CONFIG_FILENAMES) {
       const entry = byName.get(name)
       if (entry === undefined) continue
       const candidate = path.join(dir, name)
@@ -406,7 +411,7 @@ async function findConfigFile(dir: string): Promise<string | null> {
     }
     return null
   }
-  for (const name of CONFIG_FILENAMES) {
+  for (const name of PROJECT_CONFIG_FILENAMES) {
     const candidate = path.join(dir, name)
     if (await isFile(candidate)) return candidate
   }
