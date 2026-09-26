@@ -508,6 +508,19 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Rows: `telemetry-lifecycle.test.ts` › a hook that never settles
         (in `telemetry()`: dropped, the run runs; elsewhere: exit 1 and
         the line), each red with its own fix undone.
+922.  DONE (2026-09-26, the observability review's lead 2). `vx mcp`'s
+      stdout is the JSON-RPC stream, and a tool that loads the workspace
+      evaluates configs and plugin stages: what they printed landed in it,
+      and a strict client drops a connection on a line that is not
+      JSON-RPC.
+      - `serveStdio` keeps the real writer and sends every other stdout
+        write and console method to stderr while it serves. Bun's
+        `console.log` writes to fd 1 without `process.stdout.write`
+        (probed), so the console is replaced too.
+      - Row: `server.test.ts` › keeps stdout JSON-RPC while a config or a
+        plugin stage prints (both spellings), red without the fix. The
+        server grew to 179 lines, and the four "about N lines" claims the
+        site test holds moved to 180.
 
 ## In flight
 

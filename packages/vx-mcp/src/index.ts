@@ -15,7 +15,7 @@
 // No SDK: MCP over stdio is newline-delimited JSON-RPC and the methods
 // `initialize`, `tools/list`, `tools/call` and `ping`. It pulls in nothing
 // where the reference SDK pulls in an HTTP stack this transport never uses,
-// and server.ts is about 150 lines — a number a test holds to the file.
+// and server.ts is about 180 lines — a number a test holds to the file.
 
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 import { serveStdio } from './server.js'

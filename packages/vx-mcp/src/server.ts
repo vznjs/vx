@@ -3,6 +3,7 @@
 // `tools/call` — plus `ping`; notifications are acknowledged by silence.
 // Everything else is the standard "method not found".
 
+import { Console } from 'node:console'
 import { isUserError, VERSION } from '@vzn/vx'
 import { handleToolCall, listTools, type ToolContext } from './tools.js'
 
@@ -145,7 +146,34 @@ export async function serve(
   }
 }
 
-/** Serve stdin → stdout until stdin closes. */
+/**
+ * Serve stdin → stdout until stdin closes. Stdout IS the JSON-RPC stream, and
+ * a tool that loads the workspace evaluates configs and plugin stages, whose
+ * `console.log` landed in it: a strict client drops a connection on a line
+ * that is not JSON-RPC (item 922). The server keeps the real writer; every
+ * other stdout write and console method goes to stderr while it serves.
+ * Bun's `console.log` writes to fd 1 without `process.stdout.write`, so the
+ * console is replaced too.
+ */
 export async function serveStdio(options: ServerOptions): Promise<void> {
-  await serve(Bun.stdin.stream(), (line) => process.stdout.write(line), options)
+  const stdout = process.stdout
+  const write = stdout.write.bind(stdout)
+  const ownWrite = stdout.write
+  const ownConsole = globalThis.console
+  stdout.write = ((...args: Parameters<typeof process.stderr.write>) =>
+    process.stderr.write(...args)) as typeof stdout.write
+  // Bun's console adds `write`, which the node Console lacks.
+  globalThis.console = Object.assign(new Console(process.stderr, process.stderr), {
+    write: (...data: string[]) => {
+      const text = data.join('')
+      process.stderr.write(text)
+      return text.length
+    },
+  })
+  try {
+    await serve(Bun.stdin.stream(), (line) => write(line), options)
+  } finally {
+    stdout.write = ownWrite
+    globalThis.console = ownConsole
+  }
 }

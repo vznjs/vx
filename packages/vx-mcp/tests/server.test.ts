@@ -237,6 +237,51 @@ describe('vx mcp over stdio (the real entry point)', () => {
     expect(row.maxPeakRssBytes).toBeUndefined()
   }, 20_000)
 
+  // Item 922: a tool that loads the workspace evaluates configs, and what a
+  // config printed landed in the JSON-RPC stream.
+  it('keeps stdout JSON-RPC while a config or a plugin stage prints', async () => {
+    const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-mcp-stdout-'))
+    try {
+      await writeFile(path.join(ws, 'package.json'), JSON.stringify({ name: 'ws3', private: true }))
+      await writeFile(path.join(ws, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await mkdir(path.join(ws, 'packages', 'a'), { recursive: true })
+      await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
+      await writeFile(
+        path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+        "console.log('from console.log')\nprocess.stdout.write('from stdout.write\\n')\n" +
+          "export default { tasks: { build: { exec: { command: 'echo hi' } } } }\n",
+      )
+      await writeFile(
+        path.join(ws, 'vx.workspace.mjs'),
+        `import { mcp } from ${JSON.stringify(PLUGIN_ENTRY)}\n` +
+          `export default { plugins: [mcp()] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: ws })
+      const p = Bun.spawn({
+        cmd: [process.execPath, CORE_BIN, 'mcp'],
+        cwd: ws,
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      void p.stdin.write(req(1, 'tools/call', { name: 'listTasks', arguments: {} }) + '\n')
+      void p.stdin.end()
+      const [code, out, err] = await Promise.all([
+        p.exited,
+        new Response(p.stdout).text(),
+        new Response(p.stderr).text(),
+      ])
+      const lines = out.trim().split('\n')
+      expect({ code, ids: lines.map((l) => (JSON.parse(l) as { id: number }).id), err }).toEqual({
+        code: 0,
+        ids: [1],
+        err: 'from console.log\nfrom stdout.write\n',
+      })
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 20_000)
+
   it('is listed by vx help and unknown outside the workspace', async () => {
     const help = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'help'], cwd: root })
     expect(new TextDecoder().decode(help.stdout)).toContain('vx mcp')
