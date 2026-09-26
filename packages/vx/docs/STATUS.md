@@ -451,6 +451,12 @@ exit`.
       task through `runSandboxed`, and emits `exit` once the removal has
       begun. The log is gone with the fix and left without it.
 
+872.  DONE (2026-09-26, today's two lessons into CLAUDE.md's rules). Two
+      signals sent back to back can land as one (862, 863). An exit
+      hook's list drops an entry only after its cleanup lands, and a
+      window like that is driven with the async call held pending, not
+      with microtasks (867, 868).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
