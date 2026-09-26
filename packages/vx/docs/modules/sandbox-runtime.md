@@ -383,6 +383,12 @@ child of vx was in no group the guard lists, and a `kill -9` of vx left it
 listening under init, where the next run's bridge could not bind the port
 (item 873, `sandbox-runtime.unsafe.test.ts` › "a kill -9 of vx takes the
 host side of a port bridge with it").
+
+`releaseBridges` also unlinks each port's socket. The task's socat dies
+with the namespace and never removes it, so every bridged run left one
+socket in the tmpdir (176 on one box, item 877). The sockets are listed
+with the exit hook that removes strace logs, so a Ctrl-C mid-task takes
+them too (`sandbox-bridge-socket.unsafe.test.ts`).
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.
