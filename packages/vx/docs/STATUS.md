@@ -616,6 +616,15 @@ exit`.
         rules the enumeration out as a writer, and nothing yet ties it
         to them.
 
+881.  DONE (2026-09-26, the gate for 880). Item 877's row "is removed
+      when the task ends" failed in a gate. A socket for its port was
+      left, but it was an old one, bound at 13:11 before 877 landed. The
+      row took any tag's socket for the port, and a box that ran bridged
+      tasks before 877 still holds 180 of them, so a free port can be
+      one of theirs.
+      - Both rows now watch the socket their own run binds (one absent
+        before the run) and hold the port's set to what it was before.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
