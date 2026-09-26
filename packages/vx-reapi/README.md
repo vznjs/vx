@@ -199,6 +199,9 @@ the same status is counted, not repeated: the run ends with
 Execution streams are deliberately NOT bounded by either: queueing behind a
 busy worker pool is legitimate and unbounded. A wedged server still cannot
 reach Execute, because the deadline-bounded Capabilities call runs first.
+A stream that drops with a transient status, or ends cleanly before its
+operation is done, re-attaches with `WaitExecution` (three times, backing
+off 100, 400 and 1600 ms) rather than running the action again.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
 `executeTimeoutMs`) bounds the wait, and the bound holds across a
 re-attach: firing during the backoff between a dropped stream and its
