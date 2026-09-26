@@ -625,6 +625,39 @@ exit`.
       - Both rows now watch the socket their own run binds (one absent
         before the run) and hold the port's set to what it was before.
 
+882.  DONE (2026-09-26, CI on #955 went red on "a kill -9 of vx takes the
+      host side of a port bridge with it"). A sandboxed persistent server
+      held past its run lost its host port, and SRT's proxies, about
+      40 ms after the summary. This hit a foreground `vx run dev` and
+      every `vx watch`, and dated from before item 877 (the row failed 5
+      runs in 6 there).
+      - The cause: `run()` calls `resetSandbox()` at its end, BEFORE the
+        keep-alive wait. The reset released every host bridge. A watch
+        cycle's run reset the same way under a held server. The row
+        passed only when its first connection landed inside that window.
+      - The fix: the runtime lists each sandboxed server's tag
+        (`wrapSandboxedCommand`'s `server`). While one runs, a reset
+        releases only the bridges no server owns and defers SRT's reset.
+        The last server's `releaseBridges` runs the deferred reset. A
+        persistent spawn that fails releases its tag at once.
+      - Probe (a foreground `vx run serve`, then curl the port): 0 in 8
+        before, 6 in 6 after.
+      - Row: `sandbox-runtime.unsafe.test.ts` › "a held server keeps its
+        port through its run’s reset and a later run’s, until it is
+        stopped". It holds the server with `holdPersistent`, runs a
+        second sandboxed run, and checks that `SandboxManager.reset` is
+        not called until the stop and is called once after it. It fails
+        without the fix, and without either the listing or the deferred
+        reset.
+      - While chasing this, 877's exit row moved into a child process. A
+        real `process.exit` drives it, where it had emitted `exit` in the
+        suite's own process, which runs SRT's hooks. That was not the
+        cause (the kill -9 row failed alone too); the move stays because
+        it tests the real exit.
+      - Seen, not yet chased: this box holds dozens of leaked sandboxes,
+        `bun serve.ts` under bwrap, some parented to init, left by probe
+        and test runs that `kill -9`ed vx.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

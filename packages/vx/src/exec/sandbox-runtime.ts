@@ -395,8 +395,25 @@ export async function initSandbox(opts?: {
   SandboxManager.updateConfig(config)
 }
 
+/**
+ * The tags of sandboxed servers still running (`wrapSandboxedCommand`'s
+ * `server`). A run resets the sandbox at its end, and a foreground
+ * `vx run dev` or a `vx watch` holds its servers past that: the reset
+ * released their host bridges and SRT's proxies, and a server's port went
+ * dark ~40 ms after the summary (item 882). While one runs, the reset
+ * releases only the bridges no server owns and waits for the last
+ * server's `releaseBridges`.
+ */
+const liveServers = new Set<string>()
+let resetDeferred = false
+
 export async function resetSandbox(): Promise<void> {
-  for (const tag of [...hostBridges.keys()]) releaseBridges(tag)
+  for (const tag of [...hostBridges.keys()]) if (!liveServers.has(tag)) releaseBridges(tag)
+  if (liveServers.size > 0) {
+    resetDeferred = true
+    return
+  }
+  resetDeferred = false
   const { SandboxManager } = await loadSrt()
   await SandboxManager.reset()
   srtUp = false
@@ -580,7 +597,10 @@ export interface SandboxedRunResult extends RunResult {
  */
 export async function wrapSandboxedCommand(
   args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config'> &
-    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'>,
+    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & {
+      /** A persistent server: the sandbox outlives a run's reset until `releaseBridges(tag)`. */
+      server?: boolean
+    },
 ): Promise<{
   wrapped: string
   tag: string
@@ -624,6 +644,7 @@ export async function wrapSandboxedCommand(
   // strace-traced spawn keeps strace as bwrap's parent: that residual is
   // a one-shot task's, and a persistent one is never traced.
   if (process.platform === 'linux' && wrapped.startsWith('bwrap ')) wrapped = `exec ${wrapped}`
+  if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) spawnHostBridges(ports, tag)
   return { wrapped, tag, taggedCommand, baselines, forwardsSignals: grouped.forwards }
 }
@@ -748,6 +769,9 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
  * 877).
  */
 export function releaseBridges(tag: string): void {
+  if (liveServers.delete(tag) && liveServers.size === 0 && resetDeferred) {
+    void resetSandbox().catch(() => {})
+  }
   const bridges = hostBridges.get(tag)
   if (bridges === undefined) return
   hostBridges.delete(tag)

@@ -3274,6 +3274,54 @@ describe.skipIf(!available || process.platform !== 'linux')(
     )
 
     it(
+      'a held server keeps its port through its run’s reset and a later run’s, until it is stopped',
+      async () => {
+        // Each run resets the sandbox at its end, and that reset released
+        // every host bridge: a server held past its run (a foreground
+        // `vx run dev`, `vx watch`) lost its port ~40 ms after the
+        // summary (item 882). The later run is a watch cycle's.
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port),
+          config: serverConfig(`[${port}]`),
+        })
+        await addProject(fixture.root, 'other', {
+          config: `export default { tasks: { t: { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } } } }`,
+        })
+        const reset = spyOn(SandboxManager, 'reset')
+        const held = await run({
+          cwd: fixture.root,
+          tasks: ['srv#serve'],
+          holdPersistent: true,
+          log: collectingLogger(fixture),
+        })
+        try {
+          expect(held.persistent?.ids).toEqual(['srv#serve'])
+          expect(await accepts(port)).toBe(true)
+          const later = await run({
+            cwd: fixture.root,
+            tasks: ['other#t'],
+            log: collectingLogger(fixture),
+          })
+          expectOk(later, fixture)
+          expect(await accepts(port)).toBe(true)
+          // Both runs' resets waited on the server.
+          expect(reset).toHaveBeenCalledTimes(0)
+        } finally {
+          await held.persistent?.stop('SIGTERM')
+        }
+        const until = Date.now() + 3_000
+        while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
+        expect(await accepts(port)).toBe(false)
+        // The server's exit ran the reset they deferred.
+        while (reset.mock.calls.length === 0 && Date.now() < until) await Bun.sleep(20)
+        expect(reset).toHaveBeenCalledTimes(1)
+        reset.mockRestore()
+      },
+      TIMEOUT,
+    )
+
+    it(
       'control: `localBinding: true` binds inside the namespace and the host sees nothing',
       async () => {
         const port = freePort()

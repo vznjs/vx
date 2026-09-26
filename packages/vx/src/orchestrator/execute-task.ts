@@ -285,6 +285,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       command: plainCommand,
       cwd: node.projectDir,
       ...sb.sandbox,
+      server: true,
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
@@ -330,7 +331,10 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (tag !== undefined) releaseBridges(tag)
       await sweptUntouched()
     }
-    void spawn.child?.exited?.then(onExit, onExit)
+    // A spawn that failed has no child to wait on: release now, or the
+    // tag would hold the sandbox's reset for the rest of the process.
+    if (spawn.child === undefined) void onExit()
+    else void spawn.child.exited.then(onExit, onExit)
   }
   try {
     await spawn.ready
