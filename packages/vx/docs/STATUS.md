@@ -236,6 +236,18 @@ test is telling the truth.
       - Row: `bun.test.ts` (item 901), with the control of the same bump
         and no scoped sibling to mistake. It fails without the fix.
       - The same review reproduced two yarn stale hits (items 902, 903).
+902.  DONE (2026-09-26, the same review's lead 1). A stale hit in the
+      yarn classic parser. A descriptor re-pointed from one entry to
+      another, as a deduplication or `yarn upgrade` writes it
+      (`foo@^1.0.0` moving from the 1.0.0 entry to the 1.1.0 one), changes
+      what a workspace installs. Every entry's version, url and integrity
+      stay as they were, and those were all the digest read. The run
+      after was a hit, and `--affected` said nothing was affected.
+      - Each classic entry now folds the descriptors it satisfies,
+        sorted, so their order in the header moves nothing.
+      - Row: `yarn.test.ts` (item 902), with the reordered-header control.
+        It fails without the fix. On the review's repro the run misses
+        and `--affected` names both projects.
 
 ## In flight
 

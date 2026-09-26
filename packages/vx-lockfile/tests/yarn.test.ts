@@ -321,6 +321,29 @@ describe('classic yarn.lock', () => {
   it('refuses what is neither generation', () => {
     expect(() => parseLockfile('hello: world\n')).toThrow(/neither a classic/)
   })
+
+  it('a descriptor moving to another entry moves the digest (item 902)', () => {
+    // `foo@^1.0.0` re-pointed from the 1.0.0 entry to the 1.1.0 one, as a
+    // deduplication or `yarn upgrade` writes it: every entry's version,
+    // url and integrity are unchanged, yet a workspace now installs 1.1.0.
+    const two = (older: string, newer: string) => `# yarn lockfile v1
+
+
+${older}:
+  version "1.0.0"
+  resolved "https://r/foo-1.0.0.tgz"
+  integrity sha512-foo100
+
+${newer}:
+  version "1.1.0"
+  resolved "https://r/foo-1.1.0.tgz"
+  integrity sha512-foo110
+`
+    const before = digests(two('"foo@1.0.0", "foo@^1.0.0"', '"foo@^1.1.0"')).get('.')
+    expect(digests(two('"foo@1.0.0"', '"foo@^1.0.0", "foo@^1.1.0"')).get('.')).not.toBe(before)
+    // CONTROL: the same descriptors in another order are the same file.
+    expect(digests(two('"foo@^1.0.0", "foo@1.0.0"', '"foo@^1.1.0"')).get('.')).toBe(before)
+  })
 })
 
 describe('yarn() declared', () => {
