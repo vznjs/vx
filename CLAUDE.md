@@ -402,6 +402,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   now copies the runtime into its temp dir, spawns the copy, and
   asserts the copy's digest unchanged, so a broken guard replaces only
   the copy and fails the row.
+  The same holds for a DELETE: a sweep mutant of the plugin helper's
+  dead-root check removed every entry of the host's `/tmp` (item 846).
+  A mutant runs under its own scratch `TMPDIR`
+  (`docs/design/mutation-sweeps-2026-09.md`, method 8).
 
 - Await a gRPC call's refusal with `.then(ok, err)`, never
   `expect(…).rejects`: under `bun test` the latter held a call that
