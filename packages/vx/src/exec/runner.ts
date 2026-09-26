@@ -11,6 +11,7 @@ import {
   closeSignalChannel,
   holdGroups,
   killTree,
+  markGroupIfGone,
   releaseGroup,
   signalThrough,
   spawnGuarded,
@@ -521,6 +522,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // — reject the ready promise so the caller can surface it.
   void child.exited.then((code) => {
     opts.liveChildren?.delete(child)
+    markGroupIfGone(child)
     releaseGroup(child)
     if (readyTimer !== undefined) clearTimeout(readyTimer)
     if (readyAt === undefined) {

@@ -488,6 +488,26 @@ exit`.
         signals its old pid's group, which the kernel may have handed to
         another group.
 
+874.  DONE (2026-09-26, the adversarial review's other finding). A ready
+      persistent server stays in the run's registry after it exits, and
+      keep-alive reports it from there. The end-of-run teardown, the stop
+      and the second signal's exit then signalled `-pid` for it. Once
+      the group is empty its number is free, and the kernel hands it to
+      the next process group that needs one: on a long run that wraps
+      `pid_max` (32,768 in many containers), a stranger's.
+      - `runPersistent`'s exit now marks a child whose group went with
+        its leader. `killTree` never signals it again, and `groupAlive`
+        reads it as gone, so a teardown does not wait out a grace on a
+        stranger's group either.
+      - A group that still had a member at the leader's exit keeps its
+        number reserved and is signalled as before. The readiness
+        timeout's kill timer, which outlives an early exit, is covered by
+        the same mark.
+      - Row: `persistent.test.ts` › "a server that exited mid-run is not
+        signalled at the end: its group number is free". It spies on
+        `process.kill`, sees SIGTERM and signal-0 probes to `-pid`
+        without the fix, and only the exit's own probe with it.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
