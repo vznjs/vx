@@ -532,6 +532,19 @@ echo A; echo B` went green after a failed pre hook, and a cache
       - Rows: `otel.test.ts` › percent-decodes keys and values; a
         signal's own headers ride its POSTs over the shared ones. Both red
         without the fix.
+924.  DONE (2026-09-26, the observability review's leads 4 and 5).
+      vx-github's `clampSummary` cut the check-run markdown in UTF-16 units,
+      so an emoji at the cut (the aborted label 🛑, or one in a task id)
+      split into a lone surrogate the POST body carried. And `??` kept an
+      empty `GITHUB_API_URL`, so the POST went to a relative URL fetch
+      refuses — the one of the four variables the empty-is-absent rule
+      missed.
+      - The cap is held in UTF-8 bytes (never fewer than GitHub's
+        characters), cut on a character as the job summary's clamp is;
+        an empty API URL is absent.
+      - Rows: `github.test.ts` › the check-run clamp cuts on a character
+        and fits the cap in bytes (four offsets); resolveCheckRunEnv's
+        empty API URL. Both red without the fix.
 
 ## In flight
 
