@@ -1759,7 +1759,10 @@ a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 (cwd-relative, absolute used as-is): a run that wrote its history
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cacheDir })`
-or `.vx/cache`).
+or `.vx/cache`). None of them creates anything: a `--cache-dir` that is
+not there is refused by name (`--cache-dir .vx/cahce: no such
+directory`), and a workspace that never ran reads as empty with no `.vx`
+made (item 900).
 
 ## `vx completions`
 

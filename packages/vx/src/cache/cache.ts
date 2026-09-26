@@ -386,9 +386,15 @@ export class Cache implements CacheLayer {
     // instead of dying in SQLite on the first miss (an unprivileged user on
     // a root-owned `.vx`, 2026-09-16). A run wants more than a quiet
     // read-only cache — `assertWritable()`.
-    this.writeBlocked = openCacheDir(cacheDir)
+    // A reading verb over a directory with no index yet reads an empty one
+    // in memory and makes nothing on disk: `vx last --cache-dir .vx/cahce`
+    // created the typo's directory, a `.gitignore` and a database, then
+    // said "no recorded runs yet" (item 900).
+    const dbFile = path.join(cacheDir, 'cache.db')
+    const absent = mode === 'inspect' && !existsSync(dbFile)
+    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir)
     this.write = localPolicy.write && this.writeBlocked === null
-    this.db = new Database(path.join(cacheDir, 'cache.db'), { create: true })
+    this.db = new Database(absent ? ':memory:' : dbFile, { create: true })
     // busy_timeout makes concurrent writers wait for the lock instead of
     // failing immediately with SQLITE_BUSY. Two parallel `vx run`
     // invocations in CI is a normal pattern; without this the second one
