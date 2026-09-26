@@ -1,23 +1,26 @@
 // Item 834's sweep of the playground's glob port (src/playground/shim/glob.ts):
 // pairs the fuzz in playground-glob.test.ts does not reach, each pinning
-// Bun's own answer beside the port's. A file of its own: three of the
-// mutations these hold make the port loop forever on the fuzz's pairs, and
-// a synchronous loop cannot be bounded inside a row, so these rows must be
-// the ones that fail cleanly.
+// Bun's own answer beside the port's. Files of their own: some of the
+// mutations these hold make the port loop forever on other pairs, and a
+// synchronous loop cannot be bounded inside a row, so each mutation needs a
+// file whose rows fail on it without looping (the multibyte rows are
+// playground-glob-sweep-utf8.test.ts for that reason).
 import { describe, expect, it } from 'bun:test'
 import { Glob } from '../src/playground/shim/glob.js'
 
 const rows: Array<[pattern: string, path: string, bun: boolean]> = [
-  // A star's backtrack resumes one CHARACTER on, not one byte: into the
-  // middle of `😀` the classes after it would read a continuation byte.
-  ['**[^b][^b]', '😀', false],
-  ['**[!a][^b][^b]', 'ÿ😀', false],
   // The globstar is a copy of the wildcard, not the same object; and a
   // backtrack only ever resumes inside the path.
   ['**/*', '{/', false],
   ['**/', '}[', false],
+  // A branch's globstar reads back only to its own branch start.
+  ['{**/,', '', true],
+  ['{**/}', '', true],
+  // `\\t` is a tab in Bun's escape table.
+  ['\\t', '\t', true],
+  // A dangling `\\` with path left to match is an invalid pattern: no match.
+  ['a\\', 'ab', false],
   // Controls.
-  ['**[^b]', '😀', true],
   ['**/*', '{/a', true],
 ]
 

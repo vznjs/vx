@@ -427,6 +427,38 @@ test is telling the truth.
         at load under every mutant; its column was read as no signal,
         not as a catch.
 
+834.  DONE (2026-09-26, the playground's `glob.ts`, the 651-line port of
+      Bun's matcher that item 692 wrote and no sweep had named). 51
+      mutations: 31 caught by the Bun-oracle fuzz, 6 held now, 14
+      equivalent. The survivors' pairs were found by a differential
+      search: each mutant against `Bun.Glob` over a wider alphabet
+      (multibyte characters, escapes, ranges, nested braces), with a
+      step cap so a looping mutant skips a pair instead of hanging.
+      Held in `tests/playground-glob-sweep.test.ts` and
+      `-utf8.test.ts`, each pinning Bun's own answer:
+      - a star's backtrack resumes one character on, not one byte;
+      - the globstar is a copy of the wildcard, not an alias;
+      - a backtrack resumes only inside the path;
+      - a branch's globstar looks back only to its own branch start;
+      - `\t` is a tab;
+      - a dangling `\` with path left to match fails.
+        Two files, because three of these mutations loop forever on
+        other pairs, and a synchronous loop cannot be bounded inside a
+        row. Each mutation has a file that fails on it without looping.
+        Equivalent:
+      - six decode branches (overlong, bad continuation, out of range,
+        a 5-byte lead, a zero-filled tail) that well-formed UTF-8 from
+        `TextEncoder` never reaches, and `\a` in a class (it decodes
+        to `a` either way);
+      - three redundant guards: the FIXME clause's `isEndInvalid`, the
+        `!inGlobstar` reset, and the literal-`/` wildcard reset (a star
+        re-entered at a separator resets it);
+      - the multibyte literal's bounds check (a complete sequence);
+      - the at-end wildcard bump (already past the path);
+      - `braceDepth > 0` before a skip (no stacked frame encloses a
+        `,` or `}` outside every group);
+      - the unterminated group's skip (past the glob either way).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
