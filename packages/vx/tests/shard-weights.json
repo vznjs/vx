@@ -98,7 +98,6 @@
   "output-dirs.test.ts": 2105,
   "output-doc-drift.test.ts": 10,
   "output-flow.test.ts": 507,
-  "output-memory.test.ts": 4661,
   "output-shape.test.ts": 2097,
   "output-wipe-guard.test.ts": 13,
   "package-graph.test.ts": 3,
