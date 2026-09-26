@@ -19,11 +19,9 @@
 // mechanism, and the same reason as VX_REQUIRE_SANDBOX and
 // VX_REQUIRE_REAPI.
 
-/** Same truthiness rule as the sandbox gate — `0`/`false`/empty are off. */
-function required(): boolean {
-  const v = process.env['VX_REQUIRE_NONROOT']
-  return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
-}
+import { envFlag } from './env.js'
+
+const required = (): boolean => envFlag('VX_REQUIRE_NONROOT')
 
 /** True when this process is root, so permission bits do not bind. */
 function isRoot(): boolean {

@@ -23,12 +23,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { armWatcher } from '../../src/cli/watch.js'
+import { envFlag } from './env.js'
 
-/** Same truthiness rule as the sandbox gate — `0`/`false`/empty are off. */
-function required(): boolean {
-  const v = process.env['VX_REQUIRE_WATCH_EVENTS']
-  return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
-}
+const required = (): boolean => envFlag('VX_REQUIRE_WATCH_EVENTS')
 
 let memo: boolean | undefined
 

@@ -634,6 +634,22 @@ test is telling the truth.
       mode, even with `CI=true` set around the run. It stays as the
       defence for the day one does.
 
+844.  DONE (2026-09-26, the `VX_REQUIRE_*` gates in core's test helpers).
+      The sandbox, root and watch-delivery gates each carried their own
+      copy of one truthiness rule ("armed unless empty, `0` or `false`").
+      A gate is observable only when it fires, which on CI it never does.
+      `workflow-runner.unsafe.test.ts` proves each is set and forwarded,
+      not that it would fail a run. The rule is now one `envFlag(name)`
+      in `helpers/env.ts`, which the three gates read.
+      `tests/gates.test.ts` pins its table (unset, empty, `0` and `false`
+      in any case are off; `1`, `true`, `yes` and `00` are on; it reads
+      only its own name). It also fires the root gate with
+      `process.getuid` stubbed: as root and required it fails naming the
+      row, as root alone it skips, and not as root it runs. 7 mutations,
+      all held. The sandbox and watch gates' own throws still cannot
+      fire in-process, because both verdicts are memoised per process;
+      they now share the pinned rule.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
