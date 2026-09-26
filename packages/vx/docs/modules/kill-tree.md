@@ -80,6 +80,12 @@ turborepo#9666). A group kill reaches what the task forked, so a
   the child under init (item 865, both reproduced). A release that
   comes while a group is held is written when the hold ends; holds
   count, so two teardowns over one group let it go once both are done.
+- A child whose group was empty when its leader exited is never signalled
+  again (`markGroupIfGone`, from `runPersistent`'s exit): its number is
+  free, and a ready server stays in the run's registry after it exits, so
+  the end-of-run teardown's `kill(-pid)` could reach a group the kernel
+  had since handed it (item 874). `groupAlive` reads such a group as gone.
+  A group that still has a member keeps its number, and is signalled.
 - A clean exit closes the pipe too, with the list empty, so the guard
   kills nothing. A released group is left as before: a one-shot task's
   `server &` outlives vx's clean exit, and a pid the kernel reuses is

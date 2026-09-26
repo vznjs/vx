@@ -10,8 +10,10 @@
 // and perturbs whatever runs next. `exec` makes the sleeper the tracked child,
 // so it takes the signal and dies with the task.
 
+import { readFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
@@ -65,6 +67,44 @@ describe('exec.persistent (e2e)', () => {
   afterEach(async () => {
     await rm(fixture.root, { recursive: true, force: true })
   })
+
+  it(
+    'a server that exited mid-run is not signalled at the end: its group number is free',
+    async () => {
+      // The registry keeps a ready server after it exits (keep-alive
+      // reports it). Its group was empty when it went, so the number is
+      // free, and the end-of-run teardown's `kill(-pid)` could reach a
+      // group the kernel has since given it (item 874). Signalled: never.
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: 'echo $$ > dev.pid; echo READY; sleep 0.2',
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+              hold: { exec: { command: 'sleep 1' } },
+            },
+          }
+        `,
+      )
+      const kill = spyOn(process, 'kill')
+      try {
+        await run({ cwd: fixture.root, tasks: ['dev', 'hold'], log: silentLogger(fixture) })
+        const pid = Number(readFileSync(path.join(dir, 'dev.pid'), 'utf8').trim())
+        expect(pid).toBeGreaterThan(0)
+        // Signal 0 delivers nothing: the one probe is the exit's own check.
+        expect(kill.mock.calls.filter((c) => c[0] === -pid && c[1] !== 0)).toEqual([])
+      } finally {
+        kill.mockRestore()
+      }
+    },
+    TIMEOUT,
+  )
 
   it(
     'persistent task with no readyWhen returns immediately (success), is SIGTERMd at end',

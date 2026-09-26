@@ -159,10 +159,26 @@ export function holdGroups(children: readonly Child[]): () => void {
   }
 }
 
+/**
+ * Children whose group was empty when their leader exited. Its number is
+ * free from then on, and the kernel hands it to the next process that
+ * needs it: a persistent server stays in the run's registry after it
+ * exits (keep-alive reports it), and a teardown that signalled `-pid`
+ * there could reach whatever group holds the number now (item 874). A
+ * group that still had a member keeps its number reserved, and is
+ * signalled as before.
+ */
+const goneGroups = new WeakSet<Child>()
+
+/** Note, as `child`'s leader exits, whether its group went with it. */
+export function markGroupIfGone(child: Child): void {
+  if (!groupAlive(child)) goneGroups.add(child)
+}
+
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
-  if (!(child.pid > 0)) return
+  if (!(child.pid > 0) || goneGroups.has(child)) return
   const fd = signal === 'SIGKILL' ? undefined : channels.get(child)
   if (fd !== undefined) {
     try {
@@ -231,7 +247,7 @@ export async function untilGroupsGone(
  * signal is the answer and the grace ends the wait.
  */
 function groupAlive(child: Child): boolean {
-  if (!(child.pid > 0)) return false
+  if (!(child.pid > 0) || goneGroups.has(child)) return false
   try {
     process.kill(-child.pid, 0)
   } catch (err) {
