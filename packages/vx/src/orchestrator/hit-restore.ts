@@ -220,6 +220,9 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
     }
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
+    // The tree now holds this entry's bytes: stamp them for the next hit
+    // (item 886).
+    args.cache.recordOutputStamps?.(hash, node.projectDir, args.workspaceRoot)
     // The directory snapshot behind the NEXT hit's skip-restore, taken at
     // run end from the run's list (as the miss path does, see
     // miss-save.ts): the restore renamed into these directories

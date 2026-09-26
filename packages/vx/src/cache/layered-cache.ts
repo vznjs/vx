@@ -529,6 +529,9 @@ export class LayeredCache implements CacheLayer {
   recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void> {
     return this.local.recordOutputDirs(hash, projectDir, prefixes)
   }
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
+    this.local.recordOutputStamps(hash, projectDir, workspaceRoot)
+  }
 
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
     return this.local.loadOutputDirsBatch(hashes)

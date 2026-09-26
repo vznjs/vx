@@ -2733,10 +2733,17 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
       outputFiles: [outFile],
       entry: { taskId: 'pkg#build', command: 'b', durationMs: 1, stdout: '' },
     })
+    // What the miss path does after every save (miss-save.ts).
+    cache.recordOutputStamps(hash, projectDir, workspaceRoot)
     return outFile
   }
 
   const rowsOf = (hash: string) => cache.loadOutputFilesBatch([hash]).get(hash)!
+  /** A restore as the hit path runs it: extract, then stamp (hit-restore.ts). */
+  const restore = async (hash: string) => {
+    await cache.restoreOutputs(hash, projectDir)
+    cache.recordOutputStamps(hash, projectDir, workspaceRoot)
+  }
 
   it('a same-size different-content rewrite is detected (was invisible within one second)', async () => {
     const outFile = await saveOne('ms1', 'AAAA')
@@ -2757,7 +2764,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
   it('restoreOutputs re-syncs mtimes to the rows, so the next probe skips', async () => {
     const outFile = await saveOne('ms2', 'CCCC')
     await rm(outFile)
-    await cache.restoreOutputs('ms2', projectDir)
+    await restore('ms2')
     expect(await readFile(outFile, 'utf8')).toBe('CCCC')
     expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms2'))).toBe(true)
   })
@@ -2793,23 +2800,66 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     })
     expect(rowsOf('ms3-remote')[0]!.mtimeMs).toBe(recorded)
 
+    // An ingest has no file of this machine's to stamp: its rows are never
+    // current until a restore writes and stamps them (item 886).
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms3-remote'))).toBe(false)
     // …and restoring the ingested copy reproduces that stamp on disk, so
     // the next probe skips instead of restoring again.
     await rm(outFile)
-    await cache.restoreOutputs('ms3-remote', projectDir)
+    await restore('ms3-remote')
     expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms3-remote'))).toBe(true)
   })
 
-  it('a forged mtime remains the documented blind spot', async () => {
+  it('a forged mtime is caught: the rewrite moved the ctime (item 886)', async () => {
     const outFile = await saveOne('ms4', 'EEEE')
     const recorded = rowsOf('ms4')[0]!.mtimeMs
-    await Bun.sleep(3)
+    // Past the coarse clock's tick since the stamp (4 ms at HZ=250, 10 at
+    // HZ=100): a rewrite inside it keeps the stamped ctime (item 886).
+    await Bun.sleep(25)
     await writeFile(outFile, 'FFFF')
-    // Deliberately forge the mtime back to the recorded value (touch -r
-    // equivalent): the probe cannot see this — accepted trade, pinned so
-    // a future content-hash upgrade flips this expectation knowingly.
+    // Forge the mtime back to the recorded value (touch -r). Until item
+    // 886 this was the documented blind spot; the utimes itself moves
+    // the ctime, which no task can set.
     await utimes(outFile, recorded / 1000, recorded / 1000)
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms4'))).toBe(true)
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms4'))).toBe(false)
+  })
+
+  it('two entries with one size and one fixed mtime are told apart (item 886)', async () => {
+    // `tar -x`, `cp -p`, SOURCE_DATE_EPOCH: the task sets its outputs'
+    // mtime, so v1 and v2 carry identical (size, mode, mtime) rows. With
+    // v2's bytes on disk, v1's rows matched, and a v1 → v2 → v1 round
+    // trip reported up-to-date over v2's bytes.
+    const fixed = new Date(1_000_000_000_000)
+    const outFile = path.join(projectDir, 'dist', 'o.txt')
+    for (const [hash, content] of [
+      ['v1', 'one1'],
+      ['v2', 'two2'],
+    ] as const) {
+      // The two writes land in separate runs in life; within one tick of
+      // the first stamp an in-place rewrite keeps its ctime (item 886's
+      // documented residual), so the second waits the tick out.
+      await Bun.sleep(25)
+      await writeFile(outFile, content)
+      await utimes(outFile, fixed, fixed)
+      await cache.save({
+        hash,
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'b', durationMs: 1, stdout: '' },
+      })
+      cache.recordOutputStamps(hash, projectDir, workspaceRoot)
+    }
+    // The control: the rows really are identical but for the stamp.
+    const strip = (h: string) => rowsOf(h).map(({ ino: _i, ctimeMs: _c, ...r }) => r)
+    expect(strip('v1')).toEqual(strip('v2'))
+    expect(await readFile(outFile, 'utf8')).toBe('two2')
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v2'))).toBe(true)
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v1'))).toBe(false)
+    // Restored, v1 is current and v2 is not.
+    await restore('v1')
+    expect(await readFile(outFile, 'utf8')).toBe('one1')
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v1'))).toBe(true)
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v2'))).toBe(false)
   })
 
   it('a permission (mode-only) change is detected even with size + mtime unchanged', async () => {

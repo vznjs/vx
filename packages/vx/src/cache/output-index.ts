@@ -17,6 +17,7 @@ import {
   OUTPUT_DIRS_RACY_MS,
   type OutputDirRow,
   type OutputFileRow,
+  WORKSPACE_OUTPUT_PREFIX,
 } from './layer.js'
 
 export class OutputIndex {
@@ -25,6 +26,7 @@ export class OutputIndex {
   private readonly insertOutputDir: ReturnType<Database['prepare']>
   private readonly deleteOutputDirs: ReturnType<Database['prepare']>
   private readonly entryExists: ReturnType<Database['prepare']>
+  private readonly stampOutputFile: ReturnType<Database['prepare']>
   /**
    * Snapshots taken and not yet written, the last per hash. A snapshot is
    * read by the NEXT run's hit check, never by the task that took it, so
@@ -34,6 +36,8 @@ export class OutputIndex {
    * stage, 47–72 ms at run end (item 622).
    */
   private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
+  /** Stamps taken and not yet written, flushed with the directory snapshots. */
+  private readonly pendingStamps = new Map<string, Array<[string, number, number]>>()
 
   constructor(private readonly db: Database) {
     this.insertOutputFile = this.db.prepare(`
@@ -50,6 +54,9 @@ export class OutputIndex {
     )
     this.deleteOutputDirs = this.db.prepare('DELETE FROM output_dirs WHERE entry_hash = ?')
     this.entryExists = this.db.prepare('SELECT 1 FROM entries WHERE hash = ?')
+    this.stampOutputFile = this.db.prepare(
+      'UPDATE output_files SET ino = ?, ctime_ms = ? WHERE entry_hash = ? AND path = ?',
+    )
   }
 
   /**
@@ -73,9 +80,12 @@ export class OutputIndex {
     // compiled statement keyed by the SQL text — so the dominant single-hash
     // warm-hit path (called up to 3× per hit) reuses one statement instead of
     // recompiling on every call.
+    // A reader in the same process (`vx watch`'s next cycle, a test) sees
+    // the stamps taken, not only the ones flushed.
+    this.flushOutputDirs()
     const placeholders = hashes.map(() => '?').join(',')
     const stmt = this.db.query(
-      `SELECT entry_hash, path, size_bytes, mode, mtime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
+      `SELECT entry_hash, path, size_bytes, mode, mtime_ms, ino, ctime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
     )
     const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as Array<{
       entry_hash: string
@@ -83,6 +93,8 @@ export class OutputIndex {
       size_bytes: number
       mode: number
       mtime_ms: number
+      ino: number | null
+      ctime_ms: number | null
     }>
     for (const r of rows) {
       let list = out.get(r.entry_hash)
@@ -90,7 +102,17 @@ export class OutputIndex {
         list = []
         out.set(r.entry_hash, list)
       }
-      list.push({ path: r.path, size: r.size_bytes, mode: r.mode, mtimeMs: r.mtime_ms })
+      const row: OutputFileRow = {
+        path: r.path,
+        size: r.size_bytes,
+        mode: r.mode,
+        mtimeMs: r.mtime_ms,
+      }
+      if (r.ino !== null && r.ctime_ms !== null) {
+        row.ino = r.ino
+        row.ctimeMs = r.ctime_ms
+      }
+      list.push(row)
     }
     return out
   }
@@ -118,11 +140,19 @@ export class OutputIndex {
           // restoreOutputs re-syncs restored files to the row value,
           // so equality holds exactly in steady state; legacy
           // second-precision rows converge on their first restore.
-          // Residual blind spot: a same-size edit landing in the SAME
-          // millisecond as the recorded write, or a deliberately
-          // forged mtime (touch -r) — the trade every mtime-based
-          // skip check accepts.
-          Math.abs(s.mtimeMs - e.mtimeMs) < 1
+          Math.abs(s.mtimeMs - e.mtimeMs) < 1 &&
+          // And the file is the one THIS machine last saw under this
+          // entry: two entries whose outputs carry one fixed mtime (a
+          // `tar -x`, `cp -p`, SOURCE_DATE_EPOCH) and one size matched
+          // each other's rows, and a hit left the other entry's bytes in
+          // place under a green run (item 886). No task sets a ctime, and
+          // a restore's rename gives a new inode; a row without a stamp
+          // (an ingest, a changed file at stamping) is never current. The
+          // residual: a same-size rewrite IN PLACE (same inode) inside
+          // the coarse clock tick of the stamp, with the mtime forged back.
+          e.ino !== undefined &&
+          s.ino === e.ino &&
+          Math.floor(s.ctimeMs) === e.ctimeMs
         )
       } catch {
         return false
@@ -191,8 +221,48 @@ export class OutputIndex {
     this.pendingDirs.set(hash, ok ? rows : null)
   }
 
-  /** Land every pending snapshot in ONE transaction; a null snapshot clears its rows. */
+  /**
+   * Stamp `hash`'s rows with each file's inode and ctime, once a save or
+   * a restore has left the tree equal to the entry. A file whose size,
+   * mode or mtime no longer matches its row is left unstamped, so a
+   * write that landed since is never vouched for; the next hit restores.
+   * Written with the directory snapshots, in one transaction.
+   */
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
+    const rows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
+    const stamps: Array<[string, number, number]> = []
+    for (const e of rows) {
+      const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+      const abs = ws
+        ? path.join(workspaceRoot, e.path.slice(WORKSPACE_OUTPUT_PREFIX.length))
+        : path.join(projectDir, e.path)
+      try {
+        const s = statSync(abs)
+        if (
+          s.size === e.size &&
+          (s.mode & 0o777) === (e.mode & 0o777) &&
+          Math.abs(s.mtimeMs - e.mtimeMs) < 1
+        ) {
+          stamps.push([e.path, s.ino, Math.floor(s.ctimeMs)])
+        }
+      } catch {
+        // gone: left unstamped
+      }
+    }
+    if (stamps.length > 0) this.pendingStamps.set(hash, stamps)
+  }
+
+  /** Land every pending stamp and snapshot in one transaction each; a null snapshot clears its rows. */
   flushOutputDirs(): void {
+    if (this.pendingStamps.size > 0) {
+      const stamps = [...this.pendingStamps]
+      this.pendingStamps.clear()
+      this.db.transaction(() => {
+        for (const [hash, rows] of stamps) {
+          for (const [rel, ino, ctime] of rows) this.stampOutputFile.run(ino, ctime, hash, rel)
+        }
+      })()
+    }
     if (this.pendingDirs.size === 0) return
     const pending = [...this.pendingDirs]
     this.pendingDirs.clear()

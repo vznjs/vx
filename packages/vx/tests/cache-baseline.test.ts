@@ -516,11 +516,14 @@ describePerf('cache baseline: save + restore', () => {
     const dest = path.join(tmpdir, 'mf-direct-target')
     await mkdir(dest, { recursive: true })
     await cache.restoreOutputs('mf-direct', dest)
-    expect(await cache.isOutputsCurrent(dest, rows)).toBe(true)
+    // Stamped as the hit path does after a restore (item 886).
+    cache.recordOutputStamps('mf-direct', dest, dest)
+    const stamped = cache.loadOutputFilesBatch(['mf-direct']).get('mf-direct') ?? []
+    expect(await cache.isOutputsCurrent(dest, stamped)).toBe(true)
 
     // Corrupt one file → isOutputsCurrent flips to false.
     await Bun.write(path.join(dest, rows[0]!.path), 'tampered-different-size')
-    expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
+    expect(await cache.isOutputsCurrent(dest, stamped)).toBe(false)
   })
 
   it('isOutputsCurrent catches a SAME-SIZE edit in the same SECOND (ms precision)', async () => {
@@ -537,10 +540,12 @@ describePerf('cache baseline: save + restore', () => {
       projectDir,
       outputFiles: [outFiles[0]!],
     })
-    const rows = cache.loadOutputFilesBatch(['ms-precision']).get('ms-precision')!
     const dest = path.join(tmpdir, 'ms-precision-target')
     await mkdir(dest, { recursive: true })
     await cache.restoreOutputs('ms-precision', dest)
+    // Stamped as the hit path does after a restore (item 886).
+    cache.recordOutputStamps('ms-precision', dest, dest)
+    const rows = cache.loadOutputFilesBatch(['ms-precision']).get('ms-precision')!
     expect(await cache.isOutputsCurrent(dest, rows)).toBe(true)
 
     // Same byte LENGTH, different content, and an mtime ONE MILLISECOND off
@@ -548,6 +553,10 @@ describePerf('cache baseline: save + restore', () => {
     // the write lands relative to a second boundary. (It used to: the
     // assertion sat behind a same-second precondition, and a write across
     // the boundary skipped it silently — a skip is a silent pass.)
+    // Past the coarse clock's tick (4 ms at HZ=250, 10 at HZ=100) since the
+    // stamp: a rewrite inside it keeps the stamped ctime, the documented
+    // residual (item 886), and the forged tail below would not be seen.
+    await Bun.sleep(25)
     const original = await Bun.file(path.join(dest, rows[0]!.path)).text()
     const sameSize = 'X'.repeat(original.length)
     await writeFile(path.join(dest, rows[0]!.path), sameSize)
@@ -555,17 +564,15 @@ describePerf('cache baseline: save + restore', () => {
     await utimes(path.join(dest, rows[0]!.path), offByOneMs, offByOneMs)
     expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
 
-    // The DOCUMENTED residual, pinned as the accepted trade rather than left
-    // as folklore: a same-size edit with a FORGED identical mtime (touch -r)
-    // passes — the blind spot every mtime-based skip check accepts (git's
-    // index makes the same trade). If this ever flips to false, the check
-    // grew content hashing and the comment + docs must change with it.
+    // The residual this row once pinned as accepted — a same-size edit
+    // with a FORGED identical mtime (touch -r) — is caught since item 886:
+    // the edit and the utimes both moved the ctime the row was stamped with.
     await utimes(
       path.join(dest, rows[0]!.path),
       new Date(rows[0]!.mtimeMs),
       new Date(rows[0]!.mtimeMs),
     )
-    expect(await cache.isOutputsCurrent(dest, rows)).toBe(true)
+    expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
   })
 
   it('restoreOutputs restores the recorded ms mtime on every restore and repairs a wrong-sized file', async () => {
