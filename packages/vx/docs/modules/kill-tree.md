@@ -162,7 +162,9 @@ before the guard), and the unsandboxed control has the backgrounded
 child die and the `setsid` one live. In `keep-alive.test.ts`, "a kill -9 in
 a Ctrl-C’s grace…" and "a kill -9 in the persistent shutdown’s grace…"
 and "a never-ready server a dead shell left goes with a vx that exits
-inside the grace" each fail without the hold.
+inside the grace" each fail without the hold. `tests/kill-tree-hold.test.ts` drives the hold
+itself in a child that SIGKILLs itself: a deferred release is written when
+the hold ends, and a group two teardowns hold stays listed until both let go.
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
