@@ -254,7 +254,7 @@ export default defineWorkspace({
 
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
-| `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.exit_ok`, `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
+| `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.exit_ok`, `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
 | `vx.task` span    | `vx.cache.source`, `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready` |
 | metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.run.duration_ms`                          |
 | a log per task    | the task's output, linked to its span; `vx.log.chars_full` says when it was cut                           |

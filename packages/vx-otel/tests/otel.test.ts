@@ -216,6 +216,7 @@ describe('OTLP builders', () => {
       totalDurationMs: 1000,
       taskCount: 5,
       failedCount: 1,
+      abortedCount: 0,
       hitCount: 3,
       hitLocalCount: 2,
       hitRemoteCount: 1,
@@ -264,6 +265,7 @@ function summaryFor(run: RunContextRecord, tasks: TaskTelemetry[]): RunSummaryRe
     totalDurationMs: 100,
     taskCount: tasks.length,
     failedCount: tasks.filter((t) => t.status === 'failed').length,
+    abortedCount: 0,
     hitCount: 0,
     hitLocalCount: 0,
     hitRemoteCount: 0,
@@ -540,7 +542,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.version']).toBe('1.2.3')
     expect(a['vx.tag.env']).toBe('prod')
     // The schema version a reader must check before trusting any of the above.
-    expect(a['vx.telemetry.schema']).toBe('2')
+    expect(a['vx.telemetry.schema']).toBe('3')
   })
 
   it('carries the run tallies when the summary is known', () => {
@@ -552,6 +554,7 @@ describe('OTLP losslessness', () => {
       totalDurationMs: 9000,
       taskCount: 7,
       failedCount: 1,
+      abortedCount: 4,
       hitCount: 3,
       hitLocalCount: 2,
       hitRemoteCount: 1,
@@ -564,6 +567,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.run.duration_ms']).toBe('9000')
     expect(a['vx.run.task_count']).toBe('7')
     expect(a['vx.run.failed_count']).toBe('1')
+    expect(a['vx.run.aborted_count']).toBe('4')
     expect(a['vx.run.hit_count']).toBe('3')
     expect(a['vx.run.hit_local_count']).toBe('2')
     expect(a['vx.run.hit_remote_count']).toBe('1')
@@ -897,6 +901,7 @@ describe('OTLP envelopes, exactly', () => {
       totalDurationMs: 1234,
       taskCount: 5,
       failedCount: 1,
+      abortedCount: 0,
       hitCount: 3,
       hitLocalCount: 2,
       hitRemoteCount: 1,

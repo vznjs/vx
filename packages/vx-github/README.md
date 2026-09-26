@@ -54,8 +54,9 @@ callouts) and automatic on every run.
 
 With `GITHUB_TOKEN` in the environment (plus `GITHUB_REPOSITORY` /
 `GITHUB_SHA`, both set by the runner) the plugin also creates one
-**completed check-run** on the built commit — conclusion `success` /
-`failure`, its output the same summary markdown — so the verdict shows in
+**completed check-run** on the built commit — conclusion `success`,
+`failure`, or `cancelled` for a run a signal stopped with nothing
+failed (a cancelled job), its output the same summary markdown — so the verdict shows in
 the PR's checks list, not just the workflow page. The workflow must grant
 the permission:
 

@@ -877,6 +877,7 @@ async function runOnBus(
         endedAt: endedAtMs,
         totalDurationMs: Math.round(totalMs),
         exitOk: ok,
+        abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
       })
       telemetry.emitSummary(summary)
       await telemetry.flush()

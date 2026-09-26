@@ -56,17 +56,22 @@ export function buildCheckRunPayload(args: {
   sha: string
 }): Record<string, unknown> {
   const ok = args.summary.exitOk
+  // Stopped, not broken: a cancelled CI job's run has aborted tasks and
+  // nothing failed, and GitHub has a conclusion for exactly that.
+  const cancelled = !ok && args.summary.failedCount === 0 && args.summary.abortedCount > 0
   return {
     name: args.name,
     head_sha: args.sha,
     status: 'completed',
-    conclusion: ok ? 'success' : 'failure',
+    conclusion: ok ? 'success' : cancelled ? 'cancelled' : 'failure',
     started_at: new Date(args.summary.startedAt).toISOString(),
     completed_at: new Date(args.summary.endedAt).toISOString(),
     output: {
       title: ok
         ? `${args.summary.taskCount} task${args.summary.taskCount === 1 ? '' : 's'} · ${args.summary.hitCount} cached`
-        : `${args.summary.failedCount} failed`,
+        : cancelled
+          ? `cancelled · ${args.summary.abortedCount} aborted`
+          : `${args.summary.failedCount} failed`,
       summary: clampSummary(args.markdown),
     },
   }

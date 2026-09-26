@@ -745,6 +745,21 @@ test is telling the truth.
       (head against both copies) reads 260.8 / 275.1 and 252.0 / 275.3:
       an 8.8 ms spread at min against the 1.1 ms difference. A tie.
 
+851.  DONE (2026-09-26, a cancelled run no longer reads as a failure).
+      Since item 849, a signal-stopped run reaches every sink's flush,
+      so `@vzn/vx-github` now posted a cancelled CI job's check run too.
+      It posted conclusion `failure`, titled "0 failed": aborted tasks
+      are left out of the summary's task list (`run-records.ts`), and
+      the record had no word of them. `RunSummaryRecord` gains
+      `abortedCount` (`TELEMETRY_SCHEMA_VERSION` 2 → 3). vx-github posts
+      `cancelled`, "cancelled · N aborted", with a ⏹️ verdict, when a
+      run is not ok, nothing failed and something was aborted; a failure
+      beside aborts stays a failure. vx-otel carries
+      `vx.run.aborted_count`. Rows: the summary of an embedder-aborted
+      run reads 0 failed, 2 aborted, 0 tasks (`abort.test.ts`); the
+      payload's three cases and the verdict glyph (vx-github); the span
+      attribute (vx-otel).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

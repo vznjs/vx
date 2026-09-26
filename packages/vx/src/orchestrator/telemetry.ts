@@ -21,7 +21,7 @@ import { settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
-export const TELEMETRY_SCHEMA_VERSION = 2
+export const TELEMETRY_SCHEMA_VERSION = 3
 
 /** Where a task's result came from, derived ONCE in core from the status. */
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
@@ -238,6 +238,12 @@ export interface RunSummaryRecord {
   totalDurationMs: number
   taskCount: number
   failedCount: number
+  /**
+   * Tasks a shutdown signal or an embedder's abort killed (v3). They are
+   * not in `tasks`, which holds real runs only, so without this a stopped
+   * run read as a failure with nothing failed (item 851).
+   */
+  abortedCount: number
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
@@ -259,7 +265,13 @@ export interface RunSummaryRecord {
 export function assembleRunSummary(
   run: RunContextRecord,
   tasks: readonly TaskTelemetry[],
-  timing: { startedAt: number; endedAt: number; totalDurationMs: number; exitOk: boolean },
+  timing: {
+    startedAt: number
+    endedAt: number
+    totalDurationMs: number
+    exitOk: boolean
+    abortedCount: number
+  },
 ): RunSummaryRecord {
   let failedCount = 0
   let hitLocalCount = 0
@@ -277,6 +289,7 @@ export function assembleRunSummary(
     totalDurationMs: timing.totalDurationMs,
     taskCount: tasks.length,
     failedCount,
+    abortedCount: timing.abortedCount,
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
     hitRemoteCount,

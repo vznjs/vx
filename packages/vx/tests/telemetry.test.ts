@@ -116,7 +116,13 @@ describe('assembleRunSummary — the tallies a local and a distributed run share
   // reached only through an end-to-end run(), whose fixture has no failure,
   // no remote hit and no aborted task, so five of the six tallies could be
   // wrong with every suite green.
-  const timing = { startedAt: 1_000, endedAt: 5_000, totalDurationMs: 250, exitOk: true }
+  const timing = {
+    startedAt: 1_000,
+    endedAt: 5_000,
+    totalDurationMs: 250,
+    exitOk: true,
+    abortedCount: 0,
+  }
 
   it('counts only `failed` as a failure — an aborted task is not one', () => {
     const summary = assembleRunSummary(
@@ -517,6 +523,7 @@ const SUMMARY: RunSummaryRecord = {
   totalDurationMs: 1,
   taskCount: 0,
   failedCount: 0,
+  abortedCount: 0,
   hitCount: 0,
   hitLocalCount: 0,
   hitRemoteCount: 0,

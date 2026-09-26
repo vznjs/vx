@@ -62,6 +62,7 @@ const summary = (
   totalDurationMs: 4321,
   taskCount: tasks.length,
   failedCount: tasks.filter((t) => t.status === 'failed').length,
+  abortedCount: 0,
   hitCount: tasks.filter((t) => t.status.startsWith('cache-hit')).length,
   hitLocalCount: tasks.filter((t) => t.status === 'cache-hit').length,
   hitRemoteCount: tasks.filter((t) => t.status === 'cache-hit-remote').length,
@@ -360,6 +361,40 @@ describe('Checks API', () => {
     const clamped = clampSummary('x'.repeat(70_000))
     expect(clamped.length).toBeLessThanOrEqual(65_535)
     expect(clamped).toContain('truncated by @vzn/vx-github')
+  })
+
+  it('payload: a stopped run with nothing failed is cancelled, not a failure', async () => {
+    // A cancelled CI job reaches the flush since item 849; aborted tasks are
+    // not in `tasks`, so the count is the only word of them (item 851).
+    const { buildCheckRunPayload } = await import('../src/checks.js')
+    const stopped = buildCheckRunPayload({
+      summary: summary([task({})], { exitOk: false, abortedCount: 2 }),
+      markdown: 'm',
+      name: 'vx',
+      sha: 'a',
+    })
+    expect(stopped['conclusion']).toBe('cancelled')
+    expect((stopped['output'] as { title: string }).title).toBe('cancelled · 2 aborted')
+    // A failure beside the aborts is still a failure.
+    const both = buildCheckRunPayload({
+      summary: summary([task({ status: 'failed', exitCode: 1 })], { abortedCount: 2 }),
+      markdown: 'm',
+      name: 'vx',
+      sha: 'a',
+    })
+    expect(both['conclusion']).toBe('failure')
+    // And a failed run with no aborts and nothing failed stays a failure.
+    const neither = buildCheckRunPayload({
+      summary: summary([task({})], { exitOk: false }),
+      markdown: 'm',
+      name: 'vx',
+      sha: 'a',
+    })
+    expect(neither['conclusion']).toBe('failure')
+    const md = renderJobSummary(summary([task({})], { exitOk: false, abortedCount: 2 }))
+    expect(md).toContain('## ⏹️ vx run')
+    expect(md).toContain('**2** aborted')
+    expect(renderJobSummary(summary([task({})], { exitOk: false }))).toContain('## ❌ vx run')
   })
 
   it('flush POSTs one completed check-run through the injected transport', async () => {
