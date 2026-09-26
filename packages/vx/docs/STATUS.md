@@ -511,6 +511,28 @@ test is telling the truth.
         swallowed the `import` right after it. The row now leaves a
         space.
 
+837.  DONE (2026-09-26, `vx-docs`'s `scripts/import-docs.ts`, which turns
+      `packages/vx/docs` into the site's pages). The script ran at
+      import time, so no test could call its transforms. A per-mutant
+      harness that re-ran it and fingerprinted its output measured the
+      cost: 2 of 34 mutations held. 24 changed what the site serves with
+      every row green (a wrong link prefix, a lost anchor or title, an
+      unescaped placeholder, a missing description or edit link,
+      unsorted design notes), and 8 left the output byte-identical on
+      today's tree. It is now a module: `importDocs(docsDir, outDir)`
+      runs only as the entry point, the link map is passed explicitly,
+      and the transforms are exported. The refactor wrote all 157 pages
+      byte for byte as before. `tests/import-docs.test.ts` holds 32:
+      URLs and output files, link resolution (`.`/`..`, directories,
+      anchors, titles, protocol-relative and unknown links left alone),
+      placeholders escaped only in prose, fences closing on their own
+      marker, the title, description and edit link, the description's
+      skips and cut, the design index's order, and a run that clears a
+      stale generated page and keeps an authored one. Equivalent: the
+      link key's trailing-slash strip (`normalize` already drops it) and
+      the duplicate-output guard (unreachable while `outRelFor` is
+      right; it stays as the defence).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
