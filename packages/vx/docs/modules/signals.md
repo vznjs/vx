@@ -8,7 +8,7 @@ SIGTERM — to every live child's process group and every ready
 persistent task's,
 waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) for those GROUPS to go,
 SIGKILLs every group with a member left, lets `run()` leave through its
-own end-of-run path, and exits 128 + signo
+own end-of-run path (which records no history for a stopped run), and exits 128 + signo
 (130 / 143 / 129); a second signal SIGKILLs and exits at once.
 
 The signal stops the run the way `RunOptions.signal` does (item 849):

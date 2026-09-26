@@ -1,8 +1,8 @@
 // What happens when a task's child is killed by a shutdown signal.
 //
-// `aborted` exists for the Ctrl-C teardown, where vx's own signal handler
-// `process.exit`s before any outcome lands — so the status is excluded from
-// the tally, the history and the report. But a child can die by SIGTERM /
+// `aborted` exists for the Ctrl-C teardown: vx's own signal handler stops
+// the run, which finishes its own path and records no history (item 854) —
+// the status is excluded from the tally, the history and the report. But a child can die by SIGTERM /
 // SIGINT with no vx teardown at all (a supervisor, an external `kill`,
 // `docker stop`, a self-terminating script), and then the run DOES reach its
 // summary. Two things must hold on that path:
