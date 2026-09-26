@@ -457,6 +457,37 @@ exit`.
       window like that is driven with the async call held pending, not
       with microtasks (867, 868).
 
+873.  DONE (2026-09-26, found by an adversarial review of today's
+      process-lifecycle code). A sandboxed task's host port bridges (one
+      `socat TCP-LISTEN:<port>` per `localBinding` port) were plain
+      children of vx. They were in vx's own group, which the guard does
+      not list, so a `kill -9` of vx left each one listening under init.
+      The next run's bridge for that port then failed to bind, silently,
+      since the bridge's stderr is ignored.
+      - Reproduced with the CLI: a sandboxed server on a bridged port,
+        `kill -9` of vx, and the host port still accepted connections 3 s
+        later.
+      - The bridges are now spawned through `spawnGuarded` in a group of
+        their own. `releaseBridges` SIGTERMs the group (a socat forks per
+        connection) and strikes it from the guard's list once it has
+        exited.
+      - The spawn-failure return of `runSandboxed` now releases the
+        bridges it had started, too.
+      - Row: `sandbox-runtime.unsafe.test.ts` › "a kill -9 of vx takes
+        the host side of a port bridge with it", failing without the
+        fix. Its first draft probed the port with `Bun.connect`, which
+        read the live bridge as closed on the second call. It uses
+        `node:net`'s `connect` event now.
+      - Seen once in this item's first gate, and unrelated to the diff:
+        `runner.test.ts` › "the peak is the child’s own, never the
+        parent’s footprint handed back" hit bun's 5 s default timeout.
+        It allocates about 900 MB while 12 shards run. It passed 5 of 5
+        alone and the re-run gate was green. The cause is unproven.
+      - The review's other finding stays open for its own item: an
+        exited persistent child stays in the registry, so a teardown
+        signals its old pid's group, which the kernel may have handed to
+        another group.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -374,8 +374,15 @@ both sides. The task's side has to CREATE a unix socket under SRT's seccomp
 filter, so `prepareSandbox` arms `allowAllUnixSockets` for the run whenever
 a task declares a port list (or `unixSockets`) — per run, like the proxy
 allowlist, because SRT reads it at `initialize()` only. `releaseBridges(tag)`
-stops the host side: `runSandboxed` calls it after the child exits, the
-persistent path on the server's exit, `resetSandbox` for whatever is left.
+stops the host side: `runSandboxed` calls it after the child exits (and
+when the spawn itself fails), the persistent path on the server's exit,
+`resetSandbox` for whatever is left. Each host socat is spawned through
+`spawnGuarded`, in a group of its own, and its group is SIGTERMed and
+struck from the guard's list once it has exited (`kill-tree.md`): a plain
+child of vx was in no group the guard lists, and a `kill -9` of vx left it
+listening under init, where the next run's bridge could not bind the port
+(item 873, `sandbox-runtime.unsafe.test.ts` › "a kill -9 of vx takes the
+host side of a port bridge with it").
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.

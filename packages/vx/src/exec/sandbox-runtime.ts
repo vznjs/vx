@@ -57,7 +57,13 @@ import {
   unique,
 } from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
-import { closeSignalChannel, releaseGroup, signalThrough, spawnGuarded } from './kill-tree.js'
+import {
+  closeSignalChannel,
+  killTree,
+  releaseGroup,
+  signalThrough,
+  spawnGuarded,
+} from './kill-tree.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
@@ -706,12 +712,19 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
     try {
+      // Guarded, in a group of its own (kill-tree.ts): a plain child of vx
+      // was in no group the guard lists, and a `kill -9` of vx left it
+      // listening on the port under init, where the next run's bridge
+      // could not bind it (item 873).
       procs.push(
-        Bun.spawn(portBridgeHostArgv(tag, p), {
-          stdin: 'ignore',
-          stdout: 'ignore',
-          stderr: 'ignore',
-        }),
+        spawnGuarded(() =>
+          Bun.spawn(portBridgeHostArgv(tag, p), {
+            stdin: 'ignore',
+            stdout: 'ignore',
+            stderr: 'ignore',
+            detached: true,
+          }),
+        ),
       )
     } catch {
       // see above
@@ -726,11 +739,10 @@ export function releaseBridges(tag: string): void {
   if (procs === undefined) return
   hostBridges.delete(tag)
   for (const p of procs) {
-    try {
-      p.kill('SIGTERM')
-    } catch {
-      // already gone
-    }
+    // The group: a socat forks one child per connection. Listed on the
+    // guard until it has gone (item 867's order).
+    killTree(p, 'SIGTERM')
+    void p.exited.then(() => releaseGroup(p))
   }
 }
 
@@ -811,6 +823,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   } catch (err) {
     const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
     args.onStderr?.(stderr)
+    releaseBridges(tag)
     return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, violations: [] }
   }
 
