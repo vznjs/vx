@@ -1,4 +1,4 @@
-import type { TaskConfig } from '../config.js'
+import type { ProjectConfig, TaskConfig } from '../config.js'
 import { asTrees, isLiteralPattern, taskGlob, UserError } from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import {
@@ -178,9 +178,23 @@ export function expandRequested(
   return out
 }
 
+/**
+ * The task a config declares under `name`, by OWN property. `tasks` is a
+ * plain object, so `tasks['constructor']` and `tasks['toString']` are
+ * Object.prototype's: `vx show constructor` printed a group task for every
+ * project and `vx run a#toString` ran nothing, exit 0 (item 897).
+ */
+export function declaredTask(
+  config: ProjectConfig | null | undefined,
+  name: string,
+): TaskConfig | undefined {
+  const tasks = config?.tasks
+  return tasks !== undefined && Object.hasOwn(tasks, name) ? tasks[name] : undefined
+}
+
 /** Shared by `expandRequested` + `unresolvedRequests` so the two can't drift. */
 function declaresTask(projects: Map<string, ProjectEntry>, project: string, task: string): boolean {
-  return projects.get(project)?.config.tasks?.[task] !== undefined
+  return declaredTask(projects.get(project)?.config, task) !== undefined
 }
 
 /**
@@ -301,7 +315,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
     const project = projects.get(projectName)
     if (!project) return false
-    const taskConfig = project.config.tasks?.[taskName]
+    const taskConfig = declaredTask(project.config, taskName)
     if (!taskConfig) return false
 
     const node: TaskNode = {

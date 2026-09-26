@@ -17,6 +17,7 @@ export {
 } from './scheduler.js'
 export {
   buildTaskGraph,
+  declaredTask,
   detectCycle,
   excludeDependencies,
   expandRequested,

@@ -290,6 +290,18 @@ describe('vx show (e2e)', () => {
   )
 
   it(
+    'a name Object.prototype carries is an unknown task, not a group (item 897)',
+    async () => {
+      const bare = await vx(root, ['show', 'constructor'])
+      const scoped = await vx(root, ['show', 'app#toString'])
+      expect([bare.code, scoped.code]).toEqual([1, 1])
+      expect(bare.err).toContain('unknown project or task: "constructor"')
+      expect(scoped.err).toContain('unknown task: "app#toString"')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'invalid --format is a parse error',
     async () => {
       const r = await vx(root, ['show', '--format', 'yaml'])
