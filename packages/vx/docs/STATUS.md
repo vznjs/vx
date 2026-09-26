@@ -551,6 +551,17 @@ test is telling the truth.
         build (it rejects either way, only with another message).
         `vx-docs`'s scripts are now swept.
 
+839.  DONE (2026-09-26, a stale name). `choosing.ts` said its sources
+      are checked by `tests/learn-choosing.test.ts`, a file that was
+      renamed to `compare.test.ts`, which still holds both checks (every
+      other tool's cell links that tool's docs; every vx cell a site
+      page or a test row that exists). A scan of every tracked code file
+      for a `tests/….test.ts` that does not exist found no other stale
+      name. It found four references a law would have to exempt: a label
+      beside its full URL, a CI comment on core's suite, a prose
+      mention of another package's test, and a hypothetical in a
+      comment. So there is no law; the scan is recorded here instead.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

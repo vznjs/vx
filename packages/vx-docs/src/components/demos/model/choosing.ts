@@ -8,7 +8,7 @@
 // source on 2026-09-24 (vercel/turborepo, nrwl/nx and bazelbuild/bazel)
 // and links to the published page. A vx source is a site page (relative to
 // the base) or a GitHub link to the test that holds the claim, with the
-// row's title; `tests/learn-choosing.test.ts` checks both resolve.
+// row's title; `tests/compare.test.ts` checks both resolve.
 
 export type Tool = 'vx' | 'turbo' | 'nx' | 'bazel'
 
