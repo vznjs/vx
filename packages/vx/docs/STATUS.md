@@ -151,6 +151,19 @@ test is telling the truth.
       - Row: `turbo-map-sweep.test.ts` › a root `pkg#task` replaces the
         generic task for its package, while the others keep it. Red
         without the fix.
+936.  DONE (2026-09-26, the turbo() review's leads 2 and 7). Two input
+      lists mapped wrong.
+      - `inputs: []` is Turbo's default, every package file. It was
+        mapped as no files, so an edit to the package replayed a stale
+        build.
+      - A list of exclusions alone (`["!**/*.md"]`) was refused by core,
+        and that refusal failed the whole run.
+      - An empty list now maps to `**/*`, and exclusions alone narrow
+        `**/*`. The widest reading can cost a hit, never serve a stale
+        one. The README says so.
+      - Rows: `turbo-map-sweep.test.ts` › inputs `[]` and `["!**/*.md"]`,
+        each red without the fix, plus a control that a list with a
+        positive entry is left as it is.
 
 ## In flight
 

@@ -433,8 +433,10 @@ function buildTask(
     // globalDependencies are workspace-root-relative by definition —
     // they map to inputs.workspaceFiles, not project-relative files.
     const wsFiles: unknown[] = [...global('inputs')]
-    if (def.inputs === undefined) {
-      // Turbo's default input set is every package file.
+    if (def.inputs === undefined || def.inputs.length === 0) {
+      // Turbo's default input set is every package file, and an empty
+      // `inputs` is that default: mapped as no files, it keyed on nothing
+      // in the package and an edit replayed a stale build (item 936).
       files.push('**/*')
     } else {
       for (const i of def.inputs) {
@@ -457,6 +459,13 @@ function buildTask(
               'prefix (→ cache.inputs.workspaceFiles) — map manually',
           )
         } else files.push(i)
+      }
+      // Exclusions alone narrow every package file: core refuses a list
+      // with nothing to narrow, and that refusal failed the whole run
+      // (item 936). Every file is the widest reading, so it can cost a
+      // hit and never serve a stale one.
+      if (files.length > 0 && files.every((f) => typeof f === 'string' && f.startsWith('!'))) {
+        files.unshift('**/*')
       }
     }
 
