@@ -261,6 +261,16 @@ test is telling the truth.
       - Row: `yarn.test.ts` (item 903), a patch entry with no `npm:` key
         whose hash changes. It fails without the fix. On the review's
         real Yarn 4 repro the run misses. The README says so.
+904.  DONE (2026-09-26, the same review's minor lead). A pnpm lockfile
+      the plugin could not read was refused as "pnpm-lock.yaml:
+      pnpm-lock.yaml is not a YAML document". The plugin prefixes a
+      parser's message with its file unless the message opens with
+      `<file>:`, and pnpm's parser named it another way. The same was
+      fixed for bun on 2026-09-20.
+      - The class is held now: one row in `refusal-message.test.ts` pins
+        each manager's whole refusal, file named once, the install that
+        fixes it, and the side it came from. Only pnpm's entry fails
+        without the fix.
 
 ## In flight
 
