@@ -183,6 +183,48 @@ describe('nx-map: what the sweep found unheld', () => {
       '6 implicit Nx deps not representable (a → b, a → c, a → d, a → e, a → f and 1 more); review dependsOn',
     ])
   })
+
+  // Item 931: a manifest path through a third project orders `^build` and
+  // folds the key as a direct entry does, so it is no implicit dep; a
+  // two-project graph per edge saw only the direct entry. The control
+  // drops b's entry on c, and the edge is implicit again.
+  it('implicit deps: a manifest path through another project is no implicit dep', async () => {
+    const notes: string[][] = []
+    for (const bLinksC of [true, false]) {
+      const metas: ProjectMeta[] = []
+      const deps: Record<string, Record<string, string>> = {
+        a: { b: 'workspace:*' },
+        b: bLinksC ? { c: 'workspace:*' } : {},
+        c: {},
+      }
+      const nodes: Record<string, unknown> = {}
+      for (const n of ['a', 'b', 'c']) {
+        const m = await meta(n)
+        metas.push({ ...m, packageJson: { name: n, dependencies: deps[n] } as never })
+        nodes[n] = node(`packages/${n}`, { lint: { command: 'x' } })
+      }
+      const m = await mapNxWorkspace(
+        root,
+        metas,
+        {
+          nodes,
+          dependencies: {
+            a: [
+              { source: 'a', target: 'b' },
+              { source: 'a', target: 'c' },
+            ],
+            b: [{ source: 'b', target: 'c' }],
+          },
+        } as NxGraph,
+        OPTS,
+      )
+      notes.push(m.notes)
+    }
+    expect(notes).toEqual([
+      [],
+      ['2 implicit Nx deps not representable (a → c, b → c); review dependsOn'],
+    ])
+  })
 })
 
 // Item 910: Nx hashes a `^name` input over the project graph's
