@@ -565,6 +565,34 @@ exit`.
       - Not reproducible on Linux, and so not proven: the rows it copies
         have held since 853.
 
+879.  DONE (2026-09-26, found beside 877). A green gate left ~27
+      entries in the sandbox tmpdir, and 1,080 had piled up in
+      `/tmp/claude`.
+      - `vx-plugin-pkgs-2-*` (478): `tests/helpers/plugin.ts` sweeps
+        the roots of dead pids. Under the sandbox every shard's test
+        process is pid 2 in its own namespace, so pid 2 always looked
+        alive and nothing was swept. A root idle for an hour is now
+        swept whatever its pid says. Row: `fixture-helpers.test.ts` ›
+        "sweeps a root idle for an hour even when its pid is alive",
+        which fails without the change.
+      - `nxt-e2e-*`: `orchestrator-run.test.ts` made a second workspace
+        it never used or removed (`void f1`). The workspace is gone.
+      - `vx-cio-link-*`: the link's parent directory was never removed.
+        `vx-bunver-*`: the `vx info` row's root was never removed. Both
+        are removed now.
+      - `vx-run-*` (keep-alive): a SIGKILLed vx leaves its run lock,
+        keyed by the fixture root. The file's `afterEach` removes
+        `runLockPath(root)`.
+      - Each file, run alone, now leaves nothing in the temp dir. The
+        gate after the fix left the live shards' 12 plugin roots (the
+        next run an hour on sweeps them) and one other root.
+      - Open, cause unknown: in two gates, one root was left PARTLY
+        removed. It still held a cache dir and some fixture files, and
+        others were gone: `vx-plan-e2e-*` with `caches/plain`
+        (`plan-predict.test.ts`), and `vx-prep-*` with `.vx/cache/cache.db`
+        and `.git/info/exclude` (`prepare-run.test.ts`). Both files remove
+        their root in `afterEach`, and neither reproduced alone.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
