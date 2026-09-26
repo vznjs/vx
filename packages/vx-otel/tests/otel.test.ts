@@ -231,7 +231,7 @@ describe('OTLP builders', () => {
       exitOk: false,
       tasks: [],
     }
-    const req = buildMetricsRequest('vx', summary, '1000000000') as {
+    const req = buildMetricsRequest('vx', summary, '1000000000', '0') as {
       resourceMetrics: { scopeMetrics: { metrics: { name: string }[] }[] }[]
     }
     const names = req.resourceMetrics[0]!.scopeMetrics[0]!.metrics.map((m) => m.name)
@@ -359,7 +359,16 @@ describe('OtelSink end-to-end', () => {
     const sink = new OtelSink(cfg)
     driveOneTask(sink)
     await sink.flush()
-    expect(calls.some((c) => c.url === 'http://c/v1/metrics')).toBe(true)
+    // Item 927: a delta over the run itself, from its start to its end.
+    const metrics = calls.find((c) => c.url === 'http://c/v1/metrics')!.body as {
+      resourceMetrics: {
+        scopeMetrics: {
+          metrics: { sum?: { dataPoints: { startTimeUnixNano: string; timeUnixNano: string }[] } }[]
+        }[]
+      }[]
+    }
+    const point = metrics.resourceMetrics[0]!.scopeMetrics[0]!.metrics[0]!.sum!.dataPoints[0]!
+    expect([point.startTimeUnixNano, point.timeUnixNano]).toEqual(['0', '100000000'])
   })
 
   it('skips metrics when disabled', async () => {
@@ -900,7 +909,7 @@ describe('OTLP envelopes, exactly', () => {
     { key: 'service.version', value: { stringValue: '1.2.3' } },
   ]
 
-  it('the metrics request: every counter with its value, cumulative and monotonic, and the gauge', () => {
+  it('the metrics request: every counter with its value, a delta over the run, and the gauge', () => {
     const summary: RunSummaryRecord = {
       v: 1,
       run: RUN,
@@ -916,15 +925,19 @@ describe('OTLP envelopes, exactly', () => {
       exitOk: false,
       tasks: [],
     }
-    const sum = (name: string, v: number, attributes: unknown[] = []) => ({
-      name,
-      sum: {
-        dataPoints: [{ asInt: String(v), timeUnixNano: '9', attributes }],
-        aggregationTemporality: 2,
-        isMonotonic: true,
-      },
+    // Item 927: each count is the run's own, a DELTA from the run's start;
+    // the cache hits are one metric with a point per source.
+    const point = (v: number, attributes: unknown[] = []) => ({
+      asInt: String(v),
+      startTimeUnixNano: '4',
+      timeUnixNano: '9',
+      attributes,
     })
-    expect(buildMetricsRequest('vx', summary, '9')).toEqual({
+    const sum = (name: string, dataPoints: unknown[]) => ({
+      name,
+      sum: { dataPoints, aggregationTemporality: 1, isMonotonic: true },
+    })
+    expect(buildMetricsRequest('vx', summary, '9', '4')).toEqual({
       resourceMetrics: [
         {
           resource: { attributes: resource },
@@ -932,11 +945,11 @@ describe('OTLP envelopes, exactly', () => {
             {
               scope: { name: 'vx', version: '1.2.3' },
               metrics: [
-                sum('vx.tasks.total', 5),
-                sum('vx.tasks.failed', 1),
-                sum('vx.tasks.cache_hits', 2, [{ key: 'source', value: { stringValue: 'local' } }]),
-                sum('vx.tasks.cache_hits', 1, [
-                  { key: 'source', value: { stringValue: 'remote' } },
+                sum('vx.tasks.total', [point(5)]),
+                sum('vx.tasks.failed', [point(1)]),
+                sum('vx.tasks.cache_hits', [
+                  point(2, [{ key: 'source', value: { stringValue: 'local' } }]),
+                  point(1, [{ key: 'source', value: { stringValue: 'remote' } }]),
                 ]),
                 {
                   name: 'vx.run.duration_ms',

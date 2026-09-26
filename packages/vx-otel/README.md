@@ -68,6 +68,8 @@ otel({
 
 **Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
 `vx.tasks.cache_hits{source=local|remote}`, and the `vx.run.duration_ms` gauge.
+The counts are DELTA sums over the run's own interval (start to end), so a
+backend adds runs rather than reading each as the series' new total.
 
 ## Behavior note
 

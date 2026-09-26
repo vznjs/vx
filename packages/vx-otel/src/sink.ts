@@ -256,7 +256,12 @@ export class OtelSink implements TelemetrySink {
   private async shipMetrics(): Promise<void> {
     if (!this.cfg.metricsEnabled || this.summary === undefined) return
     const body = JSON.stringify(
-      buildMetricsRequest(this.cfg.serviceName, this.summary, nanos(this.summary.endedAt)),
+      buildMetricsRequest(
+        this.cfg.serviceName,
+        this.summary,
+        nanos(this.summary.endedAt),
+        nanos(this.summary.startedAt),
+      ),
     )
     await this.send('metrics', this.cfg.metricsUrl, body)
   }
