@@ -199,6 +199,27 @@ test is telling the truth.
       - A run id beside `--list` is refused, rather than dropped.
       - Row: `last.test.ts` › `parseLastArgs`, with the exact results of
         the forms side by side. It fails without the fix.
+900.  DONE (2026-09-26, the same review's lead 2, its last). A reading
+      verb made a cache. `vx last --cache-dir .vx/cahce` created the
+      typo's directory, a `.gitignore` and a database, then said "no
+      recorded runs yet". `why`, `info` and a dry prune did the same, and
+      on a workspace that never ran each of them created `.vx`.
+      - `Cache.inspect` over a directory with no `cache.db` now reads an
+        empty index in memory and creates nothing.
+      - A `--cache-dir` the user names that is not there is refused by
+        name (`namedCacheDir`). `vx info` checks it itself, because
+        `collectInfo` also serves `vx mcp`, which passes the resolved
+        default of a workspace that may never have run.
+      - Rows: `inspect-no-create.test.ts` runs the four verbs both ways,
+        with the positive (a run does make `.vx`). Both rows fail without
+        the fix.
+      - The gate found two rows that leaned on the old behaviour. A
+        `vx info` orphan row wrote into the directory an earlier row's
+        `info` had made; it now makes the directory itself. The
+        `cliCacheDir` row resolved a directory that did not exist; it now
+        resolves one that does, and a new row pins the refusal. A first
+        draft put the check in `collectInfo` and broke the doctor's bun
+        row, which is how the `vx mcp` caller came to light.
 
 ## In flight
 

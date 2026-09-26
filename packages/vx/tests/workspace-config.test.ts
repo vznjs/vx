@@ -20,8 +20,17 @@ describe('parseCacheDirFlag', () => {
 
 describe('cliCacheDir', () => {
   it('resolves a relative --cache-dir against the working directory, as vx run does', async () => {
-    expect(await cliCacheDir('/nowhere', 'rel/cache')).toBe(
-      path.resolve(process.cwd(), 'rel/cache'),
+    // A directory that exists under the working directory (the suite's own).
+    expect(await cliCacheDir('/nowhere', 'tests')).toBe(path.resolve(process.cwd(), 'tests'))
+  })
+
+  it('refuses a --cache-dir that is not there, by name (item 900)', async () => {
+    let threw = ''
+    await cliCacheDir('/nowhere', 'rel/cache').catch((err: Error) => {
+      threw = err.message
+    })
+    expect(threw).toBe(
+      `--cache-dir rel/cache: no such directory (${path.resolve(process.cwd(), 'rel/cache')})`,
     )
   })
 })

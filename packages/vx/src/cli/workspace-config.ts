@@ -4,6 +4,7 @@
 // a directory the run never used — `vx last` found no runs, `vx cache
 // prune` pruned nothing, `vx watch` ignored the wrong path.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
@@ -58,6 +59,17 @@ export function parseCacheDirFlag(
 }
 
 /**
+ * A reading verb's `--cache-dir`, resolved against the working directory.
+ * Named explicitly, a directory that is not there is a typo to report, not
+ * an empty cache to read (item 900).
+ */
+export function namedCacheDir(override: string): string {
+  const dir = path.resolve(process.cwd(), override)
+  if (!existsSync(dir)) throw new UserError(`--cache-dir ${override}: no such directory (${dir})`)
+  return dir
+}
+
+/**
  * The cache directory a reading verb opens: `--cache-dir` resolved against
  * cwd exactly as `vx run` resolves it (prepare.ts), else the workspace's —
  * so `vx run --cache-dir X` and `vx last --cache-dir X` read one history.
@@ -66,7 +78,7 @@ export async function cliCacheDir(
   workspaceRoot: string,
   override: string | undefined,
 ): Promise<string> {
-  if (override !== undefined) return path.resolve(process.cwd(), override)
+  if (override !== undefined) return namedCacheDir(override)
   return (await loadCliWorkspace(workspaceRoot)).cacheDir
 }
 

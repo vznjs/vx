@@ -486,7 +486,10 @@ describe('vx info (e2e)', () => {
       // An aged row-less artifact: what a SCHEMA_VERSION reset leaves
       // behind. A fresh one is a save in flight and is not counted.
       const cacheDir = path.join(root, '.vx', 'cache')
-      const { utimes, writeFile, rm } = await import('node:fs/promises')
+      const { mkdir, utimes, writeFile, rm } = await import('node:fs/promises')
+      // Made here: an earlier row's `vx info` made it until item 900, when
+      // a reading verb stopped creating the cache directory.
+      await mkdir(cacheDir, { recursive: true })
       const aged = path.join(cacheDir, 'deadbeefdeadbeef.tar.zst')
       const fresh = path.join(cacheDir, 'feedfacefeedface.tar.zst')
       await writeFile(aged, 'x'.repeat(2048))

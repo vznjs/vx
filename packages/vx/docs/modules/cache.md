@@ -470,7 +470,10 @@ tables) when the SQLite schema changes. Only an earlier schema is
 dropped, and only by a writing opener: `Cache.inspect(dir)` (a reading
 verb) refuses any schema it cannot read, and every opener refuses a
 newer one, each with a `UserError` that names the directory and both
-versions and leaves the index as it was (item 896). The open that drops them says
+versions and leaves the index as it was (item 896). Over a directory
+with no `cache.db`, `Cache.inspect` reads an empty index in memory and
+creates nothing on disk: no directory, no `.gitignore`, no database
+(item 900). The open that drops them says
 so: `Cache.schemaReset` carries `{ from, to }` on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
 status line, or a verb's stderr — `[vx] cache index reset: schema v24 →
