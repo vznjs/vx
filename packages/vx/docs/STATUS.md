@@ -394,6 +394,23 @@ exit`.
         lock row now names what a leftover directory holds, so a
         recurrence says whether the hook ran.
 
+868.  DONE (2026-09-26, item 867's race, the class grepped). Two more
+      exit-cleanup lists struck their file before its async unlink
+      landed, so an exit in between left the file:
+      - `vx-migrate`'s verified-download temp (`removeTemp`);
+      - the sandbox's strace log.
+
+      Both now unlink first and unlist after. Row:
+      `vx-migrate/tests/turbo-cache-exit.test.ts` › "an exit while a
+      verified temp is being removed still takes it". It mocks
+      `node:fs/promises` so the unlink stays pending, emits `exit` inside
+      that window, and fails without the fix. An earlier draft timed the
+      exit with twenty microtasks, and it passed without the fix: the
+      cancel awaits the file reader first, so the window was never
+      reached. The strace-log twin has no row, since the window sits
+      inside a sandboxed run and no hook reaches it. The other `.delete`
+      sites clear kill registries, not exit-cleanup lists.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
