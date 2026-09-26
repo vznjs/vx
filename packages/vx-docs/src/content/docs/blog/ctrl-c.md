@@ -19,13 +19,17 @@ vx has one teardown, and every way a run can end goes through it.
 
 ## The teardown
 
-1. Every live child receives `SIGTERM`.
+1. Every live child's process group receives the signal vx got:
+   `SIGINT` stays `SIGINT`, so a Ctrl-C cleanup runs, and `SIGTERM` or
+   `SIGHUP` arrives as `SIGTERM`.
 2. vx waits a grace period, two seconds by default,
    `VX_KILL_GRACE_MS` to change it.
 3. It re-reads its registries, because a child may have spawned during
    the grace, and sends `SIGKILL` to anything still alive.
-4. It reaps, so nothing is left as a zombie, and only then does the
-   process exit.
+4. It reaps, so nothing is left as a zombie. Then the run finishes the
+   way any run does: the summary prints, every telemetry sink flushes
+   and every plugin tears down, each within its bound. Only then does
+   the process exit.
 
 The exit code says what happened: 130 after `SIGINT`, 143 after
 `SIGTERM`, 129 after `SIGHUP`, the child's own code when a foreground

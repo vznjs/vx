@@ -797,6 +797,14 @@ test is telling the truth.
       `signal-handling.test.ts` › "a Ctrl-C leaves the history as it
       was", which fails without the guard.
 
+855.  DONE (2026-09-26, the Ctrl-C post says what vx does). The site's
+      `blog/ctrl-c.md` listed the teardown as SIGTERM to every child and
+      an exit straight after the reap. The first has been wrong since
+      2026-09-24: vx forwards the signal it got, a SIGINT as SIGINT. The
+      second has been wrong since item 849: the run then finishes its
+      own end, with the summary, the flushes and the teardowns. Both
+      steps now say so.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
