@@ -9,7 +9,7 @@ import { mapNxDeps } from '../src/nx/nx-deps.js'
 function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
   const into = emptyNxInputs()
   const todos: string[] = []
-  expandNxInputs(entries, named, into, todos)
+  expandNxInputs(entries, named, { rel: 'packages/a', name: 'a' }, into, todos)
   return { ...into, todos }
 }
 
@@ -66,7 +66,7 @@ describe('mapNxOutputs', () => {
     options: Record<string, unknown> = {},
   ) => {
     const todos: string[] = []
-    return { ...mapNxOutputs(outputs, options, projectRel, todos), todos }
+    return { ...mapNxOutputs(outputs, options, projectRel, 'a', todos), todos }
   }
 
   it('a glob is kept as written; a bare directory, root-relative or not, captures its tree', () => {
@@ -127,5 +127,51 @@ describe('mapNxDeps', () => {
         'dependsOn {"projects":"self"} has no target — dropped',
       ],
     })
+  })
+})
+
+// Item 912: Nx interpolates `{workspaceRoot}`, `{projectRoot}` and
+// `{projectName}` anywhere in a path. Only a leading token was read, so
+// `@nx/jest`'s `{workspaceRoot}/coverage/{projectRoot}` output became the
+// literal glob `coverage/{projectRoot}/**` and a hit restored nothing.
+describe('a token anywhere in a path interpolates as Nx does', () => {
+  it('outputs: after the root, in the name, and one that lands in the project', () => {
+    const todos: string[] = []
+    const got = mapNxOutputs(
+      [
+        '{workspaceRoot}/coverage/{projectRoot}',
+        '{workspaceRoot}/dist/{projectName}',
+        '{workspaceRoot}/packages/a/build',
+        'dist/{options.a}/{options.b}',
+        '{workspaceRoot}/../escape',
+      ],
+      { a: 'x', b: 'y' },
+      'packages/a',
+      'a',
+      todos,
+    )
+    expect(got).toEqual({
+      outFiles: ['build/**'],
+      wsOutFiles: ['coverage/packages/a/**', 'dist/a/**', 'dist/x/y/**'],
+    })
+    expect(todos).toEqual(['output "{workspaceRoot}/../escape" uses a token vx does not support'])
+  })
+
+  it('outputs of the root project', () => {
+    const got = mapNxOutputs(['{workspaceRoot}/coverage/{projectRoot}x'], {}, '.', 'r', [])
+    expect(got).toEqual({ outFiles: ['coverage/x/**'], wsOutFiles: [] })
+  })
+
+  it('inputs: in and out of the project, negated too', () => {
+    const got = inputs([
+      '{workspaceRoot}/coverage/{projectRoot}/**',
+      '{projectRoot}/src/{projectName}.ts',
+      '!{workspaceRoot}/cfg/{projectName}.json',
+    ])
+    expect([got.files, got.wsFiles, got.todos]).toEqual([
+      ['src/a.ts'],
+      ['coverage/packages/a/**', '!cfg/a.json'],
+      [],
+    ])
   })
 })

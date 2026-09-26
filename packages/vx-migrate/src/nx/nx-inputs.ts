@@ -1,10 +1,13 @@
 // An Nx target's `inputs` as vx's cache inputs. Named inputs expand from
-// the project's scope (nx.json's merged under its own); `{projectRoot}/…`
-// is a project glob, `{workspaceRoot}/…` a workspace one; `{ env }` and
+// the project's scope (nx.json's merged under its own); a path's tokens
+// interpolate as Nx's do, and it is a project glob when it lands in the
+// project, else a workspace one; `{ env }` and
 // `{ runtime }` map to their vx twins; `^x` is recorded for the mapper to
 // resolve over the project graph (nx-upstream.ts). What vx folds through `dependsOn` already
 // (`dependentTasksOutputFiles`, `externalDependencies`) is a todo saying
 // so. Extracted from `buildTask` in item 606.
+
+import { nxWorkspacePath, underProject } from './nx-outputs.js'
 
 export interface NxInputs {
   readonly files: string[]
@@ -29,6 +32,7 @@ export function emptyNxInputs(): NxInputs {
 export function expandNxInputs(
   entries: readonly unknown[],
   named: Readonly<Record<string, unknown[]>>,
+  at: { readonly rel: string; readonly name: string },
   into: NxInputs,
   todos: string[],
 ): void {
@@ -40,14 +44,6 @@ export function expandNxInputs(
         neg = '!'
         s = s.slice(1)
       }
-      if (s.startsWith('{projectRoot}/')) {
-        into.files.push(neg + s.slice('{projectRoot}/'.length))
-        return
-      }
-      if (s.startsWith('{workspaceRoot}/')) {
-        into.wsFiles.push(neg + s.slice('{workspaceRoot}/'.length))
-        return
-      }
       if (s.startsWith('^')) {
         if (neg !== '') {
           todos.push(`input ${JSON.stringify(entry)}: a negated dependency input — map manually`)
@@ -57,7 +53,15 @@ export function expandNxInputs(
         return
       }
       if (s.includes('{')) {
-        todos.push(`input ${JSON.stringify(entry)} uses a token vx does not support`)
+        // A token anywhere, as Nx interpolates it (item 912).
+        const p = nxWorkspacePath(s, at.rel, at.name)
+        if (p === null) {
+          todos.push(`input ${JSON.stringify(entry)} uses a token vx does not support`)
+          return
+        }
+        const own = underProject(p, at.rel)
+        if (own === null) into.wsFiles.push(neg + p)
+        else into.files.push(neg + own)
         return
       }
       // Bare string = named-input reference.

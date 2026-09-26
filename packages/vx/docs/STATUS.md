@@ -374,6 +374,19 @@ echo A; echo B` went green after a failed pre hook, and a cache
         directories (three new, each failing without its fix; the
         directory-only rows are controls). Found, not fixed: a graft
         takes a record's files and directories, not its symlinks.
+912.  DONE (2026-09-26, the nx() review's lead 3). Nx interpolates
+      `{workspaceRoot}`, `{projectRoot}` and `{projectName}` anywhere in a
+      path; the mapper read only a leading token. `@nx/jest`'s
+      `{workspaceRoot}/coverage/{projectRoot}` output became the literal
+      glob `coverage/{projectRoot}/**`, saved nothing, and a hit restored
+      nothing. Outputs also resolved only their first `{options.x}`.
+      - One helper, `nxWorkspacePath`, interpolates to a workspace path;
+        a path that lands in the project is a project glob, else a
+        workspace one. Inputs go through it too.
+      - Rows: `nx-helpers-sweep.test.ts` › a token anywhere in a path
+        (three). With the old leading-token rule put back in the new
+        code, those three fail and nothing else does. The review's repro
+        now restores `coverage/packages/app/lcov.info` on a hit.
 
 ## In flight
 
