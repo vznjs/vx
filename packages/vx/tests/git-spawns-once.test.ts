@@ -26,7 +26,10 @@ const CONFIG = `
   }
 `
 
-const ENUMERATION = ['var -l', 'rev-parse --show-prefix --git-common-dir --show-object-format']
+const ENUMERATION = [
+  '--no-optional-locks var -l',
+  'rev-parse --show-prefix --git-common-dir --show-object-format',
+]
 
 describe('git spawns on a cold run', () => {
   let root: string
@@ -76,7 +79,11 @@ describe('git spawns on a cold run', () => {
     'unscoped: one rev-parse, asked by the enumeration, answers the hasher too',
     async () => {
       expect(await coldRun(['build', '--all'])).toEqual(
-        [...ENUMERATION, 'ls-files -s -v -z -- .', 'status --porcelain -z -uall -- .'].sort(),
+        [
+          ...ENUMERATION,
+          '--no-optional-locks ls-files -s -v -z -- .',
+          '--no-optional-locks status --porcelain -z -uall -- .',
+        ].sort(),
       )
     },
     TIMEOUT,
@@ -88,8 +95,8 @@ describe('git spawns on a cold run', () => {
       expect(await coldRun(['a#build'])).toEqual(
         [
           ...ENUMERATION,
-          'ls-files -s -v -z -- packages/a',
-          'status --porcelain -z -uall -- packages/a',
+          '--no-optional-locks ls-files -s -v -z -- packages/a',
+          '--no-optional-locks status --porcelain -z -uall -- packages/a',
         ].sort(),
       )
     },
