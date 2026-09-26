@@ -670,6 +670,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // core restored its outputs here before this task started).
       const fileGrafts: FileGraft[] = []
       const treeGrafts: TreeGraft[] = []
+      const symlinkGrafts: { path: string; target: string }[] = []
       const localUpstreamPaths: string[] = []
       for (const up of req.inputs.upstream) {
         // LOCAL DISK IS TRUTH when the upstream's outputs are materialised
@@ -728,6 +729,12 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             isExecutable: f.is_executable === true,
           })
         }
+        // A record's symlinks are outputs too (a worker's own, and a glob's
+        // last-segment matches since item 911); without them the action ran
+        // without an input it declared, and its result was cached (item 920).
+        for (const sl of record.output_symlinks ?? []) {
+          symlinkGrafts.push({ path: sl.path, target: sl.target })
+        }
         for (const d of record.output_directories ?? []) {
           const treeBlob = await client.readBlob(d.tree_digest)
           if (treeBlob === null) {
@@ -766,6 +773,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         ensureDirs: [workingDirectory, projectRel],
         fileGrafts,
         treeGrafts,
+        symlinkGrafts,
       })
       for (const shadowedPath of tree.shadowed) {
         warn(

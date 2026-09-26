@@ -486,6 +486,15 @@ echo A; echo B` went green after a failed pre hook, and a cache
         and streamed) and a Read that stays unavailable fails once the
         budget is spent, both red without the fix. Item 916's replay rows
         inject INTERNAL now, which still reaches the fall-through.
+920.  DONE (2026-09-26, found fixing item 911). A consumer of a
+      remote-only upstream grafts the upstream's execution record into its
+      input root by reference; the graft took the record's files and
+      directories but not its symlinks, so the action ran without an input
+      it declared and its result was cached under a key asserting it.
+      - The record's `output_symlinks` graft as symlinks of the input tree.
+      - Row: `executor-sweep.test.ts` › a record graft keeps the
+        upstream's symlinks, red without the fix. That closes the
+        vx-reapi review.
 
 ## In flight
 
