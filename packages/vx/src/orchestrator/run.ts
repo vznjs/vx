@@ -928,7 +928,9 @@ async function runOnBus(
       )
     }
     mark('output dir snapshots')
-    await applyCacheRetention(prepared, log)
+    // Not on a stopped run: one stopped while it waited on another run's
+    // lock never held it, and its prune evicted under that run (item 858).
+    if (!stopRun.signal.aborted) await applyCacheRetention(prepared, log)
     await teardownPlugins(prepared.plugins, (m) => log.status(m))
     await closeCache()
     mark('close')

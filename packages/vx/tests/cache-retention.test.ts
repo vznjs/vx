@@ -318,6 +318,28 @@ describe('a run applies the workspace retention at its end', () => {
     ])
   })
 
+  // A stopped run is not a run that finished its work. A Ctrl-C while one
+  // waits on another run's lock stops it before it holds the lock, and
+  // since item 849 a stopped run finishes its own path: its retention
+  // evicted while the other run held the lock (item 858). An aborted
+  // signal is the same stop, in-process.
+  it('a stopped run evicts nothing', async () => {
+    const cacheDir = await setup("cacheRetention: { olderThan: '1d' }")
+    const log = logger()
+    const stop = new AbortController()
+    stop.abort()
+    await run({
+      cwd: root,
+      tasks: ['build'],
+      projects: ['b'],
+      log,
+      handleSignals: false,
+      signal: stop.signal,
+    })
+    expect(projects(cacheDir)).toEqual(['a', 'b'])
+    expect(log.lines.filter((l) => l.includes('cache retention'))).toEqual([])
+  })
+
   it('reaps row-less artifacts a deleted index left, and says so', async () => {
     const cacheDir = await setup("cacheRetention: { maxSize: '1MB' }")
     // The index goes (deleted by hand, or dropped by a schema reset); its
