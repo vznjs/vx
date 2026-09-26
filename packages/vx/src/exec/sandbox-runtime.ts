@@ -892,8 +892,9 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
     : []
   if (straceLog) {
-    liveTraceLogs.delete(straceLog)
+    // Listed until the unlink lands, as the run lock's taking (item 868).
     await unlink(straceLog).catch(() => undefined)
+    liveTraceLogs.delete(straceLog)
   }
 
   // Apply the task's own ignoreViolations on top of the global defaults.

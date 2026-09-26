@@ -116,8 +116,10 @@ function trackTemp(file: string): void {
 }
 
 async function removeTemp(file: string): Promise<void> {
-  liveTemps.delete(file)
+  // Listed until the unlink lands: an exit in between would otherwise find
+  // nothing to remove and leave the temp (item 868).
   await unlink(file).catch(() => undefined)
+  liveTemps.delete(file)
 }
 
 /** The verified temp as a body that deletes the temp once read to the end or cancelled. */
