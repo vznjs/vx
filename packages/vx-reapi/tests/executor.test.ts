@@ -99,15 +99,28 @@ describe('commandEnvironment', () => {
     ({ env }) as unknown as NonNullable<ExecuteRequest['inputs']>
 
   it('carries exec.env.define across to the worker', () => {
-    expect(commandEnvironment(inputs([]), { NODE_ENV: 'production' })).toEqual([
+    expect(commandEnvironment(inputs([]), { NODE_ENV: 'production' }, {})).toEqual([
       { name: 'NODE_ENV', value: 'production' },
     ])
   })
 
   it('carries cache.inputs.env values, which are already folded into the key', () => {
-    expect(commandEnvironment(inputs([{ name: 'API_URL', value: 'https://x' }]), {})).toEqual([
-      { name: 'API_URL', value: 'https://x' },
-    ])
+    expect(
+      commandEnvironment(
+        inputs([{ name: 'API_URL', value: 'https://x' }]),
+        {},
+        { API_URL: 'https://x' },
+      ),
+    ).toEqual([{ name: 'API_URL', value: 'https://x' }])
+  })
+
+  // Item 1092: a name the config only tracks is keyed but never reaches the
+  // local child, and the worker ran on it under the same key.
+  it('leaves out a cache.inputs.env name the local child does not get', () => {
+    expect(commandEnvironment(inputs([{ name: 'TRACKED', value: 'prod' }]), {}, {})).toEqual([])
+    expect(
+      commandEnvironment(inputs([{ name: 'TRACKED', value: 'prod' }]), {}, { TRACKED: 'other' }),
+    ).toEqual([])
   })
 
   // The worker runs what the key describes: an unset name is absent there, as
@@ -120,6 +133,7 @@ describe('commandEnvironment', () => {
           { name: 'GONE', value: undefined },
         ]),
         {},
+        { EMPTY: '' },
       ),
     ).toEqual([{ name: 'EMPTY', value: '' }])
   })
@@ -130,15 +144,27 @@ describe('commandEnvironment', () => {
   // end-to-end against a live worker in exec-e2e). What this function owns is
   // the SET: one entry per name, whatever order the config declared them in.
   it('yields one entry per name, however the config declared them', () => {
-    const a = commandEnvironment(inputs([{ name: 'MID', value: '1' }]), { ZED: 'z', ALPHA: 'a' })
-    const b = commandEnvironment(inputs([{ name: 'MID', value: '1' }]), { ALPHA: 'a', ZED: 'z' })
+    const a = commandEnvironment(
+      inputs([{ name: 'MID', value: '1' }]),
+      { ZED: 'z', ALPHA: 'a' },
+      { MID: '1' },
+    )
+    const b = commandEnvironment(
+      inputs([{ name: 'MID', value: '1' }]),
+      { ALPHA: 'a', ZED: 'z' },
+      { MID: '1' },
+    )
     expect([...a].map((e) => e.name).sort()).toEqual(['ALPHA', 'MID', 'ZED'])
     expect([...b].map((e) => e.name).sort()).toEqual(['ALPHA', 'MID', 'ZED'])
   })
 
   it('a define wins over a same-named cache.inputs.env value, once', () => {
     expect(
-      commandEnvironment(inputs([{ name: 'MODE', value: 'ambient' }]), { MODE: 'declared' }),
+      commandEnvironment(
+        inputs([{ name: 'MODE', value: 'ambient' }]),
+        { MODE: 'declared' },
+        { MODE: 'ambient' },
+      ),
     ).toEqual([{ name: 'MODE', value: 'declared' }])
   })
 
@@ -151,7 +177,7 @@ describe('commandEnvironment', () => {
   // passed-through secret. A worker's PATH is the worker image's business;
   // the executor extends it in the command string, not here.
   it('declares nothing on its own: empty lists produce an empty environment', () => {
-    expect(commandEnvironment(inputs([]), {})).toEqual([])
+    expect(commandEnvironment(inputs([]), {}, { PATH: '/usr/bin', HOME: '/root' })).toEqual([])
   })
 })
 

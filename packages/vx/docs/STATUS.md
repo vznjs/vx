@@ -666,6 +666,24 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         neither `cache.db` nor its WAL contains `--mode`. That is red
         without the change; the file exists, checked first.
 
+1092. DONE (2026-09-27, env review #1; one key, two environments).
+      vx-reapi's `commandEnvironment` shipped every set `cache.inputs.env`
+      value to the worker. Locally, `buildIsolatedEnv` gives the child
+      only `passThrough`, essentials and `define`, so a name the config
+      only tracks (legal, schema.md) reached the remote child and not the
+      local one. `exec.remote` is stripped from the key, so both
+      placements shared one key, and whichever ran first filled the cache
+      the other replayed. An `inputs.env` name now crosses only when the
+      request's resolved child environment holds the same value, so the
+      worker sees what a local run would, as the README already claimed.
+      The README's advice for a value a worker needs is now
+      `cache.inputs.env` plus `passThrough`.
+      - Row: vx-reapi `executor.test.ts` › "leaves out a cache.inputs.env
+        name the local child does not get", with the name absent and with
+        another value, red without the change. The other rows now hand the
+        child's environment in, and the live env-order row passes `MID`
+        through so it still crosses.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

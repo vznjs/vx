@@ -150,7 +150,9 @@ describe('the action’s environment', () => {
         { name: 'D', value: 'from the host' },
       ],
     }
-    expect(commandEnvironment(inputs as never, { D: 'defined' })).toEqual([
+    expect(
+      commandEnvironment(inputs as never, { D: 'defined' }, { A: '1', D: 'from the host' }),
+    ).toEqual([
       { name: 'A', value: '1' },
       { name: 'D', value: 'defined' },
     ])
