@@ -684,6 +684,24 @@ test is telling the truth.
         does not parse (control); `@vzn/vx-lockfile`'s bun rows › a patch
         file's content moves every workspace. Red without the fix.
 
+1015. DONE (2026-09-27, the watch review's lead 5, a core stale hit). The
+      re-check before a save hashed an input whose ctime moved and compared
+      content, so an input edited and edited BACK while the command ran
+      matched the key again: with `src/a.ts` five → six → five during the
+      command, the entry filed six's output under five's key, and after
+      `rm -rf dist` the next run restored `six` over `five` with no warning.
+      Under `vx watch`, undo during a cycle did the same.
+      - Fix (`task-hash.ts`, `execute-task.ts`): an input written at or
+        after the describe (just before the command) has moved whatever it
+        holds, and is not read; a write before it (an upstream's) is judged
+        by content as before. The cost, taken on purpose: a task that
+        rewrites its own input to the same bytes is no longer saved (item
+        743's control is flipped). `caching.md` says so.
+      - Rows: `inputs-moved.test.ts` › edited and reverted while the
+        command runs (withheld, and the next run rebuilds), a same-bytes
+        rewrite is not saved, and a `movedInput` unit row with a
+        before-the-command write as the control. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

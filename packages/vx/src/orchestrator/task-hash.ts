@@ -131,7 +131,7 @@ export interface InputFact {
  */
 export async function describeTaskInputs(
   args: ComputeHashArgs,
-): Promise<{ hash: string; inputs: TaskInputs; facts: InputFact[] }> {
+): Promise<{ hash: string; inputs: TaskInputs; facts: InputFact[]; describedAt: number }> {
   const hashedAt = Date.now()
   const input = await resolveKeyInput(args)
   const hash = await args.cache.key(input)
@@ -180,6 +180,7 @@ export async function describeTaskInputs(
   return {
     hash,
     facts,
+    describedAt: hashedAt,
     inputs: {
       files,
       env: input.envValues.map(([name, value]) => ({ name, value })),
@@ -202,13 +203,16 @@ export async function describeTaskInputs(
  * a file whose ctime is older than its fact (by the racy window, as git
  * judges its index) has not been written since, and one that is not gets
  * hashed again and compared. ctime, because no writer can set it back. A
- * file that is gone has moved. An input changed and changed BACK before
- * the check is not seen: its content is the key's again, though the
- * command may have read the other.
+ * file that is gone has moved. One written at or after `commandFrom` (the
+ * describe just before the command) has moved whatever it holds now: an
+ * input changed and changed BACK while the command ran matched its digest
+ * again, and the entry saved the other content's output under the key (item
+ * 1015). A write before it — an upstream's — is judged by content, as before.
  */
 export async function movedInput(
   facts: readonly InputFact[],
   cache: CacheLayer,
+  commandFrom?: number,
 ): Promise<string | undefined> {
   const suspects: InputFact[] = []
   for (const f of facts) {
@@ -218,6 +222,7 @@ export async function movedInput(
     } catch {
       return f.path
     }
+    if (commandFrom !== undefined && ctimeMs >= commandFrom) return f.path
     if (ctimeMs >= f.since - FILE_HASH_RACY_MS) suspects.push(f)
   }
   for (const f of suspects) {

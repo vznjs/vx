@@ -101,10 +101,14 @@ describe('a task that rewrites its own input', () => {
   )
 
   it(
-    'control: a rewrite to the SAME bytes is saved, and the next run hits',
+    'a rewrite to the SAME bytes while the command runs is not saved either',
     async () => {
       // sed -i rewrites the file (a new inode, a new ctime) even when it
-      // changes nothing: the re-check compares content, not the write.
+      // changes nothing. Its bytes match the key, but a write during the
+      // command is indistinguishable from an edit reverted while it ran,
+      // whose output the entry would have filed under the key (item 1015):
+      // the write withholds the save. A formatter that rewrites what it
+      // does not change pays a re-run, never a stale hit.
       await addProject(root, 'app', {
         config: `
           export default {
@@ -121,8 +125,10 @@ describe('a task that rewrites its own input', () => {
       await writeFile(path.join(root, '.gitignore'), '.vx/\n')
       commit()
       await runTask('format')
-      expect(status.filter((l) => MOVED.test(l))).toEqual([])
-      expect(statusOf(await runTask('format'), 'app#format')).toBe('cache-hit')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+      ])
+      expect(statusOf(await runTask('format'), 'app#format')).toBe('success')
     },
     TIMEOUT,
   )
@@ -319,6 +325,49 @@ describe('an input the user edits during the run', () => {
     TIMEOUT,
   )
 
+  // Edited and edited BACK while the command ran: the content matches the
+  // key again, the output was built from the edit, and the entry filed it
+  // under the key — the next run restored it over the original source
+  // (item 1015). A write during the command withholds the save.
+  it(
+    'edited and reverted while the command runs: still withheld, and the next run rebuilds',
+    async () => {
+      const app = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat src/a.ts > dist/out.js; touch built; while [ ! -f done ]; do sleep 0.01; done' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+        files: { 'src/a.ts': 'X\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\nbuilt\ndone\n')
+      commit()
+      const pending = runTask('build')
+      await reached(path.join(app, 'started'))
+      await writeFile(path.join(app, 'src', 'a.ts'), 'EDITED\n')
+      await writeFile(path.join(app, 'go'), '')
+      await reached(path.join(app, 'built'))
+      await writeFile(path.join(app, 'src', 'a.ts'), 'X\n')
+      await writeFile(path.join(app, 'done'), '')
+      await pending
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+      ])
+      await rm(path.join(app, 'dist'), { recursive: true, force: true })
+      for (const f of ['started', 'go', 'built', 'done']) await writeFile(path.join(app, f), '')
+      const again = await runTask('build')
+      // Before the fix: a local hit restoring `EDITED` over `X`.
+      expect(statusOf(again, 'app#build')).toBe('success')
+      expect(await readFile(path.join(app, 'dist', 'out.js'), 'utf8')).toBe('X\n')
+    },
+    TIMEOUT,
+  )
+
   // `lib#gate` holds the run until the test releases it; `app#build` is
   // after it but keyed up front (another project, no outputs), so the edit
   // lands between the key and the command.
@@ -483,6 +532,20 @@ describe('movedInput — which files the re-check hashes again', () => {
         other.cache,
       ),
     ).toBe(f)
+  })
+
+  it('one written at or after the command started has moved, whatever it holds, and is not read', async () => {
+    const f = path.join(root, 'during.txt')
+    await writeFile(f, 'x')
+    const ctime = lstatSync(f).ctimeMs
+    const { cache, calls } = counting('d')
+    expect(await movedInput([{ path: f, digest: 'd', since: ctime - 1000 }], cache, ctime)).toBe(f)
+    expect(calls).toEqual([])
+    // CONTROL: the same file written before the command is judged by content.
+    expect(
+      await movedInput([{ path: f, digest: 'd', since: ctime }], cache, ctime + 1),
+    ).toBeUndefined()
+    expect(calls).toEqual([f])
   })
 
   it('a file that is gone has moved, and nothing is read', async () => {
