@@ -743,10 +743,12 @@ describe('signal handling during vx run (e2e)', () => {
         const since = Date.now()
         while (aliveAt.some(([, p]) => isAlive(p)) && Date.now() - since < 3_000)
           await Bun.sleep(20)
-        const alive = aliveAt.map(([what, p]) =>
-          isAlive(p)
-            ? `${what}, still alive 3 s after the exit`
-            : `${what}, gone within ${Date.now() - since} ms`,
+        // Only a leak fails the row. The one failure this row saw in a gate
+        // (item 1078) read `child: … (procfs is another pid namespace's),
+        // gone within 21 ms`: the backgrounded `sleep`, SIGKILLed with its
+        // group, awaiting its reaper, and dead at the exit.
+        const alive = aliveAt.flatMap(([what, p]) =>
+          isAlive(p) ? [`${what}, still alive 3 s after the exit`] : [],
         )
         const closed = await Promise.race([streams, Bun.sleep(1_000).then(() => null)])
         expect({ signal, code, alive, closed: closed !== null }).toEqual({
