@@ -71,6 +71,10 @@ describe('vx watch loop (e2e): a file the task rewrites every run', () => {
     await Bun.sleep(SETTLE_MS)
     // Once: the storm goes on (the remedy is the user's), the line does not.
     expect(w.out().split(NOTICE).length - 1).toBe(1)
+    // And on the third self-started cycle, as it says: two of them ran
+    // before it (E-20's sweep moved the threshold with the suite green).
+    const before = w.out().split(NOTICE)[0]!
+    expect(before.split('app run.pid; re-running...').length - 1).toBe(2)
     expect(w.out()).toContain('add it to .gitignore')
   }, 40_000)
 })
