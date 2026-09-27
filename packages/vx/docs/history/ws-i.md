@@ -97,6 +97,12 @@ I-7. Scale, CI and the day's A/B (main 4b7c396a, compiled, git defaults).
   restored — the owner's call, since the gate would then trust its own
   cache. The 1.6 min before jobs start on main is the concurrency
   group queueing behind the previous main run.
+  I-8. Shard weights refreshed (`test-shard.ts --weigh`, 258 files, from
+  a JUnit run of all 12 shards, four at a time, git defaults). The table
+  dated from 2026-09-22. Fresh runs, four shards at a time, two each:
+  the heaviest shard 54 and 57 s under the old table, 32 and 32 under the
+  new; all 12 shards 95 and 95 s against 91 and 92 (the suite is
+  work-bound, so the tail is what moves).
 
 ## Leads for other streams
 
