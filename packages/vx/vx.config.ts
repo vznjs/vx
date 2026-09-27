@@ -170,6 +170,7 @@ export default defineProject({
           // hit in the gate.
           workspaceFiles: [
             'packages/*/**',
+            'examples/**',
             '.github/**',
             'scripts/**',
             'CLAUDE.md',

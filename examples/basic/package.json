@@ -1,0 +1,10 @@
+{
+  "name": "vx-example-basic",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@vzn/vx": "latest"
+  }
+}
