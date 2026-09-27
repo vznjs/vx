@@ -108,6 +108,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   confirmed the rest of the backlog, no fix owed: `workspace:` / `link:`
   / `catalog:` specs and glob negations (rows exist), and lazy `byDir` in
   `buildPackageGraph` bought nothing (14.3 vs 14.0 ms, A/A 14.1).
+- **D-12** `vx init` made a group over a script that becomes no task:
+  `setup: npm run prepare` (a lifecycle script) or
+  `clean: npm run prebuild` (a hook folded into `build`) became
+  `dependsOn` on a task it never emitted, and the `vx run` it suggested
+  refused the config. Such a script keeps its command. Row:
+  `tests/init.test.ts` "a delegation that cannot become a group stays
+  the command it was".
 - **D-13** Mutation sweep of `config-imports.ts` (38 mutants). Two
   behaviour survivors, now rows: dropping the relative-specifier skip in
   `unprovidedBareImports` refused a config's `./helper.mjs` as a missing
