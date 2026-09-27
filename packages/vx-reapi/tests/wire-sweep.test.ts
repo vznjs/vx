@@ -348,6 +348,39 @@ describe.if(CHUNKING_SUPPORTED)('integrity and errors', () => {
     })
   })
 
+  // F-3: past its first message a streamed read errored on a transient
+  // status, so a remote hit whose Read a proxy cut mid-artifact became a
+  // miss. It re-opens at the offset the reader has.
+  it('a streamed read cut mid-blob resumes at the offset the reader has', async () => {
+    // Every offset holds a different byte, so a resume at the wrong one shows.
+    const body = Uint8Array.from({ length: 200 * 1024 }, (_, i) => i % 251)
+    const d = fake.put(body)
+    const mark = fake.calls.length
+    fake.cutReads = 2
+    const got = await using({}, async (c) => new Response((await c.readBlobStream(d))!).bytes())
+    const reads = fake.calls.slice(mark).filter((x) => x.method === 'Read')
+    expect([
+      Buffer.from(got).equals(Buffer.from(body)),
+      reads.map((r) => Number(r.request['read_offset'])),
+    ]).toEqual([true, [0, 65536, 131072]])
+  })
+
+  it('a streamed read cut past its retry budget errors the stream', async () => {
+    const d = fake.put(fill(512 * 1024, 8))
+    fake.cutReads = 4
+    try {
+      const got = await using({}, async (c) =>
+        new Response((await c.readBlobStream(d))!).bytes().then(
+          () => 'read',
+          (e: Error) => e.message,
+        ),
+      )
+      expect(got).toBe('14 UNAVAILABLE: cut mid-read')
+    } finally {
+      fake.cutReads = 0
+    }
+  })
+
   it('a cancelled read stream cancels the call', async () => {
     const d = fake.put(fill(512 * 1024, 4))
     fake.holdReads = true

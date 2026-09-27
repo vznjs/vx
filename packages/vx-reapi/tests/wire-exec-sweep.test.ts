@@ -94,6 +94,39 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
     expect(calls[1]!.request['name']).toBe(op.name)
   })
 
+  // F-3: a server restart loses its operations, and WaitExecution answers
+  // NOT_FOUND; that failed the task although nothing was left running.
+  it('an operation the server no longer knows is executed again', async () => {
+    let executes = 0
+    fake.onExecute = (_r, method) => {
+      if (method === 'WaitExecution')
+        return { error: { code: grpc.status.NOT_FOUND, details: 'gone' } }
+      return ++executes === 1
+        ? { stages: ['EXECUTING'], error: { code: grpc.status.UNAVAILABLE, details: 'restart' } }
+        : { response: { result: { exit_code: 0 } } }
+    }
+    const mark = fake.calls.length
+    const op = await using((c) => c.execute(c.digestOf(bytes('lost'))))
+    const calls = fake.calls.slice(mark).map((x) => x.method)
+    expect([op.done, calls]).toEqual([true, ['Execute', 'WaitExecution', 'Execute']])
+  })
+
+  // CONTROL: NOT_FOUND from Execute itself is the server's answer, not a lost operation.
+  it("Execute's own NOT_FOUND is thrown, not executed again", async () => {
+    fake.onExecute = () => ({ error: { code: grpc.status.NOT_FOUND, details: 'no action' } })
+    const mark = fake.calls.length
+    const refused = await using((c) =>
+      c.execute(c.digestOf(bytes('no action'))).then(
+        () => 'resolved',
+        (e: Error) => e.message,
+      ),
+    )
+    expect([refused, fake.calls.slice(mark).map((x) => x.method)]).toEqual([
+      '5 NOT_FOUND: no action',
+      ['Execute'],
+    ])
+  })
+
   it('a stream that ends with no operation is refused by name', async () => {
     fake.onExecute = () => ({ endEarly: true })
     await using(async (c) => {

@@ -109,6 +109,8 @@ export interface FakeReapi {
   readonly rejectBatch: Set<string>
   /** A Read sends one message and then waits to be cancelled. */
   holdReads: boolean
+  /** The next `cutReads` Reads send one message, then fail UNAVAILABLE. */
+  cutReads: number
   readsCancelled: number
   executesCancelled: number
   /** Directories GetTree serves, one per page. */
@@ -164,6 +166,7 @@ export async function startFakeReapi(): Promise<FakeReapi> {
     reportComplete: false,
     rejectBatch: new Set(),
     holdReads: false,
+    cutReads: 0,
     readsCancelled: 0,
     executesCancelled: 0,
     tree: [],
@@ -416,6 +419,12 @@ export async function startFakeReapi(): Promise<FakeReapi> {
       const from = Number(call.request.read_offset ?? 0)
       if (fake.holdReads) {
         call.write({ data: body.subarray(from, from + 64 * 1024) })
+        return
+      }
+      if (fake.cutReads > 0) {
+        fake.cutReads--
+        call.write({ data: body.subarray(from, from + 64 * 1024) })
+        call.emit('error', { code: grpc.status.UNAVAILABLE, details: 'cut mid-read' })
         return
       }
       for (let at = from; at < body.length; at += 64 * 1024) {
