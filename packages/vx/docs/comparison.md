@@ -100,7 +100,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | --------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Config language                                                             | JSON (`turbo.json`)                                  | JSON (`project.json`, `nx.json`)                         | Vite config (`run` key)            | TypeScript (`vx.config.ts`)                                                                             |
 | Per-package config                                                          | yes                                                  | yes                                                      | yes                                | yes                                                                                                     |
-| Workspace-level config                                                      | `turbo.json` at root + `extends`                     | `nx.json`                                                | root `vite.config.*`               | `vx.workspace.ts` (concurrency, cacheDir, timeout, plugins)                                             |
+| Workspace-level config                                                      | `turbo.json` at root + `extends`                     | `nx.json`                                                | root `vite.config.*`               | `vx.workspace.ts` (concurrency, cacheDir, timeout, cacheRetention, plugins)                             |
 | Per-task `dependsOn`: same project                                          | bare name `lint`                                     | bare name                                                | bare name                          | `'lint'`                                                                                                |
 | Per-task `dependsOn`: workspace deps                                        | `^lint`                                              | `^lint` or `{projects:"dependencies"}`                   | `pkg#task`                         | `'^lint'`                                                                                               |
 | Per-task `dependsOn`: arbitrary other package's task                        | `pkg#task`                                           | `{projects:["pkg"],target:"task"}`                       | `pkg#task`                         | `'pkg#task'`                                                                                            |
@@ -126,7 +126,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Configurations (named option sets)                                          | —                                                    | `configurations` + `-c`                                  | —                                  | — **gap**                                                                                               |
 | Per-target metadata (`description`)                                         | `description`                                        | `metadata.description`                                   | —                                  | `description: string`                                                                                   |
 | Target defaults / inheritance                                               | `extends`, task `extends`                            | `targetDefaults` (priority-resolved)                     | (no)                               | rejected by design — presets are TS imports                                                             |
-| Pre/post script lifecycle                                                   | (no)                                                 | (executor-defined)                                       | `enablePrePostScripts: true`       | — **gap**                                                                                               |
+| Pre/post script lifecycle                                                   | (no)                                                 | (executor-defined)                                       | `enablePrePostScripts: true`       | `vx init` folds them into the command                                                                   |
 | Boundaries / package-tag visibility                                         | `boundaries.tags`                                    | `@nx/enforce-module-boundaries`                          | (no)                               | — **gap**                                                                                               |
 
 ## Cache feature comparison
@@ -415,7 +415,7 @@ Things `@vzn/vx` does that the others don't:
   bytes directly, so narrow `inputs.files` like `['src/**']` doesn't
   miss dep / version-bump invalidation.
 - **Lockfile-aware invalidation as a plugin.** `@vzn/vx-lockfile` claims
-  `pnpm-lock.yaml` and keys each project on its own resolved closure
+  the lockfile (pnpm, bun, npm, yarn) and keys each project on its own resolved closure
   (name, version, peers, integrity, patches, `link:` reach), so
   `pnpm update foo` re-keys only the projects that reach `foo` and
   `--affected` selects them (and their dependents). Nx does this inside its daemon's
@@ -504,7 +504,7 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   forwards args/options into dependents via `options: 'forward'`.
   vx scopes `forwardArgs` to user-requested nodes only — passing
   `vx run build -- --foo` does NOT pollute upstream tasks' cache keys.
-  Explicit > magical (see CLAUDE.md decision log entry P1).
+  Explicit > magical (architecture principle #1).
 - **No tag-based selectors (`tag:foo`, `!tag:bar`).** Nx has project
   tags as a generator/devkit concept. vx project identity is
   workspace path + package.json name only.
@@ -517,12 +517,6 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   (tests/filter.test.ts > applyFilters > stacked: --filter ui
   --filter [main] unions name + affected sets). Mental model: each
   filter ADDS to the selection; never narrows another filter's set.
-- **Filter mode is not classified into all-vs-exclude-vs-explicit.**
-  Turbo decides whether to start from the universe or the empty set
-  based on whether the filter list contains any positive selector;
-  vx always starts from the universe and applies filters as set ops.
-  Same observable behavior for every documented case; simpler
-  implementation.
 - **A bare name is an exact match; it never reaches into a scope.**
   Nx resolves `core` to `@acme/core`; vx's `--filter core` selects only
   a package named exactly `core`. Name the scope (`@acme/core`) or lead
@@ -546,7 +540,8 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 
 - **stderr is not cached; stdout is stored twice on purpose.** Turbo
   embeds the run's full logs inside the cache archive. vx's artifact
-  is exactly `stdout` + `outputs/` (only successful runs are cached
+  is `stdout`, `outputs/`, `workspace-outputs/` and a `.vx-meta.json`
+  mode/mtime sidecar (only successful runs are cached
   and their stderr is near-always empty); stdout ALSO lives in the
   SQLite `entries` row so a local hit replays it with pure SQL —
   never decompressing the artifact.
