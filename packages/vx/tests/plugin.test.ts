@@ -252,6 +252,50 @@ describe('Plugin API', () => {
     expect(warns).toHaveLength(1)
   })
 
+  it('an async hook that rejects is disabled and warns once, and no rejection escapes', async () => {
+    // `void handler()` sat in a sync try: a rejection escaped it, Bun
+    // printed a stack per event and a green run exited 1.
+    const bus = createEventBus()
+    const warns: string[] = []
+    let calls = 0
+    const escaped: unknown[] = []
+    const onRejection = (e: unknown): void => void escaped.push(e)
+    process.on('unhandledRejection', onRejection)
+    try {
+      await installPlugins({
+        plugins: [
+          {
+            name: 'org/async',
+            setup(ctx) {
+              ctx.on('onTaskStart', async () => {
+                calls++
+                throw new Error('boom')
+              })
+              ctx.bus.subscribe(async () => {
+                throw new Error('bus boom')
+              })
+            },
+          },
+        ],
+        bus,
+        workspaceRoot: '/ws',
+        cacheDir: '/ws/.vx/cache',
+        warn: (m) => warns.push(m),
+      })
+      bus.emit({ kind: 'task:start', node: fakeNode() })
+      await Bun.sleep(0)
+      bus.emit({ kind: 'task:start', node: fakeNode() })
+      await Bun.sleep(0)
+    } finally {
+      process.off('unhandledRejection', onRejection)
+    }
+    expect(escaped).toEqual([])
+    expect(calls).toBe(1)
+    expect(warns).toEqual([
+      "[vx] plugin 'org/async' threw in onTaskStart; disabled for this run: boom",
+    ])
+  })
+
   it('without a warn callback the disable still reaches the operator', async () => {
     // The default is console.error on purpose: `installPlugins` is called
     // outside a run too, and a plugin that silently stops observing is
