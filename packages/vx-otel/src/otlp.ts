@@ -48,6 +48,7 @@ function int64Attr(key: string, v: string): KeyValue {
 
 export const SEMCONV = {
   pipelineRunId: 'cicd.pipeline.run.id',
+  pipelineResult: 'cicd.pipeline.result',
   taskName: 'cicd.pipeline.task.name',
   taskRunResult: 'cicd.pipeline.task.run.result',
   vcsHeadRevision: 'vcs.ref.head.revision',
@@ -128,7 +129,7 @@ export const VX_ATTR = {
 } as const
 
 // OTLP status codes: 0 UNSET, 1 OK, 2 ERROR. Span kind: 1 INTERNAL.
-export const STATUS_UNSET = 0
+const STATUS_UNSET = 0
 const STATUS_ERROR = 2
 export const SPAN_KIND_INTERNAL = 1
 // Metric aggregation temporality: 1 = DELTA.
@@ -202,9 +203,24 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
       intAttr(VX_ATTR.runHitLocalCount, summary.hitLocalCount),
       intAttr(VX_ATTR.runHitRemoteCount, summary.hitRemoteCount),
       boolAttr(VX_ATTR.runExitOk, summary.exitOk),
+      strAttr(SEMCONV.pipelineResult, pipelineResult(summary)),
     )
   }
   return attrs
+}
+
+/**
+ * `cicd.pipeline.result`, the task enum's run-level twin. A red run with
+ * nothing failed and something aborted is a stopped one.
+ */
+function pipelineResult(s: RunSummaryRecord): string {
+  if (s.exitOk) return 'success'
+  return s.failedCount === 0 && s.abortedCount > 0 ? 'cancellation' : 'failure'
+}
+
+/** The root span is ERROR when the run is red: UNSET read as a clean run. */
+export function runStatusCode(summary?: RunSummaryRecord): number {
+  return summary?.exitOk === false ? STATUS_ERROR : STATUS_UNSET
 }
 
 /** What a task span needs to identify its run without its root span. */
