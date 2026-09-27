@@ -37,6 +37,7 @@
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
+import { benchEnv } from './bench-env.js'
 import { listSchedule, type GraphNode } from './ideal.js'
 import path from 'node:path'
 
@@ -58,14 +59,13 @@ const BUILD_CMD = `${sleepPrefix}mkdir -p dist && touch dist/index.js`
 const TEST_CMD = BUILD_SLEEP === '0' ? 'true' : `sleep ${BUILD_SLEEP}`
 const INSTALL_CMD = 'true'
 
-const RUNNER_ENV = {
-  ...process.env,
+const RUNNER_ENV = benchEnv({
   NO_COLOR: '1',
   CI: '1',
   TURBO_TELEMETRY_DISABLED: '1',
   DO_NOT_TRACK: '1',
   NX_CLOUD: 'false',
-}
+})
 
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b)

@@ -37,6 +37,9 @@
 # `--concurrency 10` (astro cold on four cores: 70.5 s at 4 workers,
 # 53.8 s at 8; payload 120 s at 4, 128 s at 8 — 2026-09-11).
 set -u
+# A shell's BUN_OPTIONS (`--smol`) changes the runtime every vx arm times
+# (bench-env.ts); the arms run without it.
+unset BUN_OPTIONS
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}
 FILTERS=${FILTERS:-}; TURBO_ARGS=${TURBO_ARGS:-}; VX_ARGS=${VX_ARGS:-}
 vx_scope=(--all); turbo_scope=()

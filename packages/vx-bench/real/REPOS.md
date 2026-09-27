@@ -267,7 +267,7 @@ astro and refine at the revisions above, run through `turbo()` / `nx()`
 `.vx-bench-bin/`, `TURBO_TELEMETRY_DISABLED=1`. refine's scope is
 `!./examples/** !@refinedev/refine-ui !@refinedev/live-previews`, the
 same 35 builds Nx plans. The box's shell exports `BUN_OPTIONS=--smol`;
-every run unsets it.
+the harnesses unset it (`bench-env.ts`).
 
 ### redwoodjs/redwood — a7852fb (2025-12-13): dropped
 

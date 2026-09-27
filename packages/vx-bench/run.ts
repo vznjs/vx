@@ -21,6 +21,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { benchEnv } from './bench-env.js'
 
 const projects = Number(process.argv[2] ?? 100)
 const reps = Number(process.argv[3] ?? 3)
@@ -43,7 +44,7 @@ async function vxRun(cwd: string): Promise<number> {
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1' },
+    env: benchEnv({ NO_COLOR: '1' }),
   })
   const code = await p.exited
   if (code !== 0) {

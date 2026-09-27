@@ -28,6 +28,9 @@
 # negated one (`!examples/*`) is vx `--filter '!…'` and nx `--exclude`.
 # NX_ARGS / VX_ARGS add what the repo's own script passes.
 set -u
+# A shell's BUN_OPTIONS (`--smol`) changes the runtime every vx arm times
+# (bench-env.ts); the arms run without it.
+unset BUN_OPTIONS
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}
 FILTERS=${FILTERS:-}; NX_ARGS=${NX_ARGS:-}; VX_ARGS=${VX_ARGS:-}
 vx_scope=(--all); nx_scope=()
