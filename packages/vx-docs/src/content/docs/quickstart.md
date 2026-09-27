@@ -65,7 +65,6 @@ Start with one package and leave the rest of your tooling as it is.
 2. Run `vx run build` twice in it. The second run is a cache hit.
 3. Edit a file the build reads. `vx run build --dry` now predicts a miss.
 4. Add configs to more packages. `^build` orders them by your `package.json` dependencies.
-5. Add `.vx/` to `.gitignore`: it holds the local cache.
 
 Want the whole repo under vx first? `turbo()` or `nx()` runs a Turborepo
 or Nx repo as it is: [Migrate](../guides/migrate/).

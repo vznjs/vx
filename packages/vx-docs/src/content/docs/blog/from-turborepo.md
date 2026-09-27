@@ -76,7 +76,7 @@ already doing.
 | `extends`                                      | a package task merges over the root's; `false` alone opts out, `false` + keys runs on those alone |
 | `outputLogs`                                   | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
-| `dotEnv` (Turbo 1)                              | `cache.inputs.files`                                    |
+| `dotEnv` (Turbo 1)                              | `cache.inputs.runtime`: a probe that hashes the `.env` files |
 | `command` (Turbo 2.11) | the task's `exec.command`; `null` is no task |
 | `globalDependencies`, `globalEnv`, `globalPassThroughEnv`, `globalDotEnv` | a generated `vx-preset.ts` you import and spread |
 
@@ -88,10 +88,9 @@ Three things you get that the JSON could not give you:
 - **The command is in the config.** Turborepo runs the script with the
   task's name; vx makes `exec.command` explicit. A task is one shell
   command, and you can read it where it is declared.
-- **Inputs are required and explicit.** Turbo's default of every file
-  in the package is gone. The migration writes the input globs it can
-  see and marks the ones it cannot; the [sandbox](../the-sandbox/) can
-  then prove them.
+- **Inputs are required and explicit.** The migration writes Turbo's
+  default, every file in the package, as `**/*`, where you can see and
+  narrow it; the [sandbox](../the-sandbox/) can then prove them.
 - **Presets are imports.** `globalDependencies` becomes a constant in a
   file every config imports, and the resolved-config hash sees it. No
   list to keep in sync.

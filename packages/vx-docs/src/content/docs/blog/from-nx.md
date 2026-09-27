@@ -38,7 +38,7 @@ line that runs the executor in its own Node process through Nx's public
 `runExecutor`, with the executor and its options on the command line,
 so vx's key sees them and `vx show` prints what runs. A warm vx run
 never runs Nx at all; the plugin exports the graph again only when
-`nx.json` or a `project.json` changes. (Added 2026-09-22.)
+the worktree changes (`nx.json`, a manifest, a source file). (Added 2026-09-22.)
 
 ## The one real shift: executors become commands
 
@@ -123,7 +123,7 @@ so a shared input list is an import.
 - **Nx Cloud's flaky-test detection.** vx [detects flaky
   tasks](../flaky-tasks/) from the local run history: a key that has
   both passed and failed on record, no service involved.
-- **The graph visualiser.** `vx run --graph` renders DOT; `vx show`
+- **The graph visualiser.** `vx run build --all --graph` renders DOT; `vx show`
   prints what a run would see.
 
 The full guide, with the trade-offs spelled out one by one, is
