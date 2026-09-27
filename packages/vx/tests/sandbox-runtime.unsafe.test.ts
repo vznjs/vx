@@ -1581,6 +1581,65 @@ describe.skipIf(!available || process.platform !== 'linux')(
   },
 )
 
+// B-5: on Linux a write the sandbox refuses is `EROFS` (a read-only bind),
+// and the trace pass read ENOENT, EACCES and EPERM only; it also skipped
+// every path under a read grant. A task that swallowed its failed write
+// exited 0 with no violation, where schema.md says a refused write fails
+// the task and macOS's seatbelt reports it.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'an undeclared write, run for real',
+  () => {
+    let fixture: Fixture
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const project = (write: string[]) =>
+      addProject(fixture.root, 'app', {
+        config: `
+        export default {
+          tasks: {
+            gen: {
+              exec: {
+                command: 'mkdir -p dist && { echo x > src/gen.txt; } 2>/dev/null; echo ok > dist/out.txt',
+                sandbox: { allow: { read: ['.'], write: ${JSON.stringify(write)} } },
+              },
+            },
+          },
+        }
+      `,
+        files: { 'src/index.ts': 'export default 1\n' },
+      })
+
+    it(
+      'a refused write the task ignores still fails it, naming the path',
+      async () => {
+        const dir = await project(['dist/'])
+        const r = await run({ cwd: fixture.root, tasks: ['gen'], log: collectingLogger(fixture) })
+        expect([r.outcomes[0]?.status, r.outcomes[0]?.exitCode]).toEqual(['failed', 1])
+        expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
+          `openat(${realpathSync(dir)}/src/gen.txt) = a write no grant covers  [${realpathSync(dir)}/src/gen.txt]`,
+        ])
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'CONTROL: granted, the same write lands and the task passes',
+      async () => {
+        const dir = await project(['dist/', 'src/'])
+        const r = await run({ cwd: fixture.root, tasks: ['gen'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(dir, 'src', 'gen.txt'), 'utf8')).toBe('x\n')
+      },
+      TIMEOUT,
+    )
+  },
+)
+
 describe.skipIf(!available || process.platform !== 'linux')(
   'the demo in an npm or Yarn workspace, which links the task its own project',
   () => {

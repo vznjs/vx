@@ -82,7 +82,7 @@ const warnedSymlinkPunch = new Set<string>()
  * `--bind <out>` then `--ro-bind <readPath>`. When the read path is an
  * ancestor of the write path the read-only mount lands ON TOP of the
  * writable one and every write fails with `Read-only file system`
- * (`pushReadDenyDirMounts`, SRT 0.0.75 — its skip only covers the reverse
+ * (`pushReadDenyDirMounts`, SRT 0.0.75 and 0.0.76 — its skip only covers the reverse
  * nesting). Verified in a Linux container 2026-09-05:
  *
  *   read=[proj]     write=[proj/dist]  → mkdir: Read-only file system

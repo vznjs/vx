@@ -287,3 +287,39 @@ function filterIgnored(
   if (ignore === undefined) return violations
   return violations.filter((v) => !matchesIgnore(v, ignore))
 }
+
+/**
+ * The writes SRT's Linux observer saw that this task's binds do not cover.
+ * The observer reports every write-intent syscall as `deny <syscall>
+ * <path>` (it cannot see the mount table), so a record under a path bwrap
+ * binds writable — `bindableWrites` of the task's grants — was a write
+ * that landed, and anything else was refused or fell into the deny
+ * anchor's scratch and vanished with the sandbox. Deduplicated by syscall
+ * and canonical path; only a `write` ignore list can silence one.
+ */
+export function refusedWrites(
+  records: readonly string[],
+  writable: readonly string[],
+): SandboxViolation[] {
+  const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
+  const seen = new Set<string>()
+  const out: SandboxViolation[] = []
+  for (const record of records) {
+    const m = /^deny (\S+) (\/.*)$/.exec(record)
+    if (m === null) continue
+    const [, syscall, raw] = m as unknown as [string, string, string]
+    const abs = toRealPath(raw)
+    if (isUnderAny(abs, binds)) continue
+    const key = `${syscall}|${abs}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({
+      line: `${syscall}(${raw}) = a write no grant covers  [${abs}]`,
+      timestamp: new Date(),
+      target: abs,
+      path: abs,
+      ignorable: ['write'],
+    })
+  }
+  return out
+}
