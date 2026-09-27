@@ -119,6 +119,15 @@ change is a reviewed diff of that file and never a side effect.
   compiles) and compares every key path and the JSON types at it with
   `tests/contract/cli-wire.json`. The samples `cli.md` prints may show
   only keys the wire has, with its types.
+- **Task-glob semantics.** `tests/contract-task-globs.test.ts`
+  resolves 32 input lists and 8 output lists against one fixed project
+  tree (dotfiles, a gitignored file, `node_modules`, `[id]`, `(group)`,
+  `{b}` and a space in a name) through the real resolvers, and compares
+  every selection, or the refusal it meets, with
+  `tests/contract/task-globs.json`. The answer comes from `Bun.Glob`
+  as much as from vx, so this is the row a Bun upgrade that reads a
+  pattern differently turns red, before a key silently covers
+  different files.
 
 ## Not the contract
 
