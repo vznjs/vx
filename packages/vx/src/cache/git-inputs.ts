@@ -6,7 +6,7 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
 
 /** Three facts of the repository a directory is in, from one `git rev-parse`. */
@@ -601,6 +601,40 @@ function gitVarList(listing: string): Map<string, string> {
   return vars
 }
 
+/**
+ * `true` when git ignores the executable bit (`core.fileMode=false`, the
+ * default on WSL's DrvFs and what `git init` writes on a filesystem without
+ * one). Then `git status` reports no `chmod`, and a trusted file's index mode
+ * says nothing about the worktree.
+ */
+function fileModeIgnored(gitVars: string): boolean {
+  const v = gitVarList(gitVars).get('core.filemode')?.trim().toLowerCase()
+  return v === 'false' || v === 'no' || v === 'off' || v === '0'
+}
+
+/**
+ * Under `core.fileMode=false`, each trusted identity's mode from an lstat of
+ * the worktree file, as `hashFile` takes it; the OID stays the index's. The
+ * index mode alone kept the key through a `chmod +x`, and the task replayed
+ * the output a 644 input built (item 1076). A path that does not stat goes
+ * back to the probe.
+ */
+function restampModes(trusted: Map<string, string>, workspaceRoot: string): void {
+  for (const [rel, id] of trusted) {
+    const colon = id.indexOf(':')
+    const oid = colon === -1 ? id : id.slice(colon + 1)
+    let st
+    try {
+      st = lstatSync(path.join(workspaceRoot, rel))
+    } catch {
+      trusted.delete(rel)
+      continue
+    }
+    const mode = st.isSymbolicLink() ? '120000' : (st.mode & 0o100) !== 0 ? '100755' : '100644'
+    trusted.set(rel, fileIdentity(mode, oid))
+  }
+}
+
 /** `true` when git may rewrite bytes for EVERY auto-detected text file. */
 export function autocrlfConverts(gitVars: string): boolean {
   const v = gitVarList(gitVars).get('core.autocrlf')?.trim().toLowerCase()
@@ -931,6 +965,9 @@ export async function startGitEnumeration(
     gitVars: vars !== null && vars.exitCode === 0 ? vars.stdout : '',
     spawnGit,
   })
+  if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
+    restampModes(trusted, workspaceRoot)
+  }
   if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {
     undecodable.push(...stripPrefixFromSet(parsedStatus.undecodable, gitPrefix))
   }
