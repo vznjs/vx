@@ -533,6 +533,29 @@ describe('affectedProjects', () => {
     expect(await select()).toEqual(['a', 'b'])
   })
 
+  it('a moved project root selects the dependent its path spec pointed at', async () => {
+    // `a` reaches `lib` by `file:../lib`; after `git mv packages/lib
+    // packages/core` the spec names no project, so the edge drops while
+    // `a`'s own manifest is unchanged: only the base graph sees it.
+    await mkdir(path.join(root, 'packages/lib'), { recursive: true })
+    await writeFile(path.join(root, 'packages/lib/package.json'), JSON.stringify({ name: 'lib' }))
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib')
+    await git(root, 'mv', 'packages/lib', 'packages/core')
+    const moved: ProjectMeta[] = [
+      { ...projects[0]!, packageJson: { name: 'a', dependencies: { lib: 'file:../lib' } } },
+      projects[1]!,
+      {
+        name: 'lib',
+        dir: path.join(root, 'packages/core'),
+        configPath: null,
+        packageJson: { name: 'lib' },
+      },
+    ]
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: moved })
+    expect([...out].sort()).toEqual(['a', 'lib'])
+  })
+
   it('a root `workspaces` edit selects every project (item 959)', async () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
     await git(root, 'add', '-A')
