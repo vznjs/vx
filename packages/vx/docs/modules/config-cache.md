@@ -64,6 +64,8 @@ export async function configEvalKeyFromClosure(a: {
   hashFile: (file: string) => Promise<string>
   workspaceFingerprint: string
 }): Promise<string | null>
+/** A config's relative-import closure outside node_modules, itself excluded; `vx watch` arms these (item 949). */
+export async function configImports(configPath: string): Promise<string[]>
 ```
 
 ## Key

@@ -111,6 +111,51 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(1)
   }, 40_000)
 
+  it('a shared preset outside the project is watched, and its edit re-runs under it (item 949)', async () => {
+    // Configs compose through imports; a preset outside the project was in
+    // no arm, so its edit ran nothing while `vx run` would have run it.
+    await mkdir(path.join(f.root, 'shared'), { recursive: true })
+    await writeFile(path.join(f.root, 'shared', 'preset.mjs'), "export const word = 'ONE'\n")
+    await writeFile(
+      path.join(f.dir, 'vx.config.mjs'),
+      `import { word } from '../../shared/preset.mjs'
+      export default { tasks: {
+        build: { exec: { command: 'echo ' + word + ' > said.txt && echo run >> ${f.log}' } },
+      } }\n`,
+    )
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+    expect(await readFile(path.join(f.dir, 'said.txt'), 'utf8')).toBe('ONE\n')
+
+    await writeFile(path.join(f.root, 'shared', 'preset.mjs'), "export const word = 'TWO'\n")
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after the preset edit')
+    expect(await readFile(path.join(f.dir, 'said.txt'), 'utf8')).toBe('TWO\n')
+  }, 40_000)
+
+  it('an edit to a file the workspace config imports is named with the restart it needs (item 949)', async () => {
+    // The workspace config is loaded in this process, and Bun keeps what it
+    // imports: a cycle would run the old helper. Silence was worse.
+    await writeFile(path.join(f.root, 'ws-helper.mjs'), "export const msg = 'ONE'\n")
+    await writeFile(
+      path.join(f.root, 'vx.workspace.mjs'),
+      "import { msg } from './ws-helper.mjs'\nexport default { plugins: [] }\n",
+    )
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    await writeFile(path.join(f.root, 'ws-helper.mjs'), "export const msg = 'TWO'\n")
+    await until(
+      () => w.out().includes('ws-helper.mjs changed; the workspace config imports it'),
+      'the restart notice',
+    )
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(0)
+  }, 40_000)
+
   it('VX_WATCH_POLL=1 polls from the start, says so, and an edit still re-runs', async () => {
     // The switch for a host whose OS watcher is known not to deliver (a
     // sandbox without FSEvents access, a network mount, a container bind):

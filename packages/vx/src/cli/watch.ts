@@ -40,6 +40,7 @@ import {
   memberBaseDirs,
   PROJECT_CONFIG_FILENAMES,
   WORKSPACE_CONFIG_FILENAMES,
+  configImports,
   WORKSPACE_FINGERPRINT_FILES,
   type ProjectEntry,
   type ProjectMeta,
@@ -519,6 +520,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     outputs: swept.outputs,
     inputs: swept.inputs,
     uncached: swept.uncached,
+    configImports: swept.configImports,
+    workspaceConfigImports: swept.workspaceConfigImports,
     memberBases: memberBaseDirs(workspace),
     packageDirs: new Set(allProjects.map((p) => p.dir)),
     // The workspace as the cycle that just ran saw it: a package added or
@@ -536,6 +539,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         outputs: sweep.outputs,
         inputs: sweep.inputs,
         uncached: sweep.uncached,
+        configImports: sweep.configImports,
+        workspaceConfigImports: sweep.workspaceConfigImports,
         packageDirs: new Set(all.map((p) => p.dir)),
       }
     },
@@ -602,6 +607,10 @@ export async function sweepConfigs(
   inputs: Map<string, string[]>
   /** Projects with a task that has a command and no cache: it reads what it likes, git-ignored files included. */
   uncached: Set<string>
+  /** Files the project configs import by relative path (item 949). */
+  configImports: string[]
+  /** Files the workspace config imports by relative path: loaded once per process (item 949). */
+  workspaceConfigImports: string[]
   /** The staged load the sweep read, when the run path's load succeeded; `watchedProjects` reads the same one. */
   staged: Map<string, ProjectEntry> | null
 }> {
@@ -638,6 +647,8 @@ export async function sweepConfigs(
     outputs: Map<string, string[]>
     inputs: Map<string, string[]>
     uncached: Set<string>
+    configImports: string[]
+    workspaceConfigImports: string[]
     staged: Map<string, ProjectEntry> | null
   } => ({
     workspaceWide: workspaceInputs.size > 0,
@@ -645,8 +656,21 @@ export async function sweepConfigs(
     outputs,
     inputs,
     uncached,
+    configImports: [...projectImports],
+    workspaceConfigImports: [...wsImports],
     staged,
   })
+  const projectImports = new Set<string>()
+  const wsImports = new Set<string>()
+  await Promise.all([
+    ...projects.map(async (p) => {
+      if (p.configPath === null) return
+      for (const f of await configImports(p.configPath)) projectImports.add(f)
+    }),
+    ...WORKSPACE_CONFIG_FILENAMES.map(async (name) => {
+      for (const f of await configImports(path.join(workspaceRoot, name))) wsImports.add(f)
+    }),
+  ])
   let staged: Map<string, ProjectEntry> | null = null
   try {
     staged = await loadCliProjects(workspaceRoot, projects, 'all', load)
@@ -739,6 +763,10 @@ interface WatchLoopArgs {
   inputs: ReadonlyMap<string, readonly string[]>
   /** Projects whose uncached task may read a git-ignored file: such a path there is still an edit. */
   uncached: ReadonlySet<string>
+  /** Files the configs import: an edit to one outside the watched projects is a cycle that re-reads them. */
+  configImports: readonly string[]
+  /** Files the workspace config imports: loaded once per process, so an edit is named, not run. */
+  workspaceConfigImports: readonly string[]
   /** The directory each `<dir>/*` package glob names; a member coming or going there is a cycle. */
   memberBases: readonly string[]
   /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
@@ -754,6 +782,8 @@ interface Rediscovered {
   outputs: ReadonlyMap<string, readonly string[]>
   inputs: ReadonlyMap<string, readonly string[]>
   uncached: ReadonlySet<string>
+  configImports: readonly string[]
+  workspaceConfigImports: readonly string[]
   packageDirs: ReadonlySet<string>
 }
 
@@ -786,6 +816,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let outputs = args.outputs
   let inputs = args.inputs
   let uncached = args.uncached
+  let configImportFiles = args.configImports
+  let wsConfigImportFiles = args.workspaceConfigImports
   // A dev server stays up while the loop idles; the cycle that replaces it
   // stops it first, so the new one never meets the old one's port.
   let held = args.held
@@ -1178,6 +1210,62 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
   }
 
+  /**
+   * A config's imports from outside the watched projects: a shared preset
+   * (`../../shared/preset.mjs`) changed what a run evaluates and no arm
+   * saw it (item 949). One non-recursive arm per directory holding one.
+   * A project config's import re-reads and runs; a workspace config's is
+   * loaded once per process (Bun keeps the module), so its edit is named
+   * with the restart it needs instead of a cycle that would run stale.
+   */
+  const importArms = new Map<string, WatchHandle>()
+  let importNames = new Map<string, Set<string>>()
+  const staleNamed = new Map<string, number>()
+  const armImports = (): void => {
+    const inProject = (f: string): boolean => projectDirs.some((d) => f.startsWith(d + path.sep))
+    const want = new Map<string, Set<string>>()
+    for (const f of new Set([...configImportFiles, ...wsConfigImportFiles])) {
+      if (inProject(f)) continue
+      const names = want.get(path.dirname(f)) ?? new Set<string>()
+      names.add(path.basename(f))
+      want.set(path.dirname(f), names)
+    }
+    importNames = want
+    for (const [dir, handle] of importArms) {
+      if (want.has(dir)) continue
+      handle.close()
+      importArms.delete(dir)
+    }
+    for (const dir of want.keys()) {
+      if (importArms.has(dir)) continue
+      try {
+        importArms.set(
+          dir,
+          arm(dir, false, (filename) => {
+            if (!(importNames.get(dir)?.has(filename) ?? false)) return
+            const abs = path.join(dir, filename)
+            const rel = path.relative(workspaceRoot, abs)
+            if (configImportFiles.includes(abs)) {
+              reread = true
+              trigger(`config import ${rel}`, abs)
+              return
+            }
+            // One line per save, not per event: a save is often two.
+            const now = Date.now()
+            if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
+            staleNamed.set(abs, now)
+            process.stdout.write(
+              `vx watch: ${rel} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+            )
+          }),
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`vx watch: cannot watch ${dir}: ${msg}\n`)
+      }
+    }
+  }
+
   const watchingLine = (count: number): string =>
     workspaceWide
       ? 'vx watch: watching the workspace root (workspaceFiles inputs in use)'
@@ -1197,6 +1285,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     outputs = next.outputs
     inputs = next.inputs
     uncached = next.uncached
+    configImportFiles = next.configImports
+    wsConfigImportFiles = next.workspaceConfigImports
     packageDirs = next.packageDirs
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
     matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
@@ -1217,6 +1307,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       for (const proj of next.projects) if (!perProject.has(proj.dir)) armProject(proj)
     }
     armPending(true)
+    armImports()
     // A new arm proves delivery like the first ones: an edit in the new
     // package right after this cycle is seen, not lost in the gap.
     await Promise.all(proofs)
@@ -1254,6 +1345,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
   }
   armPending(false)
+  armImports()
 
   // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
   // closes over the RESOLVED cache dir (relocated or not) and the tasks'

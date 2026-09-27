@@ -40,6 +40,7 @@ export {
   blobOidOf,
   configEvalKey,
   configEvalKeyFromClosure,
+  configImports,
   type ConfigEvalStore,
 } from './config-cache.js'
 export {

@@ -383,3 +383,40 @@ export async function configEvalKeyFromClosure(a: {
   for (let i = 0; i < a.closure.length; i++) h = xxh3(`${a.closure[i]}\0${identities[i]}`, h)
   return h.toString(16).padStart(16, '0')
 }
+
+/**
+ * Every file a config imports by relative specifier, transitively, outside
+ * `node_modules`, the config itself excluded. `vx watch` watches these: a
+ * shared preset outside the project (`../../shared/preset.mjs`, the way
+ * configs compose) changed what a run evaluates and no watcher saw it
+ * (item 949). A file that cannot be read or resolved ends its branch.
+ */
+export async function configImports(configPath: string): Promise<string[]> {
+  const seen = new Set<string>([configPath])
+  const out: string[] = []
+  const queue = [configPath]
+  while (queue.length > 0) {
+    const file = queue.shift()!
+    let source: string
+    try {
+      source = await Bun.file(file).text()
+    } catch {
+      continue
+    }
+    for (const m of source.matchAll(IMPORT_RE)) {
+      const spec = m[1] ?? m[2]!
+      if (!spec.startsWith('./') && !spec.startsWith('../')) continue
+      let resolved: string
+      try {
+        resolved = realpathSync(Bun.resolveSync(spec, path.dirname(file)))
+      } catch {
+        continue
+      }
+      if (seen.has(resolved) || resolved.split(path.sep).includes('node_modules')) continue
+      seen.add(resolved)
+      out.push(resolved)
+      queue.push(resolved)
+    }
+  }
+  return out
+}
