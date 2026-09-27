@@ -785,6 +785,17 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         are honoured; a sink with traces off POSTs no traces. Each red
         without its change.
 
+1057. DONE (2026-09-27, the telemetry review's lead 6). The run's
+      command line went to every telemetry sink verbatim, so a task
+      argument after `--` (`vx run build -- --token=SECRET`) reached an
+      OTLP span's `vx.command`, the GitHub job summary and a check-run
+      posted over the API. What follows `--` is counted, not quoted, in
+      the line sinks receive (`vx run build -- <1 argument>`); local
+      history (`vx last`) keeps the whole line, on this machine.
+      - Row: `telemetry.test.ts` › a sink never receives what follows `--`
+        on the command line (a real run with a spoofed argv, every record
+        and the summary). Red with the sinks' line restored.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
