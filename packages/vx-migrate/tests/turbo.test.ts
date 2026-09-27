@@ -670,4 +670,42 @@ describe('turbo(): the mapping cache', () => {
     await edit()
     expect(await lint()).toBe(expected)
   })
+  // A hit is the whole mapping: its notes and todos warn as the miss did.
+  // Restored as nothing, a cached run dropped every warning.
+  it('a hit warns what the miss warned', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({
+        tasks: { ...TURBO_JSON.tasks, lint: { cache: false, interactive: true }, '//#fmt': {} },
+      }),
+    )
+    const warned = async (): Promise<string[]> => {
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['lint'], log })
+      return log.lines
+    }
+    const miss = await warned()
+    await tamperMapping(root, 'turbo')
+    expect({
+      hasNote: miss.some((l) => l.includes('//#fmt')),
+      hasTodo: miss.some((l) => l.includes('interactive')),
+    }).toEqual({ hasNote: true, hasTodo: true })
+    expect(await warned()).toEqual(miss)
+  })
+
+  // Keeping the mapping is best-effort: a cache dir it cannot write to
+  // costs the next run a mapping, never this run.
+  it('a mapping that cannot be kept still plans the run', async () => {
+    await lint()
+    const [file] = await Array.fromAsync(
+      new Bun.Glob('**/vx-migrate-turbo-mapping.json').scan({ cwd: root, dot: true }),
+    )
+    await rm(path.join(root, file!))
+    await mkdir(path.join(root, file!, 'blocker'), { recursive: true })
+    await writeFile(
+      path.join(root, 'packages', 'app', 'package.json'),
+      JSON.stringify({ name: 'app', version: '1.0.0', scripts: { lint: 'echo lint3' } }),
+    )
+    expect(await lint()).toBe('echo lint3')
+  })
 })
