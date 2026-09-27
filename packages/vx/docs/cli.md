@@ -1642,7 +1642,9 @@ is Bun's test runner, `bun build` its bundler, `pnpm install` and `yarn
 add` the managers' verbs, so each stays a command (item 908); `pnpm
 test` and `yarn test` do run the script. Arguments, flags or a `&&`
 chain make it a real command again and
-it is left verbatim.
+it is left verbatim, and so is one whose target becomes no task (a
+lifecycle script, or a hook folded into another script): a group over
+it would name a task nothing defines (D-12).
 
 ## `vx migrate`
 

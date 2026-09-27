@@ -325,6 +325,12 @@ describe('migrateScripts', () => {
     expect(tasks['hooked']).toEqual({
       exec: { command: 'vx_script() {\n(echo pre\n) && (npm run b "$@"\n)\n}\nvx_script' },
     })
+    // A group over a lifecycle script or a folded hook names a task the
+    // mapping never emits (D-12).
+    const noTask = mapped({ prepare: 'husky', setup: 'npm run prepare' })
+    expect(noTask['setup']).toEqual({ exec: { command: 'npm run prepare' } })
+    const folded = mapped({ prebuild: 'rm -rf dist', build: 'tsc', clean: 'npm run prebuild' })
+    expect(folded['clean']).toEqual({ exec: { command: 'npm run prebuild' } })
     // CONTROL, on its own fixture: none of those problems, so still a group.
     expect(mapped({ b: 'real', d: 'npm run b' })['d']).toEqual({ dependsOn: ['b'] })
   })

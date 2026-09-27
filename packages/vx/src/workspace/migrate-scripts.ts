@@ -140,13 +140,16 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
     if (runnable.length === 0) continue
     const hasBuild = names.includes('build')
     const has = (n: string): boolean => names.includes(n)
+    // Lifecycle hooks are npm's, not tasks anyone runs by name, and a hook
+    // of a script that exists rides inside that script's command.
+    const isTask = (n: string): boolean => {
+      if (!has(n) || LIFECYCLE.test(n)) return false
+      const hookOf = /^(pre|post)(.+)$/.exec(n)
+      return hookOf === null || !has(hookOf[2]!) || LIFECYCLE.test(hookOf[2]!)
+    }
     const tasks: GeneratedTask[] = []
     for (const name of names) {
-      // Lifecycle hooks are npm's, not tasks anyone runs by name.
-      if (LIFECYCLE.test(name)) continue
-      // A hook of a script that exists rides inside that script's command.
-      const hookOf = /^(pre|post)(.+)$/.exec(name)
-      if (hookOf !== null && has(hookOf[2]!) && !LIFECYCLE.test(hookOf[2]!)) continue
+      if (!isTask(name)) continue
 
       const todos: string[] = []
       const own = scripts[name] as string
@@ -155,7 +158,10 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       // package manager and never ride inside a task — `pack` stays alone.
       const hook = (h: string): boolean => has(h) && !LIFECYCLE.test(h)
       const hooks = [`pre${name}`, `post${name}`].filter(hook)
-      if (delegate !== null && has(delegate) && delegate !== name && hooks.length === 0) {
+      // A group over a script that is no task (`setup: npm run prepare`)
+      // named a task nothing defines, and the run `vx init` suggested
+      // refused the config (D-12).
+      if (delegate !== null && isTask(delegate) && delegate !== name && hooks.length === 0) {
         // A group: no exec, the graph runs the target. `npm test` calling
         // `vitest` through `npm run test:unit` is two tasks, not a subprocess.
         const task: Record<string, unknown> = { dependsOn: [delegate] }
