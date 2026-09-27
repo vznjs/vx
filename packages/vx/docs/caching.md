@@ -1288,7 +1288,8 @@ itself, no symlink on the way (an extensionless import, a `.js` Bun
 answers with a `.ts`, or a link could be re-resolved without touching a
 listed file, so such a config keeps the scan). Anything the static check cannot prove
 pure evaluates live, exactly as before, so the cache can be slower but
-never wrong. Details and the deny-list:
+not wrong for a config written in good faith (the check is syntactic; one
+built to defeat it can). Details and the deny-list:
 [`modules/config-cache.md`](./modules/config-cache.md).
 
 ## Performance characteristics

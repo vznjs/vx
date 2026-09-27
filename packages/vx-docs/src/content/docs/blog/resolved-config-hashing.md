@@ -75,9 +75,17 @@ cache and evaluated live every run. The list is
 `process`, `Bun`, `globalThis`, `global`, `self`, `fetch`, `Date`,
 `Temporal`, `Intl`, `crypto`, `performance`, `navigator`, `require`,
 `eval`, `Function`, `constructor`, `localeCompare`, `await`, any
-`toLocale*` method, `import.meta`, `Math.random` and a dynamic
+`toLocale*` method, the reflective primitives that reach `Function`
+without naming it (`Reflect`, `getPrototypeOf`, `setPrototypeOf`,
+`getOwnPropertyNames`, `getOwnPropertyDescriptor`,
+`getOwnPropertyDescriptors`, `__proto__`, `prototype`,
+`__defineGetter__`, `__defineSetter__`, `__lookupGetter__`,
+`__lookupSetter__`), `import.meta`, `Math.random` and a dynamic
 `import()` — the aliases and the property-name routes to each
 (`global['proc' + 'ess']`, `({}).constructor.constructor`) included.
+A string literal naming `constructor`, `__proto__` or `prototype`
+evaluates live too. The list stops accidental impurity; a config built
+to defeat it can assemble a key at run time.
 Five of those names were listed only after a config using them had
 been cached as pure. An identifier
 escape is the one spelling a name list cannot see, so a backslash in
