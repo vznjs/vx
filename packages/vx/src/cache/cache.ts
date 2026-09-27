@@ -31,12 +31,14 @@ import { readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   UserError,
+  asTrees,
   formatBytes,
   isDiskFull,
   isFsRefusal,
   relPosix,
   span,
   splitTaskId,
+  taskGlob,
 } from '../util/index.js'
 import {
   ArchiveSecurityError,
@@ -57,6 +59,7 @@ import {
   type CacheStats,
   type CacheStatsOptions,
   CorruptArtifactError,
+  type DeclaredOutputs,
   type IngestMeta,
   type InvocationRecord,
   type OutputDirRow,
@@ -1329,6 +1332,7 @@ export class Cache implements CacheLayer {
       if (scanned.stdout === null) {
         throw new CorruptArtifactError(hash, 'missing stdout entry')
       }
+      assertArtifactNames(hash, scanned.entries, meta.outputs)
     } catch (err) {
       await unlink(tmpPath).catch(() => undefined)
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
@@ -1727,5 +1731,48 @@ export class Cache implements CacheLayer {
 
   private tarPath(hash: string): string {
     return path.join(this.cacheDir, `${hash}.tar.zst`)
+  }
+}
+
+/**
+ * Refuse an artifact whose file names no restore can materialise as one
+ * tree, or (given the task's declared outputs) that names a file outside
+ * them. Both reached the tree before: `outputs/out.txt` beside
+ * `outputs/out.txt/x` failed every later run from the local copy, blaming
+ * what was on disk, and an undeclared name overwrote an input or planted a
+ * git hook under a green remote hit (item 942). Thrown at ingest, so the
+ * bytes never reach the local store and the remote read is a miss.
+ */
+function assertArtifactNames(
+  hash: string,
+  entries: ReadonlyArray<{ name: string }>,
+  declared: DeclaredOutputs | undefined,
+): void {
+  const names = new Set(entries.map((e) => e.name))
+  for (const name of names) {
+    for (let sep = name.indexOf('/'); sep !== -1; sep = name.indexOf('/', sep + 1)) {
+      if (names.has(name.slice(0, sep))) {
+        throw new CorruptArtifactError(
+          hash,
+          `artifact holds ${name.slice(0, sep)} as a file and as a directory`,
+        )
+      }
+    }
+  }
+  if (declared === undefined) return
+  const files = asTrees(declared.files).map(taskGlob)
+  const wsFiles = asTrees(declared.workspaceFiles).map(taskGlob)
+  for (const name of names) {
+    const ok = name.startsWith('outputs/')
+      ? files.some((g) => g.match(name.slice('outputs/'.length)))
+      : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
+        ? wsFiles.some((g) => g.match(name.slice(WORKSPACE_OUTPUT_PREFIX.length)))
+        : true
+    if (!ok) {
+      throw new CorruptArtifactError(
+        hash,
+        `artifact carries ${name}, which is not one of the task's declared outputs`,
+      )
+    }
   }
 }

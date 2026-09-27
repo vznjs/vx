@@ -97,9 +97,24 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
     while (next < toPrefetch.length) {
       const { hash, node } = toPrefetch[next++]!
       await args.cache
-        .prefetch(hash, { taskId: node.id, command: node.config.exec?.command ?? '' })
+        .prefetch(hash, getContext(node, node.config.exec?.command ?? ''))
         .catch(() => false)
     }
   }
   await Promise.all(Array.from({ length: workers }, () => pump()))
+}
+
+/**
+ * What a cache lookup is told about the task: its id and command for the
+ * row a remote hit inserts, and its declared outputs, the only names a
+ * remote artifact may carry (item 942). Shared with execute-task's own
+ * lookup, the other one that can reach a remote.
+ */
+export function getContext(node: TaskNode, command: string) {
+  const outputs = node.config.cache?.outputs
+  return {
+    taskId: node.id,
+    command,
+    outputs: { files: outputs?.files ?? [], workspaceFiles: outputs?.workspaceFiles ?? [] },
+  }
 }

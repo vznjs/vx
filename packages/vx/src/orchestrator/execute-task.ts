@@ -61,6 +61,7 @@ import {
   movedInput,
   type TaskInputComponent,
 } from './task-hash.js'
+import { getContext } from './remote-prefetch.js'
 
 export interface ExecuteArgs {
   node: TaskNode
@@ -532,7 +533,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // Confirmed stable miss — skip the probe, fall through to run.
     } else if (!fingerprintMoved()) {
       const endProbe = span('cache.get')
-      const hit = await cache.get(hash, { taskId: node.id, command: step.command })
+      const hit = await cache.get(hash, getContext(node, step.command))
       endProbe()
       if (hit) {
         const restored = await restoreOrMiss(hit)

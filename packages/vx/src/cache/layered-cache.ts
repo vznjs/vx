@@ -406,6 +406,7 @@ export class LayeredCache implements CacheLayer {
       taskId: ctx?.taskId ?? `${hash}#unknown`,
       command: ctx?.command ?? '',
       durationMs: typeof remoteBody.durationMs === 'number' ? remoteBody.durationMs : 0,
+      ...(ctx?.outputs !== undefined ? { outputs: ctx.outputs } : {}),
     }
     try {
       await this.local.ingest(hash, remoteBody.body, meta)
