@@ -198,7 +198,7 @@ export async function foldKey(
   // All three describe the WORKTREE bytes, which is what the task
   // reads — the index-OID map is only populated for paths whose
   // worktree form matches their index form, because a clean filter
-  // (`text`/`eol`/`ident`) makes the index blob a DIFFERENT sequence
+  // (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) makes the index blob a DIFFERENT sequence
   // of bytes and folding it would let two distinct worktree contents
   // share a key. The fold order is locked to `sortedInputs` so
   // results are stable across runs.

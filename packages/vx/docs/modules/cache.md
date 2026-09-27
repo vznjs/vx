@@ -278,7 +278,7 @@ object format (sha1 unless the repo uses `--object-format=sha256`).
 The OID arrives from `CacheKeyInput.fileHashes` when the run's bulk
 `git ls-files -s` harvested it AND the path survived the trust prunes
 (clean per `git status`, not `skip-worktree`/`assume-unchanged`, and
-not subject to a `text`/`eol`/`ident` clean filter — see "Clean
+not subject to a `text`/`eol`/`ident`/`filter`/`working-tree-encoding` clean filter — see "Clean
 filters" in `docs/caching.md`) — no I/O at all. Every other path goes
 to `Cache.hashFile`, which hashes the WORKTREE bytes in-process behind
 the `file_hashes` `(mtime, size, ctime, ino)` memo; that is the same

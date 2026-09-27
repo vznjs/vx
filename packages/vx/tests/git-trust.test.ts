@@ -145,3 +145,73 @@ describe('a .gitattributes the index does not hold as clean', () => {
     TIMEOUT,
   )
 })
+
+describe('a clean filter driver', () => {
+  it(
+    'a filter= driver stops the index OID keying the file (item 978)',
+    async () => {
+      // `filter=strip` with a clean command that drops comment lines: `#A`
+      // and `#B` versions of the file clean to one blob, `git status` calls
+      // the edit clean, and the gate asked `check-attr` only for `text`,
+      // `eol` and `ident`, so the run replayed `#A`.
+      const dir = await addProject(root, 'a', {
+        config: `export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && head -1 src.txt > dist/out.txt' },
+              cache: { inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }`,
+      })
+      const git = gitIn(root)
+      git('config', 'filter.strip.clean', "sed '/^#/d'")
+      git('config', 'filter.strip.smudge', 'cat')
+      await writeFile(path.join(dir, '.gitattributes'), '*.txt filter=strip\n')
+      await writeFile(path.join(dir, 'src.txt'), '#A\ncode\n')
+      git('add', '-A')
+      git('commit', '-q', '-m', 'fixture')
+      cli()
+      expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe('#A\n')
+
+      await writeFile(path.join(dir, 'src.txt'), '#B\ncode\n')
+      expect(git('status', '--porcelain', '--', path.join(dir, 'src.txt'))).toBe('')
+      cli()
+      expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe('#B\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a working-tree-encoding does too (item 978)',
+    async () => {
+      // UTF-16 with a little-endian BOM, then the same text big-endian:
+      // two byte sequences, one UTF-8 blob, and a status that calls the
+      // edit clean.
+      const dir = await addProject(root, 'a', {
+        config: `export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && od -An -tx1 src.txt > dist/out.txt' },
+              cache: { inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }`,
+      })
+      const git = gitIn(root)
+      await writeFile(path.join(dir, '.gitattributes'), '*.txt working-tree-encoding=UTF-16\n')
+      await writeFile(path.join(dir, 'src.txt'), Buffer.from([0xff, 0xfe, 0x61, 0, 0x0a, 0]))
+      git('add', '-A')
+      git('commit', '-q', '-m', 'fixture')
+      cli()
+      const before = await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')
+
+      await writeFile(path.join(dir, 'src.txt'), Buffer.from([0xfe, 0xff, 0, 0x61, 0, 0x0a]))
+      expect(git('status', '--porcelain', '--', path.join(dir, 'src.txt'))).toBe('')
+      cli()
+      const after = await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')
+      expect([before.trim(), after.trim()]).toEqual(['ff fe 61 00 0a 00', 'fe ff 00 61 00 0a'])
+    },
+    TIMEOUT,
+  )
+})
