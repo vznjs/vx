@@ -94,3 +94,11 @@ task picked`; neither prints a stack. Row in
   readings of an empty answer), 2 held now: an event naming a relocated
   cache directory itself, and a project-directory test without its path
   separator (the E-11 class again). Rows in `tests/watch-rules.test.ts`.
+- E-13 — Sweep of `cli/run.ts` (never swept): 32 mutants, 28 caught
+  (the parser held every one), 2 equivalent (the `--affected` filter's
+  place, which `applyFilters` no longer reads since item 979 — the
+  comment claiming it did is corrected; the zero-task `--dry` branch,
+  unreachable while `unresolvedTasks` answers first), 2 held now: an
+  anchored spec with no project (`#build`) refused by name, and the
+  picker's Ctrl-C mapped to exit 130 at the verb. Rows in
+  `tests/run-exit-codes.test.ts` (new).
