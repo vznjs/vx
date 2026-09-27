@@ -23,11 +23,13 @@ const STATUS_LABEL: Record<string, string> = {
   aborted: '🛑 aborted',
 }
 
+// Rounded once, then split: rounding the remainder after flooring the
+// minutes printed 119.7 s as `1m 60s`.
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
-  const m = Math.floor(ms / 60_000)
-  return `${m}m ${Math.round((ms - m * 60_000) / 1000)}s`
+  const s = Math.round(ms / 1000)
+  return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
 function statusLabel(t: TaskTelemetry): string {
