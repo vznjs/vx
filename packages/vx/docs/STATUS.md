@@ -291,6 +291,17 @@ test is telling the truth.
         `modules/workspace.md` says so.
       - Row: `workspace.test.ts` › pnpm's `!**/test/**` excludes
         packages/test itself. Red without the fix.
+987.  DONE (2026-09-27, the discovery review's lead 7). A symlinked member
+      (`packages/b -> ../ext/b`) was found by `packages/*`, whose readdir
+      path follows links, and missed by `packages/{a,b}`, `pack*/*` and
+      `packages/*/`, which take the glob scan: `Bun.Glob.scan` follows no
+      link by default.
+      - Fix (`workspace.ts`): the scan follows links for a glob without
+        `**`; under `**` it still does not, so a `packages/**` glob never
+        walks a pnpm `node_modules` link farm (and cannot loop).
+        `modules/workspace.md` and the function's comment say so.
+      - Row: `workspace.test.ts` › a symlinked member is found whatever the
+        glob spelling. Red without the fix.
 
 ## In flight
 

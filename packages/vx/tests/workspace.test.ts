@@ -573,6 +573,21 @@ describe('listProjects', () => {
     ])
     expect(listed).toEqual([['widget-a', 'widgets/widget-a']])
   })
+
+  it('a symlinked member is found whatever the glob spelling (item 987)', async () => {
+    // The readdir path for `widgets/*` followed the link; the glob scan
+    // every other spelling takes did not.
+    await mkdir(path.join(dir, 'submodules', 'widget-a'), { recursive: true })
+    await writeFile(path.join(dir, 'submodules', 'widget-a', 'package.json'), '{"name":"widget-a"}')
+    await mkdir(path.join(dir, 'widgets', 'plain'), { recursive: true })
+    await writeFile(path.join(dir, 'widgets', 'plain', 'package.json'), '{"name":"plain"}')
+    await symlink('../submodules/widget-a', path.join(dir, 'widgets', 'widget-a'))
+    for (const glob of ['widgets/*', 'widgets/{plain,widget-a}', 'widg*/*', 'widgets/*/']) {
+      await writeFile(path.join(dir, 'pnpm-workspace.yaml'), `packages:\n  - "${glob}"\n`)
+      const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name).sort()
+      expect({ glob, names }).toEqual({ glob, names: ['plain', 'widget-a'] })
+    }
+  })
 })
 
 // A workspace manifest is user input. Malformed ones used to surface as

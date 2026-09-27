@@ -7,7 +7,11 @@ full grammar: a negated entry (`!packages/fixtures`, `!**/test/**`)
 subtracts from what the positive globs found — a literal one excludes
 its tree, and a wildcard one is matched against the member's manifest
 (`<pattern>/package.json`) as pnpm matches it, so `!**/test/**` excludes
-`packages/test` itself (item 986) — in both discovery and the root-claim walk. Handed to the
+`packages/test` itself (item 986) — in both discovery and the root-claim walk.
+A symlinked member is found by any glob without `**` (`packages/*`,
+`packages/{a,b}`, `pack*/*`); only `packages/*` found one until item 987.
+Under `**` links are not followed, so the scan never walks a pnpm
+`node_modules` link farm. Handed to the
 glob engine raw, a leading `!` negated the whole pattern and made every
 manifest in the tree a member (2026-09-10). Every entry goes through
 `normalizeBunGlob` first: `!./packages/legacy` and `!packages//legacy`

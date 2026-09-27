@@ -355,8 +355,9 @@ export function memberBaseDirs(workspace: Workspace): string[] {
  * The directories a workspace glob names. For the `<dir>/*` shape this is
  * one readdir of `<dir>` — the same answer `Bun.Glob` gives, at a third of
  * the cost (measured 2026-09-02: 25 ms → ~2 ms for 1000 members). A
- * symlinked member is followed when it points at a directory, as the glob
- * did. Dot-directories are skipped (`dot: false`), so are `node_modules`.
+ * symlinked member is followed when it points at a directory, and so is
+ * it by the scan any other shape takes, unless the glob holds `**` (item
+ * 987). Dot-directories are skipped (`dot: false`), so are `node_modules`.
  */
 async function memberDirs(root: string, pattern: string): Promise<string[]> {
   // Normalize: `"."` -> the root itself; `"foo/"` -> `"foo"`.
@@ -387,7 +388,12 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
   const globPattern = normalized === '' ? 'package.json' : `${normalized}/package.json`
   const glob = new Bun.Glob(globPattern)
   const dirs: string[] = []
-  for await (const rel of glob.scan({ cwd: root, onlyFiles: true, dot: false })) {
+  // A linked member is a member, as the readdir path above has it:
+  // `packages/*` found `packages/b -> ../ext/b` while `packages/{a,b}` and
+  // `pack*/*` did not (item 987). Followed only where the depth is bounded:
+  // under `**` the scan would walk every pnpm `node_modules` link.
+  const followSymlinks = !normalized.includes('**')
+  for await (const rel of glob.scan({ cwd: root, onlyFiles: true, dot: false, followSymlinks })) {
     // Skip nested node_modules — workspace package globs shouldn't
     // ever reach into them, but a pathological pattern like `**`
     // would. Avoid splitting the path on the hot loop.
