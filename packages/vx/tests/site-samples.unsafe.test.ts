@@ -388,7 +388,9 @@ describe('the why pages name every component kind the key records', () => {
 })
 
 describe('the watch-mode post states what watch.ts does', () => {
-  const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'watch.ts'), 'utf8')
+  const src = ['watch.ts', 'watch-fs.ts']
+    .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', f), 'utf8'))
+    .join('\n')
   const page = readFileSync(path.join(DOCS, 'blog', 'watch-mode.md'), 'utf8')
   it('its debounce and probe timeout are the constants', () => {
     expect(src).toContain('const DEBOUNCE_MS = 150')

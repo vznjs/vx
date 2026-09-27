@@ -22,7 +22,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { armWatcher } from '../../src/cli/watch.js'
+import { armWatcher } from '../../src/cli/watch-fs.js'
 import { envFlag } from './env.js'
 
 const required = (): boolean => envFlag('VX_REQUIRE_WATCH_EVENTS')

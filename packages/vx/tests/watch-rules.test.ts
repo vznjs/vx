@@ -12,19 +12,21 @@ import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
 import {
-  armWatcher,
-  pollWatcher,
   isIgnoredWatchPath,
   makeRootEventFilter,
   makeWatchIgnore,
   memberEntries,
-  fsClockNow,
   pendingAfterCycle,
-  modifiedBefore,
   sweepConfigs,
-  WATCH_PROBE,
   watchCmd,
 } from '../src/cli/watch.js'
+import {
+  armWatcher,
+  fsClockNow,
+  modifiedBefore,
+  pollWatcher,
+  WATCH_PROBE,
+} from '../src/cli/watch-fs.js'
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'

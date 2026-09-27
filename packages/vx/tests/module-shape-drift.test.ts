@@ -110,7 +110,7 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxRunUnion'],
   ['git-inputs', 'cache/git-inputs.ts', 'GitEnumeration'],
   ['upgrade', 'cli/upgrade.ts', 'ReleaseAsset'],
-  ['cli-watch', 'cli/watch.ts', 'ArmedWatcher'],
+  ['cli-watch', 'cli/watch-fs.ts', 'ArmedWatcher'],
   ['logger', 'orchestrator/logger.ts', 'OutputView'],
   ['colors', 'orchestrator/colors.ts', 'ColorSupport'],
   ['colors', 'orchestrator/colors.ts', 'PaintOptions'],
