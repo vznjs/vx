@@ -537,12 +537,11 @@ The colors / framing modules:
   same capped count.
 - **Override** — `--concurrency N` (CLI). CLI wins over workspace
   config.
-- **`concurrency: 1`** serializes execution while still respecting
-  topo order; a restore may still run beside it (the restore lane is 1
-  wide then).
-- The scheduler never exceeds the cap; tasks queue. Restore-tier
-  tasks run on their own lane, `2 × concurrency` wide (1 when
-  concurrency is 1), and never take an exec slot.
+- **`concurrency: 1`** serializes everything while still respecting
+  topo order: execs and restores share the one slot.
+- The scheduler never exceeds the cap; tasks queue. Above 1,
+  restore-tier tasks run on their own lane, `2 × concurrency` wide,
+  and never take an exec slot.
 - Failure of a task doesn't pause the scheduler — independent
   siblings continue running and starting.
 
@@ -552,7 +551,9 @@ The colors / framing modules:
 somewhere else declares its own `capacity`, and the tasks placed on it are
 admitted against that number instead — so a 64-wide worker pool is not
 throttled by a 10-core laptop, and a `--concurrency 1` run still keeps the
-pool full.
+pool full. A `capacity` that is not a positive integer is refused:
+`plugin '<p>' returned executor '<e>' with capacity <v>: it must be a
+positive integer`.
 
 - **Placement is decided once per task, before scheduling.** `run()` asks
   the declared executors, in order, which one takes each task (see
@@ -562,9 +563,8 @@ pool full.
   asked only for tasks about to run here, with the tasks running here; a
   task on an executor pool is never asked and never counted, so it can
   never park behind a local reservation.
-- **Restore-tier tasks use the restore lane** — unless the task is
-  placed on an executor with a `capacity`: then it counts against that
-  pool, like any task placed there.
+- **Restore-tier tasks always use the restore lane**, even when placed
+  on an executor with a `capacity`: a restore is local disk work.
 - **No pooled executor declared = the legacy path.** With every task on
   the local pool the admission gate is byte-identical to before pools
   existed.

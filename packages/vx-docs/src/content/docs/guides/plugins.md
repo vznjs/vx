@@ -211,8 +211,14 @@ export default defineWorkspace({ plugins: [acmeCache()] })
 - A `cache` or `executor` hook whose return breaks the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
 - A `name` on the hooks object: the name is the package's.
 - A verb that names a core verb, or one two plugins both declare.
+- An executor `capacity` that is not a positive integer: `plugin '<p>' returned executor '<e>' with capacity <v>: it must be a positive integer`.
 
-A sink that throws is switched off for the run, with a warning.
+A sink that throws is switched off for the run, with a warning. So is a
+`ctx.on` handler that throws or rejects: its plugin is disabled for the
+run and warns once, `[vx] plugin '<p>' threw in <hook>; disabled for this run: <msg>`.
+
+A verb that throws anything but a `UserError` fails in one line, no stack:
+`plugin '<p>' failed in command '<verb>': <msg>`.
 
 ## Plugins that ship
 
