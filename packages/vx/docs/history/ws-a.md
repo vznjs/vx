@@ -214,3 +214,10 @@ The stability gate called any same-project reader of an `outputs.files` producer
 The short-circuit's reach test held only its below-the-dir term and first-hop dependants: a mutant of the root-project term, the equal prefix, the prefix above a project's dir, or the transitive walk passed the suite. `dir === '.'` was dead (`path.relative` gives `''` for the root) and is gone.
 
 - Rows (`local-shortcircuit.test.ts`): an equal prefix, a prefix above, the root project, dependants two hops down. Each red under its own mutant.
+
+### A-23 (2026-09-27, sweep: `file-hashes.ts`)
+
+16 mutants over the 15 files that name the memo: 9 caught, 7 survived. The mtime, size and inode compares (both forms) are masked by ctime on a real file, which moves on every write and cannot be set back; `hashFiles`'s exec-bit mode had no row.
+
+- Rows (`cache-hash-files.test.ts`): a planted memo row that disagrees in one field is not trusted, by either form, with an all-agreeing control; an executable keys as 100755 in the batch form. Each survivor red under the new rows.
+- Survivor list noted as INCONCLUSIVE by the driver (skips in `cache.test.ts`, `config-cache.test.ts`); none failed anywhere, so read as survived.

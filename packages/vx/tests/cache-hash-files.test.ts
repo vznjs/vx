@@ -3,7 +3,7 @@
 // form wrote (and vice versa), see through a rewrite, and leave a missing
 // path out rather than throwing the batch.
 
-import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -138,6 +138,57 @@ describe('Cache.hashFiles', () => {
       ]).toEqual([true, true, true])
       expect([viaBatch, await hash()]).not.toEqual([viaBatch, before])
     }
+  })
+
+  // ctime moves on every write and cannot be set back, so on a real file it
+  // masks the other three stat fields; each is held here by a planted row
+  // that matches the file in all but that one field (A-23).
+  for (const field of ['mtime_ms', 'size_bytes', 'ino'] as const) {
+    it(`a memo row whose ${field} disagrees is not trusted, by either form`, async () => {
+      const f = path.join(dir, 'f.txt')
+      await aged(f, 'real\n')
+      const truth = await cache.hashFile(f)
+      const st = statSync(f)
+      const planted = {
+        mtime_ms: Math.floor(st.mtimeMs),
+        size_bytes: st.size,
+        ctime_ms: Math.floor(st.ctimeMs),
+        ino: Number(st.ino),
+      }
+      planted[field] += 1
+      const plant = () =>
+        cache
+          .dbHandle()
+          .prepare(
+            'UPDATE file_hashes SET mtime_ms = ?, size_bytes = ?, ctime_ms = ?, ino = ?, content_hash = ? WHERE path = ?',
+          )
+          .run(
+            planted.mtime_ms,
+            planted.size_bytes,
+            planted.ctime_ms,
+            planted.ino,
+            'f'.repeat(40),
+            f,
+          )
+      plant()
+      expect(await cache.hashFile(f)).toBe(truth)
+      plant()
+      expect((await cache.hashFiles([f])).get(f)).toBe(truth)
+      // CONTROL: the same row with every field agreeing is trusted.
+      planted[field] -= 1
+      plant()
+      expect(await cache.hashFile(f)).not.toBe(truth)
+    })
+  }
+
+  it('an executable file keys as 100755 in the batch form too', async () => {
+    const x = path.join(dir, 'x.sh')
+    await aged(x, 'echo\n')
+    await chmod(x, 0o755)
+    const single = await cache.hashFile(x)
+    expect((await cache.hashFiles([x])).get(x)).toBe(single)
+    await chmod(x, 0o644)
+    expect(await cache.hashFile(x)).not.toBe(single)
   })
 
   it('a read-only store hashes a miss but remembers nothing', async () => {
