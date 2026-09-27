@@ -642,6 +642,15 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
 
 ## In flight
 
+**The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
+Ten workstreams (A cache and keys, B sandbox and exec, C scheduler and
+run lifecycle, D workspace and config, E CLI, F remote and telemetry
+plugins, G adoption, H the 1.0 contract, I performance, J docs accuracy),
+one session each, one coordinator. While it runs, a stream's merged items
+are recorded in `docs/history/ws-<id>.md` as `<ID>-<n>`, not in the
+numbered list below, so parallel PRs never collide on a number; the
+coordinator folds them into this file.
+
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
 under Bun 1.4.2 is the only gate: the 2026-09-19 container shipped
 1.3.11, below `engines.bun: >=1.4`, and every "flapper" of that arc — the

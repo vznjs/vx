@@ -135,6 +135,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - Sandbox tests skip without `bwrap`/`socat`/`strace`; `VX_REQUIRE_SANDBOX=1`
   (CI) makes an unavailable sandbox a failure.
 - Format: `bun packages/vx/src/bin.ts run lint.oxfmt.fix`.
+- Parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`): a
+  workstream session records each merged item in its own
+  `docs/history/ws-<id>.md` as `<ID>-<n>`, never in STATUS's numbered
+  list, and writes only inside its stream's slice.
 - Commits: imperative present, first line < 72 chars, body says why. One
   coherent change per commit. Commit early; assume interruption.
 - A feature is not done until its docs land in the same commit.
