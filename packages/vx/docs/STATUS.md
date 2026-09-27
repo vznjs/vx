@@ -457,6 +457,20 @@ failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
         root, does not re-export. Both are red without the change. The
         five rows that provoked a re-export with a touch now edit instead.
 
+1076. DONE (2026-09-27, a cache-key review agent's lead 2, a stale hit).
+      With `core.fileMode=false`, which WSL's DrvFs writes, `git status`
+      reports no `chmod`. A `chmod +x` on a clean tracked input therefore
+      kept the input trusted at its index mode (`100644:`), and the task
+      replayed the output a plain input had built. Item 887's mode fix
+      works only where git sees the mode change. When `git var -l`, which
+      the enumeration already spawns, says `core.filemode` is false, each
+      trusted identity takes its mode from an lstat, the way `hashFile`
+      spells it, and keeps the index OID. The cost is one lstat per
+      trusted file, only under that setting. caching.md says so.
+      - Row: `stale-hit.test.ts` › under core.fileMode=false an executable
+        bit still re-keys the task. It is red without the change; the
+        chmod back to 644 is the control, and it hits the first entry.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

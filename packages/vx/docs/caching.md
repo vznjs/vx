@@ -281,6 +281,9 @@ over (in order):
     execute bit). A blob OID holds no mode, so until item 887 a
     `chmod +x`, or a symlink swapped for a file holding its target
     string, kept the key that `git status` and `--affected` saw move.
+    Under `core.fileMode=false` (WSL's DrvFs) git reports no chmod, so
+    there a clean file's mode comes from an lstat too, and its OID
+    from the index (item 1076).
 
     A **symlink** folds as git folds it: the blob of its target
     _string_ (its mode-120000 index OID), whether it points at a file,

@@ -145,6 +145,49 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
   it(
+    'under core.fileMode=false an executable bit still re-keys the task',
+    async () => {
+      // git reports no chmod then, so the file stays trusted at its index
+      // mode, and the task replayed the output a plain input built (item
+      // 1076). WSL's DrvFs writes this setting.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', 'p')
+      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
+      await write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'config', 'core.fileMode', 'false')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      const out = path.join(pkg, 'dist', 'o')
+      const step = async (): Promise<[string, string]> => {
+        const said = vx(root, 'run', 'build', '--all')
+        const word = /1 miss/.test(said) ? 'miss' : 'hit'
+        return [word, (await readFile(out, 'utf8')).trim()]
+      }
+      const seen: Array<[string, string]> = [await step()]
+      await chmod(path.join(pkg, 'src', 'run.sh'), 0o755)
+      seen.push(await step())
+      // Control: back to the committed mode, back to the first entry.
+      await chmod(path.join(pkg, 'src', 'run.sh'), 0o644)
+      seen.push(await step())
+      expect(seen).toEqual([
+        ['miss', 'plain'],
+        ['miss', 'exec'],
+        ['hit', 'plain'],
+      ])
+    },
+    TIMEOUT,
+  )
+  it(
     'a round trip between two entries whose outputs carry one fixed mtime restores the right bytes',
     async () => {
       // A task that sets its outputs' mtime (`tar -x`, `cp -p`,
