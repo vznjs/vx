@@ -1361,7 +1361,9 @@ artifact that vanishes before its restore is a miss, and the task runs
 
 Exit codes:
 
-- `0` — pruning completed (zero or more entries evicted).
+- `0` — pruning completed (zero or more entries evicted). A workspace
+  that never ran has no cache: `Pruned 0 entries (0 B freed)`, and
+  nothing is created.
 - `1` — parse error, missing policy, or workspace-discovery error.
 
 `vx cache prune` resolves the workspace root from cwd and honors a
