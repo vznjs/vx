@@ -213,6 +213,21 @@ test is telling the truth.
         passes its edges through. Red without the fix. The review's
         fixture, run through real vx, now plans `app#test` after
         `lib#build`.
+940.  DONE (2026-09-27, the turbo() review's lead 8, its last). Turbo 2
+      hashes and passes a framework's env prefix (`NEXT_PUBLIC_*` for a
+      package on `next`) with nothing in turbo.json saying so. vx env
+      names are explicit, so the variables were stripped in silence and a
+      Next build inlined empty values. That is not a stale hit (the
+      variable never reached the task), but it is wrong output with no
+      word of why.
+      - A note names each framework, the packages that run a task on it,
+        and the prefix to list. Only prefixes known for certain are
+        listed: next, vite, react-scripts, gatsby, astro. The README says
+        so.
+      - Row: `turbo-map-sweep.test.ts` › a framework Turbo infers is named
+        with its env prefix, with the control that a package running no
+        task is not named. Red without the change.
+      - The review is done: leads 1–8 are items 935–940.
 
 ## In flight
 

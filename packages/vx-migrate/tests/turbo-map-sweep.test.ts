@@ -193,6 +193,28 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(test.task!['dependsOn']).toEqual(['^build', 'lint'])
   })
 
+  // Item 940: Turbo 2 hashes and passes a framework's env prefix with
+  // nothing in turbo.json; vx stripped the variables in silence. A note
+  // names them. CONTROL: a package that runs no task is not named.
+  it('a framework Turbo infers is named with its env prefix', async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
+    const metas: ProjectMeta[] = []
+    for (const [name, deps, scripts] of [
+      ['web', { dependencies: { next: '15' } }, { build: 'next build' }],
+      ['site', { devDependencies: { vite: '6' } }, { build: 'vite build' }],
+      ['idle', { dependencies: { next: '15' } }, {}],
+    ] as const) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      metas.push({ name, dir, packageJson: { name, scripts, ...deps } as never, configPath: null })
+    }
+    const m = await mapTurboWorkspace(root, metas, opts)
+    expect(m.notes).toEqual([
+      'Turbo infers next in web and hashes and passes NEXT_PUBLIC_* to its tasks; vx env names are explicit — list the ones they read in cache.inputs.env and exec.env.passThrough',
+      'Turbo infers vite in site and hashes and passes VITE_* to its tasks; vx env names are explicit — list the ones they read in cache.inputs.env and exec.env.passThrough',
+    ])
+  })
+
   it('two tasks on one output path: the second runs uncached', async () => {
     const m = await map(
       { tasks: { build: { outputs: ['dist/**'] }, bundle: { outputs: ['dist/**'] } } },

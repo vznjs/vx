@@ -61,6 +61,20 @@ const KNOWN_TASK_KEYS = new Set([
 const OUTPUT_LOGS_DEFAULT = 'new-only'
 const OUTPUT_LOGS_RUN_FLAG = new Set(['full', 'hash-only', 'errors-only', 'none'])
 
+// Turbo 2's framework inference: a package that depends on one of these
+// has every variable with the prefix hashed into its tasks and passed to
+// them, with nothing in turbo.json saying so. vx env names are explicit,
+// so the variables were stripped in silence and a build that inlines them
+// (Next's `NEXT_PUBLIC_*`) read empty values (item 940). Named in a note;
+// only the frameworks whose prefix is certain are listed.
+const FRAMEWORK_ENV: ReadonlyArray<readonly [dependency: string, prefixes: string]> = [
+  ['next', 'NEXT_PUBLIC_*'],
+  ['vite', 'VITE_*'],
+  ['react-scripts', 'REACT_APP_*'],
+  ['gatsby', 'GATSBY_*'],
+  ['astro', 'PUBLIC_*'],
+]
+
 /** The three global fields of turbo.json a task may draw on. */
 export type TurboGlobal = 'inputs' | 'env' | 'pass'
 
@@ -126,6 +140,14 @@ async function readTurboJson(file: string, root: string): Promise<TurboJson> {
 
 function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
   return cfg.tasks ?? cfg.pipeline ?? {}
+}
+
+function declares(meta: ProjectMeta, dependency: string): boolean {
+  const pj = meta.packageJson as unknown as Record<string, unknown>
+  return ['dependencies', 'devDependencies'].some((field) => {
+    const deps = pj[field]
+    return typeof deps === 'object' && deps !== null && Object.hasOwn(deps, dependency)
+  })
 }
 
 /** A script value that can become `exec.command` verbatim. */
@@ -270,6 +292,18 @@ export async function mapTurboWorkspace(
   }
   const emittedAnywhere = new Set<string>()
   for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
+
+  for (const [dependency, prefixes] of FRAMEWORK_ENV) {
+    const users = metas
+      .filter((m) => emitted.get(m.name)!.size > 0 && declares(m, dependency))
+      .map((m) => m.name)
+    if (users.length === 0) continue
+    notes.push(
+      `Turbo infers ${dependency} in ${users.join(', ')} and hashes and passes ${prefixes} to ` +
+        'its tasks; vx env names are explicit — list the ones they read in cache.inputs.env ' +
+        'and exec.env.passThrough',
+    )
+  }
 
   const projects: TurboMappedProject[] = []
   for (const meta of metas) {
