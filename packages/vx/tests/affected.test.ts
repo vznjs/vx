@@ -470,6 +470,31 @@ describe('affectedProjects', () => {
     expect(await select({ name: 'lib2', version: '1.0.0' })).toEqual(['a', 'lib2'])
   })
 
+  // Item 1084 (superseded by D-3): a deleted dependency named by an alias
+  // or a path, which no key names.
+  for (const [title, spec, edit] of [
+    ['a deleted dependency named by an npm alias', { mylib: 'npm:lib@^1.0.0' }, null],
+    ['a deleted dependency named by path', { mylib: 'file:../lib' }, null],
+  ] as const) {
+    it(`${title} selects the project that depended on it`, async () => {
+      await mkdir(path.join(root, 'packages/lib'), { recursive: true })
+      await writeFile(
+        path.join(root, 'packages/lib/package.json'),
+        JSON.stringify({ name: 'lib', version: '1.0.0' }),
+      )
+      await git(root, 'add', '-A')
+      await git(root, 'commit', '-q', '-m', 'lib')
+      const withDeps: ProjectMeta[] = [
+        { ...projects[0]!, packageJson: { name: 'a', dependencies: { ...spec } } },
+        projects[1]!,
+      ]
+      if (edit === null) await rm(path.join(root, 'packages/lib'), { recursive: true })
+      else await writeFile(path.join(root, 'packages/lib/package.json'), JSON.stringify(edit))
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withDeps })
+      expect([...out]).toEqual(['a'])
+    })
+  }
+
   it('a root `workspaces` edit selects every project (item 959)', async () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
     await git(root, 'add', '-A')
