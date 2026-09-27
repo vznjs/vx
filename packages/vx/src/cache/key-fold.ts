@@ -99,6 +99,12 @@ export async function foldKey(
   input: CacheKeyInput,
   hashFile: (file: string) => Promise<string>,
   relOf: (file: string) => string,
+  /**
+   * The digest a value-bearing capture row holds. `Cache` keys it with a
+   * salt of its own (L-4); the default is for a caller that persists and
+   * prints nothing.
+   */
+  digestValue: (value: string) => string = xxh3hex,
 ): Promise<string> {
   // Seed-chained xxHash3: each step folds one field into the
   // running digest via `xxh3(part, prevDigest)`. Equivalent to the
@@ -124,16 +130,18 @@ export async function foldKey(
   // DIGEST of each component, never the raw value. For value-bearing kinds
   // (env, runtime, ws-runtime, forward) the payload is a secret or
   // sensitive string (API keys via cache.inputs.env, runtime-command
-  // output, args after `--`), so we push `xxh3hex(v)` — the diff consumer
-  // only needs to know whether a component CHANGED, which a digest
-  // preserves losslessly. cache.db must never hold plaintext secrets at
-  // rest. The cache KEY (`h`) folds the plaintext separately below and is
+  // output, args after `--`), so we push `digestValue(v)` — the diff
+  // consumer only needs to know whether a component CHANGED, which a
+  // digest preserves losslessly. cache.db must never hold plaintext
+  // secrets at rest, and `vx why` prints the digest, so it is salted: an
+  // unkeyed 64-bit xxh3 in a public CI log gave a short secret away to a
+  // brute force (L-4). The cache KEY (`h`) folds the plaintext separately below and is
   // unaffected.
   const forwarded = input.forwardArgs ?? []
   h = xxh3(`forward-args:${forwarded.length}`, h)
   for (const a of forwarded) h = xxh3(a, h)
   if (cap && forwarded.length > 0) {
-    cap.push({ kind: 'forward', name: 'argv', hash: xxh3hex(JSON.stringify(forwarded)) })
+    cap.push({ kind: 'forward', name: 'argv', hash: digestValue(JSON.stringify(forwarded)) })
   }
 
   h = xxh3(`env-values:${input.envValues.length}`, h)
@@ -145,20 +153,20 @@ export async function foldKey(
   for (const [n, v] of input.envValues) h = xxh3(v === undefined ? n : `${n}\0${v}`, h)
   if (cap)
     for (const [n, v] of input.envValues)
-      cap.push({ kind: 'env', name: n, hash: v === undefined ? 'unset' : xxh3hex(v) })
+      cap.push({ kind: 'env', name: n, hash: v === undefined ? 'unset' : digestValue(v) })
 
   const runtimeValues = input.runtimeValues ?? []
   h = xxh3(`runtime-values:${runtimeValues.length}`, h)
   for (const [c, o] of runtimeValues) h = xxh3(`${c}\0${o}`, h)
   if (cap)
-    for (const [c, o] of runtimeValues) cap.push({ kind: 'runtime', name: c, hash: xxh3hex(o) })
+    for (const [c, o] of runtimeValues) cap.push({ kind: 'runtime', name: c, hash: digestValue(o) })
 
   const wsRuntimeValues = input.workspaceRuntimeValues ?? []
   h = xxh3(`ws-runtime-values:${wsRuntimeValues.length}`, h)
   for (const [c, o] of wsRuntimeValues) h = xxh3(`${c}\0${o}`, h)
   if (cap)
     for (const [c, o] of wsRuntimeValues)
-      cap.push({ kind: 'ws-runtime', name: c, hash: xxh3hex(o) })
+      cap.push({ kind: 'ws-runtime', name: c, hash: digestValue(o) })
 
   const upstream = [...input.upstreamHashes].sort()
   h = xxh3(`upstream:${upstream.length}`, h)
@@ -174,7 +182,7 @@ export async function foldKey(
     h = xxh3(`plugin:${pluginParts.length}`, h)
     for (const [n, v] of pluginParts) h = xxh3(`${n}\0${v}`, h)
     if (cap) {
-      for (const [n, v] of pluginParts) cap.push({ kind: 'plugin', name: n, hash: xxh3hex(v) })
+      for (const [n, v] of pluginParts) cap.push({ kind: 'plugin', name: n, hash: digestValue(v) })
     }
   }
 

@@ -506,14 +506,25 @@ describe('Cache.key', () => {
     expect(byKind('package')).toEqual([{ name: 'package.json', hash: 'pkg-x' }])
     expect(byKind('config')).toEqual([{ name: 'config', hash: 'cfg-x' }])
     // Value-bearing kinds capture a DIGEST, never the plaintext — secrets in
-    // env / runtime output / argv must not land in cache.db.
-    expect(byKind('forward')).toEqual([{ name: 'argv', hash: xxh3hex(JSON.stringify(['--flag'])) }])
+    // env / runtime output / argv must not land in cache.db — and a digest
+    // under this store's salt, never a bare xxh3 anyone can brute-force from
+    // `vx why`'s output (L-4).
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as Database
+    const salt = (
+      db.query("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+        value: string
+      }
+    ).value
+    expect(salt).toMatch(/^[0-9a-f]{32}$/)
+    const salted = (v: string): string => xxh3hex(`${salt}\0${v}`)
+    expect(byKind('forward')).toEqual([{ name: 'argv', hash: salted(JSON.stringify(['--flag'])) }])
     expect(byKind('env')).toEqual([
-      { name: 'MODE', hash: xxh3hex('a') },
-      { name: 'DEBUG', hash: xxh3hex('1') },
+      { name: 'MODE', hash: salted('a') },
+      { name: 'DEBUG', hash: salted('1') },
     ])
-    expect(byKind('runtime')).toEqual([{ name: 'node -v', hash: xxh3hex('v20') }])
-    expect(byKind('ws-runtime')).toEqual([{ name: 'uname', hash: xxh3hex('Linux') }])
+    expect(byKind('runtime')).toEqual([{ name: 'node -v', hash: salted('v20') }])
+    expect(byKind('ws-runtime')).toEqual([{ name: 'uname', hash: salted('Linux') }])
     expect(byKind('upstream')).toEqual([{ name: 'dep#build', hash: 'up-1' }])
     // File rows: workspace-relative name, content OID as hash, one per file.
     const files = byKind('file')
@@ -548,6 +559,33 @@ describe('Cache.key', () => {
     const a = sink.find((r) => r.kind === 'env')!.hash
     const b = other.find((r) => r.kind === 'env')!.hash
     expect(a).not.toBe(b)
+  })
+
+  it('a value digest is keyed by the store, so `vx why` prints nothing brute-forceable (L-4)', async () => {
+    // An unkeyed xxh3 of a short secret, printed by `vx why` into a public
+    // CI log, is confirmed or brute-forced offline. Keyed by a salt each
+    // store draws once: stable across reopens (a diff still says whether
+    // the value changed), different in another store, never the bare xxh3.
+    const envHash = async (c: Cache): Promise<string> => {
+      const sink: Array<{ kind: string; name: string; hash: string }> = []
+      await c.key({ ...baseInput(), envValues: [['PIN', '1234']], captureInto: sink })
+      return sink.find((r) => r.kind === 'env')!.hash
+    }
+    const first = await envHash(cache)
+    cache.close()
+    const reopened = new Cache(path.join(dir, '.vx', 'cache'))
+    const other = new Cache(path.join(dir, '.vx', 'other-cache'))
+    try {
+      expect({
+        again: await envHash(reopened),
+        bare: first === xxh3hex('1234'),
+        otherStore: (await envHash(other)) === first,
+      }).toEqual({ again: first, bare: false, otherStore: false })
+    } finally {
+      reopened.close()
+      other.close()
+      cache = new Cache(path.join(dir, '.vx', 'cache'))
+    }
   })
 
   it('captureInto omits the forward row when forwardArgs is empty', async () => {

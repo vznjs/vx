@@ -50,6 +50,14 @@
   zstd is decoded no further than the size, and a batch entry is held to
   the digest asked for (one not asked for is dropped). Rows in
   `read-bounds.test.ts`.
+- L-4. `fix(cache)`: the value-bearing digests `entry_inputs` and
+  `runs.forward_args` hold (env values, runtime outputs, `--` args, plugin
+  parts) were an unkeyed 64-bit xxh3, and `vx why` prints them (text,
+  JSON, MCP `whyDidThisRerun`): a public CI log let anyone confirm or
+  brute-force a short secret. They are now xxh3 under 128 random bits
+  each store draws once (`schema_meta.value_salt`); a diff still sees a
+  change. Rows in `cache.test.ts`, `key-fold.test.ts`,
+  `run-history-columns.test.ts`.
 - L-5. `fix(cache)`: `ingest` wrote a remote body to its temp with no
   bound, so a body that never ends (turbo, nx or reapi remote) filled the
   disk before the decode's ceiling saw a byte. The compressed body is now

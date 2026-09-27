@@ -40,6 +40,7 @@ import {
   span,
   splitTaskId,
   taskGlob,
+  xxh3hex,
 } from '../util/index.js'
 import {
   ArchiveSecurityError,
@@ -655,7 +656,7 @@ export class Cache implements CacheLayer {
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
     this.configEvals = new ConfigEvalTable(this.db, { read: this.read, write: this.write })
     this.outputs = new OutputIndex(this.db)
-    this.history = new RunHistory(this.db)
+    this.history = new RunHistory(this.db, (v) => this.digestValue(v))
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
     // after an upgrade misses everything. Roadmap 3.3: that is announced,
@@ -753,7 +754,45 @@ export class Cache implements CacheLayer {
       input,
       (f) => this.hashFile(f),
       (f) => this.relFor(input.workspaceRoot, f),
+      (v) => this.digestValue(v),
     )
+  }
+
+  private valueSalt: string | undefined
+
+  /**
+   * The digest a value-bearing row holds (an env value, a runtime output,
+   * args after `--`): xxh3 under a random salt this store keeps. `vx why`,
+   * its JSON and MCP's `whyDidThisRerun` print it, and an unkeyed xxh3 in
+   * a public CI log let anyone confirm or brute-force a short secret
+   * (L-4). Salted, a digest still says whether a value changed, and says
+   * nothing without this cache's `schema_meta`. Asked for on a miss only.
+   */
+  private digestValue(value: string): string {
+    this.valueSalt ??= this.loadValueSalt()
+    return xxh3hex(`${this.valueSalt}\0${value}`)
+  }
+
+  private loadValueSalt(): string {
+    const read = (): string | undefined =>
+      (
+        this.db.prepare("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+          value: string
+        } | null
+      )?.value
+    const found = read()
+    if (found !== undefined) return found
+    const salt = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('hex')
+    // A store this process may not write keeps the salt for the process:
+    // nothing it digests is persisted.
+    if (this.writeBlocked !== null || this.inspecting) return salt
+    // Two processes opening one new store: the first salt stands.
+    this.db
+      .prepare(
+        "INSERT INTO schema_meta(key, value) VALUES ('value_salt', ?) ON CONFLICT(key) DO NOTHING",
+      )
+      .run(salt)
+    return read() ?? salt
   }
 
   // ctx is accepted but ignored — the local layer reads metadata from

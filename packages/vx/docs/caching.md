@@ -1198,7 +1198,7 @@ CREATE TABLE runs (
   status              TEXT NOT NULL,   -- success | failed | cache-hit | cache-hit-remote | skipped
   exit_code           INTEGER NOT NULL,
   duration_ms         INTEGER NOT NULL,
-  forward_args        TEXT,             -- xxh3 of the JSON-encoded `--` args; null when none
+  forward_args        TEXT,             -- salted xxh3 of the JSON-encoded `--` args; null when none
   started_at          INTEGER NOT NULL, -- ms-epoch
   ended_at            INTEGER NOT NULL,
   run_id              TEXT,             -- ULID shared across all tasks in one invocation
@@ -1357,9 +1357,12 @@ with `SQLITE_BUSY`.
 
 > **Trust boundary (Tier 3):** `entry_inputs` stores a digest of each
 > value-bearing component — `env`, `runtime`, `ws-runtime`, `forward`
-> and `plugin` rows hold `xxh3hex(value)`, an unset env var the literal
-> `'unset'` — never the value, so a secret read as a cache input does
-> not land in `cache.db` as plaintext. The "why did this re-run?" diff
+> and `plugin` rows hold `xxh3hex(salt + value)`, an unset env var the
+> literal `'unset'` — never the value, so a secret read as a cache input
+> does not land in `cache.db` as plaintext. The salt is 128 random bits
+> the store draws once (`schema_meta` key `value_salt`): `vx why` prints
+> these digests, and an unkeyed xxh3 in a public CI log let anyone
+> confirm or brute-force a short secret. The "why did this re-run?" diff
 > only needs to know a component changed, which the digest tells it.
 > `cache.db` still records commands and captured stdout; it is a local,
 > gitignored, single-user file.

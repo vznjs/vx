@@ -109,6 +109,12 @@ describe('the run history stores each field in its own column', () => {
     }
     const db = new Database(path.join(dir, 'cache', 'cache.db'), { readonly: true })
     try {
+      // Salted by the store (L-4), as `entry_inputs` is.
+      const salt = (
+        db.query("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+          value: string
+        }
+      ).value
       const runs = db
         .query(
           `SELECT hash, project, task, status, exit_code, duration_ms, forward_args,
@@ -126,7 +132,7 @@ describe('the run history stores each field in its own column', () => {
           status: 'failed',
           exit_code: 3,
           duration_ms: 11,
-          forward_args: xxh3hex('["--mode","ci"]'),
+          forward_args: xxh3hex(`${salt}\0["--mode","ci"]`),
           started_at: T + 1,
           ended_at: T + 2,
           run_id: 'run-1',
