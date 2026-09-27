@@ -832,6 +832,45 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
     }
   })
 
+  it('the run stopping cancels the Execute stream; stopped before, nothing is sent', async () => {
+    // Before, the stop was unheard: vx waited on the remote as long as the
+    // action ran, here forever.
+    let release!: () => void
+    const forever = new Promise<void>((r) => {
+      release = r
+    })
+    let executes = 0
+    fake.onExecute = () => {
+      executes++
+      return { stages: ['EXECUTING'], hold: forever }
+    }
+    const stop = new AbortController()
+    const cancelled = fake.executesCancelled
+    try {
+      const refused = await withExecutor((run) => {
+        setTimeout(() => stop.abort(), 200)
+        return refusal(
+          Promise.race([
+            run(request({ signal: stop.signal })),
+            Bun.sleep(2000).then(() => {
+              throw new Error('the stop was not heard')
+            }),
+          ]),
+        )
+      })
+      await Bun.sleep(50)
+      const before = await withExecutor((run) => refusal(run(request({ signal: stop.signal }))))
+      expect([refused, fake.executesCancelled - cancelled, before, executes]).toEqual([
+        'vx/reapi: pkg#gen: the run stopped before its remote execution finished',
+        1,
+        'vx/reapi: pkg#gen: the run stopped before its remote execution finished',
+        1,
+      ])
+    } finally {
+      release()
+    }
+  })
+
   it('an operation that ends in an error refuses with its message', async () => {
     fake.onExecute = () => ({ opError: { code: 9, message: 'precondition' } })
     expect(await withExecutor((run) => refusal(run(request())))).toContain(
