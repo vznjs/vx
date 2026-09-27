@@ -119,8 +119,10 @@ a stack and exit 1 after its task had succeeded.
 | `--affected[=<base>]`         | Sugar for `--filter '...[<base>]'` — git-changed projects and their dependents. |
 
 Combining: `--filter` and `--affected` stack (the affected base is
-appended as another filter pattern); `--all` overrides scope to the
-full workspace.
+added as the FIRST filter pattern, so every `--filter` on the line
+applies after it, and a `!` exclude removes from what `--affected`
+selected, whichever side of the flag it sits; item 955); `--all`
+overrides scope to the full workspace.
 
 ### Filter DSL (`--filter`)
 

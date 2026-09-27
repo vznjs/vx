@@ -512,6 +512,15 @@ test is telling the truth.
         `affected-workspace-files.test.ts` › a glob into another project
         selects its declarer through the real CLI. Both red without the
         fix; the nothing-changed row keeps the cost gate.
+955.  DONE (2026-09-27, the `--affected` review's lead 6). `--affected`
+      is `...[<base>]`, appended after every `--filter`; filters apply in
+      argv order, so a `!` exclude ran before it and removed nothing
+      (`--affected --filter '!app'` still ran app, either order).
+      - Fix: the sugar is the first pattern, so every `--filter` applies
+        after it. `cli.md` says so.
+      - Row: `affected-base-notes.test.ts` › a `!` exclude removes a
+        project from `--affected` on either side of it, the bare
+        `--affected` its control. Red without the fix.
 
 ## In flight
 
