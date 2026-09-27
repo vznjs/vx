@@ -912,6 +912,17 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         out-of-scope project declares as controls. Red with the refusal
         removed, and with the workspace fallback removed.
 
+1027. DONE (2026-09-27, the plugin-seam review's lead 4). A telemetry
+      sink's `name` is optional, and a nameless sink that threw or
+      failed to flush was reported as `telemetry sink 'undefined'`.
+      - Fix (`telemetry.ts`, `telemetry-host.ts`): the host maps each
+        nameless sink to its plugin's name (with its place when the
+        plugin returns several); a sink no plugin owns goes by its place
+        in the list. `modules/telemetry.md` says so.
+      - Row: `telemetry-lifecycle.test.ts` › a sink with no name is named
+        by its plugin, and by its place in a list (both warning sites).
+        Each piece red when removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

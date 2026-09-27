@@ -357,6 +357,40 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
     expect(warnings.join('\n')).toContain('sink blew up')
   })
 
+  it('a sink with no name is named by its plugin, and by its place in a list (item 1027)', async () => {
+    // `name` is optional; the warning printed `telemetry sink 'undefined'`.
+    const boom = () => {
+      throw new Error('boom')
+    }
+    const one = await subscribeWith({ onRunSummary: boom })
+    ;(one.handle as { emitSummary(s: unknown): void }).emitSummary({})
+    const two = await subscribeWith([{ onRunSummary: () => undefined }, { onRunSummary: boom }])
+    ;(two.handle as { emitSummary(s: unknown): void }).emitSummary({})
+    const named = await subscribeWith({ name: 'own', onRunSummary: boom })
+    ;(named.handle as { emitSummary(s: unknown): void }).emitSummary({})
+    const bareWarnings: string[] = []
+    const bare = createTelemetrySource({
+      sinks: [
+        { onRunSummary: () => undefined },
+        { onRunSummary: boom },
+        { onRunSummary: () => undefined, flush: async () => boom() },
+      ],
+      run: RUN,
+      warn: (m) => bareWarnings.push(m),
+    })
+    bare.emitSummary({} as RunSummaryRecord)
+    await bare.flush()
+    expect([one.warnings, two.warnings, named.warnings, bareWarnings]).toEqual([
+      ["[vx] telemetry sink 'org/bad' threw in onRunSummary; disabled for this run: boom"],
+      ["[vx] telemetry sink 'org/bad #2' threw in onRunSummary; disabled for this run: boom"],
+      ["[vx] telemetry sink 'own' threw in onRunSummary; disabled for this run: boom"],
+      [
+        "[vx] telemetry sink '#2' threw in onRunSummary; disabled for this run: boom",
+        "[vx] telemetry sink '#3' failed to flush: boom",
+      ],
+    ])
+  })
+
   it('a well-formed sink is still accepted', async () => {
     const { handle, warnings } = await subscribeWith({ onRunSummary: () => undefined })
     expect(handle).toBeDefined()

@@ -364,9 +364,15 @@ export function createTelemetrySource(args: {
   run: RunContextRecord
   /** Where a dropped-flush notice goes; absent = stay silent. */
   warn?: (message: string) => void
+  /** What a sink with no `name` of its own is called: its plugin's (the host's map). */
+  owners?: ReadonlyMap<TelemetrySink, string>
 }): TelemetrySource {
   const { sinks, run, warn } = args
   const runId = run.runId
+  // `name` is optional, and a nameless sink was reported as 'undefined'
+  // (item 1027): it goes by its plugin's name, else its place in the list.
+  const label = (sink: TelemetrySink): string =>
+    sink.name ?? args.owners?.get(sink) ?? `#${sinks.indexOf(sink) + 1}`
   // A sink is disabled the first time it throws — its name (or index) goes
   // here and it's skipped for the rest of the run, FLUSH INCLUDED. Flushing a
   // disabled sink would write a buffer that is incomplete by construction: it
@@ -381,7 +387,7 @@ export function createTelemetrySource(args: {
   const disable = (sink: TelemetrySink, hook: string, err: unknown): void => {
     disabled.add(sink)
     warn?.(
-      `[vx] telemetry sink '${sink.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+      `[vx] telemetry sink '${label(sink)}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
   // Precompute which sinks want each kind, so per-event fan-out is a plain
@@ -500,7 +506,7 @@ export function createTelemetrySource(args: {
               // A flush failure can never break the run — but it still costs
               // this sink its export, so say so rather than dropping it.
               warn?.(
-                `[vx] telemetry sink '${sink.name}' failed to flush: ${err instanceof Error ? err.message : String(err)}`,
+                `[vx] telemetry sink '${label(sink)}' failed to flush: ${err instanceof Error ? err.message : String(err)}`,
               )
             }
           }),

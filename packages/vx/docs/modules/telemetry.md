@@ -28,7 +28,9 @@ is pre-folded, bigint wallclock spans are decimal strings.
   `name`, a `wants` list of record kinds (the source checks it BEFORE
   projecting, so a sink pays nothing for kinds it declines), and
   `onRecord` / `onRunSummary` / `flush`. Every one is crash-isolated and
-  `flush` is deadline-bounded.
+  `flush` is deadline-bounded. A warning names the sink by its `name`,
+  else by its plugin's (`org/p`, or `org/p #2` for the second of a
+  list), else by its place in the source's list (`#2`; item 1027).
 - `TelemetryContext` — what the hook is handed: `workspaceRoot`,
   `cacheDir` (a STRING, not a Cache handle — a sink cannot reach the
   cache) and `warn`.
