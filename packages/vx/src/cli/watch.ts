@@ -86,6 +86,7 @@ export function isIgnoredWatchPath(rel: string): boolean {
 export function makeWatchIgnore(
   cacheDir: string,
   outputs: ReadonlyMap<string, readonly string[]> = new Map(),
+  inputs: ReadonlyMap<string, readonly string[]> = new Map(),
 ): (base: string, filename: string) => boolean {
   const cacheAbs = path.resolve(cacheDir)
   // A task's own outputs are not edits: without this every cycle that
@@ -109,10 +110,32 @@ export function makeWatchIgnore(
         globs.map(outputContainer).filter((c) => c !== ''),
       ] as const,
   )
+  // A path some task takes as an INPUT is never an output to ignore, even
+  // when another task declares it one: an in-place formatter declaring
+  // `src/**` hid every `src` edit from a `build` watched beside it, and no
+  // cycle ran (item 946). Negations are not consulted — they only narrow,
+  // and a path they would exclude costs one cache-hit cycle.
+  const read = [...inputs].map(
+    ([dir, globs]) =>
+      [
+        path.resolve(dir),
+        asTrees(globs.filter((g) => !g.startsWith('!'))).map((g) => taskGlob(g)),
+      ] as const,
+  )
+  const isInput = (abs: string): boolean =>
+    read.some(([dir, globs]) => {
+      if (!abs.startsWith(dir + path.sep)) return false
+      const rel = abs
+        .slice(dir.length + 1)
+        .split(path.sep)
+        .join('/')
+      return globs.some((g) => g.match(rel))
+    })
   return (base, filename) => {
     if (isIgnoredWatchPath(filename)) return true
     const abs = path.resolve(base, filename)
     if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
+    if (isInput(abs)) return false
     for (const [dir, globs, containers] of declared) {
       if (!abs.startsWith(dir + path.sep)) continue
       const rel = abs
@@ -494,6 +517,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     projectDirs: watched.map((p) => p.dir),
     workspaceInputs: swept.workspaceInputs,
     outputs: swept.outputs,
+    inputs: swept.inputs,
     memberBases: memberBaseDirs(workspace),
     packageDirs: new Set(allProjects.map((p) => p.dir)),
     // The workspace as the cycle that just ran saw it: a package added or
@@ -509,6 +533,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         workspaceWide: sweep.workspaceWide,
         workspaceInputs: sweep.workspaceInputs,
         outputs: sweep.outputs,
+        inputs: sweep.inputs,
         packageDirs: new Set(all.map((p) => p.dir)),
       }
     },
@@ -571,18 +596,29 @@ export async function sweepConfigs(
   workspaceWide: boolean
   workspaceInputs: string[]
   outputs: Map<string, string[]>
+  /** Declared input globs per directory they are relative to, the counterweight to `outputs`. */
+  inputs: Map<string, string[]>
   /** The staged load the sweep read, when the run path's load succeeded; `watchedProjects` reads the same one. */
   staged: Map<string, ProjectEntry> | null
 }> {
   const outputs = new Map<string, string[]>()
-  const add = (dir: string, globs: readonly string[] | undefined): void => {
+  const inputs = new Map<string, string[]>()
+  const addTo = (
+    into: Map<string, string[]>,
+    dir: string,
+    globs: readonly string[] | undefined,
+  ): void => {
     if (globs === undefined || globs.length === 0) return
-    outputs.set(dir, [...(outputs.get(dir) ?? []), ...globs])
+    into.set(dir, [...(into.get(dir) ?? []), ...globs])
   }
+  const add = (dir: string, globs: readonly string[] | undefined): void =>
+    addTo(outputs, dir, globs)
   const workspaceInputs = new Set<string>()
   const fold = (dir: string, config: ProjectConfig): void => {
     for (const task of Object.values(config.tasks ?? {})) {
       for (const g of task.cache?.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
+      addTo(inputs, dir, task.cache?.inputs?.files)
+      addTo(inputs, workspaceRoot, task.cache?.inputs?.workspaceFiles)
       add(dir, task.cache?.outputs?.files)
       add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
     }
@@ -593,11 +629,13 @@ export async function sweepConfigs(
     workspaceWide: boolean
     workspaceInputs: string[]
     outputs: Map<string, string[]>
+    inputs: Map<string, string[]>
     staged: Map<string, ProjectEntry> | null
   } => ({
     workspaceWide: workspaceInputs.size > 0,
     workspaceInputs: [...workspaceInputs],
     outputs,
+    inputs,
     staged,
   })
   let staged: Map<string, ProjectEntry> | null = null
@@ -688,6 +726,8 @@ interface WatchLoopArgs {
   cacheDir: string
   /** Declared output globs per directory they are relative to (project dir, or the root for `workspaceFiles`). */
   outputs: ReadonlyMap<string, readonly string[]>
+  /** Declared input globs per directory: never ignored as another task's output. */
+  inputs: ReadonlyMap<string, readonly string[]>
   /** The directory each `<dir>/*` package glob names; a member coming or going there is a cycle. */
   memberBases: readonly string[]
   /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
@@ -701,6 +741,7 @@ interface Rediscovered {
   workspaceWide: boolean
   workspaceInputs: readonly string[]
   outputs: ReadonlyMap<string, readonly string[]>
+  inputs: ReadonlyMap<string, readonly string[]>
   packageDirs: ReadonlySet<string>
 }
 
@@ -731,6 +772,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let projectDirs = args.projectDirs
   let workspaceInputs = args.workspaceInputs
   let outputs = args.outputs
+  let inputs = args.inputs
   // A dev server stays up while the loop idles; the cycle that replaces it
   // stops it first, so the new one never meets the old one's port.
   let held = args.held
@@ -938,7 +980,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // project's dir recursively, so a `node_modules` write under a
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
-  let isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
+  let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
   let matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   let reread = false
@@ -1123,8 +1165,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     projectDirs = next.projects.map((p) => p.dir)
     workspaceInputs = next.workspaceInputs
     outputs = next.outputs
+    inputs = next.inputs
     packageDirs = next.packageDirs
-    isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
+    isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
     matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
     if (next.workspaceWide !== workspaceWide) {
       // A task started or stopped declaring `workspaceFiles`: the other

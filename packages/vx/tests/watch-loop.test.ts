@@ -58,6 +58,33 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
+  it('another task declaring an input as its output does not hide the input (item 946)', async () => {
+    // An in-place formatter declares `src/**` as its outputs; the watch
+    // ignore folded every task's outputs, so `build`'s `src` edits were
+    // ignored and no cycle ran, while `vx run build` would have run it.
+    await writeFile(
+      path.join(f.dir, 'vx.config.mjs'),
+      `export default { tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+        format: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/**'] } },
+        },
+      } }\n`,
+    )
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after an edit')
+    expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a2\n')
+  }, 40_000)
+
   it('VX_WATCH_POLL=1 polls from the start, says so, and an edit still re-runs', async () => {
     // The switch for a host whose OS watcher is known not to deliver (a
     // sandbox without FSEvents access, a network mount, a container bind):

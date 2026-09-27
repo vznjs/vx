@@ -61,6 +61,17 @@ describe('the ignore filter', () => {
   })
 })
 
+describe("a path some task reads is never ignored as another task's output (item 946)", () => {
+  it('an input under a declared output still counts; an output nobody reads does not', () => {
+    const dir = path.resolve('/w/app')
+    const outputs = new Map([[dir, ['src/**', 'dist/**']]])
+    const ignore = makeWatchIgnore('/w/.vx', outputs, new Map([[dir, ['src/**', '!src/*.md']]]))
+    expect([ignore(dir, 'src/a.txt'), ignore(dir, 'dist/out.txt')]).toEqual([false, true])
+    // CONTROL: without the input map, the same output hides the same path.
+    expect(makeWatchIgnore('/w/.vx', outputs)(dir, 'src/a.txt')).toBe(true)
+  })
+})
+
 describe("a task's own outputs are not edits, and a route directory is literal (item 667)", () => {
   it('ignores a write under the route and not one under the class sibling', () => {
     const dir = path.join(os.tmpdir(), 'vx-watch-route')
