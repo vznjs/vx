@@ -23,7 +23,7 @@ import {
   xxh3,
 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
-import { parseRunArgs, resolveRunOptions } from './run.js'
+import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -397,6 +397,27 @@ export function armWatcher(
   return { watcher, ready }
 }
 
+/**
+ * The run flags a watch loop cannot honour, as the refusal line it prints; null
+ * when there is none. `WATCH_REFUSED_FLAGS` (help.ts) is the same list for
+ * the help line and the completions, and a test holds the two together.
+ */
+export function watchRefusal(parsed: RunArgs): string | null {
+  if (parsed.dry !== undefined || parsed.graph !== undefined) {
+    return 'vx watch: --dry / --graph are not supported in watch mode'
+  }
+  if (parsed.summarize !== undefined || parsed.profile !== undefined) {
+    return 'vx watch: --summarize / --profile are not supported in watch mode (would overwrite per cycle)'
+  }
+  // All three format ONE run's result and are consumed by `runCmd` alone, so
+  // a watch loop silently ignored them. `--verbosity 0` is not rejected: it
+  // asks for the output watch already gives.
+  if (parsed.report !== undefined || parsed.reportFile !== undefined || parsed.verbosity > 0) {
+    return 'vx watch: --report / --report-file / --verbosity are not supported in watch mode (they report a single run)'
+  }
+  return null
+}
+
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
@@ -404,23 +425,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     return 1
   }
 
-  if (parsed.dry !== undefined || parsed.graph !== undefined) {
-    process.stderr.write(`vx watch: --dry / --graph are not supported in watch mode\n`)
-    return 1
-  }
-  if (parsed.summarize !== undefined || parsed.profile !== undefined) {
-    process.stderr.write(
-      `vx watch: --summarize / --profile are not supported in watch mode (would overwrite per cycle)\n`,
-    )
-    return 1
-  }
-  // All three format ONE run's result and are consumed by `runCmd` alone, so
-  // a watch loop silently ignored them. `--verbosity 0` is not rejected: it
-  // asks for the output watch already gives.
-  if (parsed.report !== undefined || parsed.reportFile !== undefined || parsed.verbosity > 0) {
-    process.stderr.write(
-      `vx watch: --report / --report-file / --verbosity are not supported in watch mode (they report a single run)\n`,
-    )
+  const refused = watchRefusal(parsed)
+  if (refused !== null) {
+    process.stderr.write(`${refused}\n`)
     return 1
   }
   if (parsed.tasks.length === 0) {

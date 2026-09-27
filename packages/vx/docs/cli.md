@@ -1919,12 +1919,13 @@ vx completions fish > ~/.config/fish/completions/vx.fish
 ```
 
 The script completes the verbs — core's, and the plugin verbs the
-workspace around the cwd declares at generation time — and, for a core
-verb, every `--word` its `vx <verb> --help` text mentions. That text
-also names flags the verb refuses, so some are offered anyway: `vx
-watch` offers `--dry` / `--graph` / `--summarize` / `--profile`, `vx lock`
-`--frozen`, `vx show` and `vx info` `--run` / `--list`. A plugin verb
-completes `--help` only. Task and project
+workspace around the cwd declares at generation time — and every flag
+of each verb, read from the same help text `vx <verb> --help` prints:
+the verb's own Usage line, and for `run` and `watch` the run option
+lines, less the ones `watch` refuses. So a flag cannot be documented
+and not completed, nor completed and then refused: a flag another
+verb's line names in passing (`vx lock --check` beside `--frozen`) is
+not one. A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). An unknown
 shell is an error naming the three.
