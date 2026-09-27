@@ -3582,6 +3582,34 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     releaseBridges(b.tag)
   })
 
+  // The row above met a host that sets JAVA_TOOL_OPTIONS (a proxied
+  // container) with a quoted prefix before its command: the task passes the
+  // host's value through, SRT's composition was already right, and the
+  // prefix only quoted it twice (item 1007). A differing value still gets
+  // one; that is item 995's own row.
+  it("no JAVA_TOOL_OPTIONS prefix when the task's value is the host's", async () => {
+    const previous = process.env['JAVA_TOOL_OPTIONS']
+    process.env['JAVA_TOOL_OPTIONS'] = '-Dsame=1'
+    try {
+      const same = await wrapSandboxedCommand(
+        args('echo hi', { env: { JAVA_TOOL_OPTIONS: '-Dsame=1' } }),
+      )
+      expect(same.taggedCommand).toMatch(
+        new RegExp(`vx-task-${process.pid}-${same.tag}'?; echo hi$`),
+      )
+      releaseBridges(same.tag)
+      // CONTROL: a task value of its own still gets the prefix.
+      const own = await wrapSandboxedCommand(
+        args('echo hi', { env: { JAVA_TOOL_OPTIONS: '-Down=1' } }),
+      )
+      expect(own.taggedCommand).toContain('__vx_t=-Down=1;')
+      releaseBridges(own.tag)
+    } finally {
+      if (previous === undefined) delete process.env['JAVA_TOOL_OPTIONS']
+      else process.env['JAVA_TOOL_OPTIONS'] = previous
+    }
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     expect([r.exitCode, r.violations]).toEqual([127, []])

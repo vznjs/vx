@@ -568,6 +568,19 @@ test is telling the truth.
         its base, with a file and an in-project link kept. Red without the
         fix.
 
+1007. DONE (2026-09-27, found running item 1006's sandbox suite on a host
+      that sets `JAVA_TOOL_OPTIONS`). Item 995's prefix was written
+      whenever either side had a value, so a task passing the host's
+      through got the value quoted twice before its command, and the
+      "tags each wrap" row failed on such a host (the gate strips the
+      variable from its tasks, so it passed there).
+      - Fix (`sandbox-runtime.ts`): no prefix when the task's value is the
+        host's; SRT's composition is already the task's own.
+        `modules/sandbox-runtime.md` says so.
+      - Row: `sandbox-runtime.unsafe.test.ts` › no JAVA_TOOL_OPTIONS
+        prefix when the task's value is the host's, with a value of the
+        task's own as the control. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
