@@ -32,11 +32,12 @@
 // which is why they are driven end-to-end against a real `vx mcp` subprocess
 // as well as against `handleMessage`.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { Cache, type RunRecord } from '@vzn/vx'
+import { Database } from 'bun:sqlite'
+import { Cache, type RunRecord, UserError } from '@vzn/vx'
 import { handleToolCall, listTools } from '../src/tools.js'
 
 // ---------------------------------------------------------------------------
@@ -1272,23 +1273,78 @@ describe('the workspace context decides which database is read', () => {
     }
   })
 
-  // FINDING — src/cli/mcp-rpc.ts:122.
-  //
-  // `new Cache(cacheDir)` CREATES the directory and an empty `cache.db`. So a
-  // read-only introspection tool writes to disk, and it writes wherever the
-  // agent's cwd happens to point: run `vx mcp` from the wrong place and
-  // `getCacheStats` answers zeros while littering a `.vx/cache/` there.
-  //
-  // The zeros are the more serious half — indistinguishable from a real empty
-  // cache, so an agent cannot tell it is looking at the wrong workspace.
-  it('materializes a cache.db in a directory that had none (FINDING)', async () => {
-    const ghost = path.join(tmpdir(), `vx-mcp-ghost-w-${Date.now()}`)
+  // F-2: the four cache tools opened the index the way a run does, so a
+  // "read-only" call created `.vx/cache/` where there was none (item 900's
+  // shape), reset an earlier schema's index in silence (its run history
+  // with it), and pruned month-old history on close (item 1004's shape).
+  // They open it as `vx last` does now: `Cache.inspect`.
+  const CACHE_TOOLS: [string, Record<string, unknown>][] = [
+    ['getCacheStats', {}],
+    ['getRunHistory', {}],
+    ['explainCacheKey', { taskId: '@t/alpha#build' }],
+    ['whyDidThisRerun', { taskId: '@t/alpha#build', runId: 'r-old' }],
+  ]
+
+  it('a cache tool makes nothing on disk where there is no cache', async () => {
+    const ghost = mkdtempSync(path.join(tmpdir(), 'vx-mcp-ghost-'))
     try {
-      const stats = (await call(ghost, 'getCacheStats', {})) as Stats
-      expect(stats.runCountLast24h).toBe(0)
-      expect(await Bun.file(path.join(ghost, '.vx', 'cache', 'cache.db')).exists()).toBe(true)
+      const made: Record<string, boolean> = {}
+      for (const [tool, args] of CACHE_TOOLS) {
+        await call(ghost, tool, args).catch(() => undefined)
+        made[tool] = existsSync(path.join(ghost, '.vx'))
+      }
+      expect(made).toEqual({
+        getCacheStats: false,
+        getRunHistory: false,
+        explainCacheKey: false,
+        whyDidThisRerun: false,
+      })
+      // CONTROL: the probe sees a cache where one was made.
+      seed(ghost, () => undefined)
+      expect(existsSync(path.join(ghost, '.vx', 'cache', 'cache.db'))).toBe(true)
     } finally {
       rmSync(ghost, { recursive: true, force: true })
+    }
+  })
+
+  it("a cache tool refuses an earlier schema's index and leaves it, and old history, as it was", async () => {
+    const root = makeWorkspace('old-schema')
+    const monthOld = Date.now() - 40 * 24 * 60 * 60 * 1000
+    try {
+      seed(root, (cache) =>
+        cache.recordRun(mkRun({ project: '@t/alpha', task: 'build', runId: 'r-old' })),
+      )
+      const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+      const runs = () => db.query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }
+      const version = () =>
+        (db.query("SELECT value FROM schema_meta WHERE key = 'version'").get() as { value: string })
+          .value
+      try {
+        // Aged here: the seeding handle's own close would prune it.
+        db.run('UPDATE runs SET started_at = ?', [monthOld])
+        // Month-old history survives a current-schema read (no prune on close).
+        for (const [tool, args] of CACHE_TOOLS) await call(root, tool, args).catch(() => undefined)
+        expect(runs().n).toBe(1)
+        db.run("UPDATE schema_meta SET value = 'v1' WHERE key = 'version'")
+        const refused: Record<string, string> = {}
+        for (const [tool, args] of CACHE_TOOLS) {
+          refused[tool] = await call(root, tool, args).then(
+            () => 'answered',
+            (e: Error) => (e instanceof UserError ? 'refused' : e.message),
+          )
+        }
+        expect(refused).toEqual({
+          getCacheStats: 'refused',
+          getRunHistory: 'refused',
+          explainCacheKey: 'refused',
+          whyDidThisRerun: 'refused',
+        })
+        expect([version(), runs().n]).toEqual(['v1', 1])
+      } finally {
+        db.close()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })
