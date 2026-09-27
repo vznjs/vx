@@ -110,7 +110,9 @@ export interface RunSummary {
     see util-settle.md, kill-tree.md).
     Before the SIGTERM it returns the children that already ended on
     their own, not cleanly (`CrashedPersistent`: a non-zero exit or a
-    signal): each fails the run, and a status line names it
+    signal): each fails the run, its outcome becomes `failed` with that
+    code (a kept server that has already died likewise, item 1071), and
+    a status line names it
     (`vx: <id> exited with code <n>`, item 892). Read before the stop,
     so the SIGTERM's own 143 is never one; and on a stopped run (Ctrl-C,
     an embedder's abort) only the servers that had ended when the stop

@@ -370,6 +370,20 @@ test is telling the truth.
         written (`bin/tool`); the mapper's other expectations in
         vx-migrate's suites moved from `<dir>/**` to the bare path.
 
+1071. DONE (2026-09-27, the local runner review's other minor finding).
+      A persistent server that became ready and then died on its own
+      before the run stopped it failed the run (items 892 and 1061). Its
+      outcome still said `success`, so the footer read `2 success · 2
+total` over exit 1, both for a dependency-only server and for a
+      requested one kept alive. Such a server's outcome is now `failed`
+      with its own code, or 128 plus the signal, so the footer reads `1
+failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
+      orchestrator.md says so.
+      - Rows: `keep-alive.test.ts` › the three server-crash rows now pin
+        the footer tally. The dependency-only and requested cases are red
+        without the change; the green control reads `2 success · 2 total`
+        both ways.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
