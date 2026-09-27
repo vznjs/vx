@@ -934,9 +934,39 @@ export function releaseBridges(tag: string): void {
   }
 }
 
+/** What a task's output says when strace, not the task, ended its first attempt. */
+const TRACER_RETRY_LINE =
+  "[vx] the sandbox's tracer (strace) failed on its own; running the task again\n"
+
 /**
  * Run a single task wrapped in the sandbox. Caller must have called
  * `initSandbox()` first.
+ *
+ * On Linux the task runs under strace, which only REPORTS what the sandbox
+ * denied, and a traced task's exit is strace's. strace failing on its own
+ * (`ptrace(PTRACE_LISTEN,…): Input/output error`, after a build that had
+ * finished) turned green work red on CI five times (STATUS Next 24). Such an
+ * attempt, its last word strace's own, is run once more: the sandbox kept
+ * its writes to what it declared, so a second run redoes, not doubles, it.
+ */
+export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
+  const { tracerFailed, ...first } = await runSandboxedOnce(args)
+  if (!tracerFailed) return first
+  args.onStderr?.(TRACER_RETRY_LINE)
+  const { tracerFailed: _again, ...second } = await runSandboxedOnce(args)
+  return {
+    ...second,
+    durationMs: first.durationMs + second.durationMs,
+    stdout: first.stdout + second.stdout,
+    stderr: first.stderr + TRACER_RETRY_LINE + second.stderr,
+  }
+}
+
+/** strace's own message, as the last line a failed traced task printed. */
+const STRACE_OWN_ERROR = /^strace: /
+
+/**
+ * One attempt of `runSandboxed`.
  *
  * Violations are matched by a unique per-task command prefix — SRT's
  * `getViolationsForCommand` keys by base64 of the first 100 chars, so
@@ -944,7 +974,9 @@ export function releaseBridges(tag: string): void {
  * across packages) would otherwise collide. We prepend `: '<tag>';`
  * (shell no-op) to make every command's first 100 chars unique.
  */
-export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
+async function runSandboxedOnce(
+  args: SandboxedRunArgs,
+): Promise<SandboxedRunResult & { tracerFailed: boolean }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
   const { wrapped, tag, taggedCommand, baselines, forwardsSignals } =
@@ -1012,15 +1044,33 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
     args.onStderr?.(stderr)
     releaseBridges(tag)
-    return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, violations: [] }
+    return {
+      exitCode: 127,
+      durationMs: Date.now() - start,
+      stdout: '',
+      stderr,
+      violations: [],
+      tracerFailed: false,
+    }
   }
 
   args.liveChildren?.add(proc)
   const timeout = armTimeout(proc, args.timeoutMs)
   const ac = new AbortController()
+  let stderrTail = ''
   const streams = Promise.all([
     streamToString(proc.stdout, args.onStdout, ac.signal, args.capture?.stdout ?? true),
-    streamToString(proc.stderr, args.onStderr, ac.signal, args.capture?.stderr ?? true),
+    streamToString(
+      proc.stderr,
+      (chunk) => {
+        // Kept whatever the capture setting: the last line says whether
+        // strace, not the task, ended the attempt.
+        stderrTail = (stderrTail + chunk).slice(-1024)
+        args.onStderr?.(chunk)
+      },
+      ac.signal,
+      args.capture?.stderr ?? true,
+    ),
   ])
   // See runCommand: gate on child exit; a lingering grandchild pipe (timeout
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
@@ -1138,6 +1188,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     // ignore; bwrap mount-point cleanup is best-effort
   }
 
+  const lastLine = stderrTail.trimEnd().split('\n').pop() ?? ''
   return {
     exitCode,
     durationMs: Date.now() - start,
@@ -1147,6 +1198,11 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     ...(proc.signalCode ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage()),
+    tracerFailed:
+      straceLog !== undefined &&
+      exitCode !== 0 &&
+      !timeout.timedOut() &&
+      STRACE_OWN_ERROR.test(lastLine),
   }
 }
 
