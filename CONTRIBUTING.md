@@ -2,6 +2,25 @@
 
 vx is pre-alpha and moves fast; the shape of a good change is stable.
 
+## Start here
+
+```sh
+git clone https://github.com/vznjs/vx && cd vx
+bun install
+bun packages/vx/src/bin.ts run ci --all   # the gate: lint, every test, the docs build
+```
+
+Needs Bun ≥ 1.4 and git. On Linux the sandboxed tasks also need
+`bubblewrap`, `socat` and `ripgrep` (`apt install bubblewrap socat
+ripgrep`); macOS has its sandbox built in. If the gate refuses your git
+config (`core.checkStat=minimal` or `core.trustctime=false`), run it with
+`GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`.
+
+Something to work on: the ordered list in
+[`STATUS.md` § Next](packages/vx/docs/STATUS.md#next-ordered).
+
+## The shape of a change
+
 - **Bun ≥ 1.4 only.** No Node in the toolchain, no build step: `bun
 packages/vx/src/bin.ts` runs the CLI from source.
 - **Gate before you push.** From the repo root, `bun packages/vx/src/bin.ts

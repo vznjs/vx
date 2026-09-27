@@ -46,6 +46,11 @@
   choice per tool with sources, `parity.md` maps every Turbo and Nx
   feature to a test, and the owner's short-site design caps the Docs;
   two more pages would restate them.
+- **K-7** CONTRIBUTING opens with three commands (coordinator backlog
+  5). A newcomer on Linux met "sandbox not available" from the gate: the
+  page never named bubblewrap, socat and ripgrep, nor the git-config
+  refusal's escape (`GIT_CONFIG_GLOBAL=/dev/null`, item A-18), both hit
+  in this stream's own first gate.
 
 ## Leads for other streams
 
