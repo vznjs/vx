@@ -209,6 +209,37 @@ describe('cli run()', () => {
     }
   })
 
+  it('--dry and --graph hint the nearest task, as the run does (E-29)', async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-dry-hint-'))
+    const origCwd = process.cwd()
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'fixture', workspaces: ['p'] }),
+      )
+      await writeLocalWorkspace(root)
+      await mkdir(path.join(root, 'p'), { recursive: true })
+      await writeFile(path.join(root, 'p', 'package.json'), JSON.stringify({ name: 'p' }))
+      await writeFile(
+        path.join(root, 'p', 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      process.chdir(root)
+      for (const plan of ['--dry', '--graph']) {
+        stderr = ''
+        expect(await run(['run', 'biuld', '--all', plan])).toBe(1)
+        expect(stderr).toBe('vx run: no projects declare task(s): biuld. Did you mean build?\n')
+      }
+    } finally {
+      process.chdir(origCwd)
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects unknown command', async () => {
     expect(await run(['nope'])).toBe(1)
     expect(stderr).toContain('unknown command')

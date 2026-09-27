@@ -210,3 +210,7 @@ task picked`; neither prints a stack. Row in
   Under the rows it now says what to do, one line per changed kind
   (`WHAT_TO_DO`), held to the kinds `cache/key-fold.ts` captures in
   both directions. Rows in `tests/why.test.ts`.
+- E-29 — `vx run <typo> --dry` (and `--graph`) refused with no hint,
+  while the run itself names the nearest task (`Did you mean build?`)
+  or how to declare one. `planRun` now returns the run's own hint
+  (`unresolvedHint`) and the verb prints it. Row in `tests/cli.test.ts`.

@@ -84,6 +84,7 @@ function dryJson(): unknown {
     tasks: [bare, full],
     predicted,
     unresolvedTasks: [],
+    unresolvedHint: '',
     downloadDowngrades: [{ taskId: 'a#build', reason: 'r' }],
   }
   return JSON.parse(formatPlanJson(plan))

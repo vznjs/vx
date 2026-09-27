@@ -1044,6 +1044,7 @@ export interface RunPlan {
   tasks: PlannedTask[]
   predicted?: PlanPrediction
   unresolvedTasks?: readonly string[]
+  unresolvedHint?: string
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
 == type RunRecord (src/cache/layer.ts)

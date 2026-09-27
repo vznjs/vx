@@ -1206,7 +1206,11 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   const prepared = await prepareRun(options, log)
   try {
     if (prepared.unresolvedTasks.length > 0) {
-      return { tasks: [], unresolvedTasks: prepared.unresolvedTasks }
+      return {
+        tasks: [],
+        unresolvedTasks: prepared.unresolvedTasks,
+        unresolvedHint: `${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
+      }
     }
     if (prepared.empty !== null) return { tasks: [] }
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
