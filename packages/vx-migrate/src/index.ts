@@ -32,6 +32,8 @@ export interface MigrateArgs {
   /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
   mjs: boolean
   from?: 'turbo' | 'nx'
+  /** `--help` / `-h`: the usage on stdout, exit 0 (as `nx-env --help`). */
+  help?: boolean
   error?: string
 }
 
@@ -50,7 +52,7 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
         return { ...out, error: `--from must be turbo or nx (package.json scripts: \`vx init\`)` }
       }
       out.from = v
-    } else if (a === '--help' || a === '-h') return { ...out, error: USAGE }
+    } else if (a === '--help' || a === '-h') return { ...out, help: true }
     else if (a?.startsWith('-')) return { ...out, error: `unknown flag: ${a}\n${USAGE}` }
     else return { ...out, error: `unexpected argument: ${a}\n${USAGE}` }
   }
@@ -60,6 +62,10 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
 /** The command: detect the source, map it, hand the plan to core. Returns the exit code. */
 export async function migrateCmd(args: readonly string[]): Promise<number> {
   const parsed = parseMigrateArgs(args)
+  if (parsed.help) {
+    process.stdout.write(`${USAGE}\n`)
+    return 0
+  }
   if (parsed.error) {
     process.stderr.write(`vx-migrate: ${parsed.error}\n`)
     return 1

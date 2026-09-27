@@ -163,3 +163,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `turbo.test` › the mapping cache): a hit serves the kept file; each
   key input maps afresh; each key part removed reddens its row. The
   code part has no row (sources are fixed in a test).
+- **G-11.** `vx-migrate --help` / `-h` print the usage on stdout and
+  exit 0; they printed it as an error and exited 1 (`nx-env --help`
+  exits 0). Row: `migrate.test` › --help and -h …, red without the
+  fix; an unknown flag is the control. Also noted: on main after G-7,
+  nx-examples' 42 task closures all match Nx's; a `turbo.json` field of
+  the wrong type (`dependsOn: "^build"`) maps per character, but Turbo
+  refuses that file itself, so no working repo carries one.

@@ -1205,9 +1205,26 @@ describe('the writer: what the sweep found unheld', () => {
       mjs: false,
       from: 'nx',
     })
-    expect(parseMigrateArgs(['--help']).error).toBe(USAGE)
-    expect(parseMigrateArgs(['-h']).error).toBe(USAGE)
+    expect(parseMigrateArgs(['--help']).help).toBe(true)
+    expect(parseMigrateArgs(['-h']).help).toBe(true)
     expect(parseMigrateArgs(['--nope']).error).toBe(`unknown flag: --nope\n${USAGE}`)
+  })
+
+  // `--help` printed the usage as an error and exited 1; `nx-env --help`
+  // exits 0. CONTROL: an unknown flag is still an error.
+  it('--help and -h print the usage on stdout and exit 0', async () => {
+    const root = await makeRoot('vx-migrate-help-')
+    try {
+      for (const flag of ['--help', '-h'])
+        expect(await vx(root, [flag])).toEqual({ code: 0, out: `${USAGE}\n`, err: '' })
+      expect(await vx(root, ['--nope'])).toEqual({
+        code: 1,
+        out: '',
+        err: `vx-migrate: unknown flag: --nope\n${USAGE}\n`,
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   const detect = async (files: Record<string, string>, args: string[]) => {

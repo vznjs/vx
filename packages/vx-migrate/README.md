@@ -122,6 +122,7 @@ bunx @vzn/vx-migrate           # auto-detect: turbo.json, or .nx/workspace-data/
 bunx @vzn/vx-migrate --dry     # print the generated files + the report instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
+bunx @vzn/vx-migrate --help    # the usage, exit 0
 ```
 
 `--dry` prints the files instead of writing them; `--force` overwrites existing ones; `--mjs` writes `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts` — the same objects with no type import and no `satisfies`, for a package whose own `tsconfig` includes every `.ts` under it and would compile the config into its dist (TanStack/query, 2026-09-11).
