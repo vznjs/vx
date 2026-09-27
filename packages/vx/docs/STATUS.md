@@ -146,6 +146,25 @@ mkdir dist/out.js`) failed with "a path the output globs do not
       GitHub attestations against a key in the binary) would close it; it
       is not built.
 
+1097. DONE (2026-09-27, upgrade review #3 and #4). `replaceBinary`
+      chmodded the new binary 0755 and wrote it fresh, so a 0750
+      group-only install came back world-executable and owned by whoever
+      ran the upgrade. It now keeps the old mode, adds execute wherever
+      read is granted, and keeps the owner as root. And a new binary this
+      machine could not start (a CPU below the build's target, a `noexec`
+      mount) printed `installed (version check failed)` and exited 0 with
+      the old binary gone. The swap now keeps a hard link to the previous
+      binary; the rename stays the one atomic step. `upgradeCmd` asks the
+      new one for `--version`, and a failure renames the previous one
+      back, says so, and exits 1. upgrade.md and cli.md say so.
+      - Rows: `upgrade.test.ts` › "keeps the replaced binary's mode"
+        (0750 stays 0750) and "puts the previous binary back when the new
+        one does not start, and leaves nothing". The second asserts the
+        new bytes were what it asked about, the old ones are back, the
+        directory holds only `vx`, and a control where the binary starts
+        keeps the new bytes and no spare name. Both are red without the
+        change; the executable-bit row still holds.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

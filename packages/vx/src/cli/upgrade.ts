@@ -12,7 +12,7 @@
 // Named `upgrade` (not `update`) per CLI convention: bun upgrade,
 // deno upgrade — "update" is what package managers do to indexes.
 
-import { chmod, rename, rm } from 'node:fs/promises'
+import { chmod, chown, link, rename, rm, stat } from 'node:fs/promises'
 import { seeHelp } from './help.js'
 import { UserError } from '../util/index.js'
 import { VERSION } from '../version.js'
@@ -181,11 +181,21 @@ export async function fetchRelease(tag: string | undefined): Promise<unknown> {
 
 /**
  * Download `url`, verify its SHA-256 against `sha256`, and atomically
- * replace `dest` with it. Exported for tests (which stub `fetch` and
- * point `dest` at a tmp file); the CLI wires it to the release asset
- * and process.execPath.
+ * replace `dest` with it, keeping `dest`'s mode (and, as root, its owner):
+ * a 0750 install came back 0755 and owned by whoever upgraded (item 1097).
+ * `starts`, when given, is asked of the replaced binary; false puts the old
+ * one back, since the digest proves the bytes, not that this machine can
+ * run them (a CPU below the build's target, a `noexec` mount), and the
+ * upgrade reported success over a vx that no longer started. Exported for
+ * tests (which stub `fetch` and point `dest` at a tmp file); the CLI wires
+ * it to the release asset and process.execPath.
  */
-export async function replaceBinary(dest: string, url: string, sha256: string): Promise<void> {
+export async function replaceBinary(
+  dest: string,
+  url: string,
+  sha256: string,
+  starts?: (dest: string) => boolean,
+): Promise<void> {
   const res = await fetchOrRefuse(url, { redirect: 'follow' }, 'download the release asset')
   if (!res.ok) {
     throw new UserError(`vx upgrade: download failed (${res.status}) — ${url}`)
@@ -203,18 +213,39 @@ export async function replaceBinary(dest: string, url: string, sha256: string): 
     )
   }
   const tmp = `${dest}.upgrade-${process.pid}`
+  const old = `${dest}.previous-${process.pid}`
+  let kept = false
   try {
+    const was = await stat(dest).catch(() => null)
     await Bun.write(tmp, bytes)
-    await chmod(tmp, 0o755)
+    // Its mode, executable wherever it is readable: a 0750 install stays
+    // group-only, and a binary is never left without its execute bits.
+    await chmod(tmp, was === null ? 0o755 : (was.mode & 0o7777) | ((was.mode & 0o444) >> 2))
+    if (was !== null && process.getuid?.() === 0) await chown(tmp, was.uid, was.gid)
+    // A second name for the binary being replaced, so a new one that does
+    // not start can be put back; the rename below stays the one atomic swap.
+    if (starts !== undefined && was !== null) {
+      await link(dest, old)
+      kept = true
+    }
     await rename(tmp, dest)
   } catch (err) {
     await rm(tmp, { force: true })
+    if (kept) await rm(old, { force: true })
     const msg = err instanceof Error ? err.message : String(err)
     throw new UserError(
       `vx upgrade: could not replace ${dest} (${msg}) — ` +
         `check permissions, or reinstall with npm install -g @vzn/vx`,
     )
   }
+  if (starts === undefined || starts(dest)) {
+    if (kept) await rm(old, { force: true })
+    return
+  }
+  if (kept) await rename(old, dest)
+  throw new UserError(
+    `vx upgrade: the new binary did not start on this machine (\`${dest} --version\` failed)${kept ? ' — the previous vx is back in place' : ''}. Nothing else changed; report it with this os/arch`,
+  )
 }
 
 export async function upgradeCmd(args: readonly string[]): Promise<number> {
@@ -246,11 +277,14 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
   }
   const asset = releaseAsset(await fetchRelease(tag), assetName())
   process.stdout.write(`vx upgrade: ${VERSION} → ${tag ?? 'latest'} (${dest})\n`)
-  await replaceBinary(dest, asset.url, asset.sha256)
-  // Report the replaced binary's own version — the new build speaks
-  // for itself rather than this process guessing.
-  const proc = Bun.spawnSync({ cmd: [dest, '--version'], stdout: 'pipe', stderr: 'pipe' })
-  const v = new TextDecoder().decode(proc.stdout).trim()
-  process.stdout.write(`vx upgrade: installed ${v || '(version check failed)'}\n`)
+  // The replaced binary's own version: the new build speaks for itself
+  // rather than this process guessing, and one that cannot is rolled back.
+  let installed = ''
+  await replaceBinary(dest, asset.url, asset.sha256, (bin) => {
+    const proc = Bun.spawnSync({ cmd: [bin, '--version'], stdout: 'pipe', stderr: 'pipe' })
+    installed = new TextDecoder().decode(proc.stdout).trim()
+    return proc.exitCode === 0 && installed.startsWith('vx ')
+  })
+  process.stdout.write(`vx upgrade: installed ${installed}\n`)
   return 0
 }

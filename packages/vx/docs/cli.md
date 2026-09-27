@@ -1529,7 +1529,11 @@ release (…) — check the network or the proxy and re-run` — never a
 stack; so is a transfer cut after the headers arrived, and a release
 document that is not JSON (a captive portal's page served with a 200):
 `could not download the release asset from github.com (…) — nothing
-replaced; …`.
+replaced; …`. The new binary
+keeps the old one's mode (and, as root, its owner), and must answer
+`--version` before the upgrade reports it installed: one that does not
+start on this machine is swapped back for the previous vx, and the
+command exits 1 saying so (item 1097).
 
 ## `vx init`
 
