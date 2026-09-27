@@ -6,7 +6,7 @@ import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
 import { CORE_VERBS, printHelp } from './help.js'
 import { pluginCommandHelp, resolvePluginCommand, pluginVerbs } from './plugin-commands.js'
-import { MOVED_VERBS, nearest, UserError } from '../util/index.js'
+import { isUserError, MOVED_VERBS, nearest, UserError } from '../util/index.js'
 
 // Every verb but `run` is imported when invoked. `vx run` is the hot path
 // and nearly every invocation; the other verbs' modules are code that
@@ -78,7 +78,18 @@ export async function run(argv: readonly string[]): Promise<number> {
       // nothing here can shadow them.
       const resolved = await resolvePluginCommand(command)
       if (resolved !== null && !('loadError' in resolved) && !('declaredVerbs' in resolved)) {
-        const code = await resolved.command.run(rest, resolved.ctx)
+        let code: number
+        try {
+          code = await resolved.command.run(rest, resolved.ctx)
+        } catch (err) {
+          // A verb's own refusal is its one line; anything else is the
+          // plugin's crash, named as every other stage names one.
+          if (isUserError(err)) throw err
+          const message = err instanceof Error ? err.message : String(err)
+          throw new UserError(
+            `plugin '${resolved.plugin.name}' failed in command '${command}': ${message}`,
+          )
+        }
         // A plugin is a boundary: a JS-authored verb that resolves nothing
         // would reach `process.exit(undefined)` and read as SUCCESS. A verb
         // that cannot say whether it succeeded fails, naming its owner. So

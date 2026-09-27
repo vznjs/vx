@@ -342,11 +342,10 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
     expect(r.err).toBe('vx: bad flag --x\n')
   })
 
-  it('CONTROL: a plain Error still prints its stack', async () => {
+  it('a plain Error names the plugin and verb in one line, as other stages do (E-25)', async () => {
     await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([PLUGIN]))
     const r = spawn('crash')
     expect(r.code).toBe(1)
-    expect(r.err).toContain('vx: Error: kaboom')
-    expect(r.err).toContain('    at ')
+    expect(r.err).toBe("vx: plugin 'org/foreign' failed in command 'crash': kaboom\n")
   })
 })

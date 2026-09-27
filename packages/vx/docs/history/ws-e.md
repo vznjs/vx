@@ -175,3 +175,8 @@ task picked`; neither prints a stack. Row in
   Also `vx run`'s exit-code table (C's lead) now names nothing
   affected (0), an unknown task and a persistent task that exits after
   ready (1), each already held by a row.
+- E-25 — A plugin verb that threw a plain Error printed `vx: Error: …`
+  and a stack (C's lead). It now names the plugin and verb in one line
+  (`plugin '<name>' failed in command '<verb>': …`), as the other
+  stages name a crash; a verb's own `UserError` keeps its one line.
+  Row in `tests/plugin-commands.test.ts`.
