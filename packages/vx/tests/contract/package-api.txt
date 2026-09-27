@@ -4,6 +4,9 @@ export class Cache implements CacheLayer {
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
   static inspect(cacheDir: string): Cache
+  static async orphansBeforeReset(
+    cacheDir: string,
+  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null>
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
@@ -34,6 +37,7 @@ export class Cache implements CacheLayer {
     hash: string,
     projectDir: string,
     prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
@@ -117,7 +121,12 @@ export class LayeredCache implements CacheLayer {
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
-  recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void>
+  recordOutputDirs(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
@@ -377,7 +386,12 @@ export interface CacheLayer {
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
-  recordOutputDirs?(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void>
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
@@ -453,7 +467,9 @@ export interface CollectInfoOptions {
   readonly warn?: (message: string) => void
 }
 == type CommandContext (src/orchestrator/plugin.ts)
-export interface CommandContext extends BaseContext {}
+export interface CommandContext extends BaseContext {
+  readonly concurrency: number
+}
 == type ConfigEvalStore (src/workspace/config-cache.ts)
 export interface ConfigEvalStore {
   hashFile?(file: string): Promise<string>
@@ -1362,7 +1378,7 @@ export interface TelemetrySink {
   readonly wants?: ReadonlyArray<TelemetryRecord['kind']>
   onRecord?(record: TelemetryRecord): void
   onRunSummary?(summary: RunSummaryRecord): void
-  flush?(): Promise<void>
+  flush?(signal: AbortSignal): Promise<void>
 }
 == type VxPlugin (src/orchestrator/plugin.ts)
 export interface VxPlugin {
