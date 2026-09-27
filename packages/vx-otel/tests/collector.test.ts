@@ -176,6 +176,32 @@ describe('the OTLP transport reports a collector that refuses the export', () =>
   })
 })
 
+// F-4: the warning printed the export URL whole, and an endpoint that
+// carries its credential in the URL put the secret in the CI log.
+describe('a credential in the export URL', () => {
+  it('is not printed when the export fails; the collector is still named', async () => {
+    reply = { status: 401, body: 'no' }
+    const warnings: string[] = []
+    const authority = url.replace('http://', '')
+    const sink = new OtelSink({
+      tracesUrl: `http://ci-user:s3cret@${authority}/v1/traces?api-key=K3Y&tenant=t`,
+      metricsUrl: `${url}/v1/metrics`,
+      logsUrl: `${url}/v1/logs`,
+      serviceName: 'vx',
+      headers: {},
+      metricsEnabled: false,
+      logsEnabled: false,
+      timeoutMs: 2_000,
+      warn: (m) => warnings.push(m),
+    })
+    driveOneTask(sink)
+    await sink.flush()
+    expect(warnings).toEqual([
+      `[vx-otel] export failed for http://***:***@${authority}/v1/traces?***: HTTP 401: no`,
+    ])
+  })
+})
+
 // Item 807's sweep: each row fails with one line of sink.ts undone.
 describe('the transport, as the vx-otel sweep found it unheld', () => {
   const at = (path: string) => `[vx-otel] export failed for ${url}${path}: `

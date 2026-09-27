@@ -88,3 +88,8 @@ failing the task; Execute's own NOT_FOUND still throws. A streamed
 read cut after its first message re-opens at `read_offset` = bytes
 read, instead of turning a remote hit into a miss. Rows red without
 each fix.
+
+F-4. vx-otel's export-failed warning printed the URL whole, leaking a
+credential in userinfo or query to CI logs; now masked as `***`. Row red
+without the fix. README now lists the default logs export (task output
+tails, which can hold secrets) and its opt-out.

@@ -1,7 +1,7 @@
 # @vzn/vx-otel
 
 The OpenTelemetry exporter plugin for [`@vzn/vx`](https://github.com/vznjs/vx).
-Maps each `vx run` to **OTLP traces + metrics** over HTTP/JSON — no
+Maps each `vx run` to **OTLP traces, metrics and logs** over HTTP/JSON — no
 OpenTelemetry SDK dependency (it speaks the OTLP wire protocol directly, so the
 package stays zero-dependency and version-drift-free).
 
@@ -47,6 +47,7 @@ otel({
   serviceName: 'my-monorepo',
   headers: { authorization: 'Bearer …' },
   metrics: true, // default
+  logs: true, // default: each executed task's output tail
 })
 ```
 
@@ -71,6 +72,11 @@ otel({
 The counts are DELTA sums over the run's own interval (start to end), so a
 backend adds runs rather than reading each as the series' new total.
 
+**Logs per run** (on by default): the captured output tail of each executed
+task, as one log record linked to its task span. Build output can hold
+secrets, and this sends it to the collector; `logs: false` or
+`OTEL_LOGS_EXPORTER=none` turns it off.
+
 ## Behavior note
 
 This replaces core's previous hardcoded OTel emit, which fired automatically
@@ -83,7 +89,10 @@ Swallowed, but not silent: an export that does not land warns once per
 signal URL, naming what happened — a collector that cannot be reached, one
 that refuses the request (`HTTP 401`, `404`, `500`, with the collector's own
 message), or one that accepts it and reports part of the data dropped
-(OTLP's `partialSuccess`). The run stays green either way; a collector that
+(OTLP's `partialSuccess`). The URL in that line is printed with any
+userinfo and query string replaced by `***`, so an endpoint that carries
+its credential in the URL does not leak it into a CI log. The run stays
+green either way; a collector that
 takes too long is cut off by core's end-of-run deadline
 (`VX_TEARDOWN_TIMEOUT_MS`, 3 s by default) with a line saying the buffered
 records were lost.

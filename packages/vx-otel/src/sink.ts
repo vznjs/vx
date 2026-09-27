@@ -136,8 +136,8 @@ export class OtelSink implements TelemetrySink {
   private readonly taskStartNano = new Map<string, string>()
   private summary: RunSummaryRecord | undefined
   private uploaded = false
-  // Core's own bounded capture buffer — the same one the cloud sink uses, so
-  // both agree on which task's output survives a chatty run.
+  // Core's own bounded capture buffer, so which task's output survives a
+  // chatty run is core's rule, not this sink's.
   private readonly logs = new TaskLogBuffer()
   private runId = ''
   private runStartedAt = 0
@@ -300,8 +300,27 @@ export class OtelSink implements TelemetrySink {
       // here on its own, so a bare "export failed" cannot tell a down
       // collector from one misconfigured signal endpoint.
       this.cfg.warn?.(
-        `[vx-otel] export failed for ${url}: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx-otel] export failed for ${shownUrl(url)}: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }
+}
+
+/**
+ * `url` as a warning may print it: a credential in its userinfo or query
+ * (`https://user:token@…`, `…?api-key=…`) is replaced, so a refused export
+ * does not put the secret in a CI log. Headers were redacted by item 928;
+ * the URL was not.
+ */
+function shownUrl(url: string): string {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return '(an unparsable URL)'
+  }
+  if (u.username !== '') u.username = '***'
+  if (u.password !== '') u.password = '***'
+  if (u.search !== '') u.search = '?***'
+  return u.href
 }
