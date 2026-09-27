@@ -164,66 +164,49 @@ describe('nx-map: what the sweep found unheld', () => {
     )
   })
 
-  it('implicit deps: one pair per target project, and past five the rest are counted', async () => {
-    const metas = [await meta('a')]
-    const nodes: Record<string, unknown> = { a: node('packages/a', { lint: { command: 'x' } }) }
-    const edges: { source: string; target: string }[] = []
-    for (const n of ['b', 'c', 'd', 'e', 'f', 'g']) {
-      metas.push(await meta(n))
-      nodes[n] = node(`packages/${n}`, { lint: { command: 'x' } })
-      edges.push({ source: 'a', target: n }, { source: 'a', target: n })
+  // nx-examples: an e2e project's Nx edge to its app (implicitDependencies)
+  // has no package.json entry, so vx's `^typecheck` did not reach the app:
+  // nothing ordered it and the app's source edit left the e2e typecheck a
+  // hit. It was a note, "not representable". Nx links each dependency that
+  // has the target and walks THROUGH one that lacks it
+  // (`processTasksForDependencies`). CONTROL: a dependency the manifest
+  // already reaches (`listed`) is vx's `^` edge alone, and an `npm:` node is
+  // no project.
+  it('`^target` follows the Nx graph: explicit edges, through a project that lacks the target', async () => {
+    const metas: ProjectMeta[] = []
+    const nodes: Record<string, unknown> = {}
+    const targets: Record<string, Record<string, unknown>> = {
+      e2e: { typecheck: { command: 'tsc', dependsOn: ['^typecheck'] } },
+      app: { typecheck: { command: 'tsc' } },
+      bridge: { lint: { command: 'x' } },
+      deep: { typecheck: { command: 'tsc' } },
+      listed: { typecheck: { command: 'tsc' } },
     }
+    for (const n of Object.keys(targets)) {
+      const m = await meta(n)
+      metas.push(
+        n === 'e2e'
+          ? { ...m, packageJson: { name: n, dependencies: { listed: 'workspace:*' } } as never }
+          : m,
+      )
+      nodes[n] = node(`packages/${n}`, targets[n]!)
+    }
+    nodes['npm:react'] = { data: {} }
+    const edge = (source: string, ...to: string[]) => to.map((target) => ({ source, target }))
     const m = await mapNxWorkspace(
       root,
       metas,
-      { nodes, dependencies: { a: edges } } as NxGraph,
+      {
+        nodes,
+        dependencies: {
+          e2e: edge('e2e', 'app', 'bridge', 'listed', 'npm:react'),
+          bridge: edge('bridge', 'deep'),
+        },
+      } as NxGraph,
       OPTS,
     )
-    expect(m.notes).toEqual([
-      '6 implicit Nx deps not representable (a → b, a → c, a → d, a → e, a → f and 1 more); review dependsOn',
-    ])
-  })
-
-  // Item 931: a manifest path through a third project orders `^build` and
-  // folds the key as a direct entry does, so it is no implicit dep; a
-  // two-project graph per edge saw only the direct entry. The control
-  // drops b's entry on c, and the edge is implicit again.
-  it('implicit deps: a manifest path through another project is no implicit dep', async () => {
-    const notes: string[][] = []
-    for (const bLinksC of [true, false]) {
-      const metas: ProjectMeta[] = []
-      const deps: Record<string, Record<string, string>> = {
-        a: { b: 'workspace:*' },
-        b: bLinksC ? { c: 'workspace:*' } : {},
-        c: {},
-      }
-      const nodes: Record<string, unknown> = {}
-      for (const n of ['a', 'b', 'c']) {
-        const m = await meta(n)
-        metas.push({ ...m, packageJson: { name: n, dependencies: deps[n] } as never })
-        nodes[n] = node(`packages/${n}`, { lint: { command: 'x' } })
-      }
-      const m = await mapNxWorkspace(
-        root,
-        metas,
-        {
-          nodes,
-          dependencies: {
-            a: [
-              { source: 'a', target: 'b' },
-              { source: 'a', target: 'c' },
-            ],
-            b: [{ source: 'b', target: 'c' }],
-          },
-        } as NxGraph,
-        OPTS,
-      )
-      notes.push(m.notes)
-    }
-    expect(notes).toEqual([
-      [],
-      ['2 implicit Nx deps not representable (a → c, b → c); review dependsOn'],
-    ])
+    const e2e = m.projects.find((p) => p.name === 'e2e')!.tasks.find((t) => t.name === 'typecheck')!
+    expect(e2e.task!['dependsOn']).toEqual(['^typecheck', 'app#typecheck', 'deep#typecheck'])
   })
 })
 

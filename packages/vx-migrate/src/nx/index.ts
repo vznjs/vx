@@ -94,7 +94,6 @@ async function mapAll(
         '(the root project, usually) — run those targets with nx, or declare them in a vx.config',
     )
   }
-  notes.push(...mapped.notes)
   // The bins executor lines and `.env`-loading lines start with: installed
   // by this package, so absent only when the plugin is loaded by path (a
   // checkout, a link) — then every such task would fail with `not found`.

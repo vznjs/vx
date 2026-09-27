@@ -53,6 +53,9 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
   counts `sent: 3` where it expects 4 under load: 2 of 3 runs failed
   while a gate ran beside it, 0 of 4 idle, and it failed G-3's re-gate.
   The retry count depends on time, not on the retry rule.
+- **D:** `workspace/migration.ts` documents `MigrationPlan.notes` as
+  "trailing report lines (e.g. implicit Nx deps)"; after G-7 the Nx
+  mapper writes none, so the example names a note no source emits.
 
 ## Record
 
@@ -129,3 +132,18 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `glob-grammar.test.ts`: `@()`, nested extglobs, braces in
   alternatives and classes). Equivalent: self-edge filter, `under`
   memo, the glob fast path.
+- **G-7.** nx() follows the Nx graph for `^target` edges (lead 6). vx's
+  `^` follows package.json, so an Nx edge with no manifest path
+  (`implicitDependencies`; nx-examples' e2e projects → their apps)
+  ordered nothing and folded nothing: an app's source edit left its e2e
+  `typecheck` a hit. It was a note, "N implicit Nx deps not
+  representable". Each `^target` now gains an explicit `pkg#target` to
+  every project Nx's `processTasksForDependencies` reaches (a
+  dependency with the target; through one without it, its
+  dependencies), unless vx's package graph already reaches it (item
+  931's rule). The note, its package-graph build and `NxMapping.notes`
+  are gone. Rows: `nx-map-sweep` › `^target` follows the Nx graph
+  (through a project that lacks the target; `listed` and `npm:` are
+  controls); `nx.test` › an implicit dep … is an edge, not a note;
+  `migrate.test` pkg-a's `build`. Red without the fix; the reach guard
+  mutated reddens two.
