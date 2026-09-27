@@ -1,0 +1,85 @@
+name: Auto release
+
+# Every commit on main whose CI went green is released: this tags it with
+# the next patch version, creates the GitHub release (notes generated from
+# the merged PR titles — every merge is one titled PR), then dispatches the
+# two release workflows. A minor or major (0.1.0) is still cut by hand as a
+# GitHub release; the next auto-release continues from it (0.1.1).
+#
+# Only main's CURRENT tip is released. A CI run that finishes for an older
+# commit after a newer one landed skips — the newer commit's own CI run
+# releases it — so a burst of merges yields one release of the newest green
+# head, and a slow run can never publish an older tree under a higher
+# version. `concurrency` keeps two releases from racing for the same number.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the tag and the GitHub release
+      actions: write # dispatching npm.yml and release.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Decide the version
+        id: version
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --tags --force origin
+          tip="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$tip" != "$SHA" ]; then
+            echo "main moved on to $tip — that commit's CI run releases it; skipping $SHA"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git tag --points-at "$SHA" | grep -q '^v'; then
+            echo "$SHA is already tagged ($(git tag --points-at "$SHA" | tr '\n' ' ')); nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last="$(git tag -l 'v*' | sort -V | tail -1)"
+          if [ -z "$last" ]; then
+            next="0.0.1"
+          else
+            IFS=. read -r major minor patch <<< "${last#v}"
+            next="$major.$minor.$((patch + 1))"
+          fi
+          echo "releasing $SHA as v$next (after ${last:-no tag})"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+
+      # A release created with the workflow token fires no `release` event in
+      # other workflows, so the two that build and publish it are dispatched
+      # explicitly. npm.yml runs as itself, which is what its npm Trusted
+      # Publishers are registered to, so the publish needs no token.
+      - name: Tag, release and dispatch the publish
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" --target "$SHA" --title "v$VERSION" --generate-notes
+          gh workflow run release.yml --ref main -f tag="v$VERSION"
+          gh workflow run npm.yml --ref main -f version="$VERSION" -f ref="v$VERSION"
+          echo "released v$VERSION — assets: release.yml, npm: npm.yml"

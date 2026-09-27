@@ -1,15 +1,27 @@
 name: Release assets
 
 # Triggered when a maintainer publishes a release in the GitHub UI
-# (or via `gh release create`). Runs `vx run build.bun` (which fans out
+# (or via `gh release create`), or dispatched by auto-release.yml with
+# the tag it just created. Runs `vx run build.bun` (which fans out
 # to one task per target with per-binary caching), then attaches the
 # four vx-<target> binaries (for the curl installer + `vx upgrade`)
 # to the release.
-# The maintainer writes the body manually.
+# A manual release's body is the maintainer's; an auto-release's is
+# generated from the merged PR titles.
 
 on:
   release:
     types: [published]
+  # auto-release.yml creates its release with the workflow token, and a
+  # release made that way fires no `release` event here (GitHub's rule
+  # against workflows triggering workflows) — so it dispatches this file
+  # with the tag instead: workflow_dispatch is an event that token may
+  # still start.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and attach binaries to (e.g. v0.0.22).'
+        required: true
 
 permissions:
   contents: write
@@ -21,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
@@ -34,7 +46,7 @@ jobs:
       # reproduction 2026-09-03 and asserted below. Ephemeral (CI only).
       - name: Stamp version
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${{ github.event.release.tag_name || inputs.tag }}"
           VERSION="${VERSION#v}"
           bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "$VERSION"
 
@@ -67,7 +79,7 @@ jobs:
 
       - uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ github.event.release.tag_name || inputs.tag }}
           files: packages/vx/dist/vx-linux-*
 
   sign-darwin:
@@ -83,11 +95,11 @@ jobs:
         run: |
           chmod +x dist/vx-darwin-*
           for f in dist/vx-darwin-*; do codesign -s - --force "$f"; codesign --verify --verbose=2 "$f"; done
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${{ github.event.release.tag_name || inputs.tag }}"
           VERSION="${VERSION#v}"
           GOT="$(./dist/vx-darwin-arm64 --version)"
           test "$GOT" = "vx $VERSION" || { echo "binary reports '$GOT', expected 'vx $VERSION' — the version stamp missed the manifest the binary inlines"; exit 1; }
       - uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ github.event.release.tag_name || inputs.tag }}
           files: dist/vx-darwin-*
