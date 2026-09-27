@@ -163,9 +163,11 @@ export default defineWorkspace({ plugins: [hello()] })
 that picks its tasks, and `execute`, which runs one command and returns
 its exit code and output. A task every executor declines runs here.
 Stream output through `onStdout` / `onStderr`, and stop on
-`req.signal`, which core aborts on Ctrl-C or an embedder's abort: core
-cannot reach a process your executor spawned, so a stop that misses the
-shell's children leaves them running after vx exits.
+`req.signal`, which core aborts on Ctrl-C, an embedder's abort or the
+task's `exec.timeout`: core cannot reach a process your executor spawned,
+so a stop that misses the shell's children leaves them running after vx
+exits. Stopped on the timeout, return a non-zero exit and the task fails
+as timed out.
 
 ```ts
 import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'
