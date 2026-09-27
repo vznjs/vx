@@ -5,7 +5,8 @@
 Talk to git once per run and turn the answer into what the resolver
 trusts: `git ls-files -s` (paths with their index blob OIDs, stage 0,
 regular files and symlinks), `git status --porcelain -z` (which of those
-are dirty, plus the untracked), and `git check-attr` where a clean
+are dirty, plus the untracked; a rename in either status column names
+its source as dirty too, item 976), and `git check-attr` where a clean
 filter (`text`, `eol`, `ident`, `core.autocrlf`) could make the blob
 differ from the bytes on disk. Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
@@ -160,7 +161,8 @@ see: `workspaceFiles` globs reaching into the nested repository.
 ## Tests
 
 `tests/git-oid.test.ts` (ls-files parsing, OID trust, symlinks,
-renames), `tests/git-spawns-once.test.ts` (every git a cold run spawns,
+renames), `tests/git-trust.test.ts` (end to end: working-tree shapes the
+trust rule once misread into a stale hit), `tests/git-spawns-once.test.ts` (every git a cold run spawns,
 scoped and unscoped), `tests/nested-repo-inputs.test.ts` (a project inside a
 gitlink or an untracked embedded repository: its own git enumerates it,
 and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`

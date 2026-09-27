@@ -142,6 +142,24 @@ test is telling the truth.
       - `vx info` still sums such a row until a prune drops it
         (`vx cache prune`, or `cacheRetention` when something is due; the
         hourly orphan-only sweep does not list rows).
+976.  DONE (2026-09-27, a cache-key review agent's lead 1). A stale hit.
+      A file copied, the copy `git add -N`, the original removed: porcelain
+      v1 prints ` R new.txt\0old.txt\0`, the rename in the second column.
+      The status parser took the source token only for an R or C in the
+      first, so `old.txt` parsed as a record of its own, stayed trusted,
+      and a deleted input was keyed from the index: the run replayed an
+      output that listed it.
+      - Fix (`git-inputs.ts`): an R or C in either column names the next
+        token as the source. `modules/git-inputs.md` says so.
+      - Row: new `git-trust.test.ts` › a deleted rename source is not an
+        input. Red without the fix (`cache-hit`).
+      - Next from the same review: 2 (an untracked or modified
+        `.gitattributes` is not gated), 3 (a `filter=` driver is not
+        gated), 4 (config key order moves the key: a false miss). And
+        from a graph review: `!` before an include in `--filter`,
+        `--exclude-dependencies` dropping an edge to a task in the same
+        run, the `graph` stage skipping the builder's output-collision
+        and key checks, and cli.md's "`--all` overrides scope".
 
 ## In flight
 

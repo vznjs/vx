@@ -618,9 +618,15 @@ function parseStatusOutput(
       continue
     }
     dirty.add(token.slice(3))
-    // X = R or C → the next token is the rename/copy source path.
+    // An R or C in either column → the next token is the rename/copy
+    // source path. Y carries it for a rename git sees in the worktree (the
+    // copy added with `git add -N`, the original removed): read on X alone,
+    // the source was parsed as a record of its own, stayed trusted, and a
+    // deleted file was keyed from the index (item 976).
     const x = token[0]
-    if ((x === 'R' || x === 'C') && i + 1 < tokens.length && tokens[i + 1]!.length > 0) {
+    const y = token[1]
+    const renamed = x === 'R' || x === 'C' || y === 'R' || y === 'C'
+    if (renamed && i + 1 < tokens.length && tokens[i + 1]!.length > 0) {
       i++
       dirty.add(tokens[i]!)
     }
