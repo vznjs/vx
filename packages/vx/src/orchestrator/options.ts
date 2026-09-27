@@ -21,6 +21,15 @@ export interface RunOptions {
   tasks: readonly string[]
   projects?: string[]
   /**
+   * `projects` came from a git diff (`--affected`, a `[ref]` filter), so
+   * which projects hold a bare task name depends on what changed: a name
+   * the changed projects do not declare is not a typo when the workspace
+   * declares it elsewhere, and a run with nothing left to do is clean.
+   * Judged against the scope, a docs-only commit turned
+   * `vx run test --affected` red (item 1024).
+   */
+  selectedByDiff?: boolean
+  /**
    * Configs a selection pass in this same process already loaded and
    * staged with the same `cacheDir` and `frozen` (the CLI walks every
    * `pkg#task` edge for `--filter 'app...'` and `--affected`). The run

@@ -61,7 +61,12 @@ declared task (or, for `pkg#task`, a runnable spec) is within two edits
 — even when the other names resolved fine. A bare name declared by only SOME projects is normal and stays
 green; the guard fires only when a name matched nowhere. So a CI job
 running `vx run lint test typecheck` goes red the day `typecheck` is
-renamed, instead of silently running two of three.
+renamed, instead of silently running two of three. Under a scope a git
+diff chose (`--affected`, a `[ref]` filter) a bare name is judged against
+the whole workspace instead, since which projects hold it depends on what
+changed: `vx run test --affected` after a docs-only commit exits 0 with
+`No affected project declares task(s): test.` and a name no project
+declares is still refused (item 1024).
 
 (No `-V` for version; `vx --version` only — matches Turbo.)
 

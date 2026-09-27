@@ -869,6 +869,22 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         nothing running is overridden once, by name. Red with the
         override removed, and with the once-per-plugin gate removed.
 
+1024. DONE (2026-09-27, the graph review's lead 2). The typo guard judged
+      a bare task name against the scope, and under `--affected` or a
+      `[ref]` filter the scope is what changed: after a docs-only commit
+      `vx run test --affected` exited 1 "No projects declare task(s):
+      test", and `vx run lint test --affected` refused before running the
+      `lint` the changed project declared. `select.ts` says a docs-only
+      commit must not turn `--affected` red.
+      - Fix: `RunOptions.selectedByDiff` (the CLI sets it when an include
+        filter is a diff); `prepareRun` then judges bare names against
+        the whole workspace, loading the rest only when one is left
+        unresolved, and a run left with nothing is `none-affected`: exit
+        0 with a line, `--dry` too. `cli.md` and `modules/options.md` say
+        so.
+      - Rows: `affected-sparse-tasks.test.ts` (e2e), with a typo and a
+        user-named scope as controls. Each piece red when removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

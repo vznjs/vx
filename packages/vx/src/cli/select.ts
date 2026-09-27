@@ -127,6 +127,8 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
 export type FilterResolution =
   | {
       names: string[]
+      /** An include filter was a git diff (`[ref]`, `--affected`): `RunOptions.selectedByDiff`. */
+      byDiff: boolean
       /** The staged load the graph walk needed, for the run to reuse (`RunOptions.staged`). */
       staged?: ReadonlyMap<string, ProjectEntry>
     }
@@ -269,7 +271,11 @@ export async function resolveFilters(
       staged = undefined
     }
   }
-  return { names: [...selected].sort(), ...(staged !== undefined ? { staged } : {}) }
+  return {
+    names: [...selected].sort(),
+    byDiff: parsed.some((f) => !f.negate && f.gitSince !== undefined),
+    ...(staged !== undefined ? { staged } : {}),
+  }
 }
 
 export interface PickedTask {
