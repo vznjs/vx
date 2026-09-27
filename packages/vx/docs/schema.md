@@ -971,7 +971,10 @@ One shape describes what a task may do; vx translates it into a seatbelt
 profile on macOS and bwrap mounts plus seccomp on Linux. `ignore` takes
 patterns per class a denial is reported in — `read`, `write`,
 `systemInfo`, `network` — so a noisy probe is silenced with the grant
-that would have permitted it; any other name is refused:
+that would have permitted it; any other name is refused. Every grant is
+the task's own: `unixSockets` (or a `localBinding` port list, whose
+bridge is a unix socket) lifts the `socket(AF_UNIX)` block for the task
+that declares it, never for the run's other sandboxed tasks:
 
 ```ts
 exec: {
