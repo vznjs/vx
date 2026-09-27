@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
 import { fakeNx, fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { tamperMapping } from './helpers/tamper-mapping.js'
 import { nx } from '../src/index.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -849,6 +850,97 @@ describe('nx(): what the sweep found unheld', () => {
       )
       const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
+    },
+    TIMEOUT,
+  )
+})
+
+// The mapping is kept under the cache dir, keyed on everything it reads
+// (G-10, `mapping-cache.ts`). A hit serves the kept mapping; each input edit maps afresh. The
+// kept file is tampered with between runs, so a row sees which one ran.
+describe('nx(): the mapping cache', () => {
+  const lint = async (): Promise<string | undefined> =>
+    (await planRun({ cwd: root, tasks: ['lint'], log: silent() })).tasks.find(
+      (t) => t.node.id === 'lib#lint',
+    )!.node.config.exec?.command
+  const tamper = (): Promise<void> => tamperMapping(root, 'nx')
+  beforeEach(async () => {
+    await workspace("nx({ graph: 'graph.json' })")
+  })
+  afterEach(() => {
+    delete process.env['NX_LOAD_DOT_ENV_FILES']
+  })
+
+  it(
+    'a second run serves the kept mapping',
+    async () => {
+      const first = await lint()
+      expect(first).toBe('echo lint-ran > lint.log')
+      await tamper()
+      expect(await lint()).toBe('echo from-cache')
+    },
+    TIMEOUT,
+  )
+
+  it.each([
+    [
+      'the graph',
+      () =>
+        writeFile(
+          path.join(root, 'graph.json'),
+          JSON.stringify(GRAPH).replace('echo lint-ran', 'echo lint-v2'),
+        ),
+      'echo lint-v2 > lint.log',
+    ],
+    [
+      'nx.json',
+      () => writeFile(path.join(root, 'nx.json'), JSON.stringify({ namedInputs: { x: [] } })),
+      'echo lint-ran > lint.log',
+    ],
+    [
+      'a package manifest',
+      () =>
+        writeFile(
+          path.join(root, 'packages', 'lib', 'package.json'),
+          JSON.stringify({ name: 'lib', version: '1.0.1' }),
+        ),
+      'echo lint-ran > lint.log',
+    ],
+    [
+      'the manifest of a node no package matches',
+      () =>
+        writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws2', private: true })),
+      'echo lint-ran > lint.log',
+    ],
+    [
+      'the installed bins',
+      () => rm(path.join(root, 'node_modules', '.bin', 'nx-env')),
+      'echo lint-ran > lint.log',
+    ],
+    [
+      'a `.env` file in a project dir',
+      () => writeFile(path.join(root, 'packages', 'lib', '.env'), 'A=1\n'),
+      "nx-env --dotenv .env -- 'echo lint-ran > lint.log'",
+    ],
+  ])(
+    'an edit to %s maps afresh',
+    async (_what, edit, expected) => {
+      await lint()
+      await tamper()
+      await edit()
+      expect(await lint()).toBe(expected)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'NX_LOAD_DOT_ENV_FILES maps afresh',
+    async () => {
+      await writeFile(path.join(root, 'packages', 'lib', '.env'), 'A=1\n')
+      await lint()
+      await tamper()
+      process.env['NX_LOAD_DOT_ENV_FILES'] = 'false'
+      expect(await lint()).toBe('echo lint-ran > lint.log')
     },
     TIMEOUT,
   )

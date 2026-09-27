@@ -21,9 +21,11 @@
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
-import { adoptionPlugin } from '../adoption-plugin.js'
-import { collectGaps, type Gaps } from '../plugin-gaps.js'
+import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
+import { collectGaps } from '../plugin-gaps.js'
 import { mapNxWorkspace, type NxGraph, parseNxGraph } from './nx-map.js'
+import { listDotenv } from './nx-dotenv.js'
+import type { AdoptionMapping } from '../mapping-cache.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
@@ -58,19 +60,82 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
   )
 }
 
-interface Indexed {
-  readonly byName: ReadonlyMap<string, GeneratedProject>
-  readonly gaps: Gaps
-}
-
 async function mapAll(
   root: string,
   cacheDir: string,
   metas: readonly ProjectMeta[],
   options: NxPluginOptions,
-): Promise<Indexed> {
+): Promise<AdoptionRun> {
   const notes: string[] = []
-  const graph = await loadGraph(root, cacheDir, metas, options.graph, notes)
+  const loaded = await loadGraph(root, cacheDir, metas, options.graph, notes)
+  const graph = parseNxGraph(loaded.text, loaded.label)
+  return {
+    name: 'nx',
+    reads: await nxReads(root, metas, loaded.text, graph, notes),
+    map: () => index(root, metas, graph, notes),
+  }
+}
+
+function relRoot(p: string): string {
+  const s = p.replace(/\/+$/, '')
+  return s === '' ? '.' : s
+}
+
+const textOf = (file: string): Promise<string> =>
+  Bun.file(file)
+    .text()
+    .catch(() => '\0absent')
+
+/**
+ * Everything the mapping reads: the graph, nx.json, every package manifest
+ * and the package.json of each graph node no package matches (its
+ * synthetic project's name), the `.env` names in every project dir,
+ * NX_LOAD_DOT_ENV_FILES, whether the bins the tasks run are installed,
+ * and the graph load's own notes.
+ */
+async function nxReads(
+  root: string,
+  metas: readonly ProjectMeta[],
+  graphText: string,
+  graph: NxGraph,
+  notes: readonly string[],
+): Promise<string[]> {
+  const known = new Set(metas.map((m) => relRoot(path.relative(root, m.dir))))
+  const unmatched = Object.values(graph.nodes)
+    .map((n) => relRoot(n?.data?.root ?? ''))
+    .filter((r) => !known.has(r))
+    .sort()
+  const dotenv = await listDotenv(root, [...known, ...unmatched])
+  const installed = await Promise.all(
+    [
+      ['.bin', 'nx-exec'],
+      ['.bin', 'nx-env'],
+      ['nx', 'package.json'],
+    ].map((p) => Bun.file(path.join(root, 'node_modules', ...p)).exists()),
+  )
+  return [
+    graphText,
+    await textOf(path.join(root, 'nx.json')),
+    JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
+    ...(await Promise.all(unmatched.map((r) => textOf(path.join(root, r, 'package.json'))))),
+    JSON.stringify(
+      [...dotenv]
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([d, names]) => [d, [...names].sort()]),
+    ),
+    String(process.env['NX_LOAD_DOT_ENV_FILES']),
+    JSON.stringify(installed),
+    ...notes,
+  ]
+}
+
+async function index(
+  root: string,
+  metas: readonly ProjectMeta[],
+  graph: NxGraph,
+  loadNotes: readonly string[],
+): Promise<AdoptionMapping> {
+  const notes = [...loadNotes]
   const mapped = await mapNxWorkspace(root, metas, graph, {
     persistentTodo: PERSISTENT_NOTE,
     cacheable: new Set(),
@@ -160,7 +225,7 @@ async function loadGraph(
   metas: readonly ProjectMeta[],
   exported: string | undefined,
   notes: string[],
-): Promise<NxGraph> {
+): Promise<{ text: string; label: string }> {
   if (exported !== undefined) {
     const file = path.resolve(root, exported)
     const text = await Bun.file(file)
@@ -169,7 +234,7 @@ async function loadGraph(
         const msg = err instanceof Error ? err.message : String(err)
         throw new UserError(`[@vzn/vx-migrate] nx(): cannot read graph ${exported}: ${msg}`)
       })
-    return parseNxGraph(text, exported)
+    return { text, label: exported }
   }
   const snapshot = path.join(cacheDir, SNAPSHOT)
   const [have, newest] = await Promise.all([
@@ -186,7 +251,7 @@ async function loadGraph(
       notes.push(`${failure} — running on the previous graph snapshot`)
     }
   }
-  return parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
+  return { text: await Bun.file(snapshot).text(), label: path.relative(root, snapshot) }
 }
 
 /**

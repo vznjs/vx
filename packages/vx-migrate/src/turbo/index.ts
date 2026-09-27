@@ -8,9 +8,11 @@
 // A task the package's own vx.config already declares wins; the plugin never
 // overwrites a user's hand.
 
+import path from 'node:path'
 import type { ProjectMeta, VxPlugin } from '@vzn/vx'
-import { adoptionPlugin } from '../adoption-plugin.js'
-import { collectGaps, type Gaps } from '../plugin-gaps.js'
+import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
+import type { AdoptionMapping } from '../mapping-cache.js'
+import { collectGaps } from '../plugin-gaps.js'
 import { mapTurboWorkspace, type TurboMappedProject } from './turbo-map.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
@@ -33,16 +35,36 @@ export interface TurboPluginOptions {
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   return adoptionPlugin(
     import.meta,
-    (ctx) => mapAll(options.root ?? ctx.workspaceRoot, ctx.projects),
+    (ctx) => run(options.root ?? ctx.workspaceRoot, ctx.projects),
     // At the workspace root only: a claim is a root name (a `root` elsewhere
     // is not claimed; its edits select as any unowned file does).
     options.root === undefined ? ['turbo.json', 'turbo.jsonc'] : [],
   )
 }
 
-interface Indexed {
-  readonly byName: ReadonlyMap<string, TurboMappedProject>
-  readonly gaps: Gaps
+const textOf = (file: string): Promise<string> =>
+  Bun.file(file)
+    .text()
+    .catch(() => '\0absent')
+
+/**
+ * Everything the mapping reads: the root's and each package's
+ * `turbo.json` / `turbo.jsonc`, and every package manifest.
+ */
+async function run(root: string, metas: readonly ProjectMeta[]): Promise<AdoptionRun> {
+  const dirs = [root, ...metas.map((m) => m.dir)]
+  const configs = await Promise.all(
+    dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
+  )
+  return {
+    name: 'turbo',
+    reads: [
+      JSON.stringify(dirs),
+      ...configs,
+      JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
+    ],
+    map: () => mapAll(root, metas),
+  }
 }
 
 /**
@@ -51,7 +73,7 @@ interface Indexed {
  * a million comparisons on a 1,000-package workspace, a third of the
  * stage's cost there (2026-09-10).
  */
-async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Indexed> {
+async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<AdoptionMapping> {
   const mapped = await mapTurboWorkspace(root, metas, {
     // Inline: the values themselves, where `vx migrate` splices a preset import.
     splice: (_kind, values) => values,
