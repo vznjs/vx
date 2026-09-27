@@ -91,7 +91,7 @@ installed.
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected`                                  |
-| `nx graph`                           | `vx run build --graph`                                    |
+| `nx graph`                           | `vx run build --all --graph`                              |
 | `nx reset`                           | nothing: there is no daemon                               |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 

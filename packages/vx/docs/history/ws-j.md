@@ -100,6 +100,13 @@
   rounds, main 305 (min 277), patch 318 (282), A/A 330 (293): the win is
   below this box's noise. Row: `load-reads.test.ts` counts one read of a
   member manifest across the filter pass and the run.
+- **J-17** Adoption walk (Turbo and Nx repos, `turbo()`, `nx()`,
+  `bunx @vzn/vx-migrate`): the migrate guide and both migration posts
+  gave `vx run --graph` without a task or `--all`, said the Nx export
+  reruns only on config edits (it keys on the worktree), mapped
+  `dotEnv` to `cache.inputs.files` (it is a runtime probe) and said
+  Turbo's default inputs were dropped (written as `**/*`). The
+  quickstart told users to gitignore `.vx/`, which ignores itself.
 
 - **J-15** First-run walk (npm install, `vx init`, run, why, watch, `--affected`): a
   SIGINT sent to the npm launcher killed the Node process and left the
@@ -154,3 +161,5 @@ restart it to apply the edit`).
   task's children die with vx that is descheduled after the spawn"
   failed once in a full local gate (3.5 s) on a launcher-only diff; it
   passed 2/2 alone. A timing row under load.
+- **K** vx-migrate README, Turbo table: the `readyWhen` TODO appears only
+  when a task depends on the persistent one.
