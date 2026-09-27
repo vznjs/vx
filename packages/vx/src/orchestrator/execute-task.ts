@@ -712,9 +712,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // whole contract. `userSandbox` is the only way a task is sandboxed,
     // so this reads as "sandboxed and it tripped".
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
-    // stream a clear line so the 143 exit reads as a timeout.
+    // stream a clear line so the 143 exit reads as a timeout. One that outlived
+    // the grace died of the SIGKILL, and the line said SIGTERM over an exit
+    // 137 (item 1063).
     if (res.timedOut) {
-      log.taskStderr(node, `\n[vx] timed out after ${effectiveTimeout}ms — killed (SIGTERM)\n`)
+      const how = res.signal === 'SIGKILL' ? 'SIGKILL after the SIGTERM grace' : 'SIGTERM'
+      log.taskStderr(node, `\n[vx] timed out after ${effectiveTimeout}ms — killed (${how})\n`)
       // Force a non-zero classification even if the child TRAPPED SIGTERM and
       // still exited 0 (`trap 'exit 0' TERM`, a common graceful-shutdown
       // pattern). Without this a timed-out task is classified `success` and its
