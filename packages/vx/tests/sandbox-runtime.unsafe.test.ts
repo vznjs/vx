@@ -145,6 +145,49 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // A sandboxed command ran under bash and an unsandboxed one under sh, so
+  // brace expansion, `[[ … ]]` and `echo 'a\tb'` read differently with the
+  // block and without it (dash is /bin/sh on Linux runners; item 964). The
+  // claim is the same answer both ways, which holds where sh is bash too.
+  it(
+    'a sandboxed task runs under the shell an unsandboxed one does',
+    async () => {
+      const probe = `echo x{1,2}; [ -n "$BASH_VERSION" ] && echo is-bash || echo not-bash`
+      const outOf = async (sandbox: boolean): Promise<string> => {
+        const dir = await makeWorkspaceRoot({ prefix: 'vx-shell-' })
+        try {
+          await addProject(dir, 'app', {
+            files: {},
+            config: `export default { tasks: { t: { exec: {
+              command: ${JSON.stringify(probe)},
+              ${sandbox ? "sandbox: { allow: { read: ['**/*'] } }," : ''}
+            } } } }`,
+          })
+          const lines: string[] = []
+          const r = await run({
+            cwd: dir,
+            tasks: ['t'],
+            log: {
+              status() {},
+              taskStdout(_n: unknown, chunk: string) {
+                lines.push(chunk)
+              },
+              taskStderr() {},
+              taskComplete() {},
+            } as never,
+          })
+          expect(r.outcomes[0]?.status).toBe('success')
+          return lines.join('').trim()
+        } finally {
+          await rm(dir, { recursive: true, force: true })
+        }
+      }
+      const plain = await outOf(false)
+      expect(await outOf(true)).toBe(plain)
+    },
+    TIMEOUT,
+  )
+
   // The task's PATH leads with the project's node_modules/.bin, and the
   // sandboxed spawn (`strace … -- sh -c` on Linux, `sh -c` elsewhere) let
   // strace or Bun resolve `sh` through it: a dependency's `sh` bin ran in
