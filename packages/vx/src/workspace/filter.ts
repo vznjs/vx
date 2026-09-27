@@ -198,6 +198,11 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
   const hasInclude = opts.filters.some((f) => !f.negate)
   const selected = new Set<string>(hasInclude ? [] : allNames)
 
+  // Every include before any exclude, as pnpm does: applied in argv order,
+  // `--filter '!b' --filter 'a...'` let the later include add back what the
+  // exclude had removed, and b ran (item 979). The expansions are still
+  // taken in argv order, so `onNoMatch` names the filters as typed.
+  const excludes: Set<string>[] = []
   for (const f of opts.filters) {
     const matched = matchProjects(f, opts.projects, opts.affectedByFilter)
     if (matched.length === 0) opts.onNoMatch?.(f)
@@ -211,12 +216,10 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
         for (const d of opts.graph.transitiveDependents(name)) expanded.add(d)
       }
     }
-    if (f.negate) {
-      for (const name of expanded) selected.delete(name)
-    } else {
-      for (const name of expanded) selected.add(name)
-    }
+    if (f.negate) excludes.push(expanded)
+    else for (const name of expanded) selected.add(name)
   }
+  for (const expanded of excludes) for (const name of expanded) selected.delete(name)
 
   return selected
 }

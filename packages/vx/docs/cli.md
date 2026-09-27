@@ -118,11 +118,12 @@ a stack and exit 1 after its task had succeeded.
 | `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                              |
 | `--affected[=<base>]`         | Sugar for `--filter '...[<base>]'` — git-changed projects and their dependents. |
 
-Combining: `--filter` and `--affected` stack (the affected base is
-added as the FIRST filter pattern, so every `--filter` on the line
-applies after it, and a `!` exclude removes from what `--affected`
-selected, whichever side of the flag it sits; item 955); `--all`
-overrides scope to the full workspace.
+Combining: every include (`--filter <pat>`, `--affected`) is taken
+first and every `!` exclude after them all, as pnpm does, so an
+exclude removes what any include added, whichever side of it it sits
+(items 955, 979). `--all` with a filter is the filter's selection:
+the filters refine it rather than being overridden by it
+(`--all --filter '!docs'` is everything but docs).
 
 ### Filter DSL (`--filter`)
 
@@ -156,7 +157,7 @@ both, so selection follows both: `vx run test --filter '...app'` runs
 `e2e#test` even though `e2e` has no manifest dependency on `app`. There
 is no `implicitDependencies` field — declare the edge where the task
 needs it.
-| `!<pattern>` | Exclude packages matching `<pattern>`. |
+| `!<pattern>` | Exclude packages matching `<pattern>`, from everything the includes select, in any order. |
 | `[<git-ref>]` | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …). |
 
 Examples:

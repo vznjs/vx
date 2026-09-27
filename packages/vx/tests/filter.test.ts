@@ -191,6 +191,16 @@ describe('applyFilters', () => {
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['app', 'ui', 'utils'])
   })
 
+  it('an exclude removes what any include adds, whatever the order (item 979)', () => {
+    // Applied in argv order, the include after the exclude added `utils`
+    // back: `--filter '!utils' --filter 'app...'` ran the excluded project.
+    const sel = (...raws: string[]) =>
+      [...applyFilters({ filters: raws.map((r) => parseFilter(r, ROOT)), projects, graph })].sort()
+    expect(sel('!utils', 'app...')).toEqual(['app', 'ui'])
+    expect(sel('app...', '!utils')).toEqual(['app', 'ui'])
+    expect(sel('!ui...', '*')).toEqual(['app', 'lib'])
+  })
+
   // Package names carry a `/` in their scope, so the DSL's `*` must mean
   // "any characters" (pnpm's rule) rather than a path segment.
   describe('scoped names', () => {
