@@ -26,6 +26,7 @@ import {
   loadWorkspace,
   loadWorkspaceConfig,
   resolveCacheDir,
+  validateWorkspace,
 } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { applyConfigHooks, applyProjectHooks, hasHook } from './plugin-host.js'
@@ -43,7 +44,12 @@ export async function loadWorkspacePlugins(
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
   const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
   if (workspaceConfig !== null && hasHook(plugins, 'config')) {
-    await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn })
+    // Re-validated after each plugin, as the `project` stage is: an edit
+    // the loader would refuse from a user (`concurrency: -3`) hung the run,
+    // and `cacheDir: 42` reached `path.resolve` as a TypeError.
+    await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn }, (plugin) =>
+      validateWorkspace(workspaceConfig, `vx.workspace (after plugin '${plugin.name}')`),
+    )
   }
   return { workspaceConfig, plugins }
 }

@@ -263,6 +263,7 @@ export default defineWorkspace({ plugins: [acmeCache()] })
 
 - A `cache` or `executor` hook whose return breaks the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
 - A `name` on the hooks object: the name is the package's.
+- A `config` or `project` edit the loader would refuse from a user, checked after each plugin: `vx.workspace (after plugin '<p>'): …`.
 - A verb that names a core verb, or one two plugins both declare.
 - An executor `capacity` that is not a positive integer: `plugin '<p>' returned executor '<e>' with capacity <v>: it must be a positive integer`.
 

@@ -114,6 +114,36 @@ describe('config stage', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a plugin that produces an invalid workspace config is refused like a user would be',
+    async () => {
+      // Unchecked, `concurrency: -3` hung the run, `timeout: 'x'` timed
+      // every task out and `cacheDir: 42` was a TypeError from path.resolve.
+      await pkg('a', build)
+      const refusal = async (edit: string): Promise<string | undefined> => {
+        await workspace([
+          pluginSource('org/fine', `{ config(ws) { ws.concurrency = 2 } }`),
+          pluginSource('org/broken', `{ config(ws) { ${edit} } }`),
+        ])
+        return planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+          () => undefined,
+          (e: unknown) => (e as Error).message,
+        )
+      }
+      const where = "vx.workspace (after plugin 'org/broken')"
+      expect(await refusal('ws.concurrency = -3')).toBe(
+        `${where}: \`concurrency\` must be a positive integer`,
+      )
+      expect(await refusal("ws.timeout = 'x'")).toBe(
+        `${where}: \`timeout\` must be a positive integer (milliseconds)`,
+      )
+      expect(await refusal('ws.cacheDir = 42')).toBe(`${where}: \`cacheDir\` must be a string`)
+      // CONTROL: a valid edit passes the same check.
+      expect(await refusal('ws.timeout = 5000')).toBeUndefined()
+    },
+    TIMEOUT,
+  )
 })
 
 describe('project stage', () => {
