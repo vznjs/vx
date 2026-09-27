@@ -858,7 +858,13 @@ restore was staging took its files out from under it. The lock is an
 atomic directory under the temp directory, keyed by the workspace root
 (`--cache-dir` does not make two runs strangers) and holding the
 holder's pid, so a lock a killed run left behind is reclaimed once its
-pid is gone. Where the directory cannot be made at all (another user's
+pid is gone. The temp directory is the one each process sees, `TMPDIR`
+included: two shells that set different ones (a `nix develop` shell
+sets its own, as can direnv or `sudo`) hold two locks and do not take
+turns (item 970). Run them under one `TMPDIR`. A lock under the
+workspace would survive a reboot that `/tmp` does not, and where a
+holder's start time is not readable (off Linux) a pid reused since
+would read as a live holder forever. Where the directory cannot be made at all (another user's
 lock, a temp directory this user cannot write) the run says so once and
 proceeds unlocked — a courtesy between cooperating runs, never a
 refusal — and a restore that then loses its staged files to the other
