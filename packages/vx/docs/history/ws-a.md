@@ -125,3 +125,10 @@ A `cache.inputs.runtime` probe ran in vx's own process group with nothing listin
 
 - Fix: `scanUnion` (`inputs.ts`) expands slash braces with `slashBraceExpansions` (moved from `workspace.ts` to `util/paths.ts`, one helper for both).
 - Row: `brace-outputs.test.ts` (save, wipe, hit restores both dirs). Red without the fix.
+
+### A-11 (2026-09-27, I's lead)
+
+Nested-project boundaries were one `<nested>/**` glob each: O(files × nested), 38 % of astro's warm no-op (I measured 834 → 521 ms median with this patch, neutral with no nested project). The glob also read `*` in a nested dir's name as a wildcard: a project at `pkg*` dropped sibling `pkg-b` from the parent's key.
+
+- Fix (`inputs.ts` `inNestedProject`): an ancestor-directory set lookup in `resolveFiles` and the output scan.
+- Row: `nested-boundary.test.ts`, inputs and outputs: the nested project out, `pkg-b` and `a/bc` in. Red without the fix.
