@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { run } from '../src/index.js'
 import { run as cli } from '../src/cli/index.js'
-import { CACHE_VERSION } from '../src/cache/index.js'
+import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 
 let root: string
 const origCwd = process.cwd()
@@ -134,8 +134,11 @@ describe('a schema reset says so once', () => {
       const before = index()
       const { threw, stderr } = await verb(args)
       expect({ threw, stderr, after: index() }).toEqual({
+        // "a reading verb leaves it untouched" was false of `vx show`, which
+        // opens the index to store configs and resets it: the message
+        // speaks for the verb that printed it (item 1042).
         threw: expect.stringContaining(
-          'holds index schema v0 from an earlier vx',
+          `holds index schema v0 from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         ) as unknown as string,
         stderr: '',
         after: before,
