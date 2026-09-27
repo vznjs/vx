@@ -413,7 +413,6 @@ export function createTelemetrySource(args: {
     }
   }
 
-  let endEmitted = false
   const subscriber: RunEventSubscriber = (event: RunEvent) => {
     const ts = Date.now()
     switch (event.kind) {
@@ -472,9 +471,6 @@ export function createTelemetrySource(args: {
       case 'run:status':
         return // status lines are terminal-rendering noise, not telemetry
       case 'run:end':
-        // run() emits run:end twice (normal + finally); emit one record.
-        if (endEmitted) return
-        endEmitted = true
         deliver({ v: TELEMETRY_SCHEMA_VERSION, kind: 'run.end', runId, ts })
         return
     }

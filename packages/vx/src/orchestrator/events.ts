@@ -91,6 +91,9 @@ export function createEventBus(): EventBus {
  * renderer subscribes via `terminalSubscriber`.
  */
 export function busLogger(bus: EventBus): Logger {
+  // run() reaches runEnd on its success path, in its finally and from a
+  // signal; a plugin's onRunEnd hears the first only.
+  let ended = false
   return {
     status: (line) => bus.emit({ kind: 'run:status', line }),
     taskStdout: (node, chunk) => bus.emit({ kind: 'task:stdout', node, chunk }),
@@ -98,7 +101,11 @@ export function busLogger(bus: EventBus): Logger {
     taskComplete: (node, outcome) => bus.emit({ kind: 'task:complete', node, outcome }),
     runStart: (info) => bus.emit({ kind: 'run:start', info }),
     taskStart: (node) => bus.emit({ kind: 'task:start', node }),
-    runEnd: () => bus.emit({ kind: 'run:end' }),
+    runEnd: () => {
+      if (ended) return
+      ended = true
+      bus.emit({ kind: 'run:end' })
+    },
   }
 }
 
@@ -142,19 +149,12 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
  * it to `send` — the shared run→consumer forwarding path for whatever an
  * embedder builds on it (an NDJSON stream, an enveloped protocol; core
  * ships neither). Group-task start/complete events are dropped (no command,
- * pure scheduling noise). `run()` emits run:end twice (normal + finally)
- * plus trailing summary status lines; we forward the run once and then go
- * quiet, so a consumer sees exactly one terminal frame per run. `send`
+ * pure scheduling noise). Summary status lines that follow run:end are
+ * forwarded too. `send`
  * must be fire-and-forget and tolerant of its own failures (a dead
  * consumer can never break the run); the bus already isolates throws.
  */
 export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscriber {
-  // run() emits run:end TWICE (normal + finally), with the summary footer
-  // (run:status lines) emitted in BETWEEN. Drop the duplicate run:end, but
-  // keep forwarding everything else — including those post-run:end status
-  // lines, so a consumer that renders them gets the footer, and one that
-  // ignores run:status is unaffected.
-  let endForwarded = false
   // Which tasks the consumer has been told about. A skipped task never
   // reaches the scheduler's onStart, so its completion arrives with no
   // preceding task:start — and `createWireRenderer` resolves a completion's
@@ -164,10 +164,7 @@ export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscri
   // fidelity (real requested/surfaced/command) instead of a stand-in.
   const started = new Set<string>()
   return (event) => {
-    if (event.kind === 'run:end') {
-      if (endForwarded) return
-      endForwarded = true
-    } else if (
+    if (
       (event.kind === 'task:start' || event.kind === 'task:complete') &&
       isGroupTask(event.node)
     ) {
