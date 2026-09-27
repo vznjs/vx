@@ -703,6 +703,22 @@ test is telling the truth.
       - Rows: `sandbox-runtime.unsafe.test.ts` › a temp file one task wrote
         is gone for the next, and so is its directory (red without the
         fix); the tag row names the export after the tag.
+966.  DONE (2026-09-27, the exec review's leads 1 and 5, docs). Two pages
+      promised what the code does not do.
+      - The sandbox's read wall is the WORKSPACE ROOT (`baseDenyRead:
+[workspaceRoot]`): `sandbox: {}` read `$HOME/.gitconfig` and
+        `/etc/hostname`, and a task that `cat`s a file outside the
+        workspace replayed its old output after the file changed. schema.md
+        said the baseline "reads nothing" and to "declare" `~/.cache` and
+        `/etc`; the sandboxing guide and the sandbox post said the same.
+        Each now says reads outside the workspace are open and fold into no
+        key, and that such an input is declared as a key input. Walling
+        `$HOME` was weighed and left: every tool reads its own cache there,
+        this repo's sandboxed gate tasks included.
+      - schema.md and execution.md said only the project's own
+        `node_modules/.bin` is on PATH; `taskBinDirs` puts the workspace
+        root's after it (since the gate needed it).
+      - No code change, so no row; the docs laws hold the pages.
       - The review is done: its six leads are items 951, 953–955, 958,
         959 and 961.
 
