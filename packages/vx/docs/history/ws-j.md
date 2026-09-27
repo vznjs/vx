@@ -130,6 +130,13 @@
   transaction per save, inode and ctime in the fingerprint, the `graph`
   stage's powers, one runnable sink, `pnpm()` folding patches per
   package, and what `test.bun.unsafe` holds.
+- **J-23** architecture.md and execution.md against the source: the
+  `bin → index` edge (matrix, diagram) and the boundary test's
+  `import('…')` scan, the restore lane (own lane, shared slot only at
+  concurrency 1), run context reads `.git` itself, a repeat config
+  evaluation runs in a worker, `runs.attempts` counts attempts, a
+  signal-stopped run records no history, the prefetch gate is any
+  remote layer, and the batch loader's name.
 
 ## Leads for other streams
 
