@@ -84,6 +84,22 @@ describe('cgroupMemoryLimitBytes', () => {
     expect(cgroupMemoryLimitBytes(probe())).toBeUndefined()
   })
 
+  // E-14's sweep of this file: each row below was missing, and its mutant
+  // passed the suite.
+  it('v2: a limit of 0 binds nothing rather than a budget of nothing', () => {
+    file('memory.max', '0\n')
+    writeFileSync(membership, '0::/\n')
+    expect(cgroupMemoryLimitBytes(probe())).toBeUndefined()
+  })
+
+  it('a cgroup path holding a colon is walked whole', () => {
+    // /proc/self/cgroup is `<id>:<controllers>:<path>`, split on the first
+    // two colons only: the path is everything after them.
+    file('a:b/memory.max', `${2 * GiB}\n`)
+    writeFileSync(membership, '0::/a:b\n')
+    expect(cgroupMemoryLimitBytes(probe())).toBe(2 * GiB)
+  })
+
   it('a membership path that escapes the root is not walked', () => {
     file('memory.max', `${1 * GiB}\n`)
     writeFileSync(membership, '0::/../../\n')
@@ -109,6 +125,14 @@ describe('cgroupCpuQuota', () => {
     file('cpu/job/cpu.cfs_period_us', '100000\n')
     writeFileSync(membership, ['4:memory:/job', '1:cpu,cpuacct:/job', ''].join('\n'))
     expect(cgroupCpuQuota(probe())).toBe(1.5)
+  })
+
+  it('v2: the period is read, not assumed', () => {
+    // 150 ms of CPU every 50 ms is three cores; the 100 ms default period
+    // read it as one and a half.
+    file('cpu.max', '150000 50000\n')
+    writeFileSync(membership, '0::/\n')
+    expect(cgroupCpuQuota(probe())).toBe(3)
   })
 
   it('no quota anywhere → undefined', () => {
@@ -137,6 +161,17 @@ describe('the machine as this process may use it', () => {
     expect(machineParallelism(probe())).toBe(Math.min(navigator.hardwareConcurrency, 2))
     file('cpu/cpu.cfs_quota_us', '20000\n')
     expect(machineParallelism(probe())).toBe(1)
+  })
+
+  it('a limit or a quota above the machine is the machine', () => {
+    // A cgroup may allow more than the host has (a 1 TiB memory.max, a
+    // 1024-core quota on a laptop); the budget is what exists. Off Linux
+    // the machine's numbers stand, so the same answer holds everywhere.
+    file('memory.max', `${1024 * GiB}\n`)
+    file('cpu.max', '102400000 100000\n')
+    writeFileSync(membership, '0::/\n')
+    expect(machineMemoryBytes(probe())).toBe(os.totalmem())
+    expect(machineParallelism(probe())).toBe(Math.max(1, navigator.hardwareConcurrency))
   })
 
   it('reads THIS machine without throwing, never above what the OS reports', () => {
