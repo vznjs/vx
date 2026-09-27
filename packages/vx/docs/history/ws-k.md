@@ -30,6 +30,12 @@
   `build-npm.ts` publishes instead of its own hard-coded list; each
   plugin carries `vx`, `vx-plugin`, `monorepo` and its subject.
   `build-npm.unsafe.test.ts` holds it for every published package.
+- **K-6** A terminal demo on the README and the landing hero
+  (coordinator backlog 1): `vx-docs/scripts/terminal-demo.ts` runs
+  `examples/basic` under the checkout's vx, cold then warm, and draws the
+  real colored output as `public/demo.svg`. `examples.unsafe.test.ts`
+  runs its `--check`, which fails when anything but a timing or the
+  worker count differs from a fresh run (red with one word changed).
 
 ## Leads for other streams
 

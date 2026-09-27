@@ -564,6 +564,14 @@ body:has(.vx-landing) {
 .hero h1 {
   max-width: 15em;
 }
+/* A real run of examples/basic (scripts/terminal-demo.ts), its own dark
+   window on either theme. */
+.hero .demo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-top: 40px;
+}
 
 /* ---- the one picture and its six lines ----
    The drawing is the diagram kit's (Diagram.astro), which colours with the

@@ -82,3 +82,21 @@ describe('examples/basic', () => {
     ]).toEqual(['success', 'success', 'success'])
   })
 })
+
+// The README's and the landing's terminal demo is this starter's real
+// output; the script re-runs it and compares all but timings and cores.
+describe('the terminal demo', () => {
+  it('matches a real run of examples/basic', () => {
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(CORE, '..', 'vx-docs', 'scripts', 'terminal-demo.ts'),
+        '--check',
+      ],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(r.stderr.toString()).toBe('')
+    expect(r.exitCode).toBe(0)
+  })
+})
