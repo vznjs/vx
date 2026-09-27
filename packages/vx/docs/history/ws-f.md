@@ -135,3 +135,10 @@ the last append landed (`sent: 0` for CANCEL, 3 for INTERNAL; A, B, D, H,
 J saw it, 1 in 12 with 12 copies in parallel here). The peer now counts
 each call's HEADERS on arrival, before its RST is scheduled: 24 of 24
 under the same load.
+
+F-10. vx mcp echoes protocol 2025-03-26, which requires JSON-RPC batches,
+and refused every batch with -32600; a batch is now answered as one array
+of its replies (empty stays invalid). Row red without the fix. The same PR
+holds what a vx-mcp mutation sweep (146 mutants, 43 survived, no bug)
+found a client would see: replies written before the next read, each
+known version echoed, `id: null` vs no id.
