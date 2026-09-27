@@ -227,6 +227,21 @@ describe('applyFilters', () => {
       ])
     })
 
+    it("a name's regex characters are literal: 'socket.io' never selects 'socketxio'", () => {
+      const dotted = [
+        mkProject('socket.io', `${ROOT}/packages/sio`),
+        mkProject('socketxio', `${ROOT}/packages/sxio`),
+        mkProject('c++', `${ROOT}/packages/cpp`),
+        mkProject('cc', `${ROOT}/packages/cc`),
+      ]
+      const g = buildPackageGraph(dotted)
+      const pick = (f: string) => [
+        ...applyFilters({ filters: [parseFilter(f, ROOT)], projects: dotted, graph: g }),
+      ]
+      expect(pick('socket.io')).toEqual(['socket.io'])
+      expect(pick('c++')).toEqual(['c++'])
+    })
+
     it("'@acme/*' still selects exactly the scope", () => {
       const filters = [parseFilter('@acme/*', ROOT)]
       expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })].sort()).toEqual([
