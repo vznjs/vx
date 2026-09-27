@@ -386,6 +386,23 @@ test is telling the truth.
         git-ignored file it reads, in exactly one cycle, since its own
         rewrite of the ignored `shown.txt` is the run's. Red without the
         fix; the self-write row still holds.
+948.  DONE (2026-09-27, the `vx watch` review's lead 5). A dev server
+      that rewrote a log in its project restarted itself forever: 12
+      restarts in 8 s, and no word of why.
+      - The streak notice counts a path only when the cycle before wrote
+        it. The server's write lands after that cycle ended, so it never
+        counted.
+      - While a server the last cycle started is held, the streak reads
+        that cycle as open-ended, and the initial run's server counts from
+        the arm.
+      - The notice names the path with `.gitignore` as the remedy, since a
+        persistent task declares no outputs. The restarts go on until the
+        user acts, as for any self-write.
+      - The 947 rule for a user's edit to an ignored file keeps the
+        closed window.
+      - `cli.md` says so.
+      - Row: `watch-loop.test.ts` › a server that rewrites a file in its
+        project is named after three restarts. Red without the fix.
 
 ## In flight
 

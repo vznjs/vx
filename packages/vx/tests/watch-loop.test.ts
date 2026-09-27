@@ -320,6 +320,25 @@ describe('vx watch with a persistent task (e2e)', () => {
     expect(await w.proc.exited).toBe(0)
     expect(isAlive(all[1]!)).toBe(false)
   }, 40_000)
+
+  it('a server that rewrites a file in its project is named after three restarts (item 948)', async () => {
+    // Its write lands after the cycle that started it ended, so the streak
+    // never counted it: 12 restarts in 8 s and no word of why.
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default { tasks: { dev: { exec: {
+        command: 'echo $$ >> ${pids}; echo READY; sleep 0.3; date +%s%N > server.log; exec sleep 1000',
+        persistent: { readyWhen: 'READY' },
+      } } } }\n`,
+    )
+    watch = startWatch(root, ['--all'], {}, 'dev')
+    const w = watch
+    await until(
+      () => w.out().includes('server.log has started 3 cycles in a row'),
+      'the notice naming the server-written file',
+    )
+    expect(w.out()).toContain('a persistent task rewrites it. Add it to .gitignore')
+  }, 40_000)
 })
 
 // turborepo#9531: `turbo watch` refused a single-package repository. vx
