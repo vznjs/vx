@@ -62,6 +62,8 @@ describe('Plugin API — end-to-end via run()', () => {
       expect(events[0]).toBe('run:start')
       expect(events).toContain('done:pkg-a#hello')
       expect(events.at(-1)).toBe('run:end')
+      // run() reaches runEnd on its success path and in its finally.
+      expect(events.filter((e) => e === 'run:end')).toHaveLength(1)
     } finally {
       cleanup()
     }

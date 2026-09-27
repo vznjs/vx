@@ -90,6 +90,15 @@ set, a rejected settle promise hanging `runGraph`, and a file-system
 refusal from `execute` printed as an internal error. The sweep's
 restore-tier findings are C-1's rows; admission's taint and dedup held.
 
+## C-8: fire a plugin's `onRunEnd` once per run
+
+`run()` calls `runEnd` on its success path and in its `finally`, and a
+signal calls it a third time; `busLogger` emitted `run:end` for each, so
+`ctx.on('onRunEnd')` ran two or three times. `busLogger` now emits it
+once. The private dedupes in `wireForwarder` and the telemetry source
+went with it. Rows: `plugin-e2e.test.ts` (one `run:end`),
+`events.test.ts` (`runEnd` emits once).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -122,3 +131,8 @@ restore-tier findings are C-1's rows; admission's taint and dedup held.
   Proposed fix: the child lists itself before it runs anything (the
   guard pipe passed as an extra fd; the task shell writes `+$$`, closes
   the fd, then runs the command), and the guard dedupes ids.
+- **A:** a persistent upstream folds nothing into a dependant's key
+  (`upstream.ts`, by design), while an uncached one folds its whole
+  project (`caching.md`). A cached e2e task behind a dev server does not
+  re-key when the server's sources change unless it declares them. Worth
+  a line in `caching.md` or the uncached rule.

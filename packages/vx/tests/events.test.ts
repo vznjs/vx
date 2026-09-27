@@ -192,6 +192,18 @@ describe('busLogger + terminalSubscriber', () => {
     expect(statusCalls).toEqual(['ok'])
   })
 
+  it('runEnd emits run:end once however often run() reaches it', () => {
+    const bus = createEventBus()
+    const kinds: string[] = []
+    bus.subscribe((e) => kinds.push(e.kind))
+    const log = busLogger(bus)
+    log.runEnd?.()
+    log.status('footer')
+    log.runEnd?.()
+    log.runEnd?.()
+    expect(kinds).toEqual(['run:end', 'run:status'])
+  })
+
   it('a renderer that implements only the REQUIRED hooks is driven without throwing', () => {
     // `runStart` / `taskStart` / `runEnd` are optional on `Logger` — an
     // embedder may hand core a three-method sink. Calling them unguarded

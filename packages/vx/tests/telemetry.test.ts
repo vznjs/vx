@@ -412,14 +412,6 @@ describe('createTelemetrySource — projection', () => {
     expect(records).toHaveLength(0)
   })
 
-  it('dedupes the double run:end into a single run.end record', () => {
-    const { sink, records } = recorder()
-    const src = createTelemetrySource({ sinks: [sink], run: RUN })
-    src.subscriber({ kind: 'run:end' })
-    src.subscriber({ kind: 'run:end' })
-    expect(records.filter((r) => r.kind === 'run.end')).toHaveLength(1)
-  })
-
   it('does NOT project run:status (terminal noise, not telemetry)', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })

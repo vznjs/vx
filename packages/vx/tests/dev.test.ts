@@ -30,13 +30,11 @@ describe('wireForwarder', () => {
     expect(events.map((e) => e.kind)).toEqual(['task:start', 'run:end'])
   })
 
-  it('dedupes the double run:end but still forwards the footer status between them', () => {
+  it('forwards the footer status that follows run:end', () => {
     const events: WireEvent[] = []
     const fwd = wireForwarder((e) => events.push(e))
-    // run() order: run:end, summary footer (run:status), run:end again.
     fwd({ kind: 'run:end' })
     fwd({ kind: 'run:status', line: 'summary' })
-    fwd({ kind: 'run:end' })
     expect(events.map((e) => e.kind)).toEqual(['run:end', 'run:status'])
   })
 })
