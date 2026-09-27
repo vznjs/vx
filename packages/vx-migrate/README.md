@@ -52,6 +52,7 @@ Rules:
 - **Two tasks of one package on one output path** (strapi's `build`, `build:code` and `build:types`, all on `dist/**`): vx cleans a task's outputs before it runs and before a restore, so the loader refuses two cached tasks whose outputs provably overlap. The mapping resolves it before the file is written — the task with a `^` edge keeps its cache (the first declared when none has one); a task a same-project edge orders after it stays cached too (vx caches what an ordered dependant ADDS to the tree — twenty's `build:individual` into `build`'s `dist`); the rest run uncached with a todo naming the keeper and the fix, their own output path or that edge. Same rule for Nx targets.
 - `cache: false` or `persistent: true` → no `cache` block; a persistent task gets `exec.persistent: {}` and, when some task depends on it, the consumer's `persistentTodo`.
 - `outputLogs: "new-only"` maps to nothing: frames for the tasks that ran and a one-liner per cache hit is vx's default flow already. The other values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
+- `envMode: "loose"` (top-level or in `global`) is a note: Turbo hands every task the whole environment, vx only the declared names.
 - Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) is read as the `globalDependencies`, `globalEnv` and `globalPassThroughEnv` it replaces.
 - An unknown Turbo key is a todo naming it; `extends` is accepted and ignored (the overlay order above is what it means).
 
