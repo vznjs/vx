@@ -409,6 +409,46 @@ describe('buildTaskGraph', () => {
     }
   })
 
+  it('excludeDependencies orders a task after what it reached through a dropped one (item 1019)', () => {
+    // `test → gen → build`, `gen` excluded, `build` requested: dropping the
+    // edge to `gen` left nothing ordering `test` after `build`, and the two
+    // ran at once. The new edge orders and keys nothing (`orderOnly`).
+    const graph = () =>
+      buildTaskGraph({
+        projects: projects(
+          project('p', {
+            test: { ...cmd('test'), dependsOn: ['gen'] },
+            gen: { ...cmd('gen'), dependsOn: ['build'] },
+            build: cmd('build'),
+          }),
+        ),
+        packageGraph: packageGraph({ p: [] }),
+        requested: [
+          { project: 'p', task: 'test' },
+          { project: 'p', task: 'build' },
+        ],
+      })
+    for (const exclude of ['all', ['gen']] as const) {
+      const nodes = graph()
+      const { keyOnly, dropped } = excludeDependencies(nodes, exclude)
+      expect({
+        scheduled: [...nodes.keys()].sort(),
+        testDeps: nodes.get('p#test')?.deps,
+        orderOnly: nodes.get('p#test')?.orderOnly,
+        buildOrderOnly: nodes.get('p#build')?.orderOnly,
+        keyOnly: [...keyOnly.keys()],
+        dropped: [...dropped],
+      }).toEqual({
+        scheduled: ['p#build', 'p#test'],
+        testDeps: ['p#build'],
+        orderOnly: ['p#build'],
+        buildOrderOnly: undefined,
+        keyOnly: ['p#gen'],
+        dropped: [['p#test', ['p#gen']]],
+      })
+    }
+  })
+
   it('excludeDependencies: name-list drops only matching edges in both self and deps', () => {
     const nodes = buildTaskGraph({
       projects: projects(

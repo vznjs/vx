@@ -17,6 +17,7 @@ export interface TaskNode {
   taskName: string
   config: TaskConfig
   deps: string[] // ids of tasks that must finish first; sorted
+  orderOnly?: string[] // members of deps that order and key nothing (--exclude-dependencies, item 1019)
   requested: boolean // user-requested vs dep-pulled
   addsToOutputsOf?: string[] // upstream ids whose output trees this task adds to (item 588)
   outputsAddedToBy?: string[] // dependants' output globs that add into this task's tree
@@ -126,6 +127,11 @@ because a dropped dependency is still KEYED (nx#35234): `prepareRun`
 derives each dropped task's key on the whole graph as a full run would
 (`orchestrator/excluded-keys.ts`) and sets it on the dependant as
 `excludedUpstream`, so a key never depends on the selection.
+A scheduled task the requested one reached THROUGH a dropped one
+(`test → gen → build`, `gen` dropped, `build` requested) gets an edge
+of its own, listed in `orderOnly`: it orders the run, and the key sites
+leave it out (`keyUpstream`, `keyedDeps`), since the dropped task's
+key already folds it (item 1019).
 
 The resulting `TaskNode.deps` is the concrete id list of upstream
 tasks. It's sorted before being stored so downstream cache-key

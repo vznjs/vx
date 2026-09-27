@@ -20,7 +20,10 @@ NOT the same question:
 // The upstream a KEY reads: the live outcomes plus `node.excludedUpstream`
 // (the keys of dependencies --exclude-dependencies dropped). The run, the
 // plan and the up-front classify all go through it.
+// `node.orderOnly` edges are left out: they order the run and fold into no key.
 export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcome[]
+// `node.deps` less `node.orderOnly`: the dependencies a key may fold.
+export function keyedDeps(node: TaskNode): readonly string[]
 
 export function filterUpstreamHashes(
   upstream: TaskOutcome[],

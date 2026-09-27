@@ -31,6 +31,13 @@ export interface TaskNode {
   /** Ids of tasks that must complete before this one runs. */
   deps: string[]
   /**
+   * The members of `deps` that order the run and fold into no key:
+   * `--exclude-dependencies` dropped a task between this one and them
+   * (`excludeDependencies`). The dropped task's derived key already folds
+   * theirs, so folding them again would give a key no full run derives.
+   */
+  orderOnly?: string[]
+  /**
    * True for the tasks the user actually asked for (via cwd, `--all`,
    * `--filter`, or `pkg#task`). False for deps pulled in by `dependsOn`
    * expansion. Used by the orchestrator to scope `forwardArgs` so trailing
@@ -588,6 +595,27 @@ export function excludeDependencies(
     if (lost.length === 0) continue
     dropped.set(id, lost)
     node.deps = node.deps.filter(stays)
+    // A scheduled task reached through a dropped one still runs first: in
+    // `test → gen → build` with `gen` excluded and `build` requested, the
+    // edge to `gen` went and nothing ordered `test` after `build`, so the
+    // two ran at once (item 1019). The walk reads unscheduled nodes only,
+    // whose deps this loop leaves as they are.
+    const order = new Set<string>()
+    const seen = new Set<string>()
+    const stack = [...lost]
+    while (stack.length > 0) {
+      const dep = stack.pop()!
+      if (seen.has(dep)) continue
+      seen.add(dep)
+      if (scheduled.has(dep)) {
+        if (!node.deps.includes(dep)) order.add(dep)
+        continue
+      }
+      stack.push(...nodes.get(dep)!.deps)
+    }
+    if (order.size === 0) continue
+    node.orderOnly = [...order].sort()
+    node.deps = [...node.deps, ...node.orderOnly].sort()
   }
   for (const id of keyOnly.keys()) nodes.delete(id)
   return { keyOnly, dropped }

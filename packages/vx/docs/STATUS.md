@@ -790,6 +790,24 @@ The loop itself:
         does, and the group guard SIGKILLs the task's group; a probe that
         read the task as alive had counted its zombie.
 
+1019. DONE (2026-09-27, the graph review's lead 1). `--exclude-dependencies`
+      kept an edge only to a task still scheduled (item 980), and took
+      nothing back through a dropped one: in `test → gen → build` with
+      `gen` dropped and `build` requested, `test` and `build` ran at once,
+      and `test` read `build`'s output mid-rewrite or the run before's.
+      - Fix (`task-graph.ts` `excludeDependencies`): a scheduled task
+        reached through dropped ones gets an edge, listed in
+        `TaskNode.orderOnly`. The key sites leave it out (`keyUpstream`,
+        and `keyedDeps` where `excluded-keys.ts` derives a dropped task's
+        key), since the dropped key already folds it; folded twice, the
+        key was one no full run derives. `cli.md` and the module pages
+        say so.
+      - Rows: `task-graph.test.ts` › orders a task after what it reached
+        through a dropped one (`'all'` and a name list);
+        `stale-hit.test.ts` › the reached task runs first and keys once,
+        and a chain with two dropped links keys as the full run. Each
+        red with its piece removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
