@@ -1,3 +1,5 @@
+import { nearest } from '../util/index.js'
+
 export function printHelp(pluginCommands: readonly string[] = [], verb?: string): void {
   process.stdout.write(verb === undefined ? helpText(pluginCommands) : verbHelpText(verb))
 }
@@ -186,6 +188,26 @@ export function helpText(pluginCommands: readonly string[] = []): string {
  */
 export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`
+}
+
+/**
+ * `(did you mean --concurrency?)` for a flag within two edits of one `verb`
+ * accepts; empty for anything else (a positional included). A third edit
+ * is allowed only between flags that share their first five characters,
+ * so `--retries` reaches `--retry` while `--zzz` does not reach `--all`.
+ */
+export function flagHint(verb: string, arg: string): string {
+  if (!arg.startsWith('-')) return ''
+  const name = arg.replace(/=.*$/, '')
+  const flags = acceptedFlags(verb)
+  const best =
+    nearest(name, flags) ??
+    nearest(
+      name,
+      flags.filter((f) => f.slice(0, 5) === name.slice(0, 5)),
+      3,
+    )
+  return best === undefined ? '' : ` (did you mean ${best}?)`
 }
 
 /**

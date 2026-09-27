@@ -240,6 +240,45 @@ describe('cli run()', () => {
     }
   })
 
+  it("every verb's unknown flag hints the nearest flag it accepts, as vx run's does", async () => {
+    // Each verb parses its own flags; only `vx run` hinted one. The hint set
+    // is the verb's own usage line (`acceptedFlags`), so `--format` is
+    // offered where it is accepted and nowhere else.
+    const said: string[] = []
+    for (const argv of [
+      ['info', '--formt'],
+      ['lock', '--chek'],
+      ['init', '--forse'],
+      ['last', '--lst'],
+      ['show', '--formt'],
+      ['why', 'x', '--rn', '1'],
+      ['cache', 'prune', '--dry-rn'],
+      ['run', 'build', '--concurency', '2'],
+      // CONTROL: a positional is not a flag, and gets no hint.
+      ['info', 'zzz'],
+    ]) {
+      stderr = ''
+      // `last` and `why` refuse by throwing, which bin.ts prints as-is.
+      const code = await run(argv).catch((e: Error) => {
+        stderr += `${e.message}\n`
+        return 1
+      })
+      expect(code).toBe(1)
+      said.push(stderr.split('\n')[0]!)
+    }
+    expect(said).toEqual([
+      'vx info: unknown argument: --formt (did you mean --format?) (see `vx info --help`)',
+      'vx lock: unknown argument: --chek (did you mean --check?) (see `vx lock --help`)',
+      'vx init: unknown flag: --forse (did you mean --force?) (see `vx init --help`)',
+      'vx last: unknown flag: --lst (did you mean --list?) (see `vx last --help`)',
+      'vx show: unknown flag: --formt (did you mean --format?) (see `vx show --help`)',
+      'vx why: unknown flag: --rn (did you mean --run?) (see `vx why --help`)',
+      'vx cache prune: unknown argument: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
+      'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
+      'vx info: unknown argument: zzz (see `vx info --help`)',
+    ])
+  })
+
   it('rejects unknown command', async () => {
     expect(await run(['nope'])).toBe(1)
     expect(stderr).toContain('unknown command')
