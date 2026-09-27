@@ -286,6 +286,7 @@ function openCacheDir(cacheDir: string): string | null {
     // A FILE at `cacheDir` passed the `access` above; mkdir names it.
     if (code === 'ENOTDIR') makeCacheDir(cacheDir)
     if (code !== 'ENOENT') return errorText(err)
+    refuseManifestDir(cacheDir)
   }
   try {
     writeFileSync(ignore, IGNORE_ALL, { flag: 'wx' })
@@ -303,6 +304,26 @@ function openCacheDir(cacheDir: string): string | null {
 // ignored directory is skipped by the walk entirely. Only written when
 // absent, so a user's own file wins.
 const IGNORE_ALL = '*\n'
+
+/**
+ * A first index in a directory that holds a manifest is a cache pointed at
+ * the workspace or a project (`cacheDir: ''`, `'.'`, `'packages/a'`): the
+ * `*` ignore file above hid every file in it from git, so its inputs
+ * matched nothing and a changed source replayed the old output, and the
+ * artifacts landed among the sources (item 997). Asked only when there is
+ * no index yet, so an open cache pays nothing for it.
+ */
+function refuseManifestDir(cacheDir: string): void {
+  for (const manifest of ['package.json', 'pnpm-workspace.yaml']) {
+    if (!existsSync(path.join(cacheDir, manifest))) continue
+    throw new UserError(
+      `cache directory ${cacheDir} holds a ${manifest}: it is the workspace's or a project's own ` +
+        `directory, and vx would keep its index there under a \`*\` .gitignore that hides every file ` +
+        `in it from git and from the cache keys. Point \`cacheDir\` in vx.workspace.ts (or ` +
+        `--cache-dir) at a directory of its own, such as .vx/cache.`,
+    )
+  }
+}
 
 function makeCacheDir(cacheDir: string): void {
   try {

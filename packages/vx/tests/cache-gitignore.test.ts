@@ -47,4 +47,24 @@ describe('the cache directory is git-ignored by construction', () => {
     cache.close()
     expect(status()).toBe('?? stray.txt\n')
   })
+
+  // `cacheDir: ''` put the index and a `*` .gitignore at the workspace
+  // root: every input matched nothing and a changed source replayed the
+  // old output; `'packages/a'` did the same to one project (item 997).
+  it('a first index in a directory holding a manifest is refused, and nothing is written', async () => {
+    for (const manifest of ['package.json', 'pnpm-workspace.yaml']) {
+      const dir = path.join(root, manifest.replace('.', '-'))
+      await Bun.write(path.join(dir, manifest), '{}')
+      expect(() => new Cache(dir)).toThrow(
+        `cache directory ${dir} holds a ${manifest}: it is the workspace's or a project's own directory`,
+      )
+      expect(await Bun.file(path.join(dir, '.gitignore')).exists()).toBe(false)
+      expect(await Bun.file(path.join(dir, 'cache.db')).exists()).toBe(false)
+    }
+    // Control: the same directory with no manifest opens.
+    const plain = path.join(root, 'plain')
+    await Bun.write(path.join(plain, 'notes.txt'), 'x')
+    new Cache(plain).close()
+    expect(await Bun.file(path.join(plain, 'cache.db')).exists()).toBe(true)
+  })
 })
