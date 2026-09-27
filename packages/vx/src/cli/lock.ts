@@ -124,9 +124,13 @@ async function checkLock(root: string, metas: ConfiguredMeta[], bare: number): P
         JSON.stringify(await loadProjectConfig(m.configPath, { fresh: true })),
       ) as ProjectConfig
       if (!Bun.deepEquals(fresh, entry.config, true)) {
+        // Bytes unchanged, so the drift is in what the evaluation read: a
+        // file the config imports, or the environment. Blaming only the
+        // environment sent an edited preset's author looking for env reads
+        // the config does not have (item 1044).
         return (
           `lock differs from fresh evaluation in this environment (${m.name}) — ` +
-          `env-dependent config? run 'vx lock' here or remove env reads from config`
+          `a file the config imports changed, or the config reads the environment; run 'vx lock' here`
         )
       }
       return null
