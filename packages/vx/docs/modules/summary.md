@@ -63,7 +63,10 @@ aborted task) at the root of its chain — `blockedBy` — with fail-fast's
 skips under their own heading; a blocked group is left out, as every
 counter leaves it out, and a long list is capped on one line with the
 rest counted. `formatAbortedSection` lists what a shutdown signal took
-down. Both print after the footer, beside the Flaky section.
+down (`✗ id — exit N, nothing cached`), and under `Not started:` the
+tasks the stop reached before they ran — aborted outcomes with no
+`wallclockStartNs`, which only a started task carries — with no exit,
+since the scheduler's exit 1 on them is not one. Both print after the footer, beside the Flaky section.
 
 `formatFlakySection` is the post-footer section naming the tasks this
 run proved flaky (`detectFlaky`, history.md): `✗ id — failed on inputs

@@ -210,6 +210,7 @@ describe('formatAbortedSection', () => {
   // entirely. It had no rows at all.
   const killed = (id: string, exitCode = 130): TaskOutcome => ({
     ...outcome(id, 'aborted', exitCode),
+    wallclockStartNs: 1_000n,
   })
 
   it('is empty when nothing was aborted — no header on an ordinary run', () => {
@@ -232,6 +233,39 @@ describe('formatAbortedSection', () => {
     expect(formatAbortedSection([killed('a#build'), killed('b#build', 143)])[1]).toBe(
       '  Aborted:  2 tasks killed by a shutdown signal — not counted above',
     )
+  })
+
+  it('names what the stop reached before it ran apart, with no exit, and no group', () => {
+    // The scheduler marks those `aborted` with an invented exit 1; listed as
+    // killed they read as cut short (item 1062). Not started: no wall-clock
+    // start, which only a task that ran carries.
+    const group: TaskOutcome = {
+      node: { id: 'a#all', config: {} } as TaskNode,
+      status: 'aborted',
+      exitCode: 1,
+      durationMs: 0,
+    }
+    expect(
+      formatAbortedSection([
+        killed('a#t'),
+        outcome('a#after', 'aborted', 1),
+        outcome('a#lint', 'aborted', 1),
+        group,
+      ]),
+    ).toEqual([
+      '',
+      '  Aborted:  1 task killed by a shutdown signal — not counted above',
+      '    ✗ a#t — exit 130, nothing cached',
+      '',
+      '  Not started:  2 tasks the run stopped before they ran',
+      '    · a#after',
+      '    · a#lint',
+    ])
+    expect(formatAbortedSection([outcome('a#after', 'aborted', 1)])).toEqual([
+      '',
+      '  Not started:  1 task the run stopped before it ran',
+      '    · a#after',
+    ])
   })
 })
 

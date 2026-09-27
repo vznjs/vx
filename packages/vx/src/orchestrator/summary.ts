@@ -326,23 +326,34 @@ export function formatRunSummary(
 }
 
 /**
- * Post-summary section naming the tasks a shutdown signal killed. An aborted
- * task did no work, so it is in no tally bucket and no history row — but the
- * run still exits non-zero, and without this the user reads a red exit over a
- * fully green summary that names nothing. The interactive Ctrl-C path never
- * gets here (the signal handler exits before any outcome lands), so this only
- * ever prints for a run that reached its summary WITH a task killed by some
- * other signal — an external `kill`, a supervisor, a self-terminating child.
- * Empty when nothing aborted.
+ * Post-summary section naming the tasks a shutdown signal killed, and those
+ * the stop reached before they ran. An aborted task did no work, so it is in
+ * no tally bucket and no history row — but the run still exits non-zero, and
+ * without this the user reads a red exit over a fully green summary that
+ * names nothing. Empty when nothing aborted.
  */
 export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[] {
-  const aborted = outcomes.filter((o) => o.status === 'aborted')
-  if (aborted.length === 0) return []
-  const lines = [
-    '',
-    `  Aborted:  ${aborted.length} task${aborted.length === 1 ? '' : 's'} killed by a shutdown signal — not counted above`,
-  ]
-  for (const o of aborted) lines.push(`    ✗ ${o.node.id} — exit ${o.exitCode}, nothing cached`)
+  // The scheduler marks what the stop reached before dispatch `aborted` too,
+  // with an invented exit 1: listed as killed, a task that never ran read as
+  // one the signal cut short (item 1062). Only a started one carries a
+  // wall-clock start. A group is no task here, as in the skipped section.
+  const aborted = outcomes.filter((o) => o.status === 'aborted' && !isGroupTask(o.node))
+  const killed = aborted.filter((o) => o.wallclockStartNs !== undefined)
+  const unstarted = aborted.filter((o) => o.wallclockStartNs === undefined)
+  const tasks = (n: number): string => `${n} task${n === 1 ? '' : 's'}`
+  const lines: string[] = []
+  if (killed.length > 0) {
+    lines.push(
+      '',
+      `  Aborted:  ${tasks(killed.length)} killed by a shutdown signal — not counted above`,
+    )
+    for (const o of killed) lines.push(`    ✗ ${o.node.id} — exit ${o.exitCode}, nothing cached`)
+  }
+  if (unstarted.length > 0) {
+    const they = unstarted.length === 1 ? 'it' : 'they'
+    lines.push('', `  Not started:  ${tasks(unstarted.length)} the run stopped before ${they} ran`)
+    for (const o of unstarted) lines.push(`    · ${o.node.id}`)
+  }
   return lines
 }
 
