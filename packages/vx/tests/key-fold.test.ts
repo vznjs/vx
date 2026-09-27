@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { foldKey } from '../src/cache/key-fold.js'
-import { relPosix } from '../src/util/index.js'
+import { relPosix, xxh3hex } from '../src/util/index.js'
 
 const root = mkdtempSync(path.join(tmpdir(), 'vx-key-fold-'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -50,18 +50,28 @@ describe('the key fold (item 691)', () => {
       const captured: Array<{ kind: string; name: string; hash: string }> = []
       const key = await cache.key(input(captured))
       expect(key).toBe('2a22aaf4748f7f55')
+      // A value-bearing row is a digest under the store's salt (L-4); the
+      // Cache-less fold below pins its unsalted default byte for byte.
+      // @ts-expect-error: private member access for testing
+      const db = cache.db as import('bun:sqlite').Database
+      const salt = (
+        db.query("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+          value: string
+        }
+      ).value
+      const salted = (v: string): string => xxh3hex(`${salt}\0${v}`)
       expect(captured.map((c) => `${c.kind} ${c.name} ${c.hash}`)).toEqual([
         'workspace fingerprint fp00112233445566',
         'package package.json pkgjson0123456789',
         'config config cfg0123456789abc',
-        'forward argv 40a96bf38dd15c24',
-        'env NODE_ENV eb15a7d3b00ce14e',
-        'env A f5669cc027d6ebce',
-        'runtime node --version c1c32dcd2fc8443d',
-        'ws-runtime git rev-parse HEAD 5fdf728ed9b25e34',
+        `forward argv ${salted(JSON.stringify(['--watch', 'x y']))}`,
+        `env NODE_ENV ${salted('production')}`,
+        `env A ${salted('B=C')}`,
+        `runtime node --version ${salted('v22.12.0')}`,
+        `ws-runtime git rev-parse HEAD ${salted('deadbeef')}`,
         'upstream 0000aaaabbbbcccc 0000aaaabbbbcccc',
         'upstream dep#build ffff000011112222',
-        'plugin org/p:mode 5a7aeb9f167e8e2b',
+        `plugin org/p:mode ${salted('strict')}`,
         // From disk: `git hash-object` of a.ts's bytes.
         'file a.ts 41715495f45f651e6cf7d38f58a3d512abcfa440',
         // From the caller's map, never read.
@@ -77,8 +87,9 @@ describe('the key fold (item 691)', () => {
   // hasher is asked only for the file the caller's map leaves out.
   it('is the same fold without a Cache, asking the hasher only for unmapped files', async () => {
     const asked: string[] = []
+    const captured: Array<{ kind: string; name: string; hash: string }> = []
     const key = await foldKey(
-      input(),
+      input(captured),
       async (f) => {
         asked.push(path.basename(f))
         return '41715495f45f651e6cf7d38f58a3d512abcfa440'
@@ -87,5 +98,17 @@ describe('the key fold (item 691)', () => {
     )
     expect(key).toBe('2a22aaf4748f7f55')
     expect(asked).toEqual(['a.ts'])
+    expect(
+      captured
+        .filter((c) => ['forward', 'env', 'runtime', 'ws-runtime', 'plugin'].includes(c.kind))
+        .map((c) => `${c.kind} ${c.name} ${c.hash}`),
+    ).toEqual([
+      'forward argv 40a96bf38dd15c24',
+      'env NODE_ENV eb15a7d3b00ce14e',
+      'env A f5669cc027d6ebce',
+      'runtime node --version c1c32dcd2fc8443d',
+      'ws-runtime git rev-parse HEAD 5fdf728ed9b25e34',
+      'plugin org/p:mode 5a7aeb9f167e8e2b',
+    ])
   })
 })

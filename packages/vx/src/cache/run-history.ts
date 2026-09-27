@@ -4,14 +4,17 @@
 // its statements over the store's handle; `Cache` delegates.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
-import { xxh3hex } from '../util/index.js'
 import type { InvocationRecord, RunRecord } from './layer.js'
 
 export class RunHistory {
   private readonly insertRun: ReturnType<Database['prepare']>
   private readonly insertInvocation: ReturnType<Database['prepare']>
 
-  constructor(private readonly db: Database) {
+  constructor(
+    private readonly db: Database,
+    /** The store's salted value digest (L-4). */
+    private readonly digestValue: (value: string) => string,
+  ) {
     this.insertRun = this.db.prepare(`
       INSERT INTO runs(
         hash, project, task, status, exit_code, duration_ms, forward_args,
@@ -37,13 +40,13 @@ export class RunHistory {
   }
 
   recordRun(run: RunRecord): void {
-    this.insertRun.run(...bindRun(run))
+    this.insertRun.run(...bindRun(run, this.digestValue))
   }
 
   recordRuns(runs: readonly RunRecord[]): void {
     if (runs.length === 0) return
     if (runs.length === 1) {
-      this.insertRun.run(...bindRun(runs[0]!))
+      this.insertRun.run(...bindRun(runs[0]!, this.digestValue))
       return
     }
     // `bun:sqlite`'s `transaction()` returns a callable that wraps the
@@ -51,7 +54,7 @@ export class RunHistory {
     // run that's one fsync instead of 200.
     const insert = this.insertRun
     const tx = this.db.transaction((batch: readonly RunRecord[]) => {
-      for (const r of batch) insert.run(...bindRun(r))
+      for (const r of batch) insert.run(...bindRun(r, this.digestValue))
     })
     tx(runs)
   }
@@ -66,7 +69,7 @@ export class RunHistory {
     const insertRun = this.insertRun
     const insertInvocation = this.insertInvocation
     this.db.transaction(() => {
-      for (const r of bundle.runs) insertRun.run(...bindRun(r))
+      for (const r of bundle.runs) insertRun.run(...bindRun(r, this.digestValue))
       insertInvocation.run(...bindInvocation(bundle.invocation))
     })()
   }
@@ -89,7 +92,7 @@ export class RunHistory {
  * `insertRun` prepared statement (21 columns). Shared between the
  * single and batched record paths.
  */
-function bindRun(run: RunRecord): SQLQueryBindings[] {
+function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBindings[] {
   return [
     // The ONE place the no-key sentinel is applied, so the column's
     // NOT NULL invariant can't be violated from a call site.
@@ -102,7 +105,7 @@ function bindRun(run: RunRecord): SQLQueryBindings[] {
     // A digest, as entry_inputs keeps: args after `--` carry tokens
     // (`--token=…`), and cache.db holds no plaintext secret at rest; nothing
     // reads the column but for whether the args changed (item 1091).
-    run.forwardArgs ? xxh3hex(JSON.stringify(run.forwardArgs)) : null,
+    run.forwardArgs ? digestValue(JSON.stringify(run.forwardArgs)) : null,
     run.startedAt,
     run.endedAt,
     run.runId ?? null,

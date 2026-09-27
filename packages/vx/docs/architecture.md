@@ -607,7 +607,7 @@ transaction (`recordRunBundle`), one row per executed task to the
 | `status`                                  | `success` / `failed` / `cache-hit` / `cache-hit-remote` / `skipped`       |
 | `exit_code`                               | from the child or 0 for cache-hits                                        |
 | `duration_ms`                             | wallclock the user perceived (cache-hit = restore op time)                |
-| `forward_args`                            | xxh3 of the JSON-encoded `--` args, never the text (null when none)       |
+| `forward_args`                            | salted xxh3 of the JSON `--` args, never the text (null when none)        |
 | `started_at, ended_at`                    | ms-epoch wallclock                                                        |
 | `run_id`                                  | ULID shared across every task in the same invocation                      |
 | `cpu_ms`                                  | `Bun.spawn` resource-usage CPU (sum of user + system)                     |
