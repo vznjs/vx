@@ -9,7 +9,7 @@
 
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { mark, UserError } from '../util/index.js'
+import { mark, nearest, UserError } from '../util/index.js'
 import {
   Cache,
   noteSchemaReset,
@@ -407,6 +407,30 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     await refuseUndeclaredDeps(unproven, () =>
       loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
     )
+  }
+  // An `--exclude-dependencies` name no project declares drops nothing:
+  // `=biuld` planned the whole chain and ran it, exit 0 (item 1026). Every
+  // other name the user types must resolve; so must this one. After the
+  // graph, so a config error (`^biuld` nobody declares) is named first.
+  const excludeNames = options.excludeDependencies
+  if (Array.isArray(excludeNames) && excludeNames.length > 0) {
+    const declared = new Set<string>()
+    for (const p of projects.values())
+      for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+    let unknown = excludeNames.filter((n) => !declared.has(n))
+    if (unknown.length > 0 && projects.size < projectsWithConfigs.length) {
+      unknown = await declaredNowhere(unknown, () =>
+        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
+      )
+    }
+    if (unknown.length > 0) {
+      cache.close()
+      const hints = new Set(unknown.flatMap((n) => nearest(n, declared) ?? []))
+      const hint = hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+      throw new UserError(
+        `--exclude-dependencies names a task no project declares: ${unknown.join(', ')}.${hint}`,
+      )
+    }
   }
   // The graph is built; what follows is the plugins' (graph, key,
   // schedule). Two rows, so a plugin's key stage reads as its own cost

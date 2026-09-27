@@ -433,6 +433,39 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
   })
 
+  it('an --exclude-dependencies name no project declares is refused, with the nearest (item 1026)', async () => {
+    // `=helo` dropped nothing and the run went on, exit 0: a typo the flag
+    // never reported.
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const outcome = (args: string[]): Promise<number | string> =>
+      run(args).then(
+        (code) => code,
+        (err: Error) => `${err.name}: ${err.message}`,
+      )
+    // `gen` is declared only by `two`, which a run scoped to `one` does not
+    // load: it is judged against the workspace, not refused.
+    const path = await import('node:path')
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const two = path.join(workspaceRoot, 'packages', 'two')
+    await mkdir(two, { recursive: true })
+    await writeFile(path.join(two, 'package.json'), JSON.stringify({ name: 'two' }))
+    await writeFile(
+      path.join(two, 'vx.config.mjs'),
+      `export default { tasks: { gen: { exec: { command: "true" } } } }`,
+    )
+    process.chdir(path.join(workspaceRoot, 'packages', 'one'))
+    expect({
+      typo: await outcome(['run', 'one#hello', '--exclude-dependencies=helo']),
+      known: await outcome(['run', 'one#hello', '--exclude-dependencies=hello']),
+      elsewhere: await outcome(['run', 'hello', '--exclude-dependencies=gen']),
+    }).toEqual({
+      typo: 'UserError: --exclude-dependencies names a task no project declares: helo. Did you mean hello?',
+      known: 0,
+      elsewhere: 0,
+    })
+  })
+
   it('pkg#task syntax targets a specific project', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
