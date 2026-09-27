@@ -132,3 +132,4 @@ Nested-project boundaries were one `<nested>/**` glob each: O(files × nested), 
 
 - Fix (`inputs.ts` `inNestedProject`): an ancestor-directory set lookup in `resolveFiles` and the output scan.
 - Row: `nested-boundary.test.ts`, inputs and outputs: the nested project out, `pkg-b` and `a/bc` in. Red without the fix.
+- Sweep of `key-fold.ts` (50 mutants, 49 caught, 1 a no-op): the `workspaceRuntime` and plugin-part folds were held only by the golden digest, which each `CACHE_VERSION` bump re-records. Two rows in `task-hash-derive.test.ts` pin them by behaviour; each fails with its loop deleted.
