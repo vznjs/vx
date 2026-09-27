@@ -17,7 +17,7 @@ behavior lives in the plugin package (vite-style), not in core.
 | `executor(ctx)`        | `plugin-host.ts`     | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs                                         |
 | `config(ws, ctx)`      | every verb, first    | edit the workspace config in place before anything is derived from it — `cacheDir` too                              |
 | `project(cfg, ctx)`    | per loaded config    | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name                            |
-| `graph(nodes, ctx)`    | after graph build    | edit `deps`/`requested` in place; dangling deps and cycles are refused                                              |
+| `graph(nodes, ctx)`    | after graph build    | edit `deps`/`requested` in place; the builder's checks run again (item 981)                                         |
 | `key(task, ctx)`       | per task, at hash    | `{ name: value }` material folded into the key and named in `vx why`                                                |
 | `fingerprint`          | claim, static        | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each |
 | `schedule(nodes, ctx)` | before scheduling    | task id → weight, merged over the structural baseline; later plugin wins per task                                   |

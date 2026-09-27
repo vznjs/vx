@@ -391,6 +391,47 @@ describe('graph stage', () => {
   )
 
   it(
+    'an edge a plugin drops between overlapping outputs is refused (item 981)',
+    async () => {
+      // Declared with the edge, `extra` adds to `gen`'s tree; the plugin
+      // takes the edge away, the two run in either order, and `gen`'s
+      // clean deleted `extra`'s file under a green run. The builder refuses
+      // that shape; the stage did not ask again.
+      await pkg(
+        'a',
+        `export default { tasks: {
+          gen: { exec: { command: 'mkdir -p dist && echo g > dist/gen.txt' }, cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } } },
+          extra: { exec: { command: 'mkdir -p dist && echo e > dist/extra.txt' }, dependsOn: ['gen'], cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } } },
+        } }\n`,
+      )
+      await workspace([
+        pluginSource('org/unedge', `{ graph(nodes) { nodes.get('a#extra').deps = [] } }`),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['extra'], log: silent() })).rejects.toThrow(
+        /plugin 'org\/unedge' failed in graph: a#(gen|extra) and a#(gen|extra) both declare the output "dist\/\*\*"/,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a node a plugin moves to another key is refused by name, not a TypeError (item 981)',
+    async () => {
+      await pkg('a', build)
+      await workspace([
+        pluginSource(
+          'org/rekey',
+          `{ graph(nodes) { const n = nodes.get('a#build'); nodes.delete('a#build'); nodes.set('zz#build', n) } }`,
+        ),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        /plugin 'org\/rekey' failed in graph: the task a#build is stored under 'zz#build', not its own id/,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'sees which tasks the user asked for',
     async () => {
       await pkg(

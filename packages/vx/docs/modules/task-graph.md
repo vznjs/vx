@@ -53,7 +53,7 @@ export function declaredTask(
   config: ProjectConfig | null | undefined,
   name: string,
 ): TaskConfig | undefined
-export function detectCycle(nodes: Map<string, TaskNode>): void
+export function checkGraph(nodes: Map<string, TaskNode>): void // id keys, deps, cycle, output collisions
 // The refusal of a `^name` no project in the workspace declares; thrown by
 // the builder, or by `prepareRun` once a scoped run's other configs agree.
 export function undeclaredDepsError(taskId: string, name: string): UserError
@@ -134,7 +134,9 @@ their `dependsOn` array.
 
 ## Cycle detection
 
-After every reachable node has been added, `detectCycle()` runs a
+After every reachable node has been added, `checkGraph()` checks the
+graph (the `graph` stage runs it again after its plugins, item 981):
+each node under its own id, every dep a node, then `detectCycle()` runs a
 3-color DFS:
 
 - WHITE = unvisited

@@ -11,7 +11,7 @@ import { ChainedCache, type CacheLayer } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { detectCycle, type TaskNode } from '../graph/index.js'
+import { checkGraph, type TaskNode } from '../graph/index.js'
 import type {
   CacheContext,
   ExecutorContext,
@@ -132,8 +132,9 @@ export async function applyProjectHooks(
 
 /**
  * `graph` stage: every plugin edits the task graph in place, then the graph
- * is checked ONCE the way the builder checks its own output — every dep
- * names a node in the graph, and there is no cycle. A violation is reported
+ * is checked ONCE the way the builder checks its own output (`checkGraph`:
+ * each node under its own id, every dep a node, no cycle, no two tasks
+ * deleting each other's outputs). A violation is reported
  * against the LAST plugin that ran: usually the one whose edit made it so,
  * but an earlier plugin's edit that a later one left in place is blamed on
  * the later one, since nothing is checked between plugins.
@@ -150,16 +151,7 @@ export async function applyGraphHooks(
     last = plugin
   }
   if (last === undefined) return
-  await safe(last, 'graph', () => {
-    for (const node of nodes.values()) {
-      for (const dep of node.deps) {
-        if (!nodes.has(dep)) {
-          throw new Error(`${node.id} depends on '${dep}', which is not a task in this run's graph`)
-        }
-      }
-    }
-    detectCycle(nodes)
-  })
+  await safe(last, 'graph', () => checkGraph(nodes))
 }
 
 /**

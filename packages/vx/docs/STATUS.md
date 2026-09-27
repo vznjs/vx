@@ -214,6 +214,21 @@ test is telling the truth.
       - Row: `task-graph.test.ts` › excludeDependencies keeps an edge to a
         task the run schedules anyway, under `'all'` and a name list. Red
         without the fix.
+981.  DONE (2026-09-27, the graph review's lead 3). The `graph` stage
+      re-checked only dangling deps and cycles. A plugin that dropped the
+      edge making two tasks' overlapping `dist/**` an addition left them
+      unordered, and `gen`'s clean deleted `extra`'s file under a green run
+      (the builder refuses that shape); one that moved a node to another
+      key crashed the scheduler with a raw TypeError and a stack.
+      - Fix (`task-graph.ts`, `plugin-host.ts`): one `checkGraph` (id keys,
+        deps, cycle, output collisions, the addition marks cleared and
+        derived again) run by the builder and again after the stage's
+        plugins, blamed on the last. `detectCycle` is no longer exported.
+        `modules/plugin-host.md`, `plugin.md`, `task-graph.md` say so.
+      - Rows: `plugin-pipeline.test.ts` › an edge a plugin drops between
+        overlapping outputs is refused, and a node moved to another key is
+        refused by name; `task-graph.test.ts` › checkGraph re-derives the
+        addition marks. Each red without its part of the fix.
 
 ## In flight
 

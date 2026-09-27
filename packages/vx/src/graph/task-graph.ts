@@ -498,9 +498,36 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
   }
 
+  checkGraph(nodes)
+  return nodes
+}
+
+/**
+ * What a task graph must hold before it is scheduled: each node under its
+ * own id, every dep a node, no cycle, and no two tasks deleting each
+ * other's outputs. The builder's output holds the first two by
+ * construction; the `graph` stage runs this again after its plugins, which
+ * could move a node to another key (the scheduler then died on a raw
+ * TypeError) or drop the edge that made two overlapping outputs an
+ * addition, and a green run lost one task's files (item 981). The addition
+ * marks are derived here, so they are cleared first and follow the edges
+ * the graph has now.
+ */
+export function checkGraph(nodes: Map<string, TaskNode>): void {
+  for (const [key, node] of nodes) {
+    if (node.id !== key) {
+      throw new Error(`the task ${node.id} is stored under '${key}', not its own id`)
+    }
+    for (const dep of node.deps) {
+      if (!nodes.has(dep)) {
+        throw new Error(`${node.id} depends on '${dep}', which is not a task in this run's graph`)
+      }
+    }
+    delete node.addsToOutputsOf
+    delete node.outputsAddedToBy
+  }
   detectCycle(nodes)
   detectOutputCollisions(nodes)
-  return nodes
 }
 
 /**
@@ -874,7 +901,7 @@ function collide(
   }
 }
 
-export function detectCycle(nodes: Map<string, TaskNode>): void {
+function detectCycle(nodes: Map<string, TaskNode>): void {
   // Iterative DFS over dense-indexed colors. Recursion + `Map<string,
   // number>` worked, but deep workspaces (long chains of `dependsOn`)
   // can blow V8's frame budget, and per-node Map lookups dominate the
