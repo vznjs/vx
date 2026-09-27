@@ -182,6 +182,14 @@ upgrade` on the latest version re-downloaded and replaced the
         second tag instead of ignoring it" (on a runtime copy, item 779).
         `releaseAsset`'s row now reads the tag back.
 
+1099. DONE (2026-09-27, scheduler review #4). `exec.command: '   '` or
+      `'\n'` passed the schema's `command.length === 0` check and ran as a
+      shell no-op: `1 success`, exit 0, and a cache entry. Only `''` was
+      refused. The check now trims, with the same message.
+      - Row: `config-schema-refusals.test.ts` › "an empty command in any
+        spelling" (four blank spellings), red without the change. The
+        control is `' true '`.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

@@ -32,6 +32,20 @@ function taskRefusal(task: unknown): string | null {
   }
 }
 
+// Item 1099: a command of whitespace alone passed as non-empty and ran as
+// a no-op success, cached.
+describe('an empty command in any spelling', () => {
+  it('is refused', () => {
+    for (const command of ['', '   ', '\n', '\t \n']) {
+      expect(taskRefusal({ exec: { command } })).toBe(
+        `${CFG}: tasks.t.exec.command must be a non-empty string`,
+      )
+    }
+    // CONTROL: a command with text around whitespace stands.
+    expect(taskRefusal({ exec: { command: ' true ' } })).toBeNull()
+  })
+})
+
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
     expect(refusal({ concurrency: 1.5 })).toBe(`${WS}: \`concurrency\` must be a positive integer`)

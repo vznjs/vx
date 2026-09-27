@@ -282,7 +282,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       const sandbox = (exec as { sandbox?: unknown }).sandbox
       if (sandbox !== undefined) validateSandbox(sandbox, `${where}.exec`)
       const command = (exec as { command?: unknown }).command
-      if (typeof command !== 'string' || command.length === 0) {
+      // Whitespace alone ran as a shell no-op, green and cached (item 1099).
+      if (typeof command !== 'string' || command.trim().length === 0) {
         throw new UserError(`${where}.exec.command must be a non-empty string`)
       }
       // No argv can carry a NUL: the spawn refused it and the task failed
