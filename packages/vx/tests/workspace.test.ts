@@ -462,6 +462,26 @@ describe('listProjects', () => {
     expect(names).toEqual(['root-pkg'])
   })
 
+  it('a brace whose alternatives hold a slash lists every member (D-2)', async () => {
+    // `Bun.Glob`'s scan finds nothing for such a brace, though its match
+    // reads it: both packages vanished from every verb.
+    for (const rel of ['packages/a', 'packages/nested/b', 'apps/x', 'apps/y', 'tools/z']) {
+      await mkdir(path.join(dir, rel), { recursive: true })
+      await writeFile(
+        path.join(dir, rel, 'package.json'),
+        JSON.stringify({ name: path.basename(rel) }),
+      )
+    }
+    const names = async (workspaces: string[]) => {
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'r', workspaces }))
+      return (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    }
+    // Control: a slash-free brace, which the glob expands itself.
+    expect(await names(['apps/{x,y}'])).toEqual(['x', 'y'])
+    expect(await names(['packages/{a,nested/b}'])).toEqual(['a', 'b'])
+    expect(await names(['{packages/{a,nested/b},apps/*}', '!apps/y'])).toEqual(['a', 'b', 'x'])
+  })
+
   it('a matched directory with NO package.json is not a project', async () => {
     // The glob matches directories; the manifest read is what decides
     // membership, and its ENOENT is the "not a member" answer.

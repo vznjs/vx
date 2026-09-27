@@ -416,23 +416,63 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
     }
     return dirs
   }
-  const globPattern = normalized === '' ? 'package.json' : `${normalized}/package.json`
-  const glob = new Bun.Glob(globPattern)
   const dirs: string[] = []
-  // A linked member is a member, as the readdir path above has it:
-  // `packages/*` found `packages/b -> ../ext/b` while `packages/{a,b}` and
-  // `pack*/*` did not (item 987). Followed only where the depth is bounded:
-  // under `**` the scan would walk every pnpm `node_modules` link.
-  const followSymlinks = !normalized.includes('**')
-  for await (const rel of glob.scan({ cwd: root, onlyFiles: true, dot: false, followSymlinks })) {
-    // Skip nested node_modules — workspace package globs shouldn't
-    // ever reach into them, but a pathological pattern like `**`
-    // would. Avoid splitting the path on the hot loop.
-    if (rel.includes(`${path.sep}node_modules${path.sep}`)) continue
-    if (rel.startsWith(`node_modules${path.sep}`)) continue
-    dirs.push(path.dirname(path.resolve(root, rel)))
+  // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
+  // slash, though its `match` reads one: `packages/{a,nested/b}` listed
+  // neither package, and both ran under no verb while the root still
+  // claimed them (D-2). Such a pattern is scanned as its expansions.
+  for (const expanded of slashBraceExpansions(normalized)) {
+    const globPattern = expanded === '' ? 'package.json' : `${expanded}/package.json`
+    const glob = new Bun.Glob(globPattern)
+    // A linked member is a member, as the readdir path above has it:
+    // `packages/*` found `packages/b -> ../ext/b` while `packages/{a,b}` and
+    // `pack*/*` did not (item 987). Followed only where the depth is bounded:
+    // under `**` the scan would walk every pnpm `node_modules` link.
+    const followSymlinks = !expanded.includes('**')
+    for await (const rel of glob.scan({ cwd: root, onlyFiles: true, dot: false, followSymlinks })) {
+      // Skip nested node_modules — workspace package globs shouldn't
+      // ever reach into them, but a pathological pattern like `**`
+      // would. Avoid splitting the path on the hot loop.
+      if (rel.includes(`${path.sep}node_modules${path.sep}`)) continue
+      if (rel.startsWith(`node_modules${path.sep}`)) continue
+      dirs.push(path.dirname(path.resolve(root, rel)))
+    }
   }
   return dirs
+}
+
+/**
+ * `pattern` with its first brace group expanded, recursively, while that
+ * group holds a `/`; any other pattern as itself, since `Bun.Glob`
+ * expands a slash-free brace on its own. An unbalanced or escaped brace
+ * is left to the glob.
+ */
+function slashBraceExpansions(pattern: string): string[] {
+  if (pattern.includes('\\')) return [pattern]
+  for (let open = pattern.indexOf('{'); open !== -1; open = pattern.indexOf('{', open + 1)) {
+    let depth = 0
+    const cuts: number[] = []
+    let close = -1
+    for (let i = open; i < pattern.length && close === -1; i++) {
+      const c = pattern[i]
+      if (c === '{') depth++
+      else if (c === '}' && --depth === 0) close = i
+      else if (c === ',' && depth === 1) cuts.push(i)
+    }
+    if (close === -1) return [pattern]
+    const body = pattern.slice(open + 1, close)
+    if (cuts.length === 0 || !body.includes('/')) continue
+    const head = pattern.slice(0, open)
+    const tail = pattern.slice(close + 1)
+    const bounds = [open, ...cuts, close]
+    const out: string[] = []
+    for (let k = 0; k + 1 < bounds.length; k++) {
+      const alt = pattern.slice(bounds[k]! + 1, bounds[k + 1])
+      out.push(...slashBraceExpansions(head + alt + tail))
+    }
+    return [...new Set(out)]
+  }
+  return [pattern]
 }
 
 /**

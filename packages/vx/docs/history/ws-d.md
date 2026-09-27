@@ -26,7 +26,14 @@ run leaves out; the rest are refusals.
 
 ## Leads for other streams
 
-(none yet)
+- A: `cache.outputs.files: ['{dist,lib/esm}/**']` saves an empty
+  artifact and a hit restores nothing — `scanUnion` (cache/inputs.ts)
+  scans with `Bun.Glob`, whose scan skips a brace holding a slash.
+- B: the sandbox's mount-glob expansion (`sandbox-runtime.ts`, scanSync)
+  has the same shape; not probed.
+- C/E: flaky rows seen here: `watch-loop` "a server that rewrites a file
+  … (item 948)" (CI, PR 1125), `signal-handling` "every task process is
+  gone" (local gate under load).
 
 ## Entries
 
@@ -36,3 +43,7 @@ run leaves out; the rest are refusals.
   absent or nameless there, the parent is selected. Row: `tests/affected.test.ts`
   "a new nested project selects the project it took files from (D-1)",
   red without the fix. Docs: `cli.md` § `--affected`, `modules/affected.md`.
+- **D-2** Discovery scans a `workspaces` brace holding a slash
+  (`packages/{a,nested/b}`) as its expansions; `Bun.Glob`'s scan found
+  none of its members. Row: `tests/workspace.test.ts` "a brace whose
+  alternatives hold a slash lists every member (D-2)".
