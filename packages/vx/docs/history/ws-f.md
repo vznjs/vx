@@ -142,3 +142,9 @@ of its replies (empty stays invalid). Row red without the fix. The same PR
 holds what a vx-mcp mutation sweep (146 mutants, 43 survived, no bug)
 found a client would see: replies written before the next read, each
 known version echoed, `id: null` vs no id.
+
+F-11. vx-reapi: a gRPC status escaping `execute` (Execute refused, an upload
+or upstream read failed) reached the scheduler as a plain Error and printed
+`[vx] internal error in pkg#gen: 7 PERMISSION_DENIED…`, a vx bug by its
+wording; it is now a UserError naming the task and the status. Row red
+without the fix; a plain Error stays one (control).

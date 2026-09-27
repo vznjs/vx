@@ -12,7 +12,7 @@
 import { mkdir, writeFile, chmod, rm, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { isLiteralPattern, normalizeGlob, UserError } from '@vzn/vx'
+import { isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
@@ -521,7 +521,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
   const capabilitiesOnce = (): ReturnType<ReapiClient['capabilities']> =>
     (capsPromise ??= client.capabilities())
-  return {
+  const executor: TaskExecutor = {
     name: 'vx/reapi',
     remote: true,
     ...(opts.capacity === undefined ? {} : { capacity: opts.capacity }),
@@ -533,8 +533,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // The ONLY plain Error left in this file: a host that routed an
       // undescribed task here violated core's own placement contract, which
       // is a vx bug and should read as one. Everything else that throws is
-      // the remote store or the server misbehaving — a UserError, so the
-      // scheduler prints it plainly instead of "internal error in <task>".
+      // the remote store or the server misbehaving — a UserError (a raw gRPC
+      // status is turned into one by `namedRefusal`), so the scheduler
+      // prints it plainly instead of "internal error in <task>".
       if (req.inputs === undefined) {
         throw new Error(
           `vx/reapi: ${req.taskId} reached the remote executor with no described inputs`,
@@ -1051,6 +1052,25 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       }
     },
   }
+  const run = executor.execute.bind(executor)
+  executor.execute = (req) =>
+    run(req).catch((err: unknown) => {
+      throw namedRefusal(req.taskId, err)
+    })
+  return executor
+}
+
+/**
+ * A gRPC status that escaped `execute` (an Execute the server refused, an
+ * upload or upstream read that failed) is the server's answer, not a vx bug.
+ * It reached the scheduler as a plain Error and printed as "internal error
+ * in <task>" (F-11); a UserError prints as the refusal it is.
+ */
+function namedRefusal(taskId: string, err: unknown): unknown {
+  if (isUserError(err) || !(err instanceof Error)) return err
+  const status = err as Error & { code?: unknown; details?: unknown }
+  if (typeof status.code !== 'number' || typeof status.details !== 'string') return err
+  return new UserError(`vx/reapi: ${taskId}: the remote server failed the call — ${err.message}`)
 }
 
 /**

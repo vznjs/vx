@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
 import protobuf from 'protobufjs'
-import type { ExecuteRequest } from '@vzn/vx'
+import { isUserError, type ExecuteRequest } from '@vzn/vx'
 import { execDigestFor } from '../src/cache.js'
 import { reapiExecutor } from '../src/executor.js'
 import { concat, decodeDirectory, encodeDirectory, encodeTree, sha256 } from '../src/merkle.js'
@@ -663,6 +663,42 @@ describe.if(CHUNKING_SUPPORTED)('the execution record, what a replay hands back'
       run(request({ cacheKey: 'k-only', remoteOnly: true, download: 'deferred' })),
     )
     expect([res.outputs, await exists('pkg/out.txt')]).toEqual([undefined, false])
+  })
+})
+
+describe.if(CHUNKING_SUPPORTED)('a server refusal (F-11)', () => {
+  // A raw gRPC status escaped `execute` and the scheduler printed it as
+  // "internal error in pkg#gen", which reads as a vx bug.
+  it('is a UserError naming the task and the status', async () => {
+    const got = await withExecutor(async (run) => {
+      fake.fail('Execute', grpc.status.PERMISSION_DENIED, 5)
+      try {
+        return await run(request()).then(
+          () => 'resolved',
+          (e: Error) => [isUserError(e), e.message],
+        )
+      } finally {
+        fake.fail('Execute', grpc.status.PERMISSION_DENIED, 0)
+      }
+    })
+    expect(got).toEqual([
+      true,
+      'vx/reapi: pkg#gen: the remote server failed the call — 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
+    ])
+  })
+
+  // CONTROL: a plain Error (core's own contract broken) stays one.
+  it('leaves an error that is not a gRPC status as it was', async () => {
+    const got = await withExecutor((run) =>
+      run(request({ inputs: undefined })).then(
+        () => 'resolved',
+        (e: Error) => [isUserError(e), e.message],
+      ),
+    )
+    expect(got).toEqual([
+      false,
+      'vx/reapi: pkg#gen reached the remote executor with no described inputs',
+    ])
   })
 })
 

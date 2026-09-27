@@ -246,6 +246,10 @@ when the server behind it goes away, or a stream that ends with no gRPC
 status. The same three statuses are what re-attach a dropped execution
 stream.
 
+A status the server answers with and no retry heals (PERMISSION_DENIED on
+Execute, a refused upload) fails the task with a line naming the task and
+the status, never as a vx "internal error".
+
 A failed READ is never a failed task. The execution-record lookup is a
 shortcut past the worker, so a transport error there means "no usable record"
 and the task executes normally, with a warning naming why. The UPSTREAM record
