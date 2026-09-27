@@ -68,3 +68,16 @@ control), a unary call and a Read against the fake (DATA_LOSS still
 fails at once), and an Execute stream cut with INTERNAL re-attaching by
 name; each red without the fix. Four existing rows that used INTERNAL
 as their non-transient failure moved to DATA_LOSS or PERMISSION_DENIED.
+
+F-2. vx-mcp's four cache tools open the index with `Cache.inspect`, as the
+reading verbs do. Opened as a run opens it, a call created `.vx/cache/`
+where there was none (a row pinned that as a FINDING and passed), reset
+an earlier schema's index with its run history and said nothing, and
+pruned month-old runs on close. Rows: no `.vx` made by any of the four
+(a seeded cache as the control); month-old history survives a read, and
+an earlier schema is refused by each tool as a UserError and left as it
+was; both red without the fix. README says what a read leaves alone.
+Lead 6 (`getRunHistory`'s DISTINCT order) is REFUTED on the real
+schema: `runs_started_at` makes SQLite scan newest-first and keep each
+pair's first, which is its latest; the five-run repro that drops `a`
+on a bare table returns `[a, c]` there, filtered or not.

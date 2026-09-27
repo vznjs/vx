@@ -39,7 +39,10 @@ Run the agent from inside the workspace — `vx mcp` finds the workspace
 
 Every tool is **read-only**. Nothing here runs a task or writes the
 cache (`listTasks` opens it only to serve cached config evaluations); the plugin declares only a CLI verb, no executor and no cache
-layer, so it cannot.
+layer, so it cannot. The four cache tools open the index as `vx last`
+does: where there is none they answer from an empty one and make nothing
+on disk, an index from an earlier vx is refused by name and left for the
+next `vx run` to reset, and old run history is never pruned by a read.
 
 ## Why no SDK
 

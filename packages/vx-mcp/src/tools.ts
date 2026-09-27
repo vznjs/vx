@@ -189,7 +189,7 @@ async function getCacheStats(
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   const scope = parseCacheScope(args['scope'])
-  const cache = new Cache(ctx.cacheDir)
+  const cache = Cache.inspect(ctx.cacheDir)
   try {
     const stats = scope === 'all' ? cache.stats() : cache.stats({ project: scope.project })
     const hitRate24h = stats.runCountLast24h > 0 ? stats.hitCountLast24h / stats.runCountLast24h : 0
@@ -246,7 +246,7 @@ async function getRunHistory(
   const projectFilter = parseFilter(args['project'], 'project')
   const taskFilter = parseFilter(args['task'], 'task')
 
-  const cache = new Cache(ctx.cacheDir)
+  const cache = Cache.inspect(ctx.cacheDir)
   try {
     const db = cache.dbHandle()
     const where: string[] = []
@@ -327,7 +327,7 @@ async function explainCacheKey(
     throw new UserError('explainCacheKey: taskId must be a "project#task" string')
   }
   const [project, task] = splitTaskId(taskId)
-  const cache = new Cache(ctx.cacheDir)
+  const cache = Cache.inspect(ctx.cacheDir)
   try {
     const entry = cache
       .dbHandle()
@@ -371,7 +371,7 @@ async function whyDidThisRerun(
   if (!taskId.includes('#')) {
     throw new UserError('whyDidThisRerun: taskId must be a "project#task" string')
   }
-  const cache = new Cache(ctx.cacheDir)
+  const cache = Cache.inspect(ctx.cacheDir)
   try {
     const db = cache.dbHandle()
     // `vx why`'s default, through the same query: an agent has no run id
