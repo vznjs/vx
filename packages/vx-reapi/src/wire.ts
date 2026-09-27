@@ -239,6 +239,8 @@ function isRetryable(code: number | undefined): boolean {
 
 const RETRY_DELAYS_MS = [100, 400, 1600]
 
+const deadlineOf = (bounds: grpc.CallOptions): number => (bounds.deadline as Date).getTime()
+
 const executionAborted = (): Error => new Error('reapi: execution aborted')
 
 /** A backoff an abort ends at once: the caller's deadline may fire mid-wait. */
@@ -852,8 +854,9 @@ export class ReapiClient {
         ? `compressed-blobs/zstd/${digest.hash}/${digest.size_bytes}`
         : `blobs/${digest.hash}/${digest.size_bytes}`
       const resource = `${this.instance ? `${this.instance}/` : ''}uploads/${crypto.randomUUID()}/${segment}`
+      const bounds = this.bounded()
       try {
-        await this.writeResource(resource, wire, digest, 0, chunk, compressed)
+        await this.writeResource(resource, wire, digest, 0, chunk, compressed, bounds)
         return
       } catch (err) {
         const code = (err as grpc.ServiceError).code
@@ -867,8 +870,20 @@ export class ReapiClient {
         // Only a MULTI-message write can be the chunk race — a body that fit
         // one message never exercised flow control between messages, so its
         // deadline is the server's problem and re-chunking cannot help.
+        // The deadline has TWO spellings: this client's own timer
+        // (DEADLINE_EXCEEDED), or the server's. A grpc-go server (bazel-remote)
+        // arms a timer at the call's `grpc-timeout` and ends the stream with
+        // RST_STREAM(CANCEL), which grpc-js reports as `CANCELLED: Call
+        // cancelled`; whichever lands first names the error, and on a stalled
+        // write the server's usually does (item 1017: 5 of 6 against a grpc-go
+        // server that stopped reading). This client never cancels a write it
+        // reports — its own `cancel()` rethrows the error that caused it — so
+        // a CANCELLED at or past this attempt's deadline IS the deadline. The
+        // header carries `ceil(deadline - now)`, so the server's timer cannot
+        // fire before ours: no slack. An earlier CANCELLED is the server's own.
         if (
-          code === grpc.status.DEADLINE_EXCEEDED &&
+          (code === grpc.status.DEADLINE_EXCEEDED ||
+            (code === grpc.status.CANCELLED && Date.now() >= deadlineOf(bounds))) &&
           chunk > SAFE_CHUNK_BYTES &&
           wireBytes > chunk
         ) {
@@ -886,7 +901,15 @@ export class ReapiClient {
           if (status?.complete === true) return
           if (status !== null && status.committedSize > 0 && status.committedSize < wireBytes) {
             try {
-              await this.writeResource(resource, wire, digest, status.committedSize, chunk, false)
+              await this.writeResource(
+                resource,
+                wire,
+                digest,
+                status.committedSize,
+                chunk,
+                false,
+                this.bounded(),
+              )
               return
             } catch {
               // fall through to a fresh attempt
@@ -910,6 +933,7 @@ export class ReapiClient {
     startOffset: number,
     chunkBytes: number,
     compressed: boolean,
+    bounds: grpc.CallOptions,
   ): Promise<void> {
     const total = body instanceof Blob ? body.size : body.length
     let stream!: {
@@ -922,7 +946,7 @@ export class ReapiClient {
     const done = new Promise<void>((resolve, reject) => {
       stream = (this.svc.bs as unknown as Record<string, Function>)['write']!(
         this.meta(),
-        this.bounded(),
+        bounds,
         (err: grpc.ServiceError | null, res: { committed_size?: string }) => {
           if (err) return reject(err)
           const committed = Number(res.committed_size ?? 0)

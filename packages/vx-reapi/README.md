@@ -75,9 +75,12 @@ reapi({ endpoint: '…', chunkBytes: SAFE_CHUNK_BYTES })
 
 The stall is a RACE, not a boundary: 128 KB chunks pass hundreds of runs and
 then wedge once (observed on CI, same Bun build). So the client **downgrades
-adaptively** — a `DEADLINE_EXCEEDED` on a multi-message write retries once at
+adaptively** — a deadline on a multi-message write retries once at
 `SAFE_CHUNK_BYTES` with a warning, turning a lost coin-flip into a logged
-retry instead of a failed task. The full probe matrix is in
+retry instead of a failed task. The deadline counts in either spelling: the
+client's own `DEADLINE_EXCEEDED`, or the `CANCELLED` a grpc-go server such as
+bazel-remote sends when the call's `grpc-timeout` runs out first (a
+`CANCELLED` before the deadline is the server's own and is not retried). The full probe matrix is in
 `docs/design/plugin-executor-reapi-2026-08.md` §14.
 
 ## Repeat runs skip the worker

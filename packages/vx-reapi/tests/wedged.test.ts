@@ -7,9 +7,10 @@
 // No docker needed: the wedge is a plain TCP listener that stays silent.
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import * as grpc from '@grpc/grpc-js'
 import { Cache } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
@@ -157,6 +158,102 @@ describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
       client.close()
     }
   }, 10_000)
+})
+
+describe.if(CHUNKING_SUPPORTED)("the chunk stall's deadline spelled by the server", () => {
+  // A grpc-go server (bazel-remote) arms its own timer at the call's
+  // grpc-timeout and ends the stream with RST_STREAM(CANCEL); when that lands
+  // before the client's timer, grpc-js reports `CANCELLED: Call cancelled`
+  // and a downgrade keyed on DEADLINE_EXCEEDED alone never ran (item 1017,
+  // CI run 36316687362: a 1 MiB write failed after one 30 s wait). The
+  // server here stops granting flow-control window mid-write and RSTs at a
+  // set delay; the row blocks its own event loop across each deadline so the
+  // server's RST is the first word, as it was 5 times in 6 against a real
+  // grpc-go server with an idle loop.
+  const T = 600
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-stall-'))
+  const servers: Bun.Subprocess<'ignore', 'pipe', 'inherit'>[] = []
+  const serve = async (rstAfterMs: number): Promise<{ port: number; marker: string }> => {
+    const marker = path.join(dir, `rst-${servers.length}`)
+    writeFileSync(marker, '')
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        path.join(import.meta.dir, 'helpers', 'stalling-h2.ts'),
+        String(rstAfterMs),
+        marker,
+      ],
+      { stdout: 'pipe', env: { ...process.env } },
+    )
+    servers.push(proc)
+    const { value } = await proc.stdout.getReader().read()
+    return { port: Number(new TextDecoder().decode(value).trim()), marker }
+  }
+  afterAll(() => {
+    for (const s of servers) s.kill()
+    rmSync(dir, { recursive: true, force: true })
+  })
+  /** Holds the loop from 50 ms before a deadline `T` from now until the
+   *  server has sent its next RST (capped, so a server that never sends one
+   *  fails the row on its assertions instead of hanging it). */
+  const blockAcrossDeadline = (marker: string): void => {
+    const sent = statSync(marker).size
+    setTimeout(() => {
+      const cap = Date.now() + 5_000
+      while (statSync(marker).size === sent && Date.now() < cap);
+    }, T - 50)
+  }
+  const write = async (rstAfterMs: number, size: number) => {
+    const { port, marker } = await serve(rstAfterMs)
+    const warns: string[] = []
+    const client = new ReapiClient({
+      endpoint: `127.0.0.1:${port}`,
+      callTimeoutMs: T,
+      onWarn: (m) => {
+        warns.push(m)
+        blockAcrossDeadline(marker) // the retry's deadline starts now
+      },
+    })
+    try {
+      const body = new Uint8Array(size)
+      const digest = (await import('../src/cache.js')).digestOf(body)
+      const t0 = Date.now()
+      blockAcrossDeadline(marker)
+      const err = await client.writeBlob(digest, body).then(
+        () => null,
+        (e: grpc.ServiceError) => e,
+      )
+      return { code: err?.code, details: err?.details, elapsed: Date.now() - t0, warns }
+    } finally {
+      client.close()
+    }
+  }
+
+  it('a CANCELLED at the deadline of a stalled multi-message write takes the downgrade', async () => {
+    const r = await write(T, 512 * 1024)
+    // The scenario held: both attempts ended on the server's RST, not ours.
+    expect([r.code, r.details]).toEqual([grpc.status.CANCELLED, 'Call cancelled'])
+    expect(r.warns).toEqual([
+      expect.stringContaining(
+        'hit the 131072-byte chunk stall (Bun http2 flow control); retrying at 65535',
+      ),
+    ])
+    expect(r.elapsed).toBeGreaterThanOrEqual(2 * T)
+  }, 15_000)
+
+  it("a CANCELLED BEFORE the deadline is the server's own, and is not retried", async () => {
+    const r = await write(150, 512 * 1024)
+    expect([r.code, r.details]).toEqual([grpc.status.CANCELLED, 'Call cancelled'])
+    expect(r.warns).toEqual([])
+    expect(r.elapsed).toBeLessThan(T)
+  }, 15_000)
+
+  it('a single-message write cancelled at its deadline does NOT downgrade', async () => {
+    const r = await write(T, 1024)
+    expect(r.code).toBe(grpc.status.CANCELLED)
+    expect(r.warns).toEqual([])
+    expect(r.elapsed).toBeLessThan(2 * T)
+  }, 15_000)
 })
 
 describe.if(CHUNKING_SUPPORTED)(
