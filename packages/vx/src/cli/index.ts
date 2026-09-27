@@ -32,9 +32,17 @@ export async function run(argv: readonly string[]): Promise<number> {
     case undefined:
     case '--help':
     case '-h':
-    case 'help':
       printHelp(await pluginCommandHelp())
       return 0
+    case 'help': {
+      // `vx help run` is the same question as `vx run --help`. A plugin verb
+      // owns its own help, so anything but a core verb gets the whole
+      // reference, which lists the plugin verbs.
+      const verb = rest[0]
+      const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
+      printHelp(await pluginCommandHelp(), core ? verb : undefined)
+      return 0
+    }
     case '--version':
     case 'version':
       process.stdout.write(`vx ${VERSION}\n`)

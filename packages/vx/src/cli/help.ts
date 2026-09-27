@@ -49,7 +49,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]',
     '  vx last [RUNID] [--list[=N]] [--format pretty|json] [--cache-dir <path>]',
     '  vx completions bash|zsh|fish',
-    '  vx help',
+    '  vx help [VERB]',
     '  vx version',
     '',
     'Selection (for run):',
