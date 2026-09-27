@@ -56,8 +56,11 @@ it), so a workspace that declares nothing runs and caches here.
   each plugin's `teardown()` under try/catch and a time bound
   (`teardownTimeoutMs()`: `VX_TEARDOWN_TIMEOUT_MS`, 3 s by default; a
   call that never settles is warned by name, never awaited past the
-  bound). Runs on the normal completion path only. Telemetry sinks are
-  flushed by the telemetry host, not here.
+  bound). Runs on every exit of a run once `prepareRun` has called the
+  plugins' factories (an early return, a refused setup, a throw before
+  or during the schedule) and at the end of a plan; a plugin whose own
+  `setup` threw is left out (item 1021). Telemetry sinks are flushed by
+  the telemetry host, not here.
 
 Every export above is named in this section; `tests/module-shape-drift.test.ts`
 holds the list to the file.

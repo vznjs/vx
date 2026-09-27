@@ -824,6 +824,22 @@ The loop itself:
         every layer it throws; a throwing plugin layer is named once per
         method. Each red with its piece removed.
 
+1021. DONE (2026-09-27, the plugin-seam review's lead 2). `teardown()`
+      ran on the normal end of a run alone, though every plugin's
+      `cache` and `executor` factories run in `prepareRun`. A refused
+      setup, a throwing executor factory or `accepts()`, an unresolved
+      name, a nested-run refusal and every `--dry` plan left what those
+      opened (`@vzn/vx-reapi`'s gRPC clients) held, once per cycle
+      under `vx watch`.
+      - Fix (`run.ts`): one idempotent `teardown` for the run, called on
+        every exit after `prepareRun`, with the steps before the run's
+        own try routed through it; `planRun` tears down in its finally.
+        A plugin whose `setup` threw is left out (`PluginSetupError`
+        names it). `modules/plugin.md` and `plugin-host.md` say so.
+      - Rows: `plugin-teardown.test.ts` › the lifecycle is reached on a
+        run that never started (six exits). Each red with its call
+        removed. No row drives the empty-graph return (defensive, per its comment) or the finally's call (a throw inside the schedule).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
