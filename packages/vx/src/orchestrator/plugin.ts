@@ -507,47 +507,53 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         },
       },
       on(hook, handler) {
+        const fail = (err: unknown): void => {
+          if (disabled.has(plugin.name)) return
+          disabled.add(plugin.name)
+          warn(
+            `[vx] plugin '${plugin.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
         const dispose = bus.subscribe((event) => {
           if (disabled.has(plugin.name)) return
-          // void each handler call: hooks may return Promise; we
-          // intentionally don't await (the bus is synchronous;
-          // long-running plugin work happens off the critical path).
+          // Not awaited: the bus is synchronous and plugin work runs off the
+          // critical path. A handler's rejection is caught like its throw.
+          let ret: unknown
           try {
             switch (hook) {
               case 'onRunStart':
                 if (event.kind === 'run:start')
-                  void (handler as PluginHookHandlers['onRunStart'])(event.info)
+                  ret = (handler as PluginHookHandlers['onRunStart'])(event.info)
                 break
               case 'onTaskStart':
                 if (event.kind === 'task:start')
-                  void (handler as PluginHookHandlers['onTaskStart'])(event.node)
+                  ret = (handler as PluginHookHandlers['onTaskStart'])(event.node)
                 break
               case 'onTaskStdout':
                 if (event.kind === 'task:stdout')
-                  void (handler as PluginHookHandlers['onTaskStdout'])(event.node, event.chunk)
+                  ret = (handler as PluginHookHandlers['onTaskStdout'])(event.node, event.chunk)
                 break
               case 'onTaskStderr':
                 if (event.kind === 'task:stderr')
-                  void (handler as PluginHookHandlers['onTaskStderr'])(event.node, event.chunk)
+                  ret = (handler as PluginHookHandlers['onTaskStderr'])(event.node, event.chunk)
                 break
               case 'onTaskComplete':
                 if (event.kind === 'task:complete')
-                  void (handler as PluginHookHandlers['onTaskComplete'])(event.node, event.outcome)
+                  ret = (handler as PluginHookHandlers['onTaskComplete'])(event.node, event.outcome)
                 break
               case 'onRunStatus':
                 if (event.kind === 'run:status')
-                  void (handler as PluginHookHandlers['onRunStatus'])(event.line)
+                  ret = (handler as PluginHookHandlers['onRunStatus'])(event.line)
                 break
               case 'onRunEnd':
-                if (event.kind === 'run:end') void (handler as PluginHookHandlers['onRunEnd'])()
+                if (event.kind === 'run:end') ret = (handler as PluginHookHandlers['onRunEnd'])()
                 break
             }
           } catch (err) {
-            disabled.add(plugin.name)
-            warn(
-              `[vx] plugin '${plugin.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
-            )
+            fail(err)
+            return
           }
+          if (ret instanceof Promise) ret.catch(fail)
         })
         disposers.push(dispose)
       },

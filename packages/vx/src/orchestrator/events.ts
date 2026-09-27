@@ -68,7 +68,10 @@ export function createEventBus(): EventBus {
       // as wrong output, not a silent hang.
       for (const subscriber of subscribers) {
         try {
-          subscriber(event)
+          // A subscriber typed `void` may still be async: its rejection is
+          // isolated as its throw is.
+          const ret: unknown = subscriber(event)
+          if (ret instanceof Promise) ret.catch(() => {})
         } catch {
           // isolate: a surface fault can't propagate into the orchestrator
         }

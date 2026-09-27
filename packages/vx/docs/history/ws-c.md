@@ -122,6 +122,15 @@ additive glob covers the path, and survives a forced walk too, so the
 cause is the additive rule (`caching.md` § Additive outputs), not the
 snapshot.
 
+## C-11: isolate an async plugin hook's rejection
+
+`ctx.on` called each handler as `void handler()` inside a sync `try`,
+so an async hook's rejection escaped: Bun printed a stack per event and
+a green run exited 1, with the plugin never disabled. A rejection now
+disables the plugin and warns once, as a throw does; the bus drops an
+async subscriber's rejection as it drops a throw. Row:
+`plugin.test.ts` (red under either half removed).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

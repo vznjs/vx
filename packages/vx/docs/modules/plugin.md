@@ -34,7 +34,8 @@ behavior lives in the plugin package (vite-style), not in core.
   when unconfigured — a plain run with declared-but-unconfigured
   plugins is zero-overhead (measured ~116ms unchanged).
 - `setup` throws fail the run with a clean error naming the plugin;
-  everything else is crash-isolated (observability never breaks a run).
+  everything else is crash-isolated (observability never breaks a run),
+  an async hook's rejection as its throw.
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely
   on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no
