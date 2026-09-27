@@ -428,6 +428,31 @@ test is telling the truth.
         the workspace config imports is named with the restart it needs
         (no cycle). Both red without the fix.
       - The review is done: its six leads are items 945–949.
+950.  DONE (2026-09-27, a config-cache review agent's leads 1, 2 and 4).
+      The config eval cache replayed an old evaluation, and so an old
+      command and key, run after run; `--cache=local:` showed the new one.
+      - A symlink on an import's way: retargeting `shared -> sharedA`
+        edited no listed file, and the warm path re-hashed the old target.
+      - `./preset.js` answered by `preset.ts` (the NodeNext style): a
+        `preset.js` created later was what Bun evaluated, unseen.
+      - A config linked in from elsewhere: its imports were resolved beside
+        the link, Bun resolves them beside the real file, so the key
+        folded a decoy. `configImports` (watch's arms) had it too.
+      - Fix: imports resolve from the importing file's real path, and a
+        closure is indexed only when each import names its file outright
+        (explicit extension, the file itself, no symlink). A named file is
+        taken without `Bun.resolveSync`, whose directory cache kept a
+        retargeted link's old target for the process; the other spellings
+        still ask it, recorded in the module page.
+      - The first cut real-pathed the config itself, which opens it; the
+        read-once pin caught the second `openat`. The directory is
+        real-pathed instead, at the first relative import only.
+      - Rows: `config-cache.test.ts` › the link, the `.js` → `.ts` and the
+        linked-config rows red without the fix; a named import through a
+        symlinked root stays indexed (control).
+      - Next from the same review: 3 (an import after a same-line comment
+        is never scanned), 5 (`bunfig.toml` `[define]` is not in the key),
+        6 (the purity deny-list reached `Function` without a denied word).
 
 ## In flight
 

@@ -28,7 +28,7 @@
 // `vx lock` both go through `JSON.stringify` — so a cached config derives
 // the same cache key as a live evaluation of the same bytes.
 
-import { realpathSync } from 'node:fs'
+import { lstatSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
@@ -303,6 +303,27 @@ function keySeed(workspaceFingerprint: string): bigint {
 const EXPLICIT_EXT = /\.(?:m?[jt]s|cjs|cts)$/
 
 /**
+ * The canonical directory Bun resolves `file`'s imports from: its REAL
+ * path's, so a config linked in from elsewhere imports its neighbours
+ * there, not beside the link (item 950). The directory is real-pathed
+ * rather than the file, whose realpath opens it: a config is opened once
+ * per run (`read-once.unsafe.test.ts`).
+ */
+function realDirOf(file: string): string {
+  if (lstatSync(file).isSymbolicLink()) return path.dirname(realpathSync(file))
+  return realpathSync(path.dirname(file))
+}
+
+/** A regular file reached through no symlink: the path IS the file. */
+function isCanonicalFile(file: string): boolean {
+  try {
+    return realpathSync(file) === file && statSync(file).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
  * The cache key for evaluating `configPath`, or `null` when the config is
  * not provably pure (or its closure cannot be read), in which case the
  * caller evaluates live and stores nothing.
@@ -316,6 +337,9 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
   const queue: Array<{ file: string; bytes: Uint8Array }> = [{ file: a.configPath, bytes: a.bytes }]
   while (queue.length > 0) {
     const { file, bytes } = queue.shift()!
+    // Asked of the first relative import only: a config with none costs no
+    // syscall for it.
+    let dir: string | undefined
     const source = decoder.decode(bytes)
     const code = stripLiterals(source)
     // A backslash in code position is an identifier escape (`\u0070rocess`
@@ -335,17 +359,35 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
         continue
       }
       if (!spec.startsWith('./') && !spec.startsWith('../')) return null
-      if (!EXPLICIT_EXT.test(spec)) indexable = false
-      let resolved: string
+      // The warm path re-hashes the files this resolution found and never
+      // resolves again, so it holds only when the specifier names its file
+      // outright: an explicit extension, no symlink on the way. A link
+      // retargeted without touching a listed file, or Bun's `.js` → `.ts`
+      // fallback (a `preset.js` created beside `preset.ts` takes over),
+      // moves the answer; such a closure is keyed but never indexed
+      // (item 950). The named file is taken without `Bun.resolveSync`,
+      // whose directory cache answers a retargeted link with its old
+      // target for the rest of the process.
       try {
-        // Real-pathed: `Bun.resolveSync` answers with the symlinked spelling
-        // on one call and the real one on another (a tmp workspace under
-        // /var vs /private/var), and the key folds the path — a spelling
-        // that drifts between runs is a spurious miss and a duplicated
-        // memo row.
-        resolved = realpathSync(Bun.resolveSync(spec, path.dirname(file)))
+        dir ??= realDirOf(file)
       } catch {
         return null
+      }
+      const named = path.resolve(dir, spec)
+      let resolved: string
+      if (EXPLICIT_EXT.test(spec) && isCanonicalFile(named)) resolved = named
+      else {
+        indexable = false
+        try {
+          // Real-pathed: `Bun.resolveSync` answers with the symlinked
+          // spelling on one call and the real one on another (a tmp
+          // workspace under /var vs /private/var), and the key folds the
+          // path — a spelling that drifts between runs is a spurious miss
+          // and a duplicated memo row.
+          resolved = realpathSync(Bun.resolveSync(spec, dir))
+        } catch {
+          return null
+        }
       }
       if (visited.has(resolved)) continue
       if (resolved.split(path.sep).includes('node_modules')) return null
@@ -403,12 +445,14 @@ export async function configImports(configPath: string): Promise<string[]> {
     } catch {
       continue
     }
+    let dir: string | undefined
     for (const m of source.matchAll(IMPORT_RE)) {
       const spec = m[1] ?? m[2]!
       if (!spec.startsWith('./') && !spec.startsWith('../')) continue
       let resolved: string
       try {
-        resolved = realpathSync(Bun.resolveSync(spec, path.dirname(file)))
+        dir ??= realDirOf(file)
+        resolved = realpathSync(Bun.resolveSync(spec, dir))
       } catch {
         continue
       }

@@ -15,6 +15,7 @@ import {
   blobOidOf,
   configEvalKey,
   configEvalKeyFromClosure,
+  configImports,
   loadProjectConfig,
   loadProjectConfigs,
   type ConfigEvalStore,
@@ -621,6 +622,78 @@ describe('loadProjectConfig with an eval cache', () => {
     expect(store.puts).toBe(1) // still cached by the slow path …
     expect(store.closures.has(cfg)).toBe(false) // … but never indexed
     expect((await keyedOf(cfg))?.indexable).toBe(false)
+  })
+
+  // The two rows below pin the INDEX decision. The re-evaluation they
+  // protect happens in the next process: in this one Bun's resolver caches
+  // the directory, so a retargeted link still resolves to its old target.
+  it('a symlink the import passes through is never indexed: retargeting it moves the resolution (item 950)', async () => {
+    await write('shared/a/preset.mjs', "export const cmd = 'echo from-a'\n")
+    await write('shared/b/preset.mjs', "export const cmd = 'echo from-b'\n")
+    await symlink('a', path.join(root, 'shared/cur'))
+    const cfg = await write(
+      'packages/p/vx.config.mjs',
+      "import { cmd } from '../../shared/cur/preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    const store = new MemoryStore()
+    const [first] = await loadProjectConfigs([cfg], {
+      evalCache: { store, workspaceFingerprint: 'fp' },
+    })
+    expect(first?.tasks?.build?.exec?.command).toBe('echo from-a')
+    expect(store.puts).toBe(1) // keyed by the slow path …
+    expect(store.closures.has(cfg)).toBe(false) // … never indexed
+    expect((await keyedOf(cfg))?.indexable).toBe(false)
+  })
+
+  it('a `.js` specifier Bun answers with a `.ts` file is never indexed: a new `.js` would take over (item 950)', async () => {
+    await write('packages/p/preset.ts', "export const cmd: string = 'echo from-ts'\n")
+    const cfg = await write(
+      'packages/p/vx.config.ts',
+      "import { cmd } from './preset.js'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    const store = new MemoryStore()
+    const [first] = await loadProjectConfigs([cfg], {
+      evalCache: { store, workspaceFingerprint: 'fp' },
+    })
+    expect(first?.tasks?.build?.exec?.command).toBe('echo from-ts')
+    expect(store.puts).toBe(1)
+    expect(store.closures.has(cfg)).toBe(false)
+    expect((await keyedOf(cfg))?.indexable).toBe(false)
+  })
+
+  it('an import named outright IS indexed, through a symlinked workspace root too (item 950)', async () => {
+    const link = path.join(root, 'link')
+    await mkdir(path.join(root, 'real'))
+    await symlink(path.join(root, 'real'), link)
+    await writeFile(path.join(link, 'preset.mjs'), "export const cmd = 'echo named'\n")
+    const cfg = path.join(link, 'vx.config.mjs')
+    await writeFile(
+      cfg,
+      "import { cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    const store = new MemoryStore()
+    await loadProjectConfigs([cfg], { evalCache: { store, workspaceFingerprint: 'fp' } })
+    expect(store.closures.get(cfg)).toEqual([cfg, await realpath(path.join(link, 'preset.mjs'))])
+  })
+
+  it("a config linked in from elsewhere keys the imports beside its REAL path, not the link's (item 950)", async () => {
+    const shared = await write('shared/preset.mjs', "export const cmd = 'echo shared-one'\n")
+    await write(
+      'shared/cfg.mjs',
+      "import { cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    // A decoy beside the link: the key must not fold it.
+    await write('packages/p/preset.mjs', "export const cmd = 'echo decoy'\n")
+    const cfg = path.join(root, 'packages/p/vx.config.mjs')
+    await symlink('../../shared/cfg.mjs', cfg)
+    expect(await configImports(cfg)).toEqual([await realpath(shared)])
+    const store = new MemoryStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    const [first] = await loadProjectConfigs([cfg], { evalCache })
+    expect(first?.tasks?.build?.exec?.command).toBe('echo shared-one')
+    await writeFile(shared, "export const cmd = 'echo shared-two'\n")
+    const [second] = await loadProjectConfigs([cfg], { evalCache })
+    expect(second?.tasks?.build?.exec?.command).toBe('echo shared-two')
   })
 
   it('never stores an impure config, and `fresh` bypasses the cache entirely', async () => {

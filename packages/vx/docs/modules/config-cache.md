@@ -44,7 +44,7 @@ export interface ConfigEvalStore {
 export interface ConfigEvalKeyResult {
   key: string
   closure: string[] // the config first, then every relative import in discovery order
-  indexable: boolean // false when a relative import is extensionless
+  indexable: boolean // false when a relative import does not name its file outright
 }
 
 export interface ConfigEvalKeyArgs {
@@ -147,7 +147,7 @@ Reading and scanning 1,000 configs to key them cost 15 ms on a warm run;
 stat-hashing them costs 5. The store (`Cache`) keeps each config's
 **ordered closure** — the config first, then every relative import in
 discovery order — in `config_closures`, written whenever the slow path
-keys a config whose relative imports all carry an explicit extension.
+keys a config whose relative imports all name their files outright.
 On the next load, `loadProjectConfigs` keys such a config from per-file
 identities alone (`Cache.hashFile`: the git blob id behind an
 mtime/size/ctime/inode memo — no read, no scan; a file changed within
@@ -162,9 +162,25 @@ re-indexes it.
 
 Sound because closure membership can only change by editing a listed file
 (the config, or an import that gains or drops an import), which changes
-that file's identity and so the key. The one exception is an
-**extensionless** relative import: a new file could change what it
-resolves to without touching any listed file, so such a config is served
-by the slow path and never indexed (`indexable: false`). Both directions
+that file's identity and so the key — provided each import names its
+file outright. Three spellings do not, and a config with any of them is
+served by the slow path and never indexed (`indexable: false`):
+
+- an **extensionless** import: a new file could change what it resolves
+  to without touching any listed file;
+- an explicit extension that is not the file there: Bun answers
+  `./preset.js` with `preset.ts`, and a `preset.js` created later takes
+  over (item 950);
+- a **symlink** on the way: retargeting `shared -> sharedA` moves every
+  import through it and edits no listed file (item 950).
+
+An import is resolved from the importing file's REAL path, as Bun does:
+a config linked in from elsewhere imports its neighbours there, and the
+key once folded a decoy beside the link instead (item 950;
+`configImports`, which `vx watch` arms, had the same flaw). A named
+file is taken as is, without `Bun.resolveSync`: its directory cache
+answers a retargeted link with the old target for the rest of the
+process. The other spellings still ask it, so a long-lived process
+(`vx watch`) can key them on a stale resolution. Both directions
 are pinned in `tests/config-cache.test.ts`; the mutations that fold only
 the config, or drop the extension rule, each fail exactly their pin.
