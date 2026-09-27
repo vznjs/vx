@@ -183,11 +183,14 @@ export async function sandboxRequestFor(
   // Pre-create what the task said it will write — after the grants are
   // resolved, which refuses one that leaves the project through a link
   // before anything is created along it (item 1003).
-  const config = wallOff(resolveSandboxConfig(sandbox, node.projectDir), workspaceRoot, [
-    ...nested,
-    path.join(workspaceRoot, '.git'),
-    path.join(workspaceRoot, '.vx'),
-  ])
+  const walls = [...nested, path.join(workspaceRoot, '.git'), path.join(workspaceRoot, '.vx')].map(
+    toRealPath,
+  )
+  const config = wallOff(
+    resolveSandboxConfig(sandbox, node.projectDir, walls),
+    workspaceRoot,
+    walls,
+  )
   const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
   const request: NonNullable<ExecuteRequest['sandbox']> = {
     // Only what the task declared, plus node_modules. Write paths are
@@ -422,14 +425,14 @@ async function prepareOutputsForBind(
  * punched (`punchWalls`); a write grant whose bind would hold one — a file
  * grant binds its directory on Linux, so `write: ['out.txt']` in a root
  * project bound the whole workspace writable, `.git` included — is
- * refused, as there is no writable bind that leaves a wall out.
+ * refused, as there is no writable bind that leaves a wall out. A glob's
+ * hits already stop at the walls (`resolveSandboxConfig` takes them).
  */
 function wallOff(
   config: ResolvedSandboxConfig,
   workspaceRoot: string,
-  raw: readonly string[],
+  walls: readonly string[],
 ): ResolvedSandboxConfig {
-  const walls = raw.map(toRealPath)
   const home = toRealPath(workspaceRoot)
   for (const bind of bindableWrites(config.allowWrite)) {
     // A bind outside the workspace is the user's own path (`/tmp/x`,
