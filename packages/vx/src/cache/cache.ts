@@ -634,10 +634,10 @@ export class Cache implements CacheLayer {
     `)
 
     this.db.exec(`
-      -- stdout/stderr live in the <hash>.tar.zst artifact, not here
-      -- (v14+) — so they survive remote round-trips. The entries
-      -- table is the queryable index: command, exit_code, duration,
-      -- size, timestamps.
+      -- The queryable index: command, exit_code, duration, size,
+      -- timestamps, and stdout, which the <hash>.tar.zst artifact also
+      -- carries so it survives a remote round trip; a local hit
+      -- replays it from here.
       CREATE TABLE IF NOT EXISTS entries (
         hash         TEXT PRIMARY KEY,
         project      TEXT NOT NULL,
