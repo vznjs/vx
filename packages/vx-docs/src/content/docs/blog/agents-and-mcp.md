@@ -24,7 +24,7 @@ export default defineWorkspace({ plugins: [mcp()] })
 ```
 
 ```jsonc
-// Claude Code: ~/.claude/mcp.json — or: claude mcp add vx -- vx mcp
+// Claude Code: .mcp.json at the workspace root — or: claude mcp add vx -- vx mcp
 { "mcpServers": { "vx": { "command": "vx", "args": ["mcp"] } } }
 ```
 

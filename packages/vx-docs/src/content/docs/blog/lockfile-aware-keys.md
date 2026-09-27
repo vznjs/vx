@@ -50,8 +50,8 @@ The closure is exactly what the project's `node_modules` can resolve:
   package's whole reach, since what A can import through B is B's
   closure;
 - install-wide material every project folds: `lockfileVersion`,
-  `overrides`, `settings`, `patchedDependencies` (and, under `bun()`,
-  the catalogs).
+  `overrides`, `settings` (and, under `bun()`, `patchedDependencies`
+  and the catalogs).
 - the root package's own closure, folded into every project (added
   2026-09-24): the root's tools run from the root `node_modules/.bin`
   on every task's PATH, so a root devDependency bump that re-keyed

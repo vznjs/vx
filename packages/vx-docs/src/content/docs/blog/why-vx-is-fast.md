@@ -58,7 +58,7 @@ Declared outputs are wiped before a miss executes and before a hit
 restores, so the tree after either is exactly the cached snapshot.
 That is a correctness rule first (no stale `dist/old.js` survives), but
 it also means vx *knows* what the tree looks like after a hit. On a
-warm-on-warm run it verifies the recorded `(size, mode, mtime)` of each
+warm-on-warm run it verifies the recorded `(size, mode, mtime, inode, ctime)` of each
 output with a stat and writes nothing, decompresses nothing. A restore
 onto a current tree costs about what an untouched tree costs.
 
@@ -68,8 +68,8 @@ A cache entry is one `tar.zst` archive plus a SQLite row. Metadata and
 the captured stdout live in the row, so a hit is one indexed `SELECT`
 and a replay from the row, not a decompression. The same bytes go over
 the wire to a remote cache; nothing is repacked at the boundary.
-Packing is in-process (`Bun.Archive`), the publish is an atomic rename,
-and a run's cache writes are a single transaction.
+Packing is in-process (vx's own streaming tar), the publish is an atomic
+rename, and each save is a single transaction.
 
 ## 5. Nothing runs when nothing is needed
 

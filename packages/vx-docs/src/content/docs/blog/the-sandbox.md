@@ -99,7 +99,7 @@ create the nested user namespace the Linux runtime needs (run as an
 unprivileged user, or accept `weakerWhenNested`), and seatbelt cannot
 nest, so a task that itself sandboxes cannot be sandboxed on macOS.
 In vx's own repository exactly two tasks have no sandbox block: the
-part of the core suite that tests the sandbox itself, and the one
+part of the core suite a sandbox cannot host, and the one
 plugin suite that dials service containers on the host's loopback.
 Everything else, lint, format, docs build, every other package's
 tests, runs inside one.

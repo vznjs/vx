@@ -45,7 +45,7 @@ files it found there.
 
 Owning the outputs is what makes the warm-on-warm case cheap. Because
 vx knows the tree after any hit is the snapshot, it records a
-fingerprint per output file `(size, mode, mtime-ms)` alongside the
+fingerprint per output file `(size, mode, mtime-ms, inode, ctime)` alongside the
 entry. On the next hit it checks two things:
 
 1. **The set.** The files under the output globs must be exactly the

@@ -123,6 +123,13 @@
 - **J-19** cli.md against every verb's `--help` and the parser: all
   flags held; `vx upgrade`'s non-JSON release message and the stream of
   the undeclared-task line were wrong.
+- **J-20** Hand-written site pages (guides, glossary, concepts, blog):
+  13 wrong claims on 11 pages — `vx why`'s path is workspace-relative,
+  otel's `OTEL_METRICS_EXPORTER=none`, Claude Code's `.mcp.json`,
+  `strace` for naming a read, vx's own tar (not `Bun.Archive`), one
+  transaction per save, inode and ctime in the fingerprint, the `graph`
+  stage's powers, one runnable sink, `pnpm()` folding patches per
+  package, and what `test.bun.unsafe` holds.
 
 ## Leads for other streams
 

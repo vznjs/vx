@@ -74,8 +74,8 @@ fills is not a no-op call, it is no call.
   and, given a token, a completed check run on the built commit, so a
   red run explains itself in the pull request's checks list.
 - Anything else is a few dozen lines: buffer records in `onRecord`,
-  post them in `flush`. The guide has runnable Sentry, Slack and
-  metrics sinks against the exported types.
+  post them in `flush`. The guide has a runnable sink against the
+  exported types.
 
 ## The same rule for remote caches
 
