@@ -85,6 +85,13 @@
   `LayeredCache` reads local first, and no local-cache entry exists in
   `plugins`.
 
+- **J-13** Doc pins: the `vx why` verdict pin now takes every note
+  `whyDidThisRerun` can print from metrics.ts (9, was a hand-counted 8
+  that missed the no-key note), and the configure guide gains that row
+  and drops "something unkeyed" (a stale hit, not this verdict). The
+  ledger law accepts `open (limit: <page> § <heading>)` only when the
+  heading exists; turborepo#12786's two rows move from `n/a` to that.
+
 ## Leads for other streams
 
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a

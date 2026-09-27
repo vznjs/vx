@@ -233,17 +233,14 @@ describe('the configure guide quotes what vx why says', () => {
       path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'metrics.ts'),
       'utf8',
     )
-    // The verdict notes: `unchangedKeyNote` and the ternary beside it. The
-    // detail notes further down (`(same inputs)` onward) are `vx why`'s
-    // second line, not its verdict.
-    const verdicts = src.slice(
-      src.indexOf('function unchangedKeyNote'),
-      src.indexOf('(same inputs)'),
-    )
-    const notes = [
-      ...verdicts.matchAll(/'((?:cache key|this task declares no `cache` block)[^']*)'/g),
-    ].map((m) => m[1]!)
-    expect(notes.length).toBe(8)
+    // The verdict notes: `unchangedKeyNote` and `whyDidThisRerun` after it,
+    // up to the section rule that closes it. why.ts prints `verdict` only
+    // when a previous run exists, so the two notes for no row and no prior
+    // run never reach it; every other note opens `cache key` or `this task`.
+    const from = src.indexOf('function unchangedKeyNote')
+    const verdicts = src.slice(from, src.indexOf('\n// ----', from))
+    const notes = [...verdicts.matchAll(/'((?:cache key|this task )[^']*)'/g)].map((m) => m[1]!)
+    expect(notes.length).toBe(9)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
