@@ -42,6 +42,10 @@ const refusal = (p: Promise<unknown>): Promise<string> =>
     (e: Error) => e.message,
   )
 
+/** The git blob id of `in.txt`'s bytes, as the key folded it: a digest the
+ *  tree's read cannot match withholds the record. */
+const IN_OID = '4935e88d323e7973308dd73cccf2837fc3c7de22'
+
 const request = (over: Record<string, unknown> = {}): ExecuteRequest =>
   ({
     taskId: 'pkg#gen',
@@ -56,12 +60,12 @@ const request = (over: Record<string, unknown> = {}): ExecuteRequest =>
     onStderr: () => undefined,
     outputs: { files: ['out.txt'], workspaceFiles: [] },
     inputs: {
-      files: [{ path: 'pkg/src/in.txt', digest: 'unused' }],
+      files: [{ path: 'pkg/src/in.txt', digest: IN_OID }],
       env: [],
       runtime: [],
       workspaceRuntime: [],
       upstream: [],
-      packageJsonDigest: 'x',
+      packageJsonDigest: '',
       configDigest: 'y',
       workspaceFingerprint: 'z',
     },
