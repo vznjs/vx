@@ -629,6 +629,17 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Row: `lock.test.ts` › freezes env-dependent configs pins the
         whole sentence; red under the old wording.
 
+1045. DONE (2026-09-27, the CLI-verb review's low leads). `vx init` put
+      the cache TODO only on a `build` with a command. A `build` that
+      delegates (`build: pnpm run compile`) is a group, so no task got
+      one, while the header said `build` carries it. The TODO now rides
+      with `^build` on the task the group reaches that runs a command,
+      and the header says "`build`, or the script it delegates to".
+      `cli.md` says so.
+      - Row: `init.test.ts` › a `build` that only delegates puts the
+        cache TODO on the task that works (direct, a chain, and a
+        commanded `build` as the control). Red without the move.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

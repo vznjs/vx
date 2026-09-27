@@ -259,6 +259,31 @@ describe('migrateScripts', () => {
     expect(chained['b1']).toEqual({ dependsOn: ['b2'] })
   })
 
+  // The cache TODO went only on a `build` with a command, so a delegating
+  // `build` wrote none anywhere, while the header said `build` carries one
+  // (item 1045). It rides with `^build`, on the task that works.
+  it('a `build` that only delegates puts the cache TODO on the task that works (item 1045)', () => {
+    const cacheTodos = (scripts: unknown) =>
+      Object.fromEntries(
+        (project(scripts)?.tasks ?? []).map((t) => [
+          t.name,
+          t.todos.filter((d) => d.startsWith('cache: add')).length,
+        ]),
+      )
+    expect(cacheTodos({ build: 'pnpm run compile', compile: 'tsc -b', test: 'v' })).toEqual({
+      build: 0,
+      compile: 1,
+      test: 0,
+    })
+    expect(cacheTodos({ build: 'npm run b1', b1: 'npm run b2', b2: 'tsc' })).toEqual({
+      build: 0,
+      b1: 0,
+      b2: 1,
+    })
+    // CONTROL: a `build` with a command carries it itself, once.
+    expect(cacheTodos({ build: 'tsc -b', test: 'v' })).toEqual({ build: 1, test: 0 })
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.
