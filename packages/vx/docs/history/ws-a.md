@@ -221,3 +221,10 @@ The short-circuit's reach test held only its below-the-dir term and first-hop de
 
 - Rows (`cache-hash-files.test.ts`): a planted memo row that disagrees in one field is not trusted, by either form, with an all-agreeing control; an executable keys as 100755 in the batch form. Each survivor red under the new rows.
 - Survivor list noted as INCONCLUSIVE by the driver (skips in `cache.test.ts`, `config-cache.test.ts`); none failed anywhere, so read as survived.
+
+### A-24 (2026-09-27, sweep: `miss-save.ts`)
+
+16 mutants over the 15 files that reach it: 7 caught, 9 survived. One was a stale restore: without the snapshot's count check, a walk that saw FEWER files than the entry's rows (a dependant removed one before run end) vouched for the tree, and the next hit skipped the restore and left the file gone.
+
+- Rows: `output-dirs.test.ts` › a run records the saved tree at run end; an entry file removed before run end is not vouched for and the next hit restores it. `sandbox-empty-outputs.unsafe.test.ts` › the sandboxed-no-write hint, with a write-grant control (unsafe: a sandbox cannot nest in a sandboxed shard). The count, the push and the hint are each red under their mutant.
+- Still unheld: the additive task's `holds` (S1, S2), the added-strays filter (S3), the workspace-row filter in `expected` (S5), and the workspace marks and partition drop after a save (S13, S14). Each needs an additive or workspace-output fixture; next.
