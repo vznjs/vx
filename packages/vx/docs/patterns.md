@@ -53,11 +53,11 @@ config hash and per-task forwarded-args fold — are documented in
 
 ### Input enumeration
 
-| Pattern                                                         | Source     | vx source                                      |
-| --------------------------------------------------------------- | ---------- | ---------------------------------------------- |
-| Defer to `git ls-files` for tracked + untracked-but-not-ignored | Turbo + Nx | `src/cache/inputs.ts` ("same as Turbo and Nx") |
-| Git blob OIDs as per-file content hashes (index-harvested)      | Turbo      | `src/cache/inputs.ts` + `src/cache/cache.ts`   |
-| Project-boundary enforcement (no cross-project globs)           | Turbo + Nx | `src/workspace/nested-dirs.ts`                 |
+| Pattern                                                                                                        | Source     | vx source                                                                 |
+| -------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| Defer to git: tracked from `git ls-files -s -v`, untracked-but-not-ignored from `git status --porcelain -uall` | Turbo + Nx | `src/cache/git-inputs.ts`, `src/cache/inputs.ts` ("same as Turbo and Nx") |
+| Git blob OIDs as per-file content hashes (index-harvested)                                                     | Turbo      | `src/cache/git-inputs.ts` + `src/cache/file-hashes.ts`                    |
+| Project-boundary enforcement (no cross-project globs)                                                          | Turbo + Nx | `src/workspace/nested-dirs.ts`                                            |
 
 (vx hard-requires git — there is no fallback walker; a non-repo
 workspace gets a clean `UserError` telling the user to `git init`.)
@@ -75,9 +75,9 @@ richer object form).
 | `'*' / '^*'` | Wildcard upstream (filter-only)     | Turbo's `$TURBO_DEFAULT$`-adjacent | `src/graph/dependency-spec.ts` ("filter-only"), `src/orchestrator/upstream.ts` ("like Turbo/Nx") |
 | `'!<form>'`  | Negation (filter-only)              | Turbo `inputs` exclusion           | `src/graph/dependency-spec.ts` ("filter-only")                                                   |
 
-Loader-side validation rejects wildcards / negation in `dependsOn`
-itself — they're filter-only, as the parser's docblock marks them
-(`src/graph/dependency-spec.ts`).
+Graph construction rejects bare wildcards / negation in `dependsOn`
+itself (`src/graph/task-graph.ts`) — they're filter-only, as the
+parser's docblock marks them (`src/graph/dependency-spec.ts`).
 
 ### Filter DSL + selection
 
@@ -86,7 +86,7 @@ itself — they're filter-only, as the parser's docblock marks them
 | pnpm-style `--filter` (`pkg`, `pkg...`, `...pkg`, path globs) | Turbo + pnpm | `src/workspace/filter.ts`                                                                  |
 | Transitive-dep expansion (`pkg...`)                           | Turbo + pnpm | `src/workspace/filter.ts` (the DSL comment)                                                |
 | `[<since>]` git-relative selection                            | Turbo        | `src/workspace/filter.ts` ("Turbo-style"), `src/workspace/affected.ts` ("Matches Turbo's") |
-| `--affected[=<base>]` subcommand                              | Turbo + Nx   | `src/workspace/affected.ts`                                                                |
+| `--affected[=<base>]` flag on `vx run`                        | Turbo + Nx   | `src/workspace/affected.ts`                                                                |
 | `pkg#task` direct addressing                                  | Turbo + Nx   | `src/cli/run.ts`                                                                           |
 
 ### Workspace discovery
@@ -100,12 +100,12 @@ itself — they're filter-only, as the parser's docblock marks them
 
 ### Cache topology
 
-| Layer                                    | Turbo                              | Nx                 | vx                                               | vx source                    |
-| ---------------------------------------- | ---------------------------------- | ------------------ | ------------------------------------------------ | ---------------------------- |
-| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst` in `.vx/cache/`  | `src/cache/cache.ts`         |
-| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date | `src/cache/cache.ts`         |
-| Read-through then write-through layering | yes                                | yes                | yes                                              | `src/cache/layered-cache.ts` |
-| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`      | `src/cache/cache.ts`         |
+| Layer                                    | Turbo                              | Nx                 | vx                                               | vx source                                                           |
+| ---------------------------------------- | ---------------------------------- | ------------------ | ------------------------------------------------ | ------------------------------------------------------------------- |
+| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst` in `.vx/cache/`  | `src/cache/cache.ts`                                                |
+| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date | `src/cache/output-index.ts`                                         |
+| Read-through then write-through layering | yes                                | yes                | yes                                              | `src/cache/layered-cache.ts`                                        |
+| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`      | `src/cache/run-history.ts` (tables created in `src/cache/cache.ts`) |
 
 ### Remote cache wire
 
@@ -197,8 +197,7 @@ For features Turbo or Nx have that vx **lacks**, see
 [`comparison.md` § Gaps](./comparison.md#gaps-for-vznvx-the-running-list).
 
 For places vx made a deliberately different call (TypeScript config,
-resolved-config hash, strict output ownership, no executor plugins,
-no daemon, no TUI), see
+resolved-config hash, strict output ownership, no daemon, no TUI), see
 [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead)
 and [`README.md`](./README.md#the-problems).
 
