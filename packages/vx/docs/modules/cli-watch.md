@@ -1,4 +1,4 @@
-# `src/cli/watch.ts` — `vx watch` subcommand
+# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`)
 
 ## Purpose
 
@@ -15,8 +15,19 @@ export async function watchCmd(args: readonly string[]): Promise<number>
 // The loop's parts, exported for the watch suites:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
 export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output no task reads
-export const WATCH_PROBE = '.vx-watch-probe'
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
+export async function watchedProjects(workspaceRoot, allProjects, scope, load?, staged?): Promise<ProjectMeta[]>
+export async function sweepConfigs(projects, workspaceRoot, load?): Promise<{ workspaceWide: boolean; … }>
+export function makeRootEventFilter(workspaceRoot: string, projectDirs: readonly string[], workspaceInputs: readonly string[]): (filename: string) => boolean
+export function memberEntries(base: string): ReadonlySet<string>
+export function watchRefusal(parsed: RunArgs): string | null // the refusal line for a flag watch cannot honour
+export function pendingAfterCycle(pending: ReadonlyMap<string, string>, aborted: boolean): [abs: string, label: string] | undefined
+
+// watch-fs.ts — the file-system side, which knows nothing of tasks or cycles:
+export const IGNORED_SEGMENTS: string[] // node_modules / .git / .vx
+export const WATCH_PROBE = '.vx-watch-probe'
+export const WATCH_PROBE_TIMEOUT_MS = 2_000
+export const POLL_INTERVAL_MS = 250
 export interface WatchHandle {
   close(): void
 }
@@ -26,14 +37,8 @@ export interface ArmedWatcher {
 }
 export function pollWatcher(dir: string, recursive: boolean, onEvent: (filename: string) => void, intervalMs?: number): WatchHandle
 export function armWatcher(dir: string, recursive: boolean, onEvent: (filename: string) => void, timeoutMs?: number): ArmedWatcher
-export async function watchedProjects(workspaceRoot, allProjects, scope, load?, staged?): Promise<ProjectMeta[]>
-export async function sweepConfigs(projects, workspaceRoot, load?): Promise<{ workspaceWide: boolean; … }>
-export function makeRootEventFilter(workspaceRoot: string, projectDirs: readonly string[], workspaceInputs: readonly string[]): (filename: string) => boolean
 export function modifiedBefore(abs: string, t: number): boolean
 export function fsClockNow(dir: string): number
-export function memberEntries(base: string): ReadonlySet<string>
-export function watchRefusal(parsed: RunArgs): string | null // the refusal line for a flag watch cannot honour
-export function pendingAfterCycle(pending: ReadonlyMap<string, string>, aborted: boolean): [abs: string, label: string] | undefined
 ```
 
 `cli/index.ts` dispatches `vx watch <...>` here. Returns the exit code

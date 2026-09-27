@@ -1,0 +1,248 @@
+// `vx watch`'s file-system side: the OS watcher and the proof it delivers,
+// the stat poller that stands in where it cannot, and the clock both are
+// judged against. Nothing here knows about tasks, cycles or the cache.
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+/** Paths whose changes never trigger a re-run. */
+export const IGNORED_SEGMENTS = ['node_modules', '.git', '.vx']
+
+/**
+ * The file `armWatcher` writes under a watched directory to prove the
+ * watcher delivers. Intercepted by name before any other handling, so it
+ * can never trigger a cycle, and removed before "watching" is printed.
+ */
+export const WATCH_PROBE = '.vx-watch-probe'
+
+/** How long a watcher gets to report its own probe before the loop goes on without proof. */
+export const WATCH_PROBE_TIMEOUT_MS = 2_000
+/** The file `fsClockNow` writes and removes, under the cache dir the watchers ignore. */
+const WATCH_CLOCK_STAMP = '.vx-watch-clock'
+
+/** Anything the loop needs to shut down at exit. */
+export interface WatchHandle {
+  close(): void
+}
+
+export interface ArmedWatcher {
+  watcher: fs.FSWatcher
+  /** Resolves `true` once the watcher reported the probe, `false` on timeout. */
+  ready: Promise<boolean>
+}
+
+/** How often the fallback re-walks a watched tree. */
+export const POLL_INTERVAL_MS = 250
+
+/**
+ * Directory names the fallback never descends into WHEN no better filter is
+ * supplied. The justification is that `makeWatchIgnore` already drops their
+ * EVENTS, so the walk buys nothing — a poller pays for it either way, and
+ * `node_modules` is the difference between a cheap fallback and one that
+ * re-stats 40 000 files four times a second.
+ *
+ * That justification is exactly `IGNORED_SEGMENTS`, so this IS that set.
+ * It used to carry a fourth name, `dist`, which the justification does NOT
+ * cover: `dist` is dropped only when a project DECLARES it as an output, and
+ * a project that does not declare it had its `dist/` sources silently
+ * invisible to `vx watch` on every host the poller exists for — a macOS
+ * sandbox, a network mount, a container bind — while the native watcher
+ * delivered them. Two watchers disagreeing about what an edit is (item 482).
+ * The real per-project answer is the caller's `skipDir`, below.
+ */
+const POLL_SKIP = new Set(IGNORED_SEGMENTS)
+
+/**
+ * A watcher built from `stat`, for when the OS one cannot deliver.
+ *
+ * `fs.watch` on macOS is FSEvents, which needs `mach-lookup` on
+ * `com.apple.FSEvents`; inside a sandbox that does not grant it the call
+ * SUCCEEDS and then never fires (measured 2026-09-05: 0 events recursive,
+ * 0 non-recursive, against 3 and 2 for the same writes outside — while
+ * `fs.watchFile` polling delivered in both). A network filesystem or a
+ * container bind mount fails the same way. Polling is slower and coarser,
+ * and it is the difference between `vx watch` working there and silently
+ * doing nothing.
+ */
+export function pollWatcher(
+  dir: string,
+  recursive: boolean,
+  onEvent: (filename: string) => void,
+  intervalMs = POLL_INTERVAL_MS,
+  /**
+   * Directories not worth descending into, by their path relative to `dir`.
+   * The watch loop passes its own event filter, so the poller skips exactly
+   * what the filter would drop anyway — every declared output container, not
+   * a hard-coded name. The default covers the unconditional segments alone.
+   */
+  skipDir: (rel: string) => boolean = (rel) => POLL_SKIP.has(path.basename(rel)),
+): WatchHandle {
+  let previous = new Map<string, number>()
+  let first = true
+  const scan = (): void => {
+    const current = new Map<string, number>()
+    const walk = (abs: string, rel: string): void => {
+      let entries: fs.Dirent[]
+      try {
+        entries = fs.readdirSync(abs, { withFileTypes: true })
+      } catch {
+        return // vanished or unreadable: its files simply stop appearing
+      }
+      for (const e of entries) {
+        if (e.name === WATCH_PROBE) continue
+        const childRel = rel === '' ? e.name : `${rel}/${e.name}`
+        if (e.isDirectory()) {
+          if (recursive && !skipDir(childRel)) walk(path.join(abs, e.name), childRel)
+          continue
+        }
+        if (!e.isFile()) continue
+        try {
+          // The later of the two clocks, as `modifiedBefore` reads them: a
+          // replacement that carries the old file's mtime (`cp -p`, `rsync
+          // -a`, `mv` of a file stamped the same) moved nothing under mtime
+          // alone, and the poller never ran it where the native watcher did.
+          // A rename or a write moves ctime, and no process can set it.
+          const st = fs.statSync(path.join(abs, e.name))
+          current.set(childRel, Math.max(st.mtimeMs, st.ctimeMs))
+        } catch {
+          // raced with a delete; the next scan settles it
+        }
+      }
+    }
+    walk(dir, '')
+    if (!first) {
+      for (const [rel, mtime] of current) {
+        if (previous.get(rel) !== mtime) onEvent(rel)
+      }
+      for (const rel of previous.keys()) {
+        if (!current.has(rel)) onEvent(rel)
+      }
+    }
+    previous = current
+    first = false
+  }
+  scan()
+  // Deliberately NOT unref'd: once the native watcher is closed this timer
+  // is the only thing keeping `vx watch` alive.
+  const timer = setInterval(scan, intervalMs)
+  return {
+    close(): void {
+      clearInterval(timer)
+    },
+  }
+}
+
+/**
+ * `fs.watch` plus proof of delivery. On macOS a recursive watcher is an
+ * FSEvents stream that another thread schedules AFTER the call returns, and
+ * a change landing in that gap is never delivered — MEASURED 2026-09-03: a
+ * write made immediately after `fs.watch` was lost 5 times in 30 under CPU
+ * load (0 in 30 idle, 0 in 30 after a 50 ms pause). The gap has no fixed
+ * width, so no pause is the answer and no timeout on the waiting side ever
+ * was (the e2e flake this closes had one of 45 s). A probe file written
+ * under the watcher and waited for is: once ITS event arrives, the stream
+ * is live for everything after it.
+ *
+ * `onEvent` never sees the probe (create or unlink), and the probe is
+ * removed before `ready` resolves.
+ */
+export function armWatcher(
+  dir: string,
+  recursive: boolean,
+  onEvent: (filename: string) => void,
+  timeoutMs = WATCH_PROBE_TIMEOUT_MS,
+): ArmedWatcher {
+  let markReady: (ok: boolean) => void = () => {}
+  const seen = new Promise<boolean>((resolve) => {
+    markReady = resolve
+  })
+  const watcher = fs.watch(dir, { recursive, persistent: true }, (_event, filename) => {
+    if (filename == null || typeof filename !== 'string') return
+    // An event naming the watched directory itself (macOS reports the
+    // directory a write landed in as its own item) carries nothing a key
+    // can see; the write's own event names the file.
+    if (filename === '' || filename === '.') return
+    if (filename === WATCH_PROBE) {
+      markReady(true)
+      return
+    }
+    // Another arm's probe, seen by this recursive watcher under a nested
+    // directory (a nested project's, a member base inside a project): no
+    // key sees it, and passing it on ran a cycle, and restarted a dev
+    // server, with no edit made (item 1016). Only the watcher's own probe
+    // proves this stream live.
+    if (path.basename(filename) === WATCH_PROBE) return
+    onEvent(filename)
+  })
+  const probe = path.join(dir, WATCH_PROBE)
+  const ready = (async (): Promise<boolean> => {
+    // The probe is subject to the very race it detects: a write that lands
+    // in the gap is lost like any other (1 in 20 under a full gate's load,
+    // measured 2026-09-03, with every delivered event under 60 ms). So it is
+    // re-written on a short backoff until its event arrives — the first write
+    // after the stream goes live is the one that proves it.
+    const deadline = Date.now() + timeoutMs
+    let ok = false
+    let step = 50
+    while (!ok) {
+      try {
+        fs.writeFileSync(probe, String(Date.now()))
+      } catch {
+        break // an unwritable dir gets no proof; the watcher is kept
+      }
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      const pause = new Promise<boolean>((resolve) => {
+        setTimeout(() => resolve(false), Math.min(step, remaining)).unref()
+      })
+      ok = await Promise.race([seen, pause])
+      step = Math.min(step * 2, 400)
+    }
+    try {
+      fs.unlinkSync(probe)
+    } catch {
+      // already gone
+    }
+    return ok
+  })()
+  return { watcher, ready }
+}
+
+/** True when `abs` was last modified before `t` (epoch ms); false when it cannot be read. */
+export function modifiedBefore(abs: string, t: number): boolean {
+  try {
+    // The later of the two clocks: `mv`, `cp -p`, `rsync -a` and `tar x`
+    // carry a file's OLD mtime onto the new one, and judged by mtime alone
+    // such an edit was "before the arm" and never ran (item 945). No
+    // process can set a ctime, and a rename or a write moves it.
+    const st = fs.statSync(abs)
+    return Math.max(st.mtimeMs, st.ctimeMs) < t
+  } catch {
+    return false
+  }
+}
+
+/**
+ * "Now" as the filesystem will stamp the next write, not as `Date.now()`
+ * reads it. A file's mtime comes from the kernel's coarse clock, which
+ * runs up to a tick behind the fine clock `Date.now()` reads — measured
+ * on the Linux bench box 2026-09-11: 2 of 3,000 tight writes carried an
+ * mtime 5.8 ms EARLIER than a `Date.now()` taken before the write, and
+ * more under CPU load, where the tick is skipped. An `armedAt` from the
+ * fine clock then judged an edit made right after the ready line as
+ * "modified before the arm" and dropped it (the watch e2e flake, three
+ * shard runs that day; traced: raw event, trigger, `same=true`). A stamp
+ * read off a file written here is on the mtime clock itself, and every
+ * later write's mtime is at or after it.
+ */
+export function fsClockNow(dir: string): number {
+  const stamp = path.join(dir, WATCH_CLOCK_STAMP)
+  try {
+    fs.writeFileSync(stamp, '')
+    const at = fs.statSync(stamp).mtimeMs
+    fs.unlinkSync(stamp)
+    return at
+  } catch {
+    return Date.now()
+  }
+}

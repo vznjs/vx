@@ -220,3 +220,16 @@ task picked`; neither prints a stack. Row in
   the picker's `no tasks declared in any project` now says how to
   declare one (`tasks` in a vx.config, or `vx init`). Rows pin both
   lines exactly (`tests/why.test.ts`, `tests/cli-picker.test.ts`).
+- E-31 — `cli/watch.ts` (1,613 lines) split at its one clean seam: the
+  file-system side (the OS watcher and its delivery probe, the stat
+  poller, `fsClockNow`, `modifiedBefore`) is `cli/watch-fs.ts`, which
+  knows nothing of tasks or cycles. No behaviour change; the watch
+  suites pass unchanged but for their imports.
+- E-32 — A scoped project typed without its scope (`--filter vx-mcp`
+  for `@vzn/vx-mcp`) refused with no hint: the whole name is many edits
+  away. The hint now also matches the part after the `/`, when exactly
+  one project owns it. Row in `tests/select.test.ts`.
+- E-33 — Only `vx run` hinted the flag a typo meant; `vx info --formt`,
+  `vx lock --chek` and the other verbs said only "unknown". The hint is
+  `flagHint(verb, arg)` in `help.ts`, over the verb's own usage line,
+  and every verb's refusal uses it. Row in `tests/cli.test.ts`.
