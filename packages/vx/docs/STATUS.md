@@ -134,6 +134,18 @@ mkdir dist/out.js`) failed with "a path the output globs do not
       that is not JSON, is one line naming the host, with nothing
       replaced.
 
+1096. DONE (2026-09-27, upgrade review #2; STATUS, a comment and
+      upgrade.md). `upgrade.ts`'s header and upgrade.md said the digest
+      makes "a swapped asset" a refusal. It cannot: the digest comes from
+      the same release API as the download URL, and GitHub recomputes it
+      when an asset is uploaded, so whoever can replace the asset (a
+      leaked token, a compromised account) publishes its matching digest
+      with it. It catches a cut or corrupted transfer, and a swap in the
+      moment between the API read and the download. Both now say so, and
+      that no signature is checked. A signed release (minisign, cosign,
+      GitHub attestations against a key in the binary) would close it; it
+      is not built.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
