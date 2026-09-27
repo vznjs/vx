@@ -176,7 +176,10 @@ content-addressed store: a corrupt or poisoned remote degrades to a miss
 were always server-verified; this is the mirror on the read side, the same
 check Bazel's client performs. A streamed read (the cache artifact) is
 hashed as its bytes pass and errors at its end on a mismatch, so vx's
-ingest fails and the hit is a miss.
+ingest fails and the hit is a miss. The size is held as the bytes arrive:
+a body past its digest's size is refused at the byte that passes it, a
+zstd reply is decoded no further than that size, and a batch entry for a
+digest not asked for is dropped.
 
 ## Artifacts stream
 

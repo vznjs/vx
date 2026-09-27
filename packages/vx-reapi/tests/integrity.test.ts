@@ -118,7 +118,7 @@ describe.if(CHUNKING_SUPPORTED)('CAS download integrity', () => {
           await new Response(stream).bytes().then(
             () => 'resolved',
             (err: Error) =>
-              /blob integrity failure for .*: size /.test(err.message)
+              /blob integrity failure for .*: (size |served past)/.test(err.message)
                 ? 'refused by size'
                 : /blob integrity failure: bytes hash to /.test(err.message)
                   ? 'refused by hash'

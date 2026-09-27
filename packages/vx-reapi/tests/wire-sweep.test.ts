@@ -269,9 +269,14 @@ describe.if(CHUNKING_SUPPORTED)('integrity and errors', () => {
 
   it('readBlob refuses a blob of the wrong size', async () => {
     const asked = fake.put(bytes('four'))
+    // Short is caught at the end; long, as it passes the size (L-3).
+    fake.blobs.set(asked.hash, bytes('thr'))
+    await using({}, async (c) => {
+      await expect(c.readBlob(asked)).rejects.toThrow('size 3 != declared 4')
+    })
     fake.blobs.set(asked.hash, bytes('five!'))
     await using({}, async (c) => {
-      await expect(c.readBlob(asked)).rejects.toThrow('size 5 != declared 4')
+      await expect(c.readBlob(asked)).rejects.toThrow('served past its declared 4 bytes')
     })
   })
 

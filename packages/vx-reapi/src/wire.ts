@@ -141,6 +141,45 @@ function assertBlobIntegrity(
   )
 }
 
+/**
+ * A zstd reply decoded no further than the size its digest declares, plus
+ * one byte to tell "more" from "exactly": `Bun.zstdDecompressSync` expands
+ * a frame to its end, and a 1 MiB batch entry or a ByteStream body of a
+ * few KB expanded to GiBs before the size check ran (L-3). A body that
+ * decodes past the digest is refused as it passes the bound.
+ */
+async function unzstdBounded(data: Uint8Array, digest: Digest): Promise<Uint8Array> {
+  const max = Number(digest.size_bytes)
+  const parts: Uint8Array[] = []
+  let size = 0
+  const reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('zstd')).getReader()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      await reader.cancel()
+      throw overServed(digest)
+    }
+    parts.push(value)
+  }
+  return parts.length === 1 ? parts[0]! : new Uint8Array(Buffer.concat(parts))
+}
+
+/** More bytes than the digest declares, refused before the rest arrive. */
+const overServed = (digest: Digest): Error =>
+  new Error(
+    `@vzn/vx-reapi: blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
+      `served past its declared ${digest.size_bytes} bytes`,
+  )
+
+/**
+ * The most a zstd body of `size` decoded bytes can take on the wire: the
+ * format's own bound for incompressible input (ZSTD_COMPRESSBOUND) and a
+ * frame header's slack.
+ */
+const wireBound = (size: number): number => size + (size >> 8) + 1024
+
 /** The check itself, over a size and a hash however they were computed (whole or streamed). */
 function assertServed(size: number, hash: (() => string) | undefined, digest: Digest): void {
   if (size !== Number(digest.size_bytes)) {
@@ -704,12 +743,17 @@ export class ReapiClient {
         this.meta(),
         this.bounded(),
       )
+      // Each entry is held to the digest ASKED for: the response's own
+      // digest is the server's word, and a bound read from it bounds nothing.
+      const asked = new Map(group.map((d) => [d.hash, d]))
       for (const r of res.responses ?? []) {
         if ((r.status?.code ?? 0) !== 0 || r.data === undefined) continue
+        const digest = asked.get(r.digest?.hash)
+        if (digest === undefined) continue
         const zstd = r.compressor === 'ZSTD' || r.compressor === 1
-        const body = zstd ? new Uint8Array(Bun.zstdDecompressSync(r.data)) : r.data
-        assertBlobIntegrity(body, r.digest, this.digestFunction)
-        out.set(r.digest.hash, body)
+        const body = zstd ? await unzstdBounded(r.data, digest) : r.data
+        assertBlobIntegrity(body, digest, this.digestFunction)
+        out.set(digest.hash, body)
       }
       group = []
       grouped = 0
@@ -1033,18 +1077,35 @@ export class ReapiClient {
       : `blobs/${digest.hash}/${digest.size_bytes}`
     const resource = `${this.instance ? `${this.instance}/` : ''}${segment}`
     const compressed = this.compression
+    // Refused as the bytes pass the bound, not once the server stops: a
+    // body that never ends held every chunk it sent (L-3).
+    const bound = compressed ? wireBound(Number(digest.size_bytes)) : Number(digest.size_bytes)
     return new Promise((resolve, reject) => {
       const chunks: Uint8Array[] = []
+      let received = 0
+      let over = false
       const stream = (this.svc.bs as unknown as Record<string, Function>)['read']!(
         { resource_name: resource, read_offset: 0, read_limit: 0 },
         this.meta(),
         this.bounded(),
-      ) as { on(e: string, f: (x: never) => void): void }
-      stream.on('data', (m: { data: Uint8Array }) => chunks.push(m.data))
+      ) as { on(e: string, f: (x: never) => void): void; cancel(): void }
+      stream.on('data', (m: { data: Uint8Array }) => {
+        if (over) return
+        received += m.data.length
+        if (received > bound) {
+          over = true
+          chunks.length = 0
+          reject(overServed(digest))
+          stream.cancel()
+          return
+        }
+        chunks.push(m.data)
+      })
       stream.on('error', (err: grpc.ServiceError) =>
         err.code === NOT_FOUND ? resolve(null) : reject(err),
       )
-      stream.on('end', () => {
+      stream.on('end', async () => {
+        if (over) return
         const total = chunks.reduce((n, c) => n + c.length, 0)
         const out = new Uint8Array(total)
         let at = 0
@@ -1053,7 +1114,7 @@ export class ReapiClient {
           at += c.length
         }
         try {
-          const body = compressed ? new Uint8Array(Bun.zstdDecompressSync(out)) : out
+          const body = compressed ? await unzstdBounded(out, digest) : out
           assertBlobIntegrity(body, digest, this.digestFunction)
           resolve(body)
         } catch (err) {
@@ -1125,6 +1186,10 @@ export class ReapiClient {
           return
         }
         size += got.value.data.length
+        if (size > Number(digest.size_bytes)) {
+          call.cancel()
+          throw overServed(digest)
+        }
         hasher?.update(got.value.data)
         controller.enqueue(got.value.data)
       },
