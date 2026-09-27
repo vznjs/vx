@@ -128,3 +128,10 @@ under a whole-tree capture (`*.txt`) a declared output missing from the
 CAS only warned and `save` cached the short tree; now it fails the task.
 Inline output bytes were written unchecked; now held to their digest, a
 mismatch fetched. Rows red without each fix.
+
+F-9. F-1's real-wire rows counted attempts by the RSTs the peer had sent,
+appended AFTER each RST was written; a loaded gate read the count before
+the last append landed (`sent: 0` for CANCEL, 3 for INTERNAL; A, B, D, H,
+J saw it, 1 in 12 with 12 copies in parallel here). The peer now counts
+each call's HEADERS on arrival, before its RST is scheduled: 24 of 24
+under the same load.

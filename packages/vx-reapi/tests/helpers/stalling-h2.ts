@@ -15,7 +15,9 @@
 // client's deadline so the server's RST is the first word, and an in-process
 // server could not send it while the loop is blocked. After each RST it
 // appends a byte to `marker`, so the blocked row can wait for the RST itself
-// rather than for a guess at how long a loaded box takes to send it.
+// rather than for a guess at how long a loaded box takes to send it. Each
+// call's HEADERS also appends a byte to `<marker>.calls` as it arrives, so a
+// count of attempts never races the RST it precedes.
 //
 //   bun stalling-h2.ts <rstAfterMs> <marker> [rstCode=8]   → prints the port, serves until killed
 
@@ -65,6 +67,10 @@ const server = Bun.listen<{ buf: Uint8Array; seenPreface: boolean }>({
           s.write(frame(6, 1, 0, merged.slice(at + 9, at + 9 + len))) // PING ack
         }
         if (type === 1) {
+          // Counted on arrival, before the RST is even scheduled: a count
+          // taken after the RST was read by a client that saw the RST first
+          // and asked before it landed (`sent: 0`, F-9).
+          appendFileSync(`${marker}.calls`, 'x')
           setTimeout(() => {
             s.write(frame(3, 0, stream, rstCode))
             appendFileSync(marker, 'x')

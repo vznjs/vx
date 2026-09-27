@@ -323,7 +323,9 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
   // A proxy whose backend goes away mid-call ends the stream with
   // RST_STREAM(INTERNAL_ERROR), which grpc-js reports as INTERNAL. That code
   // failed every call it cut at once, where UNAVAILABLE is retried (F-1).
-  // The peer counts each RST it sends, so the count is the attempts.
+  // The peer counts each call's HEADERS as they arrive, so the count is the
+  // attempts. It counted RSTs sent, after the write, and a loaded box read
+  // it before the last landed (F-9).
   const dir = mkdtempSync(path.join(tmpdir(), 'vx-rst-'))
   const servers: Bun.Subprocess<'ignore', 'pipe', 'inherit'>[] = []
   afterAll(() => {
@@ -353,7 +355,7 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
         () => null,
         (e: grpc.ServiceError) => e,
       )
-      return { code: err?.code, details: err?.details, sent: statSync(marker).size }
+      return { code: err?.code, details: err?.details, calls: statSync(`${marker}.calls`).size }
     } finally {
       client.close()
     }
@@ -363,7 +365,7 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
     expect(await probe(2)).toEqual({
       code: grpc.status.INTERNAL,
       details: 'Received RST_STREAM with code 2 (Internal server error)',
-      sent: 4,
+      calls: 4,
     })
   }, 15_000)
 
@@ -372,7 +374,7 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
     expect(await probe(8)).toEqual({
       code: grpc.status.CANCELLED,
       details: 'Call cancelled',
-      sent: 1,
+      calls: 1,
     })
   }, 15_000)
 })
