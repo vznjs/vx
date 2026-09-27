@@ -136,3 +136,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `path.resolve` over already-resolved dirs, a non-string spec. A
   mutant that drops the DFS `seen` check hangs on a cycle (caught by
   the run never ending).
+- **D-15** Mutation sweep of `filter.ts` (28 mutants). One behaviour
+  survivor: no row held a name filter's regex characters literal, so
+  dropping the escape (`socket.io` then selects `socketxio`) passed.
+  Row: `tests/filter.test.ts` "a name's regex characters are literal…".
+  Equivalent: the path glob's trailing-slash strip (`path.relative`
+  never ends in one), the literal-then-glob order, and an empty walk
+  reported for a pattern that also matched nothing.
