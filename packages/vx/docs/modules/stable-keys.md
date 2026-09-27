@@ -21,7 +21,9 @@ can never drift on the stability gate.
   (→ unstable) when a same-project upstream declares `outputs.files`
   its input globs can meet (literal prefixes, ancestor or equal; A-20:
   a `test` reading `src/**` after a `build` writing `dist/**` is stable),
-  when a same-project upstream may write undeclared (every input), or the task reads
+  when a same-project upstream may write undeclared (every input), when
+  its own `outputs.files` meet another same-project task's (M-5: restored
+  early, it raced the producer's restore), or the task reads
   `cache.inputs.workspaceFiles` (boundary-free) and ANY upstream declares
   outputs — `outputs.files` in any project OR `outputs.workspaceFiles`.
   Transitive because a producer reached through a no-output intermediate

@@ -50,4 +50,19 @@ logger kept the reason. Thirty local runs stayed green. A failed outcome
 now carries what vx said and the task's stderr (proven with a mutant that
 breaks build's input).
 
+M-5. A-20 let a same-project dependant into the restore tier when its
+inputs missed the producer's outputs, ignoring where it WRITES: a
+`route` writing `app/[id]/page.js` restored ahead of a `build` owning
+`app/**`, beside that build's clean and extract. Under load (6 CPU
+burners) 5 of 60 runs of M-4's row failed two ways: build's
+`.vx-tmp-*` vanished (a hit read `failed`, the macOS red), or both hit
+green and `app/[id]/page.js` was gone. Invariant 2 of
+`overlapping-outputs-2026-09.md`, broken since A-20.
+
+- Fix (`stable-keys.ts` `dependsOnSiblingOutputs`): a task whose own
+  `outputs.files` meet another same-project task's stays unstable.
+  `caching.md`, `modules/stable-keys.md`.
+- Row: `stable-keys.test.ts` › stays unstable when its own outputs meet
+  another task's (red without the fix). The stress: 0 of 60 with it.
+
 ## Leads for other streams

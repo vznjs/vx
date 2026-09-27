@@ -340,6 +340,19 @@ export function dependsOnSiblingOutputs(
     const outputs = sameProject.outputsOf.get(node.projectName) ?? []
     if (inputs === undefined || outputs.length === 0) return true
     if (workspaceInputsReach(inputs, outputs.map(literalPrefix))) return true
+    // Nor where it WRITES inside another task's tree: restored ahead of
+    // that producer, its restore raced the producer's clean and extract
+    // (M-5; invariant 2 of docs/design/overlapping-outputs-2026-09.md).
+    // `outputsOf` holds this task's own globs too; set them aside once.
+    const own = cache.outputs.files
+    if (own.length > 0) {
+      const others = [...outputs]
+      for (const g of own) {
+        const i = others.indexOf(g)
+        if (i !== -1) others.splice(i, 1)
+      }
+      if (others.length > 0 && workspaceInputsReach(own, others.map(literalPrefix))) return true
+    }
   }
   // A root-anchored output is boundary-IGNORING by design, so it can land
   // inside THIS task's own project dir — where an ordinary project-relative

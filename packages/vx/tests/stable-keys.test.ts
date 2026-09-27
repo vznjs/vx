@@ -73,6 +73,30 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
       expect(gate(['src/**'], declared(['**/*.js']))).toBe(true)
     })
 
+    // `outputsOf` holds the reader's own outputs too: a reader writing
+    // inside a producer's tree restored ahead of it, beside its clean and
+    // extract, and either lost the producer's temp file (a hit read
+    // `failed`) or had its own file cleaned from a green run (M-5;
+    // invariant 2 of docs/design/overlapping-outputs-2026-09.md).
+    it('stays unstable when its own outputs meet another task’s', () => {
+      const writing = (outputs: string[], project: string[]) =>
+        dependsOnSiblingOutputs(
+          {
+            projectName: 'B',
+            config: { cache: { inputs: { files: ['src/**'] }, outputs: { files: outputs } } },
+          } as unknown as TaskNode,
+          new Set(['B']),
+          false,
+          undefined,
+          declared(project),
+        )
+      expect(writing(['app/[id]/page.js'], ['app/**', 'app/[id]/page.js'])).toBe(true)
+      expect(writing(['dist/types/**'], ['dist/**', 'dist/types/**'])).toBe(true)
+      // CONTROL: its own outputs alone, or beside a tree they do not meet.
+      expect(writing(['types/**'], ['types/**'])).toBe(false)
+      expect(writing(['types/**'], ['dist/**', 'types/**'])).toBe(false)
+    })
+
     it('stays project-wide for undeclared writes, default inputs, or no declared outputs', () => {
       expect(gate(['src/**'], declared(['dist/**'], ['B']))).toBe(true)
       expect(gate(undefined, declared(['dist/**']))).toBe(true)
