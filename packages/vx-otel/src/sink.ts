@@ -41,6 +41,10 @@ export interface OtelSinkConfig {
   metricsUrl: string
   logsUrl: string
   serviceName: string
+  /** `OTEL_RESOURCE_ATTRIBUTES`, under vx's own service identity. */
+  resource?: Readonly<Record<string, string>>
+  /** Signals the env asks to export over gRPC, which vx does not speak. */
+  grpc?: readonly OtelSignal[]
   headers: Record<string, string>
   /** Per signal, over `headers`. */
   signalHeaders?: Partial<Record<OtelSignal, Record<string, string>>>
@@ -160,6 +164,8 @@ export class OtelSink implements TelemetrySink {
       metricsUrl: config.metricsUrl,
       logsUrl: config.logsUrl,
       serviceName: config.serviceName,
+      resource: config.resource ?? {},
+      grpc: config.grpc ?? [],
       headers: config.headers,
       signalHeaders: config.signalHeaders ?? {},
       tracesEnabled: config.tracesEnabled !== false,
@@ -266,7 +272,9 @@ export class OtelSink implements TelemetrySink {
 
   private async shipTraces(vxVersion: string): Promise<void> {
     if (this.cfg.tracesEnabled === false || this.spans.length === 0) return
-    const body = JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, this.spans))
+    const body = JSON.stringify(
+      buildTraceRequest(this.cfg.serviceName, vxVersion, this.spans, this.cfg.resource),
+    )
     await this.send('traces', this.cfg.tracesUrl, body)
   }
 
@@ -278,6 +286,7 @@ export class OtelSink implements TelemetrySink {
         this.summary,
         nanos(this.summary.endedAt),
         nanos(this.summary.startedAt),
+        this.cfg.resource,
       ),
     )
     await this.send('metrics', this.cfg.metricsUrl, body)
@@ -291,6 +300,7 @@ export class OtelSink implements TelemetrySink {
     const body = JSON.stringify(
       buildLogsRequest({
         serviceName: this.cfg.serviceName,
+        resource: this.cfg.resource,
         vxVersion,
         runId: this.runId,
         workspaceId,
@@ -316,8 +326,13 @@ export class OtelSink implements TelemetrySink {
       // Name the URL: three signals ship concurrently and each is caught
       // here on its own, so a bare "export failed" cannot tell a down
       // collector from one misconfigured signal endpoint.
+      // An HTTP POST to a gRPC port fails with a transport error that
+      // names neither; the env that asked for gRPC is the likely cause.
+      const hint = this.cfg.grpc.includes(signal)
+        ? ` — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)`
+        : ''
       this.cfg.warn?.(
-        `[vx-otel] export failed for ${shownUrl(url)}: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx-otel] export failed for ${shownUrl(url)}: ${err instanceof Error ? err.message : String(err)}${hint}`,
       )
     }
   }

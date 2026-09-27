@@ -20,7 +20,7 @@ export interface OtelPluginOptions {
   metricsEndpoint?: string
   /** Full logs URL override. Falls back to `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else `<endpoint>/v1/logs`. */
   logsEndpoint?: string
-  /** Service name. Falls back to `OTEL_SERVICE_NAME`, else `'vx'`. */
+  /** Service name. Falls back to `OTEL_SERVICE_NAME`, then `OTEL_RESOURCE_ATTRIBUTES`' `service.name`, else `'vx'`. */
   serviceName?: string
   /** Extra OTLP headers, merged over `OTEL_EXPORTER_OTLP_HEADERS` and each signal's own. */
   headers?: Record<string, string>
@@ -32,7 +32,7 @@ export interface OtelPluginOptions {
    * Set false (or `OTEL_LOGS_EXPORTER=none`) to export traces + metrics only.
    */
   logs?: boolean
-  /** Per-request timeout (ms). Default: 15000. */
+  /** Per-request timeout (ms). Falls back to `OTEL_EXPORTER_OTLP_TIMEOUT`, else 15000. */
   timeoutMs?: number
   /** Test seam — inject the POST transport. Defaults to fetch. */
   post?: PostFn
@@ -95,6 +95,12 @@ function headerValueFault(value: string): string | null {
 
 /** An HTTP header name: an RFC 7230 token. */
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+
+/** `OTEL_EXPORTER_OTLP_TIMEOUT`: milliseconds; anything but a positive number is unset. */
+function envTimeout(raw: string | undefined): number | undefined {
+  const ms = Number(present(raw))
+  return Number.isFinite(ms) && ms > 0 ? ms : undefined
+}
 
 function joinSignal(base: string, signal: string): string {
   return `${base.replace(/\/+$/, '')}/v1/${signal}`
@@ -181,11 +187,31 @@ export function resolveOtelConfig(
     }
     return out
   }
+  // `OTEL_RESOURCE_ATTRIBUTES` (deployment.environment, team, …) was not
+  // read, so a pipeline's resource identity never reached vx's telemetry.
+  const resource = parseOtlpHeaders(env['OTEL_RESOURCE_ATTRIBUTES'])
+  // vx speaks OTLP/HTTP JSON only; a signal the env sends over gRPC most
+  // likely points at a gRPC port, and its failure warning says so.
+  const grpc = (['traces', 'metrics', 'logs'] as const).filter(
+    (signal) =>
+      (
+        present(env[`OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_PROTOCOL`]) ??
+        env['OTEL_EXPORTER_OTLP_PROTOCOL']
+      )
+        ?.trim()
+        .toLowerCase() === 'grpc',
+  )
   return {
     tracesUrl,
     metricsUrl: metricsUrl ?? tracesUrl,
     logsUrl: logsUrl ?? tracesUrl,
-    serviceName: present(opts.serviceName) ?? present(env['OTEL_SERVICE_NAME']) ?? 'vx',
+    serviceName:
+      present(opts.serviceName) ??
+      present(env['OTEL_SERVICE_NAME']) ??
+      present(resource['service.name']) ??
+      'vx',
+    resource,
+    grpc,
     headers: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers }),
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the
     // shared ones, as the spec orders them; they were not read (item 923).
@@ -204,7 +230,7 @@ export function resolveOtelConfig(
     ...(tracesWanted ? {} : { tracesEnabled: false }),
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,
-    timeoutMs: opts.timeoutMs ?? 15_000,
+    timeoutMs: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000,
     ...(opts.post ? { post: opts.post } : {}),
     ...(warn ? { warn } : {}),
   }

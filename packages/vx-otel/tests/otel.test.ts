@@ -1478,3 +1478,114 @@ describe('config the sweep left unpinned', () => {
     ])
   })
 })
+
+// F-17: the standard OTLP env vars below were not read.
+describe('the standard OTLP env a pipeline already sets', () => {
+  const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+
+  it('OTEL_RESOURCE_ATTRIBUTES reaches every signal’s resource, under vx’s identity', async () => {
+    const bodies: Record<string, { resource: { attributes: unknown[] } }> = {}
+    const cfg = resolveOtelConfig(
+      {
+        post: async (url, body) => {
+          const b = JSON.parse(body) as Record<string, { resource: { attributes: unknown[] } }[]>
+          bodies[url] = Object.values(b)[0]![0]!
+        },
+      },
+      {
+        ...base,
+        OTEL_RESOURCE_ATTRIBUTES: 'deployment.environment=ci,team=a%20b,service.version=9',
+      },
+    )!
+    const sink = new OtelSink(cfg)
+    const t: TaskTelemetry = {
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 40,
+    }
+    sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 1, ts: 1000 } as TelemetryRecord)
+    sink.onRecord({
+      v: 1,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId: 'a#build',
+      ts: 1010,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 1,
+      kind: 'task.log',
+      runId: 'run-1',
+      taskId: 'a#build',
+      stream: 'stdout',
+      chunk: 'hi',
+      ts: 1020,
+    } as TelemetryRecord)
+    sink.onRecord({ v: 1, kind: 'task.end', runId: 'run-1', ts: 1050, ...t } as TelemetryRecord)
+    sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, [t]))
+    await sink.flush()
+    const expected = [
+      { key: 'deployment.environment', value: { stringValue: 'ci' } },
+      { key: 'team', value: { stringValue: 'a b' } },
+      { key: 'service.name', value: { stringValue: 'vx' } },
+      { key: 'service.version', value: { stringValue: '1.2.3' } },
+    ]
+    expect(Object.keys(bodies).sort()).toEqual([
+      'http://c/v1/logs',
+      'http://c/v1/metrics',
+      'http://c/v1/traces',
+    ])
+    for (const b of Object.values(bodies)) expect(b.resource.attributes).toEqual(expected)
+  })
+
+  it('service.name: option, then OTEL_SERVICE_NAME, then the resource attribute', () => {
+    const env = { ...base, OTEL_RESOURCE_ATTRIBUTES: 'service.name=from-res' }
+    expect([
+      resolveOtelConfig({}, env)!.serviceName,
+      resolveOtelConfig({}, { ...env, OTEL_SERVICE_NAME: 'from-env' })!.serviceName,
+      resolveOtelConfig({ serviceName: 'opt' }, { ...env, OTEL_SERVICE_NAME: 'from-env' })!
+        .serviceName,
+    ]).toEqual(['from-res', 'from-env', 'opt'])
+  })
+
+  it('OTEL_EXPORTER_OTLP_TIMEOUT sets the timeout; the option tops it; junk is unset', () => {
+    expect([
+      resolveOtelConfig({}, { ...base, OTEL_EXPORTER_OTLP_TIMEOUT: '2500' })!.timeoutMs,
+      resolveOtelConfig({ timeoutMs: 100 }, { ...base, OTEL_EXPORTER_OTLP_TIMEOUT: '2500' })!
+        .timeoutMs,
+      resolveOtelConfig({}, { ...base, OTEL_EXPORTER_OTLP_TIMEOUT: 'soon' })!.timeoutMs,
+      resolveOtelConfig({}, { ...base, OTEL_EXPORTER_OTLP_TIMEOUT: '0' })!.timeoutMs,
+    ]).toEqual([2500, 100, 15_000, 15_000])
+  })
+
+  it('a failed export under a gRPC protocol says vx sends OTLP/HTTP only', async () => {
+    const warns: string[] = []
+    const cfg = resolveOtelConfig(
+      {
+        logs: false,
+        post: async () => {
+          throw new Error('socket closed')
+        },
+      },
+      {
+        ...base,
+        OTEL_EXPORTER_OTLP_PROTOCOL: 'grpc',
+        OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: 'http/protobuf',
+      },
+      (m) => warns.push(m),
+    )!
+    const sink = new OtelSink(cfg)
+    sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 0, ts: 1000 } as TelemetryRecord)
+    sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    expect(warns.sort()).toEqual([
+      '[vx-otel] export failed for http://c/v1/metrics: socket closed',
+      "[vx-otel] export failed for http://c/v1/traces: socket closed — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)",
+    ])
+  })
+})
