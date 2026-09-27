@@ -1047,7 +1047,12 @@ run...` precedes it.
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. The directory
+   task's input; the cycle after it re-evaluates the file. A file a
+   config imports by relative path from outside the watched projects (a
+   shared preset) is watched too, and its edit is a cycle that re-reads
+   the configs. A file the workspace config imports is loaded once per
+   process, so its edit is named with the restart it needs rather than
+   run stale (item 949). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
    runs is a cycle that runs it, and its directory is watched from then

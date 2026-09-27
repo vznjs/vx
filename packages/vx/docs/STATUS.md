@@ -403,6 +403,31 @@ test is telling the truth.
       - `cli.md` says so.
       - Row: `watch-loop.test.ts` › a server that rewrites a file in its
         project is named after three restarts. Red without the fix.
+949.  DONE (2026-09-27, the `vx watch` review's leads 2 and 3, its last).
+      A config's imports from outside its project were in no arm.
+      - Project config: a shared preset (`../../shared/preset.mjs`, the
+        way configs compose) changed what a run evaluates, and watch ran
+        nothing, while `vx run` ran the new command.
+      - Workspace config: its imports are loaded in this process, and Bun
+        keeps the module. Editing its helper was no event, and a later
+        cycle still ran the old helper.
+      - `configImports` (workspace module) lists a config's
+        relative-import closure outside `node_modules`. The sweep collects
+        it for every project config and for the workspace config. Watch
+        arms each directory holding one outside the watched projects,
+        non-recursive.
+      - A project config's import is a cycle that re-reads the configs. A
+        workspace config's import is named with the restart it needs: no
+        supported API drops Bun's module, and the config holds plugin
+        functions, so it cannot move to a JSON worker as project configs
+        did.
+      - `cli.md` and the config-cache module page (which now lists
+        `configImports`) say so.
+      - Rows: `watch-loop.test.ts` › a shared preset outside the project
+        is watched and its edit re-runs under it, and an edit to a file
+        the workspace config imports is named with the restart it needs
+        (no cycle). Both red without the fix.
+      - The review is done: its six leads are items 945–949.
 
 ## In flight
 
