@@ -140,6 +140,36 @@ describe.if(CHUNKING_SUPPORTED)('the command line a worker runs', () => {
   })
 })
 
+describe.if(CHUNKING_SUPPORTED)('a project directory with shell syntax in its name (L-7)', () => {
+  it('is entered as named: the name is quoted, never run', async () => {
+    // A quote in the name ended the `cd '…'` quote, and what followed ran
+    // as script on the worker: `$(touch pwned)` here.
+    const dir = "it's $(touch pwned) pkg"
+    await mkdir(path.join(root, dir, 'src'), { recursive: true })
+    await writeFile(path.join(root, dir, 'src', 'in.txt'), 'in\n')
+    const base = request()
+    await runOne(
+      request({
+        taskId: 'odd#gen',
+        cwd: path.join(root, dir),
+        command: 'pwd',
+        outputs: { files: [], workspaceFiles: ['node_modules/.m'] },
+        inputs: { ...base.inputs!, files: [{ path: `${dir}/src/in.txt`, digest: IN_OID }] },
+      }),
+    )
+    const { code, out } = sh(lastScript(), root)
+    expect({
+      code,
+      pwd: out.trimEnd(),
+      pwned: await Bun.file(path.join(root, 'pwned')).exists(),
+    }).toEqual({
+      code: 0,
+      pwd: path.join(root, dir),
+      pwned: false,
+    })
+  })
+})
+
 describe('the action’s environment', () => {
   it('an unset input stays unset; a define wins over an input of its name', () => {
     const inputs = {

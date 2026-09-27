@@ -98,6 +98,11 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect(await untouched()).toEqual({ victim: 'mine', outside: ['victim'] })
   })
 
+  it('a path holding a NUL is refused, not a raw file-system error', async () => {
+    const r = await run({ output_files: [{ path: 'out\0.txt', digest: blob('x') }] })
+    expect(r).toBe(refused('out\0.txt'))
+  })
+
   it('a Tree name of `..`', async () => {
     const up: Directory = {
       files: [{ name: 'new', digest: blob('pwned'), is_executable: false }],
