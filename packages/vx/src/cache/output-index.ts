@@ -16,6 +16,7 @@ import {
   OUTPUT_DIRS_CAP,
   OUTPUT_DIRS_RACY_MS,
   type OutputDirRow,
+  racyWindowMs,
   type OutputFileRow,
   WORKSPACE_OUTPUT_PREFIX,
 } from './layer.js'
@@ -218,8 +219,8 @@ export class OutputIndex {
     }
     // All or nothing: a racy directory dropped alone would leave its
     // parent trusted while an addition inside it bumps only the dropped one.
-    const youngest = Date.now() - OUTPUT_DIRS_RACY_MS
-    if (rows.some(([, mtime]) => mtime > youngest)) ok = false
+    const now = Date.now()
+    if (rows.some(([, mtime]) => mtime > now - racyWindowMs(mtime, OUTPUT_DIRS_RACY_MS))) ok = false
     this.pendingDirs.set(hash, ok ? rows : null)
   }
 

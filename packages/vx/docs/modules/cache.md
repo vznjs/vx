@@ -98,6 +98,11 @@ export class ArtifactVanishedError extends Error {
 // by the file-hash memo, and by the pre-save input re-check (task-hash.md).
 export const FILE_HASH_RACY_MS = 50
 
+// The window for one stamp: `windowMs`, plus a second when the stamp has no
+// sub-second part (a file system that keeps whole seconds) — the file
+// hasher, the output-directory snapshot and the re-check all ask it (A-2).
+export function racyWindowMs(stampMs: number, windowMs: number): number
+
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
   // workspace root in a run, so it shares the enumeration's `rev-parse`

@@ -263,7 +263,13 @@ over (in order):
     in-process `HASH("blob " + len + "\0" + content)` over the
     **worktree bytes** (sha1, or sha256 in `--object-format=sha256`
     repos), memoized in `file_hashes` on `(mtime, size, ctime, ino)`.
-    That is the same value the index holds whenever no filter applies,
+    A file changed within `FILE_HASH_RACY_MS` (50 ms) of its stat is
+    hashed but not memoised; a ctime with no sub-second part, as a
+    file system that keeps whole seconds writes it (ext3, HFS+,
+    FAT/exFAT, some NFS), widens that window by a second, since a
+    rewrite later in the same second keeps the stamp (`racyWindowMs`;
+    until 2026-09-27, A-2, such a rewrite of the same size was a hit on
+    the first bytes' output). That is the same value the index holds whenever no filter applies,
     so a file's contribution doesn't flip across dirty↔clean
     transitions. Folded as `(relPath, identity)` pairs, sorted for
     stability across OSes and walk orders. The identity is the OID
@@ -573,7 +579,8 @@ after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
 learned — the enumeration's start for an index OID, the describe for a
 hashed file — is hashed again and compared, and a file that is gone has
 moved. A file written at or after the describe (just before the command)
-has moved whatever it holds: an input changed and changed BACK while the
+has moved whatever it holds (a whole-second stamp counts as any moment
+of its second, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
 1015). When one moved, the task's result stands but no entry is saved,

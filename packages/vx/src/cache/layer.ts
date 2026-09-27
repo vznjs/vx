@@ -378,6 +378,23 @@ export const OUTPUT_DIRS_RACY_MS = 50
 export const FILE_HASH_RACY_MS = 50
 
 /**
+ * The racy window for one timestamp. `windowMs` assumes a clock finer than
+ * itself; a file system that keeps whole seconds (ext3, HFS+, FAT/exFAT,
+ * some NFS mounts) stamps a write at 12:00:00.900 as 12:00:00, so a write
+ * later in that second keeps the stamp, and a stat 120 ms after the first
+ * write passed a 50 ms window: the memo served the first bytes' digest for
+ * a same-size rewrite 120 ms on (A-2, reproduced on an ext2 mount). A stamp
+ * with no sub-second part is read as such a second and widens the window by
+ * it, as git judges racy entries at its index's own granularity. Pass the
+ * UNFLOORED stamp: a kernel's nanosecond stamp lands on a whole second about
+ * once in 10^9, one set through a millisecond `utimes` once in a thousand,
+ * and either is then trusted a second later — never wrongly.
+ */
+export function racyWindowMs(stampMs: number, windowMs: number): number {
+  return stampMs % 1000 === 0 ? windowMs + 1000 : windowMs
+}
+
+/**
  * Context passed to `get()`. Optional, but required when the lookup
  * may resolve through the remote layer — the local SQL row inserted on
  * remote-hit needs `taskId` + `command` to be queryable later (the

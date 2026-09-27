@@ -91,10 +91,12 @@ export function computeGroupHash(upstream: TaskOutcome[]): string
   `package.json` digest (a per-run memo) from the enumeration.
 - `movedInput` — the post-command re-check (item 743): one `lstat` per
   fact; a file whose ctime is not older than its fact by
-  `FILE_HASH_RACY_MS` is hashed again and compared, and a missing file
-  has moved. So has one whose ctime is at or after `commandFrom`,
-  whatever it holds now: an input changed and changed BACK while the
-  command ran matches its digest again (item 1015). Returns the first moved path; execute-task then withholds
+  `FILE_HASH_RACY_MS` (plus a second for a whole-second stamp,
+  `racyWindowMs`) is hashed again and compared, and a missing file
+  has moved. So has one whose ctime is at or after `commandFrom`
+  (less that second for a whole-second stamp), whatever it holds now:
+  an input changed and changed BACK while the command ran matches its
+  digest again (item 1015). Returns the first moved path; execute-task then withholds
   the save.
 - `computeGroupHash` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group.

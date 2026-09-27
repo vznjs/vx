@@ -6,6 +6,7 @@ import {
   type CacheKeyInput,
   type CacheLayer,
   FILE_HASH_RACY_MS,
+  racyWindowMs,
   resolveInputs,
   type GitFilesCache,
   WORKSPACE_OUTPUT_PREFIX,
@@ -222,8 +223,12 @@ export async function movedInput(
     } catch {
       return f.path
     }
-    if (commandFrom !== undefined && ctimeMs >= commandFrom) return f.path
-    if (ctimeMs >= f.since - FILE_HASH_RACY_MS) suspects.push(f)
+    // A whole-second stamp may stand for any write in its second, one
+    // during the command included (`racyWindowMs`).
+    if (commandFrom !== undefined && ctimeMs >= commandFrom - racyWindowMs(ctimeMs, 0)) {
+      return f.path
+    }
+    if (ctimeMs >= f.since - racyWindowMs(ctimeMs, FILE_HASH_RACY_MS)) suspects.push(f)
   }
   for (const f of suspects) {
     const now = await cache.hashFile(f.path).catch(() => undefined)

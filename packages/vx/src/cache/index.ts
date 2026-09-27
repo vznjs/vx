@@ -23,6 +23,7 @@ export {
   OUTPUT_DIRS_CAP,
   FILE_HASH_RACY_MS,
   OUTPUT_DIRS_RACY_MS,
+  racyWindowMs,
   noteSchemaReset,
   type SchemaReset,
   SCHEMA_VERSION,
