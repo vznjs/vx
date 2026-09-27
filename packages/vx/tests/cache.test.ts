@@ -1685,9 +1685,9 @@ describe('Cache storage (v10)', () => {
     seedRow(cache, insert, 'h-real', 100, hourAgo - 1000)
     // Newer than the real entry, so LRU would take the real one first.
     insert.run('h-phantom', 1_000_000, hourAgo)
-    // A row without its artifact inside the grace window is a save in
-    // flight: kept, and counted.
-    insert.run('h-fresh', 10, Date.now())
+    // A row without its artifact inside the grace window: kept, and its
+    // bytes are on no disk either, so none is counted (item 1081).
+    insert.run('h-fresh', 1_000_000, Date.now())
     const rows = (): string[] =>
       (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
         (r) => r.hash,

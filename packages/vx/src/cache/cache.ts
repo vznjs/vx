@@ -1630,9 +1630,10 @@ export class Cache implements CacheLayer {
     let bytesFreed = 0
     // Rows whose artifact is gone (deleted by hand, or by a disk cleaner):
     // never a hit, and their bytes are on no disk, but `--max-size` counted
-    // them and evicted real entries to make room for them (item 975). They
-    // are dropped, neither evicted nor freed.
-    const phantoms = await this.phantomRows()
+    // them and evicted real entries to make room for them (item 975). None
+    // is evicted or freed, whatever its age (item 1081); the ones past the
+    // grace window are dropped.
+    const { phantoms, stale } = await this.phantomRows()
 
     if (olderThanMs !== undefined) {
       const rows = this.db
@@ -1685,9 +1686,9 @@ export class Cache implements CacheLayer {
         orphanBytes: orphans.orphanBytes,
       }
     }
-    if (victims.size > 0 || phantoms.size > 0) {
+    if (victims.size > 0 || stale.length > 0) {
       const hashes = [...victims]
-      const rows = [...hashes, ...phantoms.keys()]
+      const rows = [...hashes, ...stale]
       this.db.transaction(() => {
         for (let i = 0; i < rows.length; i += 900) {
           const chunk = rows.slice(i, i + 900)
@@ -1740,25 +1741,37 @@ export class Cache implements CacheLayer {
 
   /**
    * Index rows whose artifact is not in the directory, with their recorded
-   * sizes. Only rows last written or used before the grace window: a save
-   * renames its artifact in before its row commits, so a fresh row without
-   * one is a listing that raced a save, not a phantom. An unreadable
-   * directory judges nothing.
+   * sizes, and the ones among them last used before the grace window. The
+   * rows are read BEFORE the directory: a save renames its artifact in
+   * before its row commits, so every row read has its artifact listed
+   * unless it is gone, and the count is exact. Only `stale` rows are
+   * dropped — a row is never deleted on one listing's word while it may be
+   * in use. An unreadable directory judges nothing.
    */
-  private async phantomRows(): Promise<Map<string, number>> {
+  private async phantomRows(): Promise<{ phantoms: Map<string, number>; stale: string[] }> {
+    const graceStart = Date.now() - ORPHAN_GRACE_MS
+    const rows = this.db
+      .prepare('SELECT hash, size_bytes, accessed_at FROM entries')
+      .all() as Array<{
+      hash: string
+      size_bytes: number
+      accessed_at: number
+    }>
     let names: string[]
     try {
       names = await readdir(this.cacheDir)
     } catch {
-      return new Map()
+      return { phantoms: new Map(), stale: [] }
     }
     const present = new Set(names)
-    const rows = this.db
-      .prepare('SELECT hash, size_bytes FROM entries WHERE accessed_at < ?')
-      .all(Date.now() - ORPHAN_GRACE_MS) as Array<{ hash: string; size_bytes: number }>
-    const out = new Map<string, number>()
-    for (const r of rows) if (!present.has(`${r.hash}.tar.zst`)) out.set(r.hash, r.size_bytes)
-    return out
+    const phantoms = new Map<string, number>()
+    const stale: string[] = []
+    for (const r of rows) {
+      if (present.has(`${r.hash}.tar.zst`)) continue
+      phantoms.set(r.hash, r.size_bytes)
+      if (r.accessed_at < graceStart) stale.push(r.hash)
+    }
+    return { phantoms, stale }
   }
 
   /** What `prune()` would reap right now, for `vx info` to say before anyone prunes. */
