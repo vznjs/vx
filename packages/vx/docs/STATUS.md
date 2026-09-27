@@ -426,6 +426,23 @@ test is telling the truth.
       - Row: `inputs.test.ts` › runs on the task's PATH: the project's
         bin, then the root's. Red without the fix.
 
+997.  DONE (2026-09-27, the config-validation review's lead 2).
+      `cacheDir: ''` (or `'.'`) opened the index at the workspace root
+      and wrote the cache directory's `*` `.gitignore` there: the next
+      run warned that `src/**` matched nothing, and the one after replayed
+      the old output over a changed source. `'packages/a'` did the same
+      to one project, and with a root `.gitignore` of the user's own the
+      artifacts still landed among the sources.
+      - Fix (`cache.ts`): a first index in a directory holding a
+        `package.json` or `pnpm-workspace.yaml` is refused, naming the
+        field and `--cache-dir`, before anything is written. Asked only
+        when there is no index yet, so an open cache pays no syscall. A
+        manifest-less ancestor of projects (`'packages'`) is not caught.
+        `schema.md` says so.
+      - Row: `cache-gitignore.test.ts` › a first index in a directory
+        holding a manifest is refused, with a manifest-less directory as
+        the control. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

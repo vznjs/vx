@@ -1163,7 +1163,11 @@ interface WorkspaceConfig {
 - **`cacheDir`** — relative paths are resolved against the workspace
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
-  (`src/workspace/workspace.ts:resolveCacheDir`).
+  (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
+  directory of its own: a first index in one that holds a
+  `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
+  root) is refused before anything is written, since its `*`
+  `.gitignore` would hide the sources from git and the cache keys.
 - **`cacheRetention`** — the `vx cache prune` policy, applied at the
   end of every run that writes the local cache: entries unused for
   `olderThan` (`30d`, `12h`, `90m`, `45s`) go first, then the
