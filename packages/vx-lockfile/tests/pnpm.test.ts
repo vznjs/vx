@@ -371,6 +371,57 @@ snapshots:
     expect(digests(lock('sha512-y'))).toEqual(before)
   })
 
+  // Item 1073: two importers that link each other, each on its own
+  // is-number; the second lockfile swaps the versions. Every importer node
+  // folded the same material, so the swap gave the same digests and the
+  // moved installs replayed from cache.
+  it('two importers that link each other and swap versions both move', () => {
+    const cross = (a: string, b: string) => `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      b:
+        specifier: workspace:*
+        version: link:../b
+      is-number:
+        specifier: '*'
+        version: ${a}
+
+  packages/b:
+    dependencies:
+      a:
+        specifier: workspace:*
+        version: link:../a
+      is-number:
+        specifier: '*'
+        version: ${b}
+
+packages:
+
+  is-number@6.0.0:
+    resolution: {integrity: sha512-six}
+
+  is-number@7.0.0:
+    resolution: {integrity: sha512-seven}
+
+snapshots:
+
+  is-number@6.0.0: {}
+
+  is-number@7.0.0: {}
+`
+    const before = digests(cross('7.0.0', '6.0.0'))
+    const after = digests(cross('6.0.0', '7.0.0'))
+    expect(after.get('packages/a')).not.toBe(before.get('packages/a'))
+    expect(after.get('packages/b')).not.toBe(before.get('packages/b'))
+    // Control: the same lockfile, the same digests.
+    expect(digests(cross('7.0.0', '6.0.0'))).toEqual(before)
+  })
+
   it('refuses what is not a pnpm lockfile', () => {
     expect(() => parseLockfile('just: yaml\n')).toThrow(/unsupported lockfileVersion ""/)
     expect(() => parseLockfile('- a\n')).toThrow(/not a YAML document/)

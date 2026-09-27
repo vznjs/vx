@@ -248,7 +248,11 @@ function buildGraph(lock: Lockfile): Graph {
       lock.patches.get(packageKey(key)) ?? lock.patches.get(packageName(lock, key)) ?? ''
     node(key, `${key}\0${resolution}\0${patch}`)
   }
-  for (const dir of lock.importers.keys()) node(importerNode(dir), 'importer')
+  // Each importer folds its own dir: with one material for all, two
+  // importers that link each other were told apart by their edges alone,
+  // and swapping which reaches which version gave the same lines, so a
+  // lockfile that moved both installs keyed neither (item 1073).
+  for (const dir of lock.importers.keys()) node(importerNode(dir), importerNode(dir))
   const link = (from: number, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
       const target = joinPosix(dir, version.slice('link:'.length))
