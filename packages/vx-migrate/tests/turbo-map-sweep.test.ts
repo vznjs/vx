@@ -568,3 +568,107 @@ describe('turbo-map: a task `command` (Turbo 2.11)', () => {
     ])
   })
 })
+
+// read by Turbo 2.11, refused by 2.5: a package config extends another package's (`"extends":
+// ["//", "mid"]`). Read as root-plus-own, `mid`'s tasks and fields were
+// gone: `app#build` keyed without `mid/**` (a stale hit on an edit there),
+// `app#check` was not emitted. Expected: `turbo run build check test
+// --dry=json` on this fixture (Turbo 2.11.4).
+describe('turbo-map: a package config that extends another package', () => {
+  const fixture = {
+    tasks: {
+      build: { inputs: ['src/**'], outputs: ['dist/**'], env: ['A'] },
+      test: { inputs: ['test/**'] },
+      check: { dependsOn: ['build'] },
+    },
+  }
+  const scripts = { build: 'b', check: 'c', test: 't' }
+  const pkgs = {
+    app: {
+      scripts,
+      turbo: { extends: ['//', 'mid'], tasks: { build: { env: ['$TURBO_EXTENDS$', 'C'] } } },
+    },
+    mid: {
+      scripts,
+      turbo: {
+        extends: ['//', 'base'],
+        tasks: { build: { inputs: ['$TURBO_EXTENDS$', 'mid/**'] }, test: { extends: false } },
+      },
+    },
+    base: {
+      scripts,
+      turbo: {
+        extends: ['//'],
+        tasks: {
+          build: { outputs: ['$TURBO_EXTENDS$', 'out/**'], env: ['B'] },
+          check: { extends: false, inputs: ['check/**'] },
+        },
+      },
+    },
+    other: { scripts },
+  }
+  const summary = (t: TurboMappedTask) => {
+    const task = t.task as {
+      dependsOn?: string[]
+      cache?: { inputs?: { files?: string[]; env?: string[] }; outputs?: { files?: string[] } }
+    }
+    return [
+      t.name,
+      task.cache?.inputs?.files ?? [],
+      task.cache?.outputs?.files ?? [],
+      task.cache?.inputs?.env ?? [],
+      task.dependsOn ?? [],
+    ]
+  }
+
+  it('folds every file of the chain, root first, as Turbo does', async () => {
+    const m = await map(fixture, pkgs)
+    const got = Object.fromEntries(
+      m.projects.map((p) => [
+        p.name,
+        p.tasks.map(summary).sort((a, b) => (a[0]! < b[0]! ? -1 : 1)),
+      ]),
+    )
+    expect(got).toEqual({
+      app: [
+        ['build', ['src/**', 'mid/**'], ['dist/**', 'out/**'], ['B', 'C'], []],
+        ['check', ['check/**'], [], [], []],
+        ['test', ['**/*'], [], [], []],
+      ],
+      mid: [
+        ['build', ['src/**', 'mid/**'], ['dist/**', 'out/**'], ['B'], []],
+        ['check', ['check/**'], [], [], []],
+      ],
+      base: [
+        ['build', ['src/**'], ['dist/**', 'out/**'], ['B'], []],
+        ['check', ['check/**'], [], [], []],
+        ['test', ['test/**'], [], [], []],
+      ],
+      other: [
+        ['build', ['src/**'], ['dist/**'], ['A'], []],
+        ['check', ['**/*'], [], [], ['build']],
+        ['test', ['test/**'], [], [], []],
+      ],
+    })
+  })
+
+  it('refuses a parent with no turbo.json, and a cycle, as Turbo does', async () => {
+    const refusal = (turbo: unknown, more: Record<string, unknown> = {}) =>
+      map(fixture, { app: { scripts, turbo }, ...more } as never).then(
+        () => '(mapped)',
+        (e: Error) => `${e instanceof UserError} ${e.message}`,
+      )
+    expect([
+      await refusal({ extends: ['//', 'nowhere'] }),
+      await refusal(
+        { extends: ['//', 'loop'] },
+        { loop: { scripts, turbo: { extends: ['//', 'app'] } } },
+      ),
+      await refusal({ extends: ['//'] }),
+    ]).toEqual([
+      'true turbo.json of app extends nowhere, which has no turbo.json',
+      'true turbo.json extends form a cycle: app → loop → app',
+      '(mapped)',
+    ])
+  })
+})

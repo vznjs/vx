@@ -182,3 +182,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `remote-cache-degrade` › a 503 heals on the resend (both wires, red
   without the fix); `remote-retry.test.ts` (which answers, how long, how
   often; the option).
+- **G-13.** turbo() follows a package config's `extends` to other
+  packages (`"extends": ["//", "shared"]`, read by Turbo 2.11, refused by 2.5). It read root
+  plus own: the shared file's tasks were not emitted and its fields not
+  folded, so an `inputs` it widened keyed nothing (a stale hit). The
+  chain is Turbo's `turbo_json_chain` order; task existence is
+  `has_task_definition_in_run` (own entry, else the first parent in
+  `extends` order); the fold restarts at the nearest `extends: false`.
+  A parent with no turbo.json and a cycle are refused, as Turbo refuses
+  them. A 3-level fixture matches `turbo run build check test
+--dry=json` (2.11.4) on every task's inputs, outputs, env and edges.
+  Rows (`turbo-map-sweep` › a package config that extends another
+  package): both red without the fix.
