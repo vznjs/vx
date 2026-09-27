@@ -5,8 +5,11 @@
 `vx upgrade [tag]` asks the GitHub release API for this os/arch's asset
 and the SHA-256 digest the API publishes for it, downloads the asset,
 verifies the digest, and atomically renames it over the current
-executable. A mismatch — a cut transfer, a swapped asset — replaces
-nothing (item 233).
+executable. A mismatch — a cut or corrupted transfer — replaces
+nothing (item 233). The digest guards the transfer, not the publisher:
+it comes from the same release API as the asset, and GitHub recomputes
+it on upload, so an asset replaced by someone who can write the release
+carries its own matching digest. No signature is checked (item 1096).
 
 ## Public surface
 

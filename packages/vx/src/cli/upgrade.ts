@@ -2,10 +2,13 @@
 // Asks the GitHub release API for the asset of this os/arch and the
 // SHA-256 digest it publishes, downloads the asset, verifies the digest,
 // writes next to the current executable, atomic rename over it. The
-// digest is what makes a cut transfer (a proxy that drops a connection,
-// a disk that fills) or a swapped asset a refusal instead of a binary
-// that does not start: the rename is the last step, and a mismatch
-// replaces nothing.
+// digest is what makes a cut or corrupted transfer (a proxy that drops a
+// connection, a disk that fills) a refusal instead of a binary that does
+// not start: the rename is the last step, and a mismatch replaces
+// nothing. It guards the TRANSFER only: the digest comes from the same
+// release API as the download URL, and GitHub recomputes it when an asset
+// is uploaded, so whoever can replace the asset replaces its digest too
+// (item 1096). Nothing here verifies who built the binary.
 // Named `upgrade` (not `update`) per CLI convention: bun upgrade,
 // deno upgrade — "update" is what package managers do to indexes.
 
