@@ -134,7 +134,7 @@ name is not valid UTF-8`), rather than dropping it: nothing in vx can
 open a path a string cannot spell. The same refusal covers outputs,
 where `Bun.Glob` decodes a name the same lossy way.
 
-## A project inside a nested repository
+## Nested repositories
 
 A submodule, or an embedded repository, is ONE entry of the workspace
 repository's listing (a gitlink; `dir/` when untracked) and none of its
@@ -151,8 +151,20 @@ the same path and still enumerates nothing, as before.) Before
 and the key never moved: a stale hit under a green run. `--affected` follows the same
 shape: git reports the nested repository as one changed path (the
 gitlink, or the untracked `dir/`), and every project under it is
-selected (`affected.ts`). What the workspace repository still cannot
-see: `workspaceFiles` globs reaching into the nested repository.
+selected (`affected.ts`).
+
+The other direction, a nested repository INSIDE a project or under a
+`workspaceFiles` glob (a vendored submodule under `**`): every listing —
+the workspace-wide enumeration and the per-project `runGitLsFiles` —
+replaces the one entry (a mode-160000 gitlink, or an untracked `dir/`)
+with the files `git ls-files` lists inside it, prefixed by its path,
+recursively (`expandNestedRepos`). They carry no index OID, so they hash
+by content. One spawn per nested repository per listing; a listing with
+none pays nothing. A gitlink with no `.git` behind it (a submodule never
+initialised) has no files and stays out. Until 2026-09-27 (A-1) the
+entry was dropped as a directory, the files never reached the key, and
+an edit inside the nested repository was a hit on the old output while
+`git status` named the path.
 
 ## What it does NOT do
 
@@ -167,8 +179,8 @@ see: `workspaceFiles` globs reaching into the nested repository.
 renames), `tests/git-trust.test.ts` (end to end: working-tree shapes the
 trust rule once misread into a stale hit), `tests/git-spawns-once.test.ts` (every git a cold run spawns,
 scoped and unscoped), `tests/nested-repo-inputs.test.ts` (a project inside a
-gitlink or an untracked embedded repository: its own git enumerates it,
-and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
+gitlink or an untracked embedded repository, and one inside a project:
+its own git enumerates it, and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
 (through the resolver), `tests/restore-git-spawns.test.ts` (spawn
 count), `tests/cache-hash-files.test.ts`, `tests/affected*.test.ts`
 (the same enumeration behind `--affected`).

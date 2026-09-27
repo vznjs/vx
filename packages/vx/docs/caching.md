@@ -153,14 +153,19 @@ over (in order):
     hashes costs zero file reads, zero per-file stats, zero SQLite
     lookups.
 
-    A project inside a **submodule or an embedded repository** is
-    enumerated by that repository's own git: the workspace repository
-    lists the nested one as a single entry and none of its files, so
-    such a project gets its own `git ls-files` spawn (one per run) and
-    its files hash by content rather than by index OID. `--affected`
-    follows the same shape — git reports the nested repository as one
-    changed path, and every project under it is selected — while a
-    `workspaceFiles` glob still stops at the nested repository's edge.
+    A **submodule or an embedded repository** is enumerated by its own
+    git: the workspace repository lists the nested one as a single entry
+    (a gitlink, or `dir/` when untracked) and none of its files, so vx
+    replaces that entry with the files `git ls-files` lists inside it
+    (one spawn per nested repository per run, nested ones recursively),
+    and those files hash by content rather than by index OID. That holds
+    for a nested repository inside a project (`vendor/lib` under a
+    `**` glob — until 2026-09-27 its files never reached the key, and an
+    edit there was a hit on the old output), for a project inside one,
+    and for a `workspaceFiles` glob. A submodule never initialised has
+    no `.git` and no files, and folds nothing. `--affected` follows the
+    same shape — git reports the nested repository as one changed path,
+    and every project under it is selected.
 
     A task with **no `cache` block** derives a key too — its dependents
     fold it (step 10) — and, declaring nothing, folds **every file in
