@@ -20,6 +20,27 @@ median 351 ms against 334, A/A 336, 15 rounds. Refuted the same day:
 I-3. `nx()` and `turbo()`'s per-run mapping cost split by stage (G
 leads below): the map, not the read or the parse.
 
+I-4. The cold path. Real repos: a cold run is its commands. astro's
+cold `run graph` is 101.6 s of 105.8; vx's own saves and hashing sum
+under 2 %, below the ±15 s spread between cold reps, so no vx lever
+resolves there. The 3.5 s prelude that one cold run showed (startup
+486 ms, workspace config 1,114, git 2,058) is the page cache after the
+harness's `git clean`: with only `.vx` wiped it is ~350 ms. 1,000
+synthetic packages (compiled, 11 interleaved cold reps, A/A beside):
+
+- Saving is the lever: median 3,737 ms with local writes against 2,620
+  with `--cache=local:r`, A/A 3,527 (9 reps). ~1.1 s, 30 %.
+- Its SQLite share, bounded by skipping the index transaction: 3,526
+  against 3,810, A/A 3,808. ≤280 ms. 11 statements per save
+  (`sqlite-tally.ts`), none above noise alone.
+- Refuted: scanning the packed raw tar instead of decoding the written
+  zstd (3,923 against 3,947, A/A 4,009); one commit per event-loop turn
+  with a savepoint per save (4,022 against 4,135, A/A 4,050) — at four
+  workers a turn holds about one save.
+- The rest (~800 ms) is per-save file I/O: +8 `openat`, +8
+  `getdents64`, +6 `statx`, +2 `readlink`, one temp write and a rename
+  per artifact (`strace-vx.ts`, save against no-save).
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
