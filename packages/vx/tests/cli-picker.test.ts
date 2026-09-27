@@ -139,6 +139,27 @@ describe('vx run interactive picker', () => {
     expect(stderr).toBe('vx run: no task picked\n')
   })
 
+  // Within a project the menu is sorted, not the config's key order: the
+  // numbers a user learns stay put when a config is reordered (E-11's sweep
+  // dropped the sort with the suite green).
+  it("lists a project's tasks sorted by name, whatever order the config declares", async () => {
+    await writeFile(
+      path.join(root, 'packages', 'alpha', 'vx.config.mjs'),
+      `export default { tasks: { zed: { exec: { command: 'true' } }, build: { exec: { command: 'true' } } } }`,
+    )
+    const input = new PassThrough()
+    const output = new PassThrough()
+    let printed = ''
+    output.on('data', (c: Buffer) => {
+      printed += c.toString()
+    })
+    const picking = pickTask(root, { input, output })
+    await Bun.sleep(50)
+    input.write('2\n')
+    expect(await picking).toEqual({ project: 'alpha', task: 'zed' })
+    expect(printed.indexOf('alpha#build')).toBeLessThan(printed.indexOf('alpha#zed'))
+  })
+
   it('rejects an out-of-range selection with null', async () => {
     const input = new PassThrough()
     const output = new PassThrough()
