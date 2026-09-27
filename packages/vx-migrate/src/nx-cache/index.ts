@@ -19,6 +19,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
+import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
 export interface NxCacheOptions {
@@ -28,12 +29,15 @@ export interface NxCacheOptions {
   accessToken?: string
   /** Per-request deadline (default 30 s). */
   timeoutMs?: number
+  /** Resends of a request answered 429 / 5xx or never connected (default 1); 0 turns them off. */
+  retries?: number
 }
 
 export interface NxCacheConfig {
   server: string
   accessToken?: string
   timeoutMs: number
+  retries: number
 }
 
 /** Resolve options over Nx's environment; `undefined` = not configured. */
@@ -58,10 +62,15 @@ export function resolveNxCacheConfig(
     throw new Error(
       `vx/nx-cache: the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
+  const retries = options.retries ?? 1
+  // A NaN never reaches the bound, and the request would be resent forever.
+  if (!Number.isInteger(retries) || retries < 0)
+    throw new Error(`vx/nx-cache: retries must be a whole number ≥ 0, got ${retries}`)
   return {
     server,
     ...(accessToken ? { accessToken } : {}),
     timeoutMs: options.timeoutMs ?? 30_000,
+    retries,
   }
 }
 
@@ -86,6 +95,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
   constructor(
     private readonly config: NxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {
     this.endpoint = `${config.server}/v1/cache`
   }
@@ -112,12 +122,17 @@ export class NxRemoteCache implements RemoteCacheLayer {
       // every hit read as a corrupt artifact (nx#33092).
       headers['Accept'] = 'application/octet-stream'
     }
-    const res = await this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
-      method,
-      headers,
-      ...(body === undefined ? {} : { body }),
-      signal: AbortSignal.timeout(this.config.timeoutMs),
-    }).catch((err: unknown) => {
+    const res = await withRetry(
+      () =>
+        this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
+          method,
+          headers,
+          ...(body === undefined ? {} : { body }),
+          signal: AbortSignal.timeout(this.config.timeoutMs),
+        }),
+      this.config.retries,
+      this.wait,
+    ).catch((err: unknown) => {
       throw deadlineNamed(err, this.config.timeoutMs)
     })
     if (res.status === 401 || res.status === 403) {

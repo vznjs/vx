@@ -23,6 +23,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
+import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
 export interface TurboCacheOptions {
@@ -45,6 +46,8 @@ export interface TurboCacheOptions {
   timeoutMs?: number
   /** … and for PUT (default 60 s), Turbo's own defaults. */
   uploadTimeoutMs?: number
+  /** Resends of a request answered 429 / 5xx or never connected (default 1, Turbo's); 0 turns them off. */
+  retries?: number
 }
 
 export interface TurboCacheConfig {
@@ -55,6 +58,7 @@ export interface TurboCacheConfig {
   signatureKey?: string
   timeoutMs: number
   uploadTimeoutMs: number
+  retries: number
 }
 
 /** Turbo's signature message prefix (`crates/turborepo-cache/src/signature_authentication.rs`). */
@@ -200,6 +204,10 @@ export function resolveTurboCacheConfig(
         'vx/turbo-cache: signatureKey needs teamId — the team id is part of the signed message',
       )
   }
+  const retries = options.retries ?? 1
+  // A NaN never reaches the bound, and the request would be resent forever.
+  if (!Number.isInteger(retries) || retries < 0)
+    throw new Error(`vx/turbo-cache: retries must be a whole number ≥ 0, got ${retries}`)
   return {
     apiUrl,
     token,
@@ -208,6 +216,7 @@ export function resolveTurboCacheConfig(
     ...(signatureKey !== undefined ? { signatureKey } : {}),
     timeoutMs: options.timeoutMs ?? 30_000,
     uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+    retries,
   }
 }
 
@@ -232,6 +241,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     private readonly config: TurboCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly tempDir: string = tmpdir(),
+    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
     this.endpoint = `${config.apiUrl}/v8/artifacts`
@@ -264,12 +274,17 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     init: { body?: Blob | string; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<Response | undefined> {
     const timeoutMs = init.timeoutMs ?? this.config.timeoutMs
-    const res = await this.fetchImpl(this.url(pathname), {
-      method,
-      headers: this.headers(init.headers),
-      ...(init.body === undefined ? {} : { body: init.body }),
-      signal: AbortSignal.timeout(timeoutMs),
-    }).catch((err: unknown) => {
+    const res = await withRetry(
+      () =>
+        this.fetchImpl(this.url(pathname), {
+          method,
+          headers: this.headers(init.headers),
+          ...(init.body === undefined ? {} : { body: init.body }),
+          signal: AbortSignal.timeout(timeoutMs),
+        }),
+      this.config.retries,
+      this.wait,
+    ).catch((err: unknown) => {
       throw deadlineNamed(err, timeoutMs)
     })
     if (res.status === 401 || res.status === 403) {

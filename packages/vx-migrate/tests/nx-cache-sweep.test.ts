@@ -59,10 +59,12 @@ describe('resolveNxCacheConfig, exactly', () => {
       server: SERVER,
       accessToken: 'opt',
       timeoutMs: 30_000,
+      retries: 1,
     })
     expect(resolveNxCacheConfig({ server: SERVER, accessToken: '' }, env)).toEqual({
       server: SERVER,
       timeoutMs: 30_000,
+      retries: 1,
     })
   })
 })
@@ -70,7 +72,7 @@ describe('resolveNxCacheConfig, exactly', () => {
 describe('the requests', () => {
   it('no token sends no Authorization; an upload declares its length', async () => {
     const { fetchImpl, calls } = stub(() => new Response(null, { status: 200 }))
-    await new NxRemoteCache({ server: SERVER, timeoutMs: 1000 }, fetchImpl).put(
+    await new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl).put(
       'aa',
       new Blob(['12345']),
       { durationMs: 1 },
@@ -83,14 +85,14 @@ describe('the requests', () => {
   it('a GET answering 500 is an error, not a miss', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 500 }))
     await expect(
-      new NxRemoteCache({ server: SERVER, timeoutMs: 1000 }, fetchImpl).get('aa'),
+      new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl).get('aa'),
     ).rejects.toThrow('HTTP 500')
   })
 
   it('the probe’s response serves ONE get: the next get fetches again', async () => {
     let n = 0
     const { fetchImpl, calls } = stub(() => new Response(`body ${++n}`))
-    const c = new NxRemoteCache({ server: SERVER, timeoutMs: 1000 }, fetchImpl)
+    const c = new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl)
     expect(await c.has('aa')).toBe(true)
     const first = await c.get('aa')
     expect(await first!.body.text()).toBe('body 1')
