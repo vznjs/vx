@@ -313,7 +313,7 @@ export default defineWorkspace({
 | `logsEndpoint`    | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`     | `<endpoint>/v1/logs`    |
 | `serviceName`     | `OTEL_SERVICE_NAME`                    | `vx`                    |
 | `headers`         | `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,…`) | `{}`                    |
-| `metrics`         | none                                   | `true`                  |
+| `metrics`         | `OTEL_METRICS_EXPORTER=none` turns it off | `true`               |
 | `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
 | `timeoutMs`       | none                                   | `15000`                 |
 
@@ -345,7 +345,7 @@ export default defineWorkspace({ plugins: [mcp()] })
 ```
 
 ```jsonc
-// ~/.claude/mcp.json; Cursor, Continue.dev and Copilot take the same shape
+// .mcp.json at the workspace root; Cursor, Continue.dev and Copilot take the same shape
 { "mcpServers": { "vx": { "command": "vx", "args": ["mcp"] } } }
 ```
 

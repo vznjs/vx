@@ -28,7 +28,7 @@ setup and teardown wrap the run; commands adds a verb
 | ------------- | ------------------------------------------------------------------------------------------ |
 | `config`      | See and adjust the workspace config before anything uses it.                               |
 | `project`     | Add, remove or edit one loaded project's tasks.                                            |
-| `graph`       | Add edges, mark tasks requested, attach resources to the whole task graph.                 |
+| `graph`       | Add or drop edges, mark tasks requested.                                                   |
 | `key`         | Contribute extra cache-key material per task.                                              |
 | `fingerprint` | Claim a lockfile out of the workspace fingerprint and key it per project.                  |
 | `schedule`    | Return a priority per ready task.                                                          |

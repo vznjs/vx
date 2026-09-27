@@ -53,7 +53,7 @@ is vx's business.
 
 The core depends on things Bun does natively that would otherwise be
 dependencies with their own opinions: `bun:sqlite` for the cache index,
-`Bun.Archive` for in-process tar, `Bun.spawn` for the runner,
+`Bun.zstd*` under vx's own streaming tar, `Bun.spawn` for the runner,
 `Bun.Glob` for input resolution, and `bun build --compile` for the
 binary itself. Every dependency in the repository has a written reason
 next to it, and the list is short because the runtime covers most of

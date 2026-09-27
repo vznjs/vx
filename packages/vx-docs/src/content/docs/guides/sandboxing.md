@@ -64,7 +64,7 @@ task, and a failed task is never cached.
 
 ## Requirements & platform support
 
-- **Linux:** `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`). `vx info` says if your host can.
+- **Linux:** `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`); `strace` to name an undeclared read. `vx info` says if your host can.
 - **macOS:** the system sandbox. Its report can miss a record under load; the denial never does.
 - **Windows:** under WSL.
 
