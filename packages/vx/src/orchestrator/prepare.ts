@@ -51,6 +51,7 @@ import {
   fingerprintClaims,
   hasHook,
   resolveCache,
+  teardownPlugins,
 } from './plugin-host.js'
 import { loadProjects, loadWorkspacePlugins, type LoadedProjects } from './projects.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
@@ -335,33 +336,152 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // layer's own truthful answer; `LayeredCache` sets it, a bare `Cache`
   // doesn't, and a third-party layer opts in when it really has a remote.
   const hasRemoteLayer = cache.hasRemote === true
+  // From here the plugins' factories have run and the cache is open: a
+  // throw (a stage hook, a `^name` nobody declares, a cycle, an unknown
+  // exclude name) closed neither and tore nothing down, once per failed
+  // cycle under `vx watch` (item 1029). run() owns both only once this
+  // returns.
+  try {
+    const gitFilesCache = new GitFilesCache()
+    // Bulk-populate via a single `git ls-files` at the workspace root —
+    // partitions the output by project. Avoids one fork+exec per project
+    // (~5-10ms each on Linux; the dominant cold-start cost on big
+    // monorepos). When any loaded task declares inputs.workspaceFiles,
+    // the enumeration must see every file from the root (no pathspec
+    // scoping) and additionally stores a workspace-wide partition.
+    const usesWorkspaceInputs = [...projects.values()].some((p) =>
+      Object.values(p.config.tasks ?? {}).some(
+        (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
+      ),
+    )
+    const projectDirs = [...projects.values()].map((p) => p.dir)
+    const enumeration = await (earlyGit ??
+      startGitEnumeration(
+        workspaceRoot,
+        gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
+      ))
+    applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
+    mark('git enumeration')
+    const hashCache = createHashCache()
+    const fingerprintWatch = new FingerprintWatch(workspaceRoot, fingerprints, fingerprintsAt)
 
-  const gitFilesCache = new GitFilesCache()
-  // Bulk-populate via a single `git ls-files` at the workspace root —
-  // partitions the output by project. Avoids one fork+exec per project
-  // (~5-10ms each on Linux; the dominant cold-start cost on big
-  // monorepos). When any loaded task declares inputs.workspaceFiles,
-  // the enumeration must see every file from the root (no pathspec
-  // scoping) and additionally stores a workspace-wide partition.
-  const usesWorkspaceInputs = [...projects.values()].some((p) =>
-    Object.values(p.config.tasks ?? {}).some(
-      (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
-    ),
-  )
-  const projectDirs = [...projects.values()].map((p) => p.dir)
-  const enumeration = await (earlyGit ??
-    startGitEnumeration(
-      workspaceRoot,
-      gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
-    ))
-  applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
-  mark('git enumeration')
-  const hashCache = createHashCache()
-  const fingerprintWatch = new FingerprintWatch(workspaceRoot, fingerprints, fingerprintsAt)
+    // Empty-cases bookkeeping. We still construct the cache + fingerprint
+    // so the caller's try/finally pattern can close it uniformly.
+    if (requested.length === 0) {
+      return {
+        workspaceRoot,
+        workspaceConfig,
+        plugins,
+        cacheDir,
+        cache,
+        localCache,
+        hasRemoteLayer,
+        priorities: new Map(),
+        nodes: new Map(),
+        unresolvedTasks,
+        projects,
+        anyProjectConfig: projectsWithConfigs.length > 0,
+        workspaceFingerprint,
+        fingerprintWatch,
+        nestedDirsByProject,
+        gitFilesCache,
+        hashCache,
+        workspaceProjectCount: projectMetas.length,
+        empty:
+          options.selectedByDiff === true && unresolvedTasks.length === 0
+            ? 'none-affected'
+            : 'no-tasks-declared',
+      }
+    }
 
-  // Empty-cases bookkeeping. We still construct the cache + fingerprint
-  // so the caller's try/finally pattern can close it uniformly.
-  if (requested.length === 0) {
+    // The whole graph, whatever `--exclude-dependencies` says: the stages
+    // below shape and key the tasks it drops as a full run would, because
+    // a dropped task is still keyed (excluded-keys.ts). A scoped load is not
+    // the whole workspace: a `^name` nothing loaded declares may be declared
+    // by a config the scope left out, so the builder hands it back instead of
+    // refusing it, and the rest decide.
+    const unproven: Array<[taskId: string, name: string]> = []
+    const nodes = buildTaskGraph({
+      projects,
+      packageGraph,
+      requested,
+      ...(projects.size < projectsWithConfigs.length
+        ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
+        : {}),
+    })
+    if (unproven.length > 0) {
+      await refuseUndeclaredDeps(unproven, () =>
+        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
+      )
+    }
+    // An `--exclude-dependencies` name no project declares drops nothing:
+    // `=biuld` planned the whole chain and ran it, exit 0 (item 1026). Every
+    // other name the user types must resolve; so must this one. After the
+    // graph, so a config error (`^biuld` nobody declares) is named first.
+    const excludeNames = options.excludeDependencies
+    if (Array.isArray(excludeNames) && excludeNames.length > 0) {
+      const declared = new Set<string>()
+      for (const p of projects.values())
+        for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+      let unknown = excludeNames.filter((n) => !declared.has(n))
+      if (unknown.length > 0 && projects.size < projectsWithConfigs.length) {
+        unknown = await declaredNowhere(unknown, () =>
+          loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
+        )
+      }
+      if (unknown.length > 0) {
+        cache.close()
+        const hints = new Set(unknown.flatMap((n) => nearest(n, declared) ?? []))
+        const hint = hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+        throw new UserError(
+          `--exclude-dependencies names a task no project declares: ${unknown.join(', ')}.${hint}`,
+        )
+      }
+    }
+    // The graph is built; what follows is the plugins' (graph, key,
+    // schedule). Two rows, so a plugin's key stage reads as its own cost
+    // and not as graph building — a lockfile plugin's 1000 stats per run
+    // hid inside one `prepare (graph)` row until 2026-09-10.
+    mark('build graph')
+    if (hasHook(plugins, 'graph')) {
+      await applyGraphHooks(plugins, nodes, {
+        workspaceRoot,
+        cacheDir,
+        warn: (m) => log.status(m),
+        requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
+      })
+    }
+    if (hasHook(plugins, 'key')) {
+      await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
+    }
+    const exclude = options.excludeDependencies
+    if (exclude !== undefined && (exclude === 'all' || exclude.length > 0)) {
+      const { keyOnly, dropped } = excludeDependencies(nodes, exclude)
+      if (dropped.size > 0) {
+        await keyExcludedDependencies({
+          nodes,
+          keyOnly,
+          dropped,
+          cache,
+          workspaceRoot,
+          workspaceFingerprint,
+          forwardArgs: options.forwardArgs,
+          nestedDirsByProject,
+          gitFilesCache,
+          hashCache,
+        })
+      }
+    }
+    let priorities: ReadonlyMap<string, number> = new Map()
+    if (hasHook(plugins, 'schedule')) {
+      priorities = await applyScheduleHooks(plugins, nodes, {
+        workspaceRoot,
+        cacheDir,
+        warn: (m) => log.status(m),
+        localCache,
+      })
+    }
+
     return {
       workspaceRoot,
       workspaceConfig,
@@ -370,8 +490,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cache,
       localCache,
       hasRemoteLayer,
-      priorities: new Map(),
-      nodes: new Map(),
+      priorities,
+      nodes,
       unresolvedTasks,
       projects,
       anyProjectConfig: projectsWithConfigs.length > 0,
@@ -381,121 +501,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       gitFilesCache,
       hashCache,
       workspaceProjectCount: projectMetas.length,
-      empty:
-        options.selectedByDiff === true && unresolvedTasks.length === 0
-          ? 'none-affected'
-          : 'no-tasks-declared',
+      empty: nodes.size === 0 ? 'empty-graph' : null,
     }
-  }
-
-  // The whole graph, whatever `--exclude-dependencies` says: the stages
-  // below shape and key the tasks it drops as a full run would, because
-  // a dropped task is still keyed (excluded-keys.ts). A scoped load is not
-  // the whole workspace: a `^name` nothing loaded declares may be declared
-  // by a config the scope left out, so the builder hands it back instead of
-  // refusing it, and the rest decide.
-  const unproven: Array<[taskId: string, name: string]> = []
-  const nodes = buildTaskGraph({
-    projects,
-    packageGraph,
-    requested,
-    ...(projects.size < projectsWithConfigs.length
-      ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
-      : {}),
-  })
-  if (unproven.length > 0) {
-    await refuseUndeclaredDeps(unproven, () =>
-      loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
-    )
-  }
-  // An `--exclude-dependencies` name no project declares drops nothing:
-  // `=biuld` planned the whole chain and ran it, exit 0 (item 1026). Every
-  // other name the user types must resolve; so must this one. After the
-  // graph, so a config error (`^biuld` nobody declares) is named first.
-  const excludeNames = options.excludeDependencies
-  if (Array.isArray(excludeNames) && excludeNames.length > 0) {
-    const declared = new Set<string>()
-    for (const p of projects.values())
-      for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
-    let unknown = excludeNames.filter((n) => !declared.has(n))
-    if (unknown.length > 0 && projects.size < projectsWithConfigs.length) {
-      unknown = await declaredNowhere(unknown, () =>
-        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
-      )
-    }
-    if (unknown.length > 0) {
-      cache.close()
-      const hints = new Set(unknown.flatMap((n) => nearest(n, declared) ?? []))
-      const hint = hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
-      throw new UserError(
-        `--exclude-dependencies names a task no project declares: ${unknown.join(', ')}.${hint}`,
-      )
-    }
-  }
-  // The graph is built; what follows is the plugins' (graph, key,
-  // schedule). Two rows, so a plugin's key stage reads as its own cost
-  // and not as graph building — a lockfile plugin's 1000 stats per run
-  // hid inside one `prepare (graph)` row until 2026-09-10.
-  mark('build graph')
-  if (hasHook(plugins, 'graph')) {
-    await applyGraphHooks(plugins, nodes, {
-      workspaceRoot,
-      cacheDir,
-      warn: (m) => log.status(m),
-      requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
-    })
-  }
-  if (hasHook(plugins, 'key')) {
-    await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
-  }
-  const exclude = options.excludeDependencies
-  if (exclude !== undefined && (exclude === 'all' || exclude.length > 0)) {
-    const { keyOnly, dropped } = excludeDependencies(nodes, exclude)
-    if (dropped.size > 0) {
-      await keyExcludedDependencies({
-        nodes,
-        keyOnly,
-        dropped,
-        cache,
-        workspaceRoot,
-        workspaceFingerprint,
-        forwardArgs: options.forwardArgs,
-        nestedDirsByProject,
-        gitFilesCache,
-        hashCache,
-      })
-    }
-  }
-  let priorities: ReadonlyMap<string, number> = new Map()
-  if (hasHook(plugins, 'schedule')) {
-    priorities = await applyScheduleHooks(plugins, nodes, {
-      workspaceRoot,
-      cacheDir,
-      warn: (m) => log.status(m),
-      localCache,
-    })
-  }
-
-  return {
-    workspaceRoot,
-    workspaceConfig,
-    plugins,
-    cacheDir,
-    cache,
-    localCache,
-    hasRemoteLayer,
-    priorities,
-    nodes,
-    unresolvedTasks,
-    projects,
-    anyProjectConfig: projectsWithConfigs.length > 0,
-    workspaceFingerprint,
-    fingerprintWatch,
-    nestedDirsByProject,
-    gitFilesCache,
-    hashCache,
-    workspaceProjectCount: projectMetas.length,
-    empty: nodes.size === 0 ? 'empty-graph' : null,
+  } catch (err) {
+    await teardownPlugins(plugins, (m) => log.status(m))
+    cache.close()
+    throw err
   }
 }
 

@@ -937,6 +937,21 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         apart, in value order, and still fold both. Red without the
         suffix, and without the value order.
 
+1029. DONE (2026-09-27, found while landing 1026). Item 1021 tore the
+      plugins down on every exit of `run()`, but a throw inside
+      `prepareRun` after the cache and executor factories ran (a stage
+      hook, a `^name` nobody declares, a cycle, an unknown exclude name)
+      reached neither `run()` nor `planRun`: the cache stayed open and
+      no plugin was torn down, once per failed cycle under `vx watch`.
+      - Fix (`prepare.ts`): everything after the cache resolution sits in
+        one try; a throw tears the plugins down, closes the cache and
+        rethrows. 1026's own close went with it (a second close could
+        throw). `modules/plugin-host.md` says so.
+      - Row: `plugin-teardown.test.ts` › a stage that throws inside
+        prepareRun tears every plugin down (a run and a plan, the
+        layer's close logged). Red without the teardown, and without the
+        close.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
