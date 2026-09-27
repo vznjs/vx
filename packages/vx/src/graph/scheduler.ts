@@ -179,6 +179,12 @@ export interface ScheduleOptions {
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
   /**
+   * Where the line naming a rejected `execute` goes, before its failed
+   * outcome lands. Absent = stderr. The run gives it the task's own
+   * stderr, so its frame and the failure recap carry the reason.
+   */
+  onError?: (node: TaskNode, line: string) => void
+  /**
    * What an outcome still owes before its dependents may start — a cache
    * save that runs off the execution slot (the orchestrator's save lane):
    * a dependent reads the upstream's entry (its output rows travel in the
@@ -722,19 +728,15 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             })
             leave()
             untrack()
-            finishOne(id, outcome)
-            // Surface the error live; the outcome itself doesn't
-            // carry captured stderr (that's the logger's job). A
-            // UserError is a config/input failure (e.g. a failed
+            // A UserError is a config/input failure (e.g. a failed
             // `cache.inputs.runtime` command), not a vx bug — report it
             // plainly, never as an "internal error".
+            let line: string
             if (isUserError(err) || isFsRefusal(err)) {
               const text = isUserError(err) ? message : `${message} — ${fsRefusalHint(err)}`
               const first = refusedBy.get(text)
               if (first === undefined) refusedBy.set(text, id)
-              process.stderr.write(
-                `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`,
-              )
+              line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`
             } else {
               const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
               // A wrapped error's cause is the fact the reader needs (a
@@ -746,8 +748,15 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
                 cause === undefined
                   ? ''
                   : ` (cause: ${(cause as NodeJS.ErrnoException).code ?? cause.name}: ${cause.message})`
-              process.stderr.write(`[vx] internal error in ${id}: ${named}${message}${because}\n`)
+              line = `[vx] internal error in ${id}: ${named}${message}${because}\n`
             }
+            try {
+              if (options.onError === undefined) process.stderr.write(line)
+              else options.onError(node, line)
+            } catch {
+              process.stderr.write(line)
+            }
+            finishOne(id, outcome)
             tick()
           },
         )
