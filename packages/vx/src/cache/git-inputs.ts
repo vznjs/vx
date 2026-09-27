@@ -393,7 +393,7 @@ interface GitRun {
 }
 
 /**
- * Parse `git check-attr -z text eol ident` output — a flat stream of
+ * Parse `git check-attr -z text eol ident filter working-tree-encoding` output — a flat stream of
  * `<path>\0<attr>\0<value>\0` triples — into the set of paths where a clean
  * filter can rewrite bytes. `unspecified` means no rule matched and
  * `unset` (`-text`) explicitly disables conversion; both leave the index blob
@@ -428,7 +428,8 @@ export function parseCheckAttrOutput(out: string): Set<string> {
  *     default `git init` repo.
  *  3. Otherwise ask `git check-attr` (measured 21 ms; it resolves attributes
  *     from the index WITHOUT reading worktree content) and drop only the
- *     paths that actually carry `text`/`eol`/`ident`.
+ *     paths that actually carry `text`/`eol`/`ident`/`filter`/
+ *     `working-tree-encoding`.
  *
  * Never throws: a probe that fails leaves the map as-is, which is exactly the
  * behaviour before this gate existed.
@@ -487,8 +488,13 @@ async function dropFilteredOids(
   if (!attributesPossible) attributesPossible = attributesAbove(args)
   if (!attributesPossible) return
 
+  // `filter` and `working-tree-encoding` rewrite bytes too: a clean driver
+  // (nbstripout, a `sed`) can map two worktree files to one blob, so the
+  // blob's OID keyed an edit git calls clean, and the run replayed the old
+  // output (item 978). Git LFS is a `filter` as well: its files are hashed
+  // from disk now, the one honest identity of what a task reads.
   const res = await args.spawnGit(
-    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident'],
+    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident', 'filter', 'working-tree-encoding'],
     [...trusted.keys()].join('\0'),
   )
   if (res === null || res.exitCode !== 0) return
@@ -858,7 +864,7 @@ export async function startGitEnumeration(
   // fall out of the input set while unmaterialized.
   for (const rel of flagged) trusted.delete(rel)
   // An index OID is only the file's content hash when git stores the worktree
-  // bytes VERBATIM. Under a clean filter (`text`/`eol`/`ident`) the blob is a
+  // bytes VERBATIM. Under a clean filter (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) the blob is a
   // DIFFERENT sequence of bytes — the LF-normalized form — while the task
   // reads the CRLF worktree file. `git status` compares AFTER filtering, so
   // such a file reports clean and keeps its OID: the CRLF and LF states then

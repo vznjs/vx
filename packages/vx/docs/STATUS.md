@@ -174,6 +174,20 @@ test is telling the truth.
         through the CLI; both red without the fix. Two `run()` calls in
         one process derived the same key and still re-executed the second
         time, so an in-process row could not see the hit: why is open.
+978.  DONE (2026-09-27, the cache-key review's lead 3). A stale hit. The
+      gate asked `git check-attr` for `text`, `eol` and `ident` only. A
+      `filter=` driver whose clean command drops comment lines stores one
+      blob for `#A` and `#B` versions of a file; `git status` calls the
+      edit clean, and the run replayed `#A`. `working-tree-encoding` does
+      the same for UTF-16 little- and big-endian forms of one text.
+      - Fix (`git-inputs.ts`): the probe asks for `filter` and
+        `working-tree-encoding` too. Git LFS files are a `filter`, so they
+        are now hashed from disk. `caching.md`, `modules/git-inputs.md`,
+        `modules/cache.md` and the three source comments that named the
+        set say so.
+      - Rows: `git-trust.test.ts` › a filter= driver, and a
+        working-tree-encoding, through the CLI; each red with its
+        attribute removed from the probe.
 
 ## In flight
 

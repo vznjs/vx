@@ -233,7 +233,8 @@ over (in order):
     `git status --porcelain` drops paths whose working tree diverges;
     `git ls-files -v` drops `skip-worktree` / `assume-unchanged`
     entries, whose OID says nothing about what is (or isn't) on disk;
-    and a clean-filter gate drops paths where `text` / `eol` / `ident`
+    and a clean-filter gate drops paths where `text` / `eol` / `ident`,
+    a `filter` driver, `working-tree-encoding`
     or `core.autocrlf` can rewrite bytes between index and worktree
     (the blob would be the LF-normalized form while the task reads the
     CRLF file). The gate costs nothing in a repo with no attributes
@@ -782,9 +783,14 @@ is gated in three steps, and the common case pays nothing:
    binary, where a standard build puts it. Before 2026-09-24 the gate
    missed the default global file, so `* text` there left a CRLF file
    keyed on its LF blob: a CRLF→LF edit was a stale hit.
-3. Otherwise `git check-attr` resolves the three attributes from the
-   index — without reading worktree content — and only the paths
-   actually carrying one lose their OID.
+3. Otherwise `git check-attr` resolves `text`, `eol`, `ident`, `filter`
+   and `working-tree-encoding` from the index — without reading worktree
+   content — and only the paths actually carrying one lose their OID. A
+   `filter` driver was missing from the list until item 978: a clean
+   driver that drops comment lines (`sed '/^#/d'`, nbstripout's shape)
+   stores one blob for two worktree files, so an edit git calls clean
+   replayed the old output. Git LFS files are a `filter` too, and are
+   hashed from disk.
 
 `-text` (explicitly unset) and unspecified paths keep their OIDs:
 both leave the blob byte-identical to the worktree file.

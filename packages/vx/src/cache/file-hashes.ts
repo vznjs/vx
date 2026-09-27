@@ -60,7 +60,7 @@ export class FileHashStore {
    * mode-120000 blob of the link text — so this fallback and the
    * `CacheKeyInput.fileHashes` index-OID fast path agree on any file
    * git stores verbatim. They do NOT agree when a clean filter
-   * (`text`/`eol`/`ident`) is active: the index blob is the filtered
+   * (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) is active: the index blob is the filtered
    * form while this hashes the worktree bytes, so `inputs.ts` drops
    * the index OID for those paths and routes them here.
    */
