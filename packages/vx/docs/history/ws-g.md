@@ -53,6 +53,12 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
   counts `sent: 3` where it expects 4 under load: 2 of 3 runs failed
   while a gate ran beside it, 0 of 4 idle, and it failed G-3's re-gate.
   The retry count depends on time, not on the retry rule.
+- **C:** nx()'s graph key runs its own `git status --porcelain -z
+-uall` (item 1075); core's early enumeration runs the same command
+  beside it. refine: 60 ms median; scoping by pathspec does not help
+  (two top dirs 60 ms, all 206 project roots 124 ms). A project-hook
+  context field for the worktree status (HEAD + that output) would let
+  nx() drop its spawn (I-6 measured 417 → 321 ms with the key bounded).
 - **D:** `workspace/migration.ts` documents `MigrationPlan.notes` as
   "trailing report lines (e.g. implicit Nx deps)"; after G-7 the Nx
   mapper writes none, so the example names a note no source emits.
@@ -205,3 +211,8 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   dependency's key). Probed against `turbo --dry=json` 2.11.4. Rows
   (`turbo-map-sweep` › the `global` block, structured inputs): red
   without the fix.
+- **G-15.** turbo() notes Turbo's `envMode: "loose"` (top-level or in
+  `global`). Loose mode hands every task the whole environment; vx's is
+  isolated, so a task reading an undeclared variable ran without it and
+  nothing said so. Row (`turbo-map-sweep` › envMode "loose"): red
+  without the fix; strict and absent are the controls.

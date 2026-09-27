@@ -713,3 +713,20 @@ describe('turbo-map: structured inputs', () => {
     ]).toEqual([['src/**', 'gen/**'], ['**/*', '!docs/**'], ['**/*'], ['src/**']])
   })
 })
+
+// A loose-mode repo's tasks read variables they never declare; vx's env is
+// isolated, so they ran without them and nothing said so.
+describe('turbo-map: envMode "loose"', () => {
+  it('is a note, top-level or under `global`; strict and absent are not', async () => {
+    const loose = async (cfg: Record<string, unknown>) =>
+      (
+        await map({ ...cfg, tasks: { build: {} } }, { a: { scripts: { build: 'b' } } })
+      ).notes.filter((n) => n.startsWith('envMode')).length
+    expect([
+      await loose({ envMode: 'loose' }),
+      await loose({ global: { envMode: 'loose' } }),
+      await loose({ envMode: 'strict' }),
+      await loose({}),
+    ]).toEqual([1, 1, 0, 0])
+  })
+})
