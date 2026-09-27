@@ -9,8 +9,8 @@
 // anything depending on one, and `exec.remote: false` never reach an
 // executor. This declines the rest of what it cannot honour.
 
-import { mkdir, writeFile, chmod, rm, symlink } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { mkdir, writeFile, chmod, realpath, rm, symlink, unlink } from 'node:fs/promises'
+import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
 import { isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
@@ -1328,11 +1328,13 @@ export async function materialiseOutputs(
   }
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
+  const fence = new Fence(req.workspaceRoot)
   const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
   const batched = await client.batchReadBlobs(small.map((f) => f.digest))
 
   for (const f of files) {
-    const abs = path.join(req.cwd, f.path)
+    const abs = fence.lexical(req.cwd, f.path)
+    await fence.dir(path.dirname(abs))
     await makeDir(path.dirname(abs), created)
     // Inlined only when it has bytes: an ActionResult read back through
     // proto-loader (the execution-record replay) carries `contents` as an
@@ -1363,17 +1365,102 @@ export async function materialiseOutputs(
   // `OutputSymlink` — a declared output that is a link, not a file. Restoring
   // it as a copy would silently change what the next task sees.
   for (const sl of result.output_symlinks ?? []) {
-    const abs = path.join(req.cwd, sl.path)
+    const abs = fence.lexical(req.cwd, sl.path)
+    await fence.dir(path.dirname(abs))
     await makeDir(path.dirname(abs), created)
-    await placeSymlink(sl.target, abs, created)
+    await fence.symlink(sl.target, abs, created)
   }
 
   for (const d of result.output_directories ?? []) {
-    const dest = path.join(req.cwd, d.path)
+    const dest = fence.lexical(req.cwd, d.path)
     const whole = isDeclared(dest)
-    await materialiseTree(client, dest, d.tree_digest, missing, created, whole ? null : isDeclared)
+    await materialiseTree(
+      client,
+      fence,
+      dest,
+      d.tree_digest,
+      missing,
+      created,
+      whole ? null : isDeclared,
+    )
   }
 }
+
+/**
+ * Where a server's paths may land: under the workspace root, through no
+ * link that leads out of it (L-2). The ActionResult is the server's word —
+ * a fresh one or a record replayed from its action cache — and its paths
+ * and Tree names were joined as given: `../../../.bashrc`, a Tree name
+ * `..`, a symlink `a -> ~` followed by a directory `a` holding
+ * `.ssh/authorized_keys`, a file written through a link the result placed,
+ * or a link out of the tree that the save then packed and uploaded. Each
+ * is refused as the server's fault. A directory's check is memoized until
+ * the next link is placed, since a link can change what it resolves to.
+ */
+class Fence {
+  private realRoot: string | undefined
+  private readonly checked = new Set<string>()
+  private readonly root: string
+
+  constructor(root: string) {
+    this.root = path.resolve(root)
+  }
+
+  /** `rel` joined under `base`, refused when the join leaves the root. */
+  lexical(base: string, rel: string): string {
+    if (rel.includes('\0') || path.isAbsolute(rel)) throw this.refuse(rel)
+    const abs = path.resolve(base, rel)
+    if (abs !== this.root && !abs.startsWith(this.root + path.sep)) throw this.refuse(rel)
+    return abs
+  }
+
+  /** A Tree entry's name: one path component, as REAPI defines it. */
+  name(at: string, name: string): string {
+    if (name === '' || name === '.' || name === '..' || name.includes('/') || name.includes('\0')) {
+      throw this.refuse(path.join(at, name))
+    }
+    return path.join(at, name)
+  }
+
+  /** `dir`, or its deepest existing ancestor, resolves inside the root. */
+  async dir(dir: string): Promise<void> {
+    if (this.checked.has(dir)) return
+    this.realRoot ??= await realpath(this.root).catch(() => this.root)
+    let probe = dir
+    for (;;) {
+      const real = await realpath(probe).catch(() => null)
+      if (real !== null) {
+        if (real !== this.realRoot && !real.startsWith(this.realRoot + path.sep)) {
+          throw this.refuse(dir)
+        }
+        break
+      }
+      if (probe === this.root || path.dirname(probe) === probe) break
+      probe = path.dirname(probe)
+    }
+    this.checked.add(dir)
+  }
+
+  /** A link whose target, read from where it stands, stays under the root. */
+  async symlink(target: string, abs: string, created: string[] | undefined): Promise<void> {
+    const to = path.resolve(path.dirname(abs), target)
+    if (target.includes('\0') || (to !== this.root && !to.startsWith(this.root + path.sep))) {
+      throw this.refuse(`${abs} -> ${target}`)
+    }
+    this.checked.clear()
+    await placeSymlink(target, abs, created)
+  }
+
+  private refuse(what: string): UserError {
+    return new UserError(
+      `vx/reapi: the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${this.root}`,
+    )
+  }
+}
+
+/** A write that never follows a link standing at its path. */
+const WRITE_NOFOLLOW =
+  constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW
 
 /**
  * The three ways materialisation touches disk. Given `created` (a replay that
@@ -1391,14 +1478,22 @@ async function writeOutput(
   bytes: Uint8Array,
   created: string[] | undefined,
 ): Promise<void> {
-  if (created === undefined) return writeFile(abs, bytes)
-  try {
-    await writeFile(abs, bytes, { flag: 'wx' })
-    created.push(abs)
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-    await writeFile(abs, bytes)
+  if (created !== undefined) {
+    try {
+      await writeFile(abs, bytes, { flag: 'wx' })
+      created.push(abs)
+      return
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
   }
+  // A link at the path is replaced, never written through: the result may
+  // have placed it (L-2).
+  await writeFile(abs, bytes, { flag: WRITE_NOFOLLOW }).catch(async (err: unknown) => {
+    if ((err as NodeJS.ErrnoException).code !== 'ELOOP') throw err
+    await unlink(abs)
+    await writeFile(abs, bytes, { flag: WRITE_NOFOLLOW })
+  })
 }
 
 async function placeSymlink(
@@ -1425,6 +1520,7 @@ async function placeSymlink(
  */
 async function materialiseTree(
   client: ReapiClient,
+  fence: Fence,
   destDir: string,
   treeDigest: Digest,
   // Same policy as the file path: under a literal capture an unmaterialisable
@@ -1454,10 +1550,12 @@ async function materialiseTree(
 
   const walk = async (dir: Directory, at: string, whole: boolean): Promise<void> => {
     const wanted = (abs: string): boolean => whole || declared!(abs)
-    if (whole) await makeDir(at, created)
-    const files = dir.files.filter((f) => wanted(path.join(at, f.name)))
-    const symlinks = dir.symlinks.filter((sl) => wanted(path.join(at, sl.name)))
-    if (!whole && files.length + symlinks.length > 0) await makeDir(at, created)
+    const files = dir.files.filter((f) => wanted(fence.name(at, f.name)))
+    const symlinks = dir.symlinks.filter((sl) => wanted(fence.name(at, sl.name)))
+    if (whole || files.length + symlinks.length > 0) {
+      await fence.dir(at)
+      await makeDir(at, created)
+    }
     const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
     const batched = await client.batchReadBlobs(small.map((f) => f.digest))
     for (const f of files) {
@@ -1474,13 +1572,14 @@ async function materialiseTree(
       if (f.is_executable) await chmod(abs, 0o755)
       // NodeProperties.unix_mode is authoritative when the server sent it.
       const mode = f.node_properties?.unixMode
-      if (mode !== undefined) await chmod(abs, mode & 0o7777)
+      // Permission bits only: a server's setuid or setgid bit is not a build output's.
+      if (mode !== undefined) await chmod(abs, mode & 0o777)
     }
     for (const sl of symlinks) {
-      await placeSymlink(sl.target, path.join(at, sl.name), created)
+      await fence.symlink(sl.target, path.join(at, sl.name), created)
     }
     for (const child of dir.directories) {
-      const childAt = path.join(at, child.name)
+      const childAt = fence.name(at, child.name)
       const node = byDigest.get(child.digest.hash)
       if (node === undefined) {
         if (wanted(childAt)) {
