@@ -4,6 +4,7 @@
 // its statements over the store's handle; `Cache` delegates.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
+import { xxh3hex } from '../util/index.js'
 import type { InvocationRecord, RunRecord } from './layer.js'
 
 export class RunHistory {
@@ -98,7 +99,10 @@ function bindRun(run: RunRecord): SQLQueryBindings[] {
     run.status,
     run.exitCode,
     run.durationMs,
-    run.forwardArgs ? JSON.stringify(run.forwardArgs) : null,
+    // A digest, as entry_inputs keeps: args after `--` carry tokens
+    // (`--token=…`), and cache.db holds no plaintext secret at rest; nothing
+    // reads the column but for whether the args changed (item 1091).
+    run.forwardArgs ? xxh3hex(JSON.stringify(run.forwardArgs)) : null,
     run.startedAt,
     run.endedAt,
     run.runId ?? null,

@@ -1164,7 +1164,7 @@ CREATE TABLE runs (
   status              TEXT NOT NULL,   -- success | failed | cache-hit | cache-hit-remote | skipped
   exit_code           INTEGER NOT NULL,
   duration_ms         INTEGER NOT NULL,
-  forward_args        TEXT,             -- JSON-encoded; null when no `--` args
+  forward_args        TEXT,             -- xxh3 of the JSON-encoded `--` args; null when none
   started_at          INTEGER NOT NULL, -- ms-epoch
   ended_at            INTEGER NOT NULL,
   run_id              TEXT,             -- ULID shared across all tasks in one invocation
