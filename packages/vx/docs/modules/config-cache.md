@@ -112,8 +112,16 @@ closure is provably pure:
   `process`), `fetch`, `Date`, `Temporal`, `Intl`, `crypto`,
   `performance`, `navigator`, `require`, `eval`, `Function`,
   `constructor`, `localeCompare` (a locale is the environment too),
-  `await`, `toLocale*`, `import.meta`, `Math.random`, or a dynamic
-  `import(`;
+  `await`, `toLocale*`, the reflective primitives that reach `Function`
+  without naming it (`Reflect`, `getPrototypeOf`, `setPrototypeOf`,
+  `getOwnPropertyNames`, `getOwnPropertyDescriptor`,
+  `getOwnPropertyDescriptors`, `__proto__`, `prototype`,
+  `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`,
+  `__lookupSetter__`; item 957), `import.meta`, `Math.random`, or a
+  dynamic `import(`;
+- no string literal holds `constructor`, `__proto__` or `prototype`: as
+  a computed key (`fn['constructor']`) it is `Function`, and the literal
+  was stripped before the words above were tested (item 957);
 - no backslash survives in code position: outside literals that is an
   identifier escape, and `\u0070rocess` IS `process` while matching no
   word in the list. Every spelling in the last two rules was cached as
@@ -122,8 +130,12 @@ closure is provably pure:
 `stripLiterals` refuses (returns `null`) on any `/` outside a comment: a
 regex literal can contain a quote, and a lexer that misread one would
 swallow real code as a string — a false SAFE, the one outcome this
-module must never produce. The gate fails safe in every direction: a
-false negative costs one evaluation, never a stale key.
+module must never produce. A false negative costs one evaluation,
+never a stale key. The gate is syntactic, so it stops ACCIDENTAL
+impurity: a config written to defeat it can still assemble a key at run
+time (`fn['constru' + 'ctor']`) and reach the environment. Such a config
+chooses its own commands anyway; it is not a boundary against its
+author.
 
 ## Invariants
 

@@ -533,6 +533,28 @@ test is telling the truth.
       - Row: `config-staleness.test.ts` › flipping the define re-evaluates,
         through the real CLI; red without the fix. The seed pin names the
         new part's place.
+957.  DONE (2026-09-27, the config-cache review's lead 6, its last). The
+      purity gate reached `Function` with no denied word in code:
+      `(() => 0)['constructor'](…)` (the literal was stripped before the
+      test) and `Object.getOwnPropertyNames(Object.getPrototypeOf(…))`, and
+      such a config was cached as pure while reading `process.env`.
+      - Fix: the deny-list takes the reflective primitives (`Reflect`,
+        `getPrototypeOf`, `setPrototypeOf`, `getOwnPropertyNames`,
+        `getOwnPropertyDescriptor(s)`, `__proto__`, `prototype`, the
+        `__define…__`/`__lookup…__` accessors), and a string literal
+        holding `constructor`, `__proto__` or `prototype` evaluates live.
+      - The claim is qualified: a key assembled at run time still passes,
+        so the gate stops accidental impurity, not a config written to
+        defeat it (`config-cache.md`, `caching.md`). A runtime taint on
+        `Function`'s constructors was weighed and left: it rewrites
+        prototypes in the process that evaluates live configs too.
+      - Rows: `config-cache.test.ts` › four new spellings in the refusal
+        table, each red without the fix. The module page and the
+        resolved-config-hashing post list the new words, held to
+        `IMPURE_RE` by their laws (flat alternatives: the laws read
+        `[^)]*`).
+      - The review is done: leads 1–6 are items 950, 952, 956, 957 (1, 2
+        and 4 were one fix).
 
 ## In flight
 

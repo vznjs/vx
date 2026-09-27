@@ -291,6 +291,12 @@ describe('configEvalKey', () => {
     // and the one string method whose answer depends on the host locale.
     "({}).constructor.constructor('return process.env.HOME')()",
     "['b', 'a'].sort((x, y) => x.localeCompare(y))[0]",
+    // `Function` with no denied word in the code: its name in a literal the
+    // strip removed, and a prototype's own property names (item 957).
+    "(() => 0)['constructor']('return process.env.HOME')()",
+    'Object.getOwnPropertyNames(Object.getPrototypeOf(() => 0)).find((n) => n.length === 11)',
+    "Reflect.get(() => 0, 'x')",
+    '(() => 0).__proto__',
   ])('refuses to cache a config that mentions %s', async (expr) => {
     const cfg = await write(
       'packages/r/vx.config.mjs',

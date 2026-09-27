@@ -125,9 +125,19 @@ const MAX_CLOSURE_FILES = 32
 // they were listed (2026-09-03). `constructor` reaches `Function` through a
 // property name (`({}).constructor.constructor('return process')()`, the
 // body hidden in a literal the strip removes) and `localeCompare` answers
-// by the host locale; both listed 2026-09-09.
+// by the host locale; both listed 2026-09-09. The reflective primitives
+// reach `Function` with no denied word anywhere — a prototype's property
+// names hold `constructor` without the code spelling it
+// (`Object.getOwnPropertyNames(Object.getPrototypeOf(() => 0))`), and a
+// literal naming it was stripped before the test ran; listed 2026-09-27
+// (item 957). A key assembled at run time (`'constru' + 'ctor'`) still
+// passes: the gate stops accidental impurity, not a config written to
+// defeat it.
 const IMPURE_RE =
-  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*)\b|import\s*\.\s*meta|Math\s*\.\s*random|\bimport\s*\(/
+  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*|Reflect|getPrototypeOf|setPrototypeOf|getOwnPropertyNames|getOwnPropertyDescriptor|getOwnPropertyDescriptors|__proto__|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__)\b|import\s*\.\s*meta|Math\s*\.\s*random|\bimport\s*\(/
+
+/** Literal text that names a way to `Function` when used as a computed key. */
+const IMPURE_LITERAL_RE = /constructor|__proto__|prototype/
 
 // Static `import … from '…'` / `export … from '…'` / `import '…'` forms,
 // matched on `stripLiterals` output with its strings kept as placeholders
@@ -146,7 +156,7 @@ const IMPORT_RE =
  */
 function staticImports(
   source: string,
-): { code: string; imports: Array<{ spec: string; statement: string }> } | null {
+): { code: string; strings: string[]; imports: Array<{ spec: string; statement: string }> } | null {
   const strings: string[] = []
   const code = stripLiterals(source, strings)
   if (code === null) return null
@@ -157,7 +167,7 @@ function staticImports(
     seen += m[0].match(/\bimport\b/g)?.length ?? 0
   }
   if (seen !== (code.match(/\bimport\b/g)?.length ?? 0)) return null
-  return { code, imports }
+  return { code, strings, imports }
 }
 
 /** The one bare specifier a pure config may import: core's identity helpers and types. */
@@ -406,6 +416,7 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
     // A backslash in code position is an identifier escape (`\u0070rocess`
     // IS `process`) — the one spelling the deny-list cannot see. Refuse it.
     if (code.includes('\\') || IMPURE_RE.test(code)) return null
+    if (scanned.strings.some((t) => IMPURE_LITERAL_RE.test(t))) return null
     const identity = a.hashBytes
       ? a.hashBytes(bytes, file)
       : a.hashFile
