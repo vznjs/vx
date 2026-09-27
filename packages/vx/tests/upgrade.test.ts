@@ -3,7 +3,7 @@
 // (the compiled-binary path needs a real release and stays manual).
 
 import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -201,6 +201,55 @@ describe('replaceBinary', () => {
         await Bun.write(dest, 'old')
         await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA.toUpperCase())
         expect(await readFile(dest, 'utf8')).toBe(FAKE)
+      },
+    )
+  })
+
+  // Item 1097: the install's own mode was replaced with 0755.
+  it("keeps the replaced binary's mode", async () => {
+    await withFetch(
+      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
+      async () => {
+        const dest = path.join(dir, 'vx-mode')
+        await Bun.write(dest, 'old')
+        await chmod(dest, 0o750)
+        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA)
+        expect(await readFile(dest, 'utf8')).toContain('fake-vx')
+        expect((await stat(dest)).mode & 0o7777).toBe(0o750)
+      },
+    )
+  })
+
+  // Item 1097: a binary this machine cannot start was reported installed,
+  // with the old one gone.
+  it('puts the previous binary back when the new one does not start, and leaves nothing', async () => {
+    await withFetch(
+      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
+      async () => {
+        const sub = path.join(dir, 'roll')
+        await mkdir(sub)
+        const dest = path.join(sub, 'vx')
+        await Bun.write(dest, 'old')
+        let asked = ''
+        let caught: unknown
+        try {
+          await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA, (bin) => {
+            asked = readFileSync(bin, 'utf8')
+            return false
+          })
+        } catch (err) {
+          caught = err
+        }
+        // The new bytes were what it asked about; the old ones are back.
+        expect(asked).toContain('fake-vx')
+        expect(caught).toBeInstanceOf(UserError)
+        expect((caught as Error).message).toContain('the previous vx is back in place')
+        expect(await readFile(dest, 'utf8')).toBe('old')
+        expect(await readdir(sub)).toEqual(['vx'])
+        // CONTROL: one that starts keeps the new bytes, and no spare name.
+        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA, () => true)
+        expect(await readFile(dest, 'utf8')).toContain('fake-vx')
+        expect(await readdir(sub)).toEqual(['vx'])
       },
     )
   })

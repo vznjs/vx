@@ -21,7 +21,13 @@ export interface ReleaseAsset {
   sha256: string // the digest the release API publishes for the asset
 }
 export function releaseAsset(release: unknown, name: string): ReleaseAsset // refuses a release without the asset or its digest
-export async function replaceBinary(dest: string, url: string, sha256: string): Promise<void>
+export async function fetchRelease(tag: string | undefined): Promise<unknown> // exported for tests
+export async function replaceBinary(
+  dest: string,
+  url: string,
+  sha256: string,
+  starts?: (dest: string) => boolean, // false puts the previous binary back (item 1097)
+): Promise<void>
 export async function upgradeCmd(args: readonly string[]): Promise<number>
 ```
 
