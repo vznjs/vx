@@ -69,24 +69,28 @@ describe('mapNxOutputs', () => {
     return { ...mapNxOutputs(outputs, options, projectRel, 'a', todos), todos }
   }
 
-  it('a glob is kept as written; a bare directory, root-relative or not, captures its tree', () => {
-    expect(out(['{projectRoot}/dist/*/types', '{workspaceRoot}/coverage'])).toEqual({
-      outFiles: ['dist/*/types'],
-      wsOutFiles: ['coverage/**'],
+  it('a glob and a bare path, root-relative or not, are kept as written', () => {
+    // A bare path is the file or the tree under it to core (`asTrees`);
+    // `<path>/**` saved nothing under a file (Next 27).
+    expect(
+      out(['{projectRoot}/dist/*/types', '{workspaceRoot}/coverage', '{projectRoot}/bin/tool']),
+    ).toEqual({
+      outFiles: ['dist/*/types', 'bin/tool'],
+      wsOutFiles: ['coverage'],
       todos: [],
     })
   })
 
   it('the root project’s plain path is its own output; another’s is normalized at the root', () => {
-    expect(out(['dist'], '.').outFiles).toEqual(['dist/**'])
-    expect(out(['./build/../out'], 'packages/a').wsOutFiles).toEqual(['out/**'])
+    expect(out(['dist'], '.').outFiles).toEqual(['dist'])
+    expect(out(['./build/../out'], 'packages/a').wsOutFiles).toEqual(['out'])
   })
 
   // Mapped as a `!` workspace glob, core refused the project's whole
   // config and none of its tasks ran (item 1051).
   it('a negated output is dropped with a todo, the positive one kept', () => {
     expect(out(['{projectRoot}/dist', '!{projectRoot}/dist/cache'])).toEqual({
-      outFiles: ['dist/**'],
+      outFiles: ['dist'],
       wsOutFiles: [],
       todos: [
         'output "!{projectRoot}/dist/cache": vx outputs cannot exclude — the other outputs also save what it excludes',
@@ -228,15 +232,15 @@ describe('a token anywhere in a path interpolates as Nx does', () => {
       todos,
     )
     expect(got).toEqual({
-      outFiles: ['build/**'],
-      wsOutFiles: ['coverage/packages/a/**', 'dist/a/**', 'dist/x/y/**'],
+      outFiles: ['build'],
+      wsOutFiles: ['coverage/packages/a', 'dist/a', 'dist/x/y'],
     })
     expect(todos).toEqual(['output "{workspaceRoot}/../escape" uses a token vx does not support'])
   })
 
   it('outputs of the root project', () => {
     const got = mapNxOutputs(['{workspaceRoot}/coverage/{projectRoot}x'], {}, '.', 'r', [])
-    expect(got).toEqual({ outFiles: ['coverage/x/**'], wsOutFiles: [] })
+    expect(got).toEqual({ outFiles: ['coverage/x'], wsOutFiles: [] })
   })
 
   it('inputs: in and out of the project, negated too', () => {

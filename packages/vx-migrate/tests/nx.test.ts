@@ -182,7 +182,7 @@ describe('nx()', () => {
         `nx-exec @acme/compile:run --project app --target build --configuration production --options '{"writeFile":"dist/app.js","mode":"prod"}'`,
       )
       expect(app.config.cache?.inputs.files).toEqual(['src/**/*'])
-      expect(app.config.cache?.outputs.files).toEqual(['dist/**'])
+      expect(app.config.cache?.outputs.files).toEqual(['dist'])
       const lint = plan.tasks.find((t) => t.node.id === 'lib#lint')!.node
       expect(lint.config.exec?.command).toBe('echo lint-ran > lint.log')
       expect(lint.config.cache).toBeUndefined()

@@ -69,21 +69,28 @@ function prefixOf(glob: string, wildcards: RegExp): string {
 
 /**
  * The directories a task's declared outputs cover WHOLE — every glob is
- * `<dir>/**` with a plain, non-root, non-escaping `<dir>` — or `null` when
- * any glob is shaped otherwise. The directory-mtime short-circuit on a warm
- * hit (`Cache.outputDirsCurrent`) is sound only for whole subtrees: with
- * every directory under `<dir>` recorded, a file added or removed anywhere
- * the glob could see bumps a recorded directory's mtime (its parent, or a
- * new directory whose creation bumped a recorded ancestor). A root-anchored
- * `**\/*.js` has no such closed set, so it keeps the walk.
+ * `<dir>/**` or a bare literal (which `asTrees` reads as the path or the
+ * tree under it), with a plain, non-root, non-escaping `<dir>` — or `null`
+ * when any glob is shaped otherwise. The directory-mtime short-circuit on a
+ * warm hit (`Cache.outputDirsCurrent`) is sound only for whole subtrees:
+ * with every directory under `<dir>` recorded, a file added or removed
+ * anywhere the glob could see bumps a recorded directory's mtime (its
+ * parent, or a new directory whose creation bumped a recorded ancestor). A
+ * root-anchored `**\/*.js` has no such closed set, so it keeps the walk.
+ * A literal that names a FILE is no directory: the snapshot refuses it
+ * whole (`recordOutputDirs`) and that task keeps the walk too, so the
+ * literal costs nothing it did not cost before; one that names a directory
+ * gets the same stats a `<dir>/**` does (Next 27: an nx() output file
+ * had to be `<dir>/**` to keep the short-circuit, and saved nothing).
  */
 export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null {
   if (globs.length === 0) return null
   const out: string[] = []
   for (const g of globs.map(normalizeGlob)) {
     const m = /^([^*?{}!]+?)\/\*\*$/.exec(g)
-    if (m === null) return null
-    const dir = m[1]!.replace(/\/+$/, '')
+    const whole = m?.[1] ?? (isLiteralPattern(g) && !g.startsWith('!') ? g : null)
+    if (whole === null) return null
+    const dir = whole.replace(/\/+$/, '')
     if (dir === '' || dir === '.' || dir.startsWith('/') || dir.split('/').includes('..'))
       return null
     out.push(dir)

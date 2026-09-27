@@ -514,16 +514,15 @@ describe('vx migrate (nx)', () => {
       // and be reported "not representable in vx" (2026-09-20).
       expect(build.cache?.inputs.workspaceRuntime).toEqual(['node --version'])
       expect(build.cache?.inputs.runtime).toBeUndefined()
-      // outputs: dir heuristic (a leading dot is a hidden directory, not
-      // an extension — a bare `.output` would save nothing, the output
-      // scan lists files), {options.*} resolution + project-prefix strip,
-      // file with extension kept verbatim; {workspaceRoot}/<path> →
+      // outputs: each path as written (core reads a bare path as the
+      // file or the tree under it, Next 27), {options.*} resolution +
+      // project-prefix strip; {workspaceRoot}/<path> →
       // outputs.workspaceFiles.
       expect(build.cache?.outputs.files).toEqual([
-        'dist/**',
+        'dist',
         'build/main.js',
         'coverage/lcov.info',
-        '.output/**',
+        '.output',
       ])
       expect(build.cache?.outputs.workspaceFiles).toEqual(['reports/build.json'])
       // dependsOn object forms.
@@ -589,7 +588,7 @@ describe('vx migrate (nx)', () => {
       // A declared cwd under the project: a cd relative to the project dir, no todo.
       expect(build.exec?.command).toBe('cd sub && make')
       expect(build.cache?.inputs.files).toEqual(['src/**/*'])
-      expect(build.cache?.outputs.files).toEqual(['out/**'])
+      expect(build.cache?.outputs.files).toEqual(['out'])
 
       // Two targets on one output path: the one with the ^ edge keeps
       // its cache, the sibling runs uncached with a todo naming it —
@@ -598,7 +597,7 @@ describe('vx migrate (nx)', () => {
       expect(types.exec?.command).toBe('cd ../.. && tsc --emitDeclarationOnly')
       expect(types.cache).toBeUndefined()
       const text = await Bun.file(path.join(root, 'packages', 'pkg-b', 'vx.config.ts')).text()
-      expect(text).toContain('"out/**" that "build" also declares')
+      expect(text).toContain('"out" that "build" also declares')
       // cache absent but outputs present → cache block emitted.
       // Outputs without `cache: true` is an uncached target in Nx; the
       // mapper used to cache it anyway (item 591).
@@ -1088,7 +1087,7 @@ describe('vx migrate (nx) — executors', () => {
       expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'dev', 'odd', 'pack', 'test'])
       expect(tasks['pack']!.cache?.outputs).toEqual({
         files: [],
-        workspaceFiles: ['dist/packages/app/**', 'dist/reports/app.json'],
+        workspaceFiles: ['dist/packages/app', 'dist/reports/app.json'],
       })
       expect(r.out).not.toContain('falls outside the project dir')
       // Cached by the legacy list, inputs from nx.json's `default` named input.
@@ -1099,7 +1098,7 @@ describe('vx migrate (nx) — executors', () => {
       expect(tasks['test']!.cache).toBeUndefined()
       expect(tasks['dev']!.cache).toEqual({
         inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-        outputs: { files: ['dist/**'] },
+        outputs: { files: ['dist'] },
       })
       expect(tasks['dev']!.exec?.persistent).toBeUndefined()
       expect(tasks['test']!.exec?.command).toBe(
