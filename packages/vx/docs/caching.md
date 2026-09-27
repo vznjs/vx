@@ -299,13 +299,16 @@ On a hit:
    mode and mtime alone cannot tell two entries apart when their
    outputs carry one fixed mtime (`tar -x`, `cp -p`, `SOURCE_DATE_EPOCH`)
    and one size: a v1 → v2 → v1 round trip reported up-to-date with v2's
-   bytes on disk (item 886). No task can set a ctime, a restore's rename
-   gives a new inode, and a forged mtime (`touch -r`) moves the ctime
-   too. A row with no stamp (an ingest from a remote, or a file that had
-   changed when the stamp was taken) is never current: the hit restores
-   and stamps. The residual: ctime ticks on the kernel's coarse clock
-   (4 ms at HZ=250), so a same-size rewrite in place (same inode) inside
-   the tick of vx's own write, with its mtime forged back, still matches.
+   bytes on disk (item 886). No task can set a ctime, and a forged mtime
+   (`touch -r`) moves the ctime too. The inode proves less than it
+   seems: a restore unlinks the file and renames a new one in, and ext4
+   hands the new one the freed inode (measured, item 941), so ctime is
+   the guard. A row with no stamp (an ingest from a remote, or a file
+   that had changed when the stamp was taken) is never current: the hit
+   restores and stamps. The residual: ctime ticks on the kernel's coarse
+   clock (4 ms at HZ=250), so a same-size rewrite inside the tick of
+   vx's own write, in place or as a new file that took the same inode,
+   with its mtime forged back, still matches.
 3. Otherwise the task's declared outputs are wiped from the project
    dir (`cleanOutputs`) — see
    [§ Strict output ownership](#strict-output-ownership) — and the

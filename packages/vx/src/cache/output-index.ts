@@ -145,11 +145,13 @@ export class OutputIndex {
           // entry: two entries whose outputs carry one fixed mtime (a
           // `tar -x`, `cp -p`, SOURCE_DATE_EPOCH) and one size matched
           // each other's rows, and a hit left the other entry's bytes in
-          // place under a green run (item 886). No task sets a ctime, and
-          // a restore's rename gives a new inode; a row without a stamp
+          // place under a green run (item 886). No task sets a ctime; the
+          // inode is weaker than it looks, since ext4 gives a restore's new
+          // file the inode the clean freed (item 941). A row without a stamp
           // (an ingest, a changed file at stamping) is never current. The
-          // residual: a same-size rewrite IN PLACE (same inode) inside
-          // the coarse clock tick of the stamp, with the mtime forged back.
+          // residual: a same-size rewrite, in place or as a new file on the
+          // same inode, inside the coarse clock tick of the stamp, with the
+          // mtime forged back.
           e.ino !== undefined &&
           s.ino === e.ino &&
           Math.floor(s.ctimeMs) === e.ctimeMs
