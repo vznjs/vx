@@ -576,6 +576,50 @@ describe('key stage', () => {
   )
 })
 
+describe('key stage — two plugins of one package', () => {
+  it(
+    'parts named alike are told apart, in value order, and still fold both (item 1028)',
+    async () => {
+      // A plugin's name is its package's, so two plugins from one package
+      // returning `v` folded two parts named `org/twin/v`: the key moved,
+      // but `vx why` could not say which.
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+      )
+      await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
+      const twin = (v: string) => pluginSource('org/twin', `{ key() { return { v: '${v}' } } }`)
+      const parts = async (...plugins: string[]) => {
+        await workspace(plugins)
+        const task = (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!
+        return { parts: task.node.keyParts, hash: task.hash }
+      }
+      const ab = await parts(twin('1'), twin('2'))
+      const ba = await parts(twin('2'), twin('1'))
+      const moved = await parts(twin('1'), twin('3'))
+      expect({
+        ab: ab.parts,
+        sameKeyEitherOrder: ba.hash === ab.hash,
+        moved: moved.parts,
+        movedKey: moved.hash !== ab.hash,
+      }).toEqual({
+        ab: [
+          ['org/twin/v', '1'],
+          ['org/twin/v#2', '2'],
+        ],
+        sameKeyEitherOrder: true,
+        moved: [
+          ['org/twin/v', '1'],
+          ['org/twin/v#2', '3'],
+        ],
+        movedKey: true,
+      })
+    },
+    TIMEOUT,
+  )
+})
+
 describe('fingerprint claim — a plugin keys a lockfile per project', () => {
   const BUILD =
     "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n"
