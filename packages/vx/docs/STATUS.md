@@ -812,8 +812,18 @@ macOS violation reporting being lossy under load, is a recorded decision
 since item 586 (Decisions below), not an open item.
 
 **Releases.** Every green merge to main releases itself (item 1018,
-`auto-release.yml`); the first auto-released version is the next patch
-after v0.0.21. v0.0.21 is on npm, the four platform packages with it
+`auto-release.yml`). The first two ran on 2026-09-27: v0.0.22 (74814d28)
+and v0.0.23 (f7096cea) were tagged, released with generated notes, their
+four binaries attached by the dispatched `release.yml`, and `@vzn/vx`
+with its four platform packages published by the dispatched `npm.yml`.
+That `npm.yml` run is still red at its first plugin: `@vzn/vx-github`
+answers the OIDC publish with `E404 Not Found - PUT`, because none of
+the seven plugin names has ever been published and a trusted publisher
+cannot be bound to a name that does not exist. OWNER ACTION, once:
+publish each plugin by hand from an owner's npm account and add its
+trusted publisher (`docs/cli.md` § Releasing names the steps); every
+auto-release after that publishes all twelve. v0.0.21 is on npm, the
+four platform packages with it
 (2026-09-15, handoff 14d in the history file), published through
 `npm.yml`, which reads no secret and sets no token — its publish is the
 OIDC exchange or nothing — so the trusted publishers on npmjs.com are in
