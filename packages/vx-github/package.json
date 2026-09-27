@@ -3,6 +3,14 @@
   "version": "0.0.0",
   "license": "MIT",
   "description": "GitHub Actions integration for vx — a telemetry plugin that writes the run as a GitHub Actions job summary.",
+  "keywords": [
+    "vx",
+    "vx-plugin",
+    "monorepo",
+    "github-actions",
+    "job-summary",
+    "checks"
+  ],
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

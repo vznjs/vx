@@ -3,6 +3,13 @@
   "version": "0.0.0",
   "license": "MIT",
   "description": "History-based scheduling for vx — a `schedule` plugin that orders ready tasks by their expected remaining critical path, learned from the local run history.",
+  "keywords": [
+    "vx",
+    "vx-plugin",
+    "monorepo",
+    "scheduler",
+    "critical-path"
+  ],
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
