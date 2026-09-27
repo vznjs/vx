@@ -73,3 +73,19 @@ with exit 1.
   the fix.
 - Not pursued: a `~` pattern stays unexpanded; a denial under `~` is
   never reported (outside the project), so nothing reaches it.
+
+B-4. A root project is walled off under seatbelt too (lead 5). Item
+1010's walls were a punch of the read bind, a mount layout and so Linux
+only: under seatbelt a root task's `read: ['.']` still read its nested
+projects, `.git` and `.vx`, and an edit in a nested project replayed the
+root's old output.
+
+- Fix (`sandbox-request.ts`): on macOS each wall is also a read deny.
+  SRT emits a deny strictly inside a literal read grant after the grant,
+  where it wins (`lateReadDenyFilters`, 0.0.76); a grant naming the wall
+  is not strictly outside it and stays. `modules/sandbox-runtime.md` §
+  The walls a project stops at.
+- Row: `sandbox-runtime.unsafe.test.ts` › a root project's read grant
+  stops at the walls, through `sandboxRequestFor` and `runSandboxed` on
+  both platforms. Pushed first on its own: red on the macOS job of #1141
+  (the Linux job green, the punch already holding there).

@@ -200,7 +200,13 @@ export async function sandboxRequestFor(
     // Enforcement anchors at the WORKSPACE ROOT: a task may not leave
     // its project, so every sibling and every root file is denied.
     // Reporting is a different question — see `reportWithin` below.
-    baseDenyRead: [workspaceRoot],
+    // On macOS the walls are denied too: seatbelt does not mount, so the
+    // punch cannot apply, and SRT emits a deny strictly inside a literal
+    // read grant AFTER the grant, where it wins (`lateReadDenyFilters`,
+    // 0.0.76). A grant naming a wall is not strictly outside it and wins.
+    // Without it a root task's `read: ['.']` read its nested projects under
+    // seatbelt (B-4).
+    baseDenyRead: process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
     // walk `bun build --compile` makes from `/` down to its cwd lists
