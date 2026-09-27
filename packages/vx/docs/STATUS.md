@@ -557,6 +557,20 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
       selected. This item keeps two rows D-3 lacks: a deleted dependency
       named by an npm alias, and one named by a `file:` path.
 
+1085. DONE (2026-09-27, --affected review #2). Deleting `lib` while
+      `app`'s config said `dependsOn: ['lib#build']` gave `vx run build
+--affected` "nothing affected", exit 0. The full run fails with
+      "depends on lib#build but no such project", so CI went green on a
+      broken config. `AffectedArgs.taskEdges` hands the selection the
+      cross-project `dependsOn` edges, the staged load's
+      `taskEdgesFrom`, which the `--affected` walk has already built. It
+      is asked only when a package's identity moved (item 1084's names),
+      and every project whose tasks name one is selected. The probe now
+      fails loudly on that error. cli.md says so.
+      - Row: `affected.test.ts` › "a deleted package selects the projects
+        whose tasks name it in dependsOn", red without the change. Its
+        control is a plain edit, which never asks for the edges.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

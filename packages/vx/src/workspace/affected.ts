@@ -90,6 +90,13 @@ export interface AffectedArgs {
    * — the common one — never needs it.
    */
   fingerprintClaims?: () => Promise<FingerprintClaims>
+  /**
+   * The cross-project `dependsOn` edges, project → the projects its tasks
+   * name. Asked only when a package's name moved or it was removed: a
+   * config naming `dependsOn: ['lib#build']` breaks on it, which the
+   * package graph cannot see (item 1085).
+   */
+  taskEdges?: () => Promise<ReadonlyMap<string, readonly string[]>>
 }
 
 export interface FingerprintClaims {
@@ -246,7 +253,12 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   const manifests = changed.filter((rel) => path.posix.basename(rel) === 'package.json')
   if (manifests.length > 0) {
     const atBase = await gitBlobsAt(args.workspaceRoot, base, manifests)
-    const dependents = await dependentsAtBase(args.workspaceRoot, atBase, args.projects)
+    const dependents = await dependentsAtBase(
+      args.workspaceRoot,
+      atBase,
+      args.projects,
+      args.taskEdges,
+    )
     if (dependents === undefined) return new Set(args.projects.map((p) => p.name))
     for (const name of dependents) owned.add(name)
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, args.projects)) {
@@ -287,9 +299,13 @@ async function dependentsAtBase(
   workspaceRoot: string,
   atBase: ReadonlyMap<string, Uint8Array | null>,
   projects: readonly ProjectMeta[],
+  taskEdges: AffectedArgs['taskEdges'],
 ): Promise<Set<string> | undefined> {
   const byDir = new Map<string, ProjectMeta>()
   for (const p of projects) byDir.set(p.dir, p)
+  const nameNow = new Map(projects.map((p) => [p.dir, p.name]))
+  // Base names no project holds today: a removed or renamed package.
+  const gone = new Set<string>()
   const changedDirs = new Set<string>()
   for (const rel of atBase.keys()) {
     if (rel === 'package.json') {
@@ -328,6 +344,7 @@ async function dependentsAtBase(
       continue
     }
     byDir.set(dir, { name: pkg.name, dir, packageJson: pkg, configPath: null })
+    if (nameNow.get(dir) !== pkg.name) gone.add(pkg.name)
   }
   const now = buildPackageGraph([...projects])
   const then = buildPackageGraph([...byDir.values()])
@@ -338,6 +355,11 @@ async function dependentsAtBase(
     const a = now.directDeps(p.name)
     const b = then.directDeps(p.name)
     if (a.length !== b.length || a.some((d, i) => d !== b[i])) out.add(p.name)
+  }
+  if (gone.size > 0 && taskEdges !== undefined) {
+    for (const [project, targets] of await taskEdges()) {
+      if (targets.some((t) => gone.has(t))) out.add(project)
+    }
   }
   return out
 }

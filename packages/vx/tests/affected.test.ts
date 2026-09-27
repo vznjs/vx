@@ -495,6 +495,32 @@ describe('affectedProjects', () => {
     })
   }
 
+  // Item 1085: a config naming a deleted project in `dependsOn` fails its
+  // run ("no such project"), and no package edge leads to it.
+  it('a deleted package selects the projects whose tasks name it in dependsOn', async () => {
+    await mkdir(path.join(root, 'packages/lib'), { recursive: true })
+    await writeFile(path.join(root, 'packages/lib/package.json'), JSON.stringify({ name: 'lib' }))
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib')
+    let asked = 0
+    const select = () =>
+      affectedProjects({
+        workspaceRoot: root,
+        since: 'HEAD',
+        projects,
+        taskEdges: async () => {
+          asked += 1
+          return new Map([['b', ['lib']]])
+        },
+      }).then((s) => [...s].sort())
+    // Control: a change that moves no package's identity never asks.
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+    expect(await select()).toEqual(['a'])
+    expect(asked).toBe(0)
+    await rm(path.join(root, 'packages/lib'), { recursive: true })
+    expect(await select()).toEqual(['a', 'b'])
+  })
+
   it('a root `workspaces` edit selects every project (item 959)', async () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
     await git(root, 'add', '-A')
