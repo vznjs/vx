@@ -365,7 +365,14 @@ user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
 named, and is dropped before the bind (`resolveSandboxConfig` takes the
 walls): `read: ['*']` in a root project binds neither `.git` nor `.vx`,
 `packages/*` no nested project, and `write: ['.*']` is refused for no wall
-(B-1). A custom `cacheDir` inside a project is not a wall.
+(B-1). Seatbelt matches a glob as a path regex, with no hit to drop, and
+SRT re-emits a wall's deny after the allows only under a literal grant:
+a root project's `read: ['**/*.txt']` read nested projects and `.git` on
+macOS. Each wall a glob grant reaches (one at or under the glob's literal
+head) is denied at the profile's tail, reads as `file-read-data` like
+SRT's own wall denies, writes as `file-write*`, with a literal grant at
+or inside the wall carved out, a baseline's included (`darwinWallRules`,
+B-12). A custom `cacheDir` inside a project is not a wall.
 
 ## A write grant that names a file
 

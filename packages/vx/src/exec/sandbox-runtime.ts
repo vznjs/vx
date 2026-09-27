@@ -538,6 +538,8 @@ export interface ResolvedSandboxConfig {
   gitConfig?: boolean
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
+  /** macOS: the walls a glob grant reaches, by kind (`darwinWallRules`). */
+  wallsReached?: { read: readonly string[]; write: readonly string[] }
   ignore?: {
     read?: readonly string[]
     write?: readonly string[]
@@ -644,6 +646,11 @@ export function resolveSandboxConfig(
       'write',
       walls,
     ),
+  }
+  if (process.platform === 'darwin') {
+    const read = wallsGlobsReach(r.allowRead, walls)
+    const write = wallsGlobsReach(r.allowWrite, walls)
+    if (read.length + write.length > 0) r.wallsReached = { read, write }
   }
   if (a.network !== undefined) r.network = a.network
   if (cfg.deny?.network !== undefined) r.denyNetwork = cfg.deny.network
@@ -788,7 +795,10 @@ export async function wrapSandboxedCommand(
     ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
   let wrapped = await SandboxManager.wrapWithSandbox(inner, undefined, customConfig)
   if (process.platform === 'darwin') {
-    const rules = macProfileRules(args.config)
+    const rules = [
+      ...macProfileRules(args.config),
+      ...darwinWallRules(args.config, baselines.allowRead),
+    ]
     if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
   }
   // Linux: the shell execs bwrap, so bwrap is the spawn itself and its
@@ -1528,7 +1538,54 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  * that broke it learned so from its OWN tool. Measured, one task per
  * spelling, each writing files it declares:
  *
- *   write: ['g/**']         ok — collapsed to the directory
+ *   write: ['g/**
+ * The walls a glob grant can reach: each one under (or at) a glob's
+ * literal head. On Linux `expandGrants` drops such a hit before the bind
+ * (B-1); seatbelt matches a glob as a path regex, with no hit to drop.
+ */
+function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
+  const heads = grants
+    .filter((g) => !isMountableLiteral(g))
+    .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
+  return walls.filter((w) =>
+    heads.some((h) => w === h || w.startsWith(h === path.sep ? h : h + path.sep)),
+  )
+}
+
+/**
+ * macOS: the walls a glob grant reaches, denied at the profile's tail
+ * (SBPL is last-match-wins). SRT re-emits a wall's deny after the allows
+ * only under a LITERAL allow, so a root project's `read: ['**\/*.ts']`
+ * read nested projects' sources its key excludes — item 1010's stale hit,
+ * by glob, on darwin (B-12). A literal grant at or inside the wall, the
+ * task's or a baseline's (a linked dependency), is carved out: on Linux
+ * too it binds. Reads deny the data, not the metadata, as SRT's own wall
+ * denies do: a walk may still stat the directory.
+ */
+export function darwinWallRules(
+  c: Pick<ResolvedSandboxConfig, 'wallsReached' | 'allowRead' | 'allowWrite'>,
+  baseAllowRead: readonly string[],
+): string[] {
+  const rules: string[] = []
+  const deny = (op: string, walls: readonly string[], literals: readonly string[]): void => {
+    for (const w of walls) {
+      const at = `(subpath "${sbplResolvedPath(w, 'wall')}")`
+      const kept = literals
+        .filter((l) => isMountableLiteral(l) && (l === w || l.startsWith(w + path.sep)))
+        .map((l) => `(require-not (subpath "${sbplResolvedPath(l, 'grant')}"))`)
+      rules.push(
+        kept.length === 0
+          ? `(deny ${op} ${at})`
+          : `(deny ${op} (require-all ${at} ${kept.join(' ')}))`,
+      )
+    }
+  }
+  deny('file-read-data', c.wallsReached?.read ?? [], [...c.allowRead, ...baseAllowRead])
+  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite)
+  return rules
+}
+
+/**']         ok — collapsed to the directory
  *   write: ['g/a.txt']      ok — a literal is widened to its directory
  *   write: ['g/*']          FAILED: `bash: g/a.txt: Read-only file system`
  *   write: ['g/*.txt']      FAILED, same

@@ -956,6 +956,7 @@ export interface ResolvedSandboxConfig {
   gitConfig?: boolean
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
+  wallsReached?: { read: readonly string[]; write: readonly string[] }
   ignore?: {
     read?: readonly string[]
     write?: readonly string[]
