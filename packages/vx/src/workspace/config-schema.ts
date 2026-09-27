@@ -335,6 +335,16 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `${where}.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)`,
             )
           }
+          // `VITE_*` passed nothing through and loaded clean (Turbo's
+          // passThroughEnv expands it), where `cache.inputs.env` refused the
+          // same text below: one refusal for the class (item 1090).
+          const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
+          if (wild !== undefined) {
+            throw new UserError(
+              `${where}.exec.env.passThrough: wildcards in env names are not supported ` +
+                `(got "${wild}") — list explicit env var names instead`,
+            )
+          }
         }
         const define = (env as { define?: unknown }).define
         if (define !== undefined) {
