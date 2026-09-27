@@ -298,7 +298,9 @@ describe('loadProjectConfig', () => {
           cache: { inputs: { files: ['src/**'], env: ['MODE\\0x'] }, outputs: { files: [] } },
         } } }`,
       )
-      await expect(loadProjectConfig(file)).rejects.toThrow(/env.*none holding a NUL/)
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.inputs\.env must be an array of env var names \(non-empty, no '=' or NUL\)/,
+      )
     })
 
     it('rejects empty-string entries in cache.outputs.files', async () => {

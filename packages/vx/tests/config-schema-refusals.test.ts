@@ -114,6 +114,33 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(taskRefusal({ exec: { command: 'x', env: { define: { X: '1' } } } })).toBeNull()
   })
 
+  // An env name holds no `=` (the child split `A=B` into `A` = `B=x`), is
+  // not empty (dropped) and holds no NUL (the spawn failed with a hint
+  // about exit 127); a define value holds no NUL either (item 999).
+  it('an env name that no environment can hold is refused in every list', () => {
+    const define = (d: object) => taskRefusal({ exec: { command: 'x', env: { define: d } } })
+    for (const k of ['A=B', '', 'A\0B']) {
+      expect(define({ [k]: 'x' })).toBe(
+        `${CFG}: tasks.t.exec.env.define: ${JSON.stringify(k)} is not an env var name (non-empty, no '=' or NUL)`,
+      )
+    }
+    expect(define({ A: 'x\0y' })).toBe(
+      `${CFG}: tasks.t.exec.env.define.A must be a string with no NUL`,
+    )
+    for (const n of ['A=B', 'A\0B']) {
+      expect(taskRefusal({ exec: { command: 'x', env: { passThrough: [n] } } })).toBe(
+        `${CFG}: tasks.t.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)`,
+      )
+      expect(cacheRefusal({ files: [], env: [n] })).toBe(
+        `${CFG}: tasks.t.cache.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
+      )
+    }
+    // Controls: a name with no `=` or NUL, and a value holding `=`, pass.
+    expect(define({ A_B: 'x=y' })).toBeNull()
+    expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['A_B'] } } })).toBeNull()
+    expect(cacheRefusal({ files: [], env: ['A_B'] })).toBeNull()
+  })
+
   it('a null cache is refused by name, not by a TypeError from the field scan', () => {
     // A non-null non-object is refused further down (`cache.inputs is
     // required`); null alone reaches `Object.keys` and throws a raw TypeError.

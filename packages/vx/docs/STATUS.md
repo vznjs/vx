@@ -453,6 +453,19 @@ test is telling the truth.
       - Row: `schema-doc-drift.test.ts` › emits the documented symptom
         for the invalid regex. Red without the fix.
 
+999.  DONE (2026-09-27, the config-validation review's lead 5a).
+      `define: { 'A=B': 'x' }` gave the child `A` with the value `B=x`,
+      `define: { '': 'x' }` was dropped, and a NUL in a define name or
+      value failed the spawn with a wrong hint about exit 127;
+      `passThrough` took `=` and NUL too, and `cache.inputs.env` took `=`
+      (a name no environment holds, so it never moved the key).
+      - Fix (`config-schema.ts`): one `isEnvName` (non-empty, no `=`, no
+        NUL) holds the three lists and the define keys, and a define
+        value holds no NUL. `schema.md` says so.
+      - Row: `config-schema-refusals.test.ts` › an env name that no
+        environment can hold is refused in every list, with exact
+        messages and a controls line. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

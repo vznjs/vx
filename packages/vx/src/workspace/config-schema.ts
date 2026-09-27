@@ -313,12 +313,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           // A non-array here reaches `buildIsolatedEnv`'s `for (const name of
           // passThrough)` — a number throws "not iterable" mid-run, a string
           // silently char-iterates. Fail loud at load with a config pointer.
-          if (
-            !Array.isArray(passThrough) ||
-            passThrough.some((n) => typeof n !== 'string' || n.length === 0)
-          ) {
+          if (!Array.isArray(passThrough) || passThrough.some((n) => !isEnvName(n))) {
             throw new UserError(
-              `${where}.exec.env.passThrough must be an array of non-empty env var names`,
+              `${where}.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)`,
             )
           }
         }
@@ -330,8 +327,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
             )
           }
           for (const [k, val] of Object.entries(define as Record<string, unknown>)) {
-            if (typeof val !== 'string') {
-              throw new UserError(`${where}.exec.env.define.${k} must be a string`)
+            if (!isEnvName(k)) {
+              throw new UserError(
+                `${where}.exec.env.define: ${JSON.stringify(k)} is not an env var name (non-empty, no '=' or NUL)`,
+              )
+            }
+            if (typeof val !== 'string' || val.includes('\0')) {
+              throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
             }
           }
         }
@@ -428,10 +430,10 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (
           !Array.isArray(envList) ||
           // A NUL can be in no env name, and the key fold's delimiter is one.
-          envList.some((s) => typeof s !== 'string' || s.length === 0 || s.includes('\0'))
+          envList.some((s) => !isEnvName(s))
         ) {
           throw new UserError(
-            `${where}.cache.inputs.env must be an array of non-empty env var names, none holding a NUL`,
+            `${where}.cache.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
           )
         }
         for (const name of envList as string[]) {
@@ -769,6 +771,16 @@ function specForm(spec: string): SpecForm {
   const hash = spec.indexOf('#')
   if (hash === -1) return { form: 'self', task: spec }
   return { form: 'cross', project: spec.slice(0, hash), task: spec.slice(hash + 1) }
+}
+
+/**
+ * A name an environment can hold. An `=` splits at the first one, so
+ * `define: { 'A=B': 'x' }` gave the child `A` with the value `B=x`; `''`
+ * was dropped; a NUL failed the spawn with a hint about exit 127 (item
+ * 999). Refused at load, where the config is named.
+ */
+function isEnvName(name: unknown): name is string {
+  return typeof name === 'string' && name.length > 0 && !name.includes('=') && !name.includes('\0')
 }
 
 /** The graph's `*`-only task glob (`compileTaskPattern`), mirrored: `*` is the sole metacharacter. */
