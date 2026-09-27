@@ -170,6 +170,16 @@ and in any mode a server's output since ready printed raw at the end
 GitHub Actions"; every deferred frame and server tail is fenced; groups
 stay in the `full` branch. Rows: `output-flow.test.ts`.
 
+## C-16: count an uncached task a cached one folds as a reader
+
+The deferral gate skipped tasks with no `cache` block, but such a task's
+key folds every file in its project and a cached dependant folds that
+key: under `--download=none` a same-project producer was deferred, its
+outputs absent when that key was taken, and the dependant's key moved
+with the transfer flag (cli.md: "Never affects cache keys"). Such a task
+now reads its whole project in the gate; one nothing cached depends on
+does not. Row: `download-policy.test.ts`.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

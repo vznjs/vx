@@ -37,12 +37,36 @@ export type DownloadMode = 'eager' | 'deferred' | 'never'
 export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, string> {
   const ineligible = new Map<string, string>()
 
-  const readersByProject = new Map<string, { taskId: string; prefixes: string[] }[]>()
+  type Reader = { taskId: string; prefixes: string[]; via: string }
+  const readersByProject = new Map<string, Reader[]>()
+  const addReader = (n: TaskNode, prefixes: string[], via: string): void => {
+    const list = readersByProject.get(n.projectName)
+    if (list) list.push({ taskId: n.id, prefixes, via })
+    else readersByProject.set(n.projectName, [{ taskId: n.id, prefixes, via }])
+  }
+  // A task with no `cache` block keys on every file in its project, and a
+  // cached task that depends on it folds that key: deferring a producer
+  // there moved both keys with the transfer flag. Only such a task is a
+  // reader — one nothing cached folds keys nothing that lasts.
+  const folded = new Set<string>()
+  const stack = [...nodes.values()]
+    .filter((n) => n.config.cache !== undefined)
+    .flatMap((n) => n.deps)
+  for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
+    if (folded.has(id)) continue
+    folded.add(id)
+    stack.push(...(nodes.get(id)?.deps ?? []))
+  }
   let workspaceReader: string | undefined
   let runtimeReader: string | undefined
   for (const n of nodes.values()) {
     const cache = n.config.cache
-    if (cache === undefined) continue
+    if (cache === undefined) {
+      if (folded.has(n.id) && !isGroupTask(n) && n.config.exec?.persistent === undefined) {
+        addReader(n, ['.'], 'as a task with no cache block that a cached task folds')
+      }
+      continue
+    }
     if ((cache.inputs?.workspaceFiles?.length ?? 0) > 0) workspaceReader ??= n.id
     // A `runtime` input is a SHELL COMMAND whose reads are unknowable —
     // the same reason vx refuses to infer inputs by tracing. It can `cat` a
@@ -60,10 +84,11 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
       runtimeReader ??= n.id
     }
     const files = cache.inputs?.files
-    const prefixes = files === undefined || files.length === 0 ? ['.'] : files.map(staticPrefix)
-    const list = readersByProject.get(n.projectName)
-    if (list) list.push({ taskId: n.id, prefixes })
-    else readersByProject.set(n.projectName, [{ taskId: n.id, prefixes }])
+    addReader(
+      n,
+      files === undefined || files.length === 0 ? ['.'] : files.map(staticPrefix),
+      'with cache.inputs.files',
+    )
   }
 
   for (const n of nodes.values()) {
@@ -101,7 +126,7 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
       if (clash !== undefined) {
         ineligible.set(
           n.id,
-          `${reader.taskId} reads ${clash === '.' ? 'the whole project' : clash} with cache.inputs.files`,
+          `${reader.taskId} reads ${clash === '.' ? 'the whole project' : clash} ${reader.via}`,
         )
         break
       }
