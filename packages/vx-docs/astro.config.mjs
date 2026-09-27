@@ -101,6 +101,18 @@ export default defineConfig({
         replacesTitle: false,
       },
       favicon: '/favicon.svg',
+      // The card a shared link shows (X, Slack, Discord): Starlight writes
+      // og:title, og:description and twitter:card, never an image.
+      head: [
+        { tag: 'meta', attrs: { property: 'og:image', content: `${site}${root}og.png` } },
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:image:alt',
+            content: 'vx: a fast, correct task runner for JavaScript monorepos',
+          },
+        },
+      ],
       // The site's chrome: the three places in the header (and atop the phone
       // menu), the landing's fonts, and dark as the default theme.
       components: {

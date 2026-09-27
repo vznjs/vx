@@ -353,3 +353,30 @@ describe('the one picture, as data', () => {
     }
   })
 })
+
+// A link pasted into X, Slack or Discord shows a card only when the page
+// names an image by absolute URL, and a large one only with
+// `summary_large_image`. Starlight writes neither the image nor, on the
+// standalone landing, anything at all.
+describe('a shared link shows the card', () => {
+  const SITE = process.env['SITE_URL'] ?? 'https://vznjs.github.io'
+  const meta = (html: string, key: string): string[] =>
+    [...html.matchAll(new RegExp(`<meta\\b[^>]*(?:property|name)="${key}"[^>]*>`, 'g'))].map(
+      (m) => /content="([^"]*)"/.exec(m[0])![1]!,
+    )
+
+  it('the landing and a docs page name the card by absolute URL', () => {
+    const quickstart = readFileSync(path.join(DIST, 'quickstart', 'index.html'), 'utf8')
+    for (const html of [page(), quickstart]) {
+      expect(meta(html, 'og:image')).toEqual([`${SITE}${BASE}og.png`])
+      expect(meta(html, 'twitter:card')).toEqual(['summary_large_image'])
+    }
+    expect(meta(page(), 'og:title')).toEqual(['vx — Bend time. Not the rules.'])
+  })
+
+  it('the card is a 1200×630 PNG', () => {
+    const png = readFileSync(path.join(DIST, 'og.png'))
+    expect(png.subarray(1, 4).toString()).toBe('PNG')
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
+  })
+})

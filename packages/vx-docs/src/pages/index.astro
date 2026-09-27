@@ -13,6 +13,11 @@ import '../styles/landing.css'
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
+const TITLE = 'vx — Bend time. Not the rules.'
+const DESCRIPTION =
+  'A fast, correct task runner and cache for JavaScript monorepos. MIT, no paywall, no cloud, no account.'
+// Absolute, as a link preview fetches it from wherever the link was pasted.
+const siteUrl = new URL(base, Astro.site).href
 
 /** A callout's line, each backticked span as code. */
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -162,11 +167,15 @@ const footCols = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>vx — Bend time. Not the rules.</title>
-    <meta
-      name="description"
-      content="A fast, correct task runner and cache for JavaScript monorepos. MIT, no paywall, no cloud, no account."
-    />
+    <title>{TITLE}</title>
+    <meta name="description" content={DESCRIPTION} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={siteUrl} />
+    <meta property="og:title" content={TITLE} />
+    <meta property="og:description" content={DESCRIPTION} />
+    <meta property="og:image" content={`${siteUrl}og.png`} />
+    <meta property="og:image:alt" content="vx: a fast, correct task runner for JavaScript monorepos" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
