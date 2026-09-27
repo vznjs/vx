@@ -17,9 +17,11 @@ export default defineWorkspace({
 ```
 
 `ReapiRemoteCache` is the layer class behind `reapi()`, for a workspace that
-composes cache layers by hand. With no endpoint configured the plugin
-**declines** and costs nothing, so it is
-safe to leave declared. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
+composes cache layers by hand. With no endpoint configured (or a blank
+one) the plugin **declines** and costs nothing, so it is
+safe to leave declared. An endpoint that is not `host[:port]`, with an
+optional `grpc(s)://` or `http(s)://` scheme, is refused at startup with a
+line naming the setting. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
 from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
 build runs merely by being configured for caching).
