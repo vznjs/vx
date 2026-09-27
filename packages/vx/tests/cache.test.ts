@@ -1595,7 +1595,9 @@ describe('Cache storage (v10)', () => {
     }
     const names = [
       'release.tar.zst',
-      '0123456789ABCDEF.tar.zst',
+      // Distinct from the reaped names below even to a case-insensitive
+      // file system (APFS): the same letters in upper case were one file.
+      'FEDCBA9876543210.tar.zst',
       '0123456789abcde.tar.zst',
       '0123456789abcdef0.tar.zst',
       'backup-0123456789abcdef.tar.zst',
