@@ -639,6 +639,15 @@ test is telling the truth.
         Remounting the punched ancestor read-only needs a bwrap argument
         SRT does not emit; not pursued here.
 
+1012. DONE (2026-09-27, the run-history review's lead 5, documented).
+      Two worktrees sharing a `--cache-dir` share one history: `vx why`
+      in one named the other's edit as "changed file", and `vx last`
+      showed the other's run, with only the branch to tell them apart.
+      - Fix (`cli.md`): says history is the cache directory's, not the
+        checkout's. Scoping it by workspace would need a column on
+        `invocations` and a `SCHEMA_VERSION` bump that drops every index;
+        a shared cache is a choice the user makes, so the note is the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
