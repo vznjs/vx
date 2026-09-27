@@ -177,3 +177,9 @@ A persistent task had no key on any path, so a cached dependant folded nothing o
 - Fix: a persistent task is keyed as a task with no `cache` (its whole project), on every key path: the live one (`executePersistentTask`, skipped when nothing depends on it), stable keys, the plan, excluded keys and the sandbox's keyed projects. Chosen over a refusal: it is the rule an uncached upstream already follows, and `cache.inputs.tasks` opts out. Docs: `caching.md`, `modules/{keyed-projects,plan,stable-keys,excluded-keys,cache}.md`.
 - Rows: `stale-hit.test.ts` › "a cached dependant of a persistent task re-runs when the server's sources change", red without the fix. Three rows that pinned the old rule flipped (`keyed-projects` R3 and R4, `in-run-writes` › through a persistent task).
 - Folded in (coordinator lead): three `workspace-files.test.ts` partition rows went red outside the sandbox under a global `core.checkStat=minimal` or `core.trustctime=false` (A-6 drops OIDs there). The fixture sets both locally; `process.env.GIT_CONFIG_GLOBAL` would not reach a git spawned without `env`.
+
+### A-18 (2026-09-27, coordinator lead)
+
+A host git config with `core.checkStat=minimal` or `core.trustctime=false` turned trusted-OID fixture rows red outside the gate (`workspace-files`, `git-subdir-workspace`). Pinning `GIT_CONFIG_GLOBAL` in a helper cannot fix the class: a spawned git reads the process's startup environment, so `process.env` set in a preload or a test reaches no child (probed on Bun 1.4.2), and 79 files run `git init` in a dozen spellings.
+
+- Fix: `bunfig.toml` preloads `tests/helpers/git-hermetic.ts`, which refuses a bare `bun test` under such a config and names the env to run with. The gate's test tasks add `GIT_CONFIG_NOSYSTEM=1` to `GIT_CONFIG_GLOBAL=/dev/null`. No git (a sandboxed shard): no check.
