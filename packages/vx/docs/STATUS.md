@@ -624,7 +624,6 @@ test is telling the truth.
       - Rows: `sandbox-request.test.ts` › a root project stops at the
         walls (the punch, both write refusals, a leaf project and a named
         wall as controls). Red without the fix.
-
 1011. DONE (2026-09-27, the sandbox-grants review's lead 4, documented).
       With `read: ['.']` and `write: ['dist/']` in a multi-package
       workspace, a new file at the project root (`undeclared.txt`,
@@ -740,6 +739,23 @@ cancelled`; bazel-remote logged the 1 MiB write `context canceled`
         red without the fix; the early-CANCELLED control is red if any
         CANCELLED downgrades; the single-message control stays.
 
+1018. DONE (2026-09-27, the owner's "each time we merge we should have
+      an auto release"). `.github/workflows/auto-release.yml` runs when CI
+      completes green on a push to `main`: it tags the commit with the next
+      patch version, creates the GitHub release (notes from the merged PR
+      titles) and dispatches `release.yml` and `npm.yml`, because a release
+      the workflow token creates fires no `release` event. `release.yml`
+      takes the tag as a dispatch input. Only main's current tip is
+      released (a slower CI run for an older commit skips), and a commit
+      already tagged is skipped. `tests/auto-release.unsafe.test.ts` reads
+      the three workflow files: the trigger names the workflow `ci.yml`
+      calls itself, the green-push guard, the two skips, the job's two
+      grants, and every `-f` input a dispatch passes is one its target
+      declares (red with `release.yml`'s `tag` input renamed). Written in a
+      container whose Bun had been replaced (item 779's hazard), so CI was
+      this change's gate; the rows were checked against the files with a
+      YAML 1.1 reader first. `docs/cli.md` § Releasing.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
@@ -761,7 +777,9 @@ by 2026-09-10 (`docs/history/2026-09-status-next-log.md`); the fifth,
 macOS violation reporting being lossy under load, is a recorded decision
 since item 586 (Decisions below), not an open item.
 
-**Releases.** v0.0.21 is on npm, the four platform packages with it
+**Releases.** Every green merge to main releases itself (item 1018,
+`auto-release.yml`); the first auto-released version is the next patch
+after v0.0.21. v0.0.21 is on npm, the four platform packages with it
 (2026-09-15, handoff 14d in the history file), published through
 `npm.yml`, which reads no secret and sets no token — its publish is the
 OIDC exchange or nothing — so the trusted publishers on npmjs.com are in
