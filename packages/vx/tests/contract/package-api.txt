@@ -1,0 +1,1447 @@
+== class Cache (src/cache/cache.ts)
+export class Cache implements CacheLayer {
+  readonly hasRemote
+  readonly schemaReset: SchemaReset | null
+  readonly formatChange: SchemaReset | null
+  static inspect(cacheDir: string): Cache
+  constructor(
+    private readonly cacheDir: string,
+    localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
+    repoDir?: string,
+    private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+    mode: 'open' | 'inspect' = 'open',
+  )
+  getConfigEval(key: string): string | null
+  getConfigClosures(configPaths: readonly string[]): Map<string, string[]>
+  putConfigClosure(configPath: string, files: readonly string[]): void
+  getConfigEvals(keys: readonly string[]): Map<string, string>
+  putConfigEval(key: string, json: string): void
+  putConfigEvals(entries: ReadonlyArray<readonly [string, string]>): void
+  putConfigClosures(entries: ReadonlyArray<readonly [string, readonly string[]]>): void
+  hashFile(filePath: string): Promise<string>
+  hashBytes(bytes: Uint8Array, nearPath: string): string
+  hashFiles(paths: readonly string[]): Promise<Map<string, string>>
+  key(input: CacheKeyInput): Promise<string>
+  async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null>
+  getIngested(hash: string): Promise<CacheEntry | null>
+  async getMany(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  async has(hash: string): Promise<'local' | 'remote' | null>
+  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  outputsPath(hash: string): string
+  async recordOutputDirs(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+  ): Promise<void>
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  assertWritable(): void
+  async save(args: {
+    hash: string
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
+    projectDir: string
+    outputFiles: string[]
+    skipLocalWrite?: boolean
+    workspaceOutputFiles?: string[]
+    workspaceRoot?: string
+    inputComponents?: readonly TaskInputRow[]
+  }): Promise<void>
+  get localWritesEnabled(): boolean
+  packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
+  async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
+  dbHandle(): Database
+  recordRun(run: RunRecord): void
+  recordRuns(runs: readonly RunRecord[]): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  stats(opts: CacheStatsOptions = {}): CacheStats
+  async evictIfDue(
+    policy: { maxAgeMs?: number; maxBytes?: number },
+    now: number = Date.now(),
+  ): Promise<PruneResult | null>
+  async prune(options: PruneOptions): Promise<PruneResult>
+  async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
+  close(): void
+}
+== class FingerprintWatch (src/orchestrator/fingerprint-watch.ts)
+export class FingerprintWatch {
+  constructor(
+    private readonly workspaceRoot: string,
+    private readonly read: WorkspaceFingerprints,
+    private readonly at: number,
+  ) {}
+  wrote(): void
+  moved(): readonly string[] | undefined
+  say(log: Logger): void
+}
+== class GitFilesCache (src/cache/git-inputs.ts)
+export class GitFilesCache extends Map<string, readonly string[]> {
+  enumeratedAtMs: number | undefined
+  get undecodableNames(): ReadonlySet<string>
+  markUndecodable(absPaths: readonly string[]): void
+  setWorkspaceRoot(root: string): void
+  get worktreeDirty(): boolean | null
+  setWorktreeDirty(dirty: boolean | null): void
+  markOutputsChanged(projectDir: string, relPaths: readonly string[]): void
+  markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
+  invalidateWorkspacePartition(): void
+  oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
+  setOids(projectDir: string, oids: Map<string, string>): void
+  snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
+  override set(key: string, value: readonly string[]): this
+  override delete(key: string): boolean
+  override clear(): void
+}
+== class LayeredCache (src/cache/layered-cache.ts)
+export class LayeredCache implements CacheLayer {
+  readonly hasRemote
+  constructor(
+    readonly local: Cache,
+    private readonly remote: RemoteCacheLayer,
+    private readonly options: LayeredCacheOptions = {},
+  )
+  key(input: CacheKeyInput): Promise<string>
+  async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
+  async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null>
+  markRemoteAbsent(hashes: Iterable<string>): void
+  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
+  async has(hash: string): Promise<'local' | 'remote' | null>
+  outputsPath(hash: string): string
+  hashFile(filePath: string): Promise<string>
+  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  async save(args: SaveArgs): Promise<void>
+  async drainUploads(): Promise<void>
+  async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void>
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  stats(opts?: CacheStatsOptions): CacheStats
+  prune(options: PruneOptions): Promise<PruneResult>
+  close(): void
+}
+== class LocalHistoryProvider (src/orchestrator/history.ts)
+export class LocalHistoryProvider implements HistoryProvider {
+  constructor(
+    private readonly db: Database,
+    private readonly recent: number = DEFAULT_RECENT,
+  ) {}
+  async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+}
+== class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
+export class TaskLogBuffer {
+  append(taskId: string, chunk: string): void
+  finish(taskId: string, status: TaskStatus, cacheSource: CacheSource, hash?: string): void
+  takeEntry(taskId: string): TaskLogEntry | undefined
+  drain(runId: string, workspaceId: string): TaskLogBundle
+  size(): number
+  budgetUsed(): number
+}
+== class UserError (src/util/errors.ts)
+export class UserError extends Error {
+  constructor(message: string)
+}
+== const LOG_WIRE_VERSION (src/orchestrator/task-log-buffer.ts)
+export const LOG_WIRE_VERSION = 1
+== const PERSISTENT_TASK_NAMES (src/workspace/migration.ts)
+export const PERSISTENT_TASK_NAMES: ReadonlySet<string> = new Set([
+  'dev',
+  'start',
+  'serve',
+  'watch',
+  'preview',
+])
+== const PERSISTENT_TODO (src/workspace/migration.ts)
+export const PERSISTENT_TODO =
+  'persistent task — set persistent.readyWhen (regex matched against output) so ' +
+  'dependents unblock on readiness, and consider exec.timeout to bound the wait'
+== const PLUGIN_HOOKS (src/config.ts)
+export const PLUGIN_HOOKS = [
+  'config',
+  'project',
+  'graph',
+  'key',
+  'fingerprint',
+  'schedule',
+  'admit',
+  'executor',
+  'cache',
+  'telemetry',
+  'setup',
+  'commands',
+  'teardown',
+] as const
+== const TASK_STATUSES (src/orchestrator/telemetry.ts)
+export const TASK_STATUSES: readonly TaskStatus[] = Object.keys(PASSES) as TaskStatus[]
+== const TELEMETRY_SCHEMA_VERSION (src/orchestrator/telemetry.ts)
+export const TELEMETRY_SCHEMA_VERSION = 3
+== const VERSION (src/version.ts)
+export const VERSION: string = pkg.version
+== function applyMigration (src/workspace/migration.ts)
+export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
+== function buildPackageGraph (src/workspace/package-graph.ts)
+export function buildPackageGraph(
+  projects: ProjectMeta[],
+  taskEdges?: ReadonlyMap<string, readonly string[]>,
+): PackageGraph
+== function clampInt (src/util/num.ts)
+export function clampInt(n: number, min: number, max: number): number
+== function collectInfo (src/orchestrator/doctor.ts)
+export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): Promise<InfoFacts>
+== function definePlugin (src/orchestrator/plugin.ts)
+export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
+== function defineProject (src/config.ts)
+export function defineProject<const T extends ProjectConfig>(
+  config: T & {
+    tasks?: {
+      [K in keyof NonNullable<T['tasks']>]?: {
+        dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+      }
+    }
+  },
+): T
+== function defineWorkspace (src/config.ts)
+export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
+== function deriveCacheSource (src/orchestrator/telemetry.ts)
+export function deriveCacheSource(status: TaskStatus): CacheSource
+== function escapeMarkdownCell (src/orchestrator/run-report.ts)
+export function escapeMarkdownCell(value: string): string
+== function exitSignal (src/exec/runner.ts)
+export function exitSignal(code: number): string | undefined
+== function findWorkspaceRoot (src/workspace/workspace.ts)
+export async function findWorkspaceRoot(
+  start: string,
+  reads: LoadReads = new Map(),
+): Promise<string>
+== function foldScriptHooks (src/workspace/migration.ts)
+export function foldScriptHooks(
+  pre: string | undefined,
+  body: string,
+  post: string | undefined,
+): string
+== function isCacheHit (src/orchestrator/telemetry.ts)
+export function isCacheHit(status: string): boolean
+== function isLiteralPattern (src/util/paths.ts)
+export function isLiteralPattern(glob: string): boolean
+== function isPassStatus (src/orchestrator/telemetry.ts)
+export function isPassStatus(status: string): boolean
+== function isUserError (src/util/errors.ts)
+export function isUserError(err: unknown): err is UserError
+== function latestRunId (src/orchestrator/metrics.ts)
+export function latestRunId(db: Database, taskId: string): string | null
+== function listProjects (src/workspace/workspace.ts)
+export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
+== function loadProjectConfig (src/workspace/project-loader.ts)
+export async function loadProjectConfig(
+  configPath: string,
+  opts?: LoadProjectConfigOptions,
+): Promise<ProjectConfig>
+== function loadResolvedProjects (src/orchestrator/projects.ts)
+export async function loadResolvedProjects(
+  workspaceRoot: string,
+  opts: { scope?: 'all' | readonly string[]; warn?: (message: string) => void } = {},
+): Promise<Map<string, ProjectEntry>>
+== function loadWorkspace (src/workspace/workspace.ts)
+export async function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
+== function lockfileClaim (src/orchestrator/lockfile-claim.ts)
+export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
+== function machineMemoryBytes (src/util/cgroup.ts)
+export function machineMemoryBytes(probe: CgroupProbe = {}): number
+== function machineParallelism (src/util/cgroup.ts)
+export function machineParallelism(probe: CgroupProbe = {}): number
+== function nearMatches (src/util/edit-distance.ts)
+export function nearMatches(name: string, candidates: Iterable<string>, limit = 3): string[]
+== function normalizeGlob (src/util/paths.ts)
+export function normalizeGlob(glob: string): string
+== function outputsOverlap (src/graph/task-graph.ts)
+export function outputsOverlap(rawA: string, rawB: string): boolean
+== function planRun (src/orchestrator/run.ts)
+export async function planRun(options: RunOptions): Promise<RunPlan>
+== function prepareRun (src/orchestrator/prepare.ts)
+export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+== function quoteTsLiteral (src/workspace/migration.ts)
+export function quoteTsLiteral(s: string): string
+== function reachDigests (src/orchestrator/lockfile-claim.ts)
+export function reachDigests(g: ReachGraph): string[]
+== function run (src/orchestrator/run.ts)
+export async function run(options: RunOptions): Promise<RunSummary>
+== function splitTaskId (src/util/task-id.ts)
+export function splitTaskId(id: string): [project: string, task: string]
+== function whyDidThisRerun (src/orchestrator/metrics.ts)
+export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
+== type AdmitContext (src/orchestrator/plugin.ts)
+export interface AdmitContext {
+  readonly running: readonly TaskNode[]
+  readonly concurrency: number
+}
+== type ApplyMigrationArgs (src/workspace/migration.ts)
+export interface ApplyMigrationArgs {
+  root: string
+  metas: readonly ProjectMeta[]
+  plan: MigrationPlan
+  source: string
+  verb: string
+  dry: boolean
+  force: boolean
+  init?: boolean
+  notes?: readonly string[]
+  format?: MigrationFormat
+}
+== type BaseContext (src/orchestrator/plugin.ts)
+interface BaseContext {
+  readonly workspaceRoot: string
+  readonly cacheDir: string
+  warn(message: string): void
+}
+== type CacheConfig (src/config.ts)
+export interface CacheConfig {
+  inputs: CacheInputs
+  outputs: CacheOutputs
+}
+== type CacheContext (src/orchestrator/plugin.ts)
+export interface CacheContext extends BaseContext {
+  readonly localCache: Cache
+  readonly policy: CachePolicy
+}
+== type CacheEntry (src/cache/layer.ts)
+export interface CacheEntry {
+  hash: string
+  taskId: string
+  command: string
+  exitCode: number
+  durationMs: number
+  cpuMs?: number
+  peakRssBytes?: number
+  outputFiles: string[]
+  outputRows?: OutputFileRow[]
+  outputDirRows?: OutputDirRow[]
+  stdout: string
+  storedAt: string
+  source?: 'local' | 'remote'
+}
+== type CacheGetContext (src/cache/layer.ts)
+export interface CacheGetContext {
+  taskId: string
+  command: string
+  outputs?: DeclaredOutputs
+}
+== type CacheInputs (src/config.ts)
+export interface CacheInputs {
+  files: string[]
+  workspaceFiles?: string[]
+  env?: string[]
+  tasks?: readonly string[]
+  runtime?: string[]
+  workspaceRuntime?: string[]
+}
+== type CacheKeyInput (src/cache/layer.ts)
+export interface CacheKeyInput {
+  taskId: string
+  taskConfigHash: string
+  envValues: Array<[name: string, value: string | undefined]>
+  runtimeValues?: Array<[command: string, output: string]>
+  workspaceRuntimeValues?: Array<[command: string, output: string]>
+  inputFiles: string[]
+  workspaceRoot: string
+  upstreamHashes: string[]
+  upstreamIds?: ReadonlyMap<string, string>
+  upstreamGraft?: ReadonlyArray<{
+    readonly taskId: string
+    readonly hash: string
+    readonly projectDir: string
+  }>
+  workspaceFingerprint: string
+  forwardArgs?: readonly string[]
+  projectPackageJsonHash: string
+  fileHashes?: ReadonlyMap<string, string>
+  pluginParts?: ReadonlyArray<readonly [name: string, value: string]>
+  captureInto?: Array<{ kind: string; name: string; hash: string }>
+}
+== type CacheLayer (src/cache/layer.ts)
+export interface CacheLayer {
+  readonly local?: Cache | undefined
+  readonly hasRemote?: boolean
+  remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  markRemoteAbsent?(hashes: Iterable<string>): void
+  drainUploads?(): Promise<void>
+  key(input: CacheKeyInput): Promise<string>
+  get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
+  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  has(hash: string): Promise<'local' | 'remote' | null>
+  prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  recordOutputDirs?(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void>
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  save(args: {
+    hash: string
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
+    projectDir: string
+    outputFiles: string[]
+    skipLocalWrite?: boolean
+    workspaceOutputFiles?: string[]
+    workspaceRoot?: string
+    inputComponents?: readonly TaskInputRow[]
+  }): Promise<void>
+  ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  stats(opts?: CacheStatsOptions): CacheStats
+  hashFile(filePath: string): Promise<string>
+  outputsPath(hash: string): string
+  prune(options: PruneOptions): Promise<PruneResult>
+  close(): void
+}
+== type CacheOutputs (src/config.ts)
+export interface CacheOutputs {
+  files: string[]
+  workspaceFiles?: string[]
+}
+== type CachePolicy (src/cache/policy.ts)
+export interface CachePolicy {
+  localRead: boolean
+  localWrite: boolean
+  remoteRead: boolean
+  remoteWrite: boolean
+}
+== type CacheSource (src/orchestrator/telemetry.ts)
+export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
+== type CacheStats (src/cache/layer.ts)
+export interface CacheStats {
+  entryCount: number
+  totalBytes: number
+  runCountLast24h: number
+  hitCountLast24h: number
+}
+== type CacheStatsOptions (src/cache/layer.ts)
+export interface CacheStatsOptions {
+  project?: string
+}
+== type CacheStatus (src/orchestrator/plan.ts)
+export type CacheStatus =
+  | 'hit-local'
+  | 'hit-remote'
+  | 'miss'
+  | 'no-cache'
+  | 'group'
+== type CaptureConfig (src/exec/runner.ts)
+export interface CaptureConfig {
+  stdout?: boolean
+  stderr?: boolean
+}
+== type CgroupProbe (src/util/cgroup.ts)
+export interface CgroupProbe {
+  readonly root?: string
+  readonly procSelfCgroup?: string
+}
+== type CiContext (src/orchestrator/run-context.ts)
+export interface CiContext {
+  ci: boolean
+  provider: string | null
+}
+== type CollectInfoOptions (src/orchestrator/doctor.ts)
+export interface CollectInfoOptions {
+  readonly cacheDir?: string
+  readonly warn?: (message: string) => void
+}
+== type CommandContext (src/orchestrator/plugin.ts)
+export interface CommandContext extends BaseContext {}
+== type ConfigEvalStore (src/workspace/config-cache.ts)
+export interface ConfigEvalStore {
+  hashFile?(file: string): Promise<string>
+  hashFiles?(files: readonly string[]): Promise<Map<string, string>>
+  hashBytes?(bytes: Uint8Array, nearPath: string): string
+  getConfigClosures?(configPaths: readonly string[]): Map<string, string[]>
+  putConfigClosure?(configPath: string, files: readonly string[]): void
+  putConfigClosures?(entries: ReadonlyArray<readonly [string, readonly string[]]>): void
+  getConfigEval(key: string): string | null
+  getConfigEvals?(keys: readonly string[]): Map<string, string>
+  putConfigEval(key: string, json: string): void
+  putConfigEvals?(entries: ReadonlyArray<readonly [string, string]>): void
+}
+== type ContinueMode (src/graph/scheduler.ts)
+export type ContinueMode = 'never' | 'deps-ok' | 'always'
+== type DeclaredOutputs (src/cache/layer.ts)
+export interface DeclaredOutputs {
+  files: readonly string[]
+  workspaceFiles: readonly string[]
+}
+== type DependsOnEntry (src/config.ts)
+type DependsOnEntry<K extends string> =
+  | K
+  | `^${string}`
+  | `${string}#${string}`
+  | `${string}*${string}`
+== type EventBus (src/orchestrator/events.ts)
+export interface EventBus {
+  emit(event: RunEvent): void
+  subscribe(subscriber: RunEventSubscriber): () => void
+}
+== type ExecConfig (src/config.ts)
+export interface ExecConfig {
+  command: string
+  remote?: boolean | 'only'
+  env?: ExecEnv
+  timeout?: number
+  retries?: number
+  persistent?: PersistentConfig
+  sandbox?: SandboxConfig
+}
+== type ExecEnv (src/config.ts)
+export interface ExecEnv {
+  passThrough?: string[]
+  define?: Record<string, string>
+}
+== type ExecuteRequest (src/exec/executor.ts)
+export interface ExecuteRequest {
+  readonly taskId: string
+  readonly workspaceRoot: string
+  readonly inputs?: TaskInputs
+  readonly cacheKey?: string
+  readonly refresh?: boolean
+  readonly remoteOnly?: boolean
+  readonly download?: 'eager' | 'deferred'
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
+  readonly command: string
+  readonly forwardArgs: readonly string[]
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  readonly envDefine: Readonly<Record<string, string>>
+  readonly capture: CaptureConfig
+  readonly timeoutMs?: number
+  readonly onStdout: (chunk: string) => void
+  readonly onStderr: (chunk: string) => void
+  readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  readonly sandbox?: ExecuteSandbox
+}
+== type ExecuteResult (src/exec/executor.ts)
+export interface ExecuteResult extends RunResult {
+  readonly violations: readonly SandboxViolation[]
+  readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
+  readonly where?: string
+}
+== type ExecuteSandbox (src/exec/executor.ts)
+export interface ExecuteSandbox {
+  readonly baseAllowRead: readonly string[]
+  readonly baseDenyRead: readonly string[]
+  readonly reportWithin: string
+  readonly reportLinked: readonly string[]
+  readonly config: ResolvedSandboxConfig
+}
+== type ExecutorContext (src/orchestrator/plugin.ts)
+export interface ExecutorContext extends BaseContext {
+  readonly concurrency: number
+}
+== type FailureMode (src/orchestrator/failure-mode.ts)
+export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
+== type FingerprintChange (src/orchestrator/plugin.ts)
+export interface FingerprintChange {
+  readonly file: string
+  readonly before: Uint8Array | null
+  readonly after: Uint8Array | null
+}
+== type FingerprintClaim (src/orchestrator/plugin.ts)
+export interface FingerprintClaim {
+  readonly files: readonly string[]
+  affected(
+    change: FingerprintChange,
+    ctx: FingerprintContext,
+  ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
+}
+== type FingerprintContext (src/orchestrator/plugin.ts)
+export interface FingerprintContext extends BaseContext {
+  readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
+}
+== type FlakyTask (src/orchestrator/failure-mode.ts)
+export interface FlakyTask {
+  taskId: string
+  project: string
+  task: string
+  keys: number
+  passes: number
+  failures: number
+}
+== type GeneratedProject (src/workspace/migration.ts)
+export interface GeneratedProject {
+  name: string
+  dir: string
+  importLines: string[]
+  tasks: GeneratedTask[]
+}
+== type GeneratedTask (src/workspace/migration.ts)
+export interface GeneratedTask {
+  name: string
+  todos: string[]
+  task: Record<string, unknown> | null
+}
+== type GitContext (src/orchestrator/run-context.ts)
+export interface GitContext {
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+}
+== type GraphHookContext (src/orchestrator/plugin.ts)
+export interface GraphHookContext extends BaseContext {
+  readonly requested: readonly string[]
+}
+== type HashCache (src/orchestrator/task-hash.ts)
+export interface HashCache {
+  packageJson: Map<string, Promise<string>>
+  taskConfig: WeakMap<TaskConfig, string>
+  runtime: Map<string, Promise<string>>
+  workspaceRuntime: Map<string, Promise<string>>
+  workspaceFiles: WorkspaceFilesCache
+  projectFiles: ProjectFilesCache
+}
+== type HeldPersistent (src/orchestrator/options.ts)
+export interface HeldPersistent {
+  ids: readonly string[]
+  stop(signal?: 'SIGINT' | 'SIGTERM'): Promise<void>
+}
+== type HistoryProvider (src/orchestrator/history.ts)
+export interface HistoryProvider {
+  loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+}
+== type HistoryTable (src/orchestrator/history.ts)
+export type HistoryTable = ReadonlyMap<string, TaskHistory>
+== type HostContext (src/orchestrator/run-context.ts)
+export interface HostContext {
+  host: string | null
+  os: string
+  arch: string
+}
+== type InfoFacts (src/orchestrator/doctor.ts)
+export interface InfoFacts {
+  vx: string
+  bun: string
+  bunSupported: boolean
+  git: string | null
+  gitStatusCache: { fsmonitor: boolean; untrackedCache: boolean } | null
+  workspaceRoot: string
+  projects: number
+  tasks: number
+  configErrors: Array<{ path: string; message: string }>
+  plugins: Array<{ name: string; seams: string[] }>
+  workers: {
+    count: number
+    source: 'workspace' | 'cgroup' | 'cores'
+    cores: number
+    cpuQuota: number | null
+  }
+  memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
+  cacheDir: string
+  cacheVersion: string
+  schemaVersion: string
+  cacheEntries: number
+  cacheBytes: number
+  orphans: { artifacts: number; bytes: number }
+  runs24h: number
+  hits24h: number
+  flakyTasks: FlakyTask[]
+  lockfile: boolean
+  sandbox: { available: boolean; reason: string; declared: number }
+}
+== type IngestMeta (src/cache/layer.ts)
+export interface IngestMeta {
+  taskId: string
+  command: string
+  durationMs: number
+  inputComponents?: readonly TaskInputRow[]
+  outputs?: DeclaredOutputs
+}
+== type InputFile (src/exec/executor.ts)
+export interface InputFile {
+  readonly path: string
+  readonly digest: string
+}
+== type InvocationRecord (src/cache/layer.ts)
+export interface InvocationRecord {
+  runId: string
+  command: string
+  requestedTasks: string
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+  tags: string
+}
+== type KeyHookContext (src/orchestrator/plugin.ts)
+export interface KeyHookContext extends BaseContext {}
+== type LayeredCacheOptions (src/cache/layered-cache.ts)
+export interface LayeredCacheOptions {
+  onRemoteError?: (err: Error) => void
+  policy?: CachePolicy
+}
+== type LoadProjectConfigOptions (src/workspace/project-loader.ts)
+export interface LoadProjectConfigOptions {
+  fresh?: boolean
+  evalCache?: { store: ConfigEvalStore; workspaceRoot?: string; workspaceFingerprint: string }
+}
+== type LoadReads (src/workspace/load-reads.ts)
+export type LoadReads = Map<string, Promise<Uint8Array | null>>
+== type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
+export interface LockfileClaimHooks {
+  readonly fingerprint: FingerprintClaim
+  key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
+}
+== type LockfileClaimOptions (src/orchestrator/lockfile-claim.ts)
+export interface LockfileClaimOptions {
+  readonly file: string
+  readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
+  readonly extraFiles?: (text: string) => readonly string[]
+  readonly version: number
+  readonly scope?: 'project' | 'workspace'
+  readonly part?: string
+}
+== type Logger (src/orchestrator/logger.ts)
+export interface Logger {
+  status(line: string): void
+  taskStdout(node: TaskNode, chunk: string): void
+  taskStderr(node: TaskNode, chunk: string): void
+  taskComplete(node: TaskNode, outcome: TaskOutcome): void
+  runStart?(info: {
+    total: number
+    concurrency?: number
+    requestedCount?: number
+    context?: RunContext
+    startedAtMs?: number
+  }): void
+  taskStart?(node: TaskNode): void
+  runEnd?(): void
+}
+== type MigrationFormat (src/workspace/migration.ts)
+export type MigrationFormat = 'ts' | 'mjs'
+== type MigrationPlan (src/workspace/migration.ts)
+export interface MigrationPlan {
+  headerNotes: string[]
+  projects: GeneratedProject[]
+  extraFiles: { relPath: string; contents: string }[]
+  notes: string[]
+}
+== type OutcomeView (src/orchestrator/events.ts)
+export interface OutcomeView {
+  taskId: string
+  status: TaskOutcome['status']
+  exitCode: number
+  durationMs: number
+  isGroup?: boolean
+  noCache?: boolean
+  storedDurationMs?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  hash?: string
+  cpuMs?: number
+  peakRssBytes?: number
+  timedOut?: true
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  blockedBy?: string
+  admissionHeldMs?: number
+  restored?: boolean
+  sandboxViolations?: number
+  sandboxViolationLines?: string[]
+  wallclockStartNs?: string
+  wallclockEndNs?: string
+}
+== type OutputDirRow (src/cache/layer.ts)
+export interface OutputDirRow {
+  path: string
+  mtimeMs: number
+}
+== type OutputFileRow (src/cache/layer.ts)
+export interface OutputFileRow {
+  path: string
+  size: number
+  mode: number
+  mtimeMs: number
+  ino?: number
+  ctimeMs?: number
+}
+== type OutputView (src/orchestrator/logger.ts)
+export interface OutputView {
+  mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
+  gha?: boolean
+  ci?: boolean
+}
+== type PackageGraph (src/workspace/package-graph.ts)
+export interface PackageGraph {
+  directDeps: (name: string) => string[]
+  transitiveDeps: (name: string) => string[]
+  transitiveDependents: (name: string) => string[]
+}
+== type PackageJson (src/workspace/workspace.ts)
+export interface PackageJson {
+  name: string
+  version?: string
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+  workspaces?: string[] | { packages?: string[] }
+}
+== type PersistentConfig (src/config.ts)
+export interface PersistentConfig {
+  readyWhen?: string
+}
+== type PlannedTask (src/orchestrator/plan.ts)
+export interface PlannedTask {
+  node: TaskNode
+  hash: string
+  cacheStatus: CacheStatus
+  deps: readonly string[]
+  p50Ms?: number
+  executor?: string
+  download?: 'deferred'
+}
+== type PlanPrediction (src/orchestrator/plan.ts)
+export interface PlanPrediction {
+  wallMs: number
+  workMs: number
+  unknownCount: number
+}
+== type Plugin (src/config.ts)
+export interface Plugin {
+  readonly name: string
+  config?(workspace: unknown, ctx: unknown): unknown
+  project?(config: unknown, ctx: unknown): unknown
+  graph?(nodes: unknown, ctx: unknown): unknown
+  key?(task: unknown, ctx: unknown): unknown
+  schedule?(nodes: unknown, ctx: unknown): unknown
+  admit?(task: unknown, ctx: unknown): unknown
+  readonly commands?: Readonly<Record<string, unknown>>
+  cache?(ctx: unknown): unknown
+  executor?(ctx: unknown): unknown
+  telemetry?(ctx: unknown): unknown
+  setup?(ctx: unknown): void | Promise<void>
+  teardown?(): void | Promise<void>
+  readonly fingerprint?: unknown
+}
+== type PluginCommand (src/orchestrator/plugin.ts)
+export interface PluginCommand {
+  readonly description: string
+  run(argv: readonly string[], ctx: CommandContext): number | Promise<number>
+}
+== type PluginHook (src/config.ts)
+export type PluginHook = (typeof PLUGIN_HOOKS)[number]
+== type PluginHooks (src/orchestrator/plugin.ts)
+export type PluginHooks = Omit<VxPlugin, 'name'>
+== type PluginOrigin (src/orchestrator/plugin.ts)
+export interface PluginOrigin {
+  readonly dir?: string
+  readonly url?: string
+}
+== type PluginSetupContext (src/orchestrator/plugin.ts)
+export interface PluginSetupContext extends BaseContext {}
+== type PreparedRun (src/orchestrator/prepare.ts)
+export interface PreparedRun {
+  workspaceRoot: string
+  workspaceConfig: WorkspaceConfig | null
+  plugins: readonly VxPlugin[]
+  cacheDir: string
+  cache: CacheLayer
+  localCache: Cache
+  hasRemoteLayer: boolean
+  priorities: ReadonlyMap<string, number>
+  nodes: Map<string, TaskNode>
+  unresolvedTasks: readonly string[]
+  projects: ReadonlyMap<string, ProjectEntry>
+  anyProjectConfig: boolean
+  workspaceFingerprint: string
+  fingerprintWatch: FingerprintWatch
+  nestedDirsByProject: Map<string, string[]>
+  gitFilesCache: GitFilesCache
+  workspaceProjectCount: number
+  hashCache: HashCache
+  empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
+}
+== type ProjectConfig (src/config.ts)
+export interface ProjectConfig {
+  tasks?: Record<string, TaskConfig>
+}
+== type ProjectEntry (src/workspace/workspace.ts)
+export interface ProjectEntry {
+  name: string
+  dir: string
+  config: ProjectConfig
+}
+== type ProjectFilesCache (src/cache/inputs.ts)
+export type ProjectFilesCache = Map<
+  string,
+  { snapshot: readonly string[]; result: readonly string[] }
+== type ProjectHookContext (src/orchestrator/plugin.ts)
+export interface ProjectHookContext extends BaseContext {
+  readonly name: string
+  readonly dir: string
+  readonly packageJson: Readonly<Record<string, unknown>>
+  readonly projects: readonly ProjectMeta[]
+}
+== type ProjectMeta (src/workspace/workspace.ts)
+export interface ProjectMeta {
+  name: string
+  dir: string
+  packageJson: PackageJson
+  configPath: string | null
+}
+== type PruneOptions (src/cache/layer.ts)
+export interface PruneOptions {
+  olderThanMs?: number
+  maxBytes?: number
+  dryRun?: boolean
+}
+== type PruneResult (src/cache/layer.ts)
+export interface PruneResult {
+  evicted: number
+  bytesFreed: number
+  orphans: number
+  orphanBytes: number
+}
+== type RawExpr (src/workspace/migration.ts)
+export interface RawExpr {
+  readonly raw: string
+}
+== type ReachGraph (src/orchestrator/lockfile-claim.ts)
+export interface ReachGraph {
+  readonly material: readonly string[]
+  readonly edges: ReadonlyArray<readonly number[]>
+}
+== type RemoteCacheLayer (src/cache/layered-cache.ts)
+export interface RemoteCacheLayer {
+  readonly endpoint?: string
+  has(hash: string): Promise<boolean>
+  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+}
+== type ResolvedSandboxConfig (src/exec/sandbox-runtime.ts)
+export interface ResolvedSandboxConfig {
+  allowRead: readonly string[]
+  allowWrite: readonly string[]
+  network?: true | readonly string[]
+  denyNetwork?: readonly string[]
+  systemInfo?: readonly string[]
+  unixSockets?: true | readonly string[]
+  localBinding?: boolean | readonly number[]
+  machLookup?: readonly string[]
+  pty?: boolean
+  gitConfig?: boolean
+  weakerWhenNested?: boolean
+  weakerNetworkIsolation?: boolean
+  ignore?: {
+    read?: readonly string[]
+    write?: readonly string[]
+    systemInfo?: readonly string[]
+    network?: readonly string[]
+  }
+}
+== type RunContext (src/orchestrator/summary.ts)
+export interface RunContext {
+  version: string
+  packageCount: number
+  concurrency?: number
+  remoteCacheEnabled: boolean
+  workspaceProjectCount?: number
+}
+== type RunContextRecord (src/orchestrator/telemetry.ts)
+export interface RunContextRecord {
+  runId: string
+  vxVersion: string
+  command: string
+  requestedTasks: readonly string[]
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  workspaceId: string
+  workspaceName: string
+  commitSha: string | null
+  branch: string | null
+  defaultBranch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string
+  arch: string
+  tags: Readonly<Record<string, string>>
+}
+== type RunEvent (src/orchestrator/events.ts)
+export type RunEvent =
+  | { kind: 'run:start'; info: RunStartInfo }
+  | { kind: 'task:start'; node: TaskNode }
+  | { kind: 'task:stdout'; node: TaskNode; chunk: string }
+  | { kind: 'task:stderr'; node: TaskNode; chunk: string }
+  | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
+  | { kind: 'run:status'; line: string }
+  | { kind: 'run:end' }
+== type RunEventSubscriber (src/orchestrator/events.ts)
+export type RunEventSubscriber = (event: RunEvent) => void
+== type RunOptions (src/orchestrator/options.ts)
+export interface RunOptions {
+  cwd: string
+  tasks: readonly string[]
+  projects?: string[]
+  selectedByDiff?: boolean
+  staged?: ReadonlyMap<string, ProjectEntry>
+  concurrency?: number
+  cacheDir?: string
+  cache?: CachePolicy
+  remoteRequested?: boolean
+  frozen?: boolean
+  outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
+  download?: 'all' | 'toplevel' | 'none'
+  flow?: 'focused' | 'broad'
+  retries?: number
+  timeout?: number
+  continueMode?: ContinueMode
+  excludeDependencies?: 'all' | readonly string[]
+  forwardArgs?: readonly string[]
+  summarize?: string
+  profile?: string
+  handleSignals?: boolean
+  signal?: AbortSignal
+  holdPersistent?: boolean
+  log?: Logger
+  bus?: EventBus
+  inflight?: Map<string, Promise<void>>
+  tags?: Record<string, string>
+  telemetrySinks?: readonly TelemetrySink[]
+  command?: string
+  remoteCache?: RemoteCacheLayer
+  artifactCeiling?: number
+}
+== type RunPlan (src/orchestrator/plan.ts)
+export interface RunPlan {
+  tasks: PlannedTask[]
+  predicted?: PlanPrediction
+  unresolvedTasks?: readonly string[]
+  downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+}
+== type RunRecord (src/cache/layer.ts)
+export interface RunRecord {
+  hash?: string
+  project: string
+  task: string
+  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
+  exitCode: number
+  durationMs: number
+  forwardArgs?: readonly string[]
+  startedAt: number
+  endedAt: number
+  runId?: string
+  cpuMs?: number
+  peakRssBytes?: number
+  wallclockStartNs?: bigint
+  wallclockEndNs?: bigint
+  cacheHit?: boolean
+  attempts?: number
+  cached?: boolean
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+}
+== type RunResult (src/exec/runner.ts)
+export interface RunResult {
+  exitCode: number
+  durationMs: number
+  stdout: string
+  stderr: string
+  signal?: string
+  timedOut?: boolean
+  cpuMs?: number
+  peakRssBytes?: number
+}
+== type RunResult (src/orchestrator/run-report.ts)
+export interface RunResult {
+  ok: boolean
+  outcomes: OutcomeView[]
+}
+== type RunStartInfo (src/orchestrator/events.ts)
+export interface RunStartInfo {
+  total: number
+  concurrency?: number
+  requestedCount?: number
+  context?: RunContext
+  startedAtMs?: number
+}
+== type RunSummary (src/orchestrator/options.ts)
+export interface RunSummary {
+  ok: boolean
+  outcomes: TaskOutcome[]
+  persistent?: HeldPersistent
+}
+== type RunSummaryRecord (src/orchestrator/telemetry.ts)
+export interface RunSummaryRecord {
+  v: number
+  run: RunContextRecord
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  abortedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  tasks: readonly TaskTelemetry[]
+}
+== type SandboxConfig (src/config.ts)
+export interface SandboxConfig {
+  allow?: SandboxGrants
+  deny?: SandboxDenials
+  ignore?: SandboxGrants
+  weakerWhenNested?: boolean
+  weakerNetworkIsolation?: boolean
+}
+== type SandboxDenials (src/config.ts)
+export interface SandboxDenials {
+  network?: string[]
+}
+== type SandboxGrants (src/config.ts)
+export interface SandboxGrants {
+  read?: string[]
+  write?: string[]
+  network?: true | string[]
+  systemInfo?: string[]
+  unixSockets?: true | string[]
+  localBinding?: boolean | number[]
+  machLookup?: string[]
+  pty?: boolean
+  gitConfig?: boolean
+}
+== type SandboxViolation (src/exec/sandbox-runtime.ts)
+export interface SandboxViolation {
+  line: string
+  timestamp: Date
+  target?: string
+  path?: string
+  ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
+}
+== type SaveArgs (src/cache/layer.ts)
+export type SaveArgs = Parameters<CacheLayer['save']>[0]
+== type ScheduleHookContext (src/orchestrator/plugin.ts)
+export interface ScheduleHookContext extends BaseContext {
+  readonly localCache: Cache
+}
+== type SchemaReset (src/cache/cache.ts)
+export interface SchemaReset {
+  from: string
+  to: string
+}
+== type TaskConfig (src/config.ts)
+export interface TaskConfig {
+  description?: string
+  exec?: ExecConfig
+  dependsOn?: readonly string[]
+  cache?: CacheConfig
+}
+== type TaskExecutor (src/exec/executor.ts)
+export interface TaskExecutor {
+  readonly name: string
+  readonly remote?: boolean
+  readonly capacity?: number
+  accepts?(task: TaskPlacement): boolean
+  demand?(remaining: ReadonlySet<string>): void
+  execute(req: ExecuteRequest): Promise<ExecuteResult>
+}
+== type TaskHistory (src/orchestrator/history.ts)
+export interface TaskHistory {
+  runs: number
+  p50DurationMs: number | undefined
+  p99DurationMs: number | undefined
+  successRate: number
+  hitRate: number
+  failureMode: FailureMode
+  maxPeakRssBytes?: number
+  maxCpuParallelism?: number
+}
+== type TaskInputRow (src/cache/layer.ts)
+export interface TaskInputRow {
+  entryHash: string
+  kind: string
+  name: string
+  hash: string
+}
+== type TaskInputs (src/exec/executor.ts)
+export interface TaskInputs {
+  readonly files: readonly InputFile[]
+  readonly env: ReadonlyArray<{ readonly name: string; readonly value: string | undefined }>
+  readonly runtime: ReadonlyArray<{ readonly command: string; readonly output: string }>
+  readonly workspaceRuntime: ReadonlyArray<{ readonly command: string; readonly output: string }>
+  readonly upstream: ReadonlyArray<{
+    readonly taskId: string
+    readonly hash: string
+    readonly outputs: readonly string[]
+  }>
+  readonly packageJsonDigest: string
+  readonly configDigest: string
+  readonly workspaceFingerprint: string
+}
+== type TaskLogBundle (src/orchestrator/task-log-buffer.ts)
+export interface TaskLogBundle {
+  v: typeof LOG_WIRE_VERSION
+  runId: string
+  workspaceId: string
+  tasks: TaskLogEntry[]
+}
+== type TaskLogEntry (src/orchestrator/task-log-buffer.ts)
+export interface TaskLogEntry {
+  taskId: string
+  hash?: string
+  status: 'success' | 'failed'
+  content: string
+  charsFull: number
+  truncatedHeadChars: number
+}
+== type TaskNode (src/graph/task-graph.ts)
+export interface TaskNode {
+  id: string
+  projectName: string
+  projectDir: string
+  taskName: string
+  config: TaskConfig
+  deps: string[]
+  orderOnly?: string[]
+  requested: boolean
+  surfaced?: boolean
+  keyParts?: ReadonlyArray<readonly [name: string, value: string]>
+  addsToOutputsOf?: string[]
+  outputsAddedToBy?: string[]
+  excludedUpstream?: TaskOutcome[]
+}
+== type TaskOutcome (src/graph/scheduler.ts)
+export interface TaskOutcome {
+  node: TaskNode
+  status: TaskStatus
+  exitCode: number
+  durationMs: number
+  hash?: string
+  storedDurationMs?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
+  cpuMs?: number
+  peakRssBytes?: number
+  groupUpstream?: readonly TaskOutcome[]
+  blockedBy?: string
+  timedOut?: true
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  where?: string
+  outputs?: 'deferred'
+  wallclockStartNs?: bigint
+  wallclockEndNs?: bigint
+  restored?: boolean
+  attempts?: number
+  sandboxViolations?: number
+  sandboxViolationLines?: string[]
+}
+== type TaskPlacement (src/exec/executor.ts)
+export interface TaskPlacement {
+  readonly taskId: string
+  readonly projectName: string
+  readonly projectDir: string
+  readonly command: string
+  readonly pinnedLocal: boolean
+  readonly cacheable: boolean
+}
+== type TaskStatus (src/graph/scheduler.ts)
+export type TaskStatus =
+  | 'success'
+  | 'cache-hit'
+  | 'cache-hit-remote'
+  | 'failed'
+  | 'skipped'
+  | 'aborted'
+== type TaskTelemetry (src/orchestrator/telemetry.ts)
+export interface TaskTelemetry {
+  taskId: string
+  project: string
+  task: string
+  status: TaskStatus
+  cacheSource: CacheSource
+  exitCode: number
+  durationMs: number
+  hash?: string
+  cpuMs?: number
+  peakRssBytes?: number
+  where?: string
+  outputs?: 'deferred'
+  attempts?: number
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  wallclockStartNs?: string
+  wallclockEndNs?: string
+}
+== type TaskView (src/orchestrator/events.ts)
+export interface TaskView {
+  id: string
+  project: string
+  task: string
+  isGroup: boolean
+  requested: boolean
+  surfaced: boolean
+  persistent: boolean
+  command?: string
+}
+== type TelemetryContext (src/orchestrator/telemetry.ts)
+export interface TelemetryContext {
+  readonly workspaceRoot: string
+  readonly cacheDir: string
+  warn(message: string): void
+}
+== type TelemetryRecord (src/orchestrator/telemetry.ts)
+export type TelemetryRecord =
+  | {
+      v: number
+      kind: 'run.start'
+      run: RunContextRecord
+      total: number
+      ts: number
+      startedAt: number
+    }
+  | {
+      v: number
+      kind: 'task.start'
+      runId: string
+      taskId: string
+      project: string
+      task: string
+      command?: string
+      ts: number
+    }
+  | {
+      v: number
+      kind: 'task.log'
+      runId: string
+      taskId: string
+      stream: 'stdout' | 'stderr'
+      chunk: string
+      ts: number
+    }
+  | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
+  | { v: number; kind: 'run.end'; runId: string; ts: number }
+== type TelemetrySink (src/orchestrator/telemetry.ts)
+export interface TelemetrySink {
+  readonly name?: string
+  readonly wants?: ReadonlyArray<TelemetryRecord['kind']>
+  onRecord?(record: TelemetryRecord): void
+  onRunSummary?(summary: RunSummaryRecord): void
+  flush?(): Promise<void>
+}
+== type VxPlugin (src/orchestrator/plugin.ts)
+export interface VxPlugin {
+  readonly name: string
+  config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
+  project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
+  graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
+  key?(
+    task: TaskNode,
+    ctx: KeyHookContext,
+  ):
+    | Readonly<Record<string, string>>
+    | undefined
+    | Promise<Readonly<Record<string, string>> | undefined>
+  readonly fingerprint?: FingerprintClaim
+  schedule?(
+    nodes: ReadonlyMap<string, TaskNode>,
+    ctx: ScheduleHookContext,
+  ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
+  admit?(task: TaskNode, ctx: AdmitContext): boolean
+  readonly commands?: Readonly<Record<string, PluginCommand>>
+  cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
+  executor?(ctx: ExecutorContext): TaskExecutor | undefined | Promise<TaskExecutor | undefined>
+  telemetry?(
+    ctx: TelemetryContext,
+  ):
+    | TelemetrySink
+    | TelemetrySink[]
+    | undefined
+    | Promise<TelemetrySink | TelemetrySink[] | undefined>
+  setup?(ctx: PluginSetupContext): void | Promise<void>
+  teardown?(): void | Promise<void>
+}
+== type WhyDidThisRerun (src/orchestrator/metrics.ts)
+export interface WhyDidThisRerun {
+  runId: string
+  taskId: string
+  found: boolean
+  thisRun?: {
+    hash: string
+    status: string
+    cacheHit: boolean | null
+    cached: boolean | null
+    startedAt: number
+  }
+  previousRun?: { hash: string; status: string; cacheHit: boolean | null; startedAt: number } | null
+  hashChanged?: boolean | null
+  note: string
+}
+== type Workspace (src/workspace/workspace.ts)
+export interface Workspace {
+  root: string
+  packageGlobs: string[]
+}
+== type WorkspaceConfig (src/config.ts)
+export interface WorkspaceConfig {
+  concurrency?: number
+  cacheDir?: string
+  timeout?: number
+  cacheRetention?: { olderThan?: string; maxSize?: string }
+  plugins?: readonly Plugin[]
+}
+== type WorkspaceFilesCache (src/cache/inputs.ts)
+export type WorkspaceFilesCache = Map<
+  string,
+  { snapshot: readonly string[]; result: Promise<string[]> }
+== type WorkspaceFingerprints (src/workspace/fingerprint.ts)
+export interface WorkspaceFingerprints {
+  readonly all: string
+  readonly unclaimed: string
+  readonly files: ReadonlyMap<string, Uint8Array>
+}
+== type WorkspaceHookContext (src/orchestrator/plugin.ts)
+export interface WorkspaceHookContext {
+  readonly workspaceRoot: string
+  warn(message: string): void
+}
+== type WorkspaceIdentity (src/orchestrator/run-context.ts)
+export interface WorkspaceIdentity {
+  id: string
+  name: string
+}
+== runtime values
+LOG_WIRE_VERSION = 1
+PERSISTENT_TASK_NAMES = ["dev","start","serve","watch","preview"]
+PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
+PLUGIN_HOOKS = ["config","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","setup","commands","teardown"]
+TASK_STATUSES = ["success","cache-hit","cache-hit-remote","failed","skipped","aborted"]
+TELEMETRY_SCHEMA_VERSION = 3

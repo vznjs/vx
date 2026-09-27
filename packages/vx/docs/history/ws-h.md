@@ -17,6 +17,24 @@ record row; removing a key from a `Keys<T>` literal fails the type check.
 A field the validator names but refuses every value of (`sandbox.ignore.pty`
 and `.gitConfig`) is probed unseeded and must accept nothing.
 
+## H-2: pin the plugin API and the façade's shapes (roadmap 3.2)
+
+`tests/contract-package-api.test.ts` and its reader
+`tests/helpers/api-surface.ts` pin the SHAPE of everything `src/index.ts`
+exports, where the boundary test pinned only the names. The reader
+resolves each export through `export {…} from`, `import {…} from` and
+`export *` (per file, so the two `RunResult`s and two `Plugin`s resolve
+to their own declarations), and follows every capitalised identifier a
+declaration names to its declaration: 177 declarations, the non-exported
+`BaseContext` among them. Comments are stripped by a scanner that keeps
+strings and template literals, a function is cut at its body, a class
+keeps its public members (a field's initializer dropped). Constants add
+their runtime values. The record is `tests/contract/package-api.txt`; a
+second row holds `VxPlugin`'s members to `PLUGIN_HOOKS`. Differential: a
+member added to `TaskExecutor`, a type changed in the non-exported
+`BaseContext`, and a hook added to `VxPlugin` alone each fail; a reworded
+comment passes (control).
+
 ## Leads for other streams
 
 - **D / B:** `exec.sandbox.ignore.localBinding` accepts ANY value (the
