@@ -1231,6 +1231,9 @@ without FSEvents access on macOS, a network mount, a container bind —
 says so once (`vx watch: polling every 250 ms (VX_WATCH_POLL)`). The
 poller walks the same tree the event filter keeps: the always-ignored
 segments and the run's declared output containers are never sampled.
+It samples each file's later clock of mtime and ctime, so a replacement
+that carries the old file's mtime (`cp -p`, `rsync -a`, a `mv`) is an
+edit to it as it is to the OS watcher.
 
 ### Workspace fingerprint changes
 
