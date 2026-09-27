@@ -414,6 +414,7 @@ function buildTask(
     metaByNode,
     (t) => Object.hasOwn(nodeMap[nodeName]?.data?.targets ?? {}, t),
     taskNameFor,
+    (p, t) => Object.hasOwn(nodeMap[p]?.data?.targets ?? {}, t),
     todos,
   )
 

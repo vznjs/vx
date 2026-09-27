@@ -11,19 +11,38 @@ import type { ProjectMeta } from '@vzn/vx'
 /** The vx task an Nx `project:target:configuration` reaches, or null when the target lacks it. */
 export type TaskNameFor = (project: string, target: string, configuration: string) => string | null
 
+/**
+ * Nx adds an edge to a project's target only when the project HAS that
+ * target (`processTasksForSingleProject`), and says nothing otherwise:
+ * nx-examples' `targetDefaults` give every `typecheck` a `codegen` that
+ * one project declares. Passed through, core refused the whole run —
+ * "depends on …#codegen but no such task is declared". Dropped here as
+ * Nx drops it, for this project and a named one alike.
+ */
+export type HasTarget = (project: string, target: string) => boolean
+
 export function mapNxDeps(
   entries: readonly unknown[],
   metaByNode: ReadonlyMap<string, ProjectMeta>,
   ownTarget: (name: string) => boolean,
   taskNameFor: TaskNameFor,
+  hasTarget: HasTarget,
   todos: string[],
 ): string[] {
   const deps: string[] = []
   for (const d of entries) {
     if (typeof d === 'string') {
+      // `^name` is every dependency's `name`, whatever the name holds: the
+      // colon in `^rsbuild:typecheck` (an inferred target) is the target's
+      // own, and splitting there read project `^rsbuild`, which no graph
+      // has, and dropped the edge.
+      if (d.startsWith('^')) {
+        deps.push(d)
+        continue
+      }
       const colon = d.indexOf(':')
       if (colon <= 0) {
-        deps.push(d)
+        if (ownTarget(d)) deps.push(d)
         continue
       }
       const [project = '', targetPart, configuration] = d.split(':')
@@ -43,6 +62,7 @@ export function mapNxDeps(
         )
         continue
       }
+      if (!hasTarget(project, targetPart)) continue
       // A configuration is a task of its own (`build:ci`) unless it is the
       // target's default, which the base task carries; an edge naming one
       // follows it there. A configuration the target does not declare has
@@ -76,13 +96,15 @@ export function mapNxDeps(
         )
       }
       const projects = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
-      if (projects === undefined || projects === 'self') deps.push(t)
-      else if (projects === 'dependencies') deps.push(`^${t}`)
+      if (projects === undefined || projects === 'self') {
+        if (ownTarget(t)) deps.push(t)
+      } else if (projects === 'dependencies') deps.push(`^${t}`)
       else if (Array.isArray(projects)) {
         for (const p of projects) {
           const m = typeof p === 'string' ? metaByNode.get(p) : undefined
-          if (m) deps.push(`${m.name}#${t}`)
-          else {
+          if (m) {
+            if (hasTarget(p as string, t)) deps.push(`${m.name}#${t}`)
+          } else {
             todos.push(
               `dependsOn project ${JSON.stringify(p)} is not a workspace package — edge dropped`,
             )

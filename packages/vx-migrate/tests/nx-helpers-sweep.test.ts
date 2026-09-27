@@ -104,8 +104,9 @@ describe('mapNxDeps', () => {
       deps: mapNxDeps(
         entries,
         byNode,
-        (t) => t.startsWith('test:'),
+        (t) => t.startsWith('test:') || ['build', 'rsbuild:typecheck', ':x'].includes(t),
         () => null,
+        (p, t) => p === 'ui' && t === 'build',
         todos,
       ),
       todos,
@@ -146,6 +147,33 @@ describe('mapNxDeps', () => {
         'dependsOn {"target":"build","projects":7} not representable in vx',
         'dependsOn {"projects":"self"} has no target — dropped',
       ],
+    })
+  })
+
+  // nx-examples: `targetDefaults` give every `typecheck` a `codegen` one
+  // project declares. Nx adds no edge where the target is missing and
+  // says nothing; passed through, core refused the whole run. CONTROL:
+  // the targets that exist keep their edges.
+  it('an edge to a target its project lacks is dropped, silently, in every form', () => {
+    expect(
+      deps([
+        'codegen',
+        { target: 'codegen' },
+        { target: 'codegen', projects: 'self' },
+        'ui:codegen',
+        { target: 'codegen', projects: ['ui'] },
+        'build',
+        'ui:build',
+      ]),
+    ).toEqual({ deps: ['build', '@acme/ui#build'], todos: [] })
+  })
+
+  // An inferred target's name holds a colon (`rsbuild:typecheck`); split
+  // there, `^rsbuild:typecheck` named project `^rsbuild` and was dropped.
+  it('`^name` passes through whatever the name holds', () => {
+    expect(deps(['^rsbuild:typecheck', '^build'])).toEqual({
+      deps: ['^rsbuild:typecheck', '^build'],
+      todos: [],
     })
   })
 })

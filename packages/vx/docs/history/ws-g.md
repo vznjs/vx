@@ -29,6 +29,16 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
    outside vx's JS discovery: 117 of turborepo's 125 `build` tasks. A
    recorded refusal, not a row.
 
+5. nx(): `{ fileset, dependencies: true }` expands as the project's OWN
+   fileset, and `^{projectRoot}/x` (Nx's dependency fileset,
+   `splitInputsIntoSelfAndDependencies`) is looked up as a named input
+   and dropped with a todo: an edit to a dependency's file does not
+   re-key the dependant (a stale hit where no task edge covers it).
+   nx-examples' inferred `typecheck` carries both.
+6. nx(): an Nx `implicitDependencies` edge (nx-examples' e2e projects →
+   their apps) is reported "not representable", and `^typecheck` follows
+   package.json only; each could be an explicit `pkg#target` edge.
+
 ## Leads for other streams
 
 - **C/E:** in a `turbo()` workspace, `vx run build --all --dry=json`
@@ -86,6 +96,20 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (NaN, 0, −1); `schedule-history-e2e` › `vx history` shows the default
   budget and the learned reservation, the warning on stderr. Both red
   without the fix.
+- **G-5.** nx() follows Nx's `dependsOn` rules on nx-examples (nrwl's
+  own sample, Nx 23, yarn 4). Its `targetDefaults` give every
+  `typecheck` a same-project `codegen` that one project declares; Nx
+  adds an edge only where the target exists (`processTasksForSingleProject`)
+  and says nothing, and vx passed it through, so core refused the whole
+  run ("depends on …#codegen but no such task is declared"). And
+  `^rsbuild:typecheck` (an inferred target's name holds a colon) was
+  split into project `^rsbuild` and the edge dropped. `mapNxDeps` now
+  drops an edge to a missing target in every form (plain, `p:t`,
+  `{ target }`, `{ projects }`) and passes `^name` through whole. Rows
+  (`nx-helpers-sweep.test.ts` › mapNxDeps): both red without the fix;
+  each of the five guards mutated alone reddens one. Against
+  `nx run-many -t build typecheck test lint --graph`, 40 of 42 tasks'
+  closures agree; the two left are lead 6.
 - **G-6.** nx() keys a task on its dependencies' FILESETS (lead 5).
   Nx reads `^{projectRoot}/…` / `^{workspaceRoot}/…` and
   `{ fileset, dependencies: true }` as each dependency's fileset
