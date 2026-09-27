@@ -586,6 +586,21 @@ test is telling the truth.
         all (another root edit its control). Both red without the fix.
       - Left from the review: lead 1's second half, a file a plugin reads
         at run time (a seam).
+960.  DONE (2026-09-27, the Next list's standing duty 6). Re-measured the
+      warm run after the day's items 927–959, whose run-path changes were
+      the config key (950, 952, 956: the import scan, the transpile seed)
+      and selection (953–955, 958, 959, `--affected` only).
+      - Method: base 25c8c27c (item 926) against head a84c84b1 (item 959),
+        source runs, 1,000 projects, `run build --all` all-hit, one
+        workspace copy per arm pre-warmed by that arm, interleaved, with an
+        A/A control (head on a third copy).
+      - n=25: base median 405.3 ms (min 342.4), head 398.9 (min 362.1),
+        A/A 399.6 (min 354.2). A tie: the medians sit within 7 ms, and
+        head and its A/A differ by 8 ms on the min. A first n=15 pass read
+        base 389.8 against head 403.0, A/A 398.9, the same box noise.
+      - Expected: the warm config path keys from the closure index, which
+        none of the day's items touched; the transpile seed is three
+        reads once per process.
 
 ## In flight
 
@@ -686,7 +701,7 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 885 (2026-09-26, the day's items 873–884, a tie at 1,000 projects; 863 was the one before), and the
+   item 960 (2026-09-27, the day's items 927–959, a tie at 1,000 projects; 885 was the one before), and the
    restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
