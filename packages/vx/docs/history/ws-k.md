@@ -11,6 +11,10 @@
   "no Node needed" held for the release binary, not the npm install (its
   `vx` is a Node launcher); the plugin packages are not on npm yet, and
   the README said `bunx @vzn/vx-migrate` with no word of it.
+- **K-3** A social card: no page named an `og:image`, so a shared link
+  showed no preview. `public/og.png` (1200×630, from `og.svg`); the
+  landing gains og and `twitter:card` tags, every docs page the image
+  through Starlight's `head`. `landing.test.ts` holds both and the size.
 
 ## Leads for other streams
 

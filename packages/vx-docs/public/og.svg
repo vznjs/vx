@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0a0b0d"/>
+  <rect x="0" y="622" width="1200" height="8" fill="#c6f84e"/>
+  <g transform="translate(96 150) scale(3.75)">
+    <rect x="1" y="1" width="30" height="30" rx="7" fill="#0a0b0d" stroke="#c6f84e" stroke-width="1.5"/>
+    <path d="M6 9.5 L11.5 22 L13.8 22 L8.3 9.5 Z" fill="#c6f84e"/>
+    <path d="M19 9.5 L25.8 9.5 L18 22 L15.7 22 L23 9.5 Z" fill="#c6f84e"/>
+    <path d="M18.4 9.5 L26 22 L23.7 22 L16.1 9.5 Z" fill="#c6f84e"/>
+  </g>
+  <text x="250" y="250" font-family="'Space Grotesk', 'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="112" font-weight="700" fill="#f2f4f0">vx</text>
+  <text font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="56" font-weight="700" fill="#f2f4f0">
+    <tspan x="96" y="380">A fast, correct task runner for</tspan>
+    <tspan x="96" y="448" fill="#c6f84e">JavaScript monorepos.</tspan>
+  </text>
+  <text x="96" y="540" font-family="'IBM Plex Mono', Menlo, monospace" font-size="32" fill="#9198a1">$ npm install -D @vzn/vx</text>
+</svg>
