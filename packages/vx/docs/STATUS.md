@@ -796,6 +796,23 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         on the command line (a real run with a spoofed argv, every record
         and the summary). Red with the sinks' line restored.
 
+1058. DONE (2026-09-27, the telemetry review's lead 5). vx-github's job
+      summary and check-run misrendered: the footer cell-escaped the
+      command though it sits in no table, so `a|b` showed as `a\|b`, and a
+      backtick in the command ended the code span early; and a task id's
+      `*` or `_` rendered as emphasis (`a#*x*`). The footer is one code
+      span whose fence outruns any backtick run in the command, and ids
+      are escaped as inline markdown (and as cells in the table).
+      - Rows: `github.test.ts` › the footer counts a hit as passed (now
+        pinning the unescaped `|`), and the footer holds any command in
+        one code span; an id is escaped as inline markdown. Both red
+        without the change.
+      - Left from the review: a check-run on a `pull_request` event
+        attaches to the merge commit (`GITHUB_SHA`), which GitHub may not
+        list on the PR (unverified here, no GitHub access); and
+        `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_TIMEOUT` and
+        `_PROTOCOL` are unread (the README does not claim them).
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
