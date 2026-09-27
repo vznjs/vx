@@ -1080,7 +1080,9 @@ run...` precedes it.
    re-running forever — when the bytes it leaves are the same. A file
    it rewrites with DIFFERENT bytes every run (a pid file, a
    timestamped log) is either git-ignored — a git-ignored path never
-   starts a cycle, since no cache key can see it — or declared an
+   starts a cycle, since no cache key can see it (a user's edit to one
+   still does in a project with a task that has a command and no cache,
+   which reads what it likes, item 947) — or declared an
    output, or the loop re-runs on it; after three such cycles in a row
    watch names the path and the remedy, once, and keeps going. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
