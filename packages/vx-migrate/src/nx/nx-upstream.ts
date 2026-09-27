@@ -24,7 +24,22 @@ interface GraphNode {
   data?: { root?: string; namedInputs?: Record<string, unknown[]> }
 }
 
-const inputTask = (name: string): string => `nx-input:${name}`
+/**
+ * Nx reads `^{projectRoot}/…` and `^{workspaceRoot}/…` as each
+ * dependency's FILESET, not a named input
+ * (`splitInputsIntoSelfAndDependencies`), and so is
+ * `{ fileset, dependencies: true }`. Looked up as a named input, it was a
+ * todo and nothing: a dependency's `tsconfig.lib.json` edit re-keyed no
+ * dependant.
+ */
+const isFileset = (name: string): boolean =>
+  name.startsWith('{projectRoot}') || name.startsWith('{workspaceRoot}')
+
+/** A fileset twin is named by its hash: a glob's `*` is no task name. */
+const inputTask = (name: string): string =>
+  isFileset(name)
+    ? `nx-input:fileset-${Bun.hash.xxHash3(name).toString(16).padStart(16, '0')}`
+    : `nx-input:${name}`
 
 function normRel(p: string): string {
   const s = p.replace(/\/+$/, '')
@@ -176,7 +191,7 @@ export function planNxUpstream(
     return r
   }
   const expandOwn = (node: string, name: string, into: NxInputs, todos: string[]): void => {
-    if (namedOf(node)[name] === undefined) {
+    if (!isFileset(name) && namedOf(node)[name] === undefined) {
       todos.push(
         `named input ${JSON.stringify(name)} not found for ${JSON.stringify(node)} — declare its globs manually`,
       )
@@ -295,6 +310,8 @@ export function planNxUpstream(
         if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
         if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds
         const task: Record<string, unknown> = { exec: { command: 'true' } }
+        if (isFileset(name))
+          task.description = `Nx fileset ${name} of this project and what it reaches`
         if (edges.size > 0) task.dependsOn = [...edges].sort()
         task.cache = { inputs: cacheInputs, outputs: { files: [] } }
         const list = out.get(node) ?? []

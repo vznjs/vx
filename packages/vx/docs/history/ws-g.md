@@ -38,6 +38,12 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
   create-t3-turbo). Warnings belong on stderr, at least under `--json`
   modes.
 
+- **F:** `vx-reapi` › a call a proxy cuts in transit ›
+  RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is retried (F-1)
+  counts `sent: 3` where it expects 4 under load: 2 of 3 runs failed
+  while a gate ran beside it, 0 of 4 idle, and it failed G-3's re-gate.
+  The retry count depends on time, not on the retry rule.
+
 ## Record
 
 - **G-1.** pnpm multi-document lockfiles read (lead 1).
@@ -80,3 +86,22 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (NaN, 0, −1); `schedule-history-e2e` › `vx history` shows the default
   budget and the learned reservation, the warning on stderr. Both red
   without the fix.
+- **G-6.** nx() keys a task on its dependencies' FILESETS (lead 5).
+  Nx reads `^{projectRoot}/…` / `^{workspaceRoot}/…` and
+  `{ fileset, dependencies: true }` as each dependency's fileset
+  (`splitInputsIntoSelfAndDependencies`, hashed with the `^name`
+  inputs). The first was looked up as a named input (a todo per
+  project, nothing keyed); the second expanded as the project's own
+  fileset. Either way a dependency's edit re-keyed no dependant, a
+  stale hit wherever no task edge covered it. Both now fold through a
+  twin, `nx-input:fileset-<xxh3>`, like `^name`. Rows (`nx-map-sweep` ›
+  a dependency fileset … keys on each dependency's files), one per
+  form, red without the fix. nx-examples: the 30 "named input … not
+  found" todos are gone. With it, the first mutation sweeps of
+  `nx-upstream.ts` (28 mutants, 10 survivors, now held by
+  `nx-upstream.test.ts`: deps' env/runtime, nested `^other`,
+  `{input, projects}` on a non-vx node, `^{workspaceRoot}/…`) and
+  `glob-grammar.ts` (12 mutants, 4 survivors, now held by
+  `glob-grammar.test.ts`: `@()`, nested extglobs, braces in
+  alternatives and classes). Equivalent: self-edge filter, `under`
+  memo, the glob fast path.

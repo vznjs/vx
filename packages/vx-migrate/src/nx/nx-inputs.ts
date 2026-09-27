@@ -96,7 +96,11 @@ export function expandNxInputs(
         return
       }
       if (typeof o.fileset === 'string') {
-        expand(o.fileset, seen)
+        // `dependencies: true` is each dependency's fileset, as `^{projectRoot}/…`
+        // is. Expanded as the project's own, a dependency's edit re-keyed
+        // nothing here (nx-examples' inferred `typecheck` carries both).
+        if (o.dependencies === true) into.upstream.push({ name: o.fileset, of: 'deps' })
+        else expand(o.fileset, seen)
         return
       }
       if (o.externalDependencies !== undefined) {
