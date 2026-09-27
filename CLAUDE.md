@@ -145,6 +145,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 
 ## Conventions
 
+- Always optimize for token usage (owner, 2026-09-27): replies,
+  commits, PR titles and bodies, docs and logs use plain words, only
+  what is needed, fewest words.
 - No comments restating code; only "why" comments for non-obvious decisions.
 - A plugin is `definePlugin(import.meta, hooks)` and its name is its
   package name — never a field, never overridden (owner, 2026-09-10).
