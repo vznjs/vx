@@ -233,3 +233,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `extends` key's delete, the `global` null guard (Turbo refuses a null).
   A comment that dated the empty-`extends` reading to Turbo 2.0–2.6
   (unproven) now says Turbo refuses it.
+- **G-17.** A mutation sweep of G-10's `mapping-cache.ts` (15 mutants):
+  12 survived. Held now: a hit restores the miss's notes and todos (a
+  cached run warned nothing), and a mapping file that cannot be written
+  still plans the run (the best-effort catch). Rows (`turbo.test` › the
+  mapping cache): a hit warns what the miss warned; a mapping that
+  cannot be kept still plans the run. Unheld by design: the code
+  identity part (sources are fixed in a test; G-10). Equivalent: the
+  `mkdir` (core makes the cache dir first), the rename's atomicity, the
+  per-process memo and the file sort (cost only).
