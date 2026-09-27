@@ -178,7 +178,8 @@ export function importerDigests(
   // root importer ('') resolves from the root.
   const importers = new Map<string, number>()
   for (const [dir, deps] of lock.workspaces) {
-    const own = node(`workspace\0${dir}`, 'workspace')
+    // Its dir, as pnpm's importers fold theirs (item 1073).
+    const own = node(`workspace\0${dir}`, `workspace\0${dir}`)
     importers.set(dir, own)
     let from = ''
     for (const [name, wsDir] of lock.workspaceDirs) if (wsDir === dir && dir !== '.') from = name

@@ -387,6 +387,24 @@ failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
 1072. SUPERSEDED (2026-09-27) by G-1 (`docs/history/ws-g.md`), which
       landed first: pnpm() reads pnpm 11's two-document lockfile.
 
+1073. DONE (2026-09-27, the lockfile review's lead 2, a stale hit).
+      Every pnpm importer node folded the same material, `'importer'`,
+      and `reachDigests` tells a cycle's members apart by their own
+      material and what their edges reach. Two workspace projects that
+      link each other (`link:../b` / `link:../a`), each on its own
+      `is-number`, gave the same lines when a lockfile swapped which one
+      reached 7.0.0. A real `pnpm install --frozen-lockfile` moved
+      `packages/a/node_modules/is-number` from 7.0.0 to 6.0.0, and both
+      builds replayed as up to date while `--affected` named nothing. Each
+      importer now folds its own dir, and bun's workspace nodes do too
+      (the review could not collide those, since their package nodes
+      carry the path). npm's nodes fold their path and yarn's their
+      resolution already. `DIGEST_VERSION` 6 → 7, since every pnpm and bun
+      digest moves once.
+      - Row: `pnpm.test.ts` › two importers that link each other and swap
+        versions both move (red without the change; the same lockfile
+        twice is the control).
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
