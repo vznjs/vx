@@ -42,5 +42,39 @@
   held to the ceiling's zstd bound (length header, Blob size, running
   count on a stream). Cost: 4.4 ms per 64 MiB streamed (min of 7).
   Row in `artifact-ceiling.test.ts`.
+- L-6. `fix(exec)`: SRT reads its `socket(AF_UNIX)` lift from the
+  run-wide config, so one task's `unixSockets` or `localBinding` port list
+  lifted it for every sandboxed task of the run: a task that declared no
+  socket connected to a host unix socket (docker's, ssh-agent's) once a
+  sibling did (probed: `socket(1, 1, 0): Operation not permitted` alone,
+  the host socket reached beside a granted task). The lift is now set for
+  each task's own wrap, wraps taken one at a time, and only in a run
+  where some task asks. Row in `sandbox-runtime.unsafe.test.ts`.
 
 ## Leads for other streams
+
+- B (sandbox), PROVEN by probe: every sandboxed task shares SRT's
+  writable `/tmp/claude`, where the task tmpdirs (`vx-task-*`) and the
+  port-bridge sockets (`vx-port-<tag>-<port>.sock`) live. Task b ran
+  `cat /tmp/claude/*/secret` and printed what a concurrent task a wrote to
+  its own `$TMPDIR`: a cross-project read, and b could as well replace a's
+  bridge socket. A per-task `denyRead` of `/tmp/claude` plus the task's
+  own dir as a write grant does not take: SRT's default write path
+  re-binds it (tried, L review). Needs SRT driven differently (a private
+  tmpfs per task, or SRT's tmp dir pointed per task).
+- B (sandbox), from the L review, unproven by probe:
+  - `weakerWhenNested` makes SRT bind the host's `/proc` (read in SRT's
+    source). Probed on this box as root: the task saw only its own pid
+    namespace (pids 1, 2, 6) and `environ` was denied, so no leak here;
+    a box where the weaker profile is the one that runs is unprobed.
+  - Strace logs (`os.tmpdir()/vx-strace-<tag>.log`) are readable by a
+    concurrent task: every path another task opened.
+  - A write grant's realpath is checked before bwrap mounts it; a
+    concurrent task that can write the parent may swap in a link between.
+- D (config): the purity gate lets `new Worker('./x.ts')` through; the
+  worker's file is outside the hashed closure, so its reads (env, clock)
+  can be cached stale.
+- G (adoption): `turboCache()` with a signature key writes the whole
+  remote body to its temp before verifying the tag, with no byte bound
+  (core's ingest bound, L-5, comes after); `hasMany` reads its JSON reply
+  unbounded.

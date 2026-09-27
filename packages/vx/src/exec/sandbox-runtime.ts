@@ -356,6 +356,17 @@ function trackTaskTmpdir(dir: string): void {
 
 /** Whether SRT is up in this process — set by `initSandbox`, cleared by `resetSandbox`. */
 let srtUp = false
+/**
+ * The run's config while one of its tasks lifts SRT's `socket(AF_UNIX)`
+ * block, else undefined. SRT reads the lift from its run-wide config, so
+ * one task's `unixSockets` or port list lifted it for every sandboxed task
+ * of the run, and a task that asked for neither reached the host's docker
+ * or ssh-agent socket (L-6). Such a run sets the lift per task, for the
+ * span of its wrap, which is when SRT reads it.
+ */
+let socketRun: Parameters<SrtModule['SandboxManager']['updateConfig']>[0] | undefined
+/** Wraps of a `socketRun`, one at a time: each holds SRT's config for its task. */
+let wrapTurn: Promise<unknown> = Promise.resolve()
 
 /**
  * SRT listens on `<tmpdir>/srt-mux-<pid>-<seq>.sock`, seq from 0, and a
@@ -396,11 +407,11 @@ async function unlinkStaleMuxSockets(): Promise<void> {
 export async function initSandbox(opts?: {
   allowedDomains?: readonly string[]
   /**
-   * Lift SRT's seccomp block on `socket(AF_UNIX)` for every sandboxed
-   * task of the run (Linux; per-run like the proxy allowlist, since SRT
-   * reads it at `initialize()` only). Armed when any task declares
-   * `unixSockets` or a `localBinding` port list — the port bridge is a
-   * unix socket the task's side has to create.
+   * Whether any task of the run lifts SRT's seccomp block on
+   * `socket(AF_UNIX)`: one that declares `unixSockets` or a `localBinding`
+   * port list (the port bridge is a unix socket the task's side has to
+   * create). SRT reads the lift from its run-wide config, so `wrapForTask`
+   * sets it for each task's own wrap (L-6).
    */
   allowAllUnixSockets?: boolean
 }): Promise<void> {
@@ -428,6 +439,7 @@ export async function initSandbox(opts?: {
     true,
   )
   srtUp = true
+  socketRun = opts?.allowAllUnixSockets === true ? config : undefined
   // `initialize()` returns early once SRT is up, and on Linux the
   // availability probe brought it up with an EMPTY config before the run's
   // own call — so the run's allowlist and unix-socket allowance never
@@ -463,6 +475,7 @@ export async function resetSandbox(): Promise<void> {
     const { SandboxManager } = await loadSrt()
     await SandboxManager.reset()
     srtUp = false
+    socketRun = undefined
     availabilityCache.clear()
     straceAvailableCache = undefined
   })()
@@ -793,7 +806,12 @@ export async function wrapSandboxedCommand(
       : { command: taggedCommand, forwards: false, traced: false }
   const inner =
     ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
-  let wrapped = await SandboxManager.wrapWithSandbox(inner, undefined, customConfig)
+  let wrapped = await wrapForTask(
+    SandboxManager,
+    inner,
+    customConfig,
+    ports.length > 0 || asksUnixSockets(args.config),
+  )
   if (process.platform === 'darwin') {
     const rules = [
       ...macProfileRules(args.config),
@@ -917,6 +935,30 @@ function ownGroupCommand(
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
+
+function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean {
+  return c.unixSockets === true || (c.unixSockets !== undefined && c.unixSockets.length > 0)
+}
+
+/** SRT's wrap, with the socket lift this task asked for or none (L-6). */
+function wrapForTask(
+  SandboxManager: SrtModule['SandboxManager'],
+  command: string,
+  customConfig: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+  sockets: boolean,
+): Promise<string> {
+  const run = socketRun
+  if (run === undefined) return SandboxManager.wrapWithSandbox(command, undefined, customConfig)
+  const turn = wrapTurn.then(() => {
+    SandboxManager.updateConfig({
+      ...run,
+      network: { ...run.network, allowAllUnixSockets: sockets },
+    })
+    return SandboxManager.wrapWithSandbox(command, undefined, customConfig)
+  })
+  wrapTurn = turn.catch(() => undefined)
+  return turn
+}
 
 /** The ports a list grants, deduped; `true` bridges nothing (the host sees no port on Linux). */
 export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[] {

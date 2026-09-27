@@ -1077,6 +1077,57 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     expect(r.ok).toBe(false)
   })
 
+  // ─── Unix sockets are a per-task grant ──────────────────────────
+
+  it(
+    "one task's unixSockets grant does not lift the socket block for the run's others (L-6)",
+    async () => {
+      // SRT reads the lift from its run-wide config, so a task that asked
+      // for no socket reached the host's (docker's, ssh-agent's) once any
+      // task in the run did. A host socket outside the workspace stands in.
+      const sockDir = await mkdtemp(path.join(os.tmpdir(), 'vx-l6-'))
+      const sock = path.join(sockDir, 'host.sock')
+      const server = Bun.listen({
+        unix: sock,
+        socket: {
+          open() {},
+          data() {},
+        },
+      })
+      try {
+        // bun, not socat: the macOS runner has no socat, and the refusal is
+        // what is asserted there too (seatbelt's, not seccomp's).
+        const connect = `const s = require('net').connect('${sock}'); s.on('connect', () => { process.stdout.write('REACHED'); s.destroy() }); s.on('error', (e) => process.stdout.write('ERR ' + e.code))`
+        const probe = (sockets: string): string => `
+          export default {
+            tasks: {
+              probe: {
+                exec: {
+                  command: ${JSON.stringify(`bun -e "${connect}" > out.txt 2>&1; true`)},
+                  sandbox: { allow: { read: ['.'], write: ['out.txt']${sockets} } },
+                },
+              },
+            },
+          }
+        `
+        await addProject(fixture.root, 'granted', { config: probe(', unixSockets: true') })
+        await addProject(fixture.root, 'plain', { config: probe('') })
+        const r = await run({ cwd: fixture.root, tasks: ['probe'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        const out = (p: string): string =>
+          readFileSync(path.join(fixture.root, 'packages', p, 'out.txt'), 'utf8')
+        expect({
+          granted: out('granted'),
+          plain: out('plain').startsWith('ERR '),
+        }).toEqual({ granted: 'REACHED', plain: true })
+      } finally {
+        server.stop(true)
+        await rm(sockDir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // ─── Per-task ignoreViolations ──────────────────────────────────
 
   it(
