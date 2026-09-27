@@ -741,6 +741,12 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Left from the review: `nxCache`'s kept body can be cancelled by a
         concurrent probe (a refetch, not a wrong answer; unmeasured).
 
+1054. DONE (2026-09-27, Next 27's measurement; STATUS only). A warm hit
+      over 5,000 output files costs 47 ms more (min of 15, interleaved)
+      with the bare literal `dist` than with `dist/**`: only the glob form
+      gets `outputDirsCurrent`'s directory-mtime short-circuit. Next 27
+      carries the numbers and the candidate that keeps it.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
@@ -1143,9 +1149,12 @@ next?".
     the path or the tree under it, so the bare path is correct for both,
     but it takes `outputDirsCurrent`'s directory-mtime short-circuit away
     from every nx() directory output (`{projectRoot}/dist`), which only
-    `<dir>/**` globs get. A/B a warm hit over a large `dist/` both ways
-    first; teaching `wholeSubtreePrefixes` a literal that is a directory
-    at save time is the other candidate.
+    `<dir>/**` globs get. Measured (2026-09-27, one task, 5,000 output
+    files in 50 directories, warm up-to-date run, 15 interleaved runs):
+    `dist/**` min 181 ms, median 210; the bare `dist` min 228, median 241.
+    So the bare literal is not free. The candidate is teaching
+    `wholeSubtreePrefixes` a literal that was a directory at save time,
+    then taking the bare path in the mapper.
 
 ## Decisions (this arc)
 
