@@ -9,6 +9,10 @@ package stays zero-dependency and version-drift-free).
 
 The options type is `OtelPluginOptions`.
 
+```sh
+npm install -D @vzn/vx @vzn/vx-otel   # or: pnpm add -D · yarn add -D · bun add -d
+```
+
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'

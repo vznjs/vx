@@ -6,6 +6,10 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for
 and run history that Claude Code, Cursor, Continue.dev, GitHub Copilot and
 any other MCP client can call.
 
+```sh
+npm install -D @vzn/vx @vzn/vx-mcp   # or: pnpm add -D · yarn add -D · bun add -d
+```
+
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
