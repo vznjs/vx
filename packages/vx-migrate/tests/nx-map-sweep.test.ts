@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
-import { mapNxWorkspace, parseNxGraph, type NxGraph } from '../src/nx/nx-map.js'
+import { mapNxWorkspace, parseNxGraph, readNxJsonFacts, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
 const OPTS = { persistentTodo: 'PERSIST', cacheable: new Set<string>() }
@@ -207,6 +207,45 @@ describe('nx-map: what the sweep found unheld', () => {
     )
     const e2e = m.projects.find((p) => p.name === 'e2e')!.tasks.find((t) => t.name === 'typecheck')!
     expect(e2e.task!['dependsOn']).toEqual(['^typecheck', 'app#typecheck', 'deep#typecheck'])
+  })
+})
+
+// Only the raw nx.json was read: named inputs its `extends` base declared
+// fell back to `{projectRoot}/**` with no word, and a `sharedGlobals` edit
+// re-ran nothing (item 1050). Nx merges the base under nx.json, shallowly.
+describe('nx.json is read through its `extends` chain', () => {
+  it('a base’s named inputs apply; nx.json’s own field replaces the base’s whole', async () => {
+    await mkdir(path.join(root, 'config'), { recursive: true })
+    await writeFile(
+      path.join(root, 'config', 'nx.root.json'),
+      JSON.stringify({
+        tasksRunnerOptions: { default: { options: { cacheableOperations: ['lint'] } } },
+      }),
+    )
+    await writeFile(
+      path.join(root, 'nx.base.json'),
+      JSON.stringify({
+        extends: './config/nx.root.json',
+        namedInputs: {
+          default: ['{projectRoot}/**/*', 'sharedGlobals'],
+          sharedGlobals: ['{workspaceRoot}/global.cfg'],
+        },
+      }),
+    )
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({ extends: './nx.base.json' }))
+    const facts = await readNxJsonFacts(root)
+    expect({ named: facts.namedInputs, cacheable: [...facts.cacheable] }).toEqual({
+      named: {
+        default: ['{projectRoot}/**/*', 'sharedGlobals'],
+        sharedGlobals: ['{workspaceRoot}/global.cfg'],
+      },
+      cacheable: ['lint'],
+    })
+    await writeFile(
+      path.join(root, 'nx.json'),
+      JSON.stringify({ extends: './nx.base.json', namedInputs: { production: ['default'] } }),
+    )
+    expect((await readNxJsonFacts(root)).namedInputs).toEqual({ production: ['default'] })
   })
 })
 
