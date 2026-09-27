@@ -58,3 +58,13 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
 test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   lead 4). Rows (`turbo-map-sweep.test.ts` › a task `command`): seven,
   red without the fix; the `rust`-only map is the control.
+- **G-3.** `vx-schedule-history`'s docs say what the plugin packs (lead
+  routed by J). The `resources` docstring said a reservation holds "the
+  most CPU parallelism seen, rounded to a core", and the README's
+  `vx history` sample showed a learned row reserving `· 2 cores`; cores
+  are never learned, only declared. The sample was not the renderer's
+  output either (column widths, `41.2s`). Row (`history-view.test.ts` ›
+  the README sample): the block after `$ vx history` is `renderHistory`
+  over the history it shows, reservations taken through
+  `resourceEstimates` and `withDeclared` — red on the old sample and on
+  `· 2 cores` alone.
