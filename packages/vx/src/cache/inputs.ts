@@ -192,10 +192,17 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
           resolveRuntimeValues(
             runtimeDecl,
             args.projectDir,
+            projectBinDirs(args.projectDir, args.workspaceRoot),
             args.runtimeCache,
             `${args.projectDir}\0`,
           ),
-          resolveRuntimeValues(wsRuntimeDecl, args.workspaceRoot, args.workspaceRuntimeCache, ''),
+          resolveRuntimeValues(
+            wsRuntimeDecl,
+            args.workspaceRoot,
+            [path.join(args.workspaceRoot, 'node_modules', '.bin')],
+            args.workspaceRuntimeCache,
+            '',
+          ),
         ])
   return {
     files,
@@ -334,6 +341,13 @@ function isInputOnDisk(abs: string): boolean {
   }
 }
 
+/** The task's `node_modules/.bin` directories, as `taskBinDirs` gives its PATH. */
+function projectBinDirs(projectDir: string, workspaceRoot: string): string[] {
+  const own = path.join(projectDir, 'node_modules', '.bin')
+  const root = path.join(workspaceRoot, 'node_modules', '.bin')
+  return own === root ? [own] : [own, root]
+}
+
 function resolveEnvValues(
   names: readonly string[],
   source: NodeJS.ProcessEnv,
@@ -350,12 +364,24 @@ function resolveEnvValues(
  * `exec.env.define` / `passThrough`, which describe the command's
  * environment, not the machine's. That is what lets the run-scoped memo
  * key on (projectDir, command) alone; see `runtimeCache`.
+ *
+ * Its PATH does lead with the task's own `node_modules/.bin` directories
+ * (`binDirs`), as the task's does: `tsc --version` otherwise keyed the
+ * global tsc while the task ran the workspace's, and a changed local tool
+ * replayed the old output (item 996).
  */
-async function runRuntimeCommand(command: string, cwd: string): Promise<string> {
+async function runRuntimeCommand(
+  command: string,
+  cwd: string,
+  binDirs: readonly string[],
+): Promise<string> {
+  const ambient = process.env['PATH']
+  const prefix = binDirs.join(path.delimiter)
   let proc
   try {
     proc = Bun.spawn(['sh', '-c', command], {
       cwd,
+      env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -397,6 +423,7 @@ async function runRuntimeCommand(command: string, cwd: string): Promise<string> 
 async function resolveRuntimeValues(
   commands: readonly string[],
   cwd: string,
+  binDirs: readonly string[],
   memo: Map<string, Promise<string>> | undefined,
   memoKeyPrefix: string,
 ): Promise<Array<[string, string]>> {
@@ -407,7 +434,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd)
+        p = runRuntimeCommand(cmd, cwd, binDirs)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]

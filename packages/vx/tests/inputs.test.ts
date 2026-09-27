@@ -1132,6 +1132,29 @@ describe('resolveInputs — runtime values', () => {
     expect(r.workspaceRuntimeValues[0]![1]).toBe(await realpath(root))
   })
 
+  // A task's PATH leads with its project's and the root's
+  // node_modules/.bin; the probe's did not, so `mytool --version` keyed the
+  // global tool (or failed with 127) while the task ran the local one, and
+  // a changed local tool replayed the old output (item 996). The root's
+  // bin alone serves `workspaceRuntime`, and the project's wins over it.
+  it("runs on the task's PATH: the project's bin, then the root's", async () => {
+    const tool = async (dir: string, says: string): Promise<void> => {
+      await mkdir(path.join(dir, 'node_modules', '.bin'), { recursive: true })
+      const file = path.join(dir, 'node_modules', '.bin', 'vx-probe-tool-996')
+      await writeFile(file, `#!/bin/sh\necho ${says}\n`)
+      chmodSync(file, 0o755)
+    }
+    await tool(root, 'root')
+    const cmd = 'vx-probe-tool-996'
+    let r = await resolveInputs(args({ runtime: [cmd], workspaceRuntime: [cmd] }))
+    expect(r.runtimeValues).toEqual([[cmd, 'root']])
+    expect(r.workspaceRuntimeValues).toEqual([[cmd, 'root']])
+    await tool(projectDir, 'project')
+    r = await resolveInputs(args({ runtime: [cmd], workspaceRuntime: [cmd] }))
+    expect(r.runtimeValues).toEqual([[cmd, 'project']])
+    expect(r.workspaceRuntimeValues).toEqual([[cmd, 'root']])
+  })
+
   it('resolves runtime in the project dir', async () => {
     const r = await resolveInputs(args({ runtime: ['pwd'] }))
     expect(r.runtimeValues[0]![1]).toBe(await realpath(projectDir))
