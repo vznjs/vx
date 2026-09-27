@@ -160,6 +160,16 @@ hands the line to `onError` before the outcome, and a run routes it to
 the task's own stderr. Row: `plugin-capabilities.test.ts` (red without
 the wiring, and with the line after the outcome).
 
+## C-15: fence task text on GitHub Actions in every output mode
+
+`resolveOutputView` set `gha` only in `full` mode, and the fence rode
+on it, so under `--output-logs=errors-only` a failed task's
+`::error::`/`::endgroup::` lines printed raw in its frame and its recap,
+and in any mode a server's output since ready printed raw at the end
+(forged annotations, an early `::endgroup::`). `gha` now means "on
+GitHub Actions"; every deferred frame and server tail is fenced; groups
+stay in the `full` branch. Rows: `output-flow.test.ts`.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -201,3 +211,10 @@ the wiring, and with the line after the outcome).
   `cli/run.ts` renders them after `run()` returns, and the signal
   handler exits once `run()` has left (`signals.ts`), before that code
   (no report in 3 of 3 Ctrl-C probes).
+- **D:** an edit to a patch file bun.lock names (`patches/*.patch`)
+  moves every key (`vx-lockfile` folds it through `lockfile-claim.ts`)
+  but `--affected` selects nothing: `affected.ts` asks a claim only
+  about changed ROOT names, and the claim lists `[file]` alone. Probed
+  (all three tasks moved, `affectedIds` `[]`). Proposed: the claim
+  names the extra files it read (`lockfile-claim.ts` has them), and
+  `affected.ts` treats a change to one as a change to the lockfile.

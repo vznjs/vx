@@ -656,7 +656,10 @@ annotation instead (above 128 the label names the signal:
 `failed (exit 137, 128 + SIGKILL)`, a timeout its reason,
 `failed (timed out, exit 143)`, a persistent task that never became
 ready its reason, and a sandboxed task its violation count, as every
-surface labels a failure).
+surface labels a failure). In every output mode there, a task's own
+text (a frame, a server's output since ready) is fenced in
+`::stop-commands::`, so a line it prints never becomes a workflow
+command.
 
 ### `--output-logs <mode>`
 

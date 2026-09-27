@@ -97,10 +97,11 @@ export interface DefaultLogger extends Logger {
  *   broad       — news only: one `success` line per executed task,
  *                 full frames for failures, silence for cache hits.
  *
- * `gha` (full mode only): wrap each task's block in `::group::` /
- * `::endgroup::` workflow commands so tasks collapse in the GitHub
- * Actions log viewer — except failed tasks, which stay pre-expanded
- * and emit an `::error` annotation instead.
+ * `gha` (on GitHub Actions, any mode): task output is fenced from
+ * workflow commands. In full mode each task's block is also wrapped in
+ * `::group::` / `::endgroup::` so tasks collapse in the log viewer —
+ * except failed tasks, which stay pre-expanded and emit an `::error`
+ * annotation instead.
  *
  * `ci`: a truthy CI env was detected. Suppresses the dynamic status
  * line even if stdout happens to be a TTY.
@@ -163,7 +164,7 @@ export function resolveOutputView(
   const gha = truthyEnv(env['GITHUB_ACTIONS'])
   const mk = (mode: OutputView['mode']): OutputView => ({
     mode,
-    ...(mode === 'full' && gha ? { gha: true } : {}),
+    ...(gha ? { gha: true } : {}),
     ...(ci ? { ci: true } : {}),
   })
   if (options.outputLogs !== undefined) return mk(options.outputLogs)
@@ -232,6 +233,10 @@ export function defaultLogger(
   // One per run, and only in GHA mode: the fence token must be something the
   // fenced task output cannot print.
   const ghaToken = view.gha === true ? crypto.randomUUID() : ''
+  // A task's own text, fenced on GitHub Actions: the frames `errors-only`
+  // and `broad` defer and a server's tail printed a task's `::error::` raw.
+  const fenced = (block: string): string =>
+    view.gha === true && block.length > 0 ? ghaFence(block, ghaToken) : block
 
   // All stdout flows through the writer so the status line can never
   // interleave with content. Inert (pure passthrough) on non-TTY
@@ -487,12 +492,14 @@ export function defaultLogger(
             // its buffered output belongs to the frame it never got.
             if (t.outcome === undefined) continue
             emitBlock(
-              formatPersistentTailBlock(
-                t.node,
-                t.outcome,
-                { stdout: tailText(t.out), stderr: tailText(t.err) },
-                { stdout: t.out.dropped, stderr: t.err.dropped },
-                colors,
+              fenced(
+                formatPersistentTailBlock(
+                  t.node,
+                  t.outcome,
+                  { stdout: tailText(t.out), stderr: tailText(t.err) },
+                  { stdout: t.out.dropped, stderr: t.err.dropped },
+                  colors,
+                ),
               ),
             )
           }
@@ -508,7 +515,7 @@ export function defaultLogger(
       // Guarded for repeat runEnd calls.
       if (!flushedFailures && deferredFailures.length > 0) {
         flushedFailures = true
-        for (const block of deferredFailures) emitBlock(block)
+        for (const block of deferredFailures) emitBlock(fenced(block))
       }
       // The summary and the CLI's own lines follow on the stream directly:
       // nothing may still be held, and nothing after this is.
