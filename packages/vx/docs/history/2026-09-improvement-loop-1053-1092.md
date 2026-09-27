@@ -238,8 +238,9 @@ file records), items 719–743 in
       arguments and returned the full unfiltered history. And the server
       echoed 2025-03-26, a revision that obliges it to take batches,
       which it refuses. Each is now -32600 or -32602; the error echoes a
-      readable id, and one that is not an id is answered as null. The
-      supported revisions are 2024-11-05 and 2025-06-18. A tool's own
+      readable id, and one that is not an id is answered as null. (The
+      2025-03-26 drop was undone when F-10 landed batches first: that
+      revision is echoed again.) A tool's own
       refusal stays an `isError` result. The README says so.
       - Rows: `server.test.ts` › an unknown tool or non-object arguments
         is invalid params; a request with no "2.0" version or an id that
