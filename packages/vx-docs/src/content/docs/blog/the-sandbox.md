@@ -31,9 +31,11 @@ lint: {
 
 ## One allow-list, no inheritance
 
-`sandbox: {}` is the baseline: reads nothing, writes nothing, no
-network. Not even the project's own directory, which is why `read: ['.']`
-is the first line of nearly every real block. On top of the baseline
+`sandbox: {}` is the baseline: reads nothing in the workspace, writes
+nothing, no network. Not even the project's own directory, which is why
+`read: ['.']` is the first line of nearly every real block. The read wall
+stands at the workspace root: `~/.cache` and `/etc` stay readable, and
+fold into no key. On top of the baseline
 you grant exactly what the tool needs:
 
 - `read` and `write` paths or globs, project-relative, absolute or

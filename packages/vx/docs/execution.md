@@ -325,10 +325,10 @@ The child process gets, in priority order (lowest first):
    `ESSENTIAL_ENV` in `src/exec/env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.
-4. **PATH augmentation** — `<projectDir>/node_modules/.bin` is
-   prepended so local tools (`oxlint`, `vite`, etc.) work without
-   `npx`. Only the project's own bin; sibling-project bins stay
-   invisible. A task that exits 127 or 126 gets one more frame line
+4. **PATH augmentation** — `<projectDir>/node_modules/.bin`, then
+   `<workspaceRoot>/node_modules/.bin`, are prepended so installed
+   tools (`oxlint`, `vite`, etc.) work without `npx`. Never a sibling
+   project's bin; those stay invisible. A task that exits 127 or 126 gets one more frame line
    (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
    shell's "command not found", the word (when the command is a plain
    `word args…`), the two bin directories vx puts first, and that a

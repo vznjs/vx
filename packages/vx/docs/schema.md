@@ -434,11 +434,11 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
   with different `FOO=bar` set would produce different outputs and
   the user would never know why.
 
-A `<projectDir>/node_modules/.bin` directory is automatically
-prepended to `PATH` so locally-installed tools (`oxlint`, `vite`,
-etc.) work without `npx`. Only the project's own bin — _not_ the
-workspace root's — so sibling-project bins stay invisible (project
-isolation).
+Two `node_modules/.bin` directories are prepended to `PATH` so
+installed tools (`oxlint`, `vite`, etc.) work without `npx`: the
+project's own, then the WORKSPACE ROOT's, where a monorepo's shared
+tooling lives. Never a sibling project's, so sibling bins stay invisible
+(project isolation).
 
 ### `dependsOn` (optional)
 
@@ -996,9 +996,14 @@ per-task is the thing that matters: a task that declares no network is
 never handed the proxy's port, so it reaches nothing. `network: true`
 skips the proxy entirely.
 
-**Baseline** (`sandbox: {}`): the task reads nothing, writes nothing and
-reaches no network — not even its own project directory, which is why
-`allow: { read: ['.'] }` is the first line of almost every real block.
+**Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
+writes nothing and reaches no network — not even its own project
+directory, which is why `allow: { read: ['.'] }` is the first line of
+almost every real block. The read wall is the WORKSPACE ROOT: a path
+outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
+no key, so a task whose output depends on one declares it as a key input
+(`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
+966).
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`
@@ -1040,8 +1045,9 @@ applies, and the remedy is the same either way: declare
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
-that make a cache key wrong. To reach a path outside the project —
-`~/.cache`, `/etc`, a workspace-level fixture — declare it.
+that make a cache key wrong. To reach a path outside the project but
+inside the workspace — a workspace-level fixture — declare it; a path
+outside the workspace is not walled (above).
 
 **Policy: fail on violation.** An undeclared read or write fails the
 task, and a failed task is never cached. Activation is lazy (only when
