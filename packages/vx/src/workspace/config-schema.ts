@@ -707,35 +707,57 @@ function assertNotDoubleNegated(glob: string, where: string): void {
  * next upstream change. `['buidl']` for `['build']` is the shape. Patterns,
  * wildcards and negations stay silent (a preset-spread pattern legitimately
  * matches nothing in some projects; excluding what is absent is harmless);
- * an exact name must be named by some `dependsOn` entry, exactly or by that
- * entry's own `*` pattern. `[]` is the explicit way to decouple.
+ * an exact name must be named by some `dependsOn` entry of a form that can
+ * reach the same node, exactly or by that entry's own `*` pattern. The form
+ * matters: `build` selects this project's `build` and `^build` only other
+ * projects', so `['build']` against `dependsOn: ['^build']` folded nothing
+ * and served a stale hit (item 994). A `pkg#task` entry may name this
+ * project or a dependency, which the schema cannot tell apart, so it pairs
+ * with any form whose task half matches. `[]` is the explicit way to
+ * decouple.
  */
 function assertFilterNamesDeclaredDeps(
   filters: readonly string[],
   dependsOn: readonly string[] | undefined,
   where: string,
 ): void {
-  const taskHalf = (spec: string): string => {
-    const body = spec.startsWith('^') ? spec.slice(1) : spec
-    const hash = body.lastIndexOf('#')
-    return hash === -1 ? body : body.slice(hash + 1)
-  }
-  const declared = (dependsOn ?? []).map(taskHalf)
-  const named = (task: string): boolean =>
-    declared.some((d) => (d.includes('*') ? taskPatternRegExp(d).test(task) : d === task))
+  const declared = (dependsOn ?? []).map(specForm)
+  const matches = (pattern: string, name: string): boolean =>
+    pattern.includes('*') ? taskPatternRegExp(pattern).test(name) : pattern === name
+  const named = (f: SpecForm): boolean =>
+    declared.some((d) => {
+      if (!matches(d.task, f.task)) return false
+      if (d.form === 'cross' && f.form === 'cross') {
+        return f.project.includes('*') || matches(d.project, f.project)
+      }
+      return d.form === f.form || d.form === 'cross' || f.form === 'cross'
+    })
   for (const raw of filters) {
     // `*` and `^*` need no arm of their own: their task half is `*`, which
     // the wildcard skip below takes (item 678).
     if (raw.startsWith('!')) continue
-    const task = taskHalf(raw)
-    if (task.length === 0 || task.includes('*') || named(task)) continue
+    const f = specForm(raw)
+    if (f.task.length === 0 || f.task.includes('*') || named(f)) continue
     throw new UserError(
       `${where}.cache.inputs.tasks: "${raw}" names no task in ${where}.dependsOn ` +
         `(${declared.length === 0 ? 'none declared' : dependsOn!.map((d) => `'${d}'`).join(', ')}) — ` +
         `it would match nothing and fold no upstream hash, decoupling the task from its ` +
-        `dependencies. Fix the name, or use [] to decouple on purpose.`,
+        `dependencies. \`name\` is this project's task, \`^name\` its dependencies', ` +
+        `\`pkg#name\` one project's. Fix the name, or use [] to decouple on purpose.`,
     )
   }
+}
+
+type SpecForm =
+  | { form: 'self' | 'deps'; task: string }
+  | { form: 'cross'; project: string; task: string }
+
+/** A `dependsOn` / filter entry's form, as `parseDependencySpec` splits it. */
+function specForm(spec: string): SpecForm {
+  if (spec.startsWith('^')) return { form: 'deps', task: spec.slice(1) }
+  const hash = spec.indexOf('#')
+  if (hash === -1) return { form: 'self', task: spec }
+  return { form: 'cross', project: spec.slice(0, hash), task: spec.slice(hash + 1) }
 }
 
 /** The graph's `*`-only task glob (`compileTaskPattern`), mirrored: `*` is the sole metacharacter. */

@@ -921,6 +921,39 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/names no task in .*\(none declared\)/)
     })
 
+    // `build` selects this project's build, `^build` only the dependencies':
+    // a filter in one form named only by a dependsOn entry in the other
+    // folded nothing, and a changed dependency replayed the old output
+    // (item 994). A `pkg#` entry may be this project or a dependency, so it
+    // pairs with either; two `pkg#` entries must agree on the project.
+    it('rejects a filter whose form no dependsOn entry of that form names', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      for (const [deps, filter] of [
+        [`['^build']`, `build`],
+        [`['build']`, `^build`],
+        [`['lib#build']`, `other#build`],
+        [`['lib*#build']`, `other#build`],
+      ] as const) {
+        await writeFile(file, withDeps(deps, `['${filter}']`))
+        await expect(loadProjectConfig(file), `${deps} / ${filter}`).rejects.toThrow(
+          `cache.inputs.tasks: "${filter}" names no task in`,
+        )
+      }
+      for (const [deps, filter] of [
+        [`['^build']`, `^build`],
+        [`['build']`, `build`],
+        [`['lib#build']`, `build`],
+        [`['lib#build']`, `^build`],
+        [`['^build']`, `lib#build`],
+        [`['build']`, `lib#build`],
+        [`['lib*#build']`, `lib2#build`],
+        [`['lib#build']`, `l*#build`],
+      ] as const) {
+        await writeFile(file, withDeps(deps, `['${filter}']`))
+        await expect(loadProjectConfig(file), `${deps} / ${filter}`).resolves.toBeDefined()
+      }
+    })
+
     it('a dependsOn pattern names every exact entry it matches', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(file, withDeps(`['build.*']`, `['build.bun', 'other#build.linux']`))
