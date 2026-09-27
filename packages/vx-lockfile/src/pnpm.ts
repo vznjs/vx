@@ -46,8 +46,16 @@ const PER_IMPORTER = new Set([
 ])
 
 export function parseLockfile(text: string): Lockfile {
-  const doc = Bun.YAML.parse(text) as Yaml | null
-  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
+  // pnpm 10.x and 11 write the env lockfile (`configDependencies`, the
+  // package manager's own install) as a leading YAML document; the
+  // project lockfile is the last one, as Turbo reads it. Read as one
+  // document, the pair was an array and every such repo was refused
+  // with "regenerate it", which regenerates the same two documents.
+  const parsed: unknown = Bun.YAML.parse(text)
+  const docs = (Array.isArray(parsed) ? parsed : [parsed]).filter((d) => d !== null)
+  const doc = docs.at(-1) as Yaml | undefined
+  const leading = docs.slice(0, -1)
+  if (doc === undefined || typeof doc !== 'object' || Array.isArray(doc)) {
     throw new Error('pnpm-lock.yaml: not a YAML document')
   }
   const version = scalar(doc['lockfileVersion'])
@@ -91,7 +99,15 @@ export function parseLockfile(text: string): Lockfile {
   // install scripts run anywhere (item 933).
   const rest: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(doc)) if (!PER_IMPORTER.has(k)) rest[k] = v
-  const global = stable({ lockfileVersion: version, rest })
+  // The env lockfile moves every importer: a config dependency can carry
+  // the pnpmfile that rewrites every install, and the package manager's
+  // own version installs all of them. Folded only when present, so a
+  // one-document lockfile keys as it did.
+  const global = stable(
+    leading.length === 0
+      ? { lockfileVersion: version, rest }
+      : { lockfileVersion: version, rest, leading },
+  )
   return { version, importers, snapshots, resolutions, patches, global }
 }
 

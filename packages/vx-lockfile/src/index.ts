@@ -102,7 +102,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   )
 }
 
-/** `pnpm-lock.yaml` (lockfile v5, v6, v9): importers, snapshots, peers, patches, `link:`. */
+/** `pnpm-lock.yaml` (lockfile v5, v6, v9, one document or pnpm 11's two): importers, snapshots, peers, patches, `link:`. */
 export function pnpm(options: LockfileOptions = {}): VxPlugin {
   return plugin(MANAGERS.pnpm, options)
 }
