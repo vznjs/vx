@@ -9,7 +9,8 @@
 #
 #   real/nx-repo.sh <repo> <vx-binary> "<tasks>" [reps]
 #
-# The repo must be installed, its graph exported
+# Or with `plugins: [nx()]` in vx.workspace.mjs and nothing written
+# (2026-09-27). Otherwise the repo must be installed, its graph exported
 # (`nx graph --file=.nx/workspace-data/project-graph.json`) and migrated
 # (`bun packages/vx-migrate/src/bin.ts --from nx` from the repo root),
 # so the vx.config.ts files sit beside the package.json files; they are

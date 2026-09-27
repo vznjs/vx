@@ -259,6 +259,16 @@ builds (`tsup && node ../shared/generate-declarations.js`). Nx's
 - `{projectRoot}/.next` in the repo's `build` outputs is the case
   STATUS 151 fixed: it maps to `.next/**` now.
 
+### Re-measure, 2026-09-27 (roadmap 2.5)
+
+astro and refine at the revisions above, run through `turbo()` / `nx()`
+(`vx.workspace.mjs` only, `@vzn/vx-migrate` linked into
+`node_modules/@vzn`). astro keeps its turbo.json edit, pnpm 11.13.1 on
+`.vx-bench-bin/`, `TURBO_TELEMETRY_DISABLED=1`. refine's scope is
+`!./examples/** !@refinedev/refine-ui !@refinedev/live-previews`, the
+same 35 builds Nx plans. The box's shell exports `BUN_OPTIONS=--smol`;
+every run unsets it.
+
 ### redwoodjs/redwood — a7852fb (2025-12-13): dropped
 
 yarn 4.6.0 (no vendored release), Nx 20.3.2, 39 packages of scripts.

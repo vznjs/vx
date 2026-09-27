@@ -719,6 +719,42 @@ under 35 `dist/**`, stat'ed at ~6 µs each, the one cost that scales
 with the repo's output size rather than its task count — and 5 ms of
 history (STATUS 153).
 
+## Real repos re-measured (2026-09-27)
+
+Roadmap 2.5: astro and refine again, same revisions, harnesses and
+scopes as above, now through the adoption plugins with nothing written
+(`turbo()` / `nx()` in `vx.workspace.mjs`). Compiled vx at main 889a95c,
+Bun 1.4.2, the 4-core container, medians of three interleaved reps.
+This box is slower than 2026-09-11's (Nx cold 178 s here, 115 s then),
+so compare ratios, not absolute numbers.
+
+| astro `build` (32) | vx         | Turbo 2.10.2   |
+| ------------------ | ---------- | -------------- |
+| cold               | **76.0 s** | 86.4 s (1.14×) |
+| restore            | **1.74 s** | 2.38 s (1.37×) |
+| no-op              | **786 ms** | 1.86 s (2.36×) |
+| second no-op       | **792 ms** | 2.02 s (2.55×) |
+
+| refine `build` (35, + 14 `nx-input` twins) | vx          | Nx 18.2.2       |
+| ------------------------------------------ | ----------- | --------------- |
+| cold                                       | **158.8 s** | 178.2 s (1.12×) |
+| restore                                    | **1.35 s**  | 2.83 s (2.10×)  |
+| no-op                                      | **396 ms**  | 2.87 s (7.2×)   |
+| second no-op                               | **386 ms**  | 2.73 s (7.1×)   |
+
+vx leads every row. refine's warm ratios fell from ~11.5× because
+`nx()` maps the whole graph on every run: against the same repo with
+`vx-migrate --from nx` configs written, a warm no-op reads 396 ms
+median (min 364) under `nx()` and 291 (min 272) written, 15
+interleaved rounds, A/A (a second `nx()` copy) 393 (min 350). Of a
+377 ms no-op, `load configs` is 90 ms; the plugin maps all 206
+projects when the run asks for 35.
+
+Day-end A/B, main 889a95c against fa419f76 (item 960), 1,000 synthetic
+projects warm, source runs: a tie. n=15 medians 404 / 422, A/A 424;
+n=21 418 / 420, A/A 401. Stage mins over 15 runs move within the A/A
+spread.
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
