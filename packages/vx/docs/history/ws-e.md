@@ -25,11 +25,16 @@ What did not:
   `docs/cli.md` § Top-level shape says "on stderr" and the `--dry` path
   (`src/cli/run.ts`) prints it on stderr as `vx run: no projects …`. A
   `2>err.log` CI step loses the one line that says why it went red.
-- J: `docs/cli.md` § Plugin commands shows a plugin as a plain object
-  with `name: 'org/mcp'`; the loader refuses exactly that
-  (`plugins[i] must come from definePlugin(import.meta, { … })`,
-  `src/workspace/config-schema.ts`). The example should be
-  `definePlugin(import.meta, { commands: { … } })`.
+- J: `docs/cli.md` § Plugin commands showed a plugin as a plain object
+  with a `name` field, which the loader refuses. Fixed by J-9.
+- C: `vx watch` reads "the initial run refused to start" off the
+  result's shape (`ok: false, outcomes: []`, E-8), the only way
+  `RunSummary` says it today. Carrying the unresolved names on
+  `RunSummary` would make that a field instead of an inference.
+- F: `packages/vx-reapi/tests/wedged.test.ts` — "RST_STREAM(CANCEL)
+  reads as CANCELLED and is not retried" (F-1's control row) went red
+  twice in this stream's full gates (`sent: 0` for `1`) and is green
+  alone (3 of 3): a race between the proxy's cut and the count.
 
 ## Merged
 
@@ -42,3 +47,17 @@ What did not:
 - E-3 — `vx info --format json`: the reference's field list is held to
   the `InfoFacts` interface both ways by a drift row (J-9 had just named
   the two missing fields, `bunSupported` and `sandbox`).
+- E-4 — `vx completions` offers only the flags each verb accepts (its
+  Usage line; run's option lines less `WATCH_REFUSED_FLAGS` for watch),
+  and `vx run --chek` no longer suggests the refused `--check`; rows
+  parse every completed flag through its verb's own parser.
+- E-9 — Sweep of `cli/cache.ts` and `util/size.ts` (never named): 41
+  mutants, 29 caught, 1 inconclusive (the unwritable-cache refusal:
+  its row is `skipIf(root)`, held by CI's non-root job), 2 equivalent
+  (`cache.close()` and the run lock's release: process exit does both,
+  the lock through its exit hook), 9 held now. The harmful ones: an
+  unparsable `--older-than` or `--max-size` reached the prune as `null`
+  (a cutoff of now; a null cap), and a `--dry-run` that stopped
+  reaching the cache would have deleted with the suite green. Rows in
+  `tests/cli.test.ts`, `tests/cache-prune-verb.test.ts` (new),
+  `tests/schema-reset-notice.test.ts`.

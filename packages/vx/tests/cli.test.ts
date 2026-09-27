@@ -1826,6 +1826,11 @@ describe('formatBytes', () => {
     expect(formatBytes(2 * 1024 * 1024)).toBe('2.0 MB')
     expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe('3.0 GB')
   })
+
+  it('switches to TB, and past 1024 TB to PB', () => {
+    expect(formatBytes(4 * 1024 ** 4)).toBe('4.0 TB')
+    expect(formatBytes(2048 * 1024 ** 4)).toBe('2 PB')
+  })
 })
 
 describe('parseDuration', () => {
@@ -1891,6 +1896,17 @@ describe('parsePruneArgs', () => {
 
   it('parses --max-size', () => {
     expect(parsePruneArgs(['--max-size', '1G']).maxBytes).toBe(1024 ** 3)
+  })
+
+  // Past these refusals an unparsed value is `null`: `Date.now() - null` is
+  // a cutoff of NOW (every entry older than this instant) and a `null` cap
+  // reaches the cache as a size limit. Neither refusal had a row (E-9's
+  // sweep deleted each with the suite green).
+  it('refuses a value it cannot parse instead of pruning by it', () => {
+    expect(parsePruneArgs(['--older-than', 'abc'])).toEqual({ error: 'invalid duration: abc' })
+    expect(parsePruneArgs(['--older-than', '1.5d'])).toEqual({ error: 'invalid duration: 1.5d' })
+    expect(parsePruneArgs(['--max-size', 'abc'])).toEqual({ error: 'invalid size: abc' })
+    expect(parsePruneArgs(['--max-size', '1.5G'])).toEqual({ error: 'invalid size: 1.5G' })
   })
 
   it('rejects missing flag values', () => {
