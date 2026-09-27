@@ -43,4 +43,11 @@ Unproven lead: `movedInput`'s item-1015 test compares a ctime against
 `Date.now()`, two clocks; on Linux 1 of 3,000 writes after a `Date.now()`
 stamped 3 ms before it (`fsClockNow` in watch.ts documents the same).
 
+M-4. `task-glob-brackets.test.ts` › an upstream's hit sets aside the
+route (escaped): on macOS CI (run 36358110806, `ws-f/otel-std-env`) the
+second run read `p#build failed` where a hit was due, and the row's quiet
+logger kept the reason. Thirty local runs stayed green. A failed outcome
+now carries what vx said and the task's stderr (proven with a mutant that
+breaks build's input).
+
 ## Leads for other streams

@@ -170,10 +170,19 @@ for (const [spelling, glob] of spellings) {
       git('add', '-A')
       git('commit', '-q', '-m', 'init')
       const ws = root
-      const statuses = async (): Promise<string[]> =>
-        (await run({ cwd: ws, tasks: ['route'], log: quiet })).outcomes
-          .map((o) => `${o.node.id} ${o.status}`)
-          .sort()
+      // A failed outcome carries what vx said about it: a hit that ended
+      // `p#build failed` on macOS CI left no reason on record (M-4).
+      const statuses = async (): Promise<string[]> => {
+        const said: string[] = []
+        const log = {
+          ...quiet,
+          status: (line: string) => said.push(line),
+          taskStderr: (_: unknown, chunk: string) => said.push(chunk),
+        }
+        const { outcomes } = await run({ cwd: ws, tasks: ['route'], log })
+        const out = outcomes.map((o) => `${o.node.id} ${o.status}`).sort()
+        return outcomes.some((o) => o.status === 'failed') ? [...out, ...said] : out
+      }
       expect(await statuses()).toEqual(['p#build success', 'p#route success'])
       await rm(path.join(dir, 'app/[id]/page.js'))
       await mkdir(path.join(dir, 'app/i'))
