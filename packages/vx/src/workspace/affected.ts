@@ -625,6 +625,14 @@ function isDirectory(abs: string): boolean {
   }
 }
 
+function realpathOr(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
+}
+
 function projectsContaining(
   workspaceRoot: string,
   changedRelPaths: readonly string[],
@@ -639,6 +647,19 @@ function projectsContaining(
   // pays for.
   const dirToName = new Map<string, string>()
   for (const p of projects) dirToName.set(p.dir, p.name)
+  // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
+  // indexed by its link, and git reports its files at their real place
+  // (`ext/b/src/a.txt`), which resolved to no project: an edit there
+  // selected nothing (item 1079). Its real place under the root is indexed
+  // too. One realpath per member, and only on an --affected run.
+  const realRoot = realpathOr(workspaceRoot)
+  for (const p of projects) {
+    const real = realpathOr(p.dir)
+    const rel = path.relative(realRoot, real)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) continue
+    const spelled = path.resolve(workspaceRoot, rel)
+    if (spelled !== p.dir && !dirToName.has(spelled)) dirToName.set(spelled, p.name)
+  }
   const owned = new Set<string>()
   for (const rel of changedRelPaths) {
     let dir = path.resolve(workspaceRoot, rel)

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs'
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -92,6 +92,29 @@ describe('affectedProjects', () => {
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out]).toEqual(['a'])
+  })
+
+  // Item 1079: a member linked in from elsewhere in the tree is indexed by
+  // its link, and git reports its files at their real place, which owned
+  // no project: an edit there selected nothing.
+  it('selects a member linked in from elsewhere in the tree when its real files change', async () => {
+    await mkdir(path.join(root, 'ext/c'), { recursive: true })
+    await writeFile(path.join(root, 'ext/c/file.txt'), 'c-initial')
+    await symlink('../ext/c', path.join(root, 'packages/c'))
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'linked member')
+    const withC = [
+      ...projects,
+      {
+        name: 'c',
+        dir: path.join(root, 'packages/c'),
+        configPath: null,
+        packageJson: { name: 'c' },
+      },
+    ]
+    await writeFile(path.join(root, 'ext/c/file.txt'), 'c-changed')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withC })
+    expect([...out]).toEqual(['c'])
   })
 
   it('selects multiple projects when changes span them', async () => {

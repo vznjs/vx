@@ -211,6 +211,11 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
   — because the other end is always the working tree. A ref that does
   not exist is `git ref "<ref>" did not resolve`.
+- A member whose directory is a symlink to a place elsewhere under the
+  workspace root (`packages/b -> ../ext/b`) is selected by a change at
+  that real place too: git names the files where they live, not by the
+  link (item 1079). A link to a directory outside the root is outside
+  git's view, and a change there selects nothing.
 - The diff runs from the **merge base** of the ref and `HEAD`, not from
   the ref itself, so a branch whose base has moved on sees only its own
   changes — never the files other people landed on `main` since it

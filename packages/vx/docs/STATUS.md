@@ -489,6 +489,16 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
       - The row's leak check is unchanged: a task process vx leaves
         running is still alive at 3 s and still reddens it.
 
+1079. DONE (2026-09-27, --affected review). A workspace member whose
+      directory is a symlink (`packages/c -> ../ext/c`) was never selected
+      by `--affected`: git reports the change at `ext/c/...`, and
+      `projectsContaining` indexed only the link's spelling. It now also
+      indexes each member's real place when that lies under the root.
+      cli.md says so, and says a link out of the root stays unseen.
+      - Row: `affected.test.ts` › "selects a member linked in from
+        elsewhere in the tree", red without the change; the file's other
+        rows still hold.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
