@@ -292,6 +292,9 @@ test is telling the truth.
 1065. SUPERSEDED (2026-09-27) by F-2 (`docs/history/ws-f.md`), which
       landed first: the cache and history tools of vx mcp open the index as `vx last` does, making nothing on disk and refusing an earlier schema's index by name.
 
+1066. SUPERSEDED (2026-09-27) by G-4 (`docs/history/ws-g.md`), which
+      landed first: vx-schedule-history checks its number options.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
