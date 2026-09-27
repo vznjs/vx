@@ -1670,6 +1670,20 @@ describe('affectedProjects: config import closures', () => {
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out].sort()).toEqual(['lib'])
   })
+
+  it('PIN: an extensionless import of a deleted directory index reaches its importer', async () => {
+    await mkdir(path.join(root, 'shared/c'), { recursive: true })
+    await writeFile(path.join(root, 'shared/c/index.mjs'), `export const C = 1\n`)
+    await writeFile(
+      path.join(root, 'packages/lib/vx.config.mjs'),
+      `import { C } from '../../shared/c'\nexport default { tasks: {} }\n`,
+    )
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib imports c')
+    await rm(path.join(root, 'shared/c'), { recursive: true })
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out].sort()).toEqual(['lib'])
+  })
 })
 
 // The root `"."` member is a supported (and, in this repo, load-bearing)
