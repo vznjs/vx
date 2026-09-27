@@ -10,7 +10,7 @@ import type { Database } from 'bun:sqlite'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileIdentity, repoFacts } from './git-inputs.js'
-import { FILE_HASH_RACY_MS } from './layer.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 export class FileHashStore {
   private readonly selectFileHash: ReturnType<Database['prepare']>
@@ -136,7 +136,7 @@ export class FileHashStore {
     // changed within the window is hashed again on its next call rather
     // than memoised; the warm path never meets it (keys are derived long
     // after the files were written).
-    if (this.write && Date.now() - ctimeMs >= FILE_HASH_RACY_MS) {
+    if (this.write && Date.now() - ctimeMs >= racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) {
       this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
     }
     return fileIdentity(mode, ch)
@@ -161,6 +161,8 @@ export class FileHashStore {
       mtimeMs: number
       size: number
       ctimeMs: number
+      /** Unfloored, for the racy window: a whole second is a whole-second clock only here. */
+      ctimeRaw: number
       ino: number
     }
     const stats = new Map<string, Stat>()
@@ -188,6 +190,7 @@ export class FileHashStore {
           mtimeMs: Math.floor(st.mtimeMs),
           size: st.size,
           ctimeMs: Math.floor(st.ctimeMs),
+          ctimeRaw: st.ctimeMs,
           ino: Number(st.ino),
         })
       } catch {
@@ -241,7 +244,7 @@ export class FileHashStore {
         out.set(p, fileIdentity(st.mode, digest))
         // The same racy-clean rule as `hashFile`: a stat taken within the
         // window of the file's last change is not memoised.
-        if (this.write && now - st.ctimeMs >= FILE_HASH_RACY_MS) {
+        if (this.write && now - st.ctimeMs >= racyWindowMs(st.ctimeRaw, FILE_HASH_RACY_MS)) {
           this.upsertFileHash.run(p, st.mtimeMs, st.size, st.ctimeMs, st.ino, digest, now)
         }
       }

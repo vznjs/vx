@@ -2,10 +2,10 @@
 
 ## Leads (the 2026-09-27 review, ranked by harm; each proven by a repro)
 
-1. A nested git repository inside a project (a vendored submodule, an
+1. DONE (A-1). A nested git repository inside a project (a vendored submodule, an
    embedded repository) is one listing entry and no files: its files never
    reach the key, and an edit there is a stale hit. A-1.
-2. On a file system with whole-second timestamps (ext3, HFS+, FAT/exFAT,
+2. DONE (A-2). On a file system with whole-second timestamps (ext3, HFS+, FAT/exFAT,
    some NFS) the per-file hash memo stores a digest for a file rewritten
    later in the same second at the same size: a stale hit
    (`FILE_HASH_RACY_MS` is 50 ms, the clock's tick is 1 s). `movedInput`
@@ -47,6 +47,10 @@
   (a child `gone within 21 ms` after the exit, procfs of another pid
   namespace), green on the re-run with no change.
 
+- F: `vx-reapi` `wedged.test.ts` › "RST_STREAM(CANCEL) reads as CANCELLED
+  and is not retried" failed once in a gate (`sent: 0` for 1), green in
+  three runs after with no change: the probe's count races the cut.
+
 ## Record
 
 A-1. DONE (2026-09-27, lead 1). A nested repository inside a project is
@@ -64,3 +68,20 @@ nested repository too. `caching.md`, `modules/git-inputs.md` and
 project (the listing, scoped and workspace-wide, and the per-project
 spawn) and › an edit inside it is a miss (gitlink and untracked).
 Red without the fix.
+
+A-2. DONE (2026-09-27, lead 2). A file system that keeps whole seconds
+(ext3, HFS+, FAT/exFAT, some NFS) stamps a write at 12:00:00.900 as
+12:00:00, and the racy windows were 50 ms: a file written and hashed
+120 ms apart was memoised, and a same-size rewrite later in that
+second kept every field the memo keys on. On an ext2 mount the next
+run was `up-to-date` with `src=BBBB dist=AAAA`. The pre-save
+re-check and the output-directory snapshot shared the assumption. - Fix (`layer.ts` `racyWindowMs`, used by `file-hashes.ts`,
+`output-index.ts`, `task-hash.ts`): a stamp with no sub-second part
+widens its window by a second. Off the warm path (a memo write, a
+miss's re-check, the run-end snapshot). `caching.md`,
+`modules/cache.md`, `modules/task-hash.md` say so. - Rows: `whole-second-stamps.test.ts` (simulated stamps: `spyOn` of
+`lstatSync`, `setSystemTime`, `utimes`): the memo, the batch, the
+re-check against its fact and against the command's start, the
+directory snapshot, each with a sub-second control. Red without the
+fix. - Lead for C: `fingerprint-watch.ts` judges the lockfile's ctime
+against the same 50 ms window.

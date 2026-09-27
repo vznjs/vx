@@ -72,7 +72,10 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   // test runs; stamping the tree old is the same claim proven. Symlinked
   // directories are left alone: the walk does not descend them.
   const age = (): void => {
-    const old = new Date(Date.now() - 10 * OUTPUT_DIRS_RACY_MS)
+    // Never on a whole second: that stamp reads as a file system keeping
+    // whole seconds, whose window is a second wider (A-2).
+    const t = Date.now() - 10 * OUTPUT_DIRS_RACY_MS
+    const old = new Date(t % 1000 === 0 ? t - 1 : t)
     const walk = (dir: string): void => {
       utimesSync(dir, old, old)
       for (const e of readdirSync(dir, { withFileTypes: true })) {
