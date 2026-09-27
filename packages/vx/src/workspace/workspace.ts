@@ -470,11 +470,17 @@ async function findConfigFile(dir: string): Promise<string | null> {
     } catch {
       return null
     }
-    const byName = new Map(entries.map((e) => [e.name, e]))
-    for (const name of PROJECT_CONFIG_FILENAMES) {
-      const entry = byName.get(name)
+    // By precedence slot, not a Map per directory, and no `path.join`: at
+    // 5,000 projects that cut `listProjects` from 53.5 to 47.7 ms (min of
+    // 15, six interleaved rounds, A/A 54.7).
+    const found: Dirent[] = []
+    for (const e of entries) {
+      const rank = CONFIG_RANK.get(e.name)
+      if (rank !== undefined) found[rank] = e
+    }
+    for (const entry of found) {
       if (entry === undefined) continue
-      const candidate = path.join(dir, name)
+      const candidate = dir + path.sep + entry.name
       if (entry.isFile()) return candidate
       if (entry.isSymbolicLink() && (await isFile(candidate))) return candidate
     }
@@ -486,6 +492,8 @@ async function findConfigFile(dir: string): Promise<string | null> {
   }
   return null
 }
+
+const CONFIG_RANK = new Map(PROJECT_CONFIG_FILENAMES.map((n, i) => [n, i]))
 
 async function isFile(p: string): Promise<boolean> {
   try {
@@ -518,7 +526,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
   // a 1000-member workspace.
   const loaded = await Promise.all(
     [...matches].map(async (dir) => {
-      const pkgJsonPath = path.join(dir, 'package.json')
+      const pkgJsonPath = dir + path.sep + 'package.json'
       const [configPath, text] = await Promise.all([
         findConfigFile(dir),
         Bun.file(pkgJsonPath)

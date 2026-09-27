@@ -92,3 +92,9 @@ run leaves out; the rest are refusals.
   survivor: no row read two manifests in one `git cat-file --batch`, so
   an offset slip between blobs (the bump read as absent at the base, the
   edge never dropping) survived. Row: the D-3 row's two-manifest case.
+- **D-10** Discovery's Linux config lookup ranks a directory's entries
+  into precedence slots instead of building a Map per directory, and
+  joins paths by concatenation: `listProjects` at 5,000 projects 53.5 →
+  47.7 ms (min of 15 per arm, six interleaved rounds; A/A 54.7). The
+  `Bun.file` manifest read stays: `load-reads.test.ts` counts reads
+  through it.
