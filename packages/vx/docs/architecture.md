@@ -74,6 +74,7 @@ layers:
 ```mermaid
 graph TD
   bin["bin.ts"] --> cli
+  bin --> index
   index["index.ts (public façade)"] --> orchestrator
   index --> graphmod["graph"]
   index --> cache
@@ -103,27 +104,29 @@ graph TD
 
 ### Allowed dependency matrix (rows import columns, via index only)
 
-|                  | util | config | version | workspace | graph | cache | exec | orchestrator | cli |
-| ---------------- | ---- | ------ | ------- | --------- | ----- | ----- | ---- | ------------ | --- |
-| **workspace**    | ✓    | ✓      | ✓       | —         |       |       |      |              |     |
-| **graph**        | ✓    | ✓      |         | ✓         | —     |       |      |              |     |
-| **cache**        | ✓    | ✓      |         |           |       | —     |      |              |     |
-| **exec**         | ✓    | ✓      |         |           |       |       | —    |              |     |
-| **orchestrator** | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | —            |     |
-| **cli**          | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     |      | ✓            | —   |
-| **index**        | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | ✓            |     |
-| **bin**          | ✓    |        |         |           |       |       |      |              | ✓   |
+|                  | util | config | version | workspace | graph | cache | exec | orchestrator | cli | index |
+| ---------------- | ---- | ------ | ------- | --------- | ----- | ----- | ---- | ------------ | --- | ----- |
+| **workspace**    | ✓    | ✓      | ✓       | —         |       |       |      |              |     |       |
+| **graph**        | ✓    | ✓      |         | ✓         | —     |       |      |              |     |       |
+| **cache**        | ✓    | ✓      |         |           |       | —     |      |              |     |       |
+| **exec**         | ✓    | ✓      |         |           |       |       | —    |              |     |       |
+| **orchestrator** | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | —            |     |       |
+| **cli**          | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     |      | ✓            | —   |       |
+| **index**        | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | ✓            |     | —     |
+| **bin**          | ✓    |        |         |           |       |       |      |              | ✓   | ✓     |
 
 Composition happens only at `orchestrator` (wires workspace → graph →
 cache → exec into a run) and `cli` (wires argv → orchestrator).
 `cli → cache` is deliberate — `vx cache prune` / `vx last` / `vx why`
 open the cache without a run. `cli → exec` is deliberately absent.
+`bin → index` is a lazy `import()`: a plugin's `@vzn/vx` resolves to
+this copy (`registerCoreAlias`).
 
 ### Enforcement
 
 The matrix is law, not convention: `tests/module-boundaries.test.ts`
-scans every static `import … from` / `export … from` specifier under
-`src/` and fails the suite when
+scans every `import … from` / `export … from` specifier and every
+`import('…')` under `src/` and fails the suite when
 (rule 1) a cross-module edge isn't in the matrix, or (rule 2) a
 cross-module import of a contracted module targets anything but its
 `index.ts`. Every directory module is contracted. Tests under
@@ -272,7 +275,8 @@ never branches on layering.
 - **`graph/scheduler.ts`** — runs the DAG with up to N concurrent
   tasks over **two ready queues**: exec-tier (dep-gated: misses +
   unstable tasks) and restore-tier (confirmed stable local cache
-  hits — ready immediately, low priority, worker-slot backfill only).
+  hits — ready immediately, on their own lane `2 × concurrency` wide;
+  at concurrency 1 the two share the one slot).
   Failed tasks mark their dependents `skipped`; independent siblings
   keep running; restore-tier tasks bypass the failed-dep check (their
   key is dep-independent). Priority = transitive-reverse-dependent
@@ -360,7 +364,7 @@ never branches on layering.
       top for an unscoped run) + per-run hash memo → task-graph build
       → the `graph`, `key` and `schedule` stages.
    2. Plugins install as bus subscribers (`installPlugins` runs each
-      `setup(ctx)`), then the run context (git/CI/host, one git spawn)
+      `setup(ctx)`), then the run context (git/CI/host; `.git` read directly, git spawned only as fallback)
       is captured for the `invocations` row. Only when a plugin has a
       `telemetry` hook or `RunOptions.telemetrySinks` is set is the
       telemetry run record built (plus `captureWorkspaceIdentity`) and
@@ -392,7 +396,8 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       after `run()` returns).
    9. `cache.recordRunBundle({ runs, invocation })` — every real
       task's row plus one invocation header row, in one transaction.
-      Group and `aborted` tasks are skipped.
+      Group and `aborted` tasks are skipped; a run a signal stopped
+      records nothing.
    10. Telemetry summary emit + flush (only when a sink is active),
        background prefetch/upload drain, plugin `teardown`,
        `cache.close()`, sandbox teardown; the plugins' bus
@@ -447,8 +452,12 @@ via Bun's native `await import()` — no jiti, no esbuild, no
 transpile-on-load step. We append a content-hash query string
 (`?vx-bust=<xxh3>`) to the import specifier so:
 
-- Same content → same URL → Bun's module cache hits (fast).
-- Changed content → new URL → fresh re-evaluation (correct).
+- Same content → same URL.
+- Changed content → new URL → fresh evaluation.
+
+A repeat evaluation of a project config in one process (`vx watch`)
+runs in a worker instead: the query cannot reach the config's own
+imports.
 
 A project config's first load is served the bytes the loader already
 read (`?vx-held=`, a `Bun.plugin` onLoad) instead of letting Bun read
@@ -585,7 +594,8 @@ as is any other — the recipe lives in the plugins guide.
 
 ## Run-history analytics
 
-Every `vx run` invocation stamps a ULID (`run_id`) and writes, in one
+Every `vx run` invocation stamps a ULID (`run_id`) and, unless a signal
+stopped it, writes, in one
 transaction (`recordRunBundle`), one row per executed task to the
 `runs` table plus one header row to the `invocations` table in
 `cache.db`. Per-task `runs` columns:
@@ -604,7 +614,7 @@ transaction (`recordRunBundle`), one row per executed task to the
 | `peak_rss_bytes`                          | resource-usage max RSS                                                    |
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                             |
 | `cache_hit`                               | convenience boolean (derivable from status)                               |
-| `attempts`                                | retries a task took (> 1); NULL for a once-run task                       |
+| `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task              |
 | `cached`                                  | 1 when the task declared a cache block, 0 when it runs every time         |
 | `blocked_by`                              | a skip's blocker (`project#task`)                                         |
 | `timed_out`                               | 1 when the failure was `exec.timeout`                                     |

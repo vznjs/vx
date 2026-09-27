@@ -162,7 +162,7 @@ terminal and a task succeeding or failing. Read it alongside
  │                SIGKILLs and exits at once.
  │
  ├─ Cache acceleration (before scheduling)
- │    • REMOTE PREFETCH (LayeredCache runs only) — derive every
+ │    • REMOTE PREFETCH (a cache layer with a remote only) — derive every
  │      stable-key cacheable task's key up front (reusing the run's
  │      hashCache memo) and fire the remote GETs in the background
  │      under a bounded pool. Not awaited before scheduling (the
@@ -186,9 +186,9 @@ terminal and a task succeeding or failing. Read it alongside
  │      - RESTORE tier — confirmed stable local hits; ready
  │        IMMEDIATELY (no dep gate, no failed-dep→skip check — their
  │        key is dep-independent) at LOW priority, on a restore lane
- │        of 2×N (1 when N is 1). The drain rule: exec-tier first;
- │        a restore never takes an exec slot and the two lanes never
- │        wait on each other.
+ │        of 2×N. The drain rule: exec-tier first; a restore never
+ │        takes an exec slot and the two lanes never wait on each
+ │        other — except at N = 1, where they share the one slot.
  │    On failure: exec-tier dependents are marked `skipped` (exit 1,
  │    durationMs 0, no spawn); independent siblings keep running.
  │    The scheduler doesn't know about caching; the execute callback
@@ -303,7 +303,8 @@ terminal and a task succeeding or failing. Read it alongside
        and --profile Chrome-trace JSON (default profile.json).
     4. recordRunBundle — one transaction writing a `runs` row per real
        task plus the `invocations` header row (command, git/CI/host
-       context, tags, counts). Group + aborted tasks skipped.
+       context, tags, counts). Group + aborted tasks skipped; a run
+       a signal stopped records nothing.
     5. Telemetry: emit the RunSummaryRecord to every active sink +
        await their flush (crash-isolated; skipped when no sink).
     6. Drain background remote prefetches/uploads; cache.close();
@@ -412,7 +413,7 @@ broader access has cache-stability implications).
 | Same-project task referenced in `dependsOn` not declared                                                                                                         | `buildTaskGraph` throws with the offending edge                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Duplicate workspace package name                                                                                                                                 | `listProjects` throws with both paths                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Cycle in task graph                                                                                                                                              | `detectCycle` throws with the cycle path                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Malformed config                                                                                                                                                 | `loadProjectConfig` throws (UserError) with file + field                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Malformed config                                                                                                                                                 | `loadProjectConfigs` throws (UserError) with file + field                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `cache.inputs.runtime` command exits non-zero                                                                                                                    | UserError naming the command + exit code; that task is `failed`, dependents skip                                                                                                                                                                                                                                                                                                                                                                          |
 
 Failures don't kill the scheduler — independent tasks already in
