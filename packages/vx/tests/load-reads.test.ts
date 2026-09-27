@@ -103,6 +103,8 @@ describe('a run reads each root file once', () => {
         'bun.lock': ['exists'],
         'bun.lockb': ['exists'],
         '.yarnrc.yml': ['exists'],
+        '.npmrc': ['exists'],
+        'bunfig.toml': ['exists'],
         // The workspace config by precedence: three absent names, then the file.
         'vx.workspace.ts': ['exists'],
         'vx.workspace.mts': ['exists'],
