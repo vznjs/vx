@@ -274,6 +274,27 @@ describe('a cached target that declares no outputs', () => {
   })
 })
 
+// `projects: ["tag:lib"]` names the graph's nodes by their tags; the
+// mapper looked each entry up as a package name and dropped it (item 1053).
+describe('a dependsOn projects pattern', () => {
+  it('reaches the nodes whose tags or names it matches', async () => {
+    const metas = [await meta('a'), await meta('lib-b'), await meta('lib-c')]
+    const t = await tasksOf(metas, {
+      a: node('packages/a', {
+        test: { command: 't', dependsOn: [{ target: 'build', projects: ['tag:lib', '!lib-c'] }] },
+      }),
+      'lib-b': {
+        data: { root: 'packages/lib-b', tags: ['lib'], targets: { build: { command: 'b' } } },
+      },
+      'lib-c': {
+        data: { root: 'packages/lib-c', tags: ['lib'], targets: { build: { command: 'c' } } },
+      },
+    })
+    expect(t.get('a#test')?.task?.['dependsOn']).toEqual(['lib-b#build'])
+    expect(t.get('a#test')?.todos).toEqual([])
+  })
+})
+
 describe('nx.json is read through its `extends` chain', () => {
   it('a base’s named inputs apply; nx.json’s own field replaces the base’s whole', async () => {
     await mkdir(path.join(root, 'config'), { recursive: true })
