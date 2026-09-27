@@ -1533,7 +1533,11 @@ replaced; …`. The new binary
 keeps the old one's mode (and, as root, its owner), and must answer
 `--version` before the upgrade reports it installed: one that does not
 start on this machine is swapped back for the previous vx, and the
-command exits 1 saying so (item 1097).
+command exits 1 saying so (item 1097). On the version it already is
+it says `already at <version>` and downloads nothing; a second tag is
+refused rather than ignored; and GitHub's hourly API limit for an
+unauthenticated address is named, with its reset time, instead of a
+bare `(403)` (item 1098).
 
 ## `vx init`
 

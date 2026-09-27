@@ -17,11 +17,13 @@ carries its own matching digest. No signature is checked (item 1096).
 export function isBunfsPath(p: string): boolean // a path inside the compiled binary's bundle
 export function npmOwnedBinary(execPath: string): string | null // the npm command that owns this file, or null
 export interface ReleaseAsset {
+  tag: string // the release's tag, as the API names it
   url: string
   sha256: string // the digest the release API publishes for the asset
 }
 export function releaseAsset(release: unknown, name: string): ReleaseAsset // refuses a release without the asset or its digest
 export async function fetchRelease(tag: string | undefined): Promise<unknown> // exported for tests
+export function isThisVersion(tag: string, version: string): boolean // `v<version>` or `<version>`
 export async function replaceBinary(
   dest: string,
   url: string,
