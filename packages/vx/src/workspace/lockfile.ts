@@ -11,6 +11,7 @@
 //   - `vx lock --check` AUDITS it: full re-evaluation + deep equality,
 //     which catches eval-time env drift that file hashes cannot see.
 
+import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { relPosix, UserError } from '../util/index.js'
@@ -96,7 +97,19 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
 }
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
-  await Bun.write(lockfilePath(root), `${JSON.stringify(lock, null, 2)}\n`)
+  // Written beside its name and renamed over it: `Bun.write` truncates in
+  // place, so a `--frozen` run, or `vx watch --frozen` woken by the write
+  // itself (item 971), could read an empty or half-written lock and fail
+  // on "not valid JSON" (item 972).
+  const file = lockfilePath(root)
+  const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+  try {
+    await Bun.write(tmp, `${JSON.stringify(lock, null, 2)}\n`)
+    await rename(tmp, file)
+  } catch (err) {
+    await rm(tmp, { force: true })
+    throw err
+  }
 }
 
 /**

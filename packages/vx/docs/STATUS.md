@@ -785,6 +785,17 @@ test is telling the truth.
         config edit first starts a hit cycle that executes nothing; then
         `vx lock` must run the new command. Red without the fix (timed
         out waiting for the re-run).
+972.  DONE (2026-09-27, the `vx lock` review's lead 4). `writeLockfile`
+      truncated the lock in place, so a `--frozen` run reading it
+      meanwhile, or `vx watch --frozen` woken by the write itself (item
+      971), could read it empty and fail on "not valid JSON".
+      - Fix (`lockfile.ts`): write a temp file beside the lock, then
+        rename it over; a failed write removes the temp.
+        `modules/lockfile.md` says so.
+      - Rows (`lockfile-boundary.test.ts`): a name hard-linked to the old
+        lock keeps the old bytes (red with a write in place); a rename
+        onto a directory rejects and leaves no temp (red with the cleanup
+        removed).
 
 ## In flight
 

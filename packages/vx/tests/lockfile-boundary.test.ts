@@ -18,7 +18,7 @@
 //      That is the documented trust model — the 2026-07-26 audit recorded it as
 //      sound — so it is pinned here with its reasoning attached.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -244,6 +244,28 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     await writeLockfile(root, lock())
     const read = await readLockfile(root)
     expect(Object.keys(read?.projects ?? {})).toEqual(['pkg'])
+  })
+
+  it('replaces the file by rename, never rewriting it in place (item 972)', async () => {
+    // A write in place truncates first, and a `--frozen` reader in between
+    // reads an empty lock. The inode says which happened: a second name
+    // hard-linked to the old lock keeps the old bytes only when the lock
+    // was replaced, and nothing but the lock is left in the directory.
+    await writeLockfile(root, { version: LOCKFILE_VERSION, projects: {} })
+    const before = await Bun.file(lockfilePath(root)).text()
+    const other = path.join(root, 'other.json')
+    await link(lockfilePath(root), other)
+    await writeLockfile(root, lock())
+    expect(await Bun.file(other).text()).toBe(before)
+    expect(Object.keys((await readLockfile(root))?.projects ?? {})).toEqual(['pkg'])
+    expect((await readdir(root)).sort()).toEqual(['other.json', LOCKFILE_NAME].sort())
+  })
+
+  it('a rename that fails leaves no temp behind and rejects (item 972)', async () => {
+    // A directory where the lock goes: the rename onto it fails.
+    await mkdir(path.join(lockfilePath(root), 'x'), { recursive: true })
+    await expect(writeLockfile(root, lock())).rejects.toThrow()
+    expect(await readdir(root)).toEqual([LOCKFILE_NAME])
   })
 })
 
