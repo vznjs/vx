@@ -204,3 +204,33 @@ macOS's sh flushed the failed `+<pgid>` line into the task's stdout
   guard; the guard line's `trap '' PIPE` runs its task over a broken pipe;
   a hold's end leaves a group the runner still runs listed; `killTree`
   never signals a group it saw freed.
+
+B-11. A sandboxed task's strace runs inside the sandbox, around the
+command alone. Wrapped around bwrap it stopped on every `openat` of the
+namespace's setup: a sandboxed `true` cost 41 ms, 17 of them strace.
+Now 30 (min of 40, A/B interleaved against `origin/main`, A/A within
+2 ms). Moving it surfaced three defects, each found by a red row:
+
+- strace `-f` waited for every child, so a `sleep 10 &` the command left
+  held the task for ten seconds. Fixed with `-DD`: strace forks off the
+  command, and the namespace takes it along.
+- `-DD`'s process waits for ANY child. A child it inherited (the fd-3
+  watcher, SRT's network bridges) that exited first sent the command on
+  untraced, and `execve` failed `ENOSYS` under `--seccomp-bpf`. Fixed:
+  strace starts from a fresh fork of the shell.
+- That fork is an async list, which starts with SIGINT and SIGQUIT
+  ignored, so the task's `trap … INT` never fired. Fixed: the fork puts
+  them back.
+
+- Fix (`sandbox-runtime.ts` `ownGroupCommand`, `runSandboxedOnce`): the
+  trace goes to the host's log on fd 5, which the command's shell
+  closes. A tracer that dies no longer ends the task, so the retry keys
+  on strace's own stderr line whatever the exit: the trace stopped
+  short. `modules/sandbox-runtime.md`, `modules/kill-tree.md`.
+- Rows: `sandbox-runtime.unsafe.test.ts` › returns promptly when a
+  backgrounded grandchild holds the pipe open; accepts every capability
+  the schema defines (network mode: ENOSYS); SIGINT to vx reaches a
+  sandboxed one-shot task as SIGINT; traces openat only
+  (argv `-DD … -o /dev/fd/5`). `sandbox-tracer-retry.unsafe.test.ts` ›
+  strace's own word is run once more when the task's exit is 0, red
+  without the new retry key.

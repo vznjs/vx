@@ -25,7 +25,15 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { mkdirSync, readlinkSync, realpathSync, rmSync, unlinkSync } from 'node:fs'
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  unlinkSync,
+} from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig } from '../config.js'
 import {
@@ -736,6 +744,8 @@ export async function wrapSandboxedCommand(
     Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & {
       /** A persistent server: the sandbox outlives a run's reset until `releaseBridges(tag)`. */
       server?: boolean
+      /** Trace the command's `openat` calls to descriptor TRACE_FD (Linux; `wantsStraceDetection`). */
+      trace?: 'plain' | 'seccomp'
     },
 ): Promise<{
   wrapped: string
@@ -746,6 +756,8 @@ export async function wrapSandboxedCommand(
   baselines: CanonicalBaselines
   /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
   forwardsSignals: boolean
+  /** The command writes its trace to fd TRACE_FD: spawn it with the log there. */
+  traced: boolean
 }> {
   const { SandboxManager } = await loadSrt()
   const userCommand = withForwardArgs(args.command, args.forwardArgs)
@@ -770,8 +782,8 @@ export async function wrapSandboxedCommand(
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
   const grouped =
     process.platform === 'linux'
-      ? ownGroupCommand(tag, inTmp)
-      : { command: taggedCommand, forwards: false }
+      ? ownGroupCommand(tag, inTmp, args.trace)
+      : { command: taggedCommand, forwards: false, traced: false }
   const inner =
     ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
   let wrapped = await SandboxManager.wrapWithSandbox(inner, undefined, customConfig)
@@ -783,9 +795,8 @@ export async function wrapSandboxedCommand(
   // `--die-with-parent` is keyed to vx. Behind a shell that waited on it,
   // a `kill -9` of vx left the shell alive, bwrap never heard, and a
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
-  // the namespace goes with vx, a `setsid` daemon inside included. A
-  // strace-traced spawn keeps strace as bwrap's parent: that residual is
-  // a one-shot task's, and a persistent one is never traced.
+  // the namespace goes with vx, a `setsid` daemon inside included, a
+  // traced one-shot task too: its strace runs inside (B-11).
   if (process.platform === 'linux' && wrapped.startsWith('bwrap ')) wrapped = `exec ${wrapped}`
   if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) spawnHostBridges(ports, tag)
@@ -796,6 +807,7 @@ export async function wrapSandboxedCommand(
     srtCommand: inner,
     baselines,
     forwardsSignals: grouped.forwards,
+    traced: grouped.traced,
   }
 }
 
@@ -823,7 +835,11 @@ export async function wrapSandboxedCommand(
  * Tools resolve on vx's own PATH; without `setsid` the command keeps the
  * shared group, as before, and `forwards` says the channel is not there.
  */
-function ownGroupCommand(tag: string, userCommand: string): { command: string; forwards: boolean } {
+function ownGroupCommand(
+  tag: string,
+  userCommand: string,
+  trace?: 'plain' | 'seccomp',
+): { command: string; forwards: boolean; traced: boolean } {
   // `sh`, as an unsandboxed task runs (`runner.ts`): the command ran under
   // bash here, so `[[ … ]]`, brace expansion and `echo 'a\tb'` read one
   // way sandboxed and another unsandboxed or on a remote executor, where
@@ -832,21 +848,65 @@ function ownGroupCommand(tag: string, userCommand: string): { command: string; f
   try {
     sh = executablePath('sh')
   } catch {
-    return { command: `: 'vx-${tag}'; ${userCommand}`, forwards: false }
+    return { command: `: 'vx-${tag}'; ${userCommand}`, forwards: false, traced: false }
   }
-  let setsid: string
+  const tag0 = `: 'vx-${tag}';`
+  let setsid: string | undefined
   try {
-    setsid = executablePath('setsid')
+    setsid = `${shellQuote(executablePath('setsid'))} `
   } catch {
-    return {
-      command: `: 'vx-${tag}'; exec ${shellQuote(sh)} -c ${shellQuote(userCommand)}`,
-      forwards: false,
-    }
+    setsid = undefined
   }
-  const watch = `{ IFS= read -r s && kill -s "$s" -- "-$$"; } 2>/dev/null <&3 3<&- &`
-  const run = `exec ${shellQuote(setsid)} ${shellQuote(sh)} -c ${shellQuote(userCommand)} 3<&-`
-  return { command: `: 'vx-${tag}'; ${watch} ${run}`, forwards: true }
+  if (trace === undefined) {
+    const run = `exec ${setsid ?? ''}${shellQuote(sh)} -c ${shellQuote(userCommand)}`
+    if (setsid === undefined) return { command: `${tag0} ${run}`, forwards: false, traced: false }
+    const watch = `{ IFS= read -r s && kill -s "$s" -- "-$$"; } 2>/dev/null <&3 3<&- &`
+    return { command: `${tag0} ${watch} ${run} 3<&-`, forwards: true, traced: false }
+  }
+  // Traced, strace runs INSIDE the sandbox, around the command alone:
+  // outside, it followed bwrap building the namespace, a ptrace stop per
+  // `openat` of the setup, 17 of a sandboxed `true`'s 45 ms (B-11). It
+  // writes to the host's log through descriptor TRACE_FD, which the
+  // command's shell closes first, so the task cannot reach the trace.
+  // `-DD`: the command keeps the pid it was forked with and strace forks
+  // off it into a group of its own, so a `sleep 10 &` the command leaves
+  // behind is not a tracee strace waits for: the shell's `wait` ends with
+  // the command, the namespace with the shell, and strace goes with it. A tracee stops at each `openat` until strace
+  // has written its line, so the kill loses none. `-qq`: nothing of
+  // strace's own about the processes it follows.
+  // Forked, never `exec`'d: `-DD`'s process waits for ANY child to hear
+  // the tracer attached, so one it inherited (the watcher, SRT's network
+  // bridges) that exits first sent the command on untraced, and under
+  // `--seccomp-bpf` its `execve` failed ENOSYS. A fresh fork has none.
+  // An async list starts with SIGINT and SIGQUIT ignored, and a shell
+  // cannot trap what it was started ignoring: SRT's bash may put them
+  // back before the `exec` (dash may not), so a task's `trap … INT` hears
+  // vx's cancellation as it does untraced.
+  const tracer = [
+    executablePath('strace'),
+    '-DD',
+    '-f',
+    ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
+    '-qq',
+    '-e',
+    'trace=openat',
+    '-o',
+    `/dev/fd/${TRACE_FD}`,
+    '--',
+  ]
+    .map(shellQuote)
+    .join(' ')
+  const body = shellQuote(`exec ${TRACE_FD}>&-; ${userCommand}`)
+  const run = `{ trap - INT QUIT; exec ${setsid ?? ''}${tracer} ${shellQuote(sh)} -c ${body} 3<&-; } & c=$!;`
+  if (setsid === undefined) {
+    return { command: `${tag0} ${run} wait "$c"`, forwards: false, traced: true }
+  }
+  const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
+  return { command: `${tag0} ${run} ${watch} wait "$c"`, forwards: true, traced: true }
 }
+
+/** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
+const TRACE_FD = 5
 
 /** The ports a list grants, deduped; `true` bridges nothing (the host sees no port on Linux). */
 export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[] {
@@ -971,11 +1031,14 @@ const TRACER_RETRY_LINE =
  * `initSandbox()` first.
  *
  * On Linux the task runs under strace, which only REPORTS what the sandbox
- * denied, and a traced task's exit is strace's. strace failing on its own
- * (`ptrace(PTRACE_LISTEN,…): Input/output error`, after a build that had
- * finished) turned green work red on CI five times (STATUS Next 24). Such an
- * attempt, its last word strace's own, is run once more: the sandbox kept
- * its writes to what it declared, so a second run redoes, not doubles, it.
+ * denied. strace failing on its own (`ptrace(PTRACE_LISTEN,…): Input/output
+ * error`, after a build that had finished) turned green work red on CI five
+ * times (STATUS Next 24): its exit was the task's. Since B-11 it is not —
+ * strace runs detached (`-DD`), and a tracer that dies leaves the command
+ * running untraced — but the trace then stops short, and a denial after it
+ * goes unreported. So an attempt whose stderr carries strace's own word is
+ * run once more, whatever its exit: the sandbox kept its writes to what it
+ * declared, so a second run redoes, not doubles, it.
  */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
   const { tracerFailed, ...first } = await runSandboxedOnce(args)
@@ -1029,7 +1092,7 @@ function collectRecords(
   }
 }
 
-/** strace's own message, as the last line a failed traced task printed. */
+/** strace's own message, a line of a traced task's stderr. */
 const STRACE_OWN_ERROR = /^strace: /
 
 /**
@@ -1046,17 +1109,12 @@ async function runSandboxedOnce(
 ): Promise<SandboxedRunResult & { tracerFailed: boolean }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
-  const { wrapped, tag, srtCommand, baselines, forwardsSignals } = await wrapSandboxedCommand(args)
-  const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
-
   // Linux: SRT's store sees only writes (below), so read denials need
-  // the spawn wrapped with strace and the trace parsed for denied syscalls. The trace is per-task (unique
-  // log path keyed by the command tag) so parallel tasks don't share
-  // a stream. Skipped when strace isn't on PATH — bwrap still enforces
-  // structurally; we just lose the structured violation list.
-  const useStrace = await wantsStraceDetection()
-  const straceLog = useStrace ? path.join(os.tmpdir(), `vx-strace-${tag}.log`) : undefined
-  if (straceLog) unlinkOnExit(straceLog)
+  // the command traced and the trace parsed for denied syscalls. The trace
+  // is per-task (a log keyed by the command tag) so parallel tasks don't
+  // share a stream. Skipped when strace isn't on PATH — bwrap still
+  // enforces structurally; we just lose the structured violation list.
+  //
   // We trace only `openat` — it's the actual file-read attempt, the
   // signal the user cares about. `statx` / `newfstatat` / `access`
   // are mostly shell PATH-walking and stat probes that aren't
@@ -1073,56 +1131,37 @@ async function runSandboxedOnce(
   // it taxed every other sandboxed task the same way. With the flag the
   // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
+  const useStrace = await wantsStraceDetection()
+  const { wrapped, tag, srtCommand, baselines, forwardsSignals, traced } =
+    await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
+  const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
+  const straceLog = traced ? path.join(os.tmpdir(), `vx-strace-${tag}.log`) : undefined
+  if (straceLog) unlinkOnExit(straceLog)
   let proc: ReturnType<typeof Bun.spawn>
+  let traceFd: number | undefined
   try {
-    // Both tools resolved on vx's own PATH (util/which.ts): strace would
-    // otherwise walk the task's PATH for `sh`, where a project's
-    // node_modules/.bin comes first.
+    // Resolved on vx's own PATH (util/which.ts), not the task's, where a
+    // project's node_modules/.bin comes first.
     const sh = executablePath('sh')
-    const spawnArgv = straceLog
-      ? [
-          executablePath('strace'),
-          '-f',
-          ...(useStrace === 'seccomp' ? ['--seccomp-bpf'] : []),
-          '-e',
-          'trace=openat',
-          '-o',
-          straceLog,
-          '--',
-          sh,
-          '-c',
-          wrapped,
-        ]
-      : [sh, '-c', wrapped]
-    // With the guard, a shell lists the group first and `exec`s the
-    // spawn: strace itself would hold the guard's pipe for its lifetime.
-    const guardAt = forwardsSignals ? 4 : 3
+    if (straceLog) traceFd = openSync(straceLog, 'w')
+    // Descriptors: 3 the signal channel the in-sandbox watcher reads, 4 the
+    // guard's pipe (kill-tree.ts), TRACE_FD the trace log; a gap is 'ignore'.
     proc = spawnGuarded((guard) =>
-      Bun.spawn(
-        guard === undefined
-          ? spawnArgv
-          : [
-              sh,
-              '-c',
-              guardLine(guardAt) +
-                (straceLog ? `exec ${spawnArgv.map(shellQuote).join(' ')}` : wrapped),
-            ],
-        {
-          argv0: straceLog && guard === undefined ? 'strace' : 'sh',
-          cwd: args.cwd,
-          env: args.env as Record<string, string>,
-          // fd 3 is the signal channel the in-sandbox watcher reads.
-          stdio: [
-            'ignore',
-            'pipe',
-            'pipe',
-            ...(forwardsSignals ? ['pipe' as const] : []),
-            ...(guard === undefined ? [] : [guard]),
-          ],
-          // As the unsandboxed spawn: its own process group (kill-tree.ts).
-          detached: true,
-        },
-      ),
+      Bun.spawn([sh, '-c', (guard === undefined ? '' : guardLine(4)) + wrapped], {
+        argv0: 'sh',
+        cwd: args.cwd,
+        env: args.env as Record<string, string>,
+        stdio: [
+          'ignore',
+          'pipe',
+          'pipe',
+          forwardsSignals ? 'pipe' : 'ignore',
+          guard ?? 'ignore',
+          ...(traceFd === undefined ? [] : [traceFd]),
+        ],
+        // As the unsandboxed spawn: its own process group (kill-tree.ts).
+        detached: true,
+      }),
     )
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
@@ -1138,20 +1177,27 @@ async function runSandboxedOnce(
       violations: [],
       tracerFailed: false,
     }
+  } finally {
+    // The child holds its own copy; ours would keep nothing but a descriptor.
+    if (traceFd !== undefined) closeSync(traceFd)
   }
 
   args.liveChildren?.add(proc)
   const timeout = armTimeout(proc, args.timeoutMs)
   const ac = new AbortController()
-  let stderrTail = ''
+  // The unfinished last line of stderr, and whether a line was strace's.
+  let partial = ''
+  let straceSpoke = false
   const streams = Promise.all([
     streamToString(proc.stdout, args.onStdout, ac.signal, args.capture?.stdout ?? true),
     streamToString(
       proc.stderr,
       (chunk) => {
-        // Kept whatever the capture setting: the last line says whether
-        // strace, not the task, ended the attempt.
-        stderrTail = (stderrTail + chunk).slice(-1024)
+        // Read whatever the capture setting: a line of strace's own says
+        // the trace stopped short.
+        const lines = (partial + chunk).split('\n')
+        partial = (lines.pop() ?? '').slice(0, 64)
+        if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
         args.onStderr?.(chunk)
       },
       ac.signal,
@@ -1289,7 +1335,6 @@ async function runSandboxedOnce(
     // ignore; bwrap mount-point cleanup is best-effort
   }
 
-  const lastLine = stderrTail.trimEnd().split('\n').pop() ?? ''
   return {
     exitCode,
     durationMs: Date.now() - start,
@@ -1309,9 +1354,8 @@ async function runSandboxedOnce(
     ...(process.platform === 'linux' ? {} : resourceUsageToCpuRss(proc.resourceUsage())),
     tracerFailed:
       straceLog !== undefined &&
-      exitCode !== 0 &&
       !timeout.timedOut() &&
-      STRACE_OWN_ERROR.test(lastLine),
+      (straceSpoke || STRACE_OWN_ERROR.test(partial)),
   }
 }
 
