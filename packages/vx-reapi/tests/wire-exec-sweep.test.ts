@@ -80,6 +80,20 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
     expect(fake.calls.slice(mark).map((x) => x.method)).toEqual(['Execute'])
   })
 
+  // F-1: a proxy that cuts the stream sends RST_STREAM(INTERNAL_ERROR),
+  // read as INTERNAL; the operation lives on and failed the task instead.
+  it('a stream cut with INTERNAL re-attaches by name', async () => {
+    fake.onExecute = (_r, method) =>
+      method === 'Execute'
+        ? { stages: ['EXECUTING'], error: { code: grpc.status.INTERNAL, details: 'cut' } }
+        : { response: { result: { exit_code: 0 } } }
+    const mark = fake.calls.length
+    const op = await using((c) => c.execute(c.digestOf(bytes('cut'))))
+    const calls = fake.calls.slice(mark)
+    expect([op.done, calls.map((x) => x.method)]).toEqual([true, ['Execute', 'WaitExecution']])
+    expect(calls[1]!.request['name']).toBe(op.name)
+  })
+
   it('a stream that ends with no operation is refused by name', async () => {
     fake.onExecute = () => ({ endEarly: true })
     await using(async (c) => {

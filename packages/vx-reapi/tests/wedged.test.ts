@@ -318,3 +318,61 @@ describe.if(CHUNKING_SUPPORTED)(
     }, 20_000)
   },
 )
+
+describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
+  // A proxy whose backend goes away mid-call ends the stream with
+  // RST_STREAM(INTERNAL_ERROR), which grpc-js reports as INTERNAL. That code
+  // failed every call it cut at once, where UNAVAILABLE is retried (F-1).
+  // The peer counts each RST it sends, so the count is the attempts.
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-rst-'))
+  const servers: Bun.Subprocess<'ignore', 'pipe', 'inherit'>[] = []
+  afterAll(() => {
+    for (const s of servers) s.kill()
+    rmSync(dir, { recursive: true, force: true })
+  })
+  const probe = async (rstCode: number) => {
+    const marker = path.join(dir, `rst-${servers.length}`)
+    writeFileSync(marker, '')
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        path.join(import.meta.dir, 'helpers', 'stalling-h2.ts'),
+        '5',
+        marker,
+        String(rstCode),
+      ],
+      { stdout: 'pipe', env: { ...process.env } },
+    )
+    servers.push(proc)
+    const { value } = await proc.stdout.getReader().read()
+    const client = new ReapiClient({
+      endpoint: `127.0.0.1:${new TextDecoder().decode(value).trim()}`,
+    })
+    try {
+      const err = await client.getActionResult({ hash: 'ab'.repeat(32), size_bytes: 1 }).then(
+        () => null,
+        (e: grpc.ServiceError) => e,
+      )
+      return { code: err?.code, details: err?.details, sent: statSync(marker).size }
+    } finally {
+      client.close()
+    }
+  }
+
+  it('RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is retried', async () => {
+    expect(await probe(2)).toEqual({
+      code: grpc.status.INTERNAL,
+      details: 'Received RST_STREAM with code 2 (Internal server error)',
+      sent: 4,
+    })
+  }, 15_000)
+
+  // CONTROL: the count is the attempts — a CANCEL, which is not retried, is one.
+  it('RST_STREAM(CANCEL) reads as CANCELLED and is not retried', async () => {
+    expect(await probe(8)).toEqual({
+      code: grpc.status.CANCELLED,
+      details: 'Call cancelled',
+      sent: 1,
+    })
+  }, 15_000)
+})

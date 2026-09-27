@@ -6,7 +6,10 @@
 // with RST_STREAM(CANCEL), as grpc-go's server does when the call's
 // `grpc-timeout` runs out (`internal/transport/http2_server.go`: a timer
 // armed at the header's timeout, `closeStream(s, true, http2.ErrCodeCancel,
-// false)`). grpc-js reports that RST as `CANCELLED: Call cancelled`.
+// false)`). grpc-js reports that RST as `CANCELLED: Call cancelled`. An
+// optional third argument names another RST code: 2 (INTERNAL_ERROR) is how
+// a proxy cuts a call whose backend went away, which grpc-js reports as
+// `INTERNAL: Received RST_STREAM with code 2`.
 //
 // A SEPARATE PROCESS on purpose: a row blocks its own event loop across the
 // client's deadline so the server's RST is the first word, and an in-process
@@ -14,7 +17,7 @@
 // appends a byte to `marker`, so the blocked row can wait for the RST itself
 // rather than for a guess at how long a loaded box takes to send it.
 //
-//   bun stalling-h2.ts <rstAfterMs> <marker>   → prints the port, serves until killed
+//   bun stalling-h2.ts <rstAfterMs> <marker> [rstCode=8]   → prints the port, serves until killed
 
 import { appendFileSync } from 'node:fs'
 
@@ -30,7 +33,7 @@ const frame = (type: number, flags: number, stream: number, payload = new Uint8A
   out.set(payload, 9)
   return out
 }
-const CANCEL = new Uint8Array([0, 0, 0, 8])
+const rstCode = new Uint8Array([0, 0, 0, Number(process.argv[4] ?? 8)])
 
 const server = Bun.listen<{ buf: Uint8Array; seenPreface: boolean }>({
   hostname: '127.0.0.1',
@@ -63,7 +66,7 @@ const server = Bun.listen<{ buf: Uint8Array; seenPreface: boolean }>({
         }
         if (type === 1) {
           setTimeout(() => {
-            s.write(frame(3, 0, stream, CANCEL))
+            s.write(frame(3, 0, stream, rstCode))
             appendFileSync(marker, 'x')
           }, rstAfterMs)
         }

@@ -283,6 +283,28 @@ describe.if(CHUNKING_SUPPORTED)('integrity and errors', () => {
     expect(methods).toEqual(['FindMissingBlobs', 'FindMissingBlobs'])
   })
 
+  // F-1: INTERNAL is how grpc-js spells a call cut in transit (an
+  // RST_STREAM(INTERNAL_ERROR), a stream with no status); it failed at once.
+  it('INTERNAL is retried as UNAVAILABLE is, on a unary call and a Read; DATA_LOSS is not', async () => {
+    const d = fake.put(bytes('internal'))
+    const methods = await callsOf(() =>
+      using({}, async (c) => {
+        fake.fail('FindMissingBlobs', grpc.status.INTERNAL)
+        await c.findMissingBlobs([d])
+        fake.fail('Read', grpc.status.INTERNAL, 1)
+        expect(new TextDecoder().decode((await c.readBlob(d))!)).toBe('internal')
+        fake.fail('Read', grpc.status.DATA_LOSS, 1)
+        expect(
+          await c.readBlob(d).then(
+            () => 'resolved',
+            (e: Error) => e.message,
+          ),
+        ).toBe('15 DATA_LOSS: injected DATA_LOSS')
+      }),
+    )
+    expect(methods).toEqual(['FindMissingBlobs', 'FindMissingBlobs', 'Read', 'Read', 'Read'])
+  })
+
   // Item 919: a Read had no retry, unlike every unary call, so one
   // UNAVAILABLE reading a finished action's outputs failed the task.
   it("a transient Read is retried, whole or before a stream's first message", async () => {

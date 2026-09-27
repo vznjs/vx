@@ -231,10 +231,14 @@ Once a worker reports EXECUTING, the task's `exec.timeout` (or
 re-attach: firing during the backoff between a dropped stream and its
 `WaitExecution`, it ends the task there rather than being lost.
 
-A ByteStream Read, like every unary call, retries UNAVAILABLE and
-RESOURCE_EXHAUSTED three times (100, 400 and 1600 ms) before it counts as
-failed; a streamed read retries only until its first message reaches a
-reader.
+A ByteStream Read, like every unary call, retries UNAVAILABLE,
+RESOURCE_EXHAUSTED and INTERNAL three times (100, 400 and 1600 ms) before it
+counts as failed; a streamed read retries only until its first message
+reaches a reader. INTERNAL is on the list because it is how the gRPC client
+reports a call cut in transit: the RST_STREAM(INTERNAL_ERROR) a proxy sends
+when the server behind it goes away, or a stream that ends with no gRPC
+status. The same three statuses are what re-attach a dropped execution
+stream.
 
 A failed READ is never a failed task. The execution-record lookup is a
 shortcut past the worker, so a transport error there means "no usable record"
