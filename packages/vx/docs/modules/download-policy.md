@@ -54,7 +54,9 @@ matters:
 - the producer declaring `cache.outputs.workspaceFiles` (root-anchored).
 
 A leading wildcard yields prefix `.` and reaches everything; a cacheable
-task with no declared `files` counts as reading its whole project. The
+task with no declared `files` counts as reading its whole project, and so
+does a task with no `cache` block that a cached task depends on (its key
+folds every file in its project, and the cached task folds that key). The
 prefixes are compared as PATHS, not as strings: `staticPrefix` normalizes
 the spelling, because `./out/**` and `out/**` name one tree to the input
 resolver and two different prefixes to a raw comparison — which deferred

@@ -45,6 +45,25 @@ describe('deferralEligibility', () => {
     expect(deferralEligibility(nodes).has('a#build')).toBe(false)
   })
 
+  it('an uncached task a cached one folds reads its whole project', () => {
+    // Its key folds every file in its project, and `report` folds that
+    // key: deferring `gen` moved both keys with the transfer flag.
+    const nodes = graph(
+      node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
+      node('a#check', undefined, ['a#gen']),
+      node('b#report', { inputs: { files: ['src/**'] } }, ['a#check']),
+    )
+    expect(deferralEligibility(nodes).get('a#gen')).toBe(
+      'a#check reads the whole project as a task with no cache block that a cached task folds',
+    )
+    // CONTROL: one no cached task folds keys nothing, and defers nothing less.
+    const alone = graph(
+      node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
+      node('a#check', undefined, ['a#gen']),
+    )
+    expect(deferralEligibility(alone).has('a#gen')).toBe(false)
+  })
+
   it('an OVERLAPPING same-project reader forces the producer eager', () => {
     // The false-positive control's twin: here the consumer really can read
     // the producer's outputs, so the key could move with deferral.
