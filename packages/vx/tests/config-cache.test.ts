@@ -300,6 +300,45 @@ describe('configEvalKey', () => {
     expect(await keyOf(cfg)).toBeNull()
   })
 
+  it('an import after a comment on its own line is in the closure (item 952)', async () => {
+    const preset = await write('packages/a/preset.mjs', "export const cmd = 'echo one'\n")
+    const cfg = await write(
+      'packages/a/vx.config.mjs',
+      "/* shared command */ import { cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    expect((await keyedOf(cfg))?.closure).toEqual([cfg, await realpath(preset)])
+    // So it is gated too: a preset that reads the environment evaluates live.
+    await writeFile(preset, 'export const cmd = process.env.CMD\n')
+    expect(await keyedOf(cfg)).toBeNull()
+  })
+
+  it('an import with a string-named binding is in the closure (item 952)', async () => {
+    const preset = await write(
+      'packages/a/preset.mjs',
+      "const c = 'echo one'\nexport { c as 'a-b' }\n",
+    )
+    const cfg = await write(
+      'packages/a/vx.config.mjs',
+      "import { 'a-b' as cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    expect((await keyedOf(cfg))?.closure).toEqual([cfg, await realpath(preset)])
+  })
+
+  it('an `import` the scan cannot place evaluates live rather than keying without it (item 952)', async () => {
+    // A property named `import` is no import, but the scan cannot tell it from
+    // one it failed to parse, so it fails closed.
+    const cfg = await write(
+      'packages/a/vx.config.mjs',
+      "export default { import: 1, tasks: { build: { exec: { command: 'echo hi' } } } }\n",
+    )
+    expect(await keyedOf(cfg)).toBeNull()
+    const plain = await write(
+      'packages/b/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'echo hi' } } } }\n",
+    )
+    expect(await keyedOf(plain)).not.toBeNull()
+  })
+
   it('refuses an unresolvable relative import rather than keying on a partial closure', async () => {
     const cfg = await write(
       'packages/u/vx.config.mjs',

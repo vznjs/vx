@@ -469,6 +469,19 @@ test is telling the truth.
         is never asked about), 4 (a deleted package skips its dependents),
         5 (a config's `fs` read is not followed), 6 (`--affected` is
         appended after every `!` exclude).
+952.  DONE (2026-09-27, the config-cache review's lead 3). The config
+      cache's import scan was a regex over the raw source that wanted a
+      statement start before `import`, so an import after a comment on
+      its line was never seen (`/* shared */ import …`). Its preset was
+      neither keyed (an edit replayed the old evaluation) nor gated (a
+      preset reading `process.env` was cached as pure). A string-named
+      binding (`import { 'a-b' as x }`) was missed the same way.
+      - Fix: the scan runs on `stripLiterals` output, comments gone, each
+        string kept as a numbered placeholder, and every `import` token in
+        the code must sit in a statement it matched, or the config
+        evaluates live. `configImports` (watch's arms) uses the same scan.
+      - Rows: `config-cache.test.ts` › the comment, the string-named and the
+        unplaced-`import` rows, red without the fix.
 
 ## In flight
 

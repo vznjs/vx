@@ -129,10 +129,36 @@ const MAX_CLOSURE_FILES = 32
 const IMPURE_RE =
   /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*)\b|import\s*\.\s*meta|Math\s*\.\s*random|\bimport\s*\(/
 
-// Static `import … from '…'` / `export … from '…'` / `import '…'` forms.
-// `[^;'"]*?` spans newlines, so multi-line specifier lists match.
+// Static `import … from '…'` / `export … from '…'` / `import '…'` forms,
+// matched on `stripLiterals` output with its strings kept as placeholders
+// (`\0<n>\0`): a comment is gone, so an import after `/* … */` on its line
+// is seen, and a string-named binding (`import { 'a-b' as x }`) is a
+// placeholder like any other. `[^;]*?` spans newlines, so multi-line
+// specifier lists match.
 const IMPORT_RE =
-  /(?:^|[\n;])\s*(?:import|export)\b[^;'"]*?\bfrom\s*['"]([^'"]+)['"]|(?:^|[\n;])\s*import\s*['"]([^'"]+)['"]/g
+  /(?:^|[\n;])\s*(?:import|export)\b[^;]*?\bfrom\s*\0(\d+)\0|(?:^|[\n;])\s*import\s*\0(\d+)\0/g
+
+/**
+ * Every static import in `source` as its specifier and statement, or `null`
+ * when the source cannot be lexed or holds an `import` no form above
+ * accounts for — a spelling this scan misses must fail closed: an unseen
+ * import is neither keyed nor gated for purity (item 952).
+ */
+function staticImports(
+  source: string,
+): { code: string; imports: Array<{ spec: string; statement: string }> } | null {
+  const strings: string[] = []
+  const code = stripLiterals(source, strings)
+  if (code === null) return null
+  const imports: Array<{ spec: string; statement: string }> = []
+  let seen = 0
+  for (const m of code.matchAll(IMPORT_RE)) {
+    imports.push({ spec: strings[Number(m[1] ?? m[2])]!, statement: m[0] })
+    seen += m[0].match(/\bimport\b/g)?.length ?? 0
+  }
+  if (seen !== (code.match(/\bimport\b/g)?.length ?? 0)) return null
+  return { code, imports }
+}
 
 /** The one bare specifier a pure config may import: core's identity helpers and types. */
 const PURE_PACKAGE = '@vzn/vx'
@@ -160,7 +186,7 @@ export const PURE_CORE_EXPORTS: ReadonlySet<string> = new Set([
 function importsOnlyPure(statement: string): boolean {
   const clause = statement
     .replace(/^[\s;]*(?:import|export)\s+/, '')
-    .replace(/\bfrom\s*['"][^'"]+['"]\s*$/, '')
+    .replace(/\bfrom\s*\0\d+\0\s*$/, '')
   if (/^type\b/.test(clause)) return true
   if (clause.includes('*')) return false
   const braces = /\{([^}]*)\}/.exec(clause)
@@ -190,9 +216,10 @@ const decoder = new TextDecoder()
  * lexer can prove: a regex literal can contain a quote, and a lexer that
  * misreads one would swallow real code as a string — a false SAFE, the one
  * outcome this module must never produce. Configs do not need regexes;
- * such a config evaluates live.
+ * such a config evaluates live. Given `strings`, a quoted string becomes
+ * the placeholder `\0<n>\0` and its text `strings[n]`.
  */
-export function stripLiterals(source: string): string | null {
+export function stripLiterals(source: string, strings?: string[]): string | null {
   let out = ''
   let i = 0
   const n = source.length
@@ -214,15 +241,16 @@ export function stripLiterals(source: string): string | null {
     }
     if (c === '/') return null
     if (c === "'" || c === '"') {
-      i++
+      const start = ++i
       while (i < n && source[i] !== c) {
         if (source[i] === '\\') i++
         if (source[i] === '\n') return null
         i++
       }
       if (i >= n) return null
+      if (strings === undefined) out += ' '
+      else out += `\0${strings.push(source.slice(start, i)) - 1}\0`
       i++
-      out += ' '
       continue
     }
     if (c === '`') {
@@ -340,11 +368,12 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
     // Asked of the first relative import only: a config with none costs no
     // syscall for it.
     let dir: string | undefined
-    const source = decoder.decode(bytes)
-    const code = stripLiterals(source)
+    const scanned = staticImports(decoder.decode(bytes))
+    if (scanned === null) return null
+    const { code } = scanned
     // A backslash in code position is an identifier escape (`\u0070rocess`
     // IS `process`) — the one spelling the deny-list cannot see. Refuse it.
-    if (code === null || code.includes('\\') || IMPURE_RE.test(code)) return null
+    if (code.includes('\\') || IMPURE_RE.test(code)) return null
     const identity = a.hashBytes
       ? a.hashBytes(bytes, file)
       : a.hashFile
@@ -352,10 +381,9 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
         : await hashOf(file, bytes)
     h = xxh3(`${file}\0${identity}`, h)
     closure.push(file)
-    for (const m of source.matchAll(IMPORT_RE)) {
-      const spec = m[1] ?? m[2]!
+    for (const { spec, statement } of scanned.imports) {
       if (spec === PURE_PACKAGE) {
-        if (m[1] !== undefined && !importsOnlyPure(m[0])) return null
+        if (/\bfrom\s*\0\d+\0\s*$/.test(statement) && !importsOnlyPure(statement)) return null
         continue
       }
       if (!spec.startsWith('./') && !spec.startsWith('../')) return null
@@ -446,8 +474,14 @@ export async function configImports(configPath: string): Promise<string[]> {
       continue
     }
     let dir: string | undefined
-    for (const m of source.matchAll(IMPORT_RE)) {
-      const spec = m[1] ?? m[2]!
+    // A source the scan cannot read keeps the imports it can see: watching
+    // too few files is what this list exists to prevent.
+    const specs =
+      staticImports(source)?.imports.map((i) => i.spec) ??
+      [...source.matchAll(/\bfrom\s*['"]([^'"]+)['"]|\bimport\s*['"]([^'"]+)['"]/g)].map(
+        (m) => (m[1] ?? m[2])!,
+      )
+    for (const spec of specs) {
       if (!spec.startsWith('./') && !spec.startsWith('../')) continue
       let resolved: string
       try {

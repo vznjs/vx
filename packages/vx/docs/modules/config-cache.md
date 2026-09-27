@@ -90,6 +90,13 @@ closure is provably pure:
   from the store with another box's answer (item 888). Any other name, a
   namespace or default import, or an `export *` of the package evaluates
   live;
+- every `import` the code holds is one the static scan read. The scan
+  runs on `stripLiterals` output with each string kept as a placeholder,
+  so a comment before an import on its line and a string-named binding
+  (`import { 'a-b' as x }`) are seen; the regex it replaced ran on the
+  raw source, and a preset imported after `/* … */` was neither keyed nor
+  gated (item 952). An `import` token the scan cannot place — a property
+  named `import` is one — evaluates live rather than keying without it;
 - no relative import resolves into `node_modules` (a workspace symlink
   can move without the lockfile moving);
 - the closure has ≤ 32 files;
