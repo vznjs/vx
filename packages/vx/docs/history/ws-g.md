@@ -220,3 +220,16 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (the resent answer's body not cancelled, a past `Retry-After` date's
   clamp, an unreadable one's fallback) and 2 hung (the retry bound
   removed); `remote-retry.test.ts` now catches all 17.
+- **G-16.** A mutation sweep of G-13 and G-14's turbo-map code (31
+  mutants): 9 survived. Held now: the first parent's opt-out
+  (`r !== 'none'`), the nearest `extends: false` (fold direction), an
+  empty `extends` read as the root's, `jit` with `withDefaults` — rows
+  (`turbo-map-sweep` › an extends diamond, structured inputs) from
+  `turbo --dry=json` 2.11.4 on the same fixture. Equivalent: the chain's
+  seen set (a file read twice folds to the same definition), the
+  unrequired-root guard (only the package's own file can be missing
+  unrequired; the condition is gone), `taskDefined`'s seen and root
+  stops (the chain refuses a cycle first), the `excluded` filter, the
+  `extends` key's delete, the `global` null guard (Turbo refuses a null).
+  A comment that dated the empty-`extends` reading to Turbo 2.0–2.6
+  (unproven) now says Turbo refuses it.

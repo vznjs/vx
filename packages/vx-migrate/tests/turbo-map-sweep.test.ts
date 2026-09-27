@@ -708,9 +708,79 @@ describe('turbo-map: structured inputs', () => {
         { mode: 'dependencyOutputs' },
       ]),
       await files([{ mode: 'startup', withDefaults: true, globs: ['!docs/**'] }]),
+      await files([{ mode: 'jit', withDefaults: true, globs: ['gen/**'] }]),
       await files([{ mode: 'dependencyOutputs' }]),
       await files(['src/**']),
-    ]).toEqual([['src/**', 'gen/**'], ['**/*', '!docs/**'], ['**/*'], ['src/**']])
+    ]).toEqual([
+      ['src/**', 'gen/**'],
+      ['**/*', '!docs/**'],
+      ['**/*', 'gen/**'],
+      ['**/*'],
+      ['src/**'],
+    ])
+  })
+})
+
+// The G-13 sweep's survivors: a package that extends two packages which
+// both extend the root (a diamond), an opt-out in the first parent, and
+// two `extends: false` on one chain. Expected: `turbo run build test
+// check --dry=json` on this fixture (Turbo 2.11.4).
+describe('turbo-map: an extends diamond', () => {
+  it("reads the root once, takes the first parent's opt-out and the nearest fresh definition", async () => {
+    const scripts = { build: 'b', test: 't', check: 'c' }
+    const m = await map(
+      { tasks: { build: { inputs: ['src/**'] }, check: { inputs: ['root-check/**'] } } },
+      {
+        p: { scripts, turbo: { extends: ['//', 'a', 'b'], tasks: {} } },
+        a: {
+          scripts,
+          turbo: {
+            extends: ['//', 'c'],
+            tasks: {
+              build: { inputs: ['$TURBO_EXTENDS$', 'a/**'] },
+              test: { extends: false },
+              check: { extends: false, inputs: ['a-check/**'] },
+            },
+          },
+        },
+        b: {
+          scripts,
+          turbo: {
+            extends: ['//'],
+            tasks: {
+              build: { inputs: ['$TURBO_EXTENDS$', 'b/**'] },
+              test: { inputs: ['b-test/**'] },
+              check: { extends: false, outputs: ['b-out/**'] },
+            },
+          },
+        },
+        c: { scripts, turbo: { extends: ['//'], tasks: { test: { inputs: ['c-test/**'] } } } },
+        // Turbo refuses an empty `extends`; read as the root's.
+        e: { scripts, turbo: { extends: [], tasks: {} } },
+      },
+    )
+    const got = Object.fromEntries(
+      m.projects.flatMap((p) =>
+        p.tasks.map((t) => [
+          `${p.name}#${t.name}`,
+          (t.task as { cache?: { inputs?: { files?: string[] } } }).cache?.inputs?.files,
+        ]),
+      ),
+    )
+    expect(got).toEqual({
+      'a#build': ['src/**', 'a/**'],
+      'a#check': ['a-check/**'],
+      'b#build': ['src/**', 'b/**'],
+      'b#check': ['**/*'],
+      'b#test': ['b-test/**'],
+      'c#build': ['src/**'],
+      'c#check': ['root-check/**'],
+      'c#test': ['c-test/**'],
+      'e#build': ['src/**'],
+      'e#check': ['root-check/**'],
+      'p#build': ['src/**', 'b/**'],
+      'p#check': ['**/*'],
+    })
   })
 })
 
