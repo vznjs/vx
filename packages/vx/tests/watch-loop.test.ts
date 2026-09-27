@@ -85,6 +85,32 @@ describe('vx watch loop (e2e)', () => {
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a2\n')
   }, 40_000)
 
+  it('a task with no cache re-runs on a git-ignored file it reads (item 947)', async () => {
+    // The git-ignore filter's reason is "no cache key can see it", and a
+    // task with no cache has no key: its `.env.local` edit re-ran nothing.
+    await writeFile(path.join(f.dir, '.gitignore'), '.env.local\nshown.txt\n')
+    await writeFile(path.join(f.dir, '.env.local'), 'A=1\n')
+    await writeFile(
+      path.join(f.dir, 'vx.config.mjs'),
+      `export default { tasks: {
+        show: { exec: { command: 'cat .env.local > shown.txt && echo run >> ${f.log}' } },
+      } }\n`,
+    )
+    f.watch = startWatch(f.root, ['--all'], {}, 'show')
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    await writeFile(path.join(f.dir, '.env.local'), 'A=2\n')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after the ignored edit')
+    expect(await readFile(path.join(f.dir, 'shown.txt'), 'utf8')).toBe('A=2\n')
+    await Bun.sleep(SETTLE_MS)
+    // One: the task's own rewrite of the ignored `shown.txt` lands inside
+    // the cycle, so it is the run's, not an edit (the pid-file loop's rule,
+    // `watch-loop-selfwrite.test.ts`).
+    expect(w.cycles()).toBe(1)
+  }, 40_000)
+
   it('VX_WATCH_POLL=1 polls from the start, says so, and an edit still re-runs', async () => {
     // The switch for a host whose OS watcher is known not to deliver (a
     // sandbox without FSEvents access, a network mount, a container bind):

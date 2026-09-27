@@ -518,6 +518,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     workspaceInputs: swept.workspaceInputs,
     outputs: swept.outputs,
     inputs: swept.inputs,
+    uncached: swept.uncached,
     memberBases: memberBaseDirs(workspace),
     packageDirs: new Set(allProjects.map((p) => p.dir)),
     // The workspace as the cycle that just ran saw it: a package added or
@@ -534,6 +535,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         workspaceInputs: sweep.workspaceInputs,
         outputs: sweep.outputs,
         inputs: sweep.inputs,
+        uncached: sweep.uncached,
         packageDirs: new Set(all.map((p) => p.dir)),
       }
     },
@@ -598,6 +600,8 @@ export async function sweepConfigs(
   outputs: Map<string, string[]>
   /** Declared input globs per directory they are relative to, the counterweight to `outputs`. */
   inputs: Map<string, string[]>
+  /** Projects with a task that has a command and no cache: it reads what it likes, git-ignored files included. */
+  uncached: Set<string>
   /** The staged load the sweep read, when the run path's load succeeded; `watchedProjects` reads the same one. */
   staged: Map<string, ProjectEntry> | null
 }> {
@@ -614,8 +618,11 @@ export async function sweepConfigs(
   const add = (dir: string, globs: readonly string[] | undefined): void =>
     addTo(outputs, dir, globs)
   const workspaceInputs = new Set<string>()
+  const uncached = new Set<string>()
   const fold = (dir: string, config: ProjectConfig): void => {
     for (const task of Object.values(config.tasks ?? {})) {
+      if (task.cache === undefined && task.exec !== undefined && task.exec.persistent === undefined)
+        uncached.add(dir)
       for (const g of task.cache?.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
       addTo(inputs, dir, task.cache?.inputs?.files)
       addTo(inputs, workspaceRoot, task.cache?.inputs?.workspaceFiles)
@@ -630,12 +637,14 @@ export async function sweepConfigs(
     workspaceInputs: string[]
     outputs: Map<string, string[]>
     inputs: Map<string, string[]>
+    uncached: Set<string>
     staged: Map<string, ProjectEntry> | null
   } => ({
     workspaceWide: workspaceInputs.size > 0,
     workspaceInputs: [...workspaceInputs],
     outputs,
     inputs,
+    uncached,
     staged,
   })
   let staged: Map<string, ProjectEntry> | null = null
@@ -728,6 +737,8 @@ interface WatchLoopArgs {
   outputs: ReadonlyMap<string, readonly string[]>
   /** Declared input globs per directory: never ignored as another task's output. */
   inputs: ReadonlyMap<string, readonly string[]>
+  /** Projects whose uncached task may read a git-ignored file: such a path there is still an edit. */
+  uncached: ReadonlySet<string>
   /** The directory each `<dir>/*` package glob names; a member coming or going there is a cycle. */
   memberBases: readonly string[]
   /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
@@ -742,6 +753,7 @@ interface Rediscovered {
   workspaceInputs: readonly string[]
   outputs: ReadonlyMap<string, readonly string[]>
   inputs: ReadonlyMap<string, readonly string[]>
+  uncached: ReadonlySet<string>
   packageDirs: ReadonlySet<string>
 }
 
@@ -773,6 +785,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let workspaceInputs = args.workspaceInputs
   let outputs = args.outputs
   let inputs = args.inputs
+  let uncached = args.uncached
   // A dev server stays up while the loop idles; the cycle that replaces it
   // stops it first, so the new one never meets the old one's port.
   let held = args.held
@@ -895,8 +908,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     // their next event is a first sighting stamped after the arm — so a
     // batch edit (a `git checkout`) makes the same bytes written to any
     // of the others a change.
+    // A git-ignored path keys nothing, but a task with no cache has no key:
+    // it reads what it likes, and its `.env.local` edit re-ran nothing
+    // (item 947). Under such a project an ignored path is judged when the
+    // user wrote it; one the last cycle wrote (the pid file an uncached
+    // task rewrites every run, the loop the filter exists for) stays out.
+    const editForUncached = (p: string): boolean =>
+      [...uncached].some((dir) => p.startsWith(dir + path.sep)) && !writtenDuringLastCycle(p)
     for (const [p, l] of pendingPaths) {
-      if (ignored.has(p)) continue
+      if (ignored.has(p) && !editForUncached(p)) continue
       if (!sameState(p) && first === undefined) {
         first = l
         firstAbs = p
@@ -1166,6 +1186,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     workspaceInputs = next.workspaceInputs
     outputs = next.outputs
     inputs = next.inputs
+    uncached = next.uncached
     packageDirs = next.packageDirs
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
     matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)

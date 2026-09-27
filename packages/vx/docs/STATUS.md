@@ -371,6 +371,21 @@ test is telling the truth.
         output still counts, with the same map without inputs hiding it
         as control. `watch-loop.test.ts` re-runs `build` on a `src` edit
         beside a `src/**` formatter. The loop row is red without the fix.
+947.  DONE (2026-09-27, the `vx watch` review's lead 6). Watch drops a
+      git-ignored path because "no cache key can see it". But a task with
+      no cache has no key and reads what it likes: its `.env.local` edit
+      re-ran nothing.
+      - The sweep records each project with a task that has a command and
+        no cache, persistent servers aside. Under such a project, a
+        git-ignored path the user wrote is judged like any other. One
+        written inside the last cycle stays ignored: that is the task's
+        own pid file, the loop the filter exists for (the self-write row
+        caught a first cut that judged both).
+      - `cli.md` says so.
+      - Row: `watch-loop.test.ts` › a task with no cache re-runs on a
+        git-ignored file it reads, in exactly one cycle, since its own
+        rewrite of the ignored `shown.txt` is the run's. Red without the
+        fix; the self-write row still holds.
 
 ## In flight
 
