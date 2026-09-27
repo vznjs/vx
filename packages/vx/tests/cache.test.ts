@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import type { Database } from 'bun:sqlite'
+import type { Database, SQLQueryBindings } from 'bun:sqlite'
 import {
   Cache,
   type CacheKeyInput,
@@ -18,6 +18,21 @@ import { UserError, xxh3hex } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from '../src/orchestrator/index.js'
+
+/**
+ * A row straight into the index, with a stand-in artifact: prune drops a
+ * row whose artifact is gone without evicting it (item 975), so a fixture
+ * that pins eviction gives each row its file.
+ */
+function seedRow(
+  c: Cache,
+  insert: import('bun:sqlite').Statement,
+  hash: string,
+  ...rest: SQLQueryBindings[]
+): void {
+  insert.run(hash, ...rest)
+  writeFileSync(c.outputsPath(hash), '')
+}
 
 describe('zstdContentSize (frame-header parse)', () => {
   const MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
@@ -1378,8 +1393,8 @@ describe('Cache storage (v10)', () => {
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, ?)`,
     )
-    insert.run('h-below', 999)
-    insert.run('h-at', 1000)
+    seedRow(cache, insert, 'h-below', 999)
+    seedRow(cache, insert, 'h-at', 1000)
 
     const remaining = (): string[] =>
       (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
@@ -1388,8 +1403,8 @@ describe('Cache storage (v10)', () => {
 
     const result = await cache.prune({ olderThanMs: 1000 })
     expect(result.evicted).toBe(1)
-    // The index is the oracle, not `get()`: these rows have no artifact on
-    // disk, so `get()` reads null for a survivor too.
+    // The index is the oracle, not `get()`: these rows' artifacts are
+    // empty stand-ins, so `get()` could not read a survivor either.
     expect(remaining()).toEqual(['h-at'])
   })
 
@@ -1413,9 +1428,9 @@ describe('Cache storage (v10)', () => {
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
     )
-    insert.run('h-stale', 100, 1)
-    insert.run('h-warm-a', 50, 10)
-    insert.run('h-warm-b', 50, 20)
+    seedRow(cache, insert, 'h-stale', 100, 1)
+    seedRow(cache, insert, 'h-warm-a', 50, 10)
+    seedRow(cache, insert, 'h-warm-b', 50, 20)
 
     const result = await cache.prune({ olderThanMs: 5, maxBytes: 100 })
     expect(result.evicted).toBe(1)
@@ -1441,9 +1456,9 @@ describe('Cache storage (v10)', () => {
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
     )
-    insert.run('h-newest', 30)
-    insert.run('h-oldest', 10)
-    insert.run('h-middle', 20)
+    seedRow(cache, insert, 'h-newest', 30)
+    seedRow(cache, insert, 'h-oldest', 10)
+    seedRow(cache, insert, 'h-middle', 20)
 
     // 300 bytes held, cap 200 → exactly one entry goes, and it is the
     // least recently accessed one, which is the SECOND row written.
@@ -1474,9 +1489,9 @@ describe('Cache storage (v10)', () => {
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
     )
-    insert.run('h-stale', 1)
-    insert.run('h-warm-a', 10)
-    insert.run('h-warm-b', 20)
+    seedRow(cache, insert, 'h-stale', 1)
+    seedRow(cache, insert, 'h-warm-a', 10)
+    seedRow(cache, insert, 'h-warm-b', 20)
 
     const result = await cache.prune({ olderThanMs: 5, maxBytes: 100 })
     expect(result.evicted).toBe(2)
@@ -1636,8 +1651,9 @@ describe('Cache storage (v10)', () => {
   })
 
   it('prune() handles more than 900 victims (chunked DELETE, no bound-parameter blowup)', async () => {
-    // Insert 1000 stale rows straight into the index — artifacts absent
-    // on disk is fine (prune rm's with force:true). Exercises the
+    // Insert 1000 stale rows straight into the index, each with an
+    // artifact: a row whose artifact is gone is dropped, not evicted
+    // (item 975). Exercises the
     // multi-chunk DELETE path plus the JS-side victims filter.
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
@@ -1646,13 +1662,59 @@ describe('Cache storage (v10)', () => {
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, 1)`,
     )
     db.transaction(() => {
-      for (let i = 0; i < 1000; i++) insert.run(`h-bulk-${i}`)
+      for (let i = 0; i < 1000; i++) seedRow(cache, insert, `h-bulk-${i}`)
     })()
 
     const result = await cache.prune({ olderThanMs: 2 })
     expect(result.evicted).toBe(1000)
     expect(await cache.get('h-bulk-0')).toBeNull()
     expect(await cache.get('h-bulk-999')).toBeNull()
+  })
+
+  it('prune() drops a row whose artifact is gone and evicts nothing for its bytes (item 975)', async () => {
+    // A row whose artifact was deleted by hand is never a hit, and its
+    // bytes are on no disk; `--max-size` counted them and evicted the one
+    // real entry to make room for them.
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    const insert = db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
+    )
+    const hourAgo = Date.now() - 2 * 60 * 60 * 1000
+    seedRow(cache, insert, 'h-real', 100, hourAgo - 1000)
+    // Newer than the real entry, so LRU would take the real one first.
+    insert.run('h-phantom', 1_000_000, hourAgo)
+    // A row without its artifact inside the grace window is a save in
+    // flight: kept, and counted.
+    insert.run('h-fresh', 10, Date.now())
+    const rows = (): string[] =>
+      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+        (r) => r.hash,
+      )
+
+    // By age too: the phantom is older than the cutoff and still neither
+    // evicted nor counted as freed; the real entry is.
+    const byAge = await cache.prune({ olderThanMs: hourAgo + 1, dryRun: true })
+    expect({ evicted: byAge.evicted, bytesFreed: byAge.bytesFreed }).toEqual({
+      evicted: 1,
+      bytesFreed: 100,
+    })
+
+    const dry = await cache.prune({ maxBytes: 200, dryRun: true })
+    expect({ evicted: dry.evicted, bytesFreed: dry.bytesFreed }).toEqual({
+      evicted: 0,
+      bytesFreed: 0,
+    })
+    expect(rows()).toEqual(['h-fresh', 'h-phantom', 'h-real'])
+
+    const wet = await cache.prune({ maxBytes: 200 })
+    expect({ evicted: wet.evicted, bytesFreed: wet.bytesFreed }).toEqual({
+      evicted: 0,
+      bytesFreed: 0,
+    })
+    expect(rows()).toEqual(['h-fresh', 'h-real'])
+    expect(existsSync(cache.outputsPath('h-real'))).toBe(true)
   })
 
   it('prune() reaps an aged artifact or temp the index does not know, and nothing younger', async () => {

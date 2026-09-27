@@ -1259,7 +1259,12 @@ renames its artifact into place before the row commits, so a fresh
 row-less file is a save in flight. Only the names vx writes are taken:
 `<hash>` is the key's 16 lowercase hex digits and the temp suffix is
 the one a save makes, so a `release.tar.zst` beside the index in a
-`cacheDir` you share is never touched (item 968). The sweep runs on every prune, under
+`cacheDir` you share is never touched (item 968). The converse, an
+index row whose artifact is gone (deleted by hand), is dropped by the
+same prune, and its bytes count toward neither `--max-size` nor the
+evicted total: they are on no disk, and counting them evicted real
+entries to make room for them (item 975). A row used within the hour
+is left alone, as a save may be landing. The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions. A
 workspace's `cacheRetention` runs it too, at the end of a run, at most
 once an hour even when nothing the index holds is due (the policy sums
