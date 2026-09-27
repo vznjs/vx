@@ -578,10 +578,49 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
       mode: 'full',
       gha: true,
     })
-    // Non-full modes never group.
+    // Every mode fences task text there; only `full` groups (its branch).
     expect(resolveOutputView({ outputLogs: 'errors-only' }, { GITHUB_ACTIONS: 'true' })).toEqual({
       mode: 'errors-only',
+      gha: true,
     })
+  })
+
+  // Task text outside every `::stop-commands::` fence: what the runner
+  // would read as workflow commands.
+  const unfenced = (text: string): string =>
+    text.replace(/::stop-commands::(\S+)\n[\s\S]*?::\1::\n/g, '')
+
+  it('errors-only fences a failed frame and its recap line on GitHub Actions', () => {
+    // Only `full` fenced: `--output-logs=errors-only` printed a task's
+    // `::error::` and `::endgroup::` raw, twice.
+    const view = resolveOutputView({ outputLogs: 'errors-only' }, { GITHUB_ACTIONS: 'true' })
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, view, out)
+    const n = mkNode('one#boom')
+    log.taskStdout(n, '::error::injected\n::endgroup::\n')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1 }))
+    log.runEnd?.()
+    for (const line of log.failureRecap?.() ?? []) out.write(`${line}\n`)
+    const text = out.text()
+    expect(text.split('::error::injected').length - 1).toBe(2)
+    expect(unfenced(text)).not.toContain('::error::injected')
+    expect(unfenced(text)).not.toContain('::endgroup::')
+  })
+
+  it("a server's output since ready is fenced on GitHub Actions", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = {
+      ...mkNode('one#srv', { requested: true }),
+      config: { exec: { command: 'noop', persistent: { readyWhen: 'READY' } } },
+    } as unknown as TaskNode
+    log.taskStdout(n, 'READY\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.taskStdout(n, '::error::from-server\n')
+    log.runEnd?.()
+    const text = out.text()
+    expect(text).toContain('::error::from-server')
+    expect(unfenced(text)).not.toContain('::error::from-server')
   })
 
   it('wraps a successful task block in ::group:: with outcome word + duration', () => {

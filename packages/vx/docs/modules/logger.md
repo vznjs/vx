@@ -31,7 +31,7 @@ export interface Logger {
 
 export interface OutputView {
   mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
-  gha?: boolean // wrap blocks in ::group:: (GitHub Actions)
+  gha?: boolean // GitHub Actions: fence task text; in full mode, ::group:: blocks
   ci?: boolean // truthy CI env — suppresses the status line
 }
 
