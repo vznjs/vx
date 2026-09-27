@@ -405,7 +405,11 @@ export class LayeredCache implements CacheLayer {
     const meta: IngestMeta = {
       taskId: ctx?.taskId ?? `${hash}#unknown`,
       command: ctx?.command ?? '',
-      durationMs: typeof remoteBody.durationMs === 'number' ? remoteBody.durationMs : 0,
+      // A layer's number is taken only as a finite non-negative one: a NaN
+      // failed the entry row's NOT NULL after the artifact was renamed into
+      // place, which threw a valid hit away and orphaned its bytes, and a
+      // negative or infinite one was stored and replayed (item 944).
+      durationMs: durationOf(remoteBody.durationMs),
       ...(ctx?.outputs !== undefined ? { outputs: ctx.outputs } : {}),
     }
     try {
@@ -605,4 +609,8 @@ export class LayeredCache implements CacheLayer {
       // swallow — reporting must never escalate
     }
   }
+}
+
+function durationOf(ms: unknown): number {
+  return typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER ? Math.round(ms) : 0
 }

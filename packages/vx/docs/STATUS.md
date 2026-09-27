@@ -316,6 +316,18 @@ test is telling the truth.
         key, and the ms-mtime row re-ingests an entry under its own key
         instead of another's. `key-fold.test.ts`'s digest is re-pinned,
         as every bump does.
+944.  DONE (2026-09-27, the remote-cache-seam review's minor lead, its
+      last). A remote layer's `durationMs` reached the entry row
+      unchecked. A NaN failed the row's NOT NULL after the artifact was
+      renamed into place: the valid hit was thrown away, the task ran and
+      the bytes were orphaned. A negative, infinite or huge value was
+      stored and replayed as the outcome's stored duration.
+      - The layered cache takes the value only as a non-negative count
+        up to `Number.MAX_SAFE_INTEGER`, rounded; anything else is 0.
+      - Row: `remote-duration.test.ts` › NaN, Infinity, -5 and 1e300 are
+        each a remote hit recorded as 0 ms, and 1.7 as 2. Red without the
+        fix; removing each bound or the rounding reddens it.
+      - The review is done: leads 1–4 are items 942–944.
 
 ## In flight
 
