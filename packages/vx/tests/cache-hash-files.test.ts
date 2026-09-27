@@ -217,3 +217,38 @@ describe('Cache.hashFiles', () => {
     expect(judged).toBe(true)
   })
 })
+
+// Item 1082: `seen_at` was written and never read, so a row for every path
+// ever hashed stayed, a deleted generated input or a removed worktree's
+// files among them, and `cache.db` grew for good.
+describe('file_hashes retention', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  function seed(p: string, seenAt: number): void {
+    cache
+      .dbHandle()
+      .prepare(
+        "INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at) VALUES (?, 1, 1, 1, 1, 'x', ?)",
+      )
+      .run(p, seenAt)
+  }
+  function paths(): string[] {
+    return (
+      cache.dbHandle().query('SELECT path FROM file_hashes ORDER BY path').all() as Array<{
+        path: string
+      }>
+    ).map((r) => r.path)
+  }
+
+  it('a close drops rows unseen for 30 days, at most once a day', async () => {
+    seed('/gone/old', Date.now() - 31 * DAY)
+    seed('/kept/fresh', Date.now() - 29 * DAY)
+    cache.close()
+    cache = new Cache(path.join(dir, 'cache'), { read: true, write: true })
+    expect(paths()).toEqual(['/kept/fresh'])
+    // The sweep's clock: a second close within the day scans nothing.
+    seed('/gone/later', Date.now() - 31 * DAY)
+    cache.close()
+    cache = new Cache(path.join(dir, 'cache'), { read: true, write: true })
+    expect(paths()).toEqual(['/gone/later', '/kept/fresh'])
+  })
+})

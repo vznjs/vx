@@ -12,6 +12,9 @@ import path from 'node:path'
 import { fileIdentity, repoFacts } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
+const FILE_HASHES_SWEPT_AT = 'file_hashes_swept_at'
+const DAY_MS = 24 * 60 * 60 * 1000
+
 export class FileHashStore {
   private readonly selectFileHash: ReturnType<Database['prepare']>
   private readonly upsertFileHash: ReturnType<Database['prepare']>
@@ -45,6 +48,29 @@ export class FileHashStore {
         content_hash = excluded.content_hash,
         seen_at      = excluded.seen_at
     `)
+  }
+
+  /**
+   * Drop the memo rows last written before `cutoff`: a path that is gone
+   * (a deleted generated input, a worktree removed, a CI checkout at a new
+   * path) keeps its row forever otherwise, and `cache.db` grows with every
+   * path ever hashed. A hit does not refresh `seen_at` (a write per file
+   * per run), so a file unchanged for the window loses its row too and is
+   * read once more; a dropped row is only a memo miss. The scan costs
+   * 8 ms at 100,000 rows, so it runs once a day, on its own clock in
+   * `schema_meta` (item 1082).
+   */
+  pruneOlderThan(cutoff: number, now: number = Date.now()): void {
+    const last = this.db
+      .prepare('SELECT value FROM schema_meta WHERE key = ?')
+      .get(FILE_HASHES_SWEPT_AT) as { value: string } | null
+    if (last !== null && now - Number(last.value) < DAY_MS) return
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM file_hashes WHERE seen_at < ?').run(cutoff)
+      this.db
+        .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
+        .run(FILE_HASHES_SWEPT_AT, String(now))
+    })()
   }
 
   /**

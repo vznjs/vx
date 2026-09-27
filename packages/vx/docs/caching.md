@@ -1210,6 +1210,8 @@ CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed';
 -- The file-hash memo: a content hash per input file that git could not
 -- answer (untracked or dirty), keyed by the stat identity that proves
 -- the bytes unchanged. Machine-local; § Cache key derivation step 12.
+-- A writing close drops rows unwritten for 30 days, at most once a day
+-- (a memo miss is the whole cost of a dropped row; item 1082).
 CREATE TABLE file_hashes (
   path         TEXT PRIMARY KEY,
   mtime_ms     INTEGER NOT NULL,
