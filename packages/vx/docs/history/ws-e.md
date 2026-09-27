@@ -41,6 +41,13 @@ What did not:
   twice in this stream's full gates (`sent: 0` for `1`) and is green
   alone (3 of 3): a race between the proxy's cut and the count.
 
+- A: `tests/workspace-files.test.ts` — three "workspace-wide partition"
+  rows are red when run outside the gate's sandbox on a host whose
+  global git config sets `core.checkstat=minimal` /
+  `core.trustctime=false` (this container's): the trusted-OID read then
+  distrusts every entry. The sandbox's HOME hides that config, so the
+  gate is green. The fixture could pin `GIT_CONFIG_GLOBAL=/dev/null`.
+
 ## Merged
 
 - E-1 — `vx upgrade`: a transfer cut mid-body and a release document
@@ -128,3 +135,11 @@ task picked`; neither prints a stack. Row in
   on E-16 (14 mutants: 9 caught, 2 equivalent early exits, 3 held now in
   `nearMatches`: nearest-first order, containment either way and
   case-insensitively, the limit). Rows in `tests/near-miss.test.ts`.
+- E-18 — Sweep of core's `util/paths.ts` (never swept; the glob
+  prefixes the sandbox, the deferral gate and the warm-hit directory
+  shortcut read): 25 mutants, 22 caught, 1 unreachable (`dir === '.'`,
+  which `normalizeGlob` folds to `''` first), 2 held now: a brace set or
+  a negation in a `<dir>/**` prefix read as a whole directory by
+  `wholeSubtreePrefixes`, and an entry folding to nothing (`./`) kept
+  by `asTrees` as `''` plus `/**`. Rows in `tests/output-dirs.test.ts`
+  and `tests/util-paths.test.ts`.

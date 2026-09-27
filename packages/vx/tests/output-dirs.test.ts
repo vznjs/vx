@@ -50,6 +50,11 @@ describe('wholeSubtreePrefixes (eligibility)', () => {
       ['../dist/**'],
       ['/abs/**'],
       ['dist/**', '**'],
+      // A brace set or a negation in the prefix is no directory (E-18's
+      // sweep widened the prefix alphabet with the suite green).
+      ['{dist,build}/**'],
+      ['dist/{a,b}/**'],
+      ['!dist/**'],
     ]) {
       expect(wholeSubtreePrefixes(bad)).toBeNull()
     }

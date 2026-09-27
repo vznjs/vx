@@ -27,6 +27,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
+  asTrees,
   BUN_GLOB_WILDCARDS,
   grantPrefix,
   isLiteralPattern,
@@ -502,6 +503,16 @@ describe('relPosix — documented boundaries', () => {
     const deep = Array.from({ length: 500 }, (_, i) => `seg${i}`).join('/')
     expect(relPosix('/r', `/r/${deep}`)).toBe(deep)
     expect(relPosix(`/r/${deep}`, '/r')).toBe(Array(500).fill('..').join('/'))
+  })
+})
+
+describe('asTrees', () => {
+  it('drops an entry that names nothing once its spelling is folded', () => {
+    // `./` and `/` fold to the empty path: kept, it became `''` plus `/**`
+    // (E-18's sweep dropped the skip with the suite green).
+    expect(asTrees(['./', '/', './/'])).toEqual([])
+    // CONTROL: a literal is itself and its tree; a pattern is itself.
+    expect(asTrees(['dist/', 'src/*.ts'])).toEqual(['dist', 'dist/**', 'src/*.ts'])
   })
 })
 
