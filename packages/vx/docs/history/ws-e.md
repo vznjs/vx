@@ -159,3 +159,8 @@ task picked`; neither prints a stack. Row in
 - E-21 — `vx last --list --format json` is an array of the same
   invocation objects as the replay's, newest first: documented, and
   pinned field for field in `tests/last.test.ts`.
+- E-22 — `vx upgrade`'s start check (item 1097: the replaced binary must
+  answer `--version`, or the previous one is put back) was an unbounded
+  `spawnSync`; a new binary that hung on start held the verb forever
+  with no rollback. `startedVersion()` bounds it at 10 s and a timeout
+  counts as not started. Rows in `tests/upgrade.test.ts`.
