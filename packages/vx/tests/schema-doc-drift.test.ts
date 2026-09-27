@@ -105,6 +105,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   ['<level> has unknown field "<key>"', () => validated({ tasks: { b: { ...ok, caches: {} } } })],
   [
+    '<level> has field "<key>", which vx <version> removed — use <replacement>',
+    () => validated({ tasks: { b: { exec: { command: 'x', resources: { cpus: 1 } } } } }),
+  ],
+  [
     '<level> must be an object (fields: <fields>), not an array',
     () =>
       validated({

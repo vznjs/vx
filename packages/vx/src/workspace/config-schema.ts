@@ -633,6 +633,40 @@ const CACHE_INPUT_FIELDS = new Set([
 ])
 const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles'])
 
+/** A field a release took out of the schema, and what took its place. */
+interface Removal {
+  /** The vx version whose schema first refused it. */
+  removedIn: string
+  /** What to write instead, as a sentence fragment after "use". */
+  use: string
+}
+
+/**
+ * Fields the schema once accepted, by the level that held them (keyed by
+ * that level's field set). A removed field is refused naming its
+ * replacement and the version that removed it, never as an unknown field a
+ * reader must research (docs/design/versioning-1.0.md § Deprecation). An
+ * entry stays for good: a config written against an old release meets it
+ * whenever it upgrades.
+ */
+export const REMOVED_FIELDS: ReadonlyMap<
+  ReadonlySet<string>,
+  Readonly<Record<string, Removal>>
+> = new Map([
+  [
+    EXEC_FIELDS,
+    {
+      // Reservations left core with the `admit` seam (item 157).
+      resources: {
+        removedIn: '0.0.19',
+        use:
+          "`@vzn/vx-schedule-history`, which learns each task's reservation from its run " +
+          "history (declare one by hand with its `reservations: { 'pkg#task': { cpus, memory } }`)",
+      },
+    },
+  ],
+])
+
 function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
   // `typeof [] === 'object'`, so an array reaches here and its indices read
   // as fields: `outputs: ['dist/**']` (Turbo's spelling) was refused as
@@ -645,6 +679,12 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
   }
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
+      const removal = REMOVED_FIELDS.get(allowed)?.[key]
+      if (removal !== undefined) {
+        throw new UserError(
+          `${where} has field "${key}", which vx ${removal.removedIn} removed — use ${removal.use}`,
+        )
+      }
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
       const near = nearest(key, allowed)
