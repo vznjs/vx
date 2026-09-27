@@ -953,6 +953,35 @@ describe.if(CHUNKING_SUPPORTED)('the record a success writes', () => {
   })
 })
 
+describe.if(CHUNKING_SUPPORTED)('an output tree restores in few round trips', () => {
+  it('one BatchReadBlobs for the small files of every directory', async () => {
+    // Was one call per directory: a 40-directory tree, 40 sequential calls.
+    const dirs: Directory[] = Array.from({ length: 40 }, (_, i) => ({
+      files: [{ name: 'f.txt', digest: put(`file ${i}`), is_executable: false }],
+      directories: [],
+      symlinks: [],
+    }))
+    const treeRoot: Directory = {
+      files: [],
+      directories: dirs.map((d, i) => ({ name: `d${i}`, digest: sha256(encodeDirectory(d)) })),
+      symlinks: [],
+    }
+    const tree = fake.put(encodeTree(treeRoot, dirs))
+    fake.onExecute = () => ({
+      response: {
+        result: { exit_code: 0, output_directories: [{ path: 'out', tree_digest: D(tree) }] },
+      },
+    })
+    const before = fake.calls.length
+    await withExecutor((run) => run(request({ outputs: { files: ['out'], workspaceFiles: [] } })))
+    const reads = fake.calls.slice(before).filter((c) => c.method === 'BatchReadBlobs').length
+    const restored = await Promise.all(
+      [0, 17, 39].map((i) => readFile(path.join(root, 'pkg', 'out', `d${i}`, 'f.txt'), 'utf8')),
+    )
+    expect([reads, restored]).toEqual([1, ['file 0', 'file 17', 'file 39']])
+  })
+})
+
 describe.if(CHUNKING_SUPPORTED)('upstream outputs, the edges', () => {
   const upstream = (hash: string, outputs: string[] = []) => ({
     taskId: 'lib#build',
