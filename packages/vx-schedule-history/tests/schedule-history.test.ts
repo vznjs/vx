@@ -60,6 +60,20 @@ describe('criticalPathPriorities', () => {
     expect(out.get('pkg#unknown')).toBe(500)
   })
 
+  // A task with runs but no duration (every run a cache hit: core's
+  // history has no p50 for it) is no evidence about durations: counted as
+  // 0 it pulled the median down, and every task without history of its own
+  // was scored as short.
+  it('a history entry with no p50 does not enter the workspace median', () => {
+    const nodes = [node('pkg#known'), node('pkg#unknown')]
+    const history: HistoryTable = new Map([
+      ['pkg#known', hist(500)],
+      ['pkg#hit-a', { ...hist(0), p50DurationMs: undefined }],
+      ['pkg#hit-b', { ...hist(0), p50DurationMs: undefined }],
+    ])
+    expect(criticalPathPriorities(nodes, history).get('pkg#unknown')).toBe(500)
+  })
+
   it('falls back to default duration when history is entirely empty', () => {
     const out = criticalPathPriorities([node('pkg#anything')], new Map())
     expect(out.get('pkg#anything')).toBe(1000)

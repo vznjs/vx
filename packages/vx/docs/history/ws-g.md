@@ -261,3 +261,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   guards). `pnpm.ts` (34): 30 caught, 4 equivalent (the trailing-null
   filter, the lockfile version the rest already carries, the absolute
   and own-key lookups the version fallback covers).
+- **G-19.** A mutation sweep of `vx-schedule-history`'s
+  `critical-path.ts` (15 mutants): 13 caught. Held now: a history entry
+  with no p50 (runs, but every one a cache hit) stays out of the
+  workspace median; counted as 0 it pulled the median down and every
+  task without history of its own was scored short. Row
+  (`schedule-history.test` › a history entry with no p50 does not enter
+  the workspace median), red without the guard. Equivalent: `left <= 0`
+  (an upstream outside the run has no node to release).
