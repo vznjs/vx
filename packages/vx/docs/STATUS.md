@@ -1028,6 +1028,14 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Row: `util-num.test.ts` › formatElapsed (eight values). Four red
         under the old algorithm.
 
+1035. DONE (2026-09-27, the CLI-verb review's low leads). `vx help run`
+      dropped its argument and printed the whole reference.
+      - Fix: `vx help <verb>` prints the same cut as `vx <verb> --help`
+        for a core verb; anything else gets the whole reference, which
+        lists the plugin verbs. `cli.md` and the Usage line say so.
+      - Row: `cli.test.ts` › vx help <verb> prints that verb's help. Red
+        without the dispatch change.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

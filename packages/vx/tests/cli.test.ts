@@ -58,6 +58,24 @@ describe('cli run()', () => {
     },
   )
 
+  // `vx help run` printed the whole reference until item 1035: the
+  // argument was dropped. It is the same cut `vx run --help` prints.
+  it('`vx help <verb>` prints that verb’s help, the whole reference otherwise', async () => {
+    expect(await run(['run', '--help'])).toBe(0)
+    const cut = stdout
+    stdout = ''
+    expect(await run(['help', 'run'])).toBe(0)
+    expect(stdout).toBe(cut)
+    stdout = ''
+    expect(await run(['help'])).toBe(0)
+    const whole = stdout
+    expect(whole).not.toBe(cut)
+    stdout = ''
+    expect(await run(['help', 'no-such-verb'])).toBe(0)
+    expect(stdout).toBe(whole)
+    expect(stderr).toBe('')
+  })
+
   // Every argument error points at the verb's own help, which is only
   // useful because `vx <verb> --help` prints something (same day). A verb
   // that grows a new parser and forgets the pointer fails here.

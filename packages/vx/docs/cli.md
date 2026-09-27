@@ -41,7 +41,7 @@ vx upgrade [tag]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
 # Meta
-vx help
+vx help [verb]
 vx --help, -h
 vx version
 vx --version
@@ -72,8 +72,9 @@ declares is still refused (item 1024).
 
 (No `-V` for version; `vx --version` only — matches Turbo.)
 
-`vx <verb> --help` (and `-h`) prints this reference cut to that core verb —
-its usage lines and sections, then `Full reference: vx help` —
+`vx <verb> --help` (and `-h`, and `vx help <verb>`) prints this reference
+cut to that core verb — its usage lines and sections, then
+`Full reference: vx help` —
 and every argument error points at it.
 Past a `--` the flag belongs to the command being run, so
 `vx run build -- --help` forwards it to the task instead. A plugin verb
