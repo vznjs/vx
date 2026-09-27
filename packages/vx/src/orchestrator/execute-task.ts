@@ -18,7 +18,7 @@ import {
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
   runPersistent,
-  shellQuote,
+  withForwardArgs,
   releaseBridges,
   wrapSandboxedCommand,
   signalExitCode,
@@ -260,16 +260,12 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
-  // When readyWhen is set we leave the command untouched so the
-  // regex matcher sees the unmodified output. When it's absent the
-  // task is "ready on spawn" — we can safely append forwardArgs in
-  // the same way runCommand does.
-  const plainCommand =
-    step.persistent.readyWhen !== undefined
-      ? step.command
-      : effectiveForwardArgs.length > 0
-        ? step.command + ' ' + effectiveForwardArgs.map(shellQuote).join(' ')
-        : step.command
+  // The args after `--` reach a server as they reach any task. A readyWhen
+  // server once got none — "so the matcher sees the unmodified output",
+  // though the args change the command, not what the matcher reads — and
+  // `vx run dev -- --port 4000` on the documented Vite task dropped the
+  // port in silence (item 1060).
+  const plainCommand = withForwardArgs(step.command, effectiveForwardArgs)
   // A persistent task declaring `exec.sandbox` runs inside it like any
   // other: the same grants, the same walls. What it cannot have is the
   // violation REPORT — that reads the trace after the child exits, and a

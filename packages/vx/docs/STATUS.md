@@ -831,7 +831,24 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Left from the review: Ctrl-C reports a persistent server vx
         killed as "exited … before the run stopped it"; the Aborted
         section lists never-started tasks as killed with exit 1; forwarded
-        args after a command ending in a `#` comment are dropped.
+        args after a command ending in a `#` comment are dropped (1060).
+
+1060. DONE (2026-09-27, the local runner review's lead 5). The args
+      after `--` were dropped in silence twice over: appended after a
+      command that ends in a comment (`echo args: # print them`) they
+      landed inside it, and a persistent task with a `readyWhen` got none
+      at all, "so the matcher sees the unmodified output" — though args
+      change the command, not what the matcher reads — so
+      `vx run dev -- --port 4000` on the documented Vite task lost the
+      port. One `withForwardArgs` (runner.ts) now builds the line for the
+      one-shot runner, the sandbox wrapper and the persistent path: the
+      args go before a comment still open at the end, and a server gets
+      them like any task. cli.md and execute-task.md say so.
+      - Rows: `runner.test.ts` › withForwardArgs (each joined line run
+        through sh; two red with the splice off, six controls: a comment
+        on an earlier line, a quoted `#`, `a#b`, `$#`, `\#`, `a\ #b`);
+        `persistent.test.ts` › appends forwardArgs to a persistent command
+        WITH a readyWhen (was the row pinning the drop; red with it back).
 
 ## In flight
 

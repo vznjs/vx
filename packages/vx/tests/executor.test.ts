@@ -50,8 +50,8 @@ describe('localExecutor', () => {
   })
 
   it('appends forwardArgs to the command line, shell-quoted', async () => {
-    // runCommand builds `command + ' ' + forwardArgs.map(shellQuote).join(' ')`
-    // (src/exec/runner.ts, runCommand), so the args reach printf as two
+    // runCommand appends the args shell-quoted (`withForwardArgs`,
+    // src/exec/runner.ts), so the args reach printf as two
     // operands — the one with a space survives quoting intact.
     const res = await localExecutor().execute(
       req({ command: 'printf "%s|"', forwardArgs: ['a b', 'c'] }),

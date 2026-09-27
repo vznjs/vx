@@ -82,6 +82,64 @@ export function shellQuote(arg: string): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`
 }
 
+/**
+ * Where a shell comment still open at the end of `command` starts, or -1.
+ * A `#` opens one only unquoted and at the start of a word (`a#b`, `$#` and
+ * `${#x}` are words), and a newline closes it.
+ */
+function trailingCommentStart(command: string): number {
+  let quote = ''
+  let comment = -1
+  let atWordStart = true
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!
+    if (comment >= 0) {
+      if (c === '\n') {
+        comment = -1
+        atWordStart = true
+      }
+      continue
+    }
+    if (quote === "'") {
+      if (c === "'") quote = ''
+      continue
+    }
+    if (c === '\\') {
+      i++
+      atWordStart = false
+      continue
+    }
+    if (quote === '"') {
+      if (c === '"') quote = ''
+      continue
+    }
+    if (c === "'" || c === '"') {
+      quote = c
+      atWordStart = false
+      continue
+    }
+    if (c === '#' && atWordStart) {
+      comment = i
+      continue
+    }
+    atWordStart = /[\s;&|()<>]/.test(c)
+  }
+  return comment
+}
+
+/**
+ * The command a task runs with the args after `--` appended, shell-quoted.
+ * They go before a trailing comment: appended after it, `echo args: # show`
+ * ran without them and said nothing (item 1060).
+ */
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string {
+  if (!args || args.length === 0) return command
+  const quoted = args.map(shellQuote).join(' ')
+  const comment = trailingCommentStart(command)
+  if (comment < 0) return `${command} ${quoted}`
+  return `${command.slice(0, comment).trimEnd()} ${quoted} ${command.slice(comment)}`
+}
+
 // Any shell control/expansion character means the wrapping `sh` has real
 // work to do (chaining, pipes, redirects, globbing, variables, subshells,
 // backgrounding) and must stay resident.
@@ -589,10 +647,7 @@ export function spawnFailureText(err: unknown, cwd: string, what = 'task'): stri
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const start = Date.now()
-  const fullCommand =
-    opts.forwardArgs && opts.forwardArgs.length > 0
-      ? opts.command + ' ' + opts.forwardArgs.map(shellQuote).join(' ')
-      : opts.command
+  const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: ReturnType<typeof Bun.spawn>
   try {

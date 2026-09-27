@@ -58,6 +58,7 @@ export interface PersistentSpawn {
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
 
 export function shellQuote(arg: string): string
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 // POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
 export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
 export class PersistentReadyError extends Error // reason: 'timeout' | 'exited' | 'spawn'; exitCode?: the child's own
@@ -100,7 +101,10 @@ export function execWord(command: string): string | undefined
   while vx lives, and sees EOF when vx exits (execution.md § Output
   capture and rendering).
 - **forwardArgs** are appended to `command` after a single space, each
-  quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe).
+  quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe), by
+  `withForwardArgs` — before a `#` comment still open at the command's
+  end, so the comment cannot swallow them. The sandbox wrapper and the
+  persistent path build the line the same way.
 - **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
   bytes are corrupted.
 
