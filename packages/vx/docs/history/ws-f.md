@@ -57,6 +57,17 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
 - C: `loadResolvedProjects` (orchestrator/projects.ts) opens the cache
   writable, so `vx mcp`'s `listTasks` can reset an older-schema index.
 
+- A: an upstream whose recorded outputs are only partly on disk still
+  feeds its dependant (local executor too; vx-reapi warns "using what is
+  here"), and the dependant's result is saved under a key that says the
+  upstream was complete. Refuse or re-materialise in core?
+- C: `cache.inputs.runtime` / `workspaceRuntime` are keyed from the
+  submitter's probe but never reach a remote worker, so a Node 20 worker's
+  output is saved under a Node 22 key (stale hit, vx-reapi probe P2).
+  Proposal: `TaskPlacement` says whether the key folds runtime probes, and
+  vx-reapi's `accepts` declines such a task (it runs here). A worker-side
+  guard cannot match core's probe exactly (PATH with `.bin`, trim).
+
 ## Merged
 
 F-1. vx-reapi retries INTERNAL as it retries UNAVAILABLE. Probe, Bun 1.4.2,
@@ -105,3 +116,9 @@ mutation sweep of vx-github (147 mutants, 31 real survivors); rows now
 hold the severe ones: GITHUB_STEP_SUMMARY activation, each Actions var
 missing, POST/`vx`/head_sha, a throwing transport's warning, the trailing
 newline, and CR/NUL/non-Latin-1 tokens refused unprinted.
+
+F-7. vx-reapi's executor memoised input digests by (path, size, mtime) for
+the run, so a same-size rewrite within the mtime's resolution (a restore,
+`cp -p`, a fast edit) shipped the OLD blob under a key naming the new
+bytes, and recorded it there. The memo saved one sha256 over bytes read
+anyway; removed (`DigestCache` export with it). Row red without the fix.
