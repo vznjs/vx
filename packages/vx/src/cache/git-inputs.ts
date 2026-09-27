@@ -436,6 +436,8 @@ export function parseCheckAttrOutput(out: string): Set<string> {
 async function dropFilteredOids(
   trusted: Map<string, string>,
   args: {
+    /** Every path the enumeration listed: tracked (dirty ones too) and untracked. */
+    listed: readonly string[]
     workspaceRoot: string
     gitDir: string
     gitPrefix: string
@@ -459,8 +461,12 @@ async function dropFilteredOids(
     ) ||
     (args.gitDir !== '' &&
       existsSync(path.resolve(args.workspaceRoot, args.gitDir, 'info', 'attributes')))
+  // Every listed path, not only the trusted ones: git applies a
+  // `.gitattributes` that is untracked or modified as well, and scanned in
+  // the trusted set alone such a file was never seen, so a CRLF file's LF
+  // index blob keyed it through an edit (item 977).
   if (!attributesPossible) {
-    for (const rel of trusted.keys()) {
+    for (const rel of args.listed) {
       if (rel === '.gitattributes' || rel.endsWith('/.gitattributes')) {
         attributesPossible = true
         break
@@ -863,6 +869,7 @@ export async function startGitEnumeration(
   // all along. The only cost is the read, so the gate below is about paying it
   // ONLY where a filter can actually apply.
   await dropFilteredOids(trusted, {
+    listed: all,
     workspaceRoot,
     gitDir,
     gitPrefix,

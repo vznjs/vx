@@ -160,6 +160,20 @@ test is telling the truth.
         `--exclude-dependencies` dropping an edge to a task in the same
         run, the `graph` stage skipping the builder's output-collision
         and key checks, and cli.md's "`--all` overrides scope".
+977.  DONE (2026-09-27, the cache-key review's lead 2). A stale hit. With
+      `*.txt text` in an untracked (or modified) `.gitattributes`, a CRLF
+      file's index blob is its LF form and `git status` calls it clean,
+      so the first run keyed the CRLF bytes by the LF blob's OID; rewritten
+      to LF, the file is dirty and hashed from disk to that same OID, and
+      the run replayed the CRLF output. The gate that stops trusting a
+      converted OID looked for `.gitattributes` among the trusted paths
+      only.
+      - Fix (`git-inputs.ts`): the gate scans every listed path, tracked,
+        dirty and untracked. `modules/git-inputs.md` says so.
+      - Rows: `git-trust.test.ts` › an untracked one, and a modified one,
+        through the CLI; both red without the fix. Two `run()` calls in
+        one process derived the same key and still re-executed the second
+        time, so an in-process row could not see the hit: why is open.
 
 ## In flight
 
