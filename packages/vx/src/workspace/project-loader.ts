@@ -1,10 +1,16 @@
+import { realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { beginEvalRound, evaluateConfigFresh } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
-import { configEvalKey, configEvalKeyFromClosure, type ConfigEvalStore } from './config-cache.js'
+import {
+  configEvalKey,
+  configEvalKeyFromClosure,
+  configImports,
+  type ConfigEvalStore,
+} from './config-cache.js'
 import { readOnce } from './load-reads.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
@@ -420,6 +426,41 @@ export async function loadProjectConfig(
   return config!
 }
 
+/** When this process first began loading each workspace config, in ms. */
+const workspaceLoadedAt = new Map<string, number>()
+
+/**
+ * A repeat load in one process (`vx mcp`'s every call, `vx watch`'s every
+ * cycle) busts the workspace config's own URL, but Bun answers what it
+ * imports from the module registry: an edited local plugin kept its first
+ * version and `listTasks` served its old tasks with no word (item 1046).
+ * Bun cannot evaluate an imported module again, so the load is refused,
+ * naming the file, as `vx watch` already says when it sees the edit. Only
+ * a repeat load pays for the walk; a CLI verb loads once.
+ */
+async function refuseStaleWorkspaceImports(configPath: string, since: number): Promise<void> {
+  for (const file of await configImports(configPath)) {
+    let mtime: number
+    try {
+      mtime = statSync(file).mtimeMs
+    } catch {
+      continue
+    }
+    // `since` is whole milliseconds and an mtime is not: a file written in
+    // the millisecond the first load began (1000.4 against 1000) read as
+    // changed, and the control reload was refused one run in ten. An edit
+    // inside that millisecond is one the load may have read anyway.
+    if (Math.floor(mtime) > since) {
+      // The walk names real paths: a root reached through a symlink (macOS's
+      // temp dir) named `../target/helper.mjs` from the link.
+      const from = path.dirname(realpathSync(configPath))
+      throw new UserError(
+        `${path.basename(configPath)} imports ${path.relative(from, file)}, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit`,
+      )
+    }
+  }
+}
+
 /**
  * Find and load `vx.workspace.{ts,mts,js,mjs}` from the workspace
  * root. Returns `null` if no such file exists (the common case;
@@ -430,6 +471,9 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
   for (const configPath of WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f))) {
     const bytes = await readOnce(undefined, configPath)
     if (bytes === null) continue
+    const since = workspaceLoadedAt.get(configPath)
+    if (since !== undefined) await refuseStaleWorkspaceImports(configPath, since)
+    const startedAt = Date.now()
     const mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
     // Checked again once awaited, as a project config is: a Promise default
     // passed the first check, and `Promise.resolve(null)` crashed the
@@ -437,6 +481,9 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     // config at all (D-6).
     assertDefaultObject(mod, 'Workspace', configPath)
     validateWorkspace(mod, configPath)
+    // Set by a load that succeeded: a failed one may have left nothing in
+    // the registry, and its fix must not be refused.
+    if (since === undefined) workspaceLoadedAt.set(configPath, startedAt)
     return mod
   }
   return null

@@ -204,11 +204,15 @@ the shipped standalone binary fail with `ModuleNotFound`.
   load re-resolves it in a fresh Worker registry.
 - **`loadWorkspaceConfig` has no Worker path.** `vx.workspace.ts`
   declares `plugins`, which are objects holding **functions** — they
-  cannot cross a Worker boundary at all. So a `vx.workspace.ts` import
-  closure can still go stale in a long-lived process. Nothing there
-  feeds a cache key (it carries `concurrency`, `cacheDir`, `timeout`,
-  `plugins`), so this cannot produce a stale hit; a
-  workspace-config edit still needs a restart to take effect.
+  cannot cross a Worker boundary at all. A repeat load busts the
+  config's own URL, so an edit to `vx.workspace.ts` itself is read, but
+  Bun answers what it imports from the registry: `vx mcp` served an
+  edited local plugin's first version on every call (item 1046). So a
+  repeat load walks the config's relative imports and refuses, naming
+  the file, when one changed since the first successful load in this
+  process; the fix is a restart, as `vx watch` says when it sees the
+  edit. A process that loads once (every CLI verb but these two) pays
+  nothing for it.
 
 ## Tests
 

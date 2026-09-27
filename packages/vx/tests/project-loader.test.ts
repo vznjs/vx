@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -1117,6 +1117,47 @@ describe('loadWorkspaceConfig', () => {
     const cfg = await loadWorkspaceConfig(dir)
     expect(cfg).toEqual({ concurrency: 4, cacheDir: 'build/.vx-cache' })
   })
+
+  // A repeat load busts the config's own URL, but Bun answers its imports
+  // from the registry: `vx mcp` served an edited local plugin's first
+  // version on every call, silently (item 1046).
+  // The root is also reached through a symlink: macOS's temp dir is one
+  // (`/var` -> `/private/var`), the import walk realpaths what it finds,
+  // and the name was then taken relative to the link (darwin CI).
+  it.each(['a real root', 'a root reached through a symlink'])(
+    'a repeat load refuses once a file the config imports changed, naming it, from %s',
+    async (shape) => {
+      const real = path.join(dir, shape === 'a real root' ? 'real' : 'target')
+      await mkdir(real)
+      const root = shape === 'a real root' ? real : path.join(dir, 'link')
+      if (root !== real) await symlink(real, root)
+      const helper = path.join(root, 'helper.mjs')
+      await writeFile(helper, 'export const n = 1\n')
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        "import { n } from './helper.mjs'\nexport default { concurrency: n }\n",
+      )
+      expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 1 })
+      // CONTROL: nothing it imports moved, and an edit to the config itself
+      // is read as ever.
+      expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 1 })
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        "import { n } from './helper.mjs'\nexport default { concurrency: n + 1 }\n",
+      )
+      expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 2 })
+      await writeFile(helper, 'export const n = 5\n')
+      const later = new Date(Date.now() + 5_000)
+      await utimes(helper, later, later)
+      const refused = await loadWorkspaceConfig(root).then(
+        () => 'loaded',
+        (e: Error) => e.message,
+      )
+      expect(refused).toBe(
+        'vx.workspace.mjs imports helper.mjs, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit',
+      )
+    },
+  )
 
   it('takes the FIRST file in lookup order when two exist (item 653)', async () => {
     await writeFile(path.join(dir, 'vx.workspace.ts'), 'export default { concurrency: 2 }')
