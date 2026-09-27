@@ -449,13 +449,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The PROBE hash is computed WITHOUT capture — a warm all-cache-hit
   // run allocates no component array and pushes nothing (the warm path
   // does zero extra Tier-3 work). The cache-key components for the
-  // Tier-3 input fingerprint are captured only on a MISS, right before
-  // `cache.save`, by a second `computeTaskHash` with `captureInto` set
-  // — the HashCache memos (package.json bytes, task config, runtime
-  // command output) plus the gitFilesCache OID map make that second
-  // pass a fold + array pushes, no re-stat / re-hash I/O. It runs on
-  // the miss path only, where the task is about to spawn a subprocess
-  // anyway, so its cost is in the noise.
+  // Tier-3 input fingerprint are captured only on a MISS, by
+  // `describeTaskInputs` just before the command spawns (with
+  // `captureInto` set) — the HashCache memos plus the gitFilesCache OID
+  // map make that pass a fold + array pushes, no re-stat / re-hash I/O.
   //
   // Local short-circuit reuse: when the classify phase already derived
   // this task's stable key + probed it, reuse the up-front hash verbatim
