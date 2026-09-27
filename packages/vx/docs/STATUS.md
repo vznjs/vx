@@ -602,6 +602,15 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       history (1004, 1005, 1008, 1009, 1012). The loop here is the
       record from 1013.
 
+1042. DONE (2026-09-27, the CLI-verb review's low leads). The refusal a
+      reading verb prints for an earlier index schema said "a reading verb
+      leaves it untouched", and `vx show`, which opens the index to store
+      config evaluations, resets it. The message now speaks for the verb
+      that printed it: this verb leaves it untouched, the next `vx run`
+      resets it.
+      - Row: `schema-reset-notice.test.ts` › each reading verb's refusal
+        now pins the sentence; four red under the old wording.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

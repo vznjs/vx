@@ -506,7 +506,7 @@ export class Cache implements CacheLayer {
       }
       if (mode === 'inspect') {
         throw new UserError(
-          `the cache at ${cacheDir} holds index schema ${found} from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here. The next \`vx run\` resets it; a reading verb leaves it untouched`,
+          `the cache at ${cacheDir} holds index schema ${found} from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         )
       }
     }
