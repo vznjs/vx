@@ -7,7 +7,13 @@ import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { isBunfsPath, npmOwnedBinary, releaseAsset, replaceBinary } from '../src/cli/upgrade.js'
+import {
+  fetchRelease,
+  isBunfsPath,
+  npmOwnedBinary,
+  releaseAsset,
+  replaceBinary,
+} from '../src/cli/upgrade.js'
 import { UserError } from '../src/util/index.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
@@ -127,6 +133,41 @@ describe('replaceBinary', () => {
     )
   })
 
+  it('a transfer cut after the headers is one refusal, never a stack, and replaces nothing', async () => {
+    // The status arrives, then the connection drops mid-body: Bun rejects
+    // the body read with its own TypeError (probed against a socket that
+    // closes after 1 KB of a 100 KB Content-Length), which the fetch guard
+    // never saw, so the CLI printed an internal error with a stack.
+    const reset = Object.assign(new TypeError('The socket connection was closed unexpectedly.'), {
+      code: 'ECONNRESET',
+    })
+    const cut = (): Response =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            controller.enqueue(new TextEncoder().encode('x'.repeat(1000)))
+            controller.error(reset)
+          },
+        }),
+      )
+    await withFetch((() => Promise.resolve(cut())) as unknown as typeof fetch, async () => {
+      const dest = path.join(dir, 'vx7')
+      await Bun.write(dest, 'old')
+      let caught: unknown
+      try {
+        await replaceBinary(dest, 'https://github.com/vznjs/vx/releases/download/v1/vx', FAKE_SHA)
+      } catch (err) {
+        caught = err
+      }
+      expect(caught).toBeInstanceOf(UserError)
+      expect((caught as Error).message).toBe(
+        'vx upgrade: could not download the release asset from github.com (The socket connection was closed unexpectedly.) — nothing replaced; check the network or the proxy and re-run',
+      )
+      expect(await readFile(dest, 'utf8')).toBe('old')
+      expect(await Array.fromAsync(new Bun.Glob('vx7.upgrade-*').scan({ cwd: dir }))).toEqual([])
+    })
+  })
+
   it('an empty download is refused even when the digest agrees (sha256 of nothing)', async () => {
     // The digest check alone passes an empty body whose published digest is
     // sha256(''): the emptiness refusal is what stands between that and a
@@ -188,6 +229,35 @@ describe('replaceBinary', () => {
         expect(await readdir(dest)).toEqual(['inside'])
       },
     )
+  })
+})
+
+describe('fetchRelease', () => {
+  it('a release document that is not JSON is one refusal naming the host, never a stack', async () => {
+    // A captive portal or a proxy's error page served with a 200: the
+    // status passes, and `res.json()` threw a SyntaxError the CLI printed
+    // with its stack.
+    const real = globalThis.fetch
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response('<html>sign in to the network</html>', { status: 200 }),
+      )) as unknown as typeof fetch
+    let caught: unknown
+    try {
+      await fetchRelease('v1')
+    } catch (err) {
+      caught = err
+    } finally {
+      globalThis.fetch = real
+    }
+    expect(caught).toBeInstanceOf(UserError)
+    const message = (caught as Error).message
+    expect(message.startsWith('vx upgrade: could not read the release from api.github.com (')).toBe(
+      true,
+    )
+    expect(
+      message.endsWith(') — nothing replaced; check the network or the proxy and re-run'),
+    ).toBe(true)
   })
 })
 

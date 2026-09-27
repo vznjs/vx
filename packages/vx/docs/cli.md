@@ -1484,7 +1484,10 @@ says `this vx was installed by npm … Update with: npm install -g
 @vzn/vx@latest`. A host it cannot reach (no route, a proxy that is
 down) is one line — `could not reach api.github.com to read the
 release (…) — check the network or the proxy and re-run` — never a
-stack.
+stack; so is a transfer cut after the headers arrived, and a release
+document that is not JSON (a captive portal's page served with a 200):
+`could not download the release asset from github.com (…) — nothing
+replaced; …`.
 
 ## `vx init`
 
