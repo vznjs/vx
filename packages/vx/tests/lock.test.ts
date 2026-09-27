@@ -6,8 +6,9 @@
 //   - `vx lock --check` re-evaluates configs in the current env and
 //     deep-compares against the lock → catches env drift that file
 //     hashes cannot see.
-//   - `vx run` is hash-only and TRUSTS the lock → frozen-env
-//     semantics; the run succeeds with the locked value.
+//   - `vx run --frozen` checks nothing and TRUSTS the lock → frozen-env
+//     semantics; the run succeeds with the locked value. A plain
+//     `vx run` evaluates live and never reads the lock.
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
