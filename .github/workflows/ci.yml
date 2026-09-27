@@ -8,12 +8,14 @@ on:
   # from real regressions when a main run goes red.
   workflow_dispatch:
 
-# A newer push to the same ref supersedes an older run: a PR's old head is
-# never merged, and only main's tip releases (auto-release.yml), so the
-# older run only holds runners the parallel streams need.
+# A newer push to the same ref supersedes an older run. On a PR the running
+# one is cancelled: its old head is never merged. On main it finishes and
+# only the queued runs between it and the tip are dropped, or a busy main
+# never completes a run, never releases (auto-release.yml) and never says
+# it is red.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   ci:
