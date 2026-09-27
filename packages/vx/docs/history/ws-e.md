@@ -206,3 +206,7 @@ task picked`; neither prints a stack. Row in
   lead): `bin.ts` lazy-loads the façade, and a lazy deep import such as
   `import('../orchestrator/run.js')` from `cli/` passed unseen. It now
   scans `import('…')` too; `bin → index` joins the matrix with its why.
+- E-28 — `vx why` listed what changed in the key and stopped there.
+  Under the rows it now says what to do, one line per changed kind
+  (`WHAT_TO_DO`), held to the kinds `cache/key-fold.ts` captures in
+  both directions. Rows in `tests/why.test.ts`.

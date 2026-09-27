@@ -3,12 +3,14 @@
 // The fixture runs a real task twice with a changed input file so the
 // persisted entry_inputs rows carry a genuine component-level diff.
 
+import { readFileSync } from 'node:fs'
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { Database } from 'bun:sqlite'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { parseWhyArgs } from '../src/cli/index.js'
+import { WHAT_TO_DO } from '../src/cli/why.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -89,6 +91,8 @@ describe('vx why (e2e)', () => {
       expect(r.out).toContain('what changed')
       // The exact changed component: the edited input file, kind `file`.
       expect(r.out).toMatch(/changed\s+file\s+.*input\.txt/)
+      // Each changed kind gets what to do about it, once.
+      expect(r.out).toContain(`  what to do:\n    file  ${WHAT_TO_DO['file']}\n`)
     },
     TIMEOUT,
   )
@@ -242,6 +246,13 @@ describe('vx why (e2e) — every component kind names its row', () => {
       // The lockfile moved lib's key too, and app folds it: the upstream row
       // rides with the fingerprint's.
       expect(lock).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
+      const todo = lock.slice(lock.indexOf('  what to do:\n'))
+      expect(
+        todo
+          .trimEnd()
+          .split('\n')
+          .map((l) => l.trim().split(/\s+/)[0]),
+      ).toEqual(['what', 'upstream', 'workspace'])
 
       const appConfig = path.join(root, 'packages', 'app', 'vx.config.mjs')
       await writeFile(appConfig, APP.replace('echo hi', 'echo hey'))
@@ -513,11 +524,17 @@ describe('vx why (e2e) — the exact lines', () => {
       expect(r.code).toBe(0)
       const lines = r.out.split('\n')
       expect(lines).toContain('  what changed (3 components, 3 unchanged):')
-      const rows = lines.filter((l) => l.startsWith('    '))
+      const head = lines.indexOf('  what changed (3 components, 3 unchanged):')
+      const rows = lines.slice(head + 1, lines.indexOf('', head))
       expect(rows).toHaveLength(3)
       expect(rows[0]).toMatch(/^ {4}added {3}file {5}packages\/app\/src\/new\.txt {2}\+ [0-9a-f]+$/)
       expect(rows[1]).toMatch(/^ {4}removed file {5}packages\/app\/src\/old\.txt {2}- [0-9a-f]+$/)
       expect(rows[2]).toMatch(/^ {4}changed package {2}package\.json {2}[0-9a-f]+ → [0-9a-f]+$/)
+      // One line per kind, in the rows' order, padded as they are.
+      expect(lines.slice(lines.indexOf('  what to do:') + 1, -1)).toEqual([
+        `    file     ${WHAT_TO_DO['file']}`,
+        `    package  ${WHAT_TO_DO['package']}`,
+      ])
     },
     TIMEOUT,
   )
@@ -606,4 +623,18 @@ describe('vx why (e2e) — the exact lines', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('vx why — what to do', () => {
+  it('covers exactly the kinds the key fold captures', () => {
+    // From the source of truth, not from the map: every `kind: '…'` the
+    // fold pushes, and nothing else.
+    const fold = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
+      'utf8',
+    )
+    const kinds = [...fold.matchAll(/cap\.push\(\{ kind: '([^']+)'/g)].map((m) => m[1]!)
+    expect(kinds.length).toBeGreaterThan(5)
+    expect(Object.keys(WHAT_TO_DO).sort()).toEqual([...new Set(kinds)].sort())
+  })
 })
