@@ -138,7 +138,10 @@ over (in order):
     ONLY when non-empty — so a workspace with no `key` plugin derives
     byte-identical keys to one before the stage existed (no
     `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
-    as `plugin <plugin>/<name>`.
+    as `plugin <plugin>/<name>`. Two plugins of one package (a plugin's
+    name is its package's) that return one name are told apart as
+    `<name>`, `<name>#2`, … in value order, so declaration order still
+    keys nothing (item 1028).
 
 12. **Input files' content hashes** — `cache.inputs.files` resolved to
     a concrete list of project-relative paths (gitignore-aware,

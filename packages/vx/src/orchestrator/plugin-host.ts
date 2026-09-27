@@ -188,7 +188,21 @@ export async function applyKeyHooks(
       }
     }
     if (parts.length > 0) {
-      parts.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      const byName = (a: readonly [string, string], b: readonly [string, string]): number =>
+        a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0
+      parts.sort(byName)
+      // A plugin's name is its package's, and one package may define two
+      // plugins (`@vzn/vx-migrate`'s `turbo()` and `turboCache()`): two
+      // parts named alike folded both values under one name, and `vx why`
+      // could not say which moved (item 1028). The repeats take `#2`, `#3`
+      // in value order, so declaration order still keys nothing.
+      let previous = ''
+      let n = 0
+      for (const [i, [name, value]] of parts.entries()) {
+        n = name === previous ? n + 1 : 1
+        previous = name
+        if (n > 1) parts[i] = [`${name}#${n}`, value]
+      }
       node.keyParts = parts
     }
   }

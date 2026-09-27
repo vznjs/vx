@@ -923,6 +923,20 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         by its plugin, and by its place in a list (both warning sites).
         Each piece red when removed.
 
+1028. DONE (2026-09-27, the plugin-seam review's lead 4, its second
+      half). A plugin's name is its package's, so two plugins of one
+      package returning the same key part folded two parts named alike:
+      no stale hit, but when only one moved `vx why` said "cache key
+      changed but no component-level difference was recorded".
+      - Fix (`plugin-host.ts` `applyKeyHooks`): parts sort by name, then
+        value, and a repeated name takes `#2`, `#3`. A workspace whose
+        plugins repeat no name keys as before, and swapping two twins
+        still keys nothing. `caching.md` says so. No `CACHE_VERSION`
+        bump: only a repeated name's key moves, and that is a miss once.
+      - Row: `plugin-pipeline.test.ts` › parts named alike are told
+        apart, in value order, and still fold both. Red without the
+        suffix, and without the value order.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
