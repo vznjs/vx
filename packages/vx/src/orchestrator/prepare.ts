@@ -242,8 +242,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const workspaceFingerprint = fingerprints.unclaimed
   mark('open cache')
 
-  // Frozen mode (--frozen, CI): configs load FROM vx-lock.json after a
-  // content-hash tripwire — no evaluation; env-dependent configs keep
+  // Frozen mode (--frozen, CI): configs load FROM vx-lock.json with no
+  // evaluation and no check of the config bytes (`vx lock --check`
+  // compares `configHash`; a run does not); env-dependent configs keep
   // their locked values. Default (local) runs ALWAYS evaluate live:
   // a byte hash can't see a config's import closure (shared presets),
   // so consuming the lock by default would silently serve stale
@@ -333,7 +334,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         })
   } catch (err) {
     // A cache plugin that throws or returns something off-contract is
-    // refused by name; the local handle opened above must not leak with it.
+    // refused by name; the local handle opened above must not leak with it,
+    // nor what another plugin's factory opened: the factories have run
+    // (C-4, item 1029's contract).
+    await teardownPlugins(plugins, (m) => log.status(m))
     localCache.close()
     throw err
   }
