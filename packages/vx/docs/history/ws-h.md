@@ -163,6 +163,18 @@ plugin; `config` now does the same, naming the plugin. Row:
 `plugin-pipeline.test.ts` "a plugin that produces an invalid workspace
 config…", red without the check (`undefined` for every refusal).
 
+## H-14: an executor that ignores `req.signal` no longer holds the run
+
+H-12's lead A: a plugin executor that never looks at `signal` held its
+task, and the run, past `exec.timeout` and past an embedder's abort, since
+core awaited `execute` unbounded. After the abort core now waits the kill
+grace the local executor gives a process group (`VX_KILL_GRACE_MS`, 2 s),
+then settles the attempt without it (timed out, or aborted), with one
+stderr line naming the executor. The local executor is exempt by identity
+(`isLocalExecutor`): it SIGKILLs its own group. Rows:
+`plugin-executor-abort.test.ts` "an executor that ignores the signal",
+both at the 20 s test timeout without the bound.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.

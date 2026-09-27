@@ -7,7 +7,7 @@
 
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
@@ -106,3 +106,69 @@ it("exec.timeout aborts a plugin executor's request, and the task fails as timed
   ])
   expect(Date.now() - started).toBeLessThan(10_000)
 }, 20_000)
+
+// An executor that never looks at `signal` held the task, and the run, past
+// both the timeout and the stop (H-14). Core now waits the kill grace after
+// the abort and settles the attempt without it.
+describe('an executor that ignores the signal', () => {
+  const deaf = pluginSource(
+    'org/deaf',
+    `{ executor() { return { name: 'deaf', execute(req) {
+        req.onStderr('started\\n')
+        return new Promise(() => {})
+      } } } }`,
+  )
+  let grace: string | undefined
+  beforeEach(() => {
+    grace = process.env['VX_KILL_GRACE_MS']
+    process.env['VX_KILL_GRACE_MS'] = '200'
+  })
+  afterEach(() => {
+    if (grace === undefined) delete process.env['VX_KILL_GRACE_MS']
+    else process.env['VX_KILL_GRACE_MS'] = grace
+  })
+
+  it('is abandoned after the grace once exec.timeout fires, and the task times out', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([deaf]))
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { slow: { exec: { command: 'true', timeout: 300 } } } }`,
+    )
+    const stderr: string[] = []
+    const started = Date.now()
+    const r = await run({
+      cwd: root,
+      tasks: ['slow'],
+      projects: ['app'],
+      log: { ...silent, taskStderr: (_n, chunk) => stderr.push(chunk) },
+      handleSignals: false,
+    })
+    expect(r.outcomes.map((o) => [o.node.id, o.status, o.timedOut === true])).toEqual([
+      ['app#slow', 'failed', true],
+    ])
+    expect(Date.now() - started).toBeLessThan(10_000)
+    expect(stderr.join('')).toContain(
+      "vx: plugin 'org/deaf' (executor 'deaf') did not return within 200ms of the timeout (300ms); abandoned\n",
+    )
+  }, 20_000)
+
+  it('is abandoned after the grace once the run stops, and the task is aborted', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([deaf]))
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { slow: { exec: { command: 'true' } } } }`,
+    )
+    const ac = new AbortController()
+    const r = await run({
+      cwd: root,
+      tasks: ['slow'],
+      projects: ['app'],
+      log: { ...silent, taskStderr: () => ac.abort() },
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    expect(r.outcomes.map((o) => [o.node.id, o.status])).toEqual([['app#slow', 'aborted']])
+  }, 20_000)
+})

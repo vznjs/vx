@@ -28,13 +28,18 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   Runs the command on this machine; what a plugin declining a task
   hands it back to. Internal (`src/exec/local-executor.ts`), not on
   `@vzn/vx`.
+- `isLocalExecutor(executor)` — whether it is core's own, by identity (a
+  plugin may name its executor 'local'): core bounds a plugin's
+  `execute` after the request's abort, never the local one's (H-14).
 - `ExecuteRequest` — `taskId`, `workspaceRoot`, `command`, `forwardArgs`,
   `cwd`, `env`, `envDefine` (`exec.env.define` verbatim: the host-free
   part of `env`, safe to ship), `capture`, `outputs`, `timeoutMs?`,
   `onStdout`, `onStderr`, `signal?` (aborted when the run stops or
   `timeoutMs` elapses: an executor ends its work and returns, since core
   cannot reach a process it spawned; a non-zero exit after the timeout's
-  abort is recorded `timedOut`), `liveChildren?`, `sandbox?: ExecuteSandbox`,
+  abort is recorded `timedOut`; one that has not returned within the
+  kill grace of the abort is abandoned, the attempt settled without it),
+  `liveChildren?`, `sandbox?: ExecuteSandbox`,
   `inputs?: TaskInputs`, `cacheKey?` (a cacheable task's key, the address
   an executor's own remote record uses), `refresh?` (cache reads are off:
   do not answer from that record), `remoteOnly?` (`exec.remote: 'only'`:
