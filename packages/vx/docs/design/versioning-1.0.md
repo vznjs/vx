@@ -18,6 +18,24 @@ adds to them, and only a major removes or changes one.
 | The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`                                                                        |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                  |
 
+## How the contract is held
+
+A surface is frozen only if a change to it fails a test. Each pin
+records the surface as the code produces it, in a committed file, so a
+change is a reviewed diff of that file and never a side effect.
+
+- **The config schema.** `tests/contract-config-schema.test.ts`
+  discovers every level and field the validator accepts (by injecting
+  an unknown key at each level of a valid seed config and reading the
+  refusal's `allowed:` list), probes each field with a fixed set of
+  values, and compares every outcome, acceptance or exact refusal text,
+  with `tests/contract/config-schema.json`. The same file holds each
+  level's field list to its exported interface in `src/config.ts`
+  through the type checker, so the TypeScript surface and the runtime
+  surface cannot drift apart. A deliberate change regenerates the
+  record with `VX_UPDATE_CONTRACT=1` (the command is in the test's
+  header) and names the change in the release notes.
+
 ## Not the contract
 
 These may change in any release.
