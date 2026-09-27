@@ -1569,12 +1569,18 @@ export class Cache implements CacheLayer {
 
     const victims = new Set<string>()
     let bytesFreed = 0
+    // Rows whose artifact is gone (deleted by hand, or by a disk cleaner):
+    // never a hit, and their bytes are on no disk, but `--max-size` counted
+    // them and evicted real entries to make room for them (item 975). They
+    // are dropped, neither evicted nor freed.
+    const phantoms = await this.phantomRows()
 
     if (olderThanMs !== undefined) {
       const rows = this.db
         .prepare('SELECT hash, size_bytes FROM entries WHERE accessed_at < ?')
         .all(olderThanMs) as Array<{ hash: string; size_bytes: number }>
       for (const r of rows) {
+        if (phantoms.has(r.hash)) continue
         victims.add(r.hash)
         bytesFreed += r.size_bytes
       }
@@ -1584,7 +1590,9 @@ export class Cache implements CacheLayer {
       const totalRow = this.db
         .prepare('SELECT COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
         .get() as { bytes: number }
-      let remaining = totalRow.bytes - bytesFreed
+      let phantomBytes = 0
+      for (const b of phantoms.values()) phantomBytes += b
+      let remaining = totalRow.bytes - phantomBytes - bytesFreed
       if (remaining > maxBytes) {
         // Exclude already-picked victims in JS, not via a SQL NOT-IN —
         // an IN-list over tens of thousands of TTL victims would blow
@@ -1593,7 +1601,7 @@ export class Cache implements CacheLayer {
           this.db
             .prepare('SELECT hash, size_bytes FROM entries ORDER BY accessed_at ASC')
             .all() as Array<{ hash: string; size_bytes: number }>
-        ).filter((row) => !victims.has(row.hash))
+        ).filter((row) => !victims.has(row.hash) && !phantoms.has(row.hash))
         for (const row of candidates) {
           if (remaining <= maxBytes) break
           victims.add(row.hash)
@@ -1618,11 +1626,12 @@ export class Cache implements CacheLayer {
         orphanBytes: orphans.orphanBytes,
       }
     }
-    if (victims.size > 0) {
+    if (victims.size > 0 || phantoms.size > 0) {
       const hashes = [...victims]
+      const rows = [...hashes, ...phantoms.keys()]
       this.db.transaction(() => {
-        for (let i = 0; i < hashes.length; i += 900) {
-          const chunk = hashes.slice(i, i + 900)
+        for (let i = 0; i < rows.length; i += 900) {
+          const chunk = rows.slice(i, i + 900)
           this.db
             .prepare(`DELETE FROM entries WHERE hash IN (${chunk.map(() => '?').join(',')})`)
             .run(...(chunk as readonly SQLQueryBindings[]))
@@ -1668,6 +1677,29 @@ export class Cache implements CacheLayer {
       }),
     )
     return { orphans, orphanBytes }
+  }
+
+  /**
+   * Index rows whose artifact is not in the directory, with their recorded
+   * sizes. Only rows last written or used before the grace window: a save
+   * renames its artifact in before its row commits, so a fresh row without
+   * one is a listing that raced a save, not a phantom. An unreadable
+   * directory judges nothing.
+   */
+  private async phantomRows(): Promise<Map<string, number>> {
+    let names: string[]
+    try {
+      names = await readdir(this.cacheDir)
+    } catch {
+      return new Map()
+    }
+    const present = new Set(names)
+    const rows = this.db
+      .prepare('SELECT hash, size_bytes FROM entries WHERE accessed_at < ?')
+      .all(Date.now() - ORPHAN_GRACE_MS) as Array<{ hash: string; size_bytes: number }>
+    const out = new Map<string, number>()
+    for (const r of rows) if (!present.has(`${r.hash}.tar.zst`)) out.set(r.hash, r.size_bytes)
+    return out
   }
 
   /** What `prune()` would reap right now, for `vx info` to say before anyone prunes. */

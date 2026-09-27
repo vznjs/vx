@@ -127,6 +127,21 @@ test is telling the truth.
       `--affected` (951, 953–955, 958, 959, 961), a warm A/B after them
       (960), execution, the scheduler and the sandbox (962–966), then
       `vx lock` and the cache prune (967–972).
+975.  DONE (2026-09-27, the cache-prune review's last lead). An index row
+      whose artifact was deleted by hand is never a hit, but `--max-size`
+      counted its bytes: a prune evicted the real entry to make room for
+      a phantom, and an age prune reported the phantom as freed.
+      - Fix (`cache.ts`): prune lists the directory first; a row with no
+        artifact, last used over an hour ago (a younger one may be a save
+        landing), is dropped in the eviction's transaction and counts as
+        neither evicted nor freed, in a dry run too. `cli.md` says so.
+      - Row: `cache.test.ts` › prune() drops a row whose artifact is gone.
+        Red without the fix; each of its four guards (the grace, the age
+        skip, the size discount, the drop) is red with its line removed.
+        Five fixtures that seeded rows with no artifact now write one.
+      - `vx info` still sums such a row until a prune drops it
+        (`vx cache prune`, or `cacheRetention` when something is due; the
+        hourly orphan-only sweep does not list rows).
 
 ## In flight
 
