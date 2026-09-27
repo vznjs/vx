@@ -190,3 +190,17 @@ unlisted and alive (4 of 40 local runs at tenfold load; macOS CI).
   task's children die with vx that is descheduled after the spawn. A
   preload blocks vx three seconds after each task spawn; both red
   without the fix.
+
+B-10. Sweep of `kill-tree.ts` after B-9: 16 mutants, 13 caught; each
+survivor was behaviour. Its first row found a defect on the macOS job: a
+dead guard (killed, OOM) was still handed to later spawns, and bash as
+macOS's sh flushed the failed `+<pgid>` line into the task's stdout
+(`+14248` before `ran`), cached replay included.
+
+- Fix (`kill-tree.ts` `startGuard`): once the guard has exited, no spawn
+  is handed its pipe. `modules/kill-tree.md`.
+- Rows (`kill-tree-hold.test.ts`, `kill-tree.test.ts`), each red with its
+  mutant only: a task spawned after the guard died runs and is handed no
+  guard; the guard line's `trap '' PIPE` runs its task over a broken pipe;
+  a hold's end leaves a group the runner still runs listed; `killTree`
+  never signals a group it saw freed.

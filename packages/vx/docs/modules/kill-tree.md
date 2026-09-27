@@ -79,6 +79,11 @@ turborepo#9666). A group kill reaches what the task forked, so a
   (600 tasks) took 4,462 ms against 4,473 before it (min of 9,
   interleaved, one workspace copy per arm; medians 4,575 and 4,543): a
   tie. The cost is the one `sh` and two pipe writes per spawn.
+- A guard that has exited (killed, the OOM killer) is handed to no
+  later spawn: bash as macOS's sh buffers a failed `printf` and flushed the
+  `+<pgid>` line into the task's own stdout (B-10). The line's `trap ''
+PIPE` covers a guard that dies after the hand-over, so the task still
+  runs; in that window bash may still print the line.
 - A teardown holds its groups (`holdGroups`) until its SIGKILL sweep
   has settled: the signal stop (`terminateChildren`), the end-of-run
   persistent shutdown, and a readiness timeout, which holds until its
