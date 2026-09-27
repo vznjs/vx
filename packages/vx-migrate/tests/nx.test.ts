@@ -253,6 +253,28 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // The root project, unattached, still counted as declaring `prep`, and
+  // core refused the run over lib's `^prep` (item 1051).
+  it(
+    'a `^target` only the unattached root declares is no edge, and the run plans',
+    async () => {
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      g.graph.nodes['ws'] = {
+        data: { root: '.', targets: { prep: { command: 'echo p' } } },
+      } as never
+      ;(g.graph.nodes['lib']!.data.targets['lint'] as Record<string, unknown>)['dependsOn'] = [
+        '^prep',
+      ]
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      await workspace("nx({ graph: 'graph.json' })")
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
+    },
+    TIMEOUT,
+  )
+
   it(
     'graph: <file> reads an exported graph and never runs nx',
     async () => {

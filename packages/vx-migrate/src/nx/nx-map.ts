@@ -106,6 +106,11 @@ export interface MapNxOptions {
   readonly persistentTodo: string
   /** nx.json's legacy `cacheableOperations`, for a graph whose targets carry no `cache` field. */
   readonly cacheable: ReadonlySet<string>
+  /**
+   * The projects whose tasks will exist (the plugin's workspace packages).
+   * Absent, every mapped project's do: the CLI writes a config for each.
+   */
+  readonly attached?: ReadonlySet<string>
 }
 
 export interface NxMapping {
@@ -254,9 +259,13 @@ export async function mapNxWorkspace(
   // Nx gives `^name` no edges when no project runs the target; core refuses
   // a `^name` no project declares as a typo, so such an edge is dropped
   // before the shared-output rule reads which tasks have a `^` edge.
+  // Counted over the projects that will carry tasks: a target only the
+  // unattached root declares kept its `^` edge, and core refused the run
+  // (item 1051).
   const emitted = new Set<string>()
   const emittedIds = new Set<string>()
   for (const { meta, tasks } of mapped) {
+    if (opts.attached !== undefined && !opts.attached.has(meta.name)) continue
     for (const t of tasks) {
       if (t.task === null) continue
       emitted.add(t.name)

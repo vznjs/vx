@@ -58,6 +58,15 @@ export function mapNxOutputs(
   const outFiles: string[] = []
   const wsOutFiles: string[] = []
   outputs: for (const o of outputs) {
+    // Nx takes `!` outputs; vx's outputs cannot exclude, and a mapped `!`
+    // glob made core refuse the project's whole config, so no task of it
+    // ran (item 1051). Dropped: the positive outputs save a little more.
+    if (o.startsWith('!')) {
+      todos.push(
+        `output ${JSON.stringify(o)}: vx outputs cannot exclude — the other outputs also save what it excludes`,
+      )
+      continue
+    }
     let s = o
     // Every `{options.x}`, not the first: `dist/{options.a}/{options.b}`.
     for (const optTok of o.matchAll(/\{options\.([^}]+)\}/g)) {

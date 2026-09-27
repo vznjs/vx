@@ -688,6 +688,24 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Lead 1 (a source import's edge the snapshot misses) is Next 26: a
         fix puts a graph export into every edit, which needs numbers.
 
+1051. DONE (2026-09-27, the nx() review's leads 5 and 6). Two graph
+      shapes stopped whole runs.
+      - A negated output (`!{projectRoot}/dist/cache`, which Nx takes)
+        was mapped to a `!` workspace glob, and core refused the
+        project's config: none of its tasks ran. It is dropped with a
+        todo; the positive outputs stay and save a little more.
+      - A `^target` only the root project declared kept its edge: the
+        root has no package to attach to under the plugin, yet its tasks
+        counted as declared, and core refused the run ("no project in the
+        workspace declares prep"). The mapper now counts only the
+        projects the plugin will attach (`attached`); the CLI, which
+        writes the root's config too, passes none.
+      - Rows: `nx-helpers-sweep.test.ts` › a negated output is dropped
+        with a todo; `nx-map-sweep.test.ts` › a `^target` only an
+        unattached project declares (with the CLI control); `nx.test.ts`
+        › the same through the plugin, the run planning. Each red without
+        its change.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

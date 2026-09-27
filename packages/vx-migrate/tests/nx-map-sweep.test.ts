@@ -213,6 +213,31 @@ describe('nx-map: what the sweep found unheld', () => {
 // Only the raw nx.json was read: named inputs its `extends` base declared
 // fell back to `{projectRoot}/**` with no word, and a `sharedGlobals` edit
 // re-ran nothing (item 1050). Nx merges the base under nx.json, shallowly.
+// The root project has no package to attach to under the plugin, and its
+// `prep` still counted as declared: `^prep` stayed on b's task and core
+// refused the whole run, "no project in the workspace declares prep"
+// (item 1051). Under Nx it is simply no edge.
+describe('a `^target` only an unattached project declares', () => {
+  it('is dropped when the plugin names the attached projects, kept for the CLI', async () => {
+    const b = await meta('b')
+    const nodes = {
+      ws: node('.', { prep: { command: 'p' } }),
+      b: node('packages/b', { hello: { command: 'h', dependsOn: ['^prep'] } }),
+    }
+    const graph = { nodes, dependencies: {} } as NxGraph
+    const hello = async (attached?: Set<string>) => {
+      const m = await mapNxWorkspace(root, [b], graph, {
+        ...OPTS,
+        ...(attached === undefined ? {} : { attached }),
+      })
+      return m.projects.find((p) => p.name === 'b')!.tasks.find((t) => t.name === 'hello')!.task
+    }
+    expect((await hello(new Set(['b'])))?.['dependsOn']).toBeUndefined()
+    // CONTROL: the CLI writes the root's config too, so the edge holds.
+    expect((await hello())?.['dependsOn']).toEqual(['^prep'])
+  })
+})
+
 describe('nx.json is read through its `extends` chain', () => {
   it('a base’s named inputs apply; nx.json’s own field replaces the base’s whole', async () => {
     await mkdir(path.join(root, 'config'), { recursive: true })

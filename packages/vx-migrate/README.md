@@ -95,7 +95,7 @@ Once per run the plugin compares its snapshot (`<cache dir>/nx-project-graph.jso
 ### What it does not do
 
 - A task the package's own `vx.config` already declares is left alone — the plugin fills, it never overwrites. Migrate a package by writing its config; the rest of the repo keeps running from the graph.
-- Targets of an Nx project no workspace package matches — the root project, usually — have nowhere to go and are reported once per run; run them with `nx`, or declare them in a `vx.config`.
+- Targets of an Nx project no workspace package matches — the root project, usually — have nowhere to go and are reported once per run; run them with `nx`, or declare them in a `vx.config`. A `^target` only such a project declares is no edge, as under Nx. A negated output (`!{projectRoot}/dist/cache`) is a todo and the positive outputs stay: vx outputs cannot exclude.
 - Nx adds an `nx-release-publish` target (`@nx/js:release-publish`) to every project with a `package.json`; it comes along as one `nx-exec` task per package, run only when asked (`vx run nx-release-publish --filter <pkg>`), and counts in `vx info`'s task total.
 - `nx-exec` and `nx-env` must be on every task's PATH, which they are when `@vzn/vx-migrate` is a devDependency of the workspace (its bins land in `node_modules/.bin`); a plugin loaded by path warns once per run when they are not. Both load Nx from the workspace, so a repo run from an exported `graph` with no `node_modules/nx` warns once too.
 - Nx's configuration propagation (`nx run app:build:production` builds dependencies with `production` where they declare it): a `build:production` task's `^build` edges run the dependencies' default configuration, with a warning naming it.
