@@ -5,6 +5,7 @@
 // it accepts, and `validateProjectConfig` is the one boundary the loader,
 // the lockfile's frozen path and the plugin `project` stage all cross.
 
+import path from 'node:path'
 import {
   PLUGIN_FUNCTION_HOOKS,
   PLUGIN_HOOKS,
@@ -494,7 +495,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         }
         if (namesDirItself(g)) {
           throw new UserError(
-            `${where}.cache.outputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
+            `${where}.cache.outputs.files: "${g}" names the project directory itself and selects nothing — ` +
+              `name the directory the task writes, such as "dist/**"`,
           )
         }
         if (g.startsWith('!')) {
@@ -502,6 +504,14 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
             `${where}.cache.outputs.files: negation is not supported (got "${g}") — ` +
               `unlike inputs, output globs are never split on '!', so this is read as a literal ` +
               `path beginning with '!' and matches nothing. List the outputs you DO produce.`,
+          )
+        }
+        const own = ownFileCovered(g, configPath)
+        if (own !== null) {
+          throw new UserError(
+            `${where}.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
+              `task's outputs before it runs and restores them on a hit, so the project would lose ` +
+              `its manifest and config. Name the directory the task writes, such as "dist/**".`,
           )
         }
       }
@@ -665,6 +675,17 @@ function assertTimeoutInRange(ms: number, where: string): void {
       `Timers larger than this do NOT mean "no limit" — the platform reduces them to 1 ms, so ` +
       `the task would be killed the moment it starts. Omit \`timeout\` for no limit.`,
   )
+}
+
+/**
+ * The project file an output glob would take, or null. `outputs: ['**']`
+ * loaded, and the clean before the run deleted the project's source,
+ * `package.json` and `vx.config` while the run reported success (item
+ * 1002); the message for `'.'` had even suggested `**`.
+ */
+function ownFileCovered(glob: string, configPath: string): string | null {
+  const g = new Bun.Glob(normalizeGlob(glob))
+  return ['package.json', path.basename(configPath)].find((f) => g.match(f)) ?? null
 }
 
 /**

@@ -265,6 +265,13 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    'cache.outputs.files: "<glob>" covers the project\'s own <file>',
+    () =>
+      validated({
+        tasks: { b: { ...ok, cache: { inputs: { files: [] }, outputs: { files: ['**'] } } } },
+      }),
+  ],
+  [
     'cache.outputs.files: negation is not supported',
     () =>
       validated({
