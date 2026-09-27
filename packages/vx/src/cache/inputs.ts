@@ -234,6 +234,7 @@ async function resolveWorkspaceFiles(args: {
 }): Promise<string[]> {
   const positive: string[] = []
   const negative: string[] = []
+  refuseOneAlternativeBrace(args.workspaceFiles, 'workspaceFiles')
   for (const entry of args.workspaceFiles) {
     if (entry.startsWith('!')) negative.push(entry.slice(1))
     else positive.push(entry)
@@ -895,6 +896,30 @@ function refuseUndecodable(
   )
 }
 
+const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/
+
+/**
+ * `Bun.Glob` reads `{b}` as a brace of one alternative, so `src/{b}.ts`
+ * matches `src/b.ts` and never a file named `{b}.ts`: that file stays out
+ * of the key and an edit to it is a hit. Neither reading is sure to be
+ * the one meant, so the entry is refused with both spellings.
+ */
+function refuseOneAlternativeBrace(
+  entries: readonly string[],
+  field: 'files' | 'workspaceFiles',
+): void {
+  for (const entry of entries) {
+    const m = ONE_ALTERNATIVE_BRACE.exec(entry)
+    if (m === null) continue
+    const inner = m[0].slice(1, -1)
+    throw new UserError(
+      `cache.inputs.${field}: "${entry}" holds a brace with one alternative, which matches ` +
+        `"${inner}" and never a name holding "${m[0]}". Write "${entry.replace(m[0], inner)}", ` +
+        `or "${entry.replace(m[0], `\\{${inner}\\}`)}" for the braces themselves.`,
+    )
+  }
+}
+
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const positive: string[] = []
   const negative: string[] = []
@@ -902,6 +927,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   if (args.files === undefined) {
     positive.push(...DEFAULT_FILE_GLOBS)
   } else {
+    refuseOneAlternativeBrace(args.files, 'files')
     for (const entry of args.files) {
       if (entry.startsWith('!')) negative.push(entry.slice(1))
       else positive.push(entry)
