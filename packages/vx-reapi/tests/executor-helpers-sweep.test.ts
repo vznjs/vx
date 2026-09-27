@@ -228,14 +228,14 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     executeReturning('mods', fake.put(encodeTree(dir([], { gen }), [gen])))
     const planned = fake.onExecute
     fake.onExecute = (req, method) => {
-      fake.fail('Read', grpc.status.INTERNAL, 1)
+      fake.fail('Read', grpc.status.DATA_LOSS, 1)
       return planned(req, method)
     }
     const warns: string[] = []
     expect(await refusal(run('k-readfail', ['mods/*'], warns))).toBe('resolved')
     expect(recordOf('k-readfail').map((d) => d.path)).toEqual(['pkg/mods'])
     expect(warns.filter((w) => w.includes('recording it whole'))).toEqual([
-      'vx/reapi: could not read the Tree for pkg/mods (13 INTERNAL: injected INTERNAL) — recording it whole',
+      'vx/reapi: could not read the Tree for pkg/mods (15 DATA_LOSS: injected DATA_LOSS) — recording it whole',
     ])
   })
 

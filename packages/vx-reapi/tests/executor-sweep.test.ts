@@ -196,7 +196,8 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     })
   })
 
-  // INTERNAL, not UNAVAILABLE: a transient Read is retried since item 919.
+  // DATA_LOSS, not UNAVAILABLE or INTERNAL: a transient Read is retried
+  // (items 919, F-1).
   it('a replay whose stdout Read fails executes instead of failing the task', async () => {
     fake.actions.set(execDigestFor('k-stdout').hash, {
       exit_code: 0,
@@ -205,7 +206,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     let printed = ''
     await withExecutor(async (run, warns) => {
       const before = executes()
-      fake.fail('Read', grpc.status.INTERNAL, 1)
+      fake.fail('Read', grpc.status.DATA_LOSS, 1)
       const res = await refusal(
         run(request({ cacheKey: 'k-stdout', onStdout: (c: string) => (printed += c) })),
       )
@@ -235,7 +236,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     let printed = ''
     await withExecutor(async (run) => {
       // The tree is the replay's first ByteStream Read, after the files landed.
-      fake.fail('Read', grpc.status.INTERNAL, 1)
+      fake.fail('Read', grpc.status.DATA_LOSS, 1)
       const res = await run(
         request({
           cacheKey: 'k-part',
@@ -798,10 +799,10 @@ describe.if(CHUNKING_SUPPORTED)('the record a success writes', () => {
     })
     await withExecutor(async (run, warns) => {
       await run(request({ cacheKey: 'k-bits' }))
-      fake.fail('UpdateActionResult', 13)
+      fake.fail('UpdateActionResult', grpc.status.PERMISSION_DENIED)
       await run(request({ cacheKey: 'k-unwritten' }))
       expect(warns.filter((w) => w.startsWith('vx/reapi: could not record execution'))).toEqual([
-        'vx/reapi: could not record execution for pkg#gen: 13 INTERNAL: injected INTERNAL',
+        'vx/reapi: could not record execution for pkg#gen: 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
       ])
     })
     const record = fake.actions.get(execDigestFor('k-bits').hash) as {

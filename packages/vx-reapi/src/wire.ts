@@ -231,10 +231,18 @@ function loadServices(target: string, creds: grpc.ChannelCredentials): ServiceCl
   }
 }
 
-/** Transient statuses a retry can heal: UNAVAILABLE, and RESOURCE_EXHAUSTED
- *  when the server is shedding load. NOT_FOUND/INVALID_ARGUMENT never heal. */
+/** Transient statuses a retry can heal: UNAVAILABLE, RESOURCE_EXHAUSTED when
+ *  the server is shedding load, and INTERNAL, which is how grpc-js spells a
+ *  call cut in transit — an RST_STREAM(INTERNAL_ERROR), the frame a proxy
+ *  sends when the backend behind it goes away, and a stream that ended with
+ *  no gRPC status at all. Bazel's remote executor retries all three.
+ *  NOT_FOUND/INVALID_ARGUMENT never heal. */
 function isRetryable(code: number | undefined): boolean {
-  return code === grpc.status.UNAVAILABLE || code === grpc.status.RESOURCE_EXHAUSTED
+  return (
+    code === grpc.status.UNAVAILABLE ||
+    code === grpc.status.RESOURCE_EXHAUSTED ||
+    code === grpc.status.INTERNAL
+  )
 }
 
 const RETRY_DELAYS_MS = [100, 400, 1600]
