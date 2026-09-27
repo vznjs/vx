@@ -1,7 +1,8 @@
 // Where each task runs: the placement of a graph over the resolved
 // executors, and the plan-mode view of it. Split from run.ts on 2026-09-10
 // (pure motion). A task is pinned to this machine when it is persistent,
-// depends on a persistent task, is sandboxed, or says `exec.remote: false`;
+// depends on a persistent task, is sandboxed, says `exec.remote: false`, or
+// folds a runtime probe into its key;
 // everything else asks the executors in declaration order, and the local
 // floor takes what nothing claimed.
 
@@ -19,7 +20,8 @@ import type { prepareRun } from './prepare.js'
  * submitter), declares `exec.sandbox` (the sandbox is this machine's
  * machinery — a worker has none of it, and a boundary "verified" where it
  * is not enforced passes vacuously), or declares `exec.remote: false`. A
- * dependant of a pinned task is pinned with it.
+ * dependant of a pinned task is pinned with it. A task whose key folds a
+ * runtime probe is pinned alone (`withProbedRuntime`).
  */
 export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
   const pinned = new Set<string>()
@@ -32,7 +34,7 @@ export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
       pinned.add(node.id)
     }
   }
-  if (pinned.size === 0) return pinned
+  if (pinned.size === 0) return withProbedRuntime(nodes, pinned)
   // Pinning flows up the dependant edges from what pins itself, one walk on
   // an explicit stack: a chain is as deep as the graph, and a recursion
   // per edge threw `RangeError` on the 50,000 the builder takes (item 737).
@@ -50,6 +52,24 @@ export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
       if (pinned.has(up)) continue
       pinned.add(up)
       stack.push(up)
+    }
+  }
+  return withProbedRuntime(nodes, pinned)
+}
+
+/**
+ * A key that folds `cache.inputs.runtime` / `workspaceRuntime` holds what
+ * THIS machine answered (`node -v`); a worker runs its own runtime, which no
+ * executor can prove equal, and its output saved under this key is a stale
+ * hit here (C-2). Such a task runs here. Its dependants are not pinned with
+ * it: they fold the probe through its input key, and their own output does
+ * not depend on this machine's runtime.
+ */
+function withProbedRuntime(nodes: Map<string, TaskNode>, pinned: Set<string>): Set<string> {
+  for (const node of nodes.values()) {
+    const inputs = node.config.cache?.inputs
+    if ((inputs?.runtime?.length ?? 0) > 0 || (inputs?.workspaceRuntime?.length ?? 0) > 0) {
+      pinned.add(node.id)
     }
   }
   return pinned
