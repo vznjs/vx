@@ -74,3 +74,8 @@ run leaves out; the rest are refusals.
   a TypeError stack, `Promise.resolve(42)` loaded as no config. Row:
   `tests/config-eval.test.ts` "refuses a workspace Promise default of no
   object, as a project one is (D-6)".
+- **D-7** The workspace fingerprint folds root `.npmrc` and `bunfig.toml`
+  (A's lead): bun's `linker = "isolated"` moved `node_modules` under a
+  byte-identical `bun.lock`, so a build relying on a hoisted undeclared
+  package kept its hit. Row: `tests/fingerprint.test.ts` "an install
+  setting that leaves the lockfile byte-identical moves the digest (D-7)".

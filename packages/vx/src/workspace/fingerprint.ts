@@ -30,6 +30,12 @@ export const WORKSPACE_FINGERPRINT_FILES = [
   // (turborepo#12635). pnpm's catalogs live in pnpm-workspace.yaml, and
   // its lockfile records each importer's resolved version besides.
   '.yarnrc.yml',
+  // Install settings no lockfile records: bun's `linker = "isolated"` and
+  // pnpm's `node-linker` / hoisting lay `node_modules` out anew under a
+  // byte-identical lockfile, and a build that imported an undeclared
+  // hoisted package kept its green hit where it now fails (D-7).
+  '.npmrc',
+  'bunfig.toml',
 ]
 
 // DELIBERATELY ABSENT: `vx.workspace.{ts,mts,js,mjs}`. Everything it can

@@ -54,7 +54,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       with the policy's local slice — BEFORE the configs load,
  │       because it also holds their cached evaluations. Then
  │       computeWorkspaceFingerprints: one read of every supported
- │       lockfile + pnpm-workspace.yaml + .yarnrc.yml found at the root
+ │       lockfile + pnpm-workspace.yaml + .yarnrc.yml + .npmrc + bunfig.toml at the root
  │       yields `all` (every file; keys the config-evaluation cache),
  │       `unclaimed` (minus the files a `fingerprint` plugin claims —
  │       `@vzn/vx-lockfile` keys those per project; reused for every

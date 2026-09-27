@@ -331,9 +331,11 @@ describe('the root-file trigger set does not drift from the fingerprint', () => 
     // A control on the constant itself, so "reads the shared list" cannot pass
     // by the shared list quietly shrinking.
     expect([...WORKSPACE_FINGERPRINT_FILES].sort()).toEqual([
+      '.npmrc',
       '.yarnrc.yml',
       'bun.lock',
       'bun.lockb',
+      'bunfig.toml',
       'npm-shrinkwrap.json',
       'package-lock.json',
       'pnpm-lock.yaml',

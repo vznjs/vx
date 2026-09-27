@@ -73,6 +73,8 @@ Whichever of these exist at the workspace root, in this fixed order:
 | `bun.lockb`           | Bun resolved deps (binary legacy format) |
 | `pnpm-workspace.yaml` | workspace shape, pnpm catalogs           |
 | `.yarnrc.yml`         | Yarn 4 catalogs, install settings        |
+| `.npmrc`              | npm / pnpm install settings              |
+| `bunfig.toml`         | Bun install settings                     |
 
 `.yarnrc.yml` is here because `yarn.lock` does not say what a catalog
 names: a workspace's `catalog:` dependency is recorded as that literal,
@@ -81,6 +83,14 @@ ranges already resolved, rewrote not one byte of `yarn.lock` while the
 workspace's `node_modules` moved to 7 (turborepo#12635). No plugin
 claims it: `yarn()` keys each workspace on every entry of a catalog's
 package, and which one the catalog names is this file's to say.
+
+`.npmrc` and `bunfig.toml` are here because an install setting moves
+`node_modules` under a byte-identical lockfile: bun 1.4.2 with
+`[install] linker = "isolated"` rewrote no byte of `bun.lock` and moved
+every dependency out of the root `node_modules`, and pnpm's `node-linker`
+and hoisting settings have the same shape. A build that imported an
+undeclared, hoisted package kept its green hit where it now fails (D-7).
+Only the root copies are read.
 
 Missing files are skipped (not all workspaces use every manager). The
 fixed declaration order gives a deterministic fingerprint regardless of

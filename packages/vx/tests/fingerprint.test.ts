@@ -52,6 +52,8 @@ const TRACKED = [
   'bun.lockb',
   'pnpm-workspace.yaml',
   '.yarnrc.yml',
+  '.npmrc',
+  'bunfig.toml',
 ] as const
 
 describe('shape of the digest', () => {
@@ -167,6 +169,21 @@ describe('sensitivity — a lockfile change must move the digest', () => {
       workspace({ 'yarn.lock': lock, '.yarnrc.yml': 'catalog:\n  is-number: ^7.0.0\n' }),
     )
     expect(seven).not.toBe(six)
+  })
+
+  it('an install setting that leaves the lockfile byte-identical moves the digest (D-7)', async () => {
+    // Measured with bun 1.4.2: `[install] linker = "isolated"` in bunfig.toml
+    // left bun.lock byte-identical and moved `is-number` out of the root
+    // node_modules; pnpm's `node-linker` in .npmrc has the same shape.
+    const lock = '{ "lockfileVersion": 1, "workspaces": {} }\n'
+    const hoisted = await computeWorkspaceFingerprint(workspace({ 'bun.lock': lock }))
+    const isolated = await computeWorkspaceFingerprint(
+      workspace({ 'bun.lock': lock, 'bunfig.toml': '[install]\nlinker = "isolated"\n' }),
+    )
+    const pnpmHoisted = await computeWorkspaceFingerprint(
+      workspace({ 'bun.lock': lock, '.npmrc': 'node-linker=hoisted\n' }),
+    )
+    expect(new Set([hoisted, isolated, pnpmHoisted]).size).toBe(3)
   })
 
   it('notices a one-byte change', async () => {
