@@ -10,7 +10,7 @@ import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { macProfileRules, sbplResolvedPath } from '../src/exec/sandbox-runtime.js'
+import { darwinWallRules, macProfileRules, sbplResolvedPath } from '../src/exec/sandbox-runtime.js'
 import { UserError } from '../src/util/index.js'
 
 const base = { allowRead: [], allowWrite: [] }
@@ -140,5 +140,31 @@ describe('macProfileRules, capability by capability', () => {
       `allow.unixSockets: '/tmp/a"b.sock' is not a valid path`,
       `allow.unixSockets: '/tmp/../etc/x.sock' is not a valid path`,
     ])
+  })
+})
+
+// On Linux a glob's hit on a wall is dropped before the bind (B-1). Seatbelt
+// matches the glob as a regex, so macOS denies each wall a glob reaches at
+// the profile's tail, carving out a literal grant at or inside it (B-12).
+describe('darwinWallRules', () => {
+  it('denies each reached wall, keeps literal grants inside it, and names nothing else', () => {
+    expect(
+      darwinWallRules(
+        {
+          allowRead: ['/w/**/*.ts', '/w/packages/b/src'],
+          allowWrite: ['/w/out/*'],
+          wallsReached: { read: ['/w/packages/b', '/w/.git'], write: ['/w/out/c'] },
+        },
+        ['/w/packages/b/node_modules', '/w/packages/bb'],
+      ),
+    ).toEqual([
+      '(deny file-read-data (require-all (subpath "/w/packages/b") (require-not (subpath "/w/packages/b/src")) (require-not (subpath "/w/packages/b/node_modules"))))',
+      '(deny file-read-data (subpath "/w/.git"))',
+      '(deny file-write* (subpath "/w/out/c"))',
+    ])
+  })
+
+  it('CONTROL: no wall reached is no rule', () => {
+    expect(darwinWallRules({ allowRead: ['/w/*'], allowWrite: [] }, [])).toEqual([])
   })
 })

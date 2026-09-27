@@ -242,3 +242,22 @@ Now 30 (min of 40, A/B interleaved against `origin/main`, A/A within
   (argv `-DD … -o /dev/fd/5`). `sandbox-tracer-retry.unsafe.test.ts` ›
   strace's own word is run once more when the task's exit is 0, red
   without the new retry key.
+  B-12. A glob grant stops at the walls on macOS. From the seatbelt parity
+  review: B-1 dropped a glob's hits on a wall on Linux, but seatbelt matches
+  a glob as a regex and SRT re-emits a wall's deny only under a LITERAL
+  allow, so a root project's `read: ['**/*.txt']` read nested projects'
+  files (excluded from its key: item 1010's stale hit, by glob) and `.git`.
+
+- Fix (`sandbox-runtime.ts` `resolveSandboxConfig`, `darwinWallRules`):
+  the walls a glob reaches are denied at the profile's tail, a literal
+  grant at or inside one carved out. `modules/sandbox-runtime.md`.
+- Rows: `sandbox-runtime.unsafe.test.ts` › a glob grant stops at the walls
+  too (both platforms; the PR's first commit, the row alone, shows the
+  macOS job red); `seatbelt-profile.test.ts` › darwinWallRules.
+- Parity review, the rest (leads, in order): `deny.network` reaches no
+  proxy on either platform (SRT filters by the global deny list, `[]`);
+  `gitConfig` per task is dropped (SRT reads the global value); a
+  `localBinding` port list opens every port on macOS; a glob WRITE grant
+  can reach a wall on macOS through the same regex (covered by this fix's
+  write rules, no darwin runtime row yet); `systemInfo`, `machLookup`,
+  `unixSockets` and `pty` have no darwin runtime row.
