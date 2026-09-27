@@ -281,6 +281,56 @@ describe('workspace digests (yarn berry)', () => {
   })
 })
 
+// Item 1074: Yarn compat-patches `resolve`, `typescript` and `fsevents`
+// and installs the patched entry, while the workspace still asks for the
+// plain descriptor. The patched entry was reached by no workspace, so a
+// Yarn upgrade that revised the builtin patch keyed nothing.
+describe('a builtin compat patch', () => {
+  const lock = (hash: string) => `__metadata:
+  version: 10
+  cacheKey: 10c0
+
+"c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  dependencies:
+    resolve: "npm:^1.22.0"
+  languageName: unknown
+  linkType: soft
+
+"d@workspace:packages/d":
+  version: 0.0.0-use.local
+  resolution: "d@workspace:packages/d"
+  languageName: unknown
+  linkType: soft
+
+"resolve@npm:^1.22.0":
+  version: 1.22.12
+  resolution: "resolve@npm:1.22.12"
+  checksum: 10c0/plain
+  languageName: node
+  linkType: hard
+
+"resolve@patch:resolve@npm%3A^1.22.0#optional!builtin<compat/resolve>":
+  version: 1.22.12
+  resolution: "resolve@patch:resolve@npm%3A1.22.12#optional!builtin<compat/resolve>::version=1.22.12&hash=${hash}"
+  checksum: 10c0/${hash}
+  languageName: node
+  linkType: hard
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+  it('moves the workspace that asks for the plain descriptor when the patch changes', () => {
+    expect(movedDirs(lock('0badc0'), lock('9bd1a5'))).toEqual(['packages/c'])
+    // Control: the same lockfile moves nothing.
+    expect(movedDirs(lock('0badc0'), lock('0badc0'))).toEqual([])
+  })
+})
+
 describe('Yarn 4 catalogs (turborepo#12635)', () => {
   it('a catalog bump `^6 → ^7` moves the workspace that names `catalog:` and what links it', () => {
     // The file records `is-number: "catalog:"`, never the range: folded

@@ -405,6 +405,24 @@ failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
         versions both move (red without the change; the same lockfile
         twice is the control).
 
+1074. DONE (2026-09-27, the lockfile review's lead 3, a stale hit).
+      Yarn berry compat-patches `resolve`, `typescript` and `fsevents`.
+      It writes a plain entry and a
+      `resolve@patch:resolve@npm%3A…#optional!builtin<compat/resolve>`
+      entry, and installs the patched one (its `normalize-options.js`
+      differs from the pristine tarball). The workspace still asks for the
+      plain `npm:` descriptor, which keys the plain entry, so the patched
+      entry was reached by no workspace. A Yarn upgrade that revised the
+      builtin patch under the same version then re-keyed nothing, and
+      `--affected` named nothing. `yarn()` now maps each builtin patch key
+      back to the plain descriptor it patches, and that descriptor reaches
+      both entries, which can over-invalidate but never under-invalidate.
+      `DIGEST_VERSION` 7 → 8. The README says so.
+      - Row: `yarn.test.ts` › a builtin compat patch moves the workspace
+        that asks for the plain descriptor when the patch changes. It is
+        red without the change; a workspace without `resolve` stays put,
+        and the same lockfile twice moves nothing.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
