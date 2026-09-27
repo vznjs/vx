@@ -149,9 +149,24 @@ export interface OtlpSpan {
 
 // --- attribute mapping (pure) ------------------------------------------
 
-/** Resource attributes — service identity. Run/VCS context rides span attrs. */
-export function resourceAttributes(serviceName: string, vxVersion: string): KeyValue[] {
-  return [strAttr(SEMCONV.serviceName, serviceName), strAttr(SEMCONV.serviceVersion, vxVersion)]
+/**
+ * Resource attributes — service identity, after `OTEL_RESOURCE_ATTRIBUTES`'
+ * own (`extra`), whose `service.name` / `service.version` vx's replace.
+ * Run/VCS context rides span attrs.
+ */
+export function resourceAttributes(
+  serviceName: string,
+  vxVersion: string,
+  extra: Readonly<Record<string, string>> = {},
+): KeyValue[] {
+  const own = new Set<string>([SEMCONV.serviceName, SEMCONV.serviceVersion])
+  return [
+    ...Object.entries(extra)
+      .filter(([k]) => !own.has(k))
+      .map(([k, v]) => strAttr(k, v)),
+    strAttr(SEMCONV.serviceName, serviceName),
+    strAttr(SEMCONV.serviceVersion, vxVersion),
+  ]
 }
 
 /**
@@ -320,11 +335,12 @@ export function buildTraceRequest(
   serviceName: string,
   vxVersion: string,
   spans: OtlpSpan[],
+  resource?: Readonly<Record<string, string>>,
 ): unknown {
   return {
     resourceSpans: [
       {
-        resource: { attributes: resourceAttributes(serviceName, vxVersion) },
+        resource: { attributes: resourceAttributes(serviceName, vxVersion, resource) },
         scopeSpans: [{ scope: { name: 'vx', version: vxVersion }, spans }],
       },
     ],
@@ -342,6 +358,7 @@ export function buildMetricsRequest(
   summary: RunSummaryRecord,
   nowUnixNano: string,
   startUnixNano: string,
+  resource?: Readonly<Record<string, string>>,
 ): unknown {
   const point = (value: number, attrs: KeyValue[] = []) => ({
     asInt: String(value),
@@ -362,7 +379,7 @@ export function buildMetricsRequest(
   return {
     resourceMetrics: [
       {
-        resource: { attributes: resourceAttributes(serviceName, summary.run.vxVersion) },
+        resource: { attributes: resourceAttributes(serviceName, summary.run.vxVersion, resource) },
         scopeMetrics: [
           {
             scope: { name: 'vx', version: summary.run.vxVersion },
@@ -427,6 +444,7 @@ export function buildLogsRequest(args: {
   timeUnixNano: string
   traceId?: string
   spanIdFor?: (taskId: string) => string | undefined
+  resource?: Readonly<Record<string, string>>
 }): unknown {
   const logRecords: OtlpLogRecord[] = args.entries.map((e) => {
     const failed = e.status === 'failed'
@@ -454,7 +472,9 @@ export function buildLogsRequest(args: {
   return {
     resourceLogs: [
       {
-        resource: { attributes: resourceAttributes(args.serviceName, args.vxVersion) },
+        resource: {
+          attributes: resourceAttributes(args.serviceName, args.vxVersion, args.resource),
+        },
         scopeLogs: [{ scope: { name: 'vx', version: args.vxVersion }, logRecords }],
       },
     ],

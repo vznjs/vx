@@ -200,3 +200,10 @@ mutation sweep of `otlp.ts` and `plugin.ts` (238 mutants, 34 survived):
 rows now hold header `=` padding, `OTEL_SDK_DISABLED` case, and per-signal
 header and option-over-env precedence. Not taken: `OTEL_EXPORTER_OTLP_PROTOCOL`,
 `_TIMEOUT` and `OTEL_RESOURCE_ATTRIBUTES` are not read (JSON only).
+
+F-17. vx-otel ignored three standard OTLP env vars a pipeline sets for
+every exporter: `OTEL_RESOURCE_ATTRIBUTES` (deployment, team) never
+reached the resource, `OTEL_EXPORTER_OTLP_TIMEOUT` was not the timeout,
+and under `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` an export to the gRPC port
+failed with a transport error naming neither. The first two are read; the
+third's failure now says vx sends OTLP/HTTP only. Rows red without each.
