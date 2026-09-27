@@ -17,7 +17,10 @@ lockfile is a parser and nothing else.
 ```ts
 export interface LockfileClaimOptions {
   readonly file: string // one of WORKSPACE_FINGERPRINT_FILES
-  readonly digest: (text: string) => ReadonlyMap<string, string> // importer dir → digest
+  // importer dir → digest; `files` is extraFiles' content hashes ('' when absent)
+  readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
+  // root-relative files the lockfile names but does not pin (bun.lock's patches)
+  readonly extraFiles?: (text: string) => readonly string[]
   readonly version: number // the memo's identity; bump when `digest` folds differently
   readonly scope?: 'project' | 'workspace'
   readonly part?: string // the key part's name as `vx why` shows it under the plugin; default 'deps'
@@ -86,6 +89,17 @@ from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013
 O(nodes + edges): 1000 importers
 over 3000 packages digest in ~20 ms where one traversal per importer
 took 400.
+
+**A file the lockfile names but does not pin.** bun.lock records a
+patch by path (`patchedDependencies`), never a hash of its content, so an
+edited patch left the lockfile byte-identical and every key unmoved while
+the install applied the new one (item 1014). `extraFiles` names such
+files; their content hashes reach `digest` and join the memo's identity
+and the workspace-scope key. The memo records the files and their hashes,
+so a warm run re-hashes the files it names and parses only when one
+moved; within a process their size and mtime gate the read beside the
+lockfile's. `--affected` does not yet see a change to one (a path no
+project owns): the key does.
 
 ## What it does NOT do
 

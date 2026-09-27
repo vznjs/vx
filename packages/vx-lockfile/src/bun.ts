@@ -129,13 +129,29 @@ function packageLevels(path: string): string[] {
 }
 
 /**
+ * The patch files `patchedDependencies` names. bun.lock records a patch by
+ * PATH, never by a hash of its content, so an edited patch left the lockfile
+ * byte-identical and every key unmoved while the install applied the new
+ * one (item 1014): the claim hashes these files and hands them back.
+ */
+export function patchFiles(text: string): string[] {
+  const d = record(Bun.JSONC.parse(text))
+  return Object.values(record(d?.['patchedDependencies']) ?? {}).filter(
+    (v): v is string => typeof v === 'string',
+  )
+}
+
+/**
  * Every workspace package's digest (by dir): the lockfile as one graph —
  * a node per node_modules path, its material the id + resolution, an edge
  * per resolved dependency — folded by core's `reachDigests`. A workspace
  * dependency (`workspace:` id) is a node like any other, so what project
  * A can import through workspace package B is B's whole reach.
  */
-export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
+export function importerDigests(
+  lock: Lockfile,
+  files: ReadonlyMap<string, string> = new Map(),
+): ReadonlyMap<string, string> {
   const index = new Map<string, number>()
   const material: string[] = []
   const edges: number[][] = []
@@ -185,7 +201,12 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   const out = new Map<string, string>()
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).
-  const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
+  // A patch's content beside its path; nothing added without one, so a
+  // lockfile with no patches keys as it did.
+  const patches = [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const globalMaterial =
+    patches.length === 0 ? lock.global : `${lock.global}\0${JSON.stringify(patches)}`
+  const global = Bun.hash.xxHash3(globalMaterial).toString(16).padStart(16, '0')
   for (const [dir, i] of importers) {
     out.set(dir, Bun.hash.xxHash3(`${global}\0${digests[i]!}`).toString(16).padStart(16, '0'))
   }

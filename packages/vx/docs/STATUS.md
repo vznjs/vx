@@ -663,6 +663,27 @@ test is telling the truth.
         inside a cycle (the importer's edge and a swap), with a reordering
         as the control. Red without the fix.
 
+1014. DONE (2026-09-27, the lockfile review's lead 2). bun.lock records a
+      patch by path (`patchedDependencies`), never a hash of its content:
+      after `bun patch --commit` with a new edit, only
+      `patches/is-number@7.0.0.patch` changed, `bun.lock` stayed
+      byte-identical, and every key and `--affected` stayed put while the
+      install applied the new patch. Core's fingerprint has no patch files
+      either.
+      - Fix (`lockfile-claim.ts`, `@vzn/vx-lockfile`'s `bun.ts`): a claim
+        may name `extraFiles` from the lockfile's text; their content hashes
+        reach `digest`, the memo's identity and the workspace-scope key. The
+        memo records the files and hashes, so a warm run re-hashes and never
+        parses unless one moved. bun's parser names its patch files and
+        folds their hashes into every workspace (the path already went
+        there); no patch keys as before. `DIGEST_VERSION` 5 → 6.
+        `modules/lockfile-claim.md` and the package README say so.
+        `--affected` does not yet see a patch edit (a path no project owns).
+      - Rows: `lockfile-claim.test.ts` › an edited extra file moves the key
+        (a new process, the same one), a warm run with an unchanged file
+        does not parse (control); `@vzn/vx-lockfile`'s bun rows › a patch
+        file's content moves every workspace. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -9,7 +9,7 @@ import { planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { bun } from '../src/index.js'
-import { importerDigests, parseLockfile } from '../src/bun.js'
+import { importerDigests, parseLockfile, patchFiles } from '../src/bun.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -223,6 +223,20 @@ describe('workspace digests', () => {
     const before = digests(lock())
     const after = digests(lock({ override: '4.0.0' }))
     for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
+  })
+
+  // bun.lock names a patch by path only: the patch file's CONTENT arrives
+  // as `files` from the claim, and an edit to it moves every workspace, as
+  // the path already did (item 1014). No patch, no change to the digest.
+  it("a patch file's content moves every workspace; no patch keys as before", () => {
+    const top = '"patchedDependencies": { "bar@2.0.0": "patches/bar@2.0.0.patch" },'
+    const text = lock({ top })
+    expect(patchFiles(text)).toEqual(['patches/bar@2.0.0.patch'])
+    const one = importerDigests(parseLockfile(text), new Map([['patches/bar@2.0.0.patch', 'h1']]))
+    const two = importerDigests(parseLockfile(text), new Map([['patches/bar@2.0.0.patch', 'h2']]))
+    for (const dir of one.keys()) expect(two.get(dir)).not.toBe(one.get(dir))
+    expect(patchFiles(lock())).toEqual([])
+    expect(importerDigests(parseLockfile(lock()), new Map())).toEqual(digests(lock()))
   })
 
   // Item 933: the install-wide fields were an allow-list, and it left out
