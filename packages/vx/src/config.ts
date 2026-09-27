@@ -190,8 +190,10 @@ export interface TaskConfig {
  * write grant costs on Linux, is in `docs/schema.md` under
  * `exec.sandbox`.
  *
- * Paths are project-relative, absolute, or `~`-expanded — and are path
- * PREFIXES, never globs (a glob cannot be enforced by a mount).
+ * Paths are project-relative, absolute, or `~`-expanded, and may be
+ * globs: macOS matches the pattern in the policy, Linux expands it when
+ * the task starts (a mount cannot hold a pattern), so a file created
+ * later is not covered there — grant its directory.
  */
 export interface SandboxConfig {
   /** Capabilities granted on top of the task's own declarations. */
@@ -244,13 +246,13 @@ export interface SandboxIgnore {
 
 export interface SandboxGrants {
   /**
-   * Readable path prefixes, added to the baseline — which is
+   * Readable paths or globs, added to the baseline — which is
    * `node_modules`, NOT `cache.inputs.files`. A task that reads its own
    * source in the sandbox says so here.
    */
   read?: string[]
   /**
-   * Writable path prefixes. The task can write NOTHING without these:
+   * Writable paths or globs. The task can write NOTHING without these:
    * declaring `cache.outputs.files` grants no write, and a task whose
    * only declaration is its outputs writes into a tmpfs that evaporates
    * (vx then warns that `cache.outputs` matched no files).
