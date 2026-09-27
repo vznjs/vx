@@ -192,8 +192,9 @@ save (`ExecuteArgs.taintedUpstream`), since a healthy key over bytes
 built on a partial tree would be the next clean run's stale hit. A
 skipped outcome names the failed or aborted task at the root of its
 block (`blockedBy`); fail-fast's skips name nothing. A rejected
-`execute` promise becomes a `failed` outcome; a `UserError` reports
-plainly, anything else as `[vx] internal error in <id>`.
+`execute` promise becomes a `failed` outcome; a `UserError` or a
+file-system refusal reports plainly, once per run (a repeat says `as
+<id> above`), anything else as `[vx] internal error in <id>`.
 
 ## What this does NOT do
 

@@ -399,6 +399,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const restoreRoom = (): boolean =>
     serial ? active + activeRestore < 1 : activeRestore < restoreConcurrency
   let resolved = false
+  // A refusal's text → the first task that said it. A corrupt cache index
+  // reaches every lookup as one UserError; a repeat names the first.
+  const refusedBy = new Map<string, string>()
 
   // Admission policy over the count limit (a plugin's `admit`). Inactive
   // → the tick loop short-circuits before any of this and behaves
@@ -717,10 +720,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             // UserError is a config/input failure (e.g. a failed
             // `cache.inputs.runtime` command), not a vx bug — report it
             // plainly, never as an "internal error".
-            if (isUserError(err)) {
-              process.stderr.write(`[vx] ${id}: ${message}\n`)
-            } else if (isFsRefusal(err)) {
-              process.stderr.write(`[vx] ${id}: ${message} — ${fsRefusalHint(err)}\n`)
+            if (isUserError(err) || isFsRefusal(err)) {
+              const text = isUserError(err) ? message : `${message} — ${fsRefusalHint(err)}`
+              const first = refusedBy.get(text)
+              if (first === undefined) refusedBy.set(text, id)
+              process.stderr.write(
+                `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`,
+              )
             } else {
               const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
               // A wrapped error's cause is the fact the reader needs (a
