@@ -830,7 +830,7 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         a `\r` now ends a line and no longer drives the 64 KiB window.
       - Left from the review: Ctrl-C reports a persistent server vx
         killed as "exited … before the run stopped it" (1061); the Aborted
-        section lists never-started tasks as killed with exit 1; forwarded
+        section lists never-started tasks as killed with exit 1 (1062); forwarded
         args after a command ending in a `#` comment are dropped (1060).
 
 1060. DONE (2026-09-27, the local runner review's lead 5). The args
@@ -862,6 +862,20 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         stopped as crashed (the dependant holds in its INT trap so the
         server is reaped first: red 3 of 3 without the change), and the
         control, a server that died before the Ctrl-C is still named.
+
+1062. DONE (2026-09-27, the local runner review's lead 4). After a
+      Ctrl-C the Aborted section listed each task the stop reached before
+      it ran as "killed by a shutdown signal" with `exit 1` — an exit the
+      scheduler writes on an undispatched task, not one any process had —
+      and counted a group among them. Those are now listed apart, under
+      `Not started:`, with no exit, and a group is left out as the skipped
+      section leaves it. A task ran if its outcome carries a wall-clock
+      start, which only execute-task sets. summary.md says so.
+      - Rows: `summary.test.ts` › names what the stop reached before it
+        ran apart; `signal-handling.test.ts` › a Ctrl-C names the task it
+        killed apart from the one it kept from starting. Both red without
+        the change; `aborted-outcome.test.ts`'s self-SIGTERM row is the
+        control that a task which ran still reads as killed.
 
 ## In flight
 

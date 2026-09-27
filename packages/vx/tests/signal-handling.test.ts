@@ -512,6 +512,42 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
+  // The Aborted section named the dependant a Ctrl-C reached before it ran
+  // as killed, with an exit 1 the scheduler made up (item 1062).
+  it(
+    'a Ctrl-C names the task it killed apart from the one it kept from starting',
+    async () => {
+      await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: {
+          t: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
+          after: { dependsOn: ['t'], exec: { command: 'echo after' } },
+        } }`,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'after', '--all'], {
+        cwd: fixture.root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const text = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+      await waitForPid(path.join(fixture.root, 'packages', 'app', 'pid.txt'), 10_000)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      const lines = (await text).join('').split('\n')
+      const from = lines.findIndex((l) => l.includes('Aborted:'))
+      expect(lines.slice(from, from + 5).map((l) => l.trimEnd())).toEqual([
+        '  Aborted:  1 task killed by a shutdown signal — not counted above',
+        '    ✗ app#t — exit 130, nothing cached',
+        '',
+        '  Not started:  1 task the run stopped before it ran',
+        '    · app#after',
+      ])
+    },
+    TIMEOUT,
+  )
+
   // What a task prints while it stops reaches the terminal, 2 MiB of it,
   // then the summary. Before item 849 the handler exited on the kill and the
   // frame never printed; after it, a CI-mode run lost 0.8 of the 2 MiB to
