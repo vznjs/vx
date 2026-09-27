@@ -273,16 +273,12 @@ function withinReported(
 }
 
 /**
- * Apply the task's user-provided `sandbox.ignore` grants on top
- * of whatever the macOS log monitor + Linux strace pass produced.
- * Mirrors SRT's own substring-match semantics:
- *   - `'*'` entries match every command
- *   - other keys match commands whose userCommand string CONTAINS the key
- *   - the array of strings under each key is substring-matched against
- *     the violation line
- *
- * The defaults installed in `initSandbox` already filter on the macOS
- * side; this pass catches per-task additions + Linux strace results.
+ * Apply the task's own `sandbox.ignore` lists on top of whatever the
+ * macOS log monitor and the Linux strace pass produced: a record is
+ * dropped when a list its operation names (`matchesIgnore`) holds a
+ * pattern equal to its target or matching it as a glob. Not SRT's
+ * per-command substring match, which is what the defaults installed in
+ * `initSandbox` use on the macOS side.
  */
 function filterIgnored(
   violations: SandboxViolation[],

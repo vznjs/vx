@@ -235,7 +235,12 @@ export function punchWalls(readPath: string, walls: readonly string[]): string[]
    its key does not answer for them) are reported — every process walks
    from `/` down to its own cwd, and being stopped at the wall is the
    sandbox working. A record with no path (a `system-info` probe) is
-   kept. The task's `ignore` patterns are applied last.
+   kept. The task's `ignore` patterns are applied last: each list
+   silences the operations of its kind, a pattern matching a record's
+   target exactly or as a glob. A relative pattern anchors at the
+   project, and a pattern's literal head is canonicalized as the
+   records are, so a project reached through a link (macOS's `/var`)
+   is silenced where it lands (B-2).
 5. **`resetSandbox`** tears down SRT's proxy servers + (on macOS) the
    log monitor at the end of `vx run`.
 
