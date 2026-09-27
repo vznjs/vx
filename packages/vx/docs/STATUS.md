@@ -295,6 +295,25 @@ test is telling the truth.
 1066. SUPERSEDED (2026-09-27) by G-4 (`docs/history/ws-g.md`), which
       landed first: vx-schedule-history checks its number options.
 
+1067. DONE (2026-09-27, the MCP and schedule-history review's leads 4
+      and 5). `vx mcp` answered what JSON-RPC 2.0 and MCP call invalid.
+      A request with no `jsonrpc`, or with `"1.0"`, and one whose id was
+      an object or a boolean were each served, and the bad id was echoed
+      back. A call to an unknown tool was an `isError` result, where
+      the spec lists -32602. A string or array `arguments` was read as no
+      arguments and returned the full unfiltered history. And the server
+      echoed 2025-03-26, a revision that obliges it to take batches,
+      which it refuses. Each is now -32600 or -32602; the error echoes a
+      readable id, and one that is not an id is answered as null. The
+      supported revisions are 2024-11-05 and 2025-06-18. A tool's own
+      refusal stays an `isError` result. The README says so.
+      - Rows: `server.test.ts` › an unknown tool or non-object arguments
+        is invalid params; a request with no "2.0" version or an id that
+        is no id is invalid (string and null ids are the controls); a
+        2025-03-26 client is offered the newest revision. All three red
+        without the change; the row that pinned the unknown tool as a
+        result moved into the first.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
