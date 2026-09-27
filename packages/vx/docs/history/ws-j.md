@@ -92,6 +92,15 @@
   ledger law accepts `open (limit: <page> § <heading>)` only when the
   heading exists; turborepo#12786's two rows move from `n/a` to that.
 
+- **J-14** (from E's queue) `--filter` listed the workspace twice:
+  `resolveFilters` discovered, then `prepareRun` did again. The filter
+  pass's projects now reach the run (`RunOptions.discovered`, used when
+  the root matches). 1,000 packages, `--filter '*'` warm: the run's
+  `discover projects` stage 10 ms → 0; wall, 25 interleaved compiled
+  rounds, main 305 (min 277), patch 318 (282), A/A 330 (293): the win is
+  below this box's noise. Row: `load-reads.test.ts` counts one read of a
+  member manifest across the filter pass and the run.
+
 ## Leads for other streams
 
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a

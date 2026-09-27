@@ -461,6 +461,7 @@ export async function resolveRunOptions(
   const anchoredTasks = tasks.filter((t) => t.includes('#'))
   let projects: string[] | undefined
   let staged: RunOptions['staged']
+  let discovered: RunOptions['discovered']
   let selectedByDiff = false
   if (bareTasks.length === 0) {
     projects = undefined
@@ -485,6 +486,7 @@ export async function resolveRunOptions(
       // The graph walk staged every config; the run reuses those entries
       // instead of evaluating and staging them a second time.
       staged = resolved.staged
+      discovered = resolved.discovered
     }
   } else if (parsed.all) {
     projects = undefined
@@ -519,6 +521,7 @@ export async function resolveRunOptions(
   if (projects !== undefined) opts.projects = projects
   if (selectedByDiff) opts.selectedByDiff = true
   if (staged !== undefined) opts.staged = staged
+  if (discovered !== undefined) opts.discovered = discovered
   if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir

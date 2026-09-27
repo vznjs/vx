@@ -12,7 +12,8 @@ cwd project and the interactive picker — is `src/cli/select.ts`
 the staged load (`loadCliProjects`), so the selection is the run's —
 and when the selection had to stage every config (a filter that walks
 the graph), that load travels into the run as `RunOptions.staged`, so
-the `project` stage runs once per project per run.
+the `project` stage runs once per project per run. A filter pass also hands its discovered
+projects over (`RunOptions.discovered`), so the workspace is listed once.
 
 ## Public surface
 

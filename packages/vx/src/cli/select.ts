@@ -152,6 +152,8 @@ export type FilterResolution =
       byDiff: boolean
       /** The staged load the graph walk needed, for the run to reuse (`RunOptions.staged`). */
       staged?: ReadonlyMap<string, ProjectEntry>
+      /** The discovery this pass made, for the run to reuse (`RunOptions.discovered`). */
+      discovered: { root: string; projects: ProjectMeta[] }
     }
   | { error: string }
   | { empty: string }
@@ -317,6 +319,7 @@ export async function resolveFilters(
     names: [...selected].sort(),
     byDiff: parsed.some((f) => !f.negate && f.gitSince !== undefined),
     ...(staged !== undefined ? { staged } : {}),
+    discovered: { root, projects },
   }
 }
 

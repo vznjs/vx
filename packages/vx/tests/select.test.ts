@@ -96,8 +96,8 @@ describe('resolveFilters', () => {
 
   it('a diff that matched nothing beside a name that matched is not called a typo', async () => {
     const { value, stderr } = await quiet(() => resolveFilters(root, ['app', '[HEAD]']))
-    expect({ value: { ...value, staged: undefined }, stderr }).toEqual({
-      value: { names: ['app'], byDiff: true, staged: undefined },
+    expect({ value: { ...value, staged: undefined, discovered: undefined }, stderr }).toEqual({
+      value: { names: ['app'], byDiff: true, staged: undefined, discovered: undefined },
       stderr: '',
     })
     // CONTROL: a name that matched nothing beside one that did IS said.
