@@ -74,7 +74,9 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
    channels**, and the union is returned:
    - **Containment.** Walk the path's ancestor dirs bottom-up until one
      is a project dir; the first hit is the DEEPEST containing project,
-     so a **nested project wins over its parent**. (This replaced an
+     so a **nested project wins over its parent**. A NEW nested project
+     (its manifest absent or nameless at the base) also selects the
+     project above it, whose inputs it took (D-1). (This replaced an
      earlier sort-by-directory-length-descending pass; the walk is
      O(files · depth) instead of O(files · projects).)
    - **Config imports.** A project whose `vx.config.*` transitively

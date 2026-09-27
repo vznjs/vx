@@ -232,6 +232,9 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   const dependents = await dependentsOfRemoved(args.workspaceRoot, base, changed, args.projects)
   if (dependents === undefined) return new Set(args.projects.map((p) => p.name))
   for (const name of dependents) owned.add(name)
+  for (const name of await parentsOfNewNested(args.workspaceRoot, base, changed, args.projects)) {
+    owned.add(name)
+  }
 
   // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
   // Resolved-config hashing folds those values into the key, so the same
@@ -308,6 +311,50 @@ async function dependentsOfRemoved(
     ]) {
       if (deps !== undefined && Object.keys(deps).some((d) => removed.has(d))) out.add(p.name)
     }
+  }
+  return out
+}
+
+/**
+ * The projects a NEW nested project took files from. A project's inputs
+ * stop at every project below it, so a `package.json` that makes an
+ * existing directory a project re-keys the project above it — its
+ * `**` lost the directory's files — while containment maps the change to
+ * the new project alone, and `--affected` left the re-keyed parent out.
+ * "New" is judged at the base: no manifest there, or one with no name,
+ * which discovery skips. Only a changed manifest of a project with a
+ * project above it is read at the base, one `git show` each.
+ */
+async function parentsOfNewNested(
+  workspaceRoot: string,
+  base: string,
+  changed: readonly string[],
+  projects: readonly ProjectMeta[],
+): Promise<Set<string>> {
+  const out = new Set<string>()
+  const dirToName = new Map<string, string>()
+  for (const p of projects) dirToName.set(p.dir, p.name)
+  for (const rel of changed) {
+    if (path.posix.basename(rel) !== 'package.json') continue
+    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
+    if (!dirToName.has(dir)) continue
+    let parent: string | undefined
+    for (let d = path.dirname(dir); parent === undefined; d = path.dirname(d)) {
+      parent = dirToName.get(d)
+      if (path.dirname(d) === d) break
+    }
+    if (parent === undefined || out.has(parent)) continue
+    const bytes = await gitBytesAt(workspaceRoot, base, rel)
+    let named = false
+    if (bytes !== null) {
+      try {
+        const name = (JSON.parse(new TextDecoder().decode(bytes)) as PackageJson).name
+        named = typeof name === 'string' && name !== ''
+      } catch {
+        // A manifest that did not parse at the base named no project.
+      }
+    }
+    if (!named) out.add(parent)
   }
   return out
 }

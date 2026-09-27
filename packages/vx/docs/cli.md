@@ -271,6 +271,13 @@ any dependency field are selected instead, since their builds lost it.
 An edit to the root manifest's `workspaces` selects every project:
 which packages left the workspace is a discovery at the base.
 
+**A new nested project selects the project above it.** A project's
+inputs stop at every project below it, so a `package.json` that makes
+an existing directory a project re-keys the project that held it; the
+change maps to the new project alone, so the one above it is selected
+too. "New" is judged at the base: no manifest there, or one with no
+`name`.
+
 **A workspace config change selects everything.** An edit to
 `vx.workspace.*`, or to a file it imports by relative specifier, selects
 every project: the `config` and `project` stages its plugins install
