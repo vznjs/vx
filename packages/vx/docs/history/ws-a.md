@@ -196,3 +196,11 @@ A gitignored `.gitattributes` is applied by git but never listed by the enumerat
 
 - Async `scan` + `lstat` in `scanUnion` (6 rounds): wall median 5.37 s against 5.22 and A/A 5.19; CPU even. Refuted.
 - `WITHOUT ROWID` on `output_files`, `output_dirs`, `entry_inputs` (needs a `SCHEMA_VERSION` bump): wall median 5.01 s against 5.09 and A/A 5.11, but min 4.78 against 4.74 and 4.71; CPU median 11.57 against 11.74 and 11.65. Not resolved, and it is not worth forcing every cache cold.
+
+### A-20 (2026-09-27, backlog: warm classify at 5,000 projects)
+
+The stability gate called any same-project reader of an `outputs.files` producer unstable, so every `test` behind its `build` was keyed three times (classify, admission's dedup, execute) and never probed in the batch. At 5,000 projects that was all 5,000 tests.
+
+- Fix (`stable-keys.ts`): a declared-output producer reaches a same-project reader only where their globs can meet (literal prefixes, ancestor or equal); undeclared writers, and rewriters the key does not fold, stay project-wide. `caching.md` already said so; `modules/stable-keys.md` does now.
+- Cost, 5,000-package warm no-op (10,000 up-to-date), 12 rounds A/B/A, a copy per arm: median 1.236 s against 1.471 and A/A 1.438; min 1.149 against 1.296 and 1.339; CPU median 2.44 s against 2.71 and 2.68.
+- Rows: `stable-keys.test.ts` › the gate's glob cases; `local-shortcircuit.test.ts` › "a same-project reader whose globs miss…", red without the fix.

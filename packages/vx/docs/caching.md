@@ -392,7 +392,8 @@ performs an up-front CLASSIFY (`orchestrator/local-shortcircuit.ts`):
 
 Stability gate (shared with remote prefetch via
 `stable-keys.ts:deriveStableKeys`): a task whose input globs could
-match a same-project upstream's declared `outputs.files`, or whose
+match a same-project upstream's declared `outputs.files` (compared by
+literal prefix; one with undeclared writes reaches every input), or whose
 `inputs.workspaceFiles` could reach any upstream's outputs, has a
 _preliminary_ key and stays exec-tier / dep-gated. **Any**
 `outputs.workspaceFiles` producer upstream also makes a dependent's key
