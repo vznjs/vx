@@ -116,6 +116,15 @@ function unreadableIndex(err: unknown): boolean {
   return typeof code === 'string' && (code.startsWith('SQLITE_CORRUPT') || code === 'SQLITE_NOTADB')
 }
 
+/** The refusal for an index SQLite cannot read, at the open or at any later read or write (A-8). */
+function unreadableIndexError(dbFile: string, err: unknown): UserError {
+  return new UserError(
+    `the cache index ${dbFile} is not a database SQLite can read (${(err as Error).message}) — ` +
+      `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
+      `re-run, and \`vx cache prune\` reclaims the artifacts it indexed`,
+  )
+}
+
 /** Say once, on the channel the opener has, that an upgrade emptied the index. */
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void {
   if (cache.formatChange !== null) {
@@ -417,6 +426,7 @@ export class Cache implements CacheLayer {
   private readonly inspecting: boolean
   /** Why this process cannot write into `cacheDir`, or `null`; decided at open. */
   private readonly writeBlocked: string | null
+  private readonly dbFile: string
 
   /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
@@ -508,6 +518,7 @@ export class Cache implements CacheLayer {
     // created the typo's directory, a `.gitignore` and a database, then
     // said "no recorded runs yet" (item 900).
     const dbFile = path.join(cacheDir, 'cache.db')
+    this.dbFile = dbFile
     const absent = mode === 'inspect' && !existsSync(dbFile)
     this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir)
     this.write = localPolicy.write && this.writeBlocked === null
@@ -530,11 +541,7 @@ export class Cache implements CacheLayer {
       } catch (err) {
         if (!unreadableIndex(err)) throw err
         this.db.close()
-        throw new UserError(
-          `the cache index ${dbFile} is not a database SQLite can read (${(err as Error).message}) — ` +
-            `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
-            `re-run, and \`vx cache prune\` reclaims the artifacts it indexed`,
-        )
+        throw unreadableIndexError(dbFile, err)
       }
     }
     readable(() => {
@@ -873,37 +880,57 @@ export class Cache implements CacheLayer {
     }
   }
 
+  /**
+   * Run `op` against the index, mapping SQLite's "not a database" — a page
+   * corrupt past the ones the open reads — to the open's own refusal. The
+   * open reads the header and `schema_meta` alone (item 1005), so a file
+   * corrupt deeper answered the first lookup that reached the bad page: every
+   * task of a run failed as an "internal error", and `vx cache prune` printed
+   * a stack (A-8). Every other error passes through as it was.
+   */
+  private guard<T>(op: () => T): T {
+    const refuse = (err: unknown): never => {
+      throw unreadableIndex(err) ? unreadableIndexError(this.dbFile, err) : err
+    }
+    try {
+      const out = op()
+      return (out instanceof Promise ? out.catch(refuse) : out) as T
+    } catch (err) {
+      return refuse(err)
+    }
+  }
+
   // --- config evaluations: `ConfigEvalStore`, delegated to `ConfigEvalTable` ---
   getConfigEval(key: string): string | null {
-    return this.configEvals.getConfigEval(key)
+    return this.guard(() => this.configEvals.getConfigEval(key))
   }
   getConfigClosures(configPaths: readonly string[]): Map<string, string[]> {
-    return this.configEvals.getConfigClosures(configPaths)
+    return this.guard(() => this.configEvals.getConfigClosures(configPaths))
   }
   putConfigClosure(configPath: string, files: readonly string[]): void {
-    this.configEvals.putConfigClosure(configPath, files)
+    return this.guard(() => this.configEvals.putConfigClosure(configPath, files))
   }
   getConfigEvals(keys: readonly string[]): Map<string, string> {
-    return this.configEvals.getConfigEvals(keys)
+    return this.guard(() => this.configEvals.getConfigEvals(keys))
   }
   putConfigEval(key: string, json: string): void {
-    this.configEvals.putConfigEval(key, json)
+    return this.guard(() => this.configEvals.putConfigEval(key, json))
   }
   putConfigEvals(entries: ReadonlyArray<readonly [string, string]>): void {
-    this.configEvals.putConfigEvals(entries)
+    return this.guard(() => this.configEvals.putConfigEvals(entries))
   }
   putConfigClosures(entries: ReadonlyArray<readonly [string, readonly string[]]>): void {
-    this.configEvals.putConfigClosures(entries)
+    return this.guard(() => this.configEvals.putConfigClosures(entries))
   }
   // --- input file hashes: delegated to `FileHashStore` (see file-hashes.ts) ---
   hashFile(filePath: string): Promise<string> {
-    return this.files.hashFile(filePath)
+    return this.guard(() => this.files.hashFile(filePath))
   }
   hashBytes(bytes: Uint8Array, nearPath: string): string {
     return this.files.hashBytes(bytes, nearPath)
   }
   hashFiles(paths: readonly string[]): Promise<Map<string, string>> {
-    return this.files.hashFiles(paths)
+    return this.guard(() => this.files.hashFiles(paths))
   }
   /**
    * `relPosix` against the run's workspace root, memoized: the same three
@@ -939,7 +966,7 @@ export class Cache implements CacheLayer {
     // Local reads disabled (e.g. `--force` / `--cache=local:w`): report a
     // miss so the task re-executes. The artifact + index are untouched.
     if (!this.read) return null
-    return this.readEntry(hash)
+    return this.guard(() => this.readEntry(hash))
   }
 
   /**
@@ -952,7 +979,7 @@ export class Cache implements CacheLayer {
    * every single run.
    */
   getIngested(hash: string): Promise<CacheEntry | null> {
-    return this.readEntry(hash)
+    return this.guard(() => this.readEntry(hash))
   }
 
   private async readEntry(hash: string): Promise<CacheEntry | null> {
@@ -989,6 +1016,10 @@ export class Cache implements CacheLayer {
    * the lazy path.
    */
   async getMany(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
+    return this.guard(() => this.getManyEntries(hashes))
+  }
+
+  private async getManyEntries(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
     const out = new Map<string, CacheEntry>()
     if (!this.read || hashes.length === 0) return out
     const rows: EntryRow[] = []
@@ -1019,6 +1050,10 @@ export class Cache implements CacheLayer {
   // Existence probe: SQL row + artifact-on-disk check, no byte reads
   // and no accessed_at bump (the plan path must stay read-only).
   async has(hash: string): Promise<'local' | 'remote' | null> {
+    return this.guard(() => this.hasEntry(hash))
+  }
+
+  private async hasEntry(hash: string): Promise<'local' | 'remote' | null> {
     if (!this.read) return null
     const row = this.selectEntry.get(hash) as EntryRow | undefined
     if (!row) return null
@@ -1038,7 +1073,7 @@ export class Cache implements CacheLayer {
   // a microtask hop per call, and a 1,000-hit warm run pays the proofs
   // 2,000 times (measured 2026-09-10: +3 ms on `classify + probe`).
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
-    return this.outputs.loadOutputFilesBatch(hashes)
+    return this.guard(() => this.outputs.loadOutputFilesBatch(hashes))
   }
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
     return this.outputs.isOutputsCurrent(projectDir, expected)
@@ -1059,7 +1094,7 @@ export class Cache implements CacheLayer {
     this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot)
   }
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
-    return this.outputs.loadOutputDirsBatch(hashes)
+    return this.guard(() => this.outputs.loadOutputDirsBatch(hashes))
   }
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
     return this.outputs.outputDirsCurrent(projectDir, rows)
@@ -1258,12 +1293,14 @@ export class Cache implements CacheLayer {
     const endPack = span('save: pack')
     const compressed = await this.packArtifactToTemp(this.tempPath(args.hash), args)
     endPack()
-    await this.writeArtifactAndIndex(args.hash, compressed, {
-      taskId: args.entry.taskId,
-      command: args.entry.command,
-      durationMs: args.entry.durationMs,
-      ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
-    })
+    await this.guard(() =>
+      this.writeArtifactAndIndex(args.hash, compressed, {
+        taskId: args.entry.taskId,
+        command: args.entry.command,
+        durationMs: args.entry.durationMs,
+        ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
+      }),
+    )
   }
 
   /**
@@ -1301,7 +1338,7 @@ export class Cache implements CacheLayer {
       await unlink(tmpPath).catch(() => undefined)
       throw err
     }
-    await this.writeArtifactAndIndex(hash, { tmpPath }, meta)
+    await this.guard(() => this.writeArtifactAndIndex(hash, { tmpPath }, meta))
   }
 
   /** Archive name → absolute source path for every declared output. */
@@ -1612,15 +1649,19 @@ export class Cache implements CacheLayer {
 
   // --- run history: delegated to `RunHistory` (see run-history.ts) ---
   recordRun(run: RunRecord): void {
-    this.history.recordRun(run)
+    return this.guard(() => this.history.recordRun(run))
   }
   recordRuns(runs: readonly RunRecord[]): void {
-    this.history.recordRuns(runs)
+    return this.guard(() => this.history.recordRuns(runs))
   }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
-    this.history.recordRunBundle(bundle)
+    return this.guard(() => this.history.recordRunBundle(bundle))
   }
   stats(opts: CacheStatsOptions = {}): CacheStats {
+    return this.guard(() => this.statsOf(opts))
+  }
+
+  private statsOf(opts: CacheStatsOptions): CacheStats {
     this.flushAccessed()
     this.outputs.flushOutputDirs()
     const project = opts.project
@@ -1665,6 +1706,13 @@ export class Cache implements CacheLayer {
     policy: { maxAgeMs?: number; maxBytes?: number },
     now: number = Date.now(),
   ): Promise<PruneResult | null> {
+    return this.guard(() => this.evictIfDueNow(policy, now))
+  }
+
+  private async evictIfDueNow(
+    policy: { maxAgeMs?: number; maxBytes?: number },
+    now: number,
+  ): Promise<PruneResult | null> {
     if (this.writeBlocked !== null || this.inspecting) return null
     // First: an entry this run restored still carries its old `accessed_at`
     // until the deferred bump lands, and would read as due for eviction.
@@ -1698,6 +1746,10 @@ export class Cache implements CacheLayer {
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {
+    return this.guard(() => this.pruneIndex(options))
+  }
+
+  private async pruneIndex(options: PruneOptions): Promise<PruneResult> {
     this.flushAccessed()
     // Before any entry is deleted, so a kept entry's pending snapshot is on
     // disk whatever the eviction does next. A pruned hash's snapshot cannot

@@ -495,7 +495,11 @@ creates nothing on disk: no directory, no `.gitignore`, no database
 opens with a `UserError` naming the file and the remedy (remove it with
 its `-wal` and `-shm`; the index holds nothing a run cannot rebuild):
 it reached every verb as a raw stack (item 1005). Corruption deeper in
-the file surfaces where it is read. The open that drops them says
+the file, past the pages the open reads, surfaces where it is read, and
+there too as the same `UserError`: every lookup, save, prune, retention
+pass, stats read, run record and config-evaluation read or write passes
+through `guard` (A-8). Before, every task of a run failed on it as an
+"internal error" and `vx cache prune` printed a stack. The open that drops them says
 so: `Cache.schemaReset` carries `{ from, to }` on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
 status line, or a verb's stderr — `[vx] cache index reset: schema v24 →
