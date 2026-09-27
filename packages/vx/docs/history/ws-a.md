@@ -14,7 +14,7 @@
    that fails (`SQLITE_BUSY` past the busy timeout, `SQLITE_FULL`) leaves
    one save's bytes beside another's rows, and every later hit on the key
    fails the task as a corrupt artifact until a prune.
-4. The run-end directory snapshot vouches for a stray a dependant wrote
+4. DONE (item 1087, another stream). The run-end directory snapshot vouches for a stray a dependant wrote
    into an output directory after the save or restore; later hits skip the
    walk and the stray survives under a green run.
 5. DONE (A-5). A zstd artifact of several frames passes the first-frame size check and
@@ -27,7 +27,7 @@
    internal error, and `vx cache prune` prints a stack.
 8. DONE (A-7). `cacheRetention` never runs under a local-read-only policy while
    remote hits are still ingested locally.
-9. A gitignored `.gitattributes` below a project escapes the clean-filter
+9. DONE (A-19). A gitignored `.gitattributes` below a project escapes the clean-filter
    gate: the LF index blob of a CRLF file is trusted.
 10. DONE (A-6). `core.trustctime=false` / `core.checkStat=minimal` weaken `git status`,
     and the index-OID shortcut inherits it (a same-size, mtime-restoring
@@ -183,3 +183,16 @@ A persistent task had no key on any path, so a cached dependant folded nothing o
 A host git config with `core.checkStat=minimal` or `core.trustctime=false` turned trusted-OID fixture rows red outside the gate (`workspace-files`, `git-subdir-workspace`). Pinning `GIT_CONFIG_GLOBAL` in a helper cannot fix the class: a spawned git reads the process's startup environment, so `process.env` set in a preload or a test reaches no child (probed on Bun 1.4.2), and 79 files run `git init` in a dozen spellings.
 
 - Fix: `bunfig.toml` preloads `tests/helpers/git-hermetic.ts`, which refuses a bare `bun test` under such a config and names the env to run with. The gate's test tasks add `GIT_CONFIG_NOSYSTEM=1` to `GIT_CONFIG_GLOBAL=/dev/null`. No git (a sandboxed shard): no check.
+
+### A-19 (2026-09-27, lead 9)
+
+A gitignored `.gitattributes` is applied by git but never listed by the enumeration (`status` omits ignored paths), so the filter gate read "no attributes" and trusted a CRLF file's LF index blob: a CRLF→LF edit replayed the CRLF output. Repro: project `.gitignore` holding `.gitattributes`, `*.txt text`.
+
+- Fix (`git-inputs.ts`): the enumeration's `git status` adds `--ignored=matching`, which names an ignored path without walking an ignored directory; an ignored `.gitattributes` opens the gate. Cost, 1,000-package warm no-op, 15 rounds A/B/A: median 428 ms against 428 and A/A 443, min 394 against 385 and 387. Docs: `caching.md`, `modules/git-inputs.md`.
+- Row: `git-trust.test.ts` › "an ignored one does too", red without the fix.
+- Also recorded here: lead 4 was fixed by item 1087.
+
+- Cold-save lead (I-6), probed on the 1,000-package bench (test command `true`), cold runs, A/B/A interleaved, 18 rounds unless noted. Neither ships.
+
+- Async `scan` + `lstat` in `scanUnion` (6 rounds): wall median 5.37 s against 5.22 and A/A 5.19; CPU even. Refuted.
+- `WITHOUT ROWID` on `output_files`, `output_dirs`, `entry_inputs` (needs a `SCHEMA_VERSION` bump): wall median 5.01 s against 5.09 and A/A 5.11, but min 4.78 against 4.74 and 4.71; CPU median 11.57 against 11.74 and 11.65. Not resolved, and it is not worth forcing every cache cold.

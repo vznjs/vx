@@ -483,6 +483,8 @@ async function dropFilteredOids(
   args: {
     /** Every path the enumeration listed: tracked (dirty ones too) and untracked. */
     listed: readonly string[]
+    /** Whether `git status` named an ignored `.gitattributes`, which git applies too. */
+    ignoredAttributes: boolean
     workspaceRoot: string
     gitDir: string
     gitPrefix: string
@@ -501,6 +503,7 @@ async function dropFilteredOids(
   // a line scan of `git var -l`, three stats, and a key walk that exits on the
   // first `.gitattributes` it does not find.
   let attributesPossible =
+    args.ignoredAttributes ||
     attributeFilesOutsideTree(args.gitVars, process.env).some((f) =>
       existsSync(path.resolve(args.workspaceRoot, f)),
     ) ||
@@ -715,14 +718,25 @@ export function attributeFilesOutsideTree(
 function parseStatusOutput(
   out: string,
   undecodableRecords: ReadonlySet<string>,
-): { dirty: Set<string>; untracked: string[]; undecodable: Set<string> } {
+): {
+  dirty: Set<string>
+  untracked: string[]
+  undecodable: Set<string>
+  ignoredAttributes: boolean
+} {
   const tokens = out.split('\0')
   const dirty = new Set<string>()
   const untracked: string[] = []
   const undecodable = new Set<string>()
+  let ignoredAttributes = false
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!
     if (token.length < 4) continue
+    if (token[0] === '!') {
+      if (token === '!! .gitattributes' || token.endsWith('/.gitattributes'))
+        ignoredAttributes = true
+      continue
+    }
     if (undecodableRecords.size > 0 && undecodableRecords.has(token))
       undecodable.add(token.slice(3))
     if (token[0] === '?') {
@@ -743,7 +757,7 @@ function parseStatusOutput(
       dirty.add(tokens[i]!)
     }
   }
-  return { dirty, untracked, undecodable }
+  return { dirty, untracked, undecodable, ignoredAttributes }
 }
 
 /**
@@ -885,7 +899,10 @@ export async function startGitEnumeration(
   // time (~50 ms of CPU, concurrent with status but contending with it).
   const running = Promise.all([
     spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs]),
-    spawnGit(['status', '--porcelain', '-z', '-uall', '--', ...pathspecs]),
+    // `--ignored=matching` names an ignored path without descending into an
+    // ignored directory: git applies an ignored `.gitattributes` as it does
+    // any other, and the filter gate below must see it (A-19).
+    spawnGit(['status', '--porcelain', '-z', '-uall', '--ignored=matching', '--', ...pathspecs]),
     // The gate for whether a clean filter can rewrite bytes between the
     // index and the worktree: git's merged config (`core.autocrlf`) and,
     // from git 2.42, the attributes files it reads outside the tree
@@ -983,6 +1000,7 @@ export async function startGitEnumeration(
   // ONLY where a filter can actually apply.
   await dropFilteredOids(trusted, {
     listed: all,
+    ignoredAttributes: parsedStatus?.ignoredAttributes ?? false,
     workspaceRoot,
     gitDir,
     gitPrefix,

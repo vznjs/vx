@@ -82,7 +82,7 @@ describe('git spawns on a cold run', () => {
         [
           ...ENUMERATION,
           '--no-optional-locks ls-files -s -v -z -- .',
-          '--no-optional-locks status --porcelain -z -uall -- .',
+          '--no-optional-locks status --porcelain -z -uall --ignored=matching -- .',
         ].sort(),
       )
     },
@@ -96,7 +96,7 @@ describe('git spawns on a cold run', () => {
         [
           ...ENUMERATION,
           '--no-optional-locks ls-files -s -v -z -- packages/a',
-          '--no-optional-locks status --porcelain -z -uall -- packages/a',
+          '--no-optional-locks status --porcelain -z -uall --ignored=matching -- packages/a',
         ].sort(),
       )
     },
