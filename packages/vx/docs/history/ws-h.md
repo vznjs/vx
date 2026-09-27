@@ -98,6 +98,24 @@ selection or refusal with `tests/contract/task-globs.json`. Differential:
 `ALWAYS_IGNORE` losing `node_modules` and `OUTPUT_NEVER` gaining
 `.github` each fail it.
 
+## H-8: pin the config schema's rules between fields, found pairwise
+
+H-1 recorded each field alone, so a rule between two fields could change
+unseen: removing the refusal of `retries` on a persistent task passed H-1's
+record and failed only the new row. The same test file now tries every task
+field and `exec` field at each seed value alone and in every pair, on a
+plain task (`exec.command` only) and, for the task's own fields, on a group
+task (`dependsOn` only), and records the singles that are refused and each
+pair that disagrees with its halves in
+`tests/contract/config-schema-rules.json`. The table it found is the
+schema's rule set: `persistent` excludes `cache` and `retries`,
+`remote: 'only'` needs `cache`, a task without `exec` needs `dependsOn`,
+and `cache` on a group task is refused. A rule that needs three fields
+(`cache.inputs.tasks` naming no `dependsOn` entry) stays with
+`schema-doc-drift`'s table. Units are whole blocks, not leaves: a leaf
+alone (`cache.inputs.env`) is refused by its own block and flooded the
+first cut with 80 rows of noise.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
@@ -122,3 +140,9 @@ selection or refusal with `tests/contract/task-globs.json`. Differential:
   before a run deletes installed files a broad glob did not mean to name.
   Consider refusing an output glob that reaches `node_modules` without
   naming it.
+
+- **E:** `vx stats` is a deprecated alias of `vx info` (`cli/index.ts`,
+  `cli.md`) and says nothing when used; `versioning-1.0.md` § Deprecation
+  step 1 promises a deprecated surface "warns once per run, naming what
+  replaces it", from the CLI's parser. A stderr line keeps `cli.md`'s
+  "byte-identical output" true on stdout. Pre-1.0 it may also simply go.

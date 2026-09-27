@@ -95,7 +95,13 @@ change is a reviewed diff of that file and never a side effect.
   with `tests/contract/config-schema.json`. The same file holds each
   level's field list to its exported interface in `src/config.ts`
   through the type checker, so the TypeScript surface and the runtime
-  surface cannot drift apart. A deliberate change regenerates the
+  surface cannot drift apart. The rules BETWEEN fields are found the
+  same way: every task field and `exec` field, at each seed value, is
+  tried alone and in every pair on a plain task and on a group task,
+  and each pair that disagrees with its halves (a conflict such as
+  `persistent` with `cache`, or a requirement such as `remote: 'only'`
+  on `cache`) is compared with `tests/contract/config-schema-rules.json`.
+  A deliberate change regenerates the
   record with `VX_UPDATE_CONTRACT=1` (the command is in the test's
   header) and names the change in the release notes.
 - **The plugin API and the package's exports.**
