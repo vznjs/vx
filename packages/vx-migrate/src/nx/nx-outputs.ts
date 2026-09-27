@@ -47,6 +47,32 @@ export function underProject(p: string, projectRel: string): string | null {
   return p.startsWith(`${projectRel}/`) ? p.slice(projectRel.length + 1) : null
 }
 
+/**
+ * What Nx caches for a target that declares no `outputs`
+ * (`getOutputsForTargetAndConfiguration`): its `options.outputPath`, else,
+ * for `build` and `prepare`, `dist/{root}`, `{root}/dist`, `{root}/build`
+ * and `{root}/public`. Read as no outputs, a cached target's hit restored
+ * nothing (item 1052). The last two are left out with a todo: vx cleans an
+ * output before the task runs, and a project's `build/` or `public/` is as
+ * often its committed sources, which Nx, never cleaning, leaves alone.
+ */
+export function nxDefaultOutputs(
+  targetName: string,
+  options: Record<string, unknown>,
+  projectRel: string,
+  todos: string[],
+): string[] {
+  if (typeof options['outputPath'] === 'string') return [options['outputPath']]
+  if (targetName !== 'build' && targetName !== 'prepare') return []
+  const root = projectRel === '.' ? '' : projectRel
+  const at = (p: string): string => path.posix.join(root, p)
+  todos.push(
+    `no outputs declared: Nx also caches ${at('build')} and ${at('public')} for this target — vx cleans an output before the run, so add them to the outputs by hand only if they hold nothing committed`,
+  )
+  // The root project's two are one path.
+  return [...new Set([path.posix.join('dist', root), at('dist')])]
+}
+
 /** `outputs` with `{options.x}` resolved against `options`; `projectRel` is the project dir, `.` for the root. */
 export function mapNxOutputs(
   outputs: readonly string[],

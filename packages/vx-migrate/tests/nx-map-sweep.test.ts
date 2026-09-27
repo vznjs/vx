@@ -238,6 +238,42 @@ describe('a `^target` only an unattached project declares', () => {
   })
 })
 
+// Nx caches a target with no `outputs` under its `options.outputPath`, or
+// for `build`/`prepare` under its dist directories; read as no outputs, a
+// hit restored nothing (item 1052).
+describe('a cached target that declares no outputs', () => {
+  const outputsOf = async (targets: Record<string, unknown>, rel = 'packages/b') => {
+    const t = await tasksOf([await meta('b')], { b: node(rel, targets) })
+    return Object.fromEntries(
+      [...t].map(([id, g]) => [
+        id,
+        {
+          outputs: (g.task?.['cache'] as { outputs?: unknown } | undefined)?.outputs,
+          todos: g.todos,
+        },
+      ]),
+    )
+  }
+  it('takes outputPath, else the dist directories for build and prepare, else nothing', async () => {
+    const got = await outputsOf({
+      build: { command: 'b', cache: true },
+      pack: { command: 'p', cache: true, options: { outputPath: 'out/pack' } },
+      test: { command: 't', cache: true },
+      prepare: { command: 'r', cache: true, outputs: [] },
+    })
+    expect(got['b#build']).toEqual({
+      outputs: { files: ['dist/**'], workspaceFiles: ['dist/packages/b/**'] },
+      todos: [
+        'no outputs declared: Nx also caches packages/b/build and packages/b/public for this target — vx cleans an output before the run, so add them to the outputs by hand only if they hold nothing committed',
+      ],
+    })
+    expect(got['b#pack']?.outputs).toEqual({ files: [], workspaceFiles: ['out/pack/**'] })
+    expect(got['b#test']?.outputs).toEqual({ files: [] })
+    // CONTROL: an explicit empty list is no outputs, as under Nx.
+    expect(got['b#prepare']?.outputs).toEqual({ files: [] })
+  })
+})
+
 describe('nx.json is read through its `extends` chain', () => {
   it('a base’s named inputs apply; nx.json’s own field replaces the base’s whole', async () => {
     await mkdir(path.join(root, 'config'), { recursive: true })

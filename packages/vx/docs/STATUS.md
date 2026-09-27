@@ -706,6 +706,22 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         › the same through the plugin, the run planning. Each red without
         its change.
 
+1052. DONE (2026-09-27, the nx() review's lead 3). A cached Nx target
+      with no `outputs` was mapped with none, and Nx caches one anyway
+      (`getOutputsForTargetAndConfiguration`): its `options.outputPath`,
+      else for `build` and `prepare` `dist/{root}`, `{root}/dist`,
+      `{root}/build` and `{root}/public`. A hit restored nothing (a
+      `build` writing `dist/out.txt`, reproduced by the review).
+      `nxDefaultOutputs` applies the rule for an absent `outputs` (an
+      explicit `[]` stays none). `build/` and `public/` are left to a todo:
+      vx cleans an output before the run, and a project's `public/` is
+      usually committed assets Nx, never cleaning, leaves alone.
+      - Row: `nx-map-sweep.test.ts` › a cached target that declares no
+        outputs (outputPath, the dist pair with the todo, none for a
+        `test`, and the explicit-empty control). Red without the rule.
+      - The extensionless-output lead is Next 27: its fix costs nx()
+        directory outputs a warm-hit short-circuit, which needs numbers.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
@@ -1100,6 +1116,17 @@ next?".
     (git's list, or the stats) before choosing; keying the snapshot on the
     tree's git state is the other candidate. The README says a new
     cross-package import needs an Nx command before the next run.
+
+27. **`nx()` saves an extensionless output file as a directory** (the nx
+    review's lead 4). `dirGlob` maps `{workspaceRoot}/dist/bin/tool` to
+    `dist/bin/tool/**`, which matches nothing under a file: a hit
+    restored no binary. Core's `asTrees` already reads a bare literal as
+    the path or the tree under it, so the bare path is correct for both,
+    but it takes `outputDirsCurrent`'s directory-mtime short-circuit away
+    from every nx() directory output (`{projectRoot}/dist`), which only
+    `<dir>/**` globs get. A/B a warm hit over a large `dist/` both ways
+    first; teaching `wholeSubtreePrefixes` a literal that is a directory
+    at save time is the other candidate.
 
 ## Decisions (this arc)
 
