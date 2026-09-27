@@ -1116,7 +1116,7 @@ export interface RunSummaryRecord {
 export interface SandboxConfig {
   allow?: SandboxGrants
   deny?: SandboxDenials
-  ignore?: SandboxGrants
+  ignore?: SandboxIgnore
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
 }
@@ -1135,6 +1135,13 @@ export interface SandboxGrants {
   machLookup?: string[]
   pty?: boolean
   gitConfig?: boolean
+}
+== type SandboxIgnore (src/config.ts)
+export interface SandboxIgnore {
+  read?: string[]
+  write?: string[]
+  systemInfo?: string[]
+  network?: string[]
 }
 == type SandboxViolation (src/exec/sandbox-runtime.ts)
 export interface SandboxViolation {

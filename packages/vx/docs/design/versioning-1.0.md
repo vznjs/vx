@@ -51,15 +51,15 @@ the values it takes and each refusal's exact words are recorded in
 | `tasks.<name>.exec.sandbox`        | `allow`, `deny`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                                   |
 | `tasks.<name>.exec.sandbox.allow`  | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
 | `tasks.<name>.exec.sandbox.deny`   | `network`                                                                                                 |
-| `tasks.<name>.exec.sandbox.ignore` | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
+| `tasks.<name>.exec.sandbox.ignore` | `network`, `read`, `systemInfo`, `write`                                                                  |
 | `tasks.<name>.cache`               | `inputs`, `outputs`                                                                                       |
 | `tasks.<name>.cache.inputs`        | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
 | `tasks.<name>.cache.outputs`       | `files`, `workspaceFiles`                                                                                 |
 
 Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
 
-`sandbox.ignore` names `pty` and `gitConfig` only to refuse them ("a
-flag, not something to ignore"). The record holds that refusal too.
+`sandbox.ignore` takes only the four classes a denial is reported in
+(D-4); any other grant name is refused as an unknown field.
 
 ### The plugin API
 

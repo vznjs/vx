@@ -32,6 +32,7 @@ import type {
   SandboxConfig,
   SandboxDenials,
   SandboxGrants,
+  SandboxIgnore,
   TaskConfig,
   WorkspaceConfig,
 } from '../src/config.js'
@@ -84,22 +85,23 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       weakerWhenNested: true,
       weakerNetworkIsolation: true,
     }),
-    ...Object.fromEntries(
-      ['allow', 'ignore'].map((g) => [
-        `tasks.*.exec.sandbox.${g}`,
-        keys<SandboxGrants>({
-          read: true,
-          write: true,
-          network: true,
-          systemInfo: true,
-          unixSockets: true,
-          localBinding: true,
-          machLookup: true,
-          pty: true,
-          gitConfig: true,
-        }),
-      ]),
-    ),
+    'tasks.*.exec.sandbox.allow': keys<SandboxGrants>({
+      read: true,
+      write: true,
+      network: true,
+      systemInfo: true,
+      unixSockets: true,
+      localBinding: true,
+      machLookup: true,
+      pty: true,
+      gitConfig: true,
+    }),
+    'tasks.*.exec.sandbox.ignore': keys<SandboxIgnore>({
+      read: true,
+      write: true,
+      network: true,
+      systemInfo: true,
+    }),
     'tasks.*.exec.sandbox.deny': keys<SandboxDenials>({ network: true }),
     'tasks.*.cache': keys<CacheConfig>({ inputs: true, outputs: true }),
     'tasks.*.cache.inputs': keys<CacheInputs>({
@@ -143,7 +145,12 @@ function projectSeed(): Record<string, unknown> {
     pty: true,
     gitConfig: false,
   }
-  const { pty: _pty, gitConfig: _git, ...ignore } = grants
+  const ignore = {
+    read: grants.read,
+    write: grants.write,
+    network: grants.network,
+    systemInfo: grants.systemInfo,
+  }
   return {
     tasks: {
       t: {

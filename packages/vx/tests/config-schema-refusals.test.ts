@@ -153,6 +153,22 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(cacheRefusal({ files: [], env: ['A_B'] })).toBeNull()
   })
 
+  // No argv carries a NUL: the spawn refused one and the task failed as
+  // exit 127, "not on this task's PATH", the NUL printed as a space (D-4).
+  it('a command holding a NUL is refused where the config names it', () => {
+    expect(taskRefusal({ exec: { command: 'echo a\0b' } })).toBe(
+      `${CFG}: tasks.t.exec.command holds a NUL, which no command line can carry`,
+    )
+    for (const field of ['runtime', 'workspaceRuntime']) {
+      expect(cacheRefusal({ files: [], [field]: ['node -v\0'] })).toBe(
+        `${CFG}: tasks.t.cache.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
+      )
+      expect(cacheRefusal({ files: [], [field]: ['node -v'] })).toBeNull()
+    }
+    // Control: a command with an escaped `\0` in its text, which the shell reads.
+    expect(taskRefusal({ exec: { command: "printf 'a\\0b'" } })).toBeNull()
+  })
+
   // Each shape loaded and could not be referenced: `x#y` read as project
   // `x`, `^gen` as the dependencies' `gen`, `''` ran as `a#` and `vx run a#`
   // refused it (item 1000).
@@ -335,20 +351,24 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
       `${W}.sandbox.ignore.read must be an array of non-empty strings`,
     ],
     [
-      'ignore.machLookup',
-      { ignore: { machLookup: [''] } },
-      `${W}.sandbox.ignore.machLookup must be an array of non-empty strings`,
+      'ignore.systemInfo',
+      { ignore: { systemInfo: [''] } },
+      `${W}.sandbox.ignore.systemInfo must be an array of non-empty strings`,
     ],
     [
       'ignore.network',
       { ignore: { network: true } },
       `${W}.sandbox.ignore.network must be an array of non-empty strings`,
     ],
-    [
-      'ignore.pty',
-      { ignore: { pty: true } },
-      `${W}.sandbox.ignore.pty is a flag, not something to ignore`,
-    ],
+    // A denial is classed read, write, systemInfo or network: every other
+    // grant name loaded here and silenced nothing (D-4).
+    ...['machLookup', 'unixSockets', 'localBinding', 'pty', 'gitConfig'].map(
+      (f): [string, unknown, string] => [
+        `ignore.${f}`,
+        { ignore: { [f]: ['x'] } },
+        `${W}.sandbox.ignore has unknown field "${f}" (allowed: network, read, systemInfo, write)`,
+      ],
+    ),
   ]
   for (const [field, sandbox, message] of CASES) {
     it(`refuses a malformed ${field}`, () => {
@@ -373,7 +393,7 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
           localBinding: [8080],
         },
         deny: { network: ['example.com'] },
-        ignore: { read: ['/proc/**'], write: ['x'], network: ['y'], unixSockets: ['z'] },
+        ignore: { read: ['/proc/**'], write: ['x'], network: ['y'], systemInfo: ['hw.ncpu'] },
       }),
     ).toBeNull()
   })

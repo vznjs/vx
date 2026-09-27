@@ -7,8 +7,8 @@ Pure types + two identity helpers; no runtime logic.
 
 Defines every interface the rest of the codebase consumes:
 `ProjectConfig`, `TaskConfig`, `ExecConfig`, `ExecEnv`,
-`PersistentConfig`, `SandboxConfig` (with its `SandboxGrants` and
-`SandboxDenials`), `CacheConfig`, `CacheInputs`, `CacheOutputs`,
+`PersistentConfig`, `SandboxConfig` (with its `SandboxGrants`,
+`SandboxDenials` and `SandboxIgnore`), `CacheConfig`, `CacheInputs`, `CacheOutputs`,
 `WorkspaceConfig` — and the plugin contract a workspace file declares:
 `Plugin`, the `PLUGIN_HOOKS` list every table and host reads (with
 `PluginHook` and the function-valued subset `PLUGIN_FUNCTION_HOOKS`),
@@ -37,6 +37,7 @@ export interface PersistentConfig
 export interface SandboxConfig
 export interface SandboxGrants
 export interface SandboxDenials
+export interface SandboxIgnore
 export interface CacheConfig
 export interface CacheInputs
 export interface CacheOutputs

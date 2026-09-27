@@ -33,7 +33,9 @@ run leaves out; the rest are refusals.
   has the same shape; not probed.
 - C/E: flaky rows seen here: `watch-loop` "a server that rewrites a file
   … (item 948)" (CI, PR 1125), `signal-handling` "every task process is
-  gone" (local gate under load).
+  gone" (local gate, twice in four gates).
+- F: `vx-reapi` "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is
+  retried" failed once in a local gate, green on re-run.
 
 ## Entries
 
@@ -53,6 +55,14 @@ run leaves out; the rest are refusals.
   with D-1's check) and every project whose `directDeps` differ is
   selected; replaces the removed-package walk. Row: `tests/affected.test.ts`
   "a manifest edit that drops an edge selects the dependent (D-3)".
+- **D-4** Schema refusals for entries that loaded and did nothing:
+  `sandbox.ignore` takes only `read`, `write`, `systemInfo`, `network` (the
+  classes a denial is reported in; `machLookup`, `unixSockets`,
+  `localBinding` and the flags silenced nothing — H's lead), and a NUL in
+  `exec.command` / `cache.inputs.runtime` / `workspaceRuntime` is refused at
+  load (lead 3; it failed at spawn as "exit 127 … not on PATH"). New type
+  `SandboxIgnore`; H's contract record regenerated. Rows:
+  `tests/config-schema-refusals.test.ts`.
 - **D-5** The config worker awaits a Promise default export, as the
   in-process first load's async return already did: an async config
   loaded on a run and was refused as "an instance of Promise" on every
