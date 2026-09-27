@@ -1025,7 +1025,12 @@ Tar headers carry mode and second mtimes. vx needs both permission bits (a lost 
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, exec? }` —
-into the archive. Restore applies both. `exec` (`{ cpuMs?, peakRssBytes? }`,
+into the archive. Restore applies both, at their edges too: a mode of
+000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`) and one before 1970, whose
+tar header carries 0 since ustar's field holds no sign. Until 2026-09-27
+(A-4) the first two were skipped, so the file came back 0644 and
+stamped now and every later hit restored it again, and the third wrote
+a header the reader refused, so its task never saved. `exec` (`{ cpuMs?, peakRssBytes? }`,
 2026-09-12) is what the PRODUCING execution used: it rides the artifact
 so a machine that never ran the task — a fresh runner on a remote hit —
 still learns what the task needs (`@vzn/vx-schedule-history` packs on

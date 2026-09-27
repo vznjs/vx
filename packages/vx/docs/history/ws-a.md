@@ -20,7 +20,7 @@
 5. A zstd artifact of several frames passes the first-frame size check and
    is decoded whole before the ceiling applies (2 GiB of memory from a
    32 KB remote body); the comment calls that check unreachable.
-6. An output of mode 000 or mtime 0 (`SOURCE_DATE_EPOCH=0`) restores with
+6. DONE (A-4). An output of mode 000 or mtime 0 (`SOURCE_DATE_EPOCH=0`) restores with
    the wrong metadata and is restored again on every hit; one with an
    mtime before 1970 is never cached ("corrupt artifact").
 7. A `cache.db` corrupt past its first pages fails every task as an
@@ -72,3 +72,10 @@ A save renamed its artifact into place before the transaction that writes its ro
 
 - Fix (`cache.ts` `writeArtifactAndIndex`): the rename runs inside the transaction, taken IMMEDIATE, so it waits for the lock and commits with the rows; a commit that fails after it unlinks the artifact (the key misses). The save path's steps in `modules/cache.md` described a temp DIRECTORY unused since v17; they now describe the pack, scan and transaction. `caching.md` says so; `save: rename` left `modules/timing.md` with its span.
 - Rows: `cache-save-lock.test.ts` › a save that cannot take the lock leaves the previous entry whole (bytes, rows, no temp); one whose insert fails after the rename leaves the key a miss; control, a free lock replaces both. Red without the fix (the first with the reported `CorruptArtifactError`, the second under the tmp-only unlink mutant).
+
+### A-4 (2026-09-27, lead 6)
+
+The restore skipped a sidecar mode of 0 and an mtime of 0 or less: a mode-000 output came back 0644 and a `SOURCE_DATE_EPOCH=0` output came back stamped now, under a green hit, and every later hit restored them again (the skip-restore check could never match). An mtime before 1970 wrote a negative octal into the tar header, which the reader refused: the task's save failed as a "corrupt artifact" on every run.
+
+- Fix (`archive.ts`): the sidecar's stat is applied whole (a bare tar's header mtime of 0 stays unknown); the header clamps a negative mtime to 0; the restore stamps with a `Date`, since Bun's `utimesSync` reads a negative number of seconds as now (probed on 1.4.2). `caching.md` says so.
+- Rows: `archive-extract-meta.test.ts` › the sidecar at its edges: mode 000, mtime 0, mtime 1960, and an ordinary control. The first three red without the fix.
