@@ -409,6 +409,46 @@ describe('runPersistent', () => {
     }
   }, 8_000)
 
+  // The pattern is tested per line, without the break and without terminal
+  // escapes (item 1059). Each command writes its lines in ONE printf, so they
+  // reach the matcher as one chunk: the whole-fragment test failed every
+  // anchored row, and `Local:` never matched Vite's bold `Local` under
+  // FORCE_COLOR. The last two rows are the controls: a line that only
+  // CONTAINS the anchored word, and an escape that splits the word.
+  const settleWithin = async (printf: string, readyWhen: string): Promise<string> => {
+    const spawn = runPersistent({
+      command: `printf '${printf}'; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen,
+    })
+    try {
+      return await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(1_500).then(() => 'timed out'),
+      ])
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  }
+  it.each([
+    ['^ on a later line of one chunk', 'booting\\nready\\n', '^ready', 'ready'],
+    ['$ before a newline', 'ready\\n', 'ready$', 'ready'],
+    ['^…$ on a CRLF line', 'booting\\r\\nready\\r\\n', '^ready$', 'ready'],
+    ['^ after a progress frame', '50%%\\rready', '^ready', 'ready'],
+    ['an SGR-bolded word', '\\033[1mLocal\\033[22m: http://localhost:5173\\n', 'Local:', 'ready'],
+    ['^ past an OSC title', '\\033]0;vite\\007Local: http://x\\n', '^Local:', 'ready'],
+    ['control: ^ mid-line', 'not ready\\n', '^ready', 'timed out'],
+    ['control: $ mid-line', 'ready now\\n', 'ready$', 'timed out'],
+  ])(
+    'readyWhen per line: %s',
+    async (_name, printf, readyWhen, expected) => {
+      expect(await settleWithin(printf, readyWhen)).toBe(expected)
+    },
+    8_000,
+  )
+
   it('rejects ready when the child exits before the marker appears', async () => {
     const spawn = runPersistent({
       command: 'echo nope; exit 1',

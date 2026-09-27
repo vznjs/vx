@@ -297,6 +297,15 @@ export async function drainOrAbort(
 const READY_MATCH_WINDOW_CHARS = 64 * 1024
 
 /**
+ * Terminal escapes a `readyWhen` pattern is matched without: CSI (colour,
+ * cursor), OSC (titles, links) and the two-byte forms. Vite under
+ * `FORCE_COLOR` prints `\x1b[1mLocal\x1b[22m:`, which `Local:` never matched
+ * (item 1059). The streamed bytes keep them; only the tested text drops them.
+ */
+// eslint-disable-next-line no-control-regex -- ESC is the point
+const TERMINAL_ESCAPE_RE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g
+
+/**
  * Why a persistent task never became ready — the reason every label and
  * record reads instead of a fabricated exit (item 270). `exitCode` is the
  * child's own when it exited before the pattern matched.
@@ -420,11 +429,16 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   }
 
   // Stream readers. Each stream owns a pending fragment so a regex
-  // match isn't missed across chunk boundaries. The match runs over
-  // the WHOLE fragment, including a trailing partial line — prompt-
-  // style markers ("Listening on :3000" with no newline) would never
-  // resolve ready under line-by-line-only matching. Complete lines
-  // that didn't match are discarded after each test to bound memory.
+  // match isn't missed across chunk boundaries. The pattern is tested
+  // against each line on its own — without its break and without terminal
+  // escapes — so `^` and `$` anchor to a line as a user reads it; a whole
+  // fragment holding `booting\nready\n` failed `^ready` and `ready$`
+  // alike (item 1059). `\r` ends a line too: a progress bar's frames are
+  // lines to a reader. The trailing partial line is tested as well —
+  // prompt-style markers ("Listening on :3000" with no newline) would
+  // never resolve ready under complete-lines-only matching.
+  const readyLine = (re: RegExp, line: string): boolean =>
+    re.test(line.includes('\x1b') ? line.replace(TERMINAL_ESCAPE_RE, '') : line)
   const consumeChunks = async (
     stream: ReadableStream<Uint8Array> | number | undefined,
     isStderr: boolean,
@@ -442,23 +456,32 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       else opts.onStdout?.(chunk)
       if (readyRe && readyAt === undefined) {
         fragment += chunk
-        if (readyRe.test(fragment)) {
+        let start = 0
+        for (let i = 0; i < fragment.length; i++) {
+          const c = fragment.charCodeAt(i)
+          if (c !== 10 && c !== 13) continue
+          if (readyLine(readyRe, fragment.slice(start, i))) {
+            markReady()
+            fragment = ''
+            return
+          }
+          start = i + 1
+        }
+        fragment = fragment.slice(start)
+        if (readyLine(readyRe, fragment)) {
           markReady()
           fragment = ''
-        } else {
-          const lastNl = fragment.lastIndexOf('\n')
-          if (lastNl >= 0) fragment = fragment.slice(lastNl + 1)
-          // Dropping complete lines assumes the stream HAS line breaks.
-          // `\r`-only output — a progress bar, a spinner — is one endless
-          // line, so the trim above never fires and the fragment becomes a
-          // third unbounded accumulator (measured 464 MiB in 6 s, and the
-          // per-chunk `test` over an ever-growing string makes it quadratic
-          // in CPU too). Keep the most RECENT window: a match may span the
-          // chunk boundary, and no readiness marker is anywhere near this
-          // long.
-          if (fragment.length > READY_MATCH_WINDOW_CHARS) {
-            fragment = fragment.slice(fragment.length - READY_MATCH_WINDOW_CHARS)
-          }
+          return
+        }
+        // Dropping complete lines assumes the stream HAS line breaks. Output
+        // with none is one endless line, so the fragment would become a
+        // third unbounded accumulator (measured 464 MiB in 6 s, and the
+        // per-chunk `test` over an ever-growing string makes it quadratic
+        // in CPU too). Keep the most RECENT window: a match may span the
+        // chunk boundary, and no readiness marker is anywhere near this
+        // long.
+        if (fragment.length > READY_MATCH_WINDOW_CHARS) {
+          fragment = fragment.slice(fragment.length - READY_MATCH_WINDOW_CHARS)
         }
       }
     }

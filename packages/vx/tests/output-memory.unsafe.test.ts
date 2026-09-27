@@ -221,12 +221,12 @@ describe('runCommand stream capture', () => {
  *
  * This probe drives `runPersistent` with NO logger attached, so it measures
  * what the RUNNER itself retains. That is now only the ready-matcher's
- * `fragment`, and the two line shapes exercise it differently: `\r`-only
- * output (a progress bar) is one endless line, which defeats the
- * discard-complete-lines trim that `\n`-terminated output relies on.
+ * `fragment`, and the line shapes exercise it differently: `\n` and `\r`
+ * (a progress bar) both end a line the matcher discards, while output with
+ * no break at all is one endless line, which only the window bounds.
  */
-function persistentProbe(seconds: number, terminator: '\\n' | '\\r'): string {
-  const printf = terminator === '\\n' ? '%0200d\\\\n' : '%0200d\\\\r'
+function persistentProbe(seconds: number, terminator: '\\n' | '\\r' | ''): string {
+  const printf = `%0200d${terminator === '' ? '' : `\\${terminator}`}`
   return `
     import { runPersistent } from ${JSON.stringify(RUNNER)}
     const spawned = runPersistent({
@@ -244,7 +244,7 @@ function persistentProbe(seconds: number, terminator: '\\n' | '\\r'): string {
 }
 
 describe('persistent task pre-ready buffering', () => {
-  // The four floods run CONCURRENTLY: each is a fixed-duration child (1 s and
+  // The six floods run CONCURRENTLY: each is a fixed-duration child (1 s and
   // 3 s per line shape), so in sequence the file spent 8 s waiting, and the
   // claim — RSS does not grow with the duration — is about each child's own
   // bounded capture, not about throughput, so sharing the cores changes
@@ -252,6 +252,7 @@ describe('persistent task pre-ready buffering', () => {
   const shapes = [
     ['newline-terminated', '\\n'],
     ['carriage-return only', '\\r'],
+    ['no line break', ''],
   ] as const
   const readings = new Map<string, { short: number; long: number }>()
   beforeAll(async () => {

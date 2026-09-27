@@ -813,6 +813,26 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_TIMEOUT` and
         `_PROTOCOL` are unread (the README does not claim them).
 
+1059. DONE (2026-09-27, the local runner review's leads 1 and 2). A
+      persistent task's `readyWhen` was tested against the whole pending
+      fragment, so an anchored pattern missed a line that arrived in one
+      chunk with others (`booting\nready\n` failed `^ready`, and `ready$`
+      never matched a newline-terminated line), and the run failed at its
+      timeout or hung without one. And the pattern saw raw terminal
+      escapes, so the documented Vite example (`Local:`) never matched
+      under `FORCE_COLOR`, which vx passes through. Each line is now
+      tested on its own, without its break (`\n`, `\r`) and with CSI,
+      OSC and two-byte escapes removed from the tested text only; the
+      trailing partial line is tested too. schema.md and runner.md say so.
+      - Rows: `runner.test.ts` › readyWhen per line (six shapes red
+        without the change, two controls that hold both ways);
+        `output-memory.unsafe.test.ts` gains a no-line-break flood, since
+        a `\r` now ends a line and no longer drives the 64 KiB window.
+      - Left from the review: Ctrl-C reports a persistent server vx
+        killed as "exited … before the run stopped it"; the Aborted
+        section lists never-started tasks as killed with exit 1; forwarded
+        args after a command ending in a `#` comment are dropped.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

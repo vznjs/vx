@@ -218,11 +218,16 @@ descriptor. The `ready` promise:
   message identifying the exit code and noting whether `readyWhen`
   ever matched).
 
-The pattern matcher buffers across chunk boundaries and tests the
-whole pending fragment — complete lines plus the trailing partial
-line — so neither a match split across two reads nor a prompt-style
-marker without a trailing newline is missed. Complete lines that
-didn't match are discarded after each test to bound memory.
+The pattern matcher buffers across chunk boundaries and tests each
+line of the pending fragment on its own — complete lines without
+their break (`\n` or `\r`), then the trailing partial line — with
+terminal escapes (CSI, OSC, two-byte) removed from the tested text
+only; the streamed bytes keep them. So `^`/`$` anchor per line, a
+colourised banner matches its plain text, and neither a match split
+across two reads nor a prompt-style marker without a trailing newline
+is missed. Complete lines that didn't match are discarded after each
+test, and output with no break at all keeps only its last 64 KiB, to
+bound memory.
 
 A never-matching `readyWhen` on a child that keeps running would hang
 the run forever — bound the wait with `exec.timeout` (passed to
