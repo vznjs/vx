@@ -453,6 +453,22 @@ test is telling the truth.
       - Next from the same review: 3 (an import after a same-line comment
         is never scanned), 5 (`bunfig.toml` `[define]` is not in the key),
         6 (the purity deny-list reached `Function` without a denied word).
+951.  DONE (2026-09-27, an `--affected` review agent's lead 2). A repository
+      that asks git to hide its submodules (`diff.ignoreSubmodules`, or
+      `submodule.<name>.ignore` in `.gitmodules`) hid them from `--affected`
+      too: with `dirty`, an edit inside one selected nothing; with `all`,
+      so did a committed bump. The task's key moved each time, and
+      `cli.md` says a dirty or moved submodule is selected.
+      - Fix: the diff passes `--ignore-submodules=none`.
+      - Row: `affected.test.ts` › the nested-repository row now also sets
+        `diff.ignoreSubmodules all` and asks for the edit and the bump. Red
+        without the fix.
+      - Next from the same review: 1 (a `vx.workspace.*` edit, or one to a
+        file its plugins read such as `turbo.json`, re-keys every task and
+        selects nothing), 3 (a `workspaceFiles` path inside another project
+        is never asked about), 4 (a deleted package skips its dependents),
+        5 (a config's `fs` read is not followed), 6 (`--affected` is
+        appended after every `!` exclude).
 
 ## In flight
 
