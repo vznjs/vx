@@ -294,7 +294,7 @@ daemon, a Docker socket, a device, a VPN-only host.
 
 ```ts
 interface PersistentConfig {
-  readyWhen?: string // regex (as string); first matching output marks ready
+  readyWhen?: string // regex (as string); first matching line marks ready
 }
 ```
 
@@ -303,10 +303,13 @@ watcher, a daemon. The runner spawns the command but does NOT wait
 for it to exit. Instead it considers the task "ready":
 
 - Immediately on successful spawn when no `readyWhen` is given.
-- On the first stdout/stderr output that matches the `readyWhen`
-  regex string. The match also sees a trailing partial line, so
-  prompt-style banners without a newline (`printf 'Listening on
-:3000'`) count.
+- On the first stdout/stderr line that matches the `readyWhen`
+  regex string. Each line is tested on its own, without its line
+  break (`\n`, `\r\n` or a bare `\r`) and without terminal escapes
+  (colour, OSC titles), so `^` and `$` anchor to a line as you read
+  it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
+  The trailing partial line is tested too, so prompt-style banners
+  without a newline (`printf 'Listening on :3000'`) count.
 
 ```ts
 dev: {
