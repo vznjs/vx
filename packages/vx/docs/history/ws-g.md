@@ -49,3 +49,12 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
   importer; an env-document change moves every importer (red with the
   fold removed); a `---`-led one-document file keys as without it
   (control). All 161 text lockfiles of Turbo's corpus now parse.
+- **G-2.** Turbo 2.11's task `command` mapped (lead 2). An argv is the
+  task's command (each word quoted, from the package dir, no hooks) and
+  emits the task where the package has no script; `null` / `[]` is
+  Turbo's no-op node, its edges passed through; a toolchain map takes
+  `javascript` (alias `typescript`) or leaves the script. On turborepo
+  itself every JS task's dependency closure now matches `turbo run build
+test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
+  lead 4). Rows (`turbo-map-sweep.test.ts` › a task `command`): seven,
+  red without the fix; the `rust`-only map is the control.

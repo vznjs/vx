@@ -13,6 +13,7 @@
 import path from 'node:path'
 import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
+import { shellQuote } from '../nx-command.js'
 import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
@@ -51,6 +52,7 @@ const KNOWN_TASK_KEYS = new Set([
   'extends',
   'outputLogs',
   'dotEnv',
+  'command',
 ])
 
 // Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.
@@ -161,6 +163,47 @@ function describeScript(value: unknown): string {
   if (typeof value === 'string') return 'an empty string'
   if (Array.isArray(value)) return 'an array'
   return `a ${typeof value}`
+}
+
+/**
+ * Turbo 2.11's task `command` (`futureFlags.experimentalTaskCommand`),
+ * which Turbo holds authoritative over the package's script: an argv runs
+ * where the package has no script, and `null` or `[]` never runs, even
+ * where it has one. A per-toolchain map (`{ "javascript": [...] }`)
+ * applies its `javascript` entry (`typescript` is Turbo's alias for it)
+ * to a JS package, and without one the script runs as before. Reported
+ * as having no vx form, the key was dropped: on turborepo itself four
+ * tasks with no script were missing, and the edges to them with them
+ * (`docs#build` ran before the schema it copies).
+ *
+ * `undefined`: the script decides. `null`: no command. A string: the
+ * argv as one sh line, each word quoted, run from the package dir as
+ * Turbo runs it, with no `pre`/`post` hooks (it is not a script).
+ */
+function commandOverride(def: TurboTask | undefined): string | null | undefined {
+  if (def === undefined || !Object.hasOwn(def, 'command')) return undefined
+  const raw = def['command']
+  if (raw === null) return null
+  const map = raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+  const argv = map
+    ? ((raw as Record<string, unknown>)['javascript'] ??
+      (raw as Record<string, unknown>)['typescript'])
+    : raw
+  if (!isArgv(argv)) return undefined
+  return argv.length === 0 ? null : argv.map(shellQuote).join(' ')
+}
+
+function isArgv(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((w) => typeof w === 'string')
+}
+
+/** A `command` Turbo would refuse: neither an argv, `null`, nor a toolchain map of them. */
+function badCommand(def: TurboTask): boolean {
+  if (!Object.hasOwn(def, 'command')) return false
+  const raw = def['command']
+  if (raw === null || isArgv(raw)) return false
+  if (typeof raw !== 'object' || Array.isArray(raw)) return true
+  return Object.values(raw as Record<string, unknown>).some((v) => !isArgv(v))
 }
 
 /** Declared task names for a package: plain root keys, `pkg#name` keys
@@ -305,14 +348,37 @@ export async function mapTurboWorkspace(
     }
   }
 
+  const definitions = (meta: ProjectMeta) => {
+    const pkgTasks = pkgTasksByName.get(meta.name)
+    const defined = new Set(taskNamesFor(meta.name, rootTasks, pkgTasks))
+    const defFor = (name: string): TurboTask | undefined => {
+      if (!defined.has(name)) return undefined
+      const overlay = pkgTasks?.[name]
+      const def: TurboTask =
+        overlay?.extends === false
+          ? { ...overlay }
+          : // A root `pkg#task` REPLACES `task` for that package, as Turbo's
+            // `TurboJson::task` looks it up: merged field by field, the
+            // generic task's `inputs` narrowed a `pkg#task` that names none
+            // (Turbo's every file) and an edit outside them was a stale hit
+            // (item 935).
+            withOverlay({ ...(rootTasks[`${meta.name}#${name}`] ?? rootTasks[name]) }, overlay)
+      delete def.extends
+      return def
+    }
+    return { defined, defFor }
+  }
+
   // First pass: which tasks does each package emit? Needed so dependsOn
   // edges can be validated/dropped against the real emitted set.
   const emitted = new Map<string, Set<string>>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
+    const { defined, defFor } = definitions(meta)
     const set = new Set<string>()
-    for (const name of taskNamesFor(meta.name, rootTasks, pkgTasksByName.get(meta.name))) {
-      if (usableScript(scripts[name])) set.add(name)
+    for (const name of defined) {
+      const override = commandOverride(defFor(name))
+      if (override === undefined ? usableScript(scripts[name]) : override !== null) set.add(name)
     }
     emitted.set(meta.name, set)
   }
@@ -334,28 +400,14 @@ export async function mapTurboWorkspace(
   const projects: TurboMappedProject[] = []
   for (const meta of metas) {
     const scripts = packageScripts(meta)
-    const pkgTasks = pkgTasksByName.get(meta.name)
     const own = emitted.get(meta.name)!
-    const defined = new Set(taskNamesFor(meta.name, rootTasks, pkgTasks))
-    const defFor = (name: string): TurboTask | undefined => {
-      if (!defined.has(name)) return undefined
-      const overlay = pkgTasks?.[name]
-      const def: TurboTask =
-        overlay?.extends === false
-          ? { ...overlay }
-          : // A root `pkg#task` REPLACES `task` for that package, as Turbo's
-            // `TurboJson::task` looks it up: merged field by field, the
-            // generic task's `inputs` narrowed a `pkg#task` that names none
-            // (Turbo's every file) and an edit outside them was a stale hit
-            // (item 935).
-            withOverlay({ ...(rootTasks[`${meta.name}#${name}`] ?? rootTasks[name]) }, overlay)
-      delete def.extends
-      return def
-    }
+    const { defined, defFor } = definitions(meta)
     const tasks: TurboMappedTask[] = []
     for (const name of defined) {
+      const override = commandOverride(defFor(name))
+      if (override === null) continue
       const script = scripts[name]
-      if (!usableScript(script)) {
+      if (override === undefined && !usableScript(script)) {
         // The turbo task exists and so does the script KEY, but its value
         // can't become a command. Report it instead of emitting
         // `command: 42` / `command: null` — the first writes a config that
@@ -379,7 +431,7 @@ export async function mapTurboWorkspace(
         buildTask(
           name,
           defFor(name)!,
-          scriptCommand(name, script, scripts),
+          override ?? scriptCommand(name, script as string, scripts),
           own,
           defFor,
           emitted,
@@ -459,6 +511,11 @@ function buildTask(
     todos.push(
       `turbo key ${JSON.stringify(key)} (${JSON.stringify(value)}) has no vx equivalent — ` +
         'map it manually',
+    )
+  }
+  if (badCommand(def)) {
+    todos.push(
+      `turbo key "command" (${JSON.stringify(def['command'])}) is not an argv, null or a toolchain map of them — the script runs; write the command by hand`,
     )
   }
   const outputLogs = (def as { outputLogs?: unknown }).outputLogs
