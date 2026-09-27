@@ -53,8 +53,8 @@ has to live outside it. `spawnGuarded` wraps each task spawn and lists
 its group with the guard: one `sh` per vx process (argv0 `vx-group-guard`), its own group,
 reading a pipe on its fd 3 whose write end vx holds. The spawned child
 gets a copy of that end and lists itself: its shell writes `+$$` first
-and closes the copy (`guardLine`; a program that is not a shell, strace
-or the port bridge's socat, is `exec`'d after it), and vx writes
+and closes the copy (`guardLine`; a program that is not a shell, the
+port bridge's socat, is `exec`'d after it), and vx writes
 `-<pgid>` (`releaseGroup`) once it is done with the task, beside the
 `liveChildren` entry. When vx and every child that has not yet listed
 itself have closed their ends, the guard's read ends, and it SIGKILLs every group
@@ -177,8 +177,8 @@ started at load, after the spawn, or once per spawn. A terminal's Ctrl-C
 (SIGINT to vx's group) leaves the guard alive for a `kill -9` in the
 teardown grace, and the one-shot row's child ignores SIGTERM, so a
 guard that sent it fails. In `sandbox-runtime.unsafe.test.ts`, "a traced
-sandboxed one-shot task’s children die with vx" (strace outlived vx
-before the guard), and the unsandboxed control has the backgrounded
+sandboxed one-shot task’s children die with vx" (strace, then bwrap's
+parent, outlived vx before the guard; since B-11 strace runs inside), and the unsandboxed control has the backgrounded
 child die and the `setsid` one live. In `keep-alive.test.ts`, "a kill -9 in
 a Ctrl-C’s grace…" and "a kill -9 in the persistent shutdown’s grace…"
 and "a never-ready server a dead shell left goes with a vx that exits

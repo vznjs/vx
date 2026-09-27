@@ -1,10 +1,12 @@
-// strace's own failure ending a sandboxed task (STATUS Next 24). On Linux a
-// sandboxed task runs under strace, whose exit is the task's, and strace
-// failing on its own (`ptrace(PTRACE_LISTEN,…): Input/output error`, after a
-// docs build had finished) turned green CI red five times. The attempt that
-// strace's own error ends is run once more (item 1031). A fake `strace`
-// first on PATH plays CI's: the first call traces the task to the end, then
-// prints that error and exits 1.
+// strace's own failure in a sandboxed task (STATUS Next 24). On Linux a
+// sandboxed task runs under strace, and strace failing on its own
+// (`ptrace(PTRACE_LISTEN,…): Input/output error`, after a docs build had
+// finished) turned green CI red five times. The attempt strace's own error
+// shows up in is run once more (item 1031); since B-11 strace runs detached
+// and its failure leaves the task's exit alone, so the error line, not the
+// exit, says the trace stopped short. A fake `strace` first on PATH plays
+// CI's: the first call traces the task to the end, then prints that error
+// and exits 1 (or, with `zero`, the task's own 0).
 
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
@@ -31,12 +33,13 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
         [
           '#!/bin/sh',
           `[ "$1" = "--version" ] && exec ${realStrace} "$@"`,
-          `n=$(cat ${dir}/count 2>/dev/null || echo 0)`,
+          `n=$(cat ${dir}/count 2>/dev/null); n=\${n:-0}`,
           `echo $((n+1)) > ${dir}/count`,
           `${realStrace} "$@"`,
           'rc=$?',
           `if [ "$n" = 0 ] && [ ! -e ${dir}/calm ]; then`,
           '  echo "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error" >&2',
+          `  [ -e ${dir}/zero ] && exit $rc`,
           '  exit 1',
           'fi',
           'exit $rc',
@@ -64,7 +67,8 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
         baseDenyRead: [],
         reportWithin: dir,
         reportLinked: [],
-        config: resolveSandboxConfig({}, dir),
+        // The fake runs inside the sandbox, where strace now runs (B-11).
+        config: resolveSandboxConfig({ allow: { write: ['count'] } }, dir),
         onStderr: (s) => void (streamed += s),
       }).then(async (r) => ({
         exitCode: r.exitCode,
@@ -75,6 +79,17 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
     }
 
     it('is run once more, and the second attempt is its verdict', async () => {
+      expect(await run('echo ran')).toEqual({
+        exitCode: 0,
+        stdout: 'ran\nran\n',
+        streamed:
+          "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n[vx] the sandbox's tracer (strace) failed on its own; running the task again\n",
+        calls: 2,
+      })
+    })
+
+    it("strace's own word is run once more when the task's exit is 0", async () => {
+      await writeFile(path.join(dir, 'zero'), '')
       expect(await run('echo ran')).toEqual({
         exitCode: 0,
         stdout: 'ran\nran\n',

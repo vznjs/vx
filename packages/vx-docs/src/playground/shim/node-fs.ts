@@ -48,6 +48,7 @@ export const chmodSync = notInPlayground('chmodSync')
 export const mkdtempSync = notInPlayground('mkdtempSync')
 export const appendFileSync = notInPlayground('appendFileSync')
 export const utimesSync = notInPlayground('utimesSync')
+export const openSync = notInPlayground('openSync')
 export const watch = notInPlayground('watch')
 export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 }
 export const promises = {}

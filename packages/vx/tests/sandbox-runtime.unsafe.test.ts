@@ -3732,25 +3732,24 @@ describe.skipIf(!available || process.platform !== 'linux')(
  * set, the timeout, the capture flags) could each go with the suite green.
  */
 /**
- * The tracer's argv among a spy's `Bun.spawn` calls: spawned as is, or
- * `exec`'d by the shell that first lists its group with the guard (B-9),
- * whose words `shellQuote` wrote.
+ * The tracer's argv and the task's tag, from the command a spy saw handed to
+ * SRT: strace runs inside the sandbox, `exec`'d by the command's shell (B-11),
+ * its words written by `shellQuote`.
  */
-function tracerArgv(calls: ReadonlyArray<ReadonlyArray<unknown>>): string[] | undefined {
-  for (const [cmd] of calls) {
-    if (!Array.isArray(cmd)) continue
-    let argv = cmd as string[]
-    if (argv[1] === '-c' && typeof argv[2] === 'string' && argv[2].includes('; exec ')) {
-      const words = argv[2]
-        .slice(argv[2].lastIndexOf('; exec ') + 7)
-        .match(/'(?:[^']|'\\'')*'|\S+/g)
-      argv = (words ?? []).map((w) =>
-        w.startsWith("'") ? w.slice(1, -1).replaceAll("'\\''", "'") : w,
-      )
-    }
-    if ((argv[0] ?? '').endsWith('/strace') && argv.includes('-o')) return argv
+function traced(calls: ReadonlyArray<ReadonlyArray<unknown>>): {
+  argv: string[] | undefined
+  tag: string | undefined
+} {
+  const last = calls.at(-1)?.[0]
+  const inner = typeof last === 'string' ? last : ''
+  const words = (inner.match(/'(?:[^']|'\\'')*'|\S+/g) ?? []).map((w) =>
+    w.startsWith("'") ? w.slice(1, -1).replaceAll("'\\''", "'") : w,
+  )
+  const at = words.findIndex((w) => w.endsWith('/strace'))
+  return {
+    argv: at < 0 ? undefined : words.slice(at),
+    tag: /^: 'vx-([^']+)'/.exec(inner)?.[1],
   }
-  return undefined
 }
 
 describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, driven directly', () => {
@@ -3895,14 +3894,24 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   it('traces openat only, through the seccomp filter', async () => {
     // The flag is the difference between tracing one syscall and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.
-    const spy = spyOn(Bun, 'spawn')
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox')
     try {
       await runSandboxed(args('true'))
-      // `strace --version` is the availability probe; the trace carries `-o`.
-      // The tracer is spawned by its absolute path (util/which.ts).
-      const argv = tracerArgv(spy.mock.calls)
+      // The tracer runs by its absolute path (util/which.ts), detached
+      // (`-DD`) so a backgrounded grandchild is not a tracee it waits for.
+      const { argv } = traced(spy.mock.calls)
       expect(argv?.[0]).toBe(Bun.which('strace')!)
-      expect(argv?.slice(1, 5)).toEqual(['-f', '--seccomp-bpf', '-e', 'trace=openat'])
+      expect(argv?.slice(1, 10)).toEqual([
+        '-DD',
+        '-f',
+        '--seccomp-bpf',
+        '-qq',
+        '-e',
+        'trace=openat',
+        '-o',
+        '/dev/fd/5',
+        '--',
+      ])
     } finally {
       spy.mockRestore()
     }
@@ -3910,13 +3919,13 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
 
   it('removes its trace log, and reports no usage that is not the task’s', async () => {
     // The tmpdir is shared with every process on the box, so the row
-    // follows this task's own log (the path its tracer was handed), not a
-    // listing another suite's sandbox can change mid-run.
-    const spy = spyOn(Bun, 'spawn')
+    // follows this task's own log (the one its tag names), not a listing
+    // another suite's sandbox can change mid-run.
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox')
     const during: boolean[] = []
     const logOf = (): string | undefined => {
-      const argv = tracerArgv(spy.mock.calls)
-      return argv?.[argv.indexOf('-o') + 1]
+      const { tag } = traced(spy.mock.calls)
+      return tag === undefined ? undefined : path.join(os.tmpdir(), `vx-strace-${tag}.log`)
     }
     try {
       const r = await runSandboxed(
