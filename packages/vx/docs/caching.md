@@ -981,7 +981,14 @@ reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped. Entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
-poisoned artifact cannot smuggle one onto disk. On the save side a
+poisoned artifact cannot smuggle one onto disk. Nor can it name a file
+the task did not declare: a remote artifact is ingested only when every
+file it carries matches the task's `cache.outputs` (the lookup passes
+them, `CacheGetContext.outputs`), and never when it holds one path as a
+file and a directory at once. Either used to reach the tree, an input
+overwritten or a `.git/hooks` file planted under a green
+`cache-hit-remote`, or a restore that failed every later run from the
+local copy (item 942); now the read is a miss and the task runs. On the save side a
 **symlinked output** is captured as its target's bytes and comes back
 as a regular file (a hit that finds the task's own link still current
 leaves it); a link to a directory, or a dangling one, has no bytes to

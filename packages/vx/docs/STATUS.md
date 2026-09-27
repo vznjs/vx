@@ -261,6 +261,38 @@ test is telling the truth.
         either order, plus an edge making the pair additive. All are red
         without the fix. The controls (a sibling subtree; a one-level
         glob beside a subtree) pass both ways.
+942.  DONE (2026-09-27, a remote-cache-seam review agent's leads 1 and
+      2). A remote artifact is untrusted bytes, and the restore
+      materialised whatever names it carried.
+      - Poisoned artifact: one naming `outputs/src/in.txt`,
+        `workspace-outputs/.git/hooks/post-commit` and another project's
+        file overwrote the input, planted the hook and wrote the file, all
+        under a green `cache-hit-remote`.
+      - Conflicting names: one holding `out.txt` as a file and as a
+        directory failed the run with a message blaming the tree. It kept
+        failing every run from the local copy after the remote was gone.
+      - Ingest is the boundary now, and each case is refused there. The
+        remote read becomes a miss and the task runs:
+        - a file not in the task's declared `cache.outputs`, checked
+          against the lookup's new `CacheGetContext.outputs` from
+          `getContext` (in `remote-prefetch.ts`);
+        - a path held as both a file and a directory.
+      - Two lookup sites ask a remote, the prefetch and the task's own
+        read, and both pass the declared outputs. The short-circuit probe
+        runs only without a remote layer, where the context goes unread.
+      - `caching.md` says so.
+      - Rows: `remote-artifact-names.test.ts`. The poisoned and the
+        conflicting artifact are each red without the fix; a row spies
+        both lookup sites; the control, a clean remote artifact, is a
+        remote hit. Removing each of the three parts (the name check, the
+        file-and-directory check, the forwarding into ingest) reddens a
+        row, and so does reverting either site.
+      - Dropped as unheld: a restore-time "unrecorded entry" check (only a
+        tampered local file reaches it) and a duplicate-name check (a
+        duplicate rewrites one declared file).
+      - Next from the same review: 943, an artifact is not bound to the
+        key it was stored under, so a plugin's key mix-up replays another
+        task's bytes. 944, a layer's `durationMs` is not sanitised.
 
 ## In flight
 

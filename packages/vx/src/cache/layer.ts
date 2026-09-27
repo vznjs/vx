@@ -387,6 +387,20 @@ export const FILE_HASH_RACY_MS = 50
 export interface CacheGetContext {
   taskId: string
   command: string
+  /**
+   * The task's declared `cache.outputs`. A remote artifact is ingested
+   * only when every file it carries is one of them: bytes off the network
+   * named `outputs/src/in.txt` or `workspace-outputs/.git/hooks/…` wrote
+   * an input and a git hook on a green `cache-hit-remote` (item 942).
+   * Absent, the names are not checked.
+   */
+  outputs?: DeclaredOutputs
+}
+
+/** A task's declared outputs, as its config spells them. */
+export interface DeclaredOutputs {
+  files: readonly string[]
+  workspaceFiles: readonly string[]
 }
 
 /** Metadata supplied at ingest time — values the artifact does not carry. */
@@ -403,6 +417,8 @@ export interface IngestMeta {
    * miss/save, so a cache hit never reaches here.
    */
   inputComponents?: readonly TaskInputRow[]
+  /** See `CacheGetContext.outputs`: the names the artifact may carry. */
+  outputs?: DeclaredOutputs
 }
 
 /**
