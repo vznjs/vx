@@ -292,7 +292,13 @@ export function pollWatcher(
         }
         if (!e.isFile()) continue
         try {
-          current.set(childRel, fs.statSync(path.join(abs, e.name)).mtimeMs)
+          // The later of the two clocks, as `modifiedBefore` reads them: a
+          // replacement that carries the old file's mtime (`cp -p`, `rsync
+          // -a`, `mv` of a file stamped the same) moved nothing under mtime
+          // alone, and the poller never ran it where the native watcher did.
+          // A rename or a write moves ctime, and no process can set it.
+          const st = fs.statSync(path.join(abs, e.name))
+          current.set(childRel, Math.max(st.mtimeMs, st.ctimeMs))
         } catch {
           // raced with a delete; the next scan settles it
         }

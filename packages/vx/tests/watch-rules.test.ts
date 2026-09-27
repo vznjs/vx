@@ -6,8 +6,8 @@
 // time could never help), and the config-worker deadline that exists because a
 // worker the OS kills fires no `error` event and its caller waits forever.
 
-import { mkdir, mkdtemp, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
-import fs, { chmodSync, existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rename, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
+import fs, { chmodSync, existsSync, statSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
@@ -506,6 +506,35 @@ describe('pollWatcher', () => {
   // exists for (a macOS sandbox, a network mount, a container bind) while
   // the native watcher delivered them — two watchers disagreeing about
   // what an edit is.
+  // Item 945 taught `modifiedBefore` that `cp -p`, `rsync -a` and `mv` carry
+  // a file's OLD mtime; the poller still compared mtime alone, so such a
+  // replacement was no edit to it while the native watcher saw the rename.
+  it('sees a replacement that carries the old mtime', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-mtime-'))
+    try {
+      const target = path.join(dir, 'a.txt')
+      await writeFile(target, 'one\n')
+      const seen: string[] = []
+      const w = pollWatcher(dir, true, (f) => seen.push(f), 20)
+      try {
+        await Bun.sleep(60)
+        const next = path.join(dir, 'b.tmp')
+        await writeFile(next, 'two, different\n')
+        // `touch -r` copies the nanoseconds, as `cp -p` does; a JS utimes
+        // rounds them and would move the mtime by itself.
+        expect(Bun.spawnSync(['touch', '-r', target, next]).exitCode).toBe(0)
+        expect(statSync(next).mtimeMs).toBe(statSync(target).mtimeMs)
+        await rename(next, target)
+        await settle(seen, 'a.txt')
+        expect(seen).toContain('a.txt')
+      } finally {
+        w.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('descends into an UNDECLARED dist, and skips one a task declares', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-dist-'))
     try {
