@@ -857,8 +857,13 @@ next?".
     through vx's sandbox (bwrap under strace, as CI runs it) was clean
     5 of 5 on this box: the trigger is the CI runner's, not reproduced.
     Third hit (CI on #997), the same place; item 925 moved the file to
-    the unsandboxed suite. This entry closes if no shard ends this way
-    again.
+    the unsandboxed suite. Fourth hit (CI on #1075, 2026-09-27):
+    `@vzn/vx-docs#build`, no shard and no flood, so the trigger was not
+    that file. The build had finished (its last lines were Pagefind's
+    index and astro's closing warning) when strace printed the error and
+    the task exited 1: the work was done and the verdict was strace's.
+    Still unreproduced here; the fix wants a row that reaches strace's
+    own failure before it ships.
 25. **A key-only task for `nx()`'s `nx-input:<name>` twins (item 910).**
     A twin runs `true` so that its key, the project's `^` input, folds
     into its dependants. At 300 projects the 598 twins cost 97 ms of a
