@@ -653,6 +653,19 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         environment can hold is refused in every list" gains the four
         wildcard shapes, red without the change. `A_B` stays the control.
 
+1091. DONE (2026-09-27, env review #4). `key-fold.ts` says `cache.db`
+      never holds a plaintext secret at rest, and `entry_inputs` keeps a
+      digest of the `--` args for that reason. But `runs.forward_args`
+      stored them as written: `vx run a#fa -- --token=FWDSEKRET42` left
+      the token in `cache.db`. Nothing reads the column but for whether
+      the args changed, so it now holds `xxh3hex` of the JSON, the same
+      digest rule. No `SCHEMA_VERSION` bump: the column's type and name
+      stand, and an older row's plaintext ages out with the 30-day
+      history. architecture.md and caching.md say so.
+      - Row: `run-history-columns.test.ts` reads the digest back, and
+        neither `cache.db` nor its WAL contains `--mode`. That is red
+        without the change; the file exists, checked first.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

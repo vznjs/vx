@@ -7,11 +7,13 @@
 // field here carries a value no other field has, so any of those reads back
 // wrong.
 import { Database } from 'bun:sqlite'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { xxh3hex } from '../src/util/index.js'
 
 // Now-relative: `close()` prunes history older than 30 days (retention).
 const T = Date.now()
@@ -98,6 +100,13 @@ describe('the run history stores each field in its own column', () => {
     cache.recordRunBundle({ runs: [], invocation: { ...invocation, command: 'again' } })
     cache.close()
 
+    // Item 1091: args after `--` were stored as written, a `--token=…` among
+    // them; the index holds their digest and never the text.
+    expect(existsSync(path.join(dir, 'cache', 'cache.db'))).toBe(true)
+    for (const f of ['cache.db', 'cache.db-wal']) {
+      const file = path.join(dir, 'cache', f)
+      if (existsSync(file)) expect(readFileSync(file, 'latin1')).not.toContain('--mode')
+    }
     const db = new Database(path.join(dir, 'cache', 'cache.db'), { readonly: true })
     try {
       const runs = db
@@ -117,7 +126,7 @@ describe('the run history stores each field in its own column', () => {
           status: 'failed',
           exit_code: 3,
           duration_ms: 11,
-          forward_args: '["--mode","ci"]',
+          forward_args: xxh3hex('["--mode","ci"]'),
           started_at: T + 1,
           ended_at: T + 2,
           run_id: 'run-1',
