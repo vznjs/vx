@@ -571,6 +571,12 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         whose tasks name it in dependsOn", red without the change. Its
         control is a plain edit, which never asks for the edges.
 
+1086. SUPERSEDED (2026-09-27) by D-1 (`docs/history/ws-d.md`), which
+      landed first: a new nested member's parent is selected when the
+      base lacked its manifest or held it nameless. That closes the
+      --affected review; its four other findings were items 1079, 1084
+      and 1085.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
