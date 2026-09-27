@@ -39,6 +39,8 @@ interface TurboJson {
   globalPassThroughEnv?: string[]
   /** Turbo 1.10–1.13: root-relative `.env` files every task hashes. */
   globalDotEnv?: string[]
+  /** A package config's parents: `//` (the root) first, then packages by name. */
+  extends?: string[]
 }
 
 const KNOWN_TASK_KEYS = new Set([
@@ -208,23 +210,124 @@ function badCommand(def: TurboTask): boolean {
 
 /** Declared task names for a package: plain root keys, `pkg#name` keys
  * for this package, and per-package turbo.json keys — in that order. */
+const ROOT = '//'
+
+/**
+ * A package's turbo.json files, root first and its own last, as Turbo's
+ * `turbo_json_chain` orders them: a package config may extend another
+ * package's (`"extends": ["//", "shared"]`, read by Turbo 2.11, refused by 2.5), and read as
+ * root-plus-own the shared file's tasks and fields were gone (a task it
+ * adds not emitted, an `inputs` it widens not keyed: a stale hit).
+ */
+function turboChain(pkgName: string, files: ReadonlyMap<string, TurboJson>): TurboJson[] {
+  const out: TurboJson[] = []
+  const seen = new Set<string>()
+  const stack: { name: string; path: string[]; required: boolean }[] = [
+    { name: pkgName, path: [], required: false },
+  ]
+  while (stack.length > 0) {
+    const { name, path, required } = stack.pop()!
+    if (path.includes(name)) {
+      throw new UserError(`turbo.json extends form a cycle: ${[...path, name].join(' → ')}`)
+    }
+    if (seen.has(name)) continue
+    const cfg = files.get(name)
+    if (cfg === undefined) {
+      if (required) {
+        throw new UserError(`turbo.json of ${path.at(-1)} extends ${name}, which has no turbo.json`)
+      }
+      if (out.length === 0) stack.push({ name: ROOT, path, required: false })
+      continue
+    }
+    out.push(cfg)
+    seen.add(name)
+    if (name === ROOT) continue
+    for (const parent of parentsOf(cfg)) {
+      stack.push({ name: parent, path: [...path, name], required: true })
+    }
+  }
+  return out.reverse()
+}
+
+/** A package config's `extends`; one that names none extends the root, as Turbo 2.0–2.6 read it. */
+function parentsOf(cfg: TurboJson): string[] {
+  return Array.isArray(cfg.extends) && cfg.extends.length > 0 ? cfg.extends : [ROOT]
+}
+
+/**
+ * Whether `name` is a task of `pkgName`, as Turbo's
+ * `has_task_definition_in_run` decides: the package's own entry, else the
+ * first parent in `extends` order that has one; an `extends: false` with
+ * nothing else is the opt-out, and it holds for every package below it.
+ */
+function taskDefined(
+  pkgName: string,
+  name: string,
+  files: ReadonlyMap<string, TurboJson>,
+  at: string = pkgName,
+  seen: Set<string> = new Set(),
+): 'found' | 'excluded' | 'none' {
+  if (seen.has(at)) return 'none'
+  seen.add(at)
+  const cfg = files.get(at)
+  if (cfg === undefined) return at === ROOT ? 'none' : taskDefined(pkgName, name, files, ROOT, seen)
+  const tasks = tasksOf(cfg)
+  const def = tasks[`${pkgName}#${name}`] ?? tasks[name]
+  if (def !== undefined) return optedOut(def) ? 'excluded' : 'found'
+  if (at === ROOT) return 'none'
+  for (const parent of parentsOf(cfg)) {
+    const r = taskDefined(pkgName, name, files, parent, seen)
+    if (r !== 'none') return r
+  }
+  return 'none'
+}
+
+/** Every task `pkgName` has, in the order its files name them. */
 function taskNamesFor(
   pkgName: string,
-  rootTasks: Record<string, TurboTask>,
-  pkgTasks: Record<string, TurboTask> | undefined,
+  chain: readonly TurboJson[],
+  files: ReadonlyMap<string, TurboJson>,
 ): string[] {
-  const names: string[] = []
-  const push = (n: string): void => {
-    if (!names.includes(n)) names.push(n)
+  const names = new Set<string>()
+  for (const cfg of chain) {
+    for (const key of Object.keys(tasksOf(cfg))) {
+      if (!key.includes('#')) names.add(key)
+      else if (key.startsWith(`${pkgName}#`)) names.add(key.slice(pkgName.length + 1))
+    }
   }
-  for (const key of Object.keys(rootTasks)) {
-    if (!key.includes('#')) push(key)
-    else if (key.startsWith(`${pkgName}#`)) push(key.slice(pkgName.length + 1))
+  return [...names].filter((n) => taskDefined(pkgName, n, files) === 'found')
+}
+
+/**
+ * The task's definition along the chain, as Turbo's
+ * `resolve_task_definitions_from_chain` folds it: the root's (a root
+ * `pkg#task` REPLACES `task` for that package, as Turbo's `TurboJson::task`
+ * looks it up: merged field by field, the generic task's `inputs` narrowed
+ * a `pkg#task` that names none and an edit outside them was a stale hit,
+ * item 935), then each later file's overlaid on it. The file nearest the
+ * package that says `extends: false` starts afresh: its own fields, if
+ * any, then the files after it.
+ */
+function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]): TurboTask {
+  const defs = chain.map((cfg, i) => {
+    const tasks = tasksOf(cfg)
+    return i === 0 ? (tasks[`${pkgName}#${name}`] ?? tasks[name]) : tasks[name]
+  })
+  let from = 0
+  for (let i = defs.length - 1; i > 0; i--) {
+    if (defs[i]?.extends === false) {
+      from = i
+      break
+    }
   }
-  for (const key of Object.keys(pkgTasks ?? {})) {
-    if (!key.includes('#')) push(key)
+  let def: TurboTask = {}
+  for (const d of defs.slice(from)) {
+    if (d === undefined) continue
+    const own: TurboTask = { ...d }
+    delete own.extends
+    def = withOverlay(def, own)
   }
-  return names.filter((n) => !optedOut(pkgTasks?.[n]))
+  return def
 }
 
 /**
@@ -334,12 +437,10 @@ export async function mapTurboWorkspace(
     pass: envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
   }
 
-  const pkgTasksByName = new Map<string, Record<string, TurboTask>>()
+  const files = new Map<string, TurboJson>([[ROOT, rootCfg]])
   for (const meta of metas) {
     const file = await turboConfigFile(meta.dir)
-    if (file !== null) {
-      pkgTasksByName.set(meta.name, tasksOf(await readTurboJson(file, root)))
-    }
+    if (file !== null) files.set(meta.name, await readTurboJson(file, root))
   }
 
   for (const key of Object.keys(rootTasks)) {
@@ -349,23 +450,10 @@ export async function mapTurboWorkspace(
   }
 
   const definitions = (meta: ProjectMeta) => {
-    const pkgTasks = pkgTasksByName.get(meta.name)
-    const defined = new Set(taskNamesFor(meta.name, rootTasks, pkgTasks))
-    const defFor = (name: string): TurboTask | undefined => {
-      if (!defined.has(name)) return undefined
-      const overlay = pkgTasks?.[name]
-      const def: TurboTask =
-        overlay?.extends === false
-          ? { ...overlay }
-          : // A root `pkg#task` REPLACES `task` for that package, as Turbo's
-            // `TurboJson::task` looks it up: merged field by field, the
-            // generic task's `inputs` narrowed a `pkg#task` that names none
-            // (Turbo's every file) and an edit outside them was a stale hit
-            // (item 935).
-            withOverlay({ ...(rootTasks[`${meta.name}#${name}`] ?? rootTasks[name]) }, overlay)
-      delete def.extends
-      return def
-    }
+    const chain = turboChain(meta.name, files)
+    const defined = new Set(taskNamesFor(meta.name, chain, files))
+    const defFor = (name: string): TurboTask | undefined =>
+      defined.has(name) ? definitionOf(meta.name, name, chain) : undefined
     return { defined, defFor }
   }
 
