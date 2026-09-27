@@ -35,8 +35,11 @@ case it is.
 - `whyDidThisRerun` compares a task's row in `runId` with its
   immediately previous row: `hashChanged` when the keys differ; when
   they do not, the note says whether the run was served from cache,
-  re-executed on the same key (`--no-cache` / `--force`), or recorded
-  no cache outcome at all.
+  recorded no cache outcome at all, or re-executed on the same key — and
+  why, from what the index holds: the previous run on the key failed
+  (saving nothing), the invocation's `cache_policy` read no cache, or
+  the key's entry was created by this run (none was there when it ran).
+  Only when none applies does it name `--no-cache` / `--force` (item 1009).
 - `cacheKeyDiff` is the moat: it resolves both runs to their task
   hashes and full-outer-joins the two `entry_inputs` fingerprint sets
   over `(kind, name)` — `changed` / `added` / `removed`, unchanged ones

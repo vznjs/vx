@@ -243,7 +243,7 @@ describe('the configure guide quotes what vx why says', () => {
     const notes = [
       ...verdicts.matchAll(/'((?:cache key|this task declares no `cache` block)[^']*)'/g),
     ].map((m) => m[1]!)
-    expect(notes.length).toBe(5)
+    expect(notes.length).toBe(8)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)

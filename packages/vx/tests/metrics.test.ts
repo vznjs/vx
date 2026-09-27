@@ -891,6 +891,75 @@ describe('whyDidThisRerunQuery', () => {
     })
   })
 
+  // Every re-execution on an unchanged key blamed --no-cache / --force,
+  // including a key whose previous run had failed and one whose entry had
+  // been pruned, when the invocation recorded a full policy (item 1009).
+  it('names why an unchanged key re-executed, from the evidence the index holds', () => {
+    const verdict = (setup: {
+      prevStatus?: RunRecord['status']
+      policy?: string
+      entryAt?: number
+    }): string =>
+      (() => {
+        let note = ''
+        withCache((cache) => {
+          cache.recordRunBundle({
+            runs: [
+              mkRun({
+                hash: 'h',
+                project: 'pkg',
+                task: 'test',
+                runId: 'r-1',
+                startedAt: 1000,
+                status: setup.prevStatus ?? 'success',
+              }),
+            ],
+            invocation: mkInvocation({ runId: 'r-1', startedAt: 1000 }),
+          })
+          cache.recordRunBundle({
+            runs: [
+              mkRun({ hash: 'h', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
+            ],
+            invocation: mkInvocation({
+              runId: 'r-2',
+              startedAt: 2000,
+              cachePolicy: setup.policy ?? 'lR,lW',
+            }),
+          })
+          if (setup.entryAt !== undefined) {
+            cache
+              .dbHandle()
+              .query(
+                `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+                 VALUES ('h', 'pkg', 'test', 'cmd', 0, 0, 0, '', ?, ?)`,
+              )
+              .run(setup.entryAt, setup.entryAt)
+          }
+          note = whyDidThisRerunQuery(cache.dbHandle(), 'r-2', 'pkg#test').note
+        })
+        return note
+      })()
+    expect(verdict({ prevStatus: 'failed', entryAt: 2500 })).toBe(
+      'cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit',
+    )
+    expect(verdict({ policy: 'lW', entryAt: 500 })).toBe(
+      'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)',
+    )
+    expect(verdict({ entryAt: 2500 })).toBe(
+      'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one',
+    )
+    // CONTROL: a read policy, an entry older than the run, a sound previous
+    // run — nothing in the index explains it, and the old text stands.
+    expect(verdict({ entryAt: 500 })).toBe(
+      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
+    )
+    // No entry at all (a run recorded without one): the old text, not a
+    // crash on `get`'s null.
+    expect(verdict({})).toBe(
+      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
+    )
+  })
+
   it('returns found=false for an unknown runId', () => {
     withCache((cache) => {
       const result = whyDidThisRerunQuery(cache.dbHandle(), 'r-x', 'pkg#test')
