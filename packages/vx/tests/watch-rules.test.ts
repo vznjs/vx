@@ -252,6 +252,8 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['vx.workspace.ts', true], // the one root file that shapes a run without being an input
     ['vx.workspace.mjs', true],
     ['nested/vx.workspace.ts', false],
+    ['package.json', true], // its `workspaces` list is the package globs (item 1018)
+    ['nested/package.json', false],
   ])('%s → %s', (rel, kept) => {
     expect({ rel, kept: matters(rel.split('/').join(path.sep)) }).toEqual({ rel, kept })
   })

@@ -324,4 +324,57 @@ describe('vx watch loop (e2e): the watched set', () => {
     await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":2}\n')
     await until(async () => (await executions(f.log)) === 3, 'the cycle after the root file edit')
   }, 40_000)
+
+  // Item 1018: the glob list itself. A root `package.json` was no event
+  // outside a root project, `pnpm-workspace.yaml` was a cycle that never
+  // re-read the set, and the member bases were the ones at start.
+  const widensTheGlobs = async (edit: () => Promise<void>): Promise<void> => {
+    const app = (name: string) => path.join(f.root, 'apps', name)
+    await mkdir(path.join(app('c'), 'src'), { recursive: true })
+    await writeFile(path.join(app('c'), 'package.json'), '{"name":"c","version":"0.0.0"}')
+    await writeFile(path.join(app('c'), 'vx.config.mjs'), buildLogging('c'))
+    await writeFile(path.join(app('c'), 'src', 'c.txt'), 'c1\n')
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'app alone watched')
+    const tags = async () =>
+      (await readFile(f.log, 'utf8')).split('\n').filter((l) => l === 'c' || l === 'd')
+    expect(await tags()).toEqual([])
+
+    await edit()
+    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'c joins the set')
+    await Bun.sleep(SETTLE_MS)
+    expect(await tags()).toEqual(['c'])
+
+    await writeFile(path.join(app('c'), 'src', 'c.txt'), 'c2\n')
+    await until(async () => (await tags()).length === 2, 'the cycle after an edit in c')
+    expect(await readFile(path.join(app('c'), 'dist', 'out.txt'), 'utf8')).toBe('c2\n')
+
+    // `apps/` is a member base now: a package arriving there is a cycle.
+    await mkdir(path.join(app('d'), 'src'), { recursive: true })
+    await writeFile(path.join(app('d'), 'vx.config.mjs'), buildLogging('d'))
+    await writeFile(path.join(app('d'), 'src', 'd.txt'), 'd1\n')
+    await writeFile(path.join(app('d'), 'package.json'), '{"name":"d","version":"0.0.0"}')
+    await until(() => w.out().includes('vx watch: watching 3 project(s)'), 'd joins the set')
+    await until(async () => (await tags()).includes('d'), 'the cycle that runs d')
+  }
+
+  it('a pnpm-workspace.yaml that adds a glob watches the packages it names', async () => {
+    await widensTheGlobs(() =>
+      writeFile(
+        path.join(f.root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "packages/*"\n  - "apps/*"\n',
+      ),
+    )
+  }, 40_000)
+
+  it("a root package.json's workspaces that add a glob watch the packages they name", async () => {
+    await rm(path.join(f.root, 'pnpm-workspace.yaml'))
+    const manifest = path.join(f.root, 'package.json')
+    const root = JSON.parse(await readFile(manifest, 'utf8')) as Record<string, unknown>
+    await writeFile(manifest, JSON.stringify({ ...root, workspaces: ['packages/*'] }))
+    await widensTheGlobs(() =>
+      writeFile(manifest, JSON.stringify({ ...root, workspaces: ['packages/*', 'apps/*'] })),
+    )
+  }, 40_000)
 })
