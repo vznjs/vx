@@ -25,7 +25,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { unlinkSync } from 'node:fs'
+import { mkdirSync, rmSync, unlinkSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig } from '../config.js'
 import {
@@ -312,6 +312,34 @@ function unlinkOnExit(file: string): void {
         // never written, or gone
       }
     }
+  })
+}
+
+/**
+ * A task's own temp directory, `TMPDIR` inside its sandbox. SRT points
+ * every sandboxed task at ONE host directory (`sandboxTmpdir`), bound
+ * read-write and kept across runs, so a file one task wrote there was
+ * another's undeclared input: a cached reader replayed the first value it
+ * saw after the writer changed it (item 965). Created for the task, removed
+ * with its bridges at its end (and at exit, as the logs are); a `kill -9`
+ * leaves it. No sweep by the owner's pid: a nested vx sees another pid
+ * namespace, where the outer vx's pid reads as dead, and a sweep there
+ * removed the outer task's own TMPDIR mid-run (the gate, item 965). The shared
+ * directory itself stays writable, since SRT's policy grants it: a command
+ * that names it outright still reaches it.
+ */
+function taskTmpdir(tag: string): string {
+  return path.join(sandboxTmpdir(), `vx-task-${process.pid}-${tag}`)
+}
+
+const liveTaskTmpdirs = new Set<string>()
+let tmpdirExitHooked = false
+function trackTaskTmpdir(dir: string): void {
+  liveTaskTmpdirs.add(dir)
+  if (tmpdirExitHooked) return
+  tmpdirExitHooked = true
+  process.on('exit', () => {
+    for (const d of liveTaskTmpdirs) rmSync(d, { recursive: true, force: true })
   })
 }
 
@@ -633,7 +661,12 @@ export async function wrapSandboxedCommand(
       : args.command
 
   const tag = xxh3hex(`${args.cwd}|${userCommand}|${process.hrtime.bigint()}`).slice(0, 16)
-  const taggedCommand = `: 'vx-${tag}'; ${userCommand}`
+  const tmp = taskTmpdir(tag)
+  mkdirSync(tmp, { recursive: true })
+  trackTaskTmpdir(tmp)
+  // After the tag: SRT keys violations by the command's first 100 chars.
+  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${userCommand}`
+  const taggedCommand = `: 'vx-${tag}'; ${inTmp}`
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
@@ -644,7 +677,7 @@ export async function wrapSandboxedCommand(
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
   const grouped =
     process.platform === 'linux'
-      ? ownGroupCommand(tag, userCommand)
+      ? ownGroupCommand(tag, inTmp)
       : { command: taggedCommand, forwards: false }
   const inner =
     ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
@@ -797,6 +830,8 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
  * 877).
  */
 export function releaseBridges(tag: string): void {
+  const tmp = taskTmpdir(tag)
+  if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
   if (liveServers.delete(tag) && liveServers.size === 0 && resetDeferred) {
     void resetSandbox().catch(() => {})
   }

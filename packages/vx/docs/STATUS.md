@@ -685,6 +685,24 @@ test is telling the truth.
       - Row: `sandbox-runtime.unsafe.test.ts` › a sandboxed task runs under
         the shell an unsandboxed one does (the same probe's output both
         ways, which holds where sh is bash too). Red without the fix.
+965.  DONE (2026-09-27, the exec review's lead 2). A sandboxed task's
+      `TMPDIR` was SRT's one host directory (`/tmp/claude`), bound
+      read-write and kept across tasks and runs: a writer's `$TMPDIR/x`
+      was a cached reader's undeclared input, and the reader replayed the
+      first value after the writer changed it. No write grant was
+      declared, yet the file persisted on the host.
+      - Fix: each task gets `vx-task-<pid>-<tag>` under it, exported as
+        `TMPDIR` after the command's tag, created before the spawn and
+        removed with its bridges at the end (at exit too); a `kill -9`
+        leaves it. A sweep of dead owners' directories by pid was built and
+        dropped: the gate's nested vx, in another pid namespace, read the
+        outer vx as dead and removed its task's `TMPDIR` mid-run (230
+        shard rows red). The shared directory stays writable (SRT's policy): a
+        command naming it outright still reaches it, recorded in the
+        module page.
+      - Rows: `sandbox-runtime.unsafe.test.ts` › a temp file one task wrote
+        is gone for the next, and so is its directory (red without the
+        fix); the tag row names the export after the tag.
       - The review is done: its six leads are items 951, 953–955, 958,
         959 and 961.
 
