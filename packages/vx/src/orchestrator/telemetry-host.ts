@@ -70,6 +70,7 @@ export async function subscribeTelemetry(
   extraSinks?: readonly TelemetrySink[],
 ): Promise<TelemetryHandle | undefined> {
   const sinks: TelemetrySink[] = extraSinks === undefined ? [] : [...extraSinks]
+  const owners = new Map<TelemetrySink, string>()
   for (const plugin of plugins) {
     if (plugin.telemetry === undefined) continue
     // A plugin's return value is user input, so it is checked here rather
@@ -100,12 +101,15 @@ export async function subscribeTelemetry(
       )
       continue
     }
+    for (const [i, sink] of accepted.entries()) {
+      owners.set(sink, accepted.length === 1 ? plugin.name : `${plugin.name} #${i + 1}`)
+    }
     sinks.push(...accepted)
   }
 
   if (sinks.length === 0) return undefined
 
-  const source = createTelemetrySource({ sinks, run, warn: (m) => ctx.warn(m) })
+  const source = createTelemetrySource({ sinks, run, warn: (m) => ctx.warn(m), owners })
   // The bus's unsubscribe is idempotent, so it is the handle's dispose as
   // is (a once-flag here survived item 654).
   const dispose = bus.subscribe(source.subscriber)
