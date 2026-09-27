@@ -34,7 +34,7 @@ export function fsClockNow(dir: string): number
 export function memberEntries(base: string): ReadonlySet<string>
 ```
 
-`cli.ts` dispatches `vx watch <...>` here. Returns the exit code
+`cli/index.ts` dispatches `vx watch <...>` here. Returns the exit code
 (`0` on clean Ctrl+C; `1` on parser / scope error). `armWatcher` proves
 delivery before the loop trusts a watcher (a probe file the watcher
 must report within the timeout); `pollWatcher` is the fallback that
@@ -228,7 +228,8 @@ non-persistent tasks where each cycle should re-run cleanly.
 - Doesn't re-read the package globs: a `pnpm-workspace.yaml` edit that
   adds a new base directory is a cycle, but the base is watched only
   from the next start.
-- Doesn't keep a persistent task across a cycle: each cycle re-spawns it.
+- Doesn't carry a persistent task through a cycle: it stays up while
+  watch idles, and the next cycle stops and re-spawns it.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys
   are taken once per cycle. The run itself notices (item 750,
   [`fingerprint-watch.md`](./fingerprint-watch.md)): nothing keyed

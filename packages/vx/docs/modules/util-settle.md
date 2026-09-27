@@ -19,8 +19,10 @@ killGraceMs(defaultMs: number): number            // VX_KILL_GRACE_MS, else defa
   duration — clamping to `MAX_TIMEOUT_MS` would honour "wait 24.8
   days", which defeats it, and past the ceiling the delay becomes 1 ms
   and every flush times out.
-- `settleWithin` returns whether `p` settled before the deadline; the
-  caller decides whether a lost result is worth a warning. A rejection
+- `settleWithin` returns true when `p` fulfilled before the deadline,
+  false when the deadline won; the caller decides whether a lost result
+  is worth a warning. A rejection before the deadline is not a timeout:
+  it throws, so the caller reports the failure rather than a hang. One
   landing after the deadline won is swallowed rather than surfacing as
   an unhandled-rejection crash.
 

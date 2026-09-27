@@ -55,13 +55,13 @@ export interface CacheLayer {
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
   restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
-  save(args: SaveArgs): Promise<string | null>
+  save(args: SaveArgs): Promise<void>
   // The ONE run-history write: a whole `vx run` atomically, the per-task
   // `runs` rows + one `invocations` header row in ONE transaction. The
   // input-fingerprint rows (entry_inputs) do NOT live here — they ride
   // the entry-save transaction (miss path only), so a warm run is free.
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
-  stats(): CacheStats
+  stats(opts?: CacheStatsOptions): CacheStats // { project? } narrows both aggregates
   prune(options: PruneOptions): Promise<PruneResult>
   // `Cache` only (not the layer contract): what prune's orphan sweep
   // would reap right now — `vx info`'s `orphans` row.
@@ -71,11 +71,14 @@ export interface CacheLayer {
 
 export type SaveArgs = {
   hash: string
-  entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
+  // exitCode is not accepted: vx caches only successes, stored as 0
+  entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
   projectDir: string
   outputFiles: string[] // absolute paths
+  skipLocalWrite?: boolean // ChainedCache: an earlier layer already wrote it locally
   workspaceOutputFiles?: string[] // absolute paths of outputs.workspaceFiles matches
   workspaceRoot?: string // required alongside workspaceOutputFiles
+  inputComponents?: readonly TaskInputRow[] // entry_inputs rows, written in the save's transaction
 }
 
 // Namespace discriminator for workspace outputs in the artifact and
@@ -114,18 +117,21 @@ export class Cache implements CacheLayer {
 export interface PruneOptions {
   olderThanMs?: number // ms-epoch cutoff; entries with accessed_at < this are evicted
   maxBytes?: number // after age pruning, evict LRU until total <= maxBytes
+  dryRun?: boolean // pick victims and count orphans, delete nothing
 }
 
 export interface PruneResult {
   evicted: number
   bytesFreed: number
+  orphans: number // artifacts / temps with no index row, an hour old or more
+  orphanBytes: number
 }
 
 export interface CacheKeyInput {
   taskId: string
   taskConfigHash: string
   projectPackageJsonHash: string // (v12) project's package.json bytes
-  envValues: Array<[name: string, value: string]>
+  envValues: Array<[name: string, value: string | undefined]> // undefined = unset
   runtimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.runtime; folded as a namespaced section
   workspaceRuntimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.workspaceRuntime; distinct namespace
   inputFiles: string[] // absolute paths (sorted by caller before pass)
@@ -189,8 +195,7 @@ export interface CacheEntry {
   exitCode: number
   durationMs: number
   outputFiles: string[] // project-relative POSIX paths
-  stdout: string
-  stderr: string
+  stdout: string // stderr is not cached
   storedAt: string // ISO timestamp
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
 }
@@ -220,9 +225,6 @@ export interface CacheStats {
   totalBytes: number
   runCountLast24h: number
   hitCountLast24h: number
-  /** Hits with a local executed-success baseline — the subset time saved can
-   *  be estimated from. Always <= hitCountLast24h. */
-  attributedHitsLast24h: number
 }
 
 // The container and the index, versioned apart. CACHE_VERSION gates
@@ -256,22 +258,30 @@ export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 ## Key derivation (`Cache.key`)
 
 The key is a 16-hex-char xxHash3 digest (SHA-256 until `CACHE_VERSION`
-v15), computed by feeding values to the hash in this exact order:
+v15), computed by `foldKey` (`key-fold.ts`) seed-chaining one part per
+line, in this exact order:
 
 ```
-<CACHE_VERSION>\n
-task:<taskId>\n
-workspace:<workspaceFingerprint>\n
-pkg:<projectPackageJsonHash>\n
-config:<taskConfigHash>\n
-forward-args:<n>\n
-  <arg>\0 (n times, in caller order)
-env-values:<n>\n
-  <name>=<value>\n (n times, in supplied order — caller pre-sorts)
-upstream:<n>\n
-  <hash>\n (n times, after we sort inside key())
-inputs:<n>\n
-  <relPath>\0<fileHash>\n (n times, after we sort inputFiles inside key())
+<CACHE_VERSION>
+task:<taskId>
+workspace:<workspaceFingerprint>
+pkg:<projectPackageJsonHash>
+config:<taskConfigHash>
+forward-args:<n>
+  <arg> (n times, in caller order)
+env-values:<n>
+  <name>\0<value> (n times, in supplied order — caller pre-sorts;
+                    bare <name> when unset)
+runtime-values:<n>
+  <command>\0<output> (n times)
+ws-runtime-values:<n>
+  <command>\0<output> (n times)
+upstream:<n>
+  <hash> (n times, after we sort inside key())
+plugin:<n> (only when a `key` stage contributed parts)
+  <name>\0<value> (n times)
+inputs:<n>
+  <relPath>\0<fileHash> (n times, sorted inside key() unless already sorted)
 ```
 
 `<fileHash>` is the file's **git blob OID** (v20):
@@ -295,7 +305,7 @@ Determinism notes:
 - `upstreamHashes` is sorted inside `key()` so caller order doesn't
   matter.
 - `taskConfigHash` is the caller's responsibility (computed by
-  `orchestrator.hashTaskConfig`).
+  `hashTaskConfig`, private to `orchestrator/task-hash.ts`).
 - `forwardArgs` order matters (it's the literal CLI argv slice).
 
 ## Storage layout
@@ -329,7 +339,7 @@ a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
 SQLite stores metadata only:
 
 - **`entries`** — one row per cached output:
-  `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
+  `(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
@@ -342,21 +352,19 @@ SQLite stores metadata only:
 WAL mode is on (`PRAGMA journal_mode = WAL`) for non-blocking readers
 during writes.
 
-Output files stay as files on disk because cache-hit restore copies
-them back into the project. stdout and stderr are stored as separate
-text files to preserve stream identity on replay.
+stderr is not stored; stdout rides both the artifact and the `entries`
+row, so a hit replays it without opening the artifact.
 
 ## Atomic writes
 
 `save()`:
 
-1. Materializes the full entry into a temp dir
-   `<cacheDir>/<hash>.tmp-<pid>-<ms>/` — outputs at
-   `<tmp>/outputs/<rel>`, captured streams at `<tmp>/stdout` and
-   `<tmp>/stderr`.
-2. `rename(2)` to `<cacheDir>/<hash>/`. Atomic for an empty target;
-   the dir's contents (outputs + logs) move as a unit.
-3. Upserts the `entries` row (`ON CONFLICT(hash) DO UPDATE …`).
+1. Packs the artifact into a temp beside it,
+   `<cacheDir>/<hash>.tar.zst.tmp-<pid>-<hrtime>-<rand>`.
+2. Scans the temp back (it must carry `stdout` and its own key), then
+   `rename(2)`s it to `<cacheDir>/<hash>.tar.zst` — atomic, replacing
+   any existing file.
+3. Writes the `entries` and `output_files` rows.
 
 Reads via `get()` are non-blocking thanks to WAL.
 
@@ -394,12 +402,14 @@ Reads via `get()` are non-blocking thanks to WAL.
 `get(hash)`:
 
 - One indexed SELECT against `entries`.
-- Verifies `<cacheDir>/<hash>/` exists on disk; returns `null` if the
-  DB row is present but the artifact was deleted out from under us.
-- Bumps `accessed_at` on hit (used for LRU eviction once implemented).
-- Reads `<hash>/stdout`, `<hash>/stderr`, and lists files under
-  `<hash>/outputs/` to reconstruct `outputFiles`. Doesn't restore them
-  — the caller decides when to call `restoreOutputs`.
+- Verifies `<cacheDir>/<hash>.tar.zst` exists on disk; returns `null`
+  if the DB row is present but the artifact was deleted out from under
+  us.
+- Marks the hash touched; `accessed_at` (the LRU order `prune`'s
+  `maxBytes` evicts by) is written in one batch at prune, stats or close.
+- Pure SQL: stdout from the `entries` row, `outputFiles` from the
+  `output_files` rows. The artifact is not opened — the caller decides
+  when to call `restoreOutputs`.
 
 ## Run history & stats
 
@@ -419,18 +429,11 @@ interface CacheStats {
   totalBytes: number
   runCountLast24h: number
   hitCountLast24h: number
-  attributedHitsLast24h: number
 }
 ```
 
 `stats(opts?)` takes an optional `{ project }` scope, narrowing both the
 entry aggregate and the 24h run aggregate to that project.
-
-`hitCountLast24h` counts every hit; `attributedHitsLast24h` counts only
-those with a local executed-success baseline, which is the subset a
-time-saved estimate can be computed from. They differ on a fresh runner
-served by a warm remote cache, so the savings figure uses the second
-while the hit count agrees with its siblings elsewhere.
 
 Surfaced by `vx info` (and its `vx stats` alias).
 
@@ -501,9 +504,7 @@ Pre-alpha tolerates this freely. See
 `cache.test.ts` covers:
 
 - `Cache.key` exhaustively (determinism, sensitivity to each input).
-- v13 storage shape: SQLite DB exists, outputs under
-  `<hash>/outputs/`, logs at `<hash>/stdout` and `<hash>/stderr`, no
-  `meta.json`, no sibling `logs/` dir.
+- Storage shape: SQLite DB exists, one `<hash>.tar.zst` per entry.
 - `save → get → restoreOutputs` round-trip.
 - `get()` returns null when DB row exists but on-disk artifact was
   deleted.

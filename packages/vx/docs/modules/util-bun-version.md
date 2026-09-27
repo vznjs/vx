@@ -18,9 +18,10 @@ unsupportedBunMessage(version): string
 Measured on Bun 1.3.11 (2026-09-19, STATUS item 366), against the same tree
 that is green on CI's pinned 1.4.2:
 
-- A 2 MiB `--format json` answer reaches a pipe as **219 KB**. `bin.ts` ends
-  stdout inside a callback precisely to prevent that; the fix does not hold
-  below the floor.
+- A 2 MiB `--format json` answer reaches a pipe as **219 KB**. That was
+  `bin.ts` ending stdout inside a callback, which fired early below the
+  floor; `bin.ts` now sets `process.exitCode` and lets the loop drain
+  instead (2026-09-20).
 - The runner reads no `peakRssBytes` at all, so `vx last` and `vx why` report
   nothing about what a task used.
 - A config syntax error arrives as a `BuildMessage`, which the loader's

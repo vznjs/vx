@@ -25,10 +25,16 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   folds, so an executor elsewhere reproduces what a hit would match.
 - `localExecutor()` — the floor at the tail of every executor list.
   Runs the command on this machine; what a plugin declining a task
-  hands it back to.
+  hands it back to. Internal (`src/exec/local-executor.ts`), not on
+  `@vzn/vx`.
 - `ExecuteRequest` — `taskId`, `workspaceRoot`, `command`, `forwardArgs`,
-  `cwd`, `env`, `capture`, `outputs`, `timeoutMs?`, `onStdout`, `onStderr`,
-  `liveChildren?`, `sandbox?: ExecuteSandbox`, `inputs?: TaskInputs`.
+  `cwd`, `env`, `envDefine` (`exec.env.define` verbatim: the host-free
+  part of `env`, safe to ship), `capture`, `outputs`, `timeoutMs?`,
+  `onStdout`, `onStderr`, `liveChildren?`, `sandbox?: ExecuteSandbox`,
+  `inputs?: TaskInputs`, `cacheKey?` (a cacheable task's key, the address
+  an executor's own remote record uses), `refresh?` (cache reads are off:
+  do not answer from that record), `remoteOnly?` (`exec.remote: 'only'`:
+  leave outputs off this disk), `download?: 'eager' | 'deferred'`.
   `outputs` is the DECLARED output globs (`files` project-relative,
   `workspaceFiles` root-relative) — what an executor running elsewhere has
   to bring back.
@@ -54,7 +60,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; where? }` — checked at the
+- `ExecuteResult extends RunResult { violations; outputs?; where? }` —
+  `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
+  (outputs left remote, fetched only if a local consumer needs them).
+  Checked at the
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field
   ("returned an invalid result for <task>: exitCode is undefined (expected
@@ -114,5 +123,6 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 
 ## Replacing this module
 
-Contribute `executor(ctx)` from a plugin; to wrap the local behaviour,
-delegate to `localExecutor()` (exported from `@vzn/vx`) inside your own executor.
+Contribute `executor(ctx)` from a plugin. `localExecutor()` is not on
+`@vzn/vx`; an executor that declines a task (`accepts` → false) hands it
+to the local floor.

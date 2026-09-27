@@ -42,12 +42,16 @@ export interface PreparedRun {
    *                              resolving the user's task names
    *                              against `projects`. CI footgun;
    *                              `run()` returns NOT-ok.
+   *   - `'none-affected'`     — as `'no-tasks-declared'`, but the
+   *                              scope came from a diff and every name
+   *                              is declared elsewhere in the
+   *                              workspace; `run()` returns ok.
    *   - `'empty-graph'`       — `requested` was non-empty but
    *                              `buildTaskGraph` produced no nodes.
    *                              Defensive; unreachable under current
    *                              builder semantics.
    */
-  empty: null | 'no-tasks-declared' | 'empty-graph'
+  empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 
 export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
@@ -91,7 +95,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    the scope left out — only then, and never for a name something loaded
    declares — refusing if none of them declares it either. One of them
    failing to load leaves the name unjudged, since an out-of-scope broken
-   config does not fail a scoped run. Then `--exclude-dependencies`
+   config does not fail a scoped run. An `--exclude-dependencies` name no
+   project declares is refused the same way (a `UserError` with a
+   near-miss hint, item 1026). Then `--exclude-dependencies`
    narrows the schedule (`excludeDependencies`) and
    `keyExcludedDependencies` keys each dropped dependency on that whole
    graph, so the dependant folds the key a full run gives it.
@@ -111,7 +117,7 @@ only what's actually different (execution vs prediction).
 ## Extension points
 
 - **Reshaping projects between config load and graph build** is the
-  `project` pipeline stage (`VxPlugin.project(config, meta, ctx)`): a
+  `project` pipeline stage (`VxPlugin.project(config, ctx)`): a
   plugin edits each loaded project's tasks in place and core
   re-validates. That is where a target-defaults or named-inputs
   expansion would live IF it were wanted — workspace-level
@@ -127,8 +133,8 @@ only what's actually different (execution vs prediction).
 
 ## Tests
 
-Covered transitively by every orchestrator e2e test
-(`tests/orchestrator.test.ts`) and by `tests/cli.test.ts`'s
-end-to-end fixtures. No dedicated unit-test file; the function has
-no externally-visible behaviour beyond what the integration tests
-exercise.
+`tests/prepare-run.test.ts` pins its rules directly: scoped config
+loading reaches every project a run can need, a `^name` no project
+declares is refused in a scoped run too, `--exclude-dependencies` keys
+a deep dropped chain, and the empty-run reason. Also covered
+transitively by `tests/orchestrator.test.ts` and `tests/cli.test.ts`.

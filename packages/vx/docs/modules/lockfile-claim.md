@@ -85,7 +85,7 @@ children first, each component folding its members and its child
 components' digests, both sorted. A member folds as its material AND the
 materials its edges land on (a self-loop aside): every member shares the
 component's digest, so a retarget between two members — an importer moved
-from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013. `DIGEST_VERSION` 5 retires the memos that folded the old way.
+from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013. `DIGEST_VERSION` 5 (`@vzn/vx-lockfile`; 6 since) retired the memos that folded the old way.
 O(nodes + edges): 1000 importers
 over 3000 packages digest in ~20 ms where one traversal per importer
 took 400.

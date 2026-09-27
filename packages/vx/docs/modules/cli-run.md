@@ -54,8 +54,10 @@ export async function runCmd(args: readonly string[]): Promise<number>
 
 /**
  * Shared with `cli/watch.ts`: turn parsed args + cwd + task list into
- * the orchestrator's `RunOptions`. Returns either the options or an
- * error message (caller prefixes with subcommand name). Doesn't
+ * the orchestrator's `RunOptions`. Returns the options, an error
+ * message (caller prefixes with subcommand name), or `nothingSelected`
+ * — the selection resolved to zero projects (nothing changed since the
+ * `--affected` base), a clean exit, not a failure. Doesn't
  * handle the interactive picker — `runCmd` does that first, then
  * passes the resolved task list in.
  */
@@ -63,7 +65,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
-): Promise<RunOptions | { error: string }>
+): Promise<RunOptions | { error: string } | { nothingSelected: string }>
 ```
 
 ## Parser
@@ -163,6 +165,6 @@ the duration right-aligned.
 ## Replacing this module
 
 The internal seam is small: `runCmd(argv): Promise<number>`. Replace
-the body but keep that contract — `cli.ts` dispatches to it by
+the body but keep that contract — `cli/index.ts` dispatches to it by
 import. To swap the picker (e.g. for a fuzzy selector), replace
 `pickTask` in-place; nothing else depends on it.

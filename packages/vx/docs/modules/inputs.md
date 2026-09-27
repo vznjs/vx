@@ -24,7 +24,7 @@ re-exports it for readers that reach it here: `GitFilesCache`,
 ```ts
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
-  envValues: Array<[name: string, value: string]> // sorted by name
+  envValues: Array<[name: string, value: string | undefined]> // sorted by name; undefined = unset
   runtimeValues: Array<[command: string, output: string]> // sorted by command
   workspaceRuntimeValues: Array<[command: string, output: string]>
 }
@@ -65,13 +65,15 @@ export async function resolveOutputs(args: {
 /**
  * Remove every file currently matching the declared output globs.
  * Called before every cache-miss exec AND before every cache-hit
- * restore so the project dir lands on a clean slate.
+ * restore so the project dir lands on a clean slate. Returns the
+ * project-relative POSIX paths it removed (for
+ * `GitFilesCache.markOutputsChanged`).
  */
 export async function cleanOutputs(args: {
   projectDir: string
   outputs: string[]
   nestedProjectDirs: string[]
-}): Promise<void>
+}): Promise<string[]>
 
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
 // no project-dir exclusion; the clean returns the root-relative paths

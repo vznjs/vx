@@ -46,7 +46,7 @@ export interface Plugin
 export const PLUGIN_PACKAGE: unique symbol
 export const PLUGIN_HOOKS: readonly PluginHook[] // every hook name, in pipeline order
 export type PluginHook
-export const PLUGIN_FUNCTION_HOOKS: readonly PluginHook[] // the hooks that are functions (not `commands`)
+export const PLUGIN_FUNCTION_HOOKS: readonly PluginHook[] // the hooks that are functions (not `commands` or `fingerprint`, which are objects)
 
 // Helpers (identity functions)
 export function defineProject<const T extends ProjectConfig>(config: T & DependsOnTyped<T>): T

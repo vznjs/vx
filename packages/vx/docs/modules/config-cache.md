@@ -79,8 +79,8 @@ and the process's flags and `BUN_OPTIONS`: a `[define]` is a bare
 identifier to the config that no deny word sees, and flipping one
 replayed the old evaluation, item 956; read once per process, as Bun
 reads them), then for the config and every file
-it transitively imports by **relative** specifier: the path and the
-bytes. Editing a shared preset the config imports moves the key even
+it transitively imports by **relative** specifier: the path and its
+git blob id (over the bytes read). Editing a shared preset the config imports moves the key even
 though the config's own bytes did not change.
 
 ## Purity gate

@@ -187,8 +187,9 @@ order. One project of 4,000 tasks with outputs built its graph in
   job. The graph only encodes "X must finish before Y," not
   "Y runs at step N."
 - It doesn't validate `excludeDependencies` against declared task
-  names. Unknown names are no-ops, by design (consistent with
-  Turbo's `--only` semantics).
+  names — `prepareRun` does, before it calls the builder's narrowing: a
+  name no project declares is a `UserError` with a near-miss hint
+  (item 1026).
 - It doesn't fail when `requested` is empty — produces an empty map.
   The orchestrator decides whether that's a footgun.
 

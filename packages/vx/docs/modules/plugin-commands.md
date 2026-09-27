@@ -27,7 +27,12 @@ export interface UnresolvedPluginCommand {
 export async function resolvePluginCommand(
   verb: string,
   cwd?: string,
-): Promise<ResolvedPluginCommand | UnresolvedPluginCommand | null>
+): Promise<
+  | ResolvedPluginCommand
+  | { declaredVerbs: readonly string[] } // no plugin declares it; these are what they do declare
+  | UnresolvedPluginCommand
+  | null // no workspace
+>
 export async function pluginVerbs(cwd?: string): Promise<string[]> // declaration order; none when the workspace does not load
 export async function pluginCommandHelp(cwd?: string): Promise<string[]>
 ```
@@ -36,9 +41,10 @@ export async function pluginCommandHelp(cwd?: string): Promise<string[]>
 
 - Core's verbs win: a plugin naming `run` or `version` never executes
   (pinned in `tests/plugin-commands.test.ts`).
-- Outside a workspace, or with no plugin declaring the verb, the answer is
-  `null` and the dispatcher reports "unknown command" as before — never a
-  workspace-not-found error for a typo. A workspace file that fails to
+- Outside a workspace the answer is `null`; inside one where no plugin
+  declares the verb it is `{ declaredVerbs }` (feeding the "did you mean"
+  and the where-verbs-come-from line). Either way the dispatcher reports
+  "unknown command" — never a workspace-not-found error for a typo. A workspace file that fails to
   load answers `{ loadError }`: the dispatcher still says "unknown
   command" and adds the load error, so a typo reads as a typo and a real
   plugin verb points at the file that broke it.

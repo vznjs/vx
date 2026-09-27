@@ -27,6 +27,7 @@ export interface HistoryProvider {
 }
 export class EmptyHistoryProvider implements HistoryProvider {}
 
+// failure-mode.ts, not history.ts:
 /** A task whose SAME cache key both passed and failed — the definition
  *  of flaky, answered from local history with no service. Named in a
  *  run's footer, typed by `--summarize`, listed by `vx info`. */

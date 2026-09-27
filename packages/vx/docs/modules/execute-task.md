@@ -64,9 +64,10 @@ caches.
 2. `cleanArgs = { projectDir, outputs, nestedProjectDirs }` is
    prepared once.
 3. **If caching is on**: `cache.get(hash)`.
-   - Hit: `cleanOutputs(cleanArgs)` (only when `outputs.length > 0`) →
-     `cache.restoreOutputs(hash, projectDir)` → replay `hit.stdout` /
-     `hit.stderr` via `log.taskStdout` / `log.taskStderr`. Return a
+   - Hit: `restoreHit` (`hit-restore.ts`, below) — `cleanOutputs(cleanArgs)`
+     and `cache.restoreOutputs(hash, projectDir)` unless a proof shows
+     the tree current → replay `hit.stdout` via `log.taskStdout` (no
+     stderr is cached). Return a
      `cache-hit` (or `cache-hit-remote` if `hit.source === 'remote'`)
      outcome with `durationMs = performance.now() - cacheOpStart` —
      the user-perceived restore time.
@@ -123,7 +124,7 @@ caches.
    no task is ordered after it to read what it wrote, and the output
    walk cost 1,000 read-only misses 1.62 → 1.78 s (min of 9).
 6. Return outcome with hash, status (`success` / `failed`),
-   exitCode, durationMs, captured stdout/stderr, hrtime spans, and
+   exitCode, durationMs, hrtime spans, and
    (when Bun's resourceUsage returned them) `cpuMs` / `peakRssBytes` —
    the peak only when it rose above vx's own footprint (runner.md).
 
@@ -234,10 +235,10 @@ stable across CLI args.
 ## What this does NOT do
 
 - Doesn't handle the run-level setup (workspace discovery, graph
-  build, cache opening) — `orchestrator.ts` does.
+  build, cache opening) — `orchestrator/run.ts` does.
 - Doesn't drive the live console output — `log: Logger` does. This
   module just calls `log.taskStdout` / `log.taskStderr`.
-- Doesn't record the analytics row — `orchestrator.ts` does after
+- Doesn't record the analytics row — `orchestrator/run.ts` does after
   the run drains.
 - Doesn't enforce `cache + persistent`-rejection — the project
   loader does at config-load time.
@@ -272,7 +273,8 @@ extensions:
 - **Conditional output capture.** Compress / dedupe before save.
   Hook between `resolveOutputs` and `cache.save`.
 - **Pre-spawn hooks.** Run a setup script (e.g. cgroup/limits
-  application) before each spawn: contribute an `executor` that wraps
-  `localExecutor()` from `@vzn/vx` — no change to this module.
+  application) before each spawn: contribute an `executor` that runs
+  them itself — no change to this module (`localExecutor()` is not on
+  `@vzn/vx` to wrap).
 - **Different cache layer.** Already abstracted via `CacheLayer` —
   the caller decides which.

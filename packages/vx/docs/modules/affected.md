@@ -15,7 +15,10 @@ export interface AffectedArgs {
   projects: readonly ProjectMeta[]
   /** Which projects declare a `workspaceFiles` glob matching these paths.
    *  Asked about every changed path, once something changed (item 954). */
-  workspaceGlobOwners?: (paths: readonly string[]) => Promise<Set<string>>
+  workspaceGlobOwners?: (paths: readonly string[]) => Promise<Iterable<string>>
+  /** The fingerprint files a plugin claims and its answer for a change to
+   *  one; resolved lazily, only when a diff touches a root file. */
+  fingerprintClaims?: () => Promise<FingerprintClaims>
 }
 
 export function affectedProjects(args: AffectedArgs): Promise<Set<string>>
@@ -111,12 +114,14 @@ is complete — the config-import channel stops at project boundaries and
 
 - Try `git symbolic-ref --short -q refs/remotes/origin/HEAD` (e.g.
   `origin/main`).
-- Fall back to `HEAD~1` if the symbolic-ref isn't set (common in CI
-  shallow clones).
+- Fall back to `HEAD~1` if the symbolic-ref isn't set.
+- If `HEAD~1` does not resolve either (a CI checkout at
+  `fetch-depth: 1`), a `UserError` asks to fetch history or name the
+  base (`--affected=origin/main`).
 
 ## Filter integration
 
-`cli/run.ts:resolveFilters` invokes `affectedProjects` once per
+`cli/select.ts:resolveFilters` invokes `affectedProjects` once per
 `[<since>]` filter, stuffs the result in
 `affectedByFilter: Map<ParsedFilter, Set<string>>`, then calls
 `applyFilters({ filters, projects, graph, affectedByFilter })`.

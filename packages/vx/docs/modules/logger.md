@@ -46,12 +46,14 @@ export function resolveOutputView(
 // What run() builds when no logger is passed.
 export interface DefaultLogger extends Logger {
   failureRecap(): string[] // the run's last block; [] when nothing failed
+  settle(): void // hand over coalesced output; write straight through from now on
 }
 
 export function defaultLogger(
   colors?: ColorSupport,
   view?: OutputView, // default { mode: 'full' }
   out?: StatusStream, // default process.stdout
+  opts?: { forceFloorMs?: number; coalesce?: boolean },
 ): DefaultLogger
 ```
 
@@ -82,7 +84,8 @@ export function defaultLogger(
   with its blocker (`• blocked by lib#build`). Dependency-pulled
   nodes are silent on success/hit and fully framed on failure.
 - **`broad`** — executed tasks print one
-  `● id ── executed • <duration>` line; failures get full frames;
+  ` ⏺ <time> success miss <id>` row (`no-cache` for a task with no
+  `cache` block); failures get full frames;
   hits / up-to-date / skipped are silent (buffers dropped).
 - **`errors-only`** — only failed tasks print.
 - **`hash-only`** — one line per task with its key, no output.
@@ -149,8 +152,10 @@ A custom logger receives plain-text bodies (the orchestrator passes
 - **Silent test runner** — return functions that buffer to arrays
   the test inspects.
 
-The orchestrator + scheduler don't otherwise communicate task
-progress out-of-band — `Logger` is the only event bus.
+`run()` never calls a `Logger` directly: it emits `RunEvent`s through
+the run event bus (`events.ts`), and the logger is the default
+subscriber (`terminalSubscriber`). Other surfaces subscribe the same
+way (`RunOptions.bus`, a plugin's `setup`).
 
 ## Tests
 

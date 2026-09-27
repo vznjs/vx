@@ -4,9 +4,9 @@
 
 Stamp every `vx run` invocation with a sortable, collision-resistant
 id (`run_id`) that's shared across every task in that invocation.
-Lets analytics queries group by run without needing a separate
-"runs" parent table, and range-scan a time window on the id column
-with no index on the time column.
+It keys the `invocations` header row (`run_id`) and every `runs` row
+of that invocation, so analytics queries group by run and range-scan
+a time window on the id column with no index on the time column.
 
 ## Public surface
 
