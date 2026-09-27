@@ -239,7 +239,8 @@ function turboChain(pkgName: string, files: ReadonlyMap<string, TurboJson>): Tur
       if (required) {
         throw new UserError(`turbo.json of ${path.at(-1)} extends ${name}, which has no turbo.json`)
       }
-      if (out.length === 0) stack.push({ name: ROOT, path, required: false })
+      // Only the package's own file can be missing unrequired: read as the root's.
+      stack.push({ name: ROOT, path, required: false })
       continue
     }
     out.push(cfg)
@@ -252,7 +253,7 @@ function turboChain(pkgName: string, files: ReadonlyMap<string, TurboJson>): Tur
   return out.reverse()
 }
 
-/** A package config's `extends`; one that names none extends the root, as Turbo 2.0–2.6 read it. */
+/** A package config's `extends`; Turbo refuses one that names none, read here as the root's. */
 function parentsOf(cfg: TurboJson): string[] {
   return Array.isArray(cfg.extends) && cfg.extends.length > 0 ? cfg.extends : [ROOT]
 }
