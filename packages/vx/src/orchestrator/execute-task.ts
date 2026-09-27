@@ -783,16 +783,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
     // An attempt that ended in a shutdown never finished on its own terms —
     // it is aborted, so it is neither cached, counted, shown, nor RETRIED.
-    // Two ways to know: the child died of SIGINT / SIGTERM (Ctrl-C, or a
-    // `kill` vx never saw; a timeout also SIGTERMs, but `timedOut` marks it
-    // as our own deadline, a real and retryable failure), or the RUN is
-    // stopping. The child alone was not enough: one that traps the
-    // forwarded SIGINT and exits 0 was cached as a success with its partial
-    // outputs, one that exits 1 was retried after Ctrl-C, and one SIGKILLed
-    // at the end of the grace read as an OOM failure (item 962).
-    const shutdown =
-      args.stopSignal?.aborted === true ||
-      ((result.signal === 'SIGINT' || result.signal === 'SIGTERM') && !result.timedOut)
+    // The RUN stopping is what says so. A child that traps the forwarded
+    // SIGINT and exits 0 was cached as a success with its partial outputs,
+    // one that exits 1 was retried after Ctrl-C, and one SIGKILLed at the
+    // end of the grace read as an OOM failure (item 962). A child that died
+    // of SIGINT / SIGTERM while the run was NOT stopping (a supervisor, a
+    // `kill` from another shell) is a failure: it was labelled a shutdown
+    // abort, never retried, its output hidden, and fail-fast never tripped
+    // (item 1100). A terminal's Ctrl-C reaches the child and vx together,
+    // and the child's exit can be seen before vx's own handler has run, so
+    // a signal death waits one event-loop turn for a pending handler before
+    // it is judged; a timeout's SIGTERM is our own deadline and judged now.
+    let shutdown = args.stopSignal?.aborted === true
+    if (
+      !shutdown &&
+      (result.signal === 'SIGINT' || result.signal === 'SIGTERM') &&
+      !result.timedOut
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      shutdown = args.stopSignal?.aborted === true
+    }
     if (shutdown) {
       return {
         node,

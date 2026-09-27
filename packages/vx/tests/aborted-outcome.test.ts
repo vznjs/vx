@@ -161,7 +161,7 @@ describe('a task killed by a shutdown signal', () => {
         `export default {
            tasks: {
              fine: { exec: { command: 'echo fine' } },
-             doomed: { exec: { command: 'echo working; kill -TERM $$; sleep 5' } },
+             doomed: { dependsOn: ['fine'], exec: { command: 'echo working; kill -TERM $PPID; sleep 5' } },
            },
          }`,
       )
@@ -171,6 +171,8 @@ describe('a task killed by a shutdown signal', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
+      // The task stops the RUN (its parent is vx): a shutdown. A task that
+      // killed only itself is a failure, not an abort (item 1100).
       const r = vx(root, 'run', 'fine', 'doomed')
       // Red exit — and the reason has to be on screen.
       expect(r.code).not.toBe(0)
@@ -180,6 +182,39 @@ describe('a task killed by a shutdown signal', () => {
       const rep = vx(root, 'run', 'fine', 'doomed', '--report=markdown')
       expect(rep.out).toMatch(/1 aborted/)
       expect(rep.out).toMatch(/\|\s*r#doomed\s*\|\s*aborted\s*\|/)
+    },
+    TIMEOUT,
+  )
+
+  // Item 1100: a task killed by SIGTERM from outside vx, with the run not
+  // stopping, was labelled a shutdown abort — not retried, its output
+  // hidden, and a fail-fast run went on.
+  it(
+    'a task killed by a signal vx did not send is a failure: retried, shown, and fail-fast trips',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(path.join(root, '.gitignore'), '.vx/\n')
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             selfkill: { exec: { command: 'echo DIAGNOSTIC; echo x >> attempts; kill -TERM $$', retries: 2 } },
+             later: { dependsOn: ['slow'], exec: { command: 'echo later > later.txt' } },
+             slow: { exec: { command: 'sleep 0.3' } },
+           },
+         }`,
+      )
+      git(root, 'init', '-q')
+      const r = vx(root, 'run', 'selfkill', 'later', '--continue=never')
+      expect(r.code).toBe(1)
+      expect(
+        (await Bun.file(path.join(root, 'attempts')).text()).split('\n').filter(Boolean),
+      ).toEqual(['x', 'x', 'x'])
+      expect(r.out).toContain('DIAGNOSTIC')
+      expect(r.out).toContain('failed (exit 143, 128 + SIGTERM)')
+      expect(r.out).not.toContain('killed by a shutdown signal')
+      expect(await Bun.file(path.join(root, 'later.txt')).exists()).toBe(false)
     },
     TIMEOUT,
   )
