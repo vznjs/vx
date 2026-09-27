@@ -240,6 +240,7 @@ export async function resolveFilters(
         workspaceGlobOwners: (changed) =>
           workspaceGlobOwners(root, projects, changed, load, stagedOnce),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
+        taskEdges: async () => edges ?? taskEdgesFrom(await stagedOnce()),
       })
       affectedByFilter.set(f, names)
     } catch (err) {

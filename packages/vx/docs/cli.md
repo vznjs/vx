@@ -278,8 +278,10 @@ moved may no longer satisfy what a dependent declares (`lib: ^1.0.0`
 after a bump to 2.0.0). Either drops an edge the dependent's key folded,
 while today's graph shows no dependent to walk to. So the package graph
 is built again over the changed manifests as the base had them, and
-every project whose workspace dependencies differ is selected.
-An edit to the root manifest's `workspaces` selects every project:
+every project whose workspace dependencies differ is selected, and so
+is a project whose task names a removed or renamed package in
+`dependsOn: ['lib#build']`, an edge the package graph cannot see
+(item 1085). An edit to the root manifest's `workspaces` selects every project:
 which packages left the workspace is a discovery at the base.
 
 **A new nested project selects the project above it.** A project's
