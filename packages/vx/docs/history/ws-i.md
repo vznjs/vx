@@ -56,8 +56,12 @@ median 351 ms against 334, A/A 336, 15 rounds. Refuted the same day:
   ```
 
 - **E/C: `--filter` discovers the workspace twice.** `resolveFilters`
-  runs `loadWorkspaceProjects` and `buildPackageGraph`, then
-  `prepareRun` discovers again. `startup` stage, 9 runs: 1,000
-  synthetic packages `--filter '*'` 42.5–67.8 ms against `--all`
-  7.5–11.9; astro (553 members) 66–91 against 7–11. Lever: hand the
-  filter pass's projects to the run as `staged` already is.
+  runs `listProjects`, then `prepareRun` runs it again. Patch (vs
+  f9512c8a, 12 lines): `FilterResolution` carries
+  `discovered: { root, projects }`, `cli/run.ts` passes it as
+  `RunOptions.discovered`, and `prepareRun` takes its projects
+  instead of calling `listProjects` when its root is the run's. One
+  run only, as `staged` is. Compiled, 15 interleaved rounds: 1,000
+  synthetic packages `--filter '*'` main median 369 ms (min 341),
+  patch 351 (305), A/A 375 (336); astro's filtered no-op main 819
+  (752), patch 733 (682), A/A 774 (755); every run exit 0.
