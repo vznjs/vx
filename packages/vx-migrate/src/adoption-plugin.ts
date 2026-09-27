@@ -6,20 +6,19 @@
 // skeleton until item 592; what differs is only how the mapping is made.
 
 import { definePlugin, type ProjectHookContext, type TaskConfig, type VxPlugin } from '@vzn/vx'
-import { type Gaps, warnGaps } from './plugin-gaps.js'
+import { type AdoptionMapping, cachedMapping } from './mapping-cache.js'
+import { warnGaps } from './plugin-gaps.js'
 
-/** What a mapping hands the stage: tasks per package name, and the gaps to report once. */
-interface AdoptionMapping {
-  readonly byName: ReadonlyMap<
-    string,
-    {
-      readonly tasks: readonly {
-        readonly name: string
-        readonly task: Record<string, unknown> | null
-      }[]
-    }
-  >
-  readonly gaps: Gaps
+/**
+ * What a plugin hands the skeleton for one run: every input its mapping
+ * reads, as text (the cache key, `mapping-cache.ts`), and the mapping
+ * itself, made only when the key has none kept.
+ */
+export interface AdoptionRun {
+  /** The kept mapping's file name: `nx`, `turbo`. */
+  readonly name: string
+  readonly reads: readonly string[]
+  readonly map: () => Promise<AdoptionMapping>
 }
 
 /**
@@ -29,7 +28,7 @@ interface AdoptionMapping {
  */
 export function adoptionPlugin(
   meta: ImportMeta,
-  mapRun: (ctx: ProjectHookContext) => Promise<AdoptionMapping>,
+  mapRun: (ctx: ProjectHookContext) => Promise<AdoptionRun>,
   reads: readonly string[] = [],
 ): VxPlugin {
   // One mapping per RUN, not per process: the workspace module — and so
@@ -44,7 +43,7 @@ export function adoptionPlugin(
     async project(config, ctx) {
       if (mappedFor !== ctx.projects) {
         mappedFor = ctx.projects
-        mapping = mapRun(ctx)
+        mapping = mapRun(ctx).then((r) => cachedMapping(ctx.cacheDir, r.name, r.reads, r.map))
         warned = false
       }
       const mapped = await mapping!

@@ -147,3 +147,19 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   controls); `nx.test` › an implicit dep … is an edge, not a note;
   `migrate.test` pkg-a's `build`. Red without the fix; the reach guard
   mutated reddens two.
+- **G-10.** turbo() and nx() keep their mapping (leads from I, I-3).
+  Both mapped every package each run. The adoption skeleton now keeps
+  the mapping in `<cache dir>/vx-migrate-<nx|turbo>-mapping.json`,
+  keyed on the plugin's own reads (nx: graph, nx.json, manifests,
+  unmatched nodes' package.json, `.env` names, env flag, installed
+  bins; turbo: every turbo.json(c), manifests) and the package's code.
+  15 interleaved rounds, medians: refine (nx, `build --filter
+@refinedev/antd... --dry`) main 284, A/A 285, cache 243; astro
+  (turbo, 25 rounds, `build --filter astro... --dry`) main 677, A/A
+  695, cache 669 — inside the A/A spread there: its key reads 1,124
+  config paths (~12 ms) against ~40 ms of mapping, and the mapper
+  modules load anyway (the package entry re-exports them). A hit plans
+  refine's 281 task hashes as a miss does. Rows (`nx.test`,
+  `turbo.test` › the mapping cache): a hit serves the kept file; each
+  key input maps afresh; each key part removed reddens its row. The
+  code part has no row (sources are fixed in a test).

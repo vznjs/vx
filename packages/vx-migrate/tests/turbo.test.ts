@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
 import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { tamperMapping } from './helpers/tamper-mapping.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 30_000
@@ -618,4 +619,55 @@ describe('`.env` inputs', () => {
     },
     TIMEOUT,
   )
+})
+
+// The mapping is kept under the cache dir, keyed on everything it reads
+// (G-10, `mapping-cache.ts`). The kept file is tampered with between runs,
+// so a row sees which one ran.
+describe('turbo(): the mapping cache', () => {
+  const lint = async (): Promise<string | undefined> =>
+    (await planRun({ cwd: root, tasks: ['lint'], log: silent() })).tasks.find(
+      (t) => t.node.id === 'app#lint',
+    )!.node.config.exec?.command
+
+  it('a second run serves the kept mapping', async () => {
+    expect(await lint()).toBe('echo lint')
+    await tamperMapping(root, 'turbo')
+    expect(await lint()).toBe('echo from-cache')
+  })
+
+  it.each([
+    [
+      'the root turbo.json',
+      () =>
+        writeFile(
+          path.join(root, 'turbo.json'),
+          JSON.stringify({ tasks: { ...TURBO_JSON.tasks, lint: { cache: false, env: ['X'] } } }),
+        ),
+      'echo lint',
+    ],
+    [
+      'a package turbo.json',
+      () =>
+        writeFile(
+          path.join(root, 'packages', 'app', 'turbo.json'),
+          JSON.stringify({ extends: ['//'], tasks: { lint: { cache: false } } }),
+        ),
+      'echo lint',
+    ],
+    [
+      'a package manifest',
+      () =>
+        writeFile(
+          path.join(root, 'packages', 'app', 'package.json'),
+          JSON.stringify({ name: 'app', version: '1.0.0', scripts: { lint: 'echo lint2' } }),
+        ),
+      'echo lint2',
+    ],
+  ])('an edit to %s maps afresh', async (_what, edit, expected) => {
+    await lint()
+    await tamperMapping(root, 'turbo')
+    await edit()
+    expect(await lint()).toBe(expected)
+  })
 })
