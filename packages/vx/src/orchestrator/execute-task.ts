@@ -940,7 +940,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * unnamed), undefined when none moved.
    */
   async function movedSinceKey(): Promise<string | null | undefined> {
-    return described!.hash !== hash ? null : await movedInput(described!.facts, cache)
+    return described!.hash !== hash
+      ? null
+      : await movedInput(described!.facts, cache, described!.describedAt)
   }
 
   /**
