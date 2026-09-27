@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Rewrite the landing page's benchmark rows and the graph's size, the
-// README's benchmark sentence and the benchmarks doc's stress-shape section,
+// README's benchmark sentence and chart (packages/vx-docs/public/bench-{light,dark}.svg)
+// and the benchmarks doc's stress-shape section,
 // from packages/vx-bench/results.json — the file `packages/vx-bench/compare.ts`
 // commits. The site is a rendering of the runner's output, never hand-typed
 // numbers; run this after every comparison. The landing shows this one
@@ -10,7 +11,7 @@
 //   bun packages/vx-bench/update-site.ts          # rewrite in place
 //   bun packages/vx-bench/update-site.ts --check  # exit 1 if the site would change (CI-able)
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -162,6 +163,81 @@ const readmeIn = readFileSync(readmePath, 'utf8')
 const readmeOut = readmeIn.replace(/<!-- bench:start[\s\S]*?<!-- bench:end -->/, readmeBlock)
 if (!readmeOut.includes('<!-- bench:start')) throw new Error('README.md: bench markers not found')
 
+// ---- the chart image ----
+// The README's chart, cold build and fully cached, one bar per runner, from
+// the same rows as the text above. One file per theme: the README's
+// <picture> picks by GitHub's theme setting, which an SVG's own
+// `prefers-color-scheme` rule cannot see. System fonts, since an <img>
+// loads none.
+const THEMES = {
+  light: { text: '#1f2328', muted: '#59636e', vx: '#7cb518' },
+  dark: { text: '#e6edf3', muted: '#9198a1', vx: '#c6f84e' },
+}
+type Theme = keyof typeof THEMES
+const chartPath = (t: Theme): string => path.join(ROOT, `packages/vx-docs/public/bench-${t}.svg`)
+function chart(theme: Theme): string {
+  const c = THEMES[theme]
+  const W = 760
+  const labelW = 110
+  const barMax = 470
+  const rowH = 30
+  const panel = (
+    y0: number,
+    title: string,
+    note: string,
+    key: keyof Row,
+    ideal?: number,
+  ): string => {
+    const runners = [
+      { r: vx, name: 'vx', cls: 'vx' },
+      { r: turbo, name: 'Turborepo', cls: 'turbo' },
+      { r: nx, name: 'Nx', cls: 'nx' },
+    ]
+    const max = Math.max(...runners.map((x) => Number(x.r[key])))
+    const w = (v: number): number => Math.max(2, Math.round((v / max) * barMax))
+    const out = [
+      `<text class="title" x="0" y="${y0}">${title}</text>`,
+      `<text class="note" x="${W}" y="${y0}" text-anchor="end">${note}</text>`,
+    ]
+    runners.forEach((x, i) => {
+      const v = Number(x.r[key])
+      const y = y0 + 16 + i * rowH
+      out.push(
+        `<text class="${x.cls === 'vx' ? 'vxname' : 'name'}" x="${labelW - 12}" y="${y + 15}" text-anchor="end">${x.name}</text>`,
+        `<rect class="${x.cls}" x="${labelW}" y="${y}" width="${w(v)}" height="20" rx="3"/>`,
+        `<text class="${x.cls === 'vx' ? 'val vxval' : 'val'}" x="${labelW + w(v) + 8}" y="${y + 15}">${disp(v)}</text>`,
+      )
+    })
+    if (ideal !== undefined) {
+      const ix = labelW + w(ideal)
+      const bottom = y0 + 16 + runners.length * rowH - 6
+      out.push(
+        `<line class="ideal" x1="${ix}" y1="${y0 + 8}" x2="${ix}" y2="${bottom}"/>`,
+        `<text class="note" x="${ix + 4}" y="${bottom + 12}">ideal schedule ${disp(ideal)}</text>`,
+      )
+    }
+    return out.join('\n  ')
+  }
+  const H = 290
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cold build: vx ${disp(vx.fresh)}, Turborepo ${disp(turbo.fresh)}, Nx ${disp(nx.fresh)}. Fully cached: vx ${disp(vx.warmNoRestore)}, Turborepo ${disp(turbo.warmNoRestore)}, Nx ${disp(nx.warmNoRestore)}.">
+  <style>
+    text { font-family: ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; fill: ${c.text}; }
+    .title { font-weight: 600; font-size: 15px; }
+    .note { font-size: 12px; }
+    .note, .name { fill: ${c.muted}; }
+    .vxname, .vxval { font-weight: 700; }
+    .val { font-variant-numeric: tabular-nums; }
+    .vx { fill: ${c.vx}; } .turbo { fill: #ff5e9c; } .nx { fill: #6aa8ff; }
+    .ideal { stroke: ${c.muted}; stroke-dasharray: 3 3; }
+  </style>
+  ${panel(18, `Cold build · ${nodes.toLocaleString('en-US')} tasks, ${d.packages.toLocaleString('en-US')} packages`, 'lower is better', 'fresh', B.fresh)}
+  ${panel(168, 'Fully cached · nothing to rebuild', `concurrency ${d.concurrency}, same commands`, 'warmNoRestore')}
+</svg>
+`
+}
+const chartOut = { light: chart('light'), dark: chart('dark') }
+const readOr = (p: string): string => (existsSync(p) ? readFileSync(p, 'utf8') : '')
+
 // ---- benchmarks.md stress section ----
 let doc = docIn
 const cell = (r: Row, key: keyof Row) => `${disp(Number(r[key]))} (${x(r, key)})`
@@ -246,8 +322,15 @@ const before = [
   readFileSync(landingPath, 'utf8'),
   readFileSync(docPath, 'utf8'),
   readFileSync(readmePath, 'utf8'),
+  readOr(chartPath('light')),
+  readOr(chartPath('dark')),
 ]
-const changed = before[0] !== landingOut || before[1] !== docOut || before[2] !== readmeFormatted
+const changed =
+  before[0] !== landingOut ||
+  before[1] !== docOut ||
+  before[2] !== readmeFormatted ||
+  before[3] !== chartOut.light ||
+  before[4] !== chartOut.dark
 if (CHECK) {
   if (changed) {
     process.stderr.write(
@@ -260,6 +343,8 @@ if (CHECK) {
   writeFileSync(landingPath, landingOut)
   writeFileSync(docPath, docOut)
   writeFileSync(readmePath, readmeFormatted)
+  writeFileSync(chartPath('light'), chartOut.light)
+  writeFileSync(chartPath('dark'), chartOut.dark)
   process.stdout.write(
     changed ? 'site rewritten from packages/vx-bench/results.json\n' : 'site already matched\n',
   )

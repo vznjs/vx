@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="290" viewBox="0 0 760 290" role="img" aria-label="Cold build: vx 3m 46s, Turborepo 5m 13s, Nx 34m 44s. Fully cached: vx 510ms, Turborepo 760ms, Nx 3.59s.">
+  <style>
+    text { font-family: ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; fill: #1f2328; }
+    .title { font-weight: 600; font-size: 15px; }
+    .note { font-size: 12px; }
+    .note, .name { fill: #59636e; }
+    .vxname, .vxval { font-weight: 700; }
+    .val { font-variant-numeric: tabular-nums; }
+    .vx { fill: #7cb518; } .turbo { fill: #ff5e9c; } .nx { fill: #6aa8ff; }
+    .ideal { stroke: #59636e; stroke-dasharray: 3 3; }
+  </style>
+  <text class="title" x="0" y="18">Cold build · 3,270 tasks, 1,090 packages</text>
+  <text class="note" x="760" y="18" text-anchor="end">lower is better</text>
+  <text class="vxname" x="98" y="49" text-anchor="end">vx</text>
+  <rect class="vx" x="110" y="34" width="51" height="20" rx="3"/>
+  <text class="val vxval" x="169" y="49">3m 46s</text>
+  <text class="name" x="98" y="79" text-anchor="end">Turborepo</text>
+  <rect class="turbo" x="110" y="64" width="71" height="20" rx="3"/>
+  <text class="val" x="189" y="79">5m 13s</text>
+  <text class="name" x="98" y="109" text-anchor="end">Nx</text>
+  <rect class="nx" x="110" y="94" width="470" height="20" rx="3"/>
+  <text class="val" x="588" y="109">34m 44s</text>
+  <line class="ideal" x1="159" y1="26" x2="159" y2="118"/>
+  <text class="note" x="163" y="130">ideal schedule 3m 38s</text>
+  <text class="title" x="0" y="168">Fully cached · nothing to rebuild</text>
+  <text class="note" x="760" y="168" text-anchor="end">concurrency 10, same commands</text>
+  <text class="vxname" x="98" y="199" text-anchor="end">vx</text>
+  <rect class="vx" x="110" y="184" width="67" height="20" rx="3"/>
+  <text class="val vxval" x="185" y="199">510ms</text>
+  <text class="name" x="98" y="229" text-anchor="end">Turborepo</text>
+  <rect class="turbo" x="110" y="214" width="99" height="20" rx="3"/>
+  <text class="val" x="217" y="229">760ms</text>
+  <text class="name" x="98" y="259" text-anchor="end">Nx</text>
+  <rect class="nx" x="110" y="244" width="470" height="20" rx="3"/>
+  <text class="val" x="588" y="259">3.59s</text>
+</svg>

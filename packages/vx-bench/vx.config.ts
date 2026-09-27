@@ -19,10 +19,10 @@ export default defineProject({
     },
 
     // The landing page's benchmark rows, the benchmarks doc's stress
-    // section and the README's benchmark sentence are generated from
-    // results.json by update-site.ts; `--check` fails when any drifted.
-    // All three live outside this project, so the task declares the
-    // three reads and folds the three files as inputs.
+    // section, the README's benchmark sentence and its chart are generated
+    // from results.json by update-site.ts; `--check` fails when any
+    // drifted. All live outside this project, so the task declares the
+    // reads and folds the files as inputs.
     'check.site': {
       description: 'update-site.ts --check: the site matches results.json',
       dependsOn: ['install'],
@@ -35,6 +35,8 @@ export default defineProject({
               '../vx-docs/src/pages/index.astro',
               '../vx/docs/benchmarks.md',
               '../../README.md',
+              '../vx-docs/public/bench-light.svg',
+              '../vx-docs/public/bench-dark.svg',
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -47,6 +49,8 @@ export default defineProject({
             'packages/vx-docs/src/pages/index.astro',
             'packages/vx/docs/benchmarks.md',
             'README.md',
+            'packages/vx-docs/public/bench-light.svg',
+            'packages/vx-docs/public/bench-dark.svg',
           ],
         },
         outputs: { files: [] },
