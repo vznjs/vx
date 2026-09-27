@@ -29,6 +29,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+
+function cli(): void {
+  const r = Bun.spawnSync([process.execPath, BIN, 'run', 'build', '--all'], {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (r.exitCode !== 0) throw new Error(`vx run: ${r.stderr.toString()}${r.stdout.toString()}`)
+}
+
 async function build(): Promise<string | undefined> {
   const r: RunSummary = await run({ cwd: root, tasks: ['build'], log: logger })
   expect(r.ok).toBe(true)
@@ -69,6 +80,67 @@ describe('a rename git reports in the second status column', () => {
       expect(porcelain).toContain(' R ')
       expect(await build()).toBe('success')
       expect(await readFile(path.join(dir, 'dist', 'out'), 'utf8')).toBe('new.txt\n')
+    },
+    TIMEOUT,
+  )
+})
+
+describe('a .gitattributes the index does not hold as clean', () => {
+  const CONFIG = `export default {
+    tasks: {
+      build: {
+        exec: { command: 'mkdir -p dist && cat src.txt > dist/out.txt' },
+        cache: { inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] } },
+      },
+    },
+  }`
+
+  // `*.txt text` normalizes the committed blob to LF while the worktree
+  // keeps CRLF; `git status` compares after the filter, so a rewrite to LF
+  // reads clean and the index OID is the same for both. The gate that
+  // stops trusting such an OID looked for `.gitattributes` among the
+  // TRUSTED paths only, so one untracked or modified was never seen, and
+  // the rewrite replayed the CRLF output (item 977).
+  async function crlfThenLf(attributes: 'untracked' | 'modified'): Promise<string> {
+    const dir = await addProject(root, 'a', { config: CONFIG })
+    const git = gitIn(root)
+    if (attributes === 'modified') {
+      await writeFile(path.join(dir, '.gitattributes'), '# none yet\n')
+      git('add', '-A')
+      git('commit', '-q', '-m', 'attributes')
+    }
+    await writeFile(path.join(dir, '.gitattributes'), '*.txt text\n')
+    await writeFile(path.join(dir, 'src.txt'), 'a\r\nb\r\n')
+    git(
+      'add',
+      path.join(dir, 'src.txt'),
+      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'package.json'),
+    )
+    git('commit', '-q', '-m', 'fixture')
+    expect(git('status', '--porcelain', '--', path.join(dir, 'src.txt'))).toBe('')
+
+    // The CLI, one process per run, as a user runs it. Two `run()` calls in
+    // one process derived the same key here and still re-executed the
+    // second time (why is not yet known), so they could not see the hit.
+    cli()
+    await writeFile(path.join(dir, 'src.txt'), 'a\nb\n')
+    cli()
+    return readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')
+  }
+
+  it(
+    'an untracked one still stops the index OID keying a converted file (item 977)',
+    async () => {
+      expect(await crlfThenLf('untracked')).toBe('a\nb\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a modified one does too (item 977)',
+    async () => {
+      expect(await crlfThenLf('modified')).toBe('a\nb\n')
     },
     TIMEOUT,
   )

@@ -8,7 +8,9 @@ regular files and symlinks), `git status --porcelain -z` (which of those
 are dirty, plus the untracked; a rename in either status column names
 its source as dirty too, item 976), and `git check-attr` where a clean
 filter (`text`, `eol`, `ident`, `core.autocrlf`) could make the blob
-differ from the bytes on disk. Split from `inputs.ts` on 2026-09-10:
+differ from the bytes on disk. The gate looks for a `.gitattributes`
+among every listed path, untracked and modified ones too: git applies
+those, and a scan of the trusted paths alone never saw them (item 977). Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
 
