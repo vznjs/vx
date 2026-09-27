@@ -1383,6 +1383,61 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     TIMEOUT,
   )
 
+  it(
+    'a task reached through a skipped one runs first, and folds into no key twice (item 1019)',
+    async () => {
+      // app → lib → base with `lib#build` skipped and `base#build` asked
+      // for: app ran beside base. The edge that orders them is not a key
+      // edge; app's key is the full run's, which folds base through lib.
+      await baseLibApp()
+      const full = appHash()
+      const plan = JSON.parse(
+        vx(root, 'run', 'app#build', 'base#build', '--dry=json', '--exclude-dependencies=build'),
+      ) as { tasks: Array<{ id: string; hash: string; deps: string[] }> }
+      const app = plan.tasks.find((t) => t.id === 'app#build')!
+      expect({ deps: app.deps, hash: app.hash }).toEqual({ deps: ['base#build'], hash: full })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a skipped task whose dependency orders past another skipped one keys as the full run (item 1019)',
+    async () => {
+      // app#build → app#gen → lib#build → lib#gen → base#build, `gen`
+      // skipped: lib#build orders after base#build, and app#gen's derived
+      // key folds lib#build's, which must not fold base#build twice.
+      await baseLibApp()
+      for (const [dir, dep] of [
+        ['app', "'^build'"],
+        ['lib', "'^build'"],
+      ] as const) {
+        await write(
+          path.join(root, 'packages', dir, 'vx.config.mjs'),
+          `export default { tasks: {
+             gen: { dependsOn: [${dep}], exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
+             build: {
+               dependsOn: ['gen'],
+               exec: { command: 'mkdir -p dist && cp src/* dist/' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             },
+           } }\n`,
+        )
+      }
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'gen')
+      const full = appHash()
+      const plan = JSON.parse(
+        vx(root, 'run', 'build', '--all', '--dry=json', '--exclude-dependencies=gen'),
+      ) as { tasks: Array<{ id: string; hash: string; deps: string[] }> }
+      const byId = new Map(plan.tasks.map((t) => [t.id, t]))
+      expect({
+        app: byId.get('app#build')!.hash,
+        libDeps: byId.get('lib#build')!.deps,
+      }).toEqual({ app: full, libDeps: ['base#build'] })
+    },
+    TIMEOUT,
+  )
+
   // The four rows below were each open to a single mutation of
   // excluded-keys.ts (item 766): the key a dropped dependency folds must be
   // the one the live path gives it, whatever its shape.

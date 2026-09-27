@@ -16,7 +16,7 @@
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
-import { filterUpstreamHashes } from './upstream.js'
+import { filterUpstreamHashes, keyedDeps } from './upstream.js'
 
 export interface KeyExcludedArgs {
   /** The scheduled graph, after `excludeDependencies`. */
@@ -41,7 +41,7 @@ export interface KeyExcludedArgs {
 export async function keyExcludedDependencies(args: KeyExcludedArgs): Promise<void> {
   const nodeOf = (id: string): TaskNode => args.nodes.get(id) ?? args.keyOnly.get(id)!
   const fullDeps = (node: TaskNode): readonly string[] => [
-    ...node.deps,
+    ...keyedDeps(node),
     ...(args.dropped.get(node.id) ?? []),
   ]
   // Each key's promise is made after its dependencies' promises, in a

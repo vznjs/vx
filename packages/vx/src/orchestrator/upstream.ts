@@ -17,7 +17,15 @@ import { UserError } from '../util/index.js'
  * a key at one of them and not the others.
  */
 export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcome[] {
-  return node.excludedUpstream === undefined ? upstream : [...upstream, ...node.excludedUpstream]
+  const order = node.orderOnly
+  const keyed = order === undefined ? upstream : upstream.filter((o) => !order.includes(o.node.id))
+  return node.excludedUpstream === undefined ? keyed : [...keyed, ...node.excludedUpstream]
+}
+
+/** `node.deps` less its ordering-only edges: the dependencies a key may fold. */
+export function keyedDeps(node: TaskNode): readonly string[] {
+  const order = node.orderOnly
+  return order === undefined ? node.deps : node.deps.filter((d) => !order.includes(d))
 }
 
 /**
