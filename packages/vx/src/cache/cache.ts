@@ -1201,6 +1201,7 @@ export class Cache implements CacheLayer {
    * to `writeArtifactAndIndex`.
    */
   private async packArtifact(args: {
+    hash: string
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
@@ -1225,6 +1226,7 @@ export class Cache implements CacheLayer {
    */
   private async planWithin(args: Parameters<Cache['packArtifact']>[0]): Promise<ArtifactPlan> {
     const plan = await planArtifact({
+      key: args.hash,
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
       exec: usageOfEntry(args.entry),
@@ -1331,6 +1333,14 @@ export class Cache implements CacheLayer {
       // absence means the bytes decompressed but aren't a vx artifact.
       if (scanned.stdout === null) {
         throw new CorruptArtifactError(hash, 'missing stdout entry')
+      }
+      if (scanned.key !== hash) {
+        throw new CorruptArtifactError(
+          hash,
+          scanned.key === undefined
+            ? 'artifact records no cache key'
+            : `artifact was stored under another key (${scanned.key})`,
+        )
       }
       assertArtifactNames(hash, scanned.entries, meta.outputs)
     } catch (err) {

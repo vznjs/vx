@@ -1,4 +1,4 @@
-// Item 942: a remote artifact is bytes off the network, and the restore
+// Items 942 and 943: a remote artifact is bytes off the network, and the restore
 // materialised whatever names it carried. An artifact naming an input and a
 // git hook overwrote the one and planted the other under a green
 // `cache-hit-remote`; one holding `out.txt` as a file AND a directory failed
@@ -18,7 +18,8 @@ const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },
   cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }`
 
-async function artifact(dir: string, entries: Record<string, string>): Promise<Uint8Array> {
+/** Source files for an artifact's entries, written once under `dir`. */
+async function sources(dir: string, entries: Record<string, string>): Promise<Map<string, string>> {
   const outputs = new Map<string, string>()
   let n = 0
   for (const [name, content] of Object.entries(entries)) {
@@ -26,20 +27,26 @@ async function artifact(dir: string, entries: Record<string, string>): Promise<U
     await writeFile(file, content)
     outputs.set(name, file)
   }
-  return Bun.zstdCompress(await packArtifactBytes(await planArtifact({ stdout: 'hi\n', outputs })))
+  return outputs
 }
 
-/** A remote that answers every key with `bytes`. */
-const serving = (bytes: Uint8Array): RemoteCacheLayer => ({
-  endpoint: 'mem://test',
-  async has() {
-    return true
-  },
-  async get() {
-    return { body: new Blob([bytes]), durationMs: 1 }
-  },
-  async put() {},
-})
+/** A remote that answers every key with an artifact of `entries`, packed under that key. */
+const serving = async (dir: string, entries: Record<string, string>): Promise<RemoteCacheLayer> => {
+  const outputs = await sources(dir, entries)
+  return {
+    endpoint: 'mem://test',
+    async has() {
+      return true
+    },
+    async get(hash: string) {
+      const tar = await packArtifactBytes(
+        await planArtifact({ key: hash, stdout: 'hi\n', outputs }),
+      )
+      return { body: new Blob([Bun.zstdCompressSync(tar)]), durationMs: 1 }
+    },
+    async put() {},
+  }
+}
 
 describe('a remote artifact names only what its task declares', () => {
   it(
@@ -48,7 +55,7 @@ describe('a remote artifact names only what its task declares', () => {
       const fx = await makeWorkspace('vx-names-')
       try {
         await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CFG })
-        const bytes = await artifact(fx.root, {
+        const remote = await serving(fx.root, {
           'outputs/out.txt': 'remote\n',
           'outputs/src/in.txt': 'OVERWRITTEN',
           'workspace-outputs/.git/hooks/post-commit': '#!/bin/sh\n',
@@ -58,7 +65,7 @@ describe('a remote artifact names only what its task declares', () => {
           cwd: fx.root,
           tasks: ['build'],
           log: silentLogger(fx),
-          remoteCache: serving(bytes),
+          remoteCache: remote,
         })
         const app = path.join(fx.root, 'packages', 'app')
         expect({
@@ -89,7 +96,7 @@ describe('a remote artifact names only what its task declares', () => {
       const fx = await makeWorkspace('vx-names-')
       try {
         await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CFG })
-        const bytes = await artifact(fx.root, {
+        const remote = await serving(fx.root, {
           'outputs/out.txt': 'remote\n',
           'outputs/out.txt/x': 'nested',
         })
@@ -98,7 +105,7 @@ describe('a remote artifact names only what its task declares', () => {
           cwd: fx.root,
           tasks: ['build'],
           log,
-          remoteCache: serving(bytes),
+          remoteCache: remote,
         })
         const second = await run({ cwd: fx.root, tasks: ['build'], log })
         expect([first.outcomes.map((o) => o.status), second.outcomes.map((o) => o.status)]).toEqual(
@@ -120,12 +127,12 @@ describe('a remote artifact names only what its task declares', () => {
       const fx = await makeWorkspace('vx-names-')
       try {
         await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CFG })
-        const bytes = await artifact(fx.root, { 'outputs/out.txt': 'remote\n' })
+        const remote = await serving(fx.root, { 'outputs/out.txt': 'remote\n' })
         const r = await run({
           cwd: fx.root,
           tasks: ['build'],
           log: silentLogger(fx),
-          remoteCache: serving(bytes),
+          remoteCache: remote,
         })
         expect(r.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
         expect(await readFile(path.join(fx.root, 'packages', 'app', 'out.txt'), 'utf8')).toBe(
@@ -159,12 +166,12 @@ describe('a remote artifact names only what its task declares', () => {
           return false
         })
         await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CFG })
-        const bytes = await artifact(fx.root, { 'outputs/out.txt': 'remote\n' })
+        const remote = await serving(fx.root, { 'outputs/out.txt': 'remote\n' })
         await run({
           cwd: fx.root,
           tasks: ['build'],
           log: silentLogger(fx),
-          remoteCache: serving(bytes),
+          remoteCache: remote,
         })
       } finally {
         get.mockRestore()
@@ -174,6 +181,49 @@ describe('a remote artifact names only what its task declares', () => {
       expect(seen.map(([site]) => site).sort()).toEqual(['get', 'prefetch'])
       for (const [, ctx] of seen) {
         expect(ctx?.outputs).toEqual({ files: ['out.txt'], workspaceFiles: [] })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // Item 943: nothing tied an artifact to its key, so a layer that
+  // answered one key with another's bytes replayed the other task's
+  // outputs under a green `cache-hit-remote`.
+  it.each([
+    ['another key', 'f'.repeat(16)],
+    ['no key', undefined],
+  ] as const)(
+    'one packed under %s is a miss, and its bytes are not restored',
+    async (_label, key) => {
+      const fx = await makeWorkspace('vx-names-')
+      try {
+        await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CFG })
+        const outputs = await sources(fx.root, { 'outputs/out.txt': 'from-A\n' })
+        const tar = await packArtifactBytes(
+          await planArtifact({ ...(key === undefined ? {} : { key }), stdout: 'hi\n', outputs }),
+        )
+        const remote: RemoteCacheLayer = {
+          endpoint: 'mem://test',
+          async has() {
+            return true
+          },
+          async get() {
+            return { body: new Blob([Bun.zstdCompressSync(tar)]), durationMs: 1 }
+          },
+          async put() {},
+        }
+        const r = await run({
+          cwd: fx.root,
+          tasks: ['build'],
+          log: silentLogger(fx),
+          remoteCache: remote,
+        })
+        expect({
+          statuses: r.outcomes.map((o) => o.status),
+          out: await readFile(path.join(fx.root, 'packages', 'app', 'out.txt'), 'utf8'),
+        }).toEqual({ statuses: ['success'], out: 'built\n' })
+      } finally {
+        await rm(fx.root, { recursive: true, force: true })
       }
     },
     TIMEOUT,

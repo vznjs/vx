@@ -59,6 +59,14 @@ interface MetaFile {
   /** Bumped only if the sidecar's own shape changes; the artifact
    *  container is versioned by CACHE_VERSION, which gates reads. */
   version: 1
+  /**
+   * The cache key the artifact was packed under (v35, item 943). Ingest
+   * refuses bytes whose key is not the one it asked for: nothing else ties
+   * an artifact to its key, so a remote layer that answered one key with
+   * another's bytes (a truncated or colliding mapping) replayed the other
+   * task's outputs under a green `cache-hit-remote`.
+   */
+  key?: string
   files: Record<string, [mode: number, mtimeMs: number]>
   /**
    * What the PRODUCING execution used (2026-09-12, additive: an artifact
@@ -102,6 +110,8 @@ export class ArchiveSecurityError extends Error {
 
 /** What `packArtifactStream` packs: stdout plus archive name → absolute source path. */
 export interface PackArgs {
+  /** The cache key, recorded in the sidecar (item 943); ingest refuses an artifact without it. */
+  key?: string
   stdout: string
   outputs: ReadonlyMap<string, string>
   /** The producing execution's usage, when the runner reported it. */
@@ -124,6 +134,7 @@ export interface ArtifactPlan {
  */
 export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
+  if (args.key !== undefined) meta.key = args.key
   const exec = usageOf(args.exec)
   if (exec !== undefined) meta.exec = exec
   const files = await Promise.all(
@@ -224,12 +235,16 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
  * name is unsafe — a partial reading of a poisoned artifact is the
  * outcome the traversal defense exists to prevent.
  */
-export async function scanArtifact(
-  tar: ReadableStream<Uint8Array>,
-): Promise<{ entries: ArchiveEntry[]; stdout: string | null; exec: ExecUsage | undefined }> {
+export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<{
+  entries: ArchiveEntry[]
+  stdout: string | null
+  exec: ExecUsage | undefined
+  key: string | undefined
+}> {
   const seen: Array<{ name: string; size: number; mtimeMs: number }> = []
   let meta: MetaFile['files'] = {}
   let exec: ExecUsage | undefined
+  let key: string | undefined
   let stdout: string | null = null
   for await (const e of tarEntries(tar)) {
     if (e.type !== '0') continue
@@ -239,6 +254,7 @@ export async function scanArtifact(
       // The ingest side is the untrusted boundary: a foreign sidecar's
       // usage is taken only when it is a plain non-negative number.
       exec = usageOf(parsed.exec)
+      if (typeof parsed.key === 'string') key = parsed.key
       continue
     }
     assertSafeName(e.name)
@@ -255,6 +271,7 @@ export async function scanArtifact(
     }),
     stdout,
     exec,
+    key,
   }
 }
 
