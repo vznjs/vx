@@ -129,13 +129,15 @@ vx lock                      # evaluate everything once, write vx-lock.json
 vx lock --check && vx run ci --frozen     # CI: audit, then run EXACTLY that graph
 ```
 
-| Command           | Evaluates configs | Uses lock                                                       |
-| ----------------- | ----------------- | --------------------------------------------------------------- |
-| `vx run`          | always, live      | never — local truth has no asterisks                            |
-| `vx run --frozen` | never             | yes; refuses if absent or a config file changed since locking   |
-| `vx lock --check` | full graph        | compares — catches env and import drift that byte hashes cannot |
+| Command           | Evaluates configs | Uses lock                                                        |
+| ----------------- | ----------------- | ---------------------------------------------------------------- |
+| `vx run`          | always, live      | never — local truth has no asterisks                             |
+| `vx run --frozen` | never             | yes, as written; refuses only a missing lock or project entry    |
+| `vx lock --check` | full graph        | compares — a changed file, and env or import drift it cannot see |
 
-Env values read at lock time are frozen by design — cache keys become
+`--frozen` checks nothing about staleness itself: an edited config runs
+its locked form until `vx lock` re-writes it, and `vx lock --check` is
+the guard that fails first. Env values read at lock time are frozen by design — cache keys become
 reproducible across machines. Take it for that, not for speed: measured
 on the 1,000-project bench, a plain warm run and a frozen one are a tie
 (177 ms against 165, 2026-09-12), because the config-evaluation cache
@@ -162,17 +164,20 @@ task graph, derive keys, schedule, execute, cache, observe. Plugins
 declared in `vx.workspace.ts` hook each stage, Vite-style, on one
 `VxPlugin` object:
 
-| Stage     | Hook                       | A plugin can…                                               |
-| --------- | -------------------------- | ----------------------------------------------------------- |
-| workspace | `config(ws, ctx)`          | edit the workspace config before it is used                 |
-| project   | `project(config, ctx)`     | add, remove or rewrite a project's tasks (keyed like yours) |
-| graph     | `graph(nodes, ctx)`        | add or drop edges, mark tasks requested                     |
-| key       | `key(task, ctx)`           | fold extra material into the cache key (named in `vx why`)  |
-| schedule  | `schedule(nodes, ctx)`     | decide which ready task runs first                          |
-| execute   | `executor(ctx)`            | decide WHERE a task's command runs (local, a REAPI worker)  |
-| store     | `cache(ctx)`               | decide where artifacts live (local, a shared remote)        |
-| observe   | `telemetry(ctx)` / `setup` | receive every run record, or the raw event bus              |
-| cli       | `commands`                 | add verbs to `vx`                                           |
+| Stage     | Hook                       | A plugin can…                                                |
+| --------- | -------------------------- | ------------------------------------------------------------ |
+| workspace | `config(ws, ctx)`          | edit the workspace config before it is used                  |
+| project   | `project(config, ctx)`     | add, remove or rewrite a project's tasks (keyed like yours)  |
+| graph     | `graph(nodes, ctx)`        | add or drop edges, mark tasks requested                      |
+| key       | `key(task, ctx)`           | fold extra material into the cache key (named in `vx why`)   |
+| key       | `fingerprint` (a claim)    | claim a root file (a lockfile) and key each task on its part |
+| schedule  | `schedule(nodes, ctx)`     | decide which ready task runs first                           |
+| schedule  | `admit(task, ctx)`         | hold a ready task until something running here finishes      |
+| execute   | `executor(ctx)`            | decide WHERE a task's command runs (local, a REAPI worker)   |
+| store     | `cache(ctx)`               | decide where artifacts live (local, a shared remote)         |
+| observe   | `telemetry(ctx)` / `setup` | receive every run record, or the raw event bus               |
+| run       | `setup` / `teardown`       | acquire before the run, release after it                     |
+| cli       | `commands`                 | add verbs to `vx`                                            |
 
 Core applies **no plugin by default** and names none. Running here and
 caching here are its floor — the tail of every executor list and cache
@@ -194,10 +199,9 @@ Context Protocol server for AI coding agents, no SDK),
 artifacts are vx's),
 [`@vzn/vx-lockfile`](packages/vx-lockfile) (`pnpm()`, `bun()`, `npm()`,
 `yarn()`: the lockfile keyed per project, so one install re-keys only the
-projects it reaches, and `--affected` follows), and [`@vzn/vx-schedule-history`](packages/vx-schedule-history)
-(order by learned critical path) and [`@vzn/vx-migrate`](packages/vx-migrate)
-(`bunx @vzn/vx-migrate`: turbo.json or an Nx graph → vx.config.ts, through
-core's migration seam). Core ships no plugin and reads no other runner's
+projects it reaches, and `--affected` follows) and [`@vzn/vx-schedule-history`](packages/vx-schedule-history)
+(order by learned critical path, and pack admission by what past runs
+used). Core ships no plugin and reads no other runner's
 format; nothing
 distributed ships in this repo; the seams are how you build it.
 
@@ -205,7 +209,7 @@ distributed ships in this repo; the seams are how you build it.
 
 |                           | vx                                                               | Turborepo                      | Nx               |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------ | ---------------- |
-| Fully cached, 100 pkgs¹   | **144 ms**                                                       | 279 ms                         | 583+ ms          |
+| Fully cached, 1,090 pkgs¹ | **510 ms**                                                       | 760 ms                         | 3.59 s           |
 | Config                    | TypeScript, evaluated into the cache key                         | JSON (static)                  | JSON (static)    |
 | Output ownership          | **Strict** — wiped before exec AND restore                       | Additive (stale files survive) | Additive         |
 | Clean-tree hashing        | **Zero reads** (git index OIDs)                                  | git OIDs                       | re-hash / daemon |
@@ -215,9 +219,10 @@ distributed ships in this repo; the seams are how you build it.
 | OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps                    | No                             | Paid             |
 | Install                   | **Single binary** — npm, or one release file; no Node/Bun needed | npm + Node                     | npm + Node       |
 
-¹ Wall-clock, direct binaries, same machine and workspace — full
-methodology and more scenarios in
-[`packages/vx/docs/benchmarks.md`](packages/vx/docs/benchmarks.md).
+¹ Warm, nothing to rebuild, on the 3,270-task graph quoted at the top:
+wall-clock, direct binaries, same machine and workspace — methodology
+and more scenarios in
+[`packages/vx/docs/benchmarks.md`](packages/vx/docs/benchmarks.md) § A real monorepo.
 
 ## Switching from another runner
 
@@ -309,7 +314,7 @@ maintainers' handoff is [`packages/vx/docs/STATUS.md`](packages/vx/docs/STATUS.m
 
 **Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather
 than maintain back-compat. What 1.0 will promise is in
-[`versioning-1.0.md`](packages/vx/docs/design/versioning-1.0.md). **~3,000 core tests plus the package suites; CI green on every commit**;
+[`versioning-1.0.md`](packages/vx/docs/design/versioning-1.0.md). **over 4,000 core tests plus the package suites; CI green on every commit**;
 the project dogfoods itself (`vx run ci`). Published on npm:
 [`@vzn/vx`](https://www.npmjs.com/package/@vzn/vx) (a prebuilt standalone
 binary).
@@ -321,7 +326,7 @@ build.
 
 | Surface                                            | Maturity             | Notes                                                                                                                                                             |
 | -------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core task runner + caching                         | **production-ready** | dogfooded continuously; ~3,000 core tests + the package suites, green                                                                                             |
+| Core task runner + caching                         | **production-ready** | dogfooded continuously; over 4,000 core tests + the package suites, green                                                                                         |
 | Plugin pipeline (13 hooks, `commands` included)    | **shippable**        | crash-isolated, re-validated; the local executor + cache are the floor under every plugin                                                                         |
 | `vx init` / `@vzn/vx-migrate` (scripts; Turbo, Nx) | **shippable**        | one config per package, TODOs where a source cannot say                                                                                                           |
 | REAPI remote cache + execution (`@vzn/vx-reapi`)   | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote                                                                                      |
