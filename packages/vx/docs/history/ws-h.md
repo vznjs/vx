@@ -53,6 +53,23 @@ not built: no field is deprecated, and the doc says so. Written in stream
 D's file because the plan assigned the mechanism to H; the change is the
 table and one lookup.
 
+## H-4: state exactly what 1.0 freezes, held to the code (roadmap 3.1, 3.2)
+
+`versioning-1.0.md` named the frozen surfaces but not what is in them. §
+What 1.0 freezes, exactly lists every config level and its fields (two
+tables), the levels keyed by an author's name, the thirteen hooks in
+pipeline order, the telemetry record kinds and schema version, and the
+plugin types by name. `tests/contract-versioning-doc.test.ts` holds each
+list both ways to its source: the levels to `config-schema.json` (itself
+held to the validator), the hooks to `PLUGIN_HOOKS`, the kinds to
+`TelemetryRecord` as the source declares it, the version to
+`TELEMETRY_SCHEMA_VERSION`, and each named type to the façade's surface.
+Differential: a field dropped from a table, a renamed hook, a wrong
+version, a dropped kind, a dropped keyed level and an unexported type name
+each fail their row. The contract table's "Defined by" column named
+`src/config.ts` for the plugin API, where `VxPlugin` is not; it now names
+the files and each surface's record.
+
 ## Leads for other streams
 
 - **D / B:** `exec.sandbox.ignore.localBinding` accepts ANY value (the
@@ -65,8 +82,9 @@ table and one lookup.
   forward the two name lists.
 - **D:** `dependsOn` accepts `['']` and `['!x']` at load; whether the graph
   refuses each with the task named is unchecked.
-- **F:** `@vzn/vx-reapi#test`'s "a call a proxy cuts in transit >
-  RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is retried" failed once
-  in a full local gate (2026-09-27, Bun 1.4.2, 2164 ms, "the collector
-  hung up") and passed twice run alone. Timing-dependent under load;
-  unexamined.
+- **F:** `@vzn/vx-reapi#test`'s "a call a proxy cuts in transit" rows
+  (added by F-1) fail under a full local gate: RST_STREAM(INTERNAL_ERROR)
+  "… is retried" twice (2164 and 2171 ms, "the collector hung up") and
+  RST_STREAM(CANCEL) "… is not retried" once, in 3 of 5 gates on
+  2026-09-27 (Bun 1.4.2, 4 workers), while the task passes run alone.
+  Load-dependent; CI has been green.

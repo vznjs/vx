@@ -10,13 +10,76 @@ release notes (`history/release-0.1.0-notes.md` is the model).
 From 1.0, these surfaces follow semver. A patch fixes them, a minor
 adds to them, and only a major removes or changes one.
 
-| Surface                                                                                                                                                                | Defined by                                                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| The config schema: every field `vx.config.ts` and `vx.workspace.ts` accept, and what each means                                                                        | `src/workspace/config-schema.ts`, `docs/schema.md`                                   |
-| The plugin API: the hooks in `PLUGIN_HOOKS`, `definePlugin`, `CacheLayer` / `RemoteCacheLayer`, `TaskExecutor`, and the telemetry records (`TELEMETRY_SCHEMA_VERSION`) | `src/config.ts`, `src/cache/layer.ts`, `src/orchestrator/telemetry.ts`               |
-| The package's exports                                                                                                                                                  | `src/index.ts`, pinned by the façade snapshot in `package-boundaries.unsafe.test.ts` |
-| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`                                                                        |
-| Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                  |
+| Surface                                                                                                                                                                | Defined by                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The config schema: every field `vx.config.ts` and `vx.workspace.ts` accept, and what each means                                                                        | `src/workspace/config-schema.ts`, `docs/schema.md`; recorded in `tests/contract/config-schema.json`                                                                                     |
+| The plugin API: the hooks in `PLUGIN_HOOKS`, `definePlugin`, `CacheLayer` / `RemoteCacheLayer`, `TaskExecutor`, and the telemetry records (`TELEMETRY_SCHEMA_VERSION`) | `src/orchestrator/plugin.ts`, `src/cache/layer.ts`, `src/cache/layered-cache.ts`, `src/exec/executor.ts`, `src/orchestrator/telemetry.ts`; recorded in `tests/contract/package-api.txt` |
+| The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                         |
+| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`                                                                                                                                                                           |
+| Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                     |
+
+## What 1.0 freezes, exactly
+
+The table above names the surfaces. This section lists what is in them,
+and `tests/contract-versioning-doc.test.ts` checks every list here
+against the code, in both directions, so the page cannot promise a field
+the schema dropped or leave out one it gained.
+
+### Config fields
+
+Each object level of a config and the fields it accepts. A field's type,
+the values it takes and each refusal's exact words are recorded in
+`tests/contract/config-schema.json`, and what each field means is in
+`schema.md`. `<name>` is a key the author picks.
+
+`vx.workspace.ts`:
+
+| Level            | Fields                                                            |
+| ---------------- | ----------------------------------------------------------------- |
+| (top)            | `cacheDir`, `cacheRetention`, `concurrency`, `plugins`, `timeout` |
+| `cacheRetention` | `maxSize`, `olderThan`                                            |
+
+`vx.config.ts`:
+
+| Level                              | Fields                                                                                                    |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| (top)                              | `tasks`                                                                                                   |
+| `tasks.<name>`                     | `cache`, `dependsOn`, `description`, `exec`                                                               |
+| `tasks.<name>.exec`                | `command`, `env`, `persistent`, `remote`, `retries`, `sandbox`, `timeout`                                 |
+| `tasks.<name>.exec.env`            | `define`, `passThrough`                                                                                   |
+| `tasks.<name>.exec.persistent`     | `readyWhen`                                                                                               |
+| `tasks.<name>.exec.sandbox`        | `allow`, `deny`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                                   |
+| `tasks.<name>.exec.sandbox.allow`  | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
+| `tasks.<name>.exec.sandbox.deny`   | `network`                                                                                                 |
+| `tasks.<name>.exec.sandbox.ignore` | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
+| `tasks.<name>.cache`               | `inputs`, `outputs`                                                                                       |
+| `tasks.<name>.cache.inputs`        | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
+| `tasks.<name>.cache.outputs`       | `files`, `workspaceFiles`                                                                                 |
+
+Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
+
+`sandbox.ignore` names `pty` and `gitConfig` only to refuse them ("a
+flag, not something to ignore"). The record holds that refusal too.
+
+### The plugin API
+
+- **Hooks**, in pipeline order: `config`, `project`, `graph`, `key`,
+  `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
+  `setup`, `commands`, `teardown`. A plugin is
+  `definePlugin(import.meta, hooks)`, and its name is its package's.
+- **Telemetry records**, schema version 3. The kinds are `run.start`,
+  `task.start`, `task.log`, `task.end` and `run.end`; each record
+  carries the version as `v`.
+- **Types.** Every type `@vzn/vx` exports is frozen with every type it
+  names, whether that one is exported or not. `VxPlugin` and its hook
+  contexts, `CacheLayer`, `RemoteCacheLayer`, `TaskExecutor`,
+  `ExecuteRequest` / `ExecuteResult`, `TelemetrySink` and
+  `TelemetryRecord` are the ones a plugin implements or receives. The
+  full text is `tests/contract/package-api.txt`.
+
+### The CLI
+
+The verbs, flags, exit codes and machine-readable outputs in `docs/cli.md`.
 
 ## How the contract is held
 
