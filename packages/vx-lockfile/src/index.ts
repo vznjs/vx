@@ -33,12 +33,13 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently (the memo's identity). */
-const DIGEST_VERSION = 5
+const DIGEST_VERSION = 6
 
 interface Manager {
   readonly name: string
   readonly file: string
-  readonly digest: (text: string) => ReadonlyMap<string, string>
+  readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
+  readonly extraFiles?: (text: string) => readonly string[]
 }
 
 const MANAGERS = {
@@ -50,7 +51,8 @@ const MANAGERS = {
   bun: {
     name: 'bun',
     file: 'bun.lock',
-    digest: (t) => bunLock.importerDigests(bunLock.parseLockfile(t)),
+    digest: (t, files) => bunLock.importerDigests(bunLock.parseLockfile(t), files),
+    extraFiles: (t) => bunLock.patchFiles(t),
   },
   npm: {
     name: 'npm',
@@ -78,9 +80,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       part: manager.name,
       version: DIGEST_VERSION,
       scope,
-      digest: (text) => {
+      ...(manager.extraFiles !== undefined ? { extraFiles: manager.extraFiles } : {}),
+      digest: (text, files) => {
         try {
-          return manager.digest(text)
+          return manager.digest(text, files)
         } catch (err) {
           // The parsers name their own file, so prefixing unconditionally
           // said it twice — "bun.lock: bun.lock: Failed to parse JSONC"

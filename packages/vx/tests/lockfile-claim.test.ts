@@ -43,6 +43,60 @@ const task = (dir: string) => ({ projectDir: path.join(root, dir) }) as TaskNode
 const lock = (text: string) => writeFile(path.join(root, 'bun.lock'), text)
 const MEMO = () => path.join(root, '.vx', 'cache', 'lockfile-claims', 'bun.lock.json')
 
+// bun.lock names a patch file by PATH and records no hash of it: an edited
+// patch left the lockfile byte-identical, every key unmoved, and
+// `--affected` silent while the install applied the new patch (item 1014).
+// A claim's `extraFiles` are hashed and handed to `digest`.
+describe('extra files the lockfile names', () => {
+  /** Lines `dir=digest`, and `extra:<path>` naming a file whose hash each digest folds. */
+  const withExtras = () =>
+    lockfileClaim({
+      file: 'bun.lock',
+      version: 1,
+      extraFiles: (text) =>
+        text
+          .split('\n')
+          .filter((l) => l.startsWith('extra:'))
+          .map((l) => l.slice('extra:'.length)),
+      digest: (text, files) => {
+        calls.push(text)
+        const folded = [...files].map(([f, h]) => `${f}:${h}`).join(',')
+        const out = new Map<string, string>()
+        for (const line of text.split('\n')) {
+          const [dir, digest] = line.split('=')
+          if (dir && digest) out.set(dir, `${digest}|${folded}`)
+        }
+        return out
+      },
+    })
+  const patch = (text: string) =>
+    mkdir(path.join(root, 'patches'), { recursive: true }).then(() =>
+      writeFile(path.join(root, 'patches', 'p.patch'), text),
+    )
+
+  it('an edited extra file moves the key, in a new process and in the same one', async () => {
+    await lock('packages/a=a1\nextra:patches/p.patch\n')
+    await patch('one')
+    const first = (await withExtras().key(task('packages/a'), ctx()))!['deps']
+    await patch('two!')
+    const hooks = withExtras()
+    const second = (await hooks.key(task('packages/a'), ctx()))!['deps']
+    expect(second).not.toBe(first)
+    await patch('three!!')
+    const third = (await hooks.key(task('packages/a'), ctx()))!['deps']
+    expect(new Set([first, second, third]).size).toBe(3)
+  })
+
+  it('CONTROL: an unchanged extra file costs a warm run no parse', async () => {
+    await lock('packages/a=a1\nextra:patches/p.patch\n')
+    await patch('one')
+    const first = (await withExtras().key(task('packages/a'), ctx()))!['deps']
+    const parses = calls.length
+    expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).toBe(first)
+    expect(calls.length).toBe(parses)
+  })
+})
+
 describe('key', () => {
   it("folds the project's digest, the root's for an unlisted project, and nothing without a file", async () => {
     const hooks = claim()
