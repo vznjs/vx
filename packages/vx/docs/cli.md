@@ -1258,7 +1258,10 @@ to stay up across changes, use the dev tool's own watch (`vite`,
   signal watch received (a Ctrl-C as SIGINT; a SIGTERM or SIGHUP as SIGTERM),
   `VX_KILL_GRACE_MS` (2 s), then SIGKILL — and the process leaves only
   once it has returned, so a CI cancellation never orphans a task.
-- `1` — parser error or missing scope.
+- `1` — parser error, missing scope, or a task name no project in
+  scope declares: the initial run refuses it as `vx run` does, with the
+  same `Did you mean` hint, and watch exits rather than re-run the
+  refusal on every change.
 
 A cycle that throws — a `vx.config.*` that does not parse — prints
 `vx watch: cycle failed: <reason>` and watch keeps watching, the initial

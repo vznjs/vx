@@ -516,8 +516,17 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // Uncaught, it ended watch at start while the same break mid-watch did
   // not (item 1017).
   let held: HeldPersistent | undefined
+  let refusedToStart = false
   try {
-    held = (await runOrchestrator(opts)).persistent
+    const initial = await runOrchestrator(opts)
+    held = initial.persistent
+    // A run that failed having run nothing refused to start: a requested
+    // name no project declares (run() says which, with a "did you mean").
+    // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
+    // same refusal on every change, since no edit to an input can declare
+    // a task. A name only the diff left out (`--affected`) is `ok` and
+    // keeps watching.
+    refusedToStart = !initial.ok && initial.outcomes.length === 0
   } catch (err) {
     process.stderr.write(
       `vx watch: cycle failed: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -527,6 +536,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     await held?.stop(forwardedSignal(stop.signal.reason))
     return 0
   }
+  if (refusedToStart) return 1
 
   const load: CliLoadOptions = {
     ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
