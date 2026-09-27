@@ -31,16 +31,36 @@ terminal and a task succeeding or failing. Read it alongside
  │       package.json with a `workspaces` field (npm/yarn/bun), or a
  │       bare package.json (single-project mode). The nearest one whose
  │       package globs CLAIM cwd wins, so running from inside a member
- │       resolves the declaring root, not the member; when nothing
- │       claims cwd the nearest candidate wins.
+ │       resolves the declaring root, not the member; the first
+ │       directory holding pnpm-workspace.yaml stops the walk whether
+ │       or not its globs claim cwd (pnpm's rule); when nothing claims
+ │       cwd the nearest candidate wins. An UNSCOPED run (no explicit
+ │       project scope, at least one bare task name) then starts
+ │       step 11's git enumeration over the whole tree, overlapping
+ │       steps 2–10; a scoped run waits, since its pathspecs depend on
+ │       which configs load.
  │    2. loadWorkspace — parses the appropriate manifest. Bun.YAML
- │       for pnpm; Bun.file().json() for the package.json forms.
- │    3. loadWorkspaceConfig — optional vx.workspace.{ts,mts,js,mjs}
- │       at the root (concurrency / cacheDir / timeout / plugins).
+ │       for pnpm; the package.json forms read as bytes (readOnce,
+ │       shared with step 1) and JSON.parse.
+ │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the optional
+ │       vx.workspace.{ts,mts,js,mjs} at the root (concurrency /
+ │       cacheDir / timeout / cacheRetention / plugins), then the plugin
+ │       `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package
  │       names (hard error with both paths).
- │    5. SCOPED config loading — only in-scope projects plus their
+ │    5. buildPackageGraph — workspace dep edges from package.json.
+ │    6. Local cache open: new Cache(cacheDir, { read, write }, root)
+ │       with the policy's local slice — BEFORE the configs load,
+ │       because it also holds their cached evaluations. Then
+ │       computeWorkspaceFingerprints: one read of every supported
+ │       lockfile + pnpm-workspace.yaml + .yarnrc.yml found at the root
+ │       yields `all` (every file; keys the config-evaluation cache),
+ │       `unclaimed` (minus the files a `fingerprint` plugin claims —
+ │       `@vzn/vx-lockfile` keys those per project; reused for every
+ │       task's cache key) and `files` (the bytes, for the mid-run
+ │       fingerprint check).
+ │    7. SCOPED config loading — only in-scope projects plus their
  │       transitive dependency closure evaluate ('^task' frontier
  │       expansion never escapes the closure); one staged load,
  │       loadProjects, shared with every reading verb. Under --frozen,
@@ -52,22 +72,17 @@ terminal and a task succeeding or failing. Read it alongside
  │       evaluations served for pure configs; the loader validates
  │       each TaskConfig shape, and the plugin `project` stage runs
  │       on each config with a re-validation after every plugin.
- │    6. buildPackageGraph — workspace dep edges from package.json.
- │    7. computeNestedProjectDirs — set of projects rooted inside each
+ │    8. computeNestedProjectDirs — set of projects rooted inside each
  │       project, computed over EVERY config-bearing project (loaded
  │       or not) for boundary enforcement.
- │    8. computeWorkspaceFingerprint — xxh3 over every supported
- │       lockfile + pnpm-workspace.yaml found at the root, minus the
- │       files a `fingerprint` plugin claims (`@vzn/vx-lockfile` keys
- │       those per project). Computed once; reused for every task's
- │       cache key.
- │    9. expandRequested → buildTaskGraph (see below).
- │   10. Cache open: new Cache(cacheDir, { read, write }, root) with the
- │       policy's local slice. An injected RunOptions.remoteCache is
- │       composed into a LayeredCache (it wins); else a plugin's
- │       `cache` capability may wrap or replace it; else bare local.
- │   11. Bulk git populate — FOUR spawns at the root, three concurrent
- │       and the rev-parse asked while they run
+ │    9. expandRequested (see Task selection below).
+ │   10. Cache layer: an injected RunOptions.remoteCache is composed
+ │       with the local cache into a LayeredCache (it wins); else
+ │       resolveCache lets a plugin's `cache` capability wrap or
+ │       replace it; else bare local.
+ │   11. Bulk git populate — the enumeration step 1 started is
+ │       awaited, or a scoped run starts it here. FOUR spawns at the
+ │       root, three concurrent and the rev-parse asked while they run
  │       (`ls-files -s -v -z` for the index: every tracked path's OID
  │       and its cache-state flag; `status --porcelain -z -uall` for
  │       the dirty AND untracked sets, the one worktree walk;
@@ -80,13 +95,18 @@ terminal and a task succeeding or failing. Read it alongside
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
  │       walked the same tree again. A fifth, `check-attr`, runs only
- │       when an attributes file could rewrite bytes.
+ │       when an attributes file could rewrite bytes. The run's
+ │       HashCache is created after it.
+ │   12. buildTaskGraph (see below).
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
  │    (every project that declares the task). Anchored entries
  │    (`pkg#task`) resolve directly. Duplicates are deduped.
  │    Empty result → run returns `{ ok: false, outcomes: [] }` —
- │    no task is treated as a CI footgun.
+ │    no task is treated as a CI footgun. The exception: a diff-scoped
+ │    run (--affected) whose task names are all declared by projects
+ │    outside the selection is `none-affected` and returns
+ │    `{ ok: true, outcomes: [] }`.
  │
  ├─ Task graph (src/graph/task-graph.ts:buildTaskGraph)
  │    Starting from the resolved {project, task}[] pairs, walk
@@ -105,16 +125,20 @@ terminal and a task succeeding or failing. Read it alongside
  │    requested GROUP stands for (transparent folders).
  │
  ├─ Plugins + telemetry (src/orchestrator/run.ts)
- │    When vx.workspace.ts declares plugins:
- │      1. installPlugins — each plugin's optional setup() hook runs;
- │         a throw aborts the run with a clean UserError naming it.
- │      2. Run context capture — ONE git spawn (commit + branch; dirty
- │         reuses the GitFilesCache's status), CI-env detection,
+ │      1. installPlugins — always called; each plugin's optional
+ │         setup() hook runs; a throw aborts the run with a clean
+ │         UserError naming it. With no plugins it runs nothing.
+ │      2. Run context capture — always, for the `invocations` row:
+ │         commit + branch read from `.git` directly, `git rev-parse`
+ │         only when that reader does not understand the layout; dirty
+ │         reuses the GitFilesCache's status; CI-env detection,
  │         host/os/arch. Never fails a run.
- │      3. subscribeTelemetry — collects every plugin's TelemetrySink;
- │         with ZERO sinks it returns undefined and NOTHING subscribes
- │         (the no-telemetry hot path is byte-identical).
- │    With no plugins declared, all three steps are skipped entirely.
+ │      3. Telemetry — only when a plugin has a `telemetry` hook or
+ │         RunOptions.telemetrySinks is passed: the run-context record
+ │         (adding captureWorkspaceIdentity) is built and
+ │         subscribeTelemetry collects the sinks; with ZERO sinks it
+ │         returns undefined and NOTHING subscribes (the no-telemetry
+ │         hot path is byte-identical).
  │
  ├─ Run-level state
  │    • runId   — ULID stamped once per `vx run` invocation; every
@@ -145,23 +169,26 @@ terminal and a task succeeding or failing. Read it alongside
  │      overlap is the point); drained before cache.close(). At most
  │      one remote GET per key (shared in-flight map with the lazy
  │      read-through).
- │    • LOCAL SHORT-CIRCUIT (local-only runs with local reads on and
- │      ≥1 dep edge) — derive the same stable keys and probe local
- │      cache.get ONCE per task → a `preProbed` map (hits AND stable
- │      misses; execute reuses these probes) + a `restoreTier` set
- │      (confirmed hits). Awaited before scheduling; never throws
+ │    • LOCAL SHORT-CIRCUIT (no remote layer, local reads on, ≥1
+ │      task) — derive the same stable keys and probe them in ONE
+ │      batched cache.getMany (a layer without getMany: cache.get once
+ │      per task under a bounded pool) → a `preProbed` map (hits AND
+ │      stable misses; execute reuses these probes) + a `restoreTier`
+ │      set (confirmed hits). Awaited before scheduling; never throws
  │      (degrades to the normal schedule).
  │
  ├─ Scheduling (src/graph/scheduler.ts:runGraph — two-tier)
- │    Up to N tasks concurrently over two ready queues:
- │      - EXEC tier — dep-gated; ready when every dep completed.
+ │    Two ready queues, each on its own lane:
+ │      - EXEC tier — dep-gated; ready when every dep completed; up
+ │        to N (concurrency) at once.
  │        Priority: transitive-reverse-dependent count (bitset
  │        closure), optionally overridden by a `priorities` map.
  │      - RESTORE tier — confirmed stable local hits; ready
  │        IMMEDIATELY (no dep gate, no failed-dep→skip check — their
- │        key is dep-independent) at LOW priority. The drain rule:
- │        exec-tier first, so misses own the worker pool and restores
- │        backfill idle capacity.
+ │        key is dep-independent) at LOW priority, on a restore lane
+ │        of 2×N (1 when N is 1). The drain rule: exec-tier first;
+ │        a restore never takes an exec slot and the two lanes never
+ │        wait on each other.
  │    On failure: exec-tier dependents are marked `skipped` (exit 1,
  │    durationMs 0, no spawn); independent siblings keep running.
  │    The scheduler doesn't know about caching; the execute callback
@@ -178,16 +205,21 @@ terminal and a task succeeding or failing. Read it alongside
  │
  │    B. PERSISTENT — `exec.persistent` set.
  │       1. Build isolated env (essentials + passThrough + define +
- │          <projectDir>/node_modules/.bin in PATH).
+ │          <projectDir>/node_modules/.bin, then
+ │          <workspaceRoot>/node_modules/.bin, prepended to PATH).
  │       2. runPersistent — Bun.spawn the command; subscribe to
  │          stdout/stderr chunk-by-chunk.
  │       3. Resolve `ready` when:
  │            - no readyWhen → immediately on spawn
  │            - readyWhen matches the output (complete lines OR the
  │              trailing partial line) → on that match
- │            - child exits before either → reject with the captured
- │              stderr
- │            - exec.timeout elapses first → SIGTERM + fail
+ │            - child exits before the match → reject with
+ │              PersistentReadyError('persistent task exited before
+ │              becoming ready (exit N)'); its output already streamed
+ │              through the logger
+ │            - readyWhen set and the timeout (exec.timeout, else the
+ │              run default) elapses first → fail, SIGTERM, SIGKILL
+ │              after the grace
  │       4. On ready: stash child in persistentRegistry; return
  │          success. Downstream tasks unblock.
  │       Note: cache + persistent is a config error (rejected by the
@@ -202,7 +234,9 @@ terminal and a task succeeding or failing. Read it alongside
  │              hatch); resolved paths join the same input list
  │            - read host process.env values for inputs.env names
  │            - resolve inputs.runtime / workspaceRuntime command
- │              output (deduped per run; non-zero exit fails the run)
+ │              output (deduped per run; a non-zero exit throws a
+ │              UserError that fails this task — its dependents skip,
+ │              independent tasks continue)
  │       2. hashTaskConfig + project package.json hash (both memoized
  │          per run via HashCache)
  │       3. filterUpstreamHashes (apply cache.inputs.tasks filter)
@@ -225,7 +259,11 @@ terminal and a task succeeding or failing. Read it alongside
  │              · miss → fall through; cleanOutputs first (when
  │                       willWrite) so a stale prior build can't
  │                       survive the fresh exec
- │       6. Build isolated env.
+ │       6. Build isolated env. For a cacheable task,
+ │          describeTaskInputs({ captureInto }) then describes the input
+ │          set ONCE, before the spawn: the executor gets the input
+ │          values and the save reuses the captured per-component input
+ │          fingerprint (a re-fold over the memos, no I/O).
  │       7. runCommand (or runSandboxed when `sandbox` is declared) →
  │          Bun.spawn shell with `command` + forwardArgs
  │          (shell-quoted). Buffer chunks via onStdout/onStderr.
@@ -234,21 +272,23 @@ terminal and a task succeeding or failing. Read it alongside
  │          (Ctrl-C teardown), or a child a shutdown signal killed,
  │          classifies as `aborted` instead, whatever its exit — not
  │          counted, not recorded, not retried.
- │       8. On exit 0 + willWrite:
- │            resolveOutputs(outputs) + resolveWorkspaceOutputs →
- │              file lists
- │            a second computeTaskHash with captureInto records the
- │              per-component input fingerprint (miss-only; pure
- │              re-fold, no extra I/O)
- │            cache.save(...) — pack <hash>.tar.zst with stdout +
- │              outputs/<rel> (+ workspace-outputs/<rel-to-root>),
- │              upsert entries + output_files + entry_inputs rows in
- │              one transaction. Under a LayeredCache with remote
- │              writes on, the remote upload fires in the BACKGROUND
- │              (drained at end of run).
- │            markOutputsChanged — the project's git snapshot notes
- │              the written output paths so a same-project downstream
- │              task doesn't re-spawn git unless its globs overlap.
+ │       8. On exit 0 + willSave (willWrite, no tainted upstream):
+ │            keyStillTrue() — if the workspace fingerprint or an
+ │              input moved since the key was taken, the result stands
+ │              but the save is withheld (said on the status line).
+ │            saveMiss — in the slot: resolveOutputs(outputs) +
+ │              resolveWorkspaceOutputs → file lists, and the
+ │              project's git snapshot notes the written output paths
+ │              so a same-project downstream task doesn't re-spawn git
+ │              unless its globs overlap. Deferred onto the run's save
+ │              lane (2×concurrency wide): cache.save(...) — pack
+ │              <hash>.tar.zst with stdout + outputs/<rel>
+ │              (+ workspace-outputs/<rel-to-root>), upsert entries +
+ │              output_files + entry_inputs rows in one transaction.
+ │              The slot frees at once; dependents wait on the save's
+ │              `landed` promise (the scheduler's settledOf). Under a
+ │              LayeredCache with remote writes on, the remote upload
+ │              fires in the BACKGROUND (drained at end of run).
  │       9. Return TaskOutcome { node, status, exitCode, durationMs,
  │            hash, cpuMs?, peakRssBytes?, restored?,
  │            wallclockStartNs, wallclockEndNs }.
@@ -268,8 +308,10 @@ terminal and a task succeeding or failing. Read it alongside
        await their flush (crash-isolated; skipped when no sink).
     6. Drain background remote prefetches/uploads; cache.close();
        sandbox teardown when any task was sandboxed.
-    7. Return { ok, outcomes }; ok = every real task ended success
-       or cache-hit (any failed/skipped → ok = false → exit 1).
+    7. Return { ok, outcomes }; ok = every task ended success or a
+       cache hit (any failed/skipped/aborted → ok = false → exit 1),
+       and no persistent child exited on its own before the run
+       stopped it.
     8. FOREGROUND ONLY: if the user requested persistent tasks (dev
        servers), the process now blocks until ONE of them exits — the
        summary is already printed, `▸ <id> running` rows list what's
@@ -362,21 +404,22 @@ broader access has cache-stability implications).
 | `exec.timeout` overrun                                                                                                                                           | SIGTERM to the task's group, SIGKILL for whoever is left after the grace; task is `failed` (timed out), exit 143, never cached                                                                                                                     |
 | Child killed by Ctrl-C teardown (SIGINT/SIGTERM/SIGHUP), or by an embedder's `RunOptions.signal` abort — which also completes every never-started task `aborted` | Task is `aborted` — not counted, not recorded. An attempt that ends while the run is stopping is `aborted` whatever its exit: a trap that exits 0 is not cached, and a failure is not retried (item 962). What it printed still shows in its frame |
 | `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly)                                                                                                                                                 |
-| Persistent task exits before ready                                                                                                                               | Task marked `failed`; the captured output is surfaced                                                                                                                                                                                              |
+| Persistent task exits before ready                                                                                                                               | Task marked `failed` with `exited before becoming ready (exit N)`; its output already streamed live                                                                                                                                                |
 | Upstream task fails                                                                                                                                              | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent)                                                                            |
 | Sandbox violation (macOS monitor / Linux structural)                                                                                                             | Task is `failed`; violations render in the frame; nothing cached                                                                                                                                                                                   |
 | Remote-cache error (500, timeout, corrupt artifact)                                                                                                              | Degrades to a cache miss; never fails the run                                                                                                                                                                                                      |
-| Workspace yaml missing                                                                                                                                           | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                                                                                           |
+| No pnpm-workspace.yaml or package.json in cwd or any parent                                                                                                      | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                                                                                           |
 | Same-project task referenced in `dependsOn` not declared                                                                                                         | `buildTaskGraph` throws with the offending edge                                                                                                                                                                                                    |
 | Duplicate workspace package name                                                                                                                                 | `listProjects` throws with both paths                                                                                                                                                                                                              |
 | Cycle in task graph                                                                                                                                              | `detectCycle` throws with the cycle path                                                                                                                                                                                                           |
 | Malformed config                                                                                                                                                 | `loadProjectConfig` throws (UserError) with file + field                                                                                                                                                                                           |
-| `cache.inputs.runtime` command exits non-zero                                                                                                                    | Hard UserError naming the command + exit code                                                                                                                                                                                                      |
+| `cache.inputs.runtime` command exits non-zero                                                                                                                    | UserError naming the command + exit code; that task is `failed`, dependents skip                                                                                                                                                                   |
 
 Failures don't kill the scheduler — independent tasks already in
 flight finish, and unrelated tasks not yet started still run. The
-overall exit code is 1 if any task ended in `failed` or `skipped`
-status.
+overall exit code is 1 if any task ended in `failed`, `skipped` or
+`aborted` status, or a persistent child exited before the run stopped
+it.
 
 ## Output capture and rendering
 
@@ -495,9 +538,11 @@ The colors / framing modules:
 - **Override** — `--concurrency N` (CLI). CLI wins over workspace
   config.
 - **`concurrency: 1`** serializes execution while still respecting
-  topo order.
+  topo order; a restore may still run beside it (the restore lane is 1
+  wide then).
 - The scheduler never exceeds the cap; tasks queue. Restore-tier
-  tasks only take a slot no exec-tier task wants.
+  tasks run on their own lane, `2 × concurrency` wide (1 when
+  concurrency is 1), and never take an exec slot.
 - Failure of a task doesn't pause the scheduler — independent
   siblings continue running and starting.
 
@@ -517,9 +562,9 @@ pool full.
   asked only for tasks about to run here, with the tasks running here; a
   task on an executor pool is never asked and never counted, so it can
   never park behind a local reservation.
-- **Restore-tier tasks are always local** — a cache restore is a tar
-  extract on this disk, so it takes a local slot regardless of where the
-  task would have executed.
+- **Restore-tier tasks use the restore lane** — unless the task is
+  placed on an executor with a `capacity`: then it counts against that
+  pool, like any task placed there.
 - **No pooled executor declared = the legacy path.** With every task on
   the local pool the admission gate is byte-identical to before pools
   existed.
@@ -583,9 +628,10 @@ were accepted and wrote nothing until item 992).
   after the run (CI step summaries).
 
 Writers live in `orchestrator/run-artifacts.ts:writeRunSummary` /
-`writeRunProfile` and `orchestrator/run-report.ts`. Errors are
-surfaced to the user via `log.status` but don't change the run's exit
-code — the run already happened.
+`writeRunProfile` and `orchestrator/run-report.ts`. A `--summarize` or
+`--profile` write error is surfaced via `log.status`, a `--report-file`
+one on stderr (`cli/run.ts`); neither changes the run's exit code — the
+run already happened.
 
 ## Why each rule
 
@@ -601,10 +647,10 @@ code — the run already happened.
 - **The scheduler doesn't bail on first failure.** A flaky test
   failing shouldn't stop an unrelated build. Independent siblings
   continue; only dependents are skipped.
-- **Misses own the worker pool.** A restore is cheap and can wait; a
-  miss is the critical path. The restore tier exists so warm work
-  never queues behind ordering it doesn't need — but it never steals
-  a slot from real work.
+- **Misses own the worker pool.** A miss is the critical path, so
+  the exec lane is `concurrency` wide and only executions take it.
+  Restores run on their own lane, so warm work never queues behind
+  ordering it doesn't need and never takes a slot from real work.
 - **Forwarded args don't reach upstream tasks.** Otherwise
   `vx run build -- --watch` would set `--watch` on every upstream's
   build, and upstream cache keys would partition by CLI args that

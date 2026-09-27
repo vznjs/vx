@@ -33,6 +33,18 @@
   stage does); executor pinning, `prepareRun` order, a nonexistent
   env-var remote layer, telemetry gate, `shell: true` spawn and a
   post-exit second hash corrected.
+- **J-4** `execution.md` against the run's code (19 claims, each re-read
+  in source). The prepare steps follow `prepareRun` again (the local
+  cache opens before configs load; an unscoped run starts git
+  enumeration first). Exec and restore tiers are separate lanes
+  (restore `2×concurrency`), not one worker cap. The save is deferred to
+  a save lane, withheld by `keyStillTrue()`, and reuses the one input
+  capture taken before the spawn. Plugin install and run-context
+  capture always run; telemetry needs a `telemetry` hook or injected
+  sinks. The short-circuit has no dep-edge gate; a persistent task that
+  exits early carries no captured stderr; a failing runtime input fails
+  only its task; `aborted` fails the run; a diff-scoped empty run is
+  `ok: true`.
 
 ## Leads for other streams
 
