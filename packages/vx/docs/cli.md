@@ -1025,7 +1025,9 @@ into the step summary above the table.
 The report is **appended**, never truncated: `$GITHUB_STEP_SUMMARY` is a
 shared, append-only file that other steps in the same job also write to,
 so overwriting it would silently discard their content. Passing both
-flags writes the report to stdout AND appends it to the file. A write
+flags writes the report to stdout AND appends it to the file. A run
+stopped by Ctrl-C or SIGTERM still writes both, its stopped tasks
+`aborted`. A write
 failure is reported (`vx: failed to write report to …`) but does not
 change the exit code — the run already happened, the same contract
 `--summarize` and `--profile` follow.

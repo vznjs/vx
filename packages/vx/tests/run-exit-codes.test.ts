@@ -3,8 +3,8 @@
 // interrupted at its prompt. The parser itself held every mutant; these
 // are the paths around it.
 
-import { realpathSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { existsSync, realpathSync } from 'node:fs'
+import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
@@ -12,12 +12,16 @@ import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run as cli } from '../src/cli/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 let root = ''
 
 beforeAll(async () => {
   root = realpathSync(await makeWorkspace({ prefix: 'vx-run-exit-' }))
   await addProject(root, 'app', {
-    config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+    config: `export default { tasks: {
+      build: { exec: { command: 'true' } },
+      slow: { exec: { command: 'touch started; exec sleep 30' } },
+    } }\n`,
   })
 })
 
@@ -63,4 +67,28 @@ describe('vx run', () => {
       err.mockRestore()
     }
   })
+
+  it('a Ctrl-C mid-run still writes --report and --report-file (E-23)', async () => {
+    // The report was rendered after run() returned, and the signal path
+    // exited first: an interrupted CI job lost its step summary.
+    const file = path.join(root, 'out', 'report.md')
+    const marker = path.join(root, 'packages', 'app', 'started')
+    const proc = Bun.spawn(
+      [process.execPath, BIN, 'run', 'build', 'slow', '--all', '--report', '--report-file', file],
+      {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'ignore',
+        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+      },
+    )
+    const stdout = new Response(proc.stdout).text()
+    for (let i = 0; i < 400 && !existsSync(marker); i++) await Bun.sleep(25)
+    expect(existsSync(marker)).toBe(true)
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    const table = '| app#slow | aborted |'
+    expect(await stdout).toContain(table)
+    expect(await readFile(file, 'utf8')).toContain(table)
+  }, 20_000)
 })

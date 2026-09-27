@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from 'node:fs/promises'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { documentedFlags, seeHelp } from './help.js'
 import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
@@ -649,8 +649,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         // behaviour change rather than a drop-in.
         // Its directory made first, as `--summarize`, `--profile` and
         // `--graph` make theirs: `nr/r.md` failed alone of the four (item 993).
-        await mkdir(path.dirname(target), { recursive: true })
-        await appendFile(target, md)
+        // Sync: on a Ctrl-C the signal path exits once stdout drains, and
+        // an awaited write lost the race every time (E-23).
+        mkdirSync(path.dirname(target), { recursive: true })
+        appendFileSync(target, md)
       } catch (err) {
         // Same contract as --summarize / --profile: the run already
         // happened, so a write failure is reported, not fatal.
