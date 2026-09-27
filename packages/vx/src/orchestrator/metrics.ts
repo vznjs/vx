@@ -241,56 +241,22 @@ export function getInvocation(db: Database, runId: string): InvocationDetail | n
 
 export interface ListInvocationsArgs {
   limit?: number
-  branch?: string
-  ci?: boolean
-  tagKey?: string
-  tagValue?: string
 }
 
 /**
- * List `vx run` invocations newest-first from the `invocations` header table
- * with optional branch / ci / tag filters. Reading the dedicated header table
- * (vs the old `GROUP BY run_id` over `runs`) is lossless — git/ci/tag context
- * survives. Accepts a bare `number` for the limit (back-compat with the old
- * `listInvocations(db, 50)` signature).
+ * List `vx run` invocations newest-first from the `invocations` header table.
+ * Reading the dedicated header table (vs the old `GROUP BY run_id` over
+ * `runs`) is lossless — git/ci/tag context survives.
  */
-export function listInvocations(
-  db: Database,
-  args: ListInvocationsArgs | number = {},
-): InvocationDetail[] {
-  const opts: ListInvocationsArgs = typeof args === 'number' ? { limit: args } : args
-  const limit = clampInt(opts.limit ?? 50, 1, 500)
-  const where: string[] = []
-  const params: (string | number)[] = []
-  if (opts.branch !== undefined) {
-    where.push('branch = ?')
-    params.push(opts.branch)
-  }
-  if (opts.ci !== undefined) {
-    where.push('ci = ?')
-    params.push(opts.ci ? 1 : 0)
-  }
-  if (opts.tagKey !== undefined && opts.tagValue !== undefined) {
-    // The tags column is a JSON object {"k":"v"}; a LIKE over the serialized
-    // pair is adequate at this table's scale (see the design doc).
-    where.push('tags LIKE ?')
-    params.push(`%${jsonPairFragment(opts.tagKey, opts.tagValue)}%`)
-  }
-  const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+export function listInvocations(db: Database, args: ListInvocationsArgs = {}): InvocationDetail[] {
+  const limit = clampInt(args.limit ?? 50, 1, 500)
   const rows = db
     .query(
-      `SELECT ${INVOCATION_COLUMNS} FROM invocations ${clause}
+      `SELECT ${INVOCATION_COLUMNS} FROM invocations
        ORDER BY rowid DESC LIMIT ?`,
     )
-    .all(...params, limit) as InvocationRawRow[]
+    .all(limit) as InvocationRawRow[]
   return rows.map(mapInvocation)
-}
-
-/** The `"key":"value"` fragment as it appears in `JSON.stringify({k:v})`. */
-function jsonPairFragment(key: string, value: string): string {
-  const k = JSON.stringify(key).slice(1, -1)
-  const v = JSON.stringify(value).slice(1, -1)
-  return `"${k}":"${v}"`
 }
 
 export interface RunDetail {
