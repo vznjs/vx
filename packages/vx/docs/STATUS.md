@@ -719,6 +719,23 @@ test is telling the truth.
         `node_modules/.bin` is on PATH; `taskBinDirs` puts the workspace
         root's after it (since the gate needed it).
       - No code change, so no row; the docs laws hold the pages.
+967.  DONE (2026-09-27, a `vx lock` review agent's lead 1). A cold run
+      executed a different command, under a different key, from the warm
+      run and `--frozen`. A first in-process config load returned the
+      module object, which shares what the source shares (one preset task
+      imported by two configs, one `exec` in two tasks); a `project` hook
+      editing in place edited all of them: `echo P +plug +plug` cold,
+      `echo P +plug` warm and frozen. Hits and the lock parse JSON, so only
+      the cold path aliased, and `vx lock --check` (pre-stage) saw nothing.
+      - Fix (`project-loader.ts`): the live path returns the parse of the
+        JSON it already builds for the eval cache. About 1.7 ms per 1,000
+        configs (1,000 parses, min of 20), on the live path only.
+      - Row: `config-staleness.test.ts` › a config the project stage edits
+        in place runs the command a warm run does. Red without the fix.
+      - Next from the same review: 2 (`vx watch --frozen` does not re-run on
+        a re-lock), 3 (comments and the 2026-06 design page still promise
+        a staleness check `--frozen` does not make), 4 (the lock write is
+        not atomic).
       - The review is done: its six leads are items 951, 953–955, 958,
         959 and 961.
 

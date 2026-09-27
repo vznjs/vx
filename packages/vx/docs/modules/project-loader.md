@@ -131,6 +131,16 @@ to evict from — exists on Bun 1.3.11 and is **gone** on 1.3.14, where an
 eviction-based fix degrades to no fix at all while still reporting
 success.
 
+Every path hands out a tree of its own: a cache hit and the lock
+parse JSON, and a first in-process load, which yields the module
+object, now returns the parse of the JSON it already builds for the
+evaluation cache. The module object shares what the source shares — one
+preset task imported by two configs, one `exec` in two tasks — so a
+`project` hook that edits in place (the way the API invites) edited all
+of them at once: a cold run ran `echo P +plug +plug` where the warm run
+and `--frozen` ran `echo P +plug`, under another key (item 967). The copy
+costs about 1.7 ms per 1,000 configs, and only on the live path.
+
 Two properties make the swap safe:
 
 - **Key stability.** The config crosses back as JSON, which is already
