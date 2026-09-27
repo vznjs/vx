@@ -215,10 +215,16 @@ export async function replaceBinary(dest: string, url: string, sha256: string): 
 }
 
 export async function upgradeCmd(args: readonly string[]): Promise<number> {
-  const tag = args.find((a) => !a.startsWith('-'))
   const unknown = args.find((a) => a.startsWith('-'))
   if (unknown !== undefined) {
     process.stderr.write(`vx upgrade: unknown flag: ${unknown}${seeHelp('upgrade')}\n`)
+    return 1
+  }
+  // One release is installed; a second tag was dropped without a word and
+  // the first one went in (`vx upgrade v0.0.22 v0.0.23`).
+  const [tag, extra] = args
+  if (extra !== undefined) {
+    process.stderr.write(`vx upgrade: unexpected argument: ${extra}${seeHelp('upgrade')}\n`)
     return 1
   }
   if (!isCompiledBinary()) {
