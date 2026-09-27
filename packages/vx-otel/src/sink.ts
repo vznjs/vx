@@ -44,6 +44,8 @@ export interface OtelSinkConfig {
   headers: Record<string, string>
   /** Per signal, over `headers`. */
   signalHeaders?: Partial<Record<OtelSignal, Record<string, string>>>
+  /** False under `OTEL_TRACES_EXPORTER=none`; absent is true. */
+  tracesEnabled?: boolean
   metricsEnabled: boolean
   logsEnabled: boolean
   timeoutMs: number
@@ -160,6 +162,7 @@ export class OtelSink implements TelemetrySink {
       serviceName: config.serviceName,
       headers: config.headers,
       signalHeaders: config.signalHeaders ?? {},
+      tracesEnabled: config.tracesEnabled !== false,
       metricsEnabled: config.metricsEnabled,
       logsEnabled: config.logsEnabled,
       timeoutMs: config.timeoutMs,
@@ -262,7 +265,7 @@ export class OtelSink implements TelemetrySink {
   }
 
   private async shipTraces(vxVersion: string): Promise<void> {
-    if (this.spans.length === 0) return
+    if (this.cfg.tracesEnabled === false || this.spans.length === 0) return
     const body = JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, this.spans))
     await this.send('traces', this.cfg.tracesUrl, body)
   }

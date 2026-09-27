@@ -30,12 +30,20 @@ to declare in every environment:
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | full metrics URL override                         |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`    | full logs URL override                            |
 | `OTEL_LOGS_EXPORTER=none`             | export traces + metrics only                      |
+| `OTEL_METRICS_EXPORTER=none`          | no metrics                                        |
+| `OTEL_TRACES_EXPORTER=none`           | no traces                                         |
+| `OTEL_SDK_DISABLED=true`              | export nothing (the plugin declines)              |
 | `OTEL_SERVICE_NAME`                   | service name (default `vx`)                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`          | `k=v,k=v` headers (e.g. auth), percent-encoded    |
 | `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` | one signal's headers, over the shared ones        |
 
 Each signal ships only to its own URL: the base endpoint's `/v1/<signal>`,
-or its override. With only a traces URL set, metrics and logs are not
+or its override. Header names are case-insensitive (a signal's own
+`Authorization` replaces the shared `authorization`); a name no header can
+carry (`Authorization: Basic …` written curl-style, with a colon) is not
+sent, and the warning prints neither its name nor its value.
+
+With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector
 refuses), and `metrics: true` or `logs: true` without a URL says so once.
 

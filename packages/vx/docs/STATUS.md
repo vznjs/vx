@@ -764,6 +764,27 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         ends when core's flush deadline aborts, not at timeoutMs (a real
         hanging server). Each red without its change.
 
+1056. DONE (2026-09-27, the telemetry review's leads 2–4). vx-otel's
+      headers and the SDK opt-outs.
+      - A header NAME fetch refuses killed every export and printed it:
+        a curl-style `Authorization: Basic …=` split at its first `=` is a
+        name holding the credential, and fetch's error quoted it. Names
+        are held to RFC 7230's token and a bad one is dropped with a
+        warning that prints neither name nor value.
+      - Names merged case-sensitively: `Authorization` and
+        `authorization` (the shared env and a signal's, or the env and the
+        option) were both sent, fetch joined them, and the collector got
+        `Bearer shared, Bearer traces-only`. Names are lower-cased, so the
+        later one replaces the earlier as the spec orders.
+      - Only `OTEL_LOGS_EXPORTER=none` was read. `OTEL_SDK_DISABLED=true`
+        now declines, and `OTEL_TRACES_EXPORTER=none` /
+        `OTEL_METRICS_EXPORTER=none` turn their signal off (the options
+        still win). The README says so.
+      - Rows: `otel.test.ts` › a header name no request can carry is
+        dropped; header names merge case-insensitively; the SDK opt-outs
+        are honoured; a sink with traces off POSTs no traces. Each red
+        without its change.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
