@@ -15,6 +15,7 @@ import {
   type CacheLayer,
   type TaskExecutor,
   type VxPlugin,
+  UserError,
 } from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
@@ -103,13 +104,35 @@ export interface ReapiPluginOptions extends Partial<ReapiOptions> {
 function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   // `process.env`, not `Bun.env`, for core's reason (exec/sandbox-runtime.ts):
   // an embedder that replaces the env object leaves `Bun.env` on the old one.
-  const endpoint = options.endpoint ?? process.env['VX_REAPI_ENDPOINT']
+  const from = options.endpoint !== undefined ? '`reapi({ endpoint })`' : 'VX_REAPI_ENDPOINT'
+  const endpoint = (options.endpoint ?? process.env['VX_REAPI_ENDPOINT'])?.trim()
   if (endpoint === undefined || endpoint === '') return undefined
+  assertEndpoint(endpoint, from)
   const instanceName = options.instanceName ?? process.env['VX_REAPI_INSTANCE']
   return {
     ...options,
     endpoint,
     ...(instanceName === undefined ? {} : { instanceName }),
+  }
+}
+
+/**
+ * A malformed endpoint failed each request on its own, far from the setting:
+ * `http://` failed the run with grpc's `Could not parse target name ""`, and
+ * `host:notaport` or a lone space degraded every request to a miss (F-14).
+ * Refused once, naming where it came from.
+ */
+function assertEndpoint(endpoint: string, from: string): void {
+  // A grpc-js resolver target (`unix:/run/cas.sock`, `dns:///host:443`) is
+  // grpc's to parse.
+  if (/^(unix|unix-abstract|dns|ipv4|ipv6):/.test(endpoint)) return
+  const target = endpoint.replace(/^(https?|grpcs?):\/\//, '')
+  const m = /^(\[[^\]]+\]|[^:/\s]+)(?::(\d+))?$/.exec(target)
+  const port = m?.[2] === undefined ? undefined : Number(m[2])
+  if (m === null || (port !== undefined && (port < 1 || port > 65_535))) {
+    throw new UserError(
+      `vx/reapi: ${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)`,
+    )
   }
 }
 

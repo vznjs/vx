@@ -164,3 +164,13 @@ mapped (a timed-out failure is `timeout`), with the exact status on
 this phase: vx mcp against the official MCP SDK client (handshake, all six
 tools, errors, ping) is clean; STATUS Next 1 (a local NativeLink) is
 blocked here: ghcr blobs and the GitHub API are refused by egress policy.
+
+F-14. vx-reapi took any endpoint string: `http://` failed the run with
+grpc's `Could not parse target name ""`, and a blank value or
+`host:notaport` degraded every request to a miss with a grpc message. The
+endpoint is now checked once (a blank one declines like an unset one; a
+malformed one is a UserError naming `reapi({ endpoint })` or
+`VX_REAPI_ENDPOINT`); grpc resolver targets (`unix:`, `dns:`) pass
+through. Rows red without the fix. Refuted this round: vx-github's
+"0 failed" check title needs a run red with nothing failed or aborted,
+which only an all-group abort produces.

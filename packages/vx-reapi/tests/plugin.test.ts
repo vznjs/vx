@@ -158,3 +158,59 @@ describe('reapi(): lifecycle and failure messages', () => {
     30_000,
   )
 })
+
+// F-14: a malformed endpoint failed each request far from the setting —
+// `http://` failed the run with grpc's `Could not parse target name ""`, a
+// lone space or `host:notaport` degraded every request to a miss.
+describe('reapi(): the endpoint is checked where it is set', () => {
+  const outcome = (endpoint: string | undefined, env?: string): string =>
+    withoutReapiEnv(() => {
+      if (env !== undefined) Bun.env['VX_REAPI_ENDPOINT'] = env
+      const p = reapi(endpoint === undefined ? {} : { endpoint })
+      try {
+        const layer = p.cache?.(ctx([]))
+        return layer === undefined ? 'declined' : 'accepted'
+      } catch (e) {
+        return (e as Error).message
+      } finally {
+        void p.teardown?.()
+      }
+    })
+
+  it('refuses one that is not host[:port], naming where it came from', () => {
+    expect([
+      outcome('http://'),
+      outcome('127.0.0.1:notaport'),
+      outcome(undefined, 'cache.test:99999'),
+      outcome(undefined, 'a b:1'),
+    ]).toEqual([
+      'vx/reapi: `reapi({ endpoint })` is "http://", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
+      'vx/reapi: `reapi({ endpoint })` is "127.0.0.1:notaport", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
+      'vx/reapi: VX_REAPI_ENDPOINT is "cache.test:99999", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
+      'vx/reapi: VX_REAPI_ENDPOINT is "a b:1", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
+    ])
+  })
+
+  it.skipIf(!CHUNKING_SUPPORTED)(
+    'a blank one declines as an unset one does; well-formed ones are taken',
+    () => {
+      expect([
+        outcome(undefined, '  '),
+        outcome('cache.test:443'),
+        outcome('grpcs://cache.test'),
+        outcome('https://cache.test:8443'),
+        outcome('[::1]:8980'),
+        outcome('localhost'),
+        outcome('unix:/run/cas.sock'),
+      ]).toEqual([
+        'declined',
+        'accepted',
+        'accepted',
+        'accepted',
+        'accepted',
+        'accepted',
+        'accepted',
+      ])
+    },
+  )
+})
