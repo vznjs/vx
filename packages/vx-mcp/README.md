@@ -37,6 +37,11 @@ Run the agent from inside the workspace — `vx mcp` finds the workspace
 | `whyDidThisRerun`  | "Why did `pkg#test` re-execute in run X?" — the run's key against the previous run's, and whether it changed (`runId` optional: the task's latest run).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `getWorkspaceInfo` | "What is this workspace, and what will a run use?" — `vx info --format json`: versions, the git status cache, projects and tasks (and the configs that did not load), plugins and their seams, the worker count and memory budget with their sources, cache versions and state, flaky tasks, the sandbox runtime's verdict for this host and how many tasks declare one, the lock.                                                                                                                                                                                                                                                                                                                                                                                |
 
+Arguments are checked, never coerced: `arguments` that is not an object
+(a string, an array), a filter that is not a non-empty string, or a
+`limit` that is not a finite number is refused with a line naming it,
+rather than answered for a question the agent did not ask.
+
 Every tool is **read-only**. Nothing here runs a task or writes the
 cache (`listTasks` opens it only to serve cached config evaluations); the plugin declares only a CLI verb, no executor and no cache
 layer, so it cannot. The four cache tools open the index as `vx last`
@@ -50,8 +55,10 @@ MCP over stdio is newline-delimited JSON-RPC 2.0 and three methods
 (`initialize`, `tools/list`, `tools/call`). `src/server.ts` speaks it in
 about 180 lines with no dependencies, where the reference SDK pulls
 in an HTTP stack this transport never touches. `@vzn/vx` is the only peer.
-Stdout carries nothing but replies: what a config or plugin stage prints
-while a tool loads the workspace goes to stderr.
+What a config or plugin stage prints through `console` or `process.stdout`
+while a tool loads the workspace goes to stderr. A write straight to fd 1
+(`fs.writeSync(1, …)`, `Bun.write(Bun.stdout, …)`, a child with inherited
+stdout) is not redirected and lands in the reply stream.
 
 ## Troubleshooting
 

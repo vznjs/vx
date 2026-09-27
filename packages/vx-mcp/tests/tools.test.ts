@@ -702,6 +702,39 @@ describe('getRunHistory — filters narrow the data', () => {
   })
 })
 
+describe('the arguments object is untrusted input', () => {
+  // F-5: `arguments: "…"` or `[…]` was read as an object with no keys, so
+  // a filtered question got the whole workspace's answer.
+  it('arguments that are not an object are refused by name, for every tool', async () => {
+    const refused: string[] = []
+    for (const tool of listTools().map((t) => t.name)) {
+      for (const bad of ['{"project":"@t/alpha"}', ['@t/alpha'], 42, true]) {
+        refused.push(
+          await call(MAIN.root, tool, bad).then(
+            () => `${tool}: answered`,
+            (e: Error) => e.message,
+          ),
+        )
+      }
+    }
+    expect(refused).toEqual(
+      listTools().flatMap((t) => [
+        `vx mcp: ${t.name}: arguments must be an object (got string)`,
+        `vx mcp: ${t.name}: arguments must be an object (got an array)`,
+        `vx mcp: ${t.name}: arguments must be an object (got number)`,
+        `vx mcp: ${t.name}: arguments must be an object (got boolean)`,
+      ]),
+    )
+  })
+
+  // CONTROL: absent arguments are still the empty object MCP allows.
+  it('absent arguments still answer', async () => {
+    for (const absent of [undefined, null]) {
+      expect(((await call(MAIN.root, 'getCacheStats', absent)) as Stats).scope).toBe('all')
+    }
+  })
+})
+
 describe('getRunHistory — the limit is untrusted input', () => {
   it('floors a fractional limit instead of failing the query', async () => {
     // SQLite answers `LIMIT 2.7` with `datatype mismatch`, not a smaller page,

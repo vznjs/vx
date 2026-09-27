@@ -119,6 +119,17 @@ export async function handleToolCall(
   argsRaw: unknown,
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
+  // A string or an array is not an argument object: read as one it had no
+  // keys, and the call answered for no filter at all.
+  if (
+    argsRaw !== undefined &&
+    argsRaw !== null &&
+    (typeof argsRaw !== 'object' || Array.isArray(argsRaw))
+  ) {
+    throw new UserError(
+      `vx mcp: ${name}: arguments must be an object (got ${Array.isArray(argsRaw) ? 'an array' : typeof argsRaw})`,
+    )
+  }
   const args = (argsRaw ?? {}) as Record<string, unknown>
   switch (name) {
     case 'listTasks':
