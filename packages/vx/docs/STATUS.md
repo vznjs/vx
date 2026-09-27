@@ -108,10 +108,10 @@ recorded here as it lands. Layer map measured first (imports between
 orchestrator ← cli, `config.ts` a leaf, no back edges — the boundaries
 test is telling the truth.
 
-A parallel session landed its own item 1017 (PR #1087, the vx-reapi
-chunk stall) while this loop's 1017–1050 were in review. It keeps its
-number in a list of its own, here, so every item number the code cites
-stays true:
+Parallel sessions landed their own items 1017 (PR #1087, the vx-reapi
+chunk stall) and 1018 (the auto-release workflow) while this loop's
+1017–1052 were in review. They keep their numbers in a list of their own,
+here, so every item number the code cites stays true:
 
 1017. DONE (2026-09-27, CI run 36316687362 on #1084, a diff that touches
       no vx-reapi code). `reapi-e2e` › "stores and restores an artifact
@@ -138,6 +138,23 @@ cancelled`; bazel-remote logged the 1 MiB write `context canceled`
         can block its loop until the RST is sent). The at-deadline row is
         red without the fix; the early-CANCELLED control is red if any
         CANCELLED downgrades; the single-message control stays.
+
+1018. DONE (2026-09-27, the owner's "each time we merge we should have
+      an auto release"). `.github/workflows/auto-release.yml` runs when CI
+      completes green on a push to `main`: it tags the commit with the next
+      patch version, creates the GitHub release (notes from the merged PR
+      titles) and dispatches `release.yml` and `npm.yml`, because a release
+      the workflow token creates fires no `release` event. `release.yml`
+      takes the tag as a dispatch input. Only main's current tip is
+      released (a slower CI run for an older commit skips), and a commit
+      already tagged is skipped. `tests/auto-release.unsafe.test.ts` reads
+      the three workflow files: the trigger names the workflow `ci.yml`
+      calls itself, the green-push guard, the two skips, the job's two
+      grants, and every `-f` input a dispatch passes is one its target
+      declares (red with `release.yml`'s `tag` input renamed). Written in a
+      container whose Bun had been replaced (item 779's hazard), so CI was
+      this change's gate; the rows were checked against the files with a
+      YAML 1.1 reader first. `docs/cli.md` § Releasing.
 
 The loop itself:
 
@@ -754,22 +771,24 @@ The loop itself:
       - Row: `watch-signals.test.ts` › a config broken at start is a failed
         cycle, and the fix re-runs (e2e). Red without the fix.
 
-1018. DONE (2026-09-27, the owner's "each time we merge we should have
-      an auto release"). `.github/workflows/auto-release.yml` runs when CI
-      completes green on a push to `main`: it tags the commit with the next
-      patch version, creates the GitHub release (notes from the merged PR
-      titles) and dispatches `release.yml` and `npm.yml`, because a release
-      the workflow token creates fires no `release` event. `release.yml`
-      takes the tag as a dispatch input. Only main's current tip is
-      released (a slower CI run for an older commit skips), and a commit
-      already tagged is skipped. `tests/auto-release.unsafe.test.ts` reads
-      the three workflow files: the trigger names the workflow `ci.yml`
-      calls itself, the green-push guard, the two skips, the job's two
-      grants, and every `-f` input a dispatch passes is one its target
-      declares (red with `release.yml`'s `tag` input renamed). Written in a
-      container whose Bun had been replaced (item 779's hazard), so CI was
-      this change's gate; the rows were checked against the files with a
-      YAML 1.1 reader first. `docs/cli.md` § Releasing.
+1018. DONE (2026-09-27, the watch review). The package glob list
+      was fixed at start. A root `package.json` was no event unless the
+      root was a project, `pnpm-workspace.yaml` was a cycle that ran the
+      new packages without re-reading the set, and the member bases were
+      the ones at start. A glob added under `vx watch` ran its packages
+      once, then their edits were silence.
+      - Fix (`watch.ts`): the root arms hear the root `package.json`, a
+        root fingerprint file re-reads the set, and a re-read arms the
+        member bases it finds and drops the gone ones. `cli.md` says so,
+        and that `--affected`, like `--filter`, is resolved at start.
+      - Rows: `watch-loop-members.test.ts` › a glob added in
+        `pnpm-workspace.yaml`, and in the root `workspaces`, is watched
+        (e2e), each piece red when removed; `watch-rules.test.ts` › the
+        root filter keeps `package.json`.
+      - Refuted (the same review): a second Ctrl-C during the
+        shutdown grace leaks no task. vx exits 130 at once, as `vx run`
+        does, and the group guard SIGKILLs the task's group; a probe that
+        read the task as alive had counted its zombie.
 
 ## In flight
 

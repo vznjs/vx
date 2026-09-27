@@ -1080,7 +1080,10 @@ run...` precedes it.
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
    runs is a cycle that runs it, and its directory is watched from then
-   on; a removed one is dropped. Under `--filter` the scope is the one
+   on; a removed one is dropped. An edit to the glob list itself (the
+   root `package.json`'s `workspaces`, `pnpm-workspace.yaml`) re-reads
+   the set, so a glob added there is watched from the cycle it triggers
+   (item 1018). Under `--filter` or `--affected` the scope is the one
    resolved at start, and a new package joins it only as a dependency of
    it; a glob of another shape (`apps/**`) has no such directory, so a
    package added under it waits for a restart. A task's own declared outputs (`cache.outputs.files`,

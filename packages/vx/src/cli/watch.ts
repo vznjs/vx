@@ -549,11 +549,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     // scope is the one resolved at start; a new package joins it only as a
     // dependency of it.
     rediscover: async () => {
-      const all = await listProjects(await loadWorkspace(workspaceRoot))
+      const workspace = await loadWorkspace(workspaceRoot)
+      const all = await listProjects(workspace)
       const sweep = await sweepConfigs(all, workspaceRoot, load)
       const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
       return {
         projects: now,
+        memberBases: memberBaseDirs(workspace),
         workspaceWide: sweep.workspaceWide,
         workspaceInputs: sweep.workspaceInputs,
         outputs: sweep.outputs,
@@ -762,7 +764,10 @@ export function makeRootEventFilter(
     // this line load-bearing.
     if (
       !rel.includes('/') &&
-      (isWorkspaceFingerprintFile(rel) || isWorkspaceConfigFile(rel) || claimedRootFiles.has(rel))
+      (isWorkspaceFingerprintFile(rel) ||
+        isWorkspaceConfigFile(rel) ||
+        rel === 'package.json' ||
+        claimedRootFiles.has(rel))
     ) {
       return true
     }
@@ -804,7 +809,7 @@ interface WatchLoopArgs {
    * loaded once per process, so the set is fixed for the loop.
    */
   claimedRootFiles: ReadonlySet<string>
-  /** The directory each `<dir>/*` package glob names; a member coming or going there is a cycle. */
+  /** The directory each `<dir>/*` package glob names at start; a member coming or going there is a cycle. */
   memberBases: readonly string[]
   /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
   packageDirs: ReadonlySet<string>
@@ -814,6 +819,7 @@ interface WatchLoopArgs {
 
 interface Rediscovered {
   projects: readonly ProjectMeta[]
+  memberBases: readonly string[]
   workspaceWide: boolean
   workspaceInputs: readonly string[]
   outputs: ReadonlyMap<string, readonly string[]>
@@ -833,21 +839,29 @@ const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
  * watcher, a new output must stop being an event) or the workspace config
  * (a plugin's `project` stage). Until item 891 only a member directory
  * coming or going re-read the set, so each of these waited for a restart
- * while the loop looked alive.
+ * while the loop looked alive. A root fingerprint file too, for
+ * `pnpm-workspace.yaml`: a glob added there was a cycle that ran the new
+ * packages and watched none of them (item 1018).
  */
 function shapesWatchedSet(filename: string): boolean {
   const base = path.basename(filename)
-  return base === 'package.json' || PROJECT_CONFIGS.has(base) || isWorkspaceConfigFile(base)
+  return (
+    base === 'package.json' ||
+    isWorkspaceFingerprintFile(base) ||
+    PROJECT_CONFIGS.has(base) ||
+    isWorkspaceConfigFile(base)
+  )
 }
 
 const CLOSED: WatchHandle = { close() {} }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, stop, workspaceRoot, projects, cacheDir, memberBases } = args
+  const { opts, stop, workspaceRoot, projects, cacheDir } = args
   // The watched set as of the last cycle: `rearm` replaces these after an
   // event that can change it, and every filter below reads the current one.
   let workspaceWide = args.workspaceWide
   let packageDirs = args.packageDirs
+  let memberBases = args.memberBases
   let projectDirs = args.projectDirs
   let workspaceInputs = args.workspaceInputs
   let outputs = args.outputs
@@ -1185,6 +1199,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             if (
               isWorkspaceFingerprintFile(filename) ||
               isWorkspaceConfigFile(filename) ||
+              filename === 'package.json' ||
               args.claimedRootFiles.has(filename)
             ) {
               if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
@@ -1334,6 +1349,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     configImportFiles = next.configImports
     wsConfigImportFiles = next.workspaceConfigImports
     packageDirs = next.packageDirs
+    memberBases = next.memberBases
+    armBases()
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
     matters = makeRootEventFilter(
       workspaceRoot,
@@ -1373,28 +1390,45 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // triggers re-reads the workspace (`rearm`) so the new package's own
   // edits are cycles from then on. Until 2026-09-10 the watched set was
   // fixed when the loop armed: the next cycle ran the new package, and
-  // every edit inside it after that was silence.
-  for (const base of memberBases) {
-    let members = memberEntries(base)
-    try {
-      arm(base, false, (filename) => {
-        if (isIgnoredWatchPath(filename)) return
-        // Only a member coming or going. On macOS a non-recursive watcher
-        // also reports a member whose CONTENTS changed (FSEvents names the
-        // directory a write landed in), so a task writing into its own
-        // project — or the arm's own probe file — read as a member event and
-        // cost an uncached task one execution per cycle (CI, 2026-09-10).
-        const now = memberEntries(base)
-        if (sameMembers(members, now)) return
-        members = now
-        reread = true
-        trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx watch: cannot watch ${base}: ${msg}\n`)
+  // every edit inside it after that was silence. The bases themselves are
+  // re-read with the set: a glob added to the list watched nothing new
+  // until a restart (item 1018).
+  const baseArms = new Map<string, WatchHandle>()
+  const armBases = (): void => {
+    const want = new Set(memberBases)
+    for (const [base, handle] of baseArms) {
+      if (want.has(base)) continue
+      handle.close()
+      baseArms.delete(base)
+    }
+    for (const base of want) {
+      if (baseArms.has(base)) continue
+      let members = memberEntries(base)
+      try {
+        baseArms.set(
+          base,
+          arm(base, false, (filename) => {
+            if (isIgnoredWatchPath(filename)) return
+            // Only a member coming or going. On macOS a non-recursive watcher
+            // also reports a member whose CONTENTS changed (FSEvents names the
+            // directory a write landed in), so a task writing into its own
+            // project — or the arm's own probe file — read as a member event
+            // and cost an uncached task one execution per cycle (CI,
+            // 2026-09-10).
+            const now = memberEntries(base)
+            if (sameMembers(members, now)) return
+            members = now
+            reread = true
+            trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
+          }),
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`vx watch: cannot watch ${base}: ${msg}\n`)
+      }
     }
   }
+  armBases()
   armPending(false)
   armImports()
 
