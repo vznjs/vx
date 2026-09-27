@@ -139,8 +139,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   workstream session records each merged item in its own
   `docs/history/ws-<id>.md` as `<ID>-<n>`, never in STATUS's numbered
   list, and writes only inside its stream's slice.
-- Commits: imperative present, first line < 72 chars, body says why. One
-  coherent change per commit. Commit early; assume interruption.
+- Commits and PR titles: Conventional Commits (owner, 2026-09-27),
+  `type(scope): imperative summary`, first line < 72 chars, body says
+  why. Types: feat fix perf refactor test docs ci build chore; scope is
+  the module or package (`cache`, `cli`, `vx-reapi`). One coherent
+  change per commit. Commit early; assume interruption.
 - A feature is not done until its docs land in the same commit.
 
 ## Conventions
