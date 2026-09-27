@@ -683,6 +683,31 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     hash: `h-${n.id}`,
   })
 
+  // Item 1103: each lane held one slot at `--concurrency 1`, so a restore
+  // ran inside another task's execution; the flags table says 1 serializes
+  // both.
+  it('at concurrency 1 an execution and a restore never overlap', async () => {
+    const peak = async (concurrency: number): Promise<number> => {
+      let inFlight = 0
+      let max = 0
+      await runGraph({
+        nodes: nodes(node('x#run'), node('r#hit')),
+        concurrency,
+        restoreTier: new Set(['r#hit']),
+        execute: async (n) => {
+          max = Math.max(max, ++inFlight)
+          await new Promise((r) => setTimeout(r, 20))
+          inFlight--
+          return n.id === 'r#hit' ? hit(n) : success(n)
+        },
+      })
+      return max
+    }
+    expect(await peak(1)).toBe(1)
+    // CONTROL: above 1 the lanes are independent, and the two overlap.
+    expect(await peak(2)).toBe(2)
+  })
+
   it('runs a restore-tier task BEFORE its (unfinished) deps', async () => {
     // up#prep is a slow exec; down#build is its dep but a confirmed
     // local hit (restore-tier). The restore must start without waiting

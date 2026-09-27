@@ -518,7 +518,9 @@ describe('the bitsets post states what the scheduler source measured', () => {
     expect(flat).toContain('binary max-heap')
   })
   it('its restore lane is capped where the scheduler caps it', () => {
-    expect(src).toContain('const restoreConcurrency = concurrency === 1 ? 1 : 2 * concurrency')
+    expect(src).toContain('const restoreConcurrency = 2 * concurrency')
+    // At 1 the two lanes share the one slot (item 1103).
+    expect(src).toContain('const serial = concurrency === 1')
     expect(flat).toContain('twice the worker count')
     expect(flat).toContain('`--concurrency 1` stays serial')
   })
