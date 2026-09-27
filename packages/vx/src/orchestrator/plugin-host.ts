@@ -108,10 +108,13 @@ export async function applyConfigHooks(
   plugins: readonly VxPlugin[],
   workspace: WorkspaceConfig,
   ctx: WorkspaceHookContext,
+  /** Runs after EACH plugin's edit, so a refusal can name the plugin that made it. */
+  afterEach?: (plugin: VxPlugin) => void,
 ): Promise<void> {
   for (const plugin of plugins) {
     if (plugin.config === undefined) continue
     await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
+    afterEach?.(plugin)
   }
 }
 

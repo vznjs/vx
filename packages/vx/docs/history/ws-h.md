@@ -153,6 +153,16 @@ task past `exec.timeout` (core awaits `execute` unbounded). **B** —
 `resourceUsageToCpuRss` "the peak is the child's own" failed on macOS CI on
 #1269, a docs-only diff (timing-sensitive).
 
+## H-13: re-validate the workspace config after each `config` plugin
+
+The walk's `config` hook set what a user may not: `concurrency: -3` hung
+the run ("something it awaited can never settle"), `timeout: 'x'` timed
+every task out at once, `cacheDir: 42` was a TypeError from
+`path.resolve`. The `project` stage already re-validated after each
+plugin; `config` now does the same, naming the plugin. Row:
+`plugin-pipeline.test.ts` "a plugin that produces an invalid workspace
+config…", red without the check (`undefined` for every refusal).
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.

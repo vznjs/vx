@@ -56,6 +56,7 @@ export interface VxPlugin {
   /**
    * The workspace config, before anything is derived from it (concurrency,
    * cacheDir, timeout, …). `plugins` is already fixed by the time this runs.
+   * Core re-validates after each plugin, as it does a user's file.
    */
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
 

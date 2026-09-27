@@ -34,7 +34,7 @@ export {
   loadWorkspaceConfig,
   WORKSPACE_CONFIG_FILENAMES,
 } from './project-loader.js'
-export { validateProjectConfig } from './config-schema.js'
+export { validateProjectConfig, validateWorkspace } from './config-schema.js'
 export type { LoadProjectConfigOptions } from './project-loader.js'
 export {
   blobOidOf,
