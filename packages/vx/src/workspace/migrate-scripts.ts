@@ -90,13 +90,20 @@ function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   return raw as Record<string, unknown>
 }
 
+/** The cache block the task that builds should declare, as a TODO on it. */
+const CACHE_TODO =
+  "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task"
+
 /**
  * A `build` that only delegates (`build: pnpm run compile`) is a group over
  * its target, and the `^build` edge every `build` carries belongs on the
  * task that does the work: the group ran `compile` with no edge at all, so
  * a package compiled before the ones it imports had built (item 907). On
  * the group itself it would not hold — the group waits on both, `compile`
- * on neither. Followed through a chain of groups to the first command.
+ * on neither. Followed through a chain of groups to the first command,
+ * which takes the cache TODO too: a group has no command to cache, and the
+ * TODO a delegating `build` never got was the one the header promised
+ * (item 1045).
  */
 function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
   const byName = new Map(tasks.map((t) => [t.name, t]))
@@ -111,6 +118,7 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
   if (at === undefined || at.name === 'build' || at.task === null || at.task === undefined) return
   const deps = Array.isArray(at.task['dependsOn']) ? (at.task['dependsOn'] as string[]) : []
   if (!deps.includes('^build')) at.task['dependsOn'] = ['^build', ...deps]
+  if (!at.todos.includes(CACHE_TODO)) at.todos.push(CACHE_TODO)
 }
 
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
@@ -175,9 +183,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       }
       if (name === 'build') {
         task['dependsOn'] = ['^build']
-        todos.push(
-          "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task",
-        )
+        todos.push(CACHE_TODO)
       } else if (AFTER_BUILD.has(name) && hasBuild) {
         task['dependsOn'] = ['build']
       }
@@ -197,7 +203,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   }
   return {
     headerNotes: [
-      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block — `build` carries a TODO showing the one to add',
+      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block — `build`, or the script it delegates to, carries a TODO showing the one to add',
     ],
     projects,
     extraFiles: [],
