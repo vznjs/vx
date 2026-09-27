@@ -384,6 +384,16 @@ describe('GitFilesCache workspace-wide partition', () => {
     await write(path.join(aDir, 'src', 'main.ts'), 'a')
     await write(path.join(bDir, 'src', 'lib.ts'), 'b')
     gitInit(root)
+    // These rows assert trusted index OIDs, which a host's global
+    // core.checkStat=minimal or core.trustctime=false drops (A-6); the gate's
+    // sandbox HOME hides such a config, a bare run does not. The repo's own
+    // config wins over the global one.
+    for (const [key, value] of [
+      ['core.checkStat', 'default'],
+      ['core.trustctime', 'true'],
+    ] as const) {
+      Bun.spawnSync({ cmd: ['git', 'config', key, value], cwd: root })
+    }
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'init')
   })
