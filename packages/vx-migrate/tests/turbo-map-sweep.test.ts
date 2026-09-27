@@ -122,6 +122,8 @@ describe('turbo-map: what the sweep found unheld', () => {
   // Item 937: Turbo 1 hashes `globalDotEnv` into every task and a task's
   // `dotEnv` into that task; both were read as nothing, the task's with a
   // todo and the global's in silence.
+  // Item 1032: both are `.env` files, gitignored as a rule, so they are
+  // probed (per package, and at the root) rather than read as file globs.
   it('turbo 1’s `globalDotEnv` and a task `dotEnv` key the task', async () => {
     const t = await taskOf(
       {
@@ -130,8 +132,20 @@ describe('turbo-map: what the sweep found unheld', () => {
       },
       { a: { scripts: { build: 'b' } } },
     )
-    expect({ inputs: (t.task!['cache'] as { inputs: unknown }).inputs, todos: t.todos }).toEqual({
-      inputs: { files: ['src/**', '.env.local'], workspaceFiles: ['.env'] },
+    const inputs = (t.task!['cache'] as { inputs: Record<string, unknown> }).inputs
+    const probe = (v: unknown) =>
+      Array.isArray(v) && v.length === 1 && String(v[0]).startsWith('find . ') ? 'probe' : v
+    expect({
+      files: inputs['files'],
+      ws: inputs['workspaceFiles'],
+      runtime: probe(inputs['runtime']),
+      wsRuntime: probe(inputs['workspaceRuntime']),
+      todos: t.todos,
+    }).toEqual({
+      files: ['src/**'],
+      ws: undefined,
+      runtime: 'probe',
+      wsRuntime: 'probe',
       todos: [],
     })
   })
@@ -415,4 +429,48 @@ describe('turbo-map: Turbo’s glob grammar', () => {
       })
     },
   )
+})
+
+// Item 1032: `.env` inputs are gitignored as a rule; as file globs they
+// keyed nothing (and a literal one failed the task), so they are probed.
+describe('turbo-map: `.env` inputs', () => {
+  const inputsOf = (t: TurboMappedTask) =>
+    (t.task!['cache'] as { inputs: Record<string, unknown> }).inputs
+
+  it.each([
+    [{ inputs: ['$TURBO_DEFAULT$', '.env*'] }, { files: ['**/*'], runtime: 'probe' }],
+    [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**'], runtime: 'probe' }],
+    [{ dotEnv: ['.env.local'] }, { files: ['**/*'], runtime: 'probe' }],
+    [{ inputs: ['$TURBO_ROOT$/.env'] }, { files: [], workspaceRuntime: 'probe' }],
+  ])('%j keys %j', async (def, expected) => {
+    const t = await taskOf({ tasks: { build: def } }, { a: { scripts: { build: 'b' } } })
+    const got = inputsOf(t)
+    const shape = Object.fromEntries(
+      Object.entries(got).map(([k, v]) =>
+        k === 'runtime' || k === 'workspaceRuntime'
+          ? [
+              k,
+              (v as string[]).length === 1 && (v as string[])[0]!.startsWith('find . ')
+                ? 'probe'
+                : v,
+            ]
+          : [k, v],
+      ),
+    )
+    expect(shape).toEqual(expected)
+  })
+
+  it('a root `.env` global is probed at the root, and leaves the file list', async () => {
+    const m = await map(
+      { globalDependencies: ['**/.env.*local', 'tsconfig.json'], tasks: { build: {} } },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const inputs = (m.projects[0]!.tasks[0]!.task!['cache'] as { inputs: Record<string, unknown> })
+      .inputs
+    expect({
+      globals: m.globals.inputs,
+      ws: inputs['workspaceFiles'],
+      probed: (inputs['workspaceRuntime'] as string[] | undefined)?.length,
+    }).toEqual({ globals: ['tsconfig.json'], ws: ['tsconfig.json'], probed: 1 })
+  })
 })

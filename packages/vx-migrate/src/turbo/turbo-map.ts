@@ -184,6 +184,24 @@ function taskNamesFor(
   return names.filter((n) => !optedOut(pkgTasks?.[n]))
 }
 
+/**
+ * A glob naming `.env` files: its last segment starts with `.env` or ends
+ * with it, the shapes Turbo's docs and create-turbo write (`.env*`,
+ * `**\/.env.*local`, `.env.local`).
+ */
+function isDotenvGlob(glob: string): boolean {
+  const last = glob.slice(glob.lastIndexOf('/') + 1)
+  return last.startsWith('.env') || last.endsWith('.env')
+}
+
+/**
+ * Every `.env`-shaped file under the probe's directory, name and bytes, in
+ * a stable order: a superset of what a `.env` glob names, so a change to
+ * one misses and nothing else is lost. node_modules and .git are pruned.
+ */
+const DOTENV_PROBE =
+  'find . \\( -name node_modules -o -name .git \\) -prune -o -type f \\( -name \'.env*\' -o -name \'*.env\' \\) -print | LC_ALL=C sort | while IFS= read -r f; do echo "$f"; cat -- "$f"; echo; done'
+
 /** Turbo 1's env dependency, `$NAME`, as the name; null for anything else, `$TURBO_…$` tokens included. */
 function envDependency(entry: string): string | null {
   const m = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(entry)
@@ -250,15 +268,17 @@ export async function mapTurboWorkspace(
       )
       return false
     })
+  // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies` are
+  // (item 937). A `.env`-shaped one is gitignored as a rule, and a glob
+  // over git's files keyed nothing: the workspace probe keys them (item
+  // 1032).
+  const globalFiles = [
+    ...globalDeps.filter((d) => envDependency(d) === null),
+    ...(rootCfg.globalDotEnv ?? []),
+  ]
+  const rootDotenv = globalFiles.some((f) => isDotenvGlob(f))
   const globals = {
-    // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies`
-    // are, and mapped the same way; unread, an edit to one re-keyed
-    // nothing (item 937). One git does not report is core's refusal to
-    // explain, as for a `globalDependencies` entry: it cannot be keyed.
-    inputs: [
-      ...globalDeps.filter((d) => envDependency(d) === null),
-      ...(rootCfg.globalDotEnv ?? []),
-    ],
+    inputs: globalFiles.filter((f) => !isDotenvGlob(f)),
     env: [
       ...envNames('globalEnv', rootCfg.globalEnv ?? []),
       ...globalDeps.flatMap((d) => envDependency(d) ?? []),
@@ -362,6 +382,7 @@ export async function mapTurboWorkspace(
           globals,
           opts,
           relPosix(root, meta.dir),
+          rootDotenv,
         ),
       )
     }
@@ -404,6 +425,7 @@ function buildTask(
   globals: TurboMapping['globals'],
   opts: MapTurboOptions,
   pkgDir: string,
+  rootDotenv: boolean,
 ): TurboMappedTask {
   const todos: string[] = []
   // A glob that climbs out of the package (`../../packages/app-store/
@@ -531,6 +553,11 @@ function buildTask(
 
   if (cacheEnabled) {
     const files: unknown[] = []
+    // `.env` files Turbo hashes although git ignores them; a glob over git's
+    // files keyed none of them (item 1032). Probed instead, per package and
+    // at the root.
+    let pkgDotenv = false
+    let wsDotenv = rootDotenv
     // globalDependencies are workspace-root-relative by definition —
     // they map to inputs.workspaceFiles, not project-relative files.
     const wsFiles: unknown[] = [...global('inputs')]
@@ -560,6 +587,11 @@ function buildTask(
         const translated = (neg ? '!' : '') + wax
         const body = wax
         const up = climbed(translated)
+        if (!neg && isDotenvGlob(body)) {
+          if (body.startsWith('$TURBO_ROOT$/') || up !== null) wsDotenv = true
+          else pkgDotenv = true
+          continue
+        }
         if (body.startsWith('$TURBO_ROOT$/')) {
           wsFiles.push((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length))
         } else if (up !== null) {
@@ -581,12 +613,10 @@ function buildTask(
         files.unshift('**/*')
       }
     }
-    // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes. An
-    // unset `inputs` already reads every file git reports.
+    // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes,
+    // gitignored as a rule, so read as files they keyed nothing (item 1032).
     const dotEnv = (def as { dotEnv?: unknown }).dotEnv
-    if (def.inputs !== undefined && def.inputs.length > 0 && Array.isArray(dotEnv)) {
-      files.push(...dotEnv.filter((f) => typeof f === 'string'))
-    }
+    if (Array.isArray(dotEnv) && dotEnv.some((f) => typeof f === 'string')) pkgDotenv = true
 
     const outFiles: string[] = []
     const wsOutFiles: string[] = []
@@ -660,6 +690,8 @@ function buildTask(
     const inputs: Record<string, unknown> = { files }
     if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles)
     if (cacheEnv.length > 0) inputs.env = cacheEnv
+    if (pkgDotenv) inputs.runtime = [DOTENV_PROBE]
+    if (wsDotenv) inputs.workspaceRuntime = [DOTENV_PROBE]
     const outputs: Record<string, unknown> = { files: outFiles }
     if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
     task.cache = { inputs, outputs }
