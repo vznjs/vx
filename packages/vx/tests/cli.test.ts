@@ -1410,7 +1410,6 @@ describe('parseRunArgs', () => {
       '--all',
       '--cache',
       '--cache-dir',
-      '--check',
       '--concurrency',
       '--continue',
       '--download',

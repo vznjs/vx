@@ -1,20 +1,23 @@
 // `vx completions <shell>` — a bash / zsh / fish script over the verb table
-// and each verb's help cut, so the verbs and every flag of each complete
-// from the one text `vx <verb> --help` prints. Plugin verbs of the
+// and each verb's Usage line in the help text, so the verbs and every flag
+// of each complete from the one text `vx <verb> --help` prints. Plugin verbs of the
 // workspace around the cwd are included at generation time; task and
 // project names are not (a completion that evaluates configs on every
 // Tab is the wrong price).
 
-import { CORE_VERBS, seeHelp, verbHelpText } from './help.js'
+import { acceptedFlags, CORE_VERBS, seeHelp } from './help.js'
 
 export type CompletionShell = 'bash' | 'zsh' | 'fish'
 const SHELLS: readonly CompletionShell[] = ['bash', 'zsh', 'fish']
 
-/** Every `--flag` the verb's help cut names, plus `--help`; deduped, in order of appearance. */
+/**
+ * `--help` and every flag the verb accepts. Not every `--flag` its help cut
+ * mentions: the cut's prose names other verbs' flags, and `vx watch`
+ * completed only `--dry --graph --summarize --profile`, the four its line
+ * says it refuses, while `vx show` offered `--run` and `--list`.
+ */
 export function verbFlags(verb: string): string[] {
-  const flags = new Set<string>(['--help'])
-  for (const f of verbHelpText(verb).match(/--[a-zA-Z][a-zA-Z-]*/g) ?? []) flags.add(f)
-  return [...flags]
+  return [...new Set(['--help', ...acceptedFlags(verb)])]
 }
 
 /** The words that follow `vx <verb>` besides flags: subcommands and fixed choices. */

@@ -113,9 +113,11 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Watch mode:',
     '  vx watch <task>            Initial run, then re-run on filesystem changes.',
     '                             Uses the same flags as `vx run` except --dry /',
-    '                             --graph / --summarize / --profile. Press Ctrl+C',
-    '                             to stop. Cache means most re-runs are near-zero',
-    '                             cost (cache hits restore outputs + replay logs).',
+    '                             --graph / --summarize / --profile / --report /',
+    '                             --report-file / --verbosity (they plan or report',
+    '                             one run). Press Ctrl+C to stop. Cache means most',
+    '                             re-runs are near-zero cost (cache hits restore',
+    '                             outputs + replay logs).',
     '',
     'Cache management:',
     '  vx cache prune --older-than 30d     Evict entries last accessed > 30 days ago.',
@@ -189,7 +191,10 @@ export function seeHelp(verb: string): string {
 /**
  * The documented `--flags` of one verb, read from the help text's
  * sections headed `… (for <verb>):` so there is no second list to drift —
- * and no hint that names another verb's flag.
+ * and no hint that names another verb's flag. Only the flag an option line
+ * OPENS with is one: `--frozen`'s line says "pair with vx lock --check", and
+ * reading every flag on it put `--check` in the list, so `vx run --chek`
+ * was told "did you mean --check?" and `--check` was then refused.
  */
 export function documentedFlags(verb: string): string[] {
   const flags = new Set<string>()
@@ -198,7 +203,46 @@ export function documentedFlags(verb: string): string[] {
     if (/^[A-Z][A-Za-z ]*(?: \(for [a-z]+\))?:$/.test(line))
       inVerb = line.endsWith(`(for ${verb}):`)
     if (!inVerb) continue
+    const own = /^\s+(--[a-zA-Z][a-zA-Z-]*)/.exec(line)
+    if (own !== null) flags.add(own[1]!)
+  }
+  return [...flags]
+}
+
+/**
+ * The `vx run` flags `vx watch` refuses: each plans or reports ONE run
+ * (`watchRefusal` in watch.ts, held to this list by a test).
+ */
+export const WATCH_REFUSED_FLAGS: readonly string[] = [
+  '--dry',
+  '--graph',
+  '--summarize',
+  '--profile',
+  '--report',
+  '--report-file',
+  '--verbosity',
+]
+
+/**
+ * The flags one verb accepts: those on its own Usage line, and for a verb
+ * that takes `[OPTIONS]` (run, watch) the documented run flags — less the
+ * ones watch refuses. The Usage line is the verb's synopsis; a section's
+ * prose names other verbs' flags (`vx lock --check`, `--run <id>` under
+ * `vx why`) and is not read.
+ */
+export function acceptedFlags(verb: string): string[] {
+  const quoted = verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const usage = helpText()
+    .split('\n')
+    .filter((line) => new RegExp(`^  vx ${quoted}( |$)`).test(line))
+  const flags = new Set<string>()
+  for (const line of usage) {
     for (const f of line.match(/--[a-zA-Z][a-zA-Z-]*/g) ?? []) flags.add(f)
+    if (line.includes('[OPTIONS]')) {
+      for (const f of documentedFlags('run')) {
+        if (verb !== 'watch' || !WATCH_REFUSED_FLAGS.includes(f)) flags.add(f)
+      }
+    }
   }
   return [...flags]
 }

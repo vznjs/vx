@@ -2,10 +2,23 @@
 // help text `vx <verb> --help` prints — one source, so a flag cannot be
 // documented and not completed.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { completionScript, completionsCmd, verbFlags } from '../src/cli/completions.js'
-import { documentedFlags, CORE_VERBS } from '../src/cli/help.js'
-import { run } from '../src/cli/index.js'
+import { documentedFlags, CORE_VERBS, WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
+import {
+  parseInitArgs,
+  parseLastArgs,
+  parseLockArgs,
+  parsePruneArgs,
+  parseRunArgs,
+  parseShowArgs,
+  parseWhyArgs,
+  run,
+} from '../src/cli/index.js'
+import { parseInfoArgs } from '../src/cli/info.js'
+import { watchRefusal } from '../src/cli/watch.js'
 
 const VERBS = [...CORE_VERBS, 'mcp']
 
@@ -20,6 +33,121 @@ describe('verbFlags', () => {
     expect(verbFlags('cache')).not.toContain('--concurrency')
     // Every verb completes --help.
     for (const v of CORE_VERBS) expect(verbFlags(v)).toContain('--help')
+  })
+})
+
+// A flag's argv as its parser takes it: the value a value flag needs, none
+// for a bare one. A flag missing here fails the rows below by name.
+const ARGV: Readonly<Record<string, readonly string[]>> = {
+  '--all': [],
+  '--filter': ['x'],
+  '--affected': [],
+  '--concurrency': ['2'],
+  '--exclude-dependencies': [],
+  '--no-cache': [],
+  '--force': [],
+  '--cache': ['local:rw'],
+  '--cache-dir': ['d'],
+  '--retry': ['1'],
+  '--timeout': ['10'],
+  '--continue': [],
+  '--frozen': [],
+  '--output-logs': ['full'],
+  '--download': ['all'],
+  '--verbosity': ['1'],
+  '--dry': [],
+  '--graph': [],
+  '--summarize': [],
+  '--profile': [],
+  '--report': [],
+  '--report-file': ['r.md'],
+  '--tag': ['k=v'],
+  '--older-than': ['1d'],
+  '--max-size': ['1G'],
+  '--dry-run': [],
+  '--check': [],
+  '--mjs': [],
+  '--format': ['json'],
+  '--run': ['id'],
+  '--list': [],
+}
+
+/** Each verb's own parser; the error it returns for `argv`, or null. */
+const PARSE: Readonly<Record<string, (argv: string[]) => string | null>> = {
+  run: (a) => parseRunArgs(['build', ...a]).error ?? null,
+  watch: (a) => {
+    const parsed = parseRunArgs(['build', ...a])
+    return parsed.error ?? watchRefusal(parsed)
+  },
+  cache: (a) => parsePruneArgs(a).error ?? null,
+  lock: (a) => parseLockArgs(a).error ?? null,
+  init: (a) => parseInitArgs(a).error ?? null,
+  show: (a) => parseShowArgs(a).error ?? null,
+  info: (a) => parseInfoArgs(a).error ?? null,
+  why: (a) => parseWhyArgs(a).error ?? null,
+  last: (a) => parseLastArgs(a).error ?? null,
+}
+
+describe('verbFlags is what each verb accepts', () => {
+  it('completes no flag the verb refuses', () => {
+    // `vx watch` completed exactly `--dry --graph --summarize --profile`, the
+    // four its help line says it refuses; `show` offered `--run --list`,
+    // `lock` `--frozen`, `run` `--check` — all read from prose that names
+    // another verb's flag (2026-09-27).
+    const refused: string[] = []
+    for (const [verb, parse] of Object.entries(PARSE)) {
+      for (const flag of verbFlags(verb)) {
+        if (flag === '--help') continue
+        const argv = ARGV[flag]
+        if (argv === undefined) {
+          refused.push(`${verb} ${flag}: no argv for it in this table`)
+          continue
+        }
+        // A cache prune needs a policy; anything but that is the flag's own verdict.
+        const extra = verb === 'cache' && flag !== '--older-than' ? ['--max-size', '1G'] : []
+        const error = parse([flag, ...argv, ...extra])
+        if (error !== null) refused.push(`${verb} ${flag}: ${error}`)
+      }
+    }
+    expect(refused).toEqual([])
+  })
+
+  it("completes every flag the verb's parser names", () => {
+    // The parser's flags are its source's quoted `'--x'` literals (the form
+    // every verb matches on), plus `--cache-dir` where it takes the shared
+    // parser; each must complete.
+    const missing: string[] = []
+    const file: Record<string, string> = { watch: 'run' }
+    for (const verb of Object.keys(PARSE)) {
+      const src = readFileSync(
+        path.join(import.meta.dir, '..', 'src', 'cli', `${file[verb] ?? verb}.ts`),
+        'utf8',
+      )
+      const named = new Set(Array.from(src.matchAll(/'(--[a-z][a-z-]*)=?'/g), (m) => m[1]!))
+      if (src.includes('parseCacheDirFlag(args')) named.add('--cache-dir')
+      if (verb === 'watch') for (const f of WATCH_REFUSED_FLAGS) named.delete(f)
+      expect(named.size).toBeGreaterThan(0)
+      for (const f of named) if (!verbFlags(verb).includes(f)) missing.push(`${verb} ${f}`)
+    }
+    expect(missing).toEqual([])
+  })
+
+  it("watch refuses exactly WATCH_REFUSED_FLAGS among run's flags", () => {
+    const refusedByWatch = documentedFlags('run')
+      .filter((f) => {
+        const parsed = parseRunArgs(['build', f, ...(ARGV[f] ?? [])])
+        expect(parsed.error).toBeUndefined()
+        return watchRefusal(parsed) !== null
+      })
+      .sort()
+    expect(refusedByWatch).toEqual([...WATCH_REFUSED_FLAGS].sort())
+  })
+
+  it('a flag another verb names in passing is never suggested to run', () => {
+    // `--frozen`'s help line says "pair with vx lock --check".
+    expect(parseRunArgs(['build', '--chek']).error).toBe(
+      'unknown flag: --chek (see `vx run --help`)',
+    )
   })
 })
 

@@ -17,7 +17,7 @@ export interface InfoArgs {
   error?: string
 }
 
-function parseInfoArgs(args: readonly string[]): InfoArgs {
+export function parseInfoArgs(args: readonly string[]): InfoArgs {
   const out: InfoArgs = { format: 'pretty' }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
