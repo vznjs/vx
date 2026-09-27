@@ -146,9 +146,15 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     // non-ASCII / `"` / `\` character — the quoted string then resolves to no
     // project, while the cache-input enumeration (which uses `-z`) sees the
     // real name and re-keys the task. The two surfaces must agree.
+    //
+    // `--ignore-submodules=none` because a repository may ask git to hide its
+    // submodules (`diff.ignoreSubmodules`, `submodule.<name>.ignore`), and
+    // then an edit inside one, or a committed bump, was no change here while
+    // the task's key moved (item 951).
     gitPaths(args.workspaceRoot, [
       'diff',
       '--no-renames',
+      '--ignore-submodules=none',
       '--relative',
       '--name-only',
       '-z',

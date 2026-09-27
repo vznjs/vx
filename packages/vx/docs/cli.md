@@ -227,7 +227,9 @@ git reports that repository changed — a dirty or moved submodule
 (`vendor/sub`), an untracked embedded repository (`vendor/nested/`):
 the workspace repository sees the nested one as a single path, so a
 change inside is a change to it, and every project under it is
-selected.
+selected. A repository's own request to hide submodules from a diff
+(`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
+the key sees the change whatever git is told to show.
 `vx-lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 

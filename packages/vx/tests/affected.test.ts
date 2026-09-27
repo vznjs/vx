@@ -283,6 +283,22 @@ describe('affectedProjects', () => {
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: nested })),
     ]).toEqual(['c'])
+    // A repository that asks git to hide its submodules (`diff.ignoreSubmodules`,
+    // or `submodule.<name>.ignore` in `.gitmodules`) hid the edit, and a
+    // committed bump too, while the task's key moved (item 951).
+    await git(root, 'config', 'diff.ignoreSubmodules', 'all')
+    expect([
+      ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: nested })),
+    ]).toEqual(['c'])
+    await git(root, 'config', '--unset', 'diff.ignoreSubmodules')
+    await git(path.join(root, 'vendor/sub'), 'commit', '-qam', 'bump')
+    await git(root, 'commit', '-qam', 'bump gitlink')
+    await git(root, 'config', 'diff.ignoreSubmodules', 'all')
+    expect([
+      ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects: nested })),
+    ]).toEqual(['c'])
+    await git(root, 'config', '--unset', 'diff.ignoreSubmodules')
+    await writeFile(path.join(subC, 'file.txt'), 'c-dirty-again')
     // An untracked embedded repository is new work: git reports `vendor/nested/`.
     const nestedD = path.join(root, 'vendor/nested/d')
     await mkdir(nestedD, { recursive: true })
