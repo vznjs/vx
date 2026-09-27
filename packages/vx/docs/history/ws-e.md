@@ -102,3 +102,16 @@ task picked`; neither prints a stack. Row in
   anchored spec with no project (`#build`) refused by name, and the
   picker's Ctrl-C mapped to exit 130 at the verb. Rows in
   `tests/run-exit-codes.test.ts` (new).
+- E-14 — Sweep of `util/cgroup.ts` (the default worker count and the
+  memory budget): 14 mutants, 8 caught, 1 untestable on Linux (the
+  non-Linux branch), 5 held now — a limit or quota above the machine
+  taken whole, a `memory.max` of 0 read as a budget, a cgroup path cut
+  at a colon, and `cpu.max`'s period ignored. Rows in
+  `tests/cgroup.test.ts`.
+- E-15 — Sweep of the small `util/` files (`settle.ts`, `which.ts`,
+  `procfs.ts`, `bun-version.ts`, `task-id.ts`, `hash.ts`): 18 mutants,
+  16 caught, 1 equivalent (`settleWithin`'s `p.catch` after a lost
+  race: `Promise.race` already subscribed to `p.then`, so a late
+  rejection is handled either way — the row for it passes both ways),
+  1 held now: `procfsIsOwn()` inverted, pinned against `/proc/self/stat`'s
+  pid in `tests/util-procfs.test.ts` (new).
