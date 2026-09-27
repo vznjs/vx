@@ -966,6 +966,23 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         or names no project, says so (four shapes, exact messages). Red
         without either piece.
 
+1031. DONE (2026-09-27, the vx-migrate review's leads 2 and 3). `turbo()`
+      passed Turbo's globs through as they were. A bracket is a literal
+      in vx and a class in Turbo, so `inputs: ['src/**/*.[jt]s']` keyed
+      on nothing and an edit replayed the old build, and
+      `outputs: ['dist/**/*.[cm]js']` matched nothing, so a hit restored
+      nothing. An output whose first segment is a wildcard
+      (`**/*.d.ts`) reached the sources: vx cleans outputs before a run
+      and a restore, Turbo never does, and a hand-written
+      `src/env.d.ts` was deleted, an uncommitted edit to it lost.
+      - Fix: `nxGlob` moved to `glob-grammar.ts` (`minimatchToVx`), and
+        `turbo()` runs inputs and outputs (past the first segment,
+        item 667) through it; an input with no safe form widens to `**/*`
+        with a todo. A wildcard first segment runs the task uncached with
+        a todo, with or without a negation. The README says so.
+      - Rows: `turbo-map-sweep.test.ts` › Turbo's glob grammar (inputs,
+        outputs, two wildcard roots). Each piece red when removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

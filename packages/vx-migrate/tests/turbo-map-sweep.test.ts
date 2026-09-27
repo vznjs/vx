@@ -367,3 +367,52 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
     expect(inputs?.env).toBeUndefined()
   })
 })
+
+// Item 1031: Turbo's globs have character classes and extglobs, and a vx
+// bracket is a literal, so `src/**/*.[jt]s` keyed on nothing and an edit
+// replayed the old build; an output glob with a wildcard first segment
+// reaches the sources, which vx cleans before every run, so `**/*.d.ts`
+// deleted a hand-written `src/env.d.ts`.
+describe('turbo-map: Turbo’s glob grammar', () => {
+  const cacheOf = (t: TurboMappedTask) =>
+    t.task!['cache'] as { inputs: { files: string[] }; outputs?: { files: string[] } } | undefined
+
+  it('inputs translate classes and extglobs; one with no safe form widens to every file', async () => {
+    const t = await taskOf(
+      {
+        tasks: {
+          build: { inputs: ['src/**/*.[jt]s', '!**/*.[jt]s.map', 'lib/[a-z]/**'], outputs: [] },
+        },
+      },
+      { a: { scripts: { build: 'b' } } },
+    )
+    expect({ files: cacheOf(t)!.inputs.files, todos: t.todos }).toEqual({
+      files: ['src/**/*.{[jt],j,t}s', '!**/*.{j,t}s.map', '**/*'],
+      todos: ['input "lib/[a-z]/**": glob syntax vx cannot take — map manually'],
+    })
+  })
+
+  it('an output past its first segment translates; the first stays a literal', async () => {
+    const t = await taskOf(
+      { tasks: { build: { outputs: ['dist/**/*.[cm]js', '[locale]/**'] } } },
+      { a: { scripts: { build: 'b' } } },
+    )
+    expect(cacheOf(t)!.outputs!.files).toEqual(['dist/**/*.{[cm],c,m}js', '[locale]/**'])
+  })
+
+  it.each([['**/*.d.ts'], ['*.tsbuildinfo']])(
+    'an output whose first segment is a wildcard (%s) runs the task uncached',
+    async (wild) => {
+      const t = await taskOf(
+        { tasks: { build: { outputs: ['dist/**', wild] } } },
+        { a: { scripts: { build: 'b' } } },
+      )
+      expect({ cache: t.task!['cache'], todos: t.todos }).toEqual({
+        cache: undefined,
+        todos: [
+          `output ${JSON.stringify(wild)}: a wildcard first segment reaches the sources, which vx cleans before every run — task runs uncached; declare the exact outputs in a vx.config to cache it`,
+        ],
+      })
+    },
+  )
+})

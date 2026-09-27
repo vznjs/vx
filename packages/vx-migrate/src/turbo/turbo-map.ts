@@ -12,6 +12,7 @@
 
 import path from 'node:path'
 import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
+import { minimatchToVx } from '../glob-grammar.js'
 import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
@@ -545,8 +546,20 @@ function buildTask(
           continue
         }
         const neg = i.startsWith('!')
-        const body = neg ? i.slice(1) : i
-        const up = climbed(i)
+        // Turbo's globs have character classes and extglobs; a vx bracket is
+        // a literal, so `src/**/*.[jt]s` keyed on nothing and an edit
+        // replayed the old build (item 1031). A positive glob with no safe
+        // form widens to every package file; a negation with none is dropped
+        // (it would exclude fewer files, never more).
+        const wax = minimatchToVx(neg ? i.slice(1) : i, neg)
+        if (wax === null) {
+          todos.push(`input ${JSON.stringify(i)}: glob syntax vx cannot take — map manually`)
+          if (!neg) files.push('**/*')
+          continue
+        }
+        const translated = (neg ? '!' : '') + wax
+        const body = wax
+        const up = climbed(translated)
         if (body.startsWith('$TURBO_ROOT$/')) {
           wsFiles.push((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length))
         } else if (up !== null) {
@@ -558,7 +571,7 @@ function buildTask(
             `input ${JSON.stringify(i)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
               'prefix (→ cache.inputs.workspaceFiles) — map manually',
           )
-        } else files.push(i)
+        } else files.push(translated)
       }
       // Exclusions alone narrow every package file: core refuses a list
       // with nothing to narrow, and that refusal failed the whole run
@@ -578,7 +591,20 @@ function buildTask(
     const outFiles: string[] = []
     const wsOutFiles: string[] = []
     const negated: string[] = []
-    for (const o of def.outputs ?? []) {
+    for (const raw of def.outputs ?? []) {
+      // The first segment stays a literal (a route directory, item 667);
+      // the rest is Turbo's grammar: `dist/**/*.[cm]js` matched nothing, so
+      // a hit restored nothing (item 1031).
+      const cut = raw.indexOf('/')
+      const rest = cut < 0 ? null : minimatchToVx(raw.slice(cut + 1), raw.startsWith('!'))
+      if (cut >= 0 && rest === null) {
+        todos.push(
+          `output ${JSON.stringify(raw)}: glob syntax vx cannot take — task runs uncached; ` +
+            'declare the exact outputs in a vx.config to cache it',
+        )
+        return { name, todos, task, uses }
+      }
+      const o = cut < 0 ? raw : `${raw.slice(0, cut + 1)}${rest}`
       if (o.startsWith('!')) {
         negated.push(o)
       } else if (o.startsWith('$TURBO_ROOT$/')) {
@@ -607,6 +633,18 @@ function buildTask(
         `outputs ${negated.map((n) => JSON.stringify(n)).join(', ')} narrow ${JSON.stringify(wild)}: ` +
           'vx outputs have no negation and the positive glob reaches the sources — task runs ' +
           'uncached; declare the exact outputs in a vx.config to cache it',
+      )
+      return { name, todos, task, uses }
+    }
+    // Without a negation too: Turbo never cleans an output, vx cleans it
+    // before a run and a restore, so `**/*.d.ts` deleted a hand-written
+    // `src/env.d.ts` and an uncommitted edit to it was lost for good (item
+    // 1031). A wildcard first segment can reach the sources.
+    if (wild !== undefined) {
+      todos.push(
+        `output ${JSON.stringify(wild)}: a wildcard first segment reaches the sources, which ` +
+          'vx cleans before every run — task runs uncached; declare the exact outputs in a ' +
+          'vx.config to cache it',
       )
       return { name, todos, task, uses }
     }
