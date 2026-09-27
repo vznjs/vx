@@ -220,6 +220,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
   is what gets cached — its stdout only, not a concatenation of failed
   attempts); if every attempt fails, the task is `failed` with the last
   exit code and nothing is cached, as today.
+- The task's reported duration sums every attempt; a saved entry keeps
+  the producing attempt's time.
 - `retries` is part of the resolved config, so declaring it derives a
   distinct cache key (like every config field); tasks without it keep
   byte-identical keys.
@@ -256,7 +258,9 @@ daemon, a Docker socket, a device, a VPN-only host.
   declares — a worker cannot reach a port served on the submitter. So is
   a task with a `sandbox` block, and its dependants: the sandbox is this
   machine's machinery, and a boundary a worker does not enforce would
-  pass vacuously.
+  pass vacuously. So is a task whose key folds `cache.inputs.runtime` or
+  `workspaceRuntime`: the key holds this machine's answer, which a worker
+  cannot prove it shares. Its dependants are not pinned.
 - **Placement is decided once per task**, before scheduling, so the
   scheduler knows which pool a task will occupy (see
   [execution.md](execution.md#executor-pools)).
@@ -1509,7 +1513,7 @@ lists the messages a user meets most:
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first` | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
 | `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.                                                                                                                                                                                       |
 | `exec must be an object with a command string`                                                                    | `exec` is malformed.                                                                                                                                                                                                           |
-| `exec.command must be a non-empty string`                                                                         | Forgot `command`, or empty string.                                                                                                                                                                                             |
+| `exec.command must be a non-empty string`                                                                         | Forgot `command`, or an empty or whitespace-only string.                                                                                                                                                                       |
 | `exec.command holds a NUL, which no command line can carry`                                                       | A `\0` in the command (a template slip); the spawn refused it as exit 127, "not on this task's PATH", with the NUL printed as a space.                                                                                         |
 | `exec.persistent must be an object (or omitted)`                                                                  | Wrong shape.                                                                                                                                                                                                                   |
 | `exec.persistent.readyWhen must be a string regex`                                                                | Non-string `readyWhen`.                                                                                                                                                                                                        |

@@ -204,7 +204,9 @@ GitHub plugin, or a third-party sink:
 - **`RunSummaryRecord`** — one per run at run:end: the invocation
   header (`RunContextRecord`: command, cache policy, git/CI/host
   context, tags) plus the full `tasks[]` list. What the HTTP exporters
-  primarily speak.
+  primarily speak. The command replaces everything after `--` with
+  `-- <N arguments>` (task arguments can hold tokens); local history
+  (`vx last`) keeps the full line.
 
 `createTelemetrySource` projects the run event bus into these records
 ONCE and fans them to sinks under crash isolation — a throwing sink is

@@ -108,6 +108,11 @@
   group (a keyboard Ctrl-C already reached vx, and a second signal means
   "stop now"), and exits with the binary's code. Row in
   `npm-launcher.test.ts`, red without the fix.
+- **J-16** Docs against ~190 merges: execution.md's restore lane
+  (pooled tasks, concurrency 1), schema.md's runtime-probe pin, retries'
+  summed duration and whitespace-only command, capacity and plugin-verb
+  refusals, async hook isolation, the `Aborted:`/`Not started:` sections
+  and `aborted[]`, telemetry's counted `--` arguments.
 
 ## Leads for other streams
 
@@ -139,3 +144,13 @@
 - **J (test)** `site-samples.unsafe.test.ts` verdict pin expects 8 sentences; its regex misses `this task recorded no cache key` (metrics.ts:500-501), the 9th.
 - **J (test)** `upstream-ledger.unsafe.test.ts` accepts only covered / fixed-in-item-N / n/a; a documented limit vx shares (turborepo#12786) has no honest verdict. An `open (limit)` verdict needs a test change.
 - **F** `vx-reapi/src/index.ts:95-96` doc comment says a remote hit is consulted first; `LayeredCache.get` reads local first. **G** `vx-migrate/tests/{nx,turbo}-cache.test.ts` describe blocks say the plugin is "declared before the local cache", which has no meaning (no local-cache entry in `plugins`).
+- **K** vx-otel README "What it exports": the `vx.run` span carries
+  `vx.command` (after `--`: `-- <N arguments>`). vx-github README: the
+  summary footer shows that command. vx-mcp README Troubleshooting: an
+  edited relative import of `vx.workspace.ts` makes later loads refuse
+  (`… a running process cannot evaluate an imported module again —
+restart it to apply the edit`).
+- **A/B** `sandbox-runtime.unsafe.test.ts` "a traced sandboxed one-shot
+  task's children die with vx that is descheduled after the spawn"
+  failed once in a full local gate (3.5 s) on a launcher-only diff; it
+  passed 2/2 alone. A timing row under load.

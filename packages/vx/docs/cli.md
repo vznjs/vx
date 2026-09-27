@@ -891,10 +891,11 @@ buckets: a run can be red without a single failed task (see `aborted`).
 are in neither — they do no work.
 
 **`aborted[]`** lists tasks whose child was killed by a shutdown signal
-(Ctrl-C, an external `kill`, a self-terminating script). Such a task did
-not finish on its own terms, so it joins no outcome bucket and no
-`total` — but it does make the run red, so it is listed separately with
-its signal exit code, and counted as `summary.aborted`.
+(Ctrl-C, an external `kill`, a self-terminating script), with their
+signal exit code, and tasks the stop reached before they started, with
+exit 1, `durationMs: 0` and no `wallclockStartNs`. Neither joins an
+outcome bucket or `total`, but they make the run red, so they are
+listed separately and counted as `summary.aborted`.
 
 **`noCache: true`** marks a task that declares no `cache` block — it
 executes every run by design, so a hit rate should leave it out of the
@@ -2016,7 +2017,8 @@ verb could never run, or would hide the other plugin's. A plugin verb's
 return value is the exit code, an integer 0–255 (anything else — nothing,
 a fraction, 256, which the OS would keep as 0 — fails naming the plugin
 and the verb), and a thrown `UserError` prints as
-cleanly as core's own. `vx help` lists every plugin verb under "Plugin
+cleanly as core's own. Anything else thrown fails in one line, no stack:
+`plugin '<p>' failed in command '<verb>': <msg>`. `vx help` lists every plugin verb under "Plugin
 commands", with the plugin's name.
 
 An unknown verb is answered with what this workspace knows: the "did you
@@ -2143,6 +2145,19 @@ group (a task with no command) is not listed — it never starts by
 definition and no counter counts it, so the section and the tasks
 legend agree. Absent when nothing was skipped (`--continue=always`
 skips nothing).
+
+**Aborted and Not started sections.** After a stop (a shutdown
+signal), the footer names what it cut short and what it reached first.
+Neither is in the totals:
+
+```
+  Aborted:  1 task killed by a shutdown signal — not counted above
+    ✗ app#dev — exit 130, nothing cached
+
+  Not started:  2 tasks the run stopped before they ran
+    · web#build
+    · web#test
+```
 
 **Flaky section.** After the footer, a run names the tasks it just
 proved nondeterministic — from the local run history alone, no
