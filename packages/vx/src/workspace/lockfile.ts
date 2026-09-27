@@ -2,14 +2,16 @@
 //
 // `vx lock` evaluates every project's vx.config.* in the CURRENT
 // environment and freezes the resolved objects (plus a content hash of
-// each config file) into `vx-lock.json` at the workspace root. While the
-// lock exists, runs load configs from it instead of evaluating —
-// frozen-env semantics. See docs/design/config-lock-2026-06.md.
+// each config file) into `vx-lock.json` at the workspace root. A run
+// under `--frozen` loads configs from it instead of evaluating —
+// frozen-env semantics; a plain run always evaluates live. See
+// docs/design/config-lock-2026-06.md.
 //
 // Verification asymmetry (deliberate):
-//   - runs TRUST the lock: hash-only staleness check, eval-free.
-//   - `vx lock --check` AUDITS it: full re-evaluation + deep equality,
-//     which catches eval-time env drift that file hashes cannot see.
+//   - `--frozen` runs TRUST the lock: no staleness check, eval-free.
+//   - `vx lock --check` AUDITS it: the file hashes, then full
+//     re-evaluation + deep equality, which catches eval-time env drift
+//     that file hashes cannot see.
 
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'

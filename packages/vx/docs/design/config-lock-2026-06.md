@@ -73,21 +73,23 @@ bust bypasses Bun's module cache, which would otherwise replay an
 evaluation made under earlier env values in the same process), and
 writes the lock. Exit 0.
 
-### Runs (`vx run`, `vx watch`, `--dry` / `--graph`) — TRUST
+### Runs under `--frozen` (`vx run`, `vx watch`) — TRUST
 
-When `vx-lock.json` exists, `prepareRun` loads each in-scope project's
-config **from the lock** after a content-hash check of the config
-file. **No evaluation happens** — frozen-env semantics: a config that
-read `process.env.X` at lock time keeps the locked value no matter
-what `X` is at run time.
+As revised on 2026-06-13 (the two sections at the end; item 973
+brought this one in line with them): a plain run always evaluates
+live, and only `--frozen` reads the lock. Under it, `prepareRun` loads
+each in-scope project's config **from the lock**, with no staleness
+check of any kind. **No evaluation happens** — frozen-env semantics: a
+config that read `process.env.X` at lock time keeps the locked value
+no matter what `X` is at run time, and a config edited since keeps
+its locked form until `vx lock`.
 
-Hash-only verification, hard failures (`UserError`, exit 1):
+Hard failures (`UserError`, exit 1):
 
-| condition                                         | outcome                                                               |
-| ------------------------------------------------- | --------------------------------------------------------------------- |
-| file hash matches lock entry                      | frozen config used, eval-free                                         |
-| config file changed since lock                    | `vx-lock.json is stale: <path> changed since \`vx lock\` (<project>)` |
-| project has a config but no lock entry (or moved) | `vx-lock.json has no entry for "<project>"`                           |
+| condition                                         | outcome                                     |
+| ------------------------------------------------- | ------------------------------------------- |
+| no `vx-lock.json`                                 | `--frozen` refuses and names `vx lock`      |
+| project has a config but no lock entry (or moved) | `vx-lock.json has no entry for "<project>"` |
 
 There is deliberately **no silent fallback to evaluation**: the lock's
 contract is "what runs is what was locked". Falling back would
@@ -101,11 +103,12 @@ object. Key derivation is untouched — **no CACHE_VERSION bump**.
 
 ### `vx lock --check` — AUDIT
 
-`--check` is strictly stronger than run-time verification. Per
+`--check` is the only verification there is. Per
 config-bearing project:
 
-1. **The run-time hash check** (file bytes vs `configHash`); a
-   mismatch reports `config file changed since lock (<project>)`.
+1. **The file hash check** (file bytes vs `configHash`, which only
+   `--check` reads); a mismatch reports
+   `config file changed since lock (<project>)`.
 2. **Full re-evaluation in the current environment** (fresh, module
    cache bypassed), JSON-normalized, then `Bun.deepEquals(fresh,
 stored, /* strict */ true)`. A mismatch reports:
@@ -123,7 +126,7 @@ mismatched project is listed on stderr, exit 1. Clean → exit 0.
 
 **Runs trust the lock; `--check` audits it.**
 
-- **Run-time verification is hash-only — fast and eval-free.** That is
+- **A `--frozen` run verifies nothing — fast and eval-free.** That is
   the entire point of the lock on the hot path: zero config evaluation
   per run, and _frozen-env semantics_ — the run's behavior cannot
   drift with the environment because the environment is never
@@ -132,8 +135,8 @@ mismatched project is listed on stderr, exit 1. Clean → exit 0.
   an environment where evaluation resolves differently, the frozen
   value is the _intended_ one, not an error.
 - **`--check` re-evaluates and deep-compares.** It answers a different
-  question — not "is the lock internally consistent with the files?"
-  (hashes answer that) but "would locking _here, now_ produce the same
+  question — not only "is the lock internally consistent with the
+  files?" (its hash step answers that) but "would locking _here, now_ produce the same
   truth?" Only evaluation can answer it, because eval-time env-var
   drift leaves file bytes — and therefore every hash — unchanged.
 
@@ -146,10 +149,9 @@ cache key tracks properly).
 
 ## Known limits
 
-- `vx watch` with a lock: editing a config mid-watch fails the next
-  cycle with the stale-lock error until the user re-locks (or deletes
-  the lock). Consistent with "no silent fallback"; the error message
-  says exactly what to do.
+- `vx watch --frozen`: a config edited mid-watch starts a cycle that
+  runs the locked config, unchanged, until `vx lock`; the loop hears
+  the re-lock and runs the new one (item 971).
 - The lock does not cover `vx.workspace.ts` (see Format).
 - `--check`'s re-evaluation runs config code; like any vx invocation
   it assumes configs are trusted code in the repo.
@@ -163,9 +165,9 @@ cross-invocation by nature):
    under `X=a`; `--check` under `X=a` → 0; `--check` under `X=b` → 1
    naming the project; `vx run` under `X=b` → 0 with the frozen
    `flavor-a` output.
-2. Stale file: edit config after lock → `--check` exits 1
-   (file-changed), `vx run` hard-fails with the stale-lock error,
-   re-lock heals both.
+2. Changed file: edit config after lock → `--check` exits 1
+   (file-changed), a live `vx run` uses the edit, `vx run --frozen`
+   keeps the freeze until a re-lock.
 3. `--check` with no lock present → exit 1, points at `vx lock`.
 
 ## FAQ (owner questions, 2026-06)
@@ -195,9 +197,10 @@ confidence. Revised contract:
 
 - `vx run` — ALWAYS live evaluation. Local truth has no asterisks;
   costs the eval time (~120 ms / 1000 pkgs).
-- `vx run --frozen` — CI mode: configs from the lock (hash tripwire
-  still catches direct config edits; import-closure/env drift is
-  --check's job). Errors if no lock exists.
+- `vx run --frozen` — CI mode: configs from the lock (a hash tripwire
+  was kept here for direct config edits, then dropped by the revision
+  below; import-closure/env drift is --check's job). Errors if no lock
+  exists.
 - `vx lock` / `vx lock --check` — unchanged: the only full-graph
   operations. pnpm-style auto-relock on plain runs was considered
   and rejected: scoped runs evaluate only a dep closure and cannot

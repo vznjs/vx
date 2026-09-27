@@ -800,6 +800,15 @@ test is telling the truth.
         the message; the cleanup's own ENOTDIR had also replaced the
         refusal, so it is best effort now). Each of the three is red
         with its line removed.
+973.  DONE (2026-09-27, the `vx lock` review's lead 3; docs and comments
+      only). The `lockfile.ts` header, the `lock.test.ts` header and the
+      body of `design/config-lock-2026-06.md` still said every run with a
+      lock loads it after a per-file hash check that fails a stale
+      config. The owner's 2026-06-13 revisions at the page's end dropped
+      both: a plain run evaluates live, and `--frozen` checks nothing.
+      The page's Runs section, its asymmetry, Known limits (watch now
+      names item 971) and Tests §2 say what the code does; the
+      revisions stay as the record.
 
 ## In flight
 
