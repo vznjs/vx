@@ -145,3 +145,30 @@ describe('workspaceGlobOwners', () => {
     expect(owners).toEqual(['app'])
   })
 })
+
+describe('resolveFilters — a scoped name typed without its scope (E-32)', () => {
+  let scoped = ''
+  beforeAll(async () => {
+    scoped = realpathSync(await makeWorkspace({ prefix: 'vx-select-scoped-' }))
+    for (const name of ['@acme/web', '@acme/dup', '@other/dup']) await addProject(scoped, name)
+    const git = gitIn(scoped)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+  })
+  afterAll(async () => {
+    await rm(scoped, { recursive: true, force: true })
+  })
+
+  it('hints the one project whose name after the scope it is, or is a typo of', async () => {
+    const errors = []
+    for (const f of ['web', 'wbe', 'dup']) {
+      errors.push((await quiet(() => resolveFilters(scoped, [f]))).value)
+    }
+    expect(errors).toEqual([
+      { error: 'no projects matched filter(s): web. Did you mean @acme/web?' },
+      { error: 'no projects matched filter(s): wbe. Did you mean @acme/web?' },
+      // Two scopes share the name: no single answer, so no hint.
+      { error: 'no projects matched filter(s): dup' },
+    ])
+  })
+})
