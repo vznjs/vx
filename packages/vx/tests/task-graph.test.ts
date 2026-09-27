@@ -375,6 +375,39 @@ describe('buildTaskGraph', () => {
     expect([...dropped]).toEqual([['app#build', ['app#codegen', 'lib#build']]])
   })
 
+  it('excludeDependencies keeps an edge to a task the run schedules anyway (item 980)', () => {
+    // `vx run build --all --exclude-dependencies`: both builds are
+    // requested, so both run; dropping `^build` ran them unordered and
+    // app read lib's output mid-rewrite, or the run before's.
+    const graph = () =>
+      buildTaskGraph({
+        projects: projects(
+          project('app', { build: { ...cmd('build app'), dependsOn: ['^build'] } }),
+          project('lib', { build: cmd('build lib') }),
+        ),
+        packageGraph: packageGraph({ app: ['lib'] }),
+        requested: [
+          { project: 'app', task: 'build' },
+          { project: 'lib', task: 'build' },
+        ],
+      })
+    for (const exclude of ['all', ['build']] as const) {
+      const nodes = graph()
+      const { keyOnly, dropped } = excludeDependencies(nodes, exclude)
+      expect({
+        scheduled: [...nodes.keys()].sort(),
+        appDeps: nodes.get('app#build')?.deps,
+        keyOnly: [...keyOnly.keys()],
+        dropped: [...dropped],
+      }).toEqual({
+        scheduled: ['app#build', 'lib#build'],
+        appDeps: ['lib#build'],
+        keyOnly: [],
+        dropped: [],
+      })
+    }
+  })
+
   it('excludeDependencies: name-list drops only matching edges in both self and deps', () => {
     const nodes = buildTaskGraph({
       projects: projects(

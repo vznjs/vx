@@ -510,7 +510,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
  * reached it. What stays scheduled is what the requested tasks still reach;
  * the rest leaves `nodes` and is returned with its `deps` intact, and each
  * scheduled task that lost an edge is listed in `dropped` with the ids it
- * lost.
+ * lost. An edge to a task that stays scheduled (requested itself, or
+ * reached another way) is kept: the two still run in order.
  *
  * Under `'all'` a group's own edges stay: a group is its members (running
  * one is running them), so `vx run ci --exclude-dependencies` runs what
@@ -550,11 +551,16 @@ export function excludeDependencies(
       keyOnly.set(id, node)
       continue
     }
+    // An edge to a task this run schedules anyway stays: dropped, the two
+    // ran unordered, and `a#build` read `b`'s output mid-rewrite or from
+    // the run before (item 980). Only an edge to a task that leaves the
+    // schedule is taken out.
     const kept = keptBy(node)
-    const lost = node.deps.filter((d) => !kept(d))
+    const stays = (d: string): boolean => kept(d) || scheduled.has(d)
+    const lost = node.deps.filter((d) => !stays(d))
     if (lost.length === 0) continue
     dropped.set(id, lost)
-    node.deps = node.deps.filter(kept)
+    node.deps = node.deps.filter(stays)
   }
   for (const id of keyOnly.keys()) nodes.delete(id)
   return { keyOnly, dropped }
