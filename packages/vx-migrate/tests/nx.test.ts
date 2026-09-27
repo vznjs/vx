@@ -276,6 +276,52 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // The key's parts, each alone (G-21's sweep): an append moved the key by
+  // the file's length, so the content hash went unheld; a same-length edit
+  // is the one only the content sees. A commit leaves the status empty
+  // before and after, so HEAD alone carries it.
+  it(
+    'a same-length edit and a new commit on a clean tree each re-export',
+    async () => {
+      const src = path.join(root, 'packages', 'lib', 'src', 'index.js')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
+      await writeFile(src, '// bil\n')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(2)
+      const git = (...args: string[]) => {
+        const r = Bun.spawnSync({
+          cmd: [
+            'git',
+            '-c',
+            'user.name=t',
+            '-c',
+            'user.email=t@t',
+            '-c',
+            'commit.gpgsign=false',
+            ...args,
+          ],
+          cwd: root,
+        })
+        expect({ args, code: r.exitCode, err: r.stderr.toString() }).toEqual({
+          args,
+          code: 0,
+          err: '',
+        })
+      }
+      git('add', '-A')
+      git('commit', '-qm', 'one')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      const afterFirst = await nxCalls(root)
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(afterFirst)
+      git('commit', '-q', '--allow-empty', '-m', 'two')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(afterFirst + 1)
+    },
+    TIMEOUT,
+  )
+
   it(
     'a touch alone, or a stray file at the root, does not re-export',
     async () => {

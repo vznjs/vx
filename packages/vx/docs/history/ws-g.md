@@ -59,6 +59,12 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
   (two top dirs 60 ms, all 206 project roots 124 ms). A project-hook
   context field for the worktree status (HEAD + that output) would let
   nx() drop its spawn (I-6 measured 417 → 321 ms with the key bounded).
+- **B:** `sandbox-runtime.unsafe.test.ts` rows are load-sensitive: on
+  PR #1324's CI "control: `localBinding: true` binds inside the
+  namespace and the host sees nothing" read `r.ok` true (expected
+  false), and a local gate beside another run failed "a traced sandboxed
+  one-shot task's children die with vx"; both passed alone (179/179,
+  twice). Neither touched by stream G.
 - **D:** `workspace/migration.ts` documents `MigrationPlan.notes` as
   "trailing report lines (e.g. implicit Nx deps)"; after G-7 the Nx
   mapper writes none, so the example names a note no source emits.
@@ -277,6 +283,17 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   nothing, named in the one options warning; `0` is taken silently.
   Row (`resource-estimates` › a declared reservation axis that is no
   number above 0 reserves nothing): red without the fix.
+- **G-21.** A mutation sweep of nx()'s graph key (`graphInputKey`, item
+  1075; 13 mutants): 3 caught. Item 1075's own row appended to a file,
+  so the key moved by the file's LENGTH and dropping the content hash
+  survived; so did dropping HEAD. Held now: a same-length edit, and a
+  commit that leaves the status empty before and after, each re-export
+  (`nx.test` › a same-length edit and a new commit on a clean tree
+  each re-export; both red without their part). Unheld, recorded: the
+  status guard (vx refuses a workspace outside git before it matters),
+  the cache-dir and root-project arms (only a workspace whose root is a
+  project reaches them; the fixture has none), the rename record skip,
+  the sort and the per-file path line.
 - **G-22.** nx() in a standalone Nx repo (the workspace root is the one
   project) exported the graph on every run. Every file under the root
   was a project file, and the export writes Nx's own
