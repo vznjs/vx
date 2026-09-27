@@ -612,6 +612,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let attempt = 0
   let result: ExecuteResult
   let effectiveExitCode: number
+  // What THIS run spent on the task, every attempt (`TaskOutcome.durationMs`):
+  // the last attempt alone read `max 407ms` beside a footer of 837 (item
+  // 1101). A saved entry keeps the attempt that produced it, what a hit saves.
+  let spentMs = 0
 
   // One task attempt: clean the declared outputs (before EVERY attempt — so a
   // stale prior-build artifact can't survive into a fresh run, and a failed
@@ -780,6 +784,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (writesFingerprint) args.fingerprintWatch?.wrote()
     result = a.result
     effectiveExitCode = a.exitCode
+    spentMs += result.durationMs
 
     // An attempt that ended in a shutdown never finished on its own terms —
     // it is aborted, so it is neither cached, counted, shown, nor RETRIED.
@@ -808,7 +813,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         node,
         status: 'aborted',
         exitCode: effectiveExitCode,
-        durationMs: result.durationMs,
+        durationMs: spentMs,
         hash,
         wallclockStartNs,
         wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
@@ -986,7 +991,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     node,
     status: effectiveExitCode === 0 ? 'success' : 'failed',
     exitCode: effectiveExitCode,
-    durationMs: result.durationMs,
+    durationMs: spentMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),

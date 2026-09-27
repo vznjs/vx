@@ -68,6 +68,39 @@ describe('exec.retries — e2e', () => {
     await rm(fixture.root, { recursive: true, force: true })
   })
 
+  // Item 1101: the outcome carried the last attempt's duration alone, so a
+  // retried task read shorter than the run spent on it.
+  it(
+    "a retried task's duration is every attempt's, not the last one's",
+    async () => {
+      await addProject(
+        fixture.root,
+        'slowflaky',
+        `export default {
+          tasks: {
+            build: {
+              exec: {
+                command: 'sleep 0.3; if test -f flag.txt; then exit 0; else touch flag.txt; exit 1; fi',
+                retries: 1,
+              },
+            },
+          },
+        }
+        `,
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        projects: ['slowflaky'],
+        log: capturingLogger(fixture),
+      })
+      expect(r.outcomes[0]!.attempts).toBe(2)
+      // Two attempts of 300 ms each; the last alone is ~300.
+      expect(r.outcomes[0]!.durationMs).toBeGreaterThanOrEqual(580)
+    },
+    TIMEOUT,
+  )
+
   it(
     'fails once, succeeds on the retry; the winning attempt is cached',
     async () => {

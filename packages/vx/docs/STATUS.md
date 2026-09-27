@@ -211,6 +211,18 @@ upgrade` on the latest version re-downloaded and replaced the
         now stops the run itself (`kill -TERM $PPID`, after `fine`),
         12 of 12 green.
 
+1101. DONE (2026-09-27, scheduler review #2). A retried task's outcome
+      carried the last attempt's duration only (`result.durationMs`), so
+      the footer read `time 837ms · max 407ms` over one task, the
+      `--summarize` row said 4 ms beside its own 12.8 ms span, and a
+      timeout retried once showed `(342ms)` for about 700 ms spent.
+      `TaskOutcome.durationMs` promises what this run spent. The outcome
+      (and an aborted attempt's) now sums every attempt. A saved entry
+      keeps the attempt that produced it, the cost a hit saves.
+      - Row: `retries.test.ts` › "a retried task's duration is every
+        attempt's": two 300 ms attempts, at least 580. It is red without
+        the change (341).
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
