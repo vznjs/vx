@@ -653,6 +653,8 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
         ({
           command: 'true',
           envDefine: define,
+          // Passed through, so the inputs.env name crosses (item 1092).
+          env: { MID: '1' },
           inputs: {
             files: [{ path: 'pkg/src/in.txt', digest: 'unused' }],
             env: [{ name: 'MID', value: '1' }],

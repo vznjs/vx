@@ -823,7 +823,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // worker must interpret the string the same way the local executor's
         // spawn does.
         arguments: ['/bin/sh', '-c', fullCommand(req, rootAnchored ? projectRel : '', projectRel)],
-        environmentVariables: commandEnvironment(req.inputs, req.envDefine),
+        environmentVariables: commandEnvironment(req.inputs, req.envDefine, req.env),
         outputPaths: outputs.outputPaths,
         // Both generations of the field are set: a v2.1+ server reads
         // output_paths and ignores the legacy pair; a v2.0 server does the
@@ -1175,10 +1175,15 @@ export function globToOutputPath(glob: string): string {
  * The action's environment: `cache.inputs.env` (values read from THIS
  * machine's environment, already folded into the cache key) plus
  * `exec.env.define` (literals from the task config). A define wins on
- * collision — it is the more explicit statement of intent. Nothing else from
- * `req.env` may cross: that is this machine's RESOLVED environment (its PATH,
- * HOME, TMPDIR), and shipping it would put host-specific values into the
- * action identity, splitting every machine from every other.
+ * collision — it is the more explicit statement of intent. An `inputs.env`
+ * name crosses only when the local child gets the same value (`childEnv`,
+ * the request's resolved environment): a name the config only TRACKS is in
+ * the key but not the local child's environment, and shipping it ran the
+ * worker on a value a local run never saw, under the same key (item 1092).
+ * Nothing else from `childEnv` may cross: that is this machine's RESOLVED
+ * environment (its PATH, HOME, TMPDIR), and shipping it would put
+ * host-specific values into the action identity, splitting every machine
+ * from every other.
  *
  * ORDER is deliberately not this function's business. The proto requires
  * environment_variables sorted by name so equivalent Commands hash alike, and
@@ -1189,11 +1194,14 @@ export function globToOutputPath(glob: string): string {
 export function commandEnvironment(
   inputs: DescribedInputs,
   envDefine: Readonly<Record<string, string>>,
+  childEnv: Readonly<Record<string, string | undefined>>,
 ): Array<{ name: string; value: string }> {
   const merged = new Map<string, string>()
   // An unset name stays unset in the action, as `passThrough` leaves it here:
   // shipping it as "" would run a different command than the key describes.
-  for (const e of inputs.env) if (e.value !== undefined) merged.set(e.name, e.value)
+  for (const e of inputs.env) {
+    if (e.value !== undefined && childEnv[e.name] === e.value) merged.set(e.name, e.value)
+  }
   for (const [name, value] of Object.entries(envDefine)) merged.set(name, value)
   return [...merged].map(([name, value]) => ({ name, value }))
 }

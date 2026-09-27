@@ -400,10 +400,13 @@ sorted by name — the proto requires that, so equivalent Commands hash alike:
 - **`exec.env.define`** — literal `name: value` pairs from the task config.
   They read the same on every machine, so they are safe to put into the
   action identity, and they are already in the vx cache key.
-- **`cache.inputs.env`** — the values this machine resolved for those names.
-  They are in the vx cache key by definition, so a change to one already
-  produces a different action. A name unset here is left out of the
-  `Command`, not sent empty, so the worker sees what a local run would.
+- **`cache.inputs.env`** — the values this machine resolved for those names,
+  for each name the task's local child would get too (it is also in
+  `exec.env.passThrough`). They are in the vx cache key by definition, so a
+  change to one already produces a different action. A name unset here, or
+  one the config only tracks, is left out of the `Command`, so the worker
+  sees what a local run would: shipping a tracked-only value ran the worker
+  on something a local run never saw, under the same key (item 1092).
 
 A `define` wins over an `inputs.env` entry of the same name: it is the more
 explicit statement of intent.
@@ -421,5 +424,6 @@ the worker has its own. Two reasons, and both matter:
   can name its digest.
 
 So a task that needs a value on a worker must `define` it (config literal) or
-list it in `cache.inputs.env` (host value, keyed). A task whose command reads
+list it in both `cache.inputs.env` and `exec.env.passThrough` (host value,
+keyed, and seen by a local run the same way). A task whose command reads
 a `passThrough` secret is one to keep local with `exec: { remote: false }`.
