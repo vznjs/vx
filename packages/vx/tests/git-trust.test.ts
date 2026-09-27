@@ -120,9 +120,11 @@ describe('a .gitattributes the index does not hold as clean', () => {
     git('commit', '-q', '-m', 'fixture')
     expect(git('status', '--porcelain', '--', path.join(dir, 'src.txt'))).toBe('')
 
-    // The CLI, one process per run, as a user runs it. Two `run()` calls in
-    // one process derived the same key here and still re-executed the
-    // second time (why is not yet known), so they could not see the hit.
+    // The CLI, one process per run, as a user runs it. In one process the
+    // first run starts within `FILE_HASH_RACY_MS` of the fixture's write, so
+    // `movedInput` re-hashes the file after the task, finds the CRLF bytes
+    // unlike the LF blob it was keyed by, and saves nothing: the second run
+    // re-executed on the same key and could not show the hit (item 982).
     cli()
     await writeFile(path.join(dir, 'src.txt'), 'a\nb\n')
     cli()

@@ -173,7 +173,8 @@ test is telling the truth.
       - Rows: `git-trust.test.ts` › an untracked one, and a modified one,
         through the CLI; both red without the fix. Two `run()` calls in
         one process derived the same key and still re-executed the second
-        time, so an in-process row could not see the hit: why is open.
+        time, so an in-process row could not see the hit (explained in
+        item 982).
 978.  DONE (2026-09-27, the cache-key review's lead 3). A stale hit. The
       gate asked `git check-attr` for `text`, `eol` and `ident` only. A
       `filter=` driver whose clean command drops comment lines stores one
@@ -229,6 +230,16 @@ test is telling the truth.
         overlapping outputs is refused, and a node moved to another key is
         refused by name; `task-graph.test.ts` › checkGraph re-derives the
         addition marks. Each red without its part of the fix.
+982.  DONE (2026-09-27, item 977's open note; a comment and STATUS). Why
+      two in-process runs re-executed on the key item 977's stale hit
+      shares: the first run starts within `FILE_HASH_RACY_MS` (50 ms) of
+      the fixture's write, so `movedInput` re-hashes the file after the
+      task, finds the CRLF bytes unlike the LF blob the key used, says the
+      input changed after its key was taken, and saves nothing (probed:
+      that line on the first run, the same hash on both). A CLI spawn
+      starts past the window, so the entry was saved and replayed. The
+      guard narrowed the bug to edits older than 50 ms at the run's
+      start; it is not the fix. 977's note and the row's comment say so.
 
 ## In flight
 
