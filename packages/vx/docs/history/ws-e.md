@@ -10,7 +10,7 @@ What did not:
 1. `vx upgrade`: a transfer cut after the headers (`ECONNRESET` from the
    body read) and a release document that is not JSON escaped
    `fetchOrRefuse` as a stack (E-1).
-2. `vx upgrade v1 v2`: the second positional was ignored without a word.
+2. `vx upgrade v1 v2`: the second positional was ignored without a word (E-2).
 
 ## Leads for other streams
 
@@ -30,3 +30,6 @@ What did not:
 - E-1 — `vx upgrade`: a transfer cut mid-body and a release document
   that is not JSON are one refusal naming the host, never a stack
   (`readOrRefuse`); rows in `tests/upgrade.test.ts`, red without it.
+- E-2 — `vx upgrade v1 v2`: a second tag is refused
+  (`unexpected argument`) instead of dropped while the first installs;
+  row in `tests/upgrade.test.ts` against a copy of the runtime.

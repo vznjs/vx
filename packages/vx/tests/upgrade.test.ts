@@ -388,4 +388,25 @@ describe('vx upgrade (CLI)', () => {
     expect(code).toBe(1)
     expect(err).toContain('only works for the compiled binary')
   })
+
+  it('refuses a second tag instead of installing the first', async () => {
+    // Refused before the compiled-binary guard, so it is visible from
+    // source; the copy of the runtime holds for the same reason as above.
+    const runtime = path.join(dir, 'bun-copy-2')
+    await copyFile(process.execPath, runtime)
+    await chmod(runtime, 0o755)
+    const before = new Bun.CryptoHasher('sha256').update(await readFile(runtime)).digest('hex')
+    const proc = Bun.spawn({
+      cmd: [runtime, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade', 'v1', 'v2'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const code = await proc.exited
+    const err = await new Response(proc.stderr).text()
+    expect(new Bun.CryptoHasher('sha256').update(await readFile(runtime)).digest('hex')).toBe(
+      before,
+    )
+    expect(code).toBe(1)
+    expect(err).toBe('vx upgrade: unexpected argument: v2 (see `vx upgrade --help`)\n')
+  })
 })
