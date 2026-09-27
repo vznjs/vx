@@ -478,6 +478,17 @@ test is telling the truth.
         the CLI cannot name is refused, seven exact messages and five
         controls. Red without the fix.
 
+1001. DONE (2026-09-27, the config-validation review's last lead).
+      `schema.md` says an `exec.remote: 'only'` task must declare
+      `cache`, and nothing held it: one without loaded, and with no remote
+      executor the run printed "nothing ran" and succeeded, while the
+      REAPI executor refused it at run time for want of described inputs.
+      - Fix (`config-schema.ts`): refused at load, naming why the cache is
+        needed. `schema.md` says so.
+      - Row: `config-schema-refusals.test.ts` › an uncached remote 'only'
+        task is refused; the accepted-spellings control gives `'only'` its
+        cache. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -301,6 +301,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {
         throw new UserError(`${where}.exec.remote must be a boolean or 'only' (or omitted)`)
       }
+      // Documented and never held: an uncached 'only' task loaded, and the
+      // REAPI executor refused it at run time for want of described inputs
+      // (item 1001).
+      if (remote === 'only' && cache === undefined) {
+        throw new UserError(
+          `${where}.exec.remote 'only' needs \`cache\`: its inputs are what a worker reproduces ` +
+            `and its key is the address of its remote record`,
+        )
+      }
       const env = (exec as { env?: unknown }).env
       if (env !== undefined) {
         if (typeof env !== 'object' || env === null) {

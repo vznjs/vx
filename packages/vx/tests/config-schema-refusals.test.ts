@@ -94,10 +94,22 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(taskRefusal({ exec: { command: 'x', remote: 'yes' } })).toBe(
       `${CFG}: tasks.t.exec.remote must be a boolean or 'only' (or omitted)`,
     )
-    // Controls: each accepted spelling passes.
-    for (const remote of [true, false, 'only']) {
+    // Controls: each accepted spelling passes ('only' with the cache it needs).
+    for (const remote of [true, false]) {
       expect(taskRefusal({ exec: { command: 'x', remote } })).toBeNull()
     }
+    const cache = { inputs: { files: [] }, outputs: { files: [] } }
+    expect(taskRefusal({ exec: { command: 'x', remote: 'only' }, cache })).toBeNull()
+  })
+
+  // schema.md said an 'only' task must declare `cache`, and nothing held
+  // it: the task loaded, and the REAPI executor refused it at run time
+  // for want of described inputs (item 1001).
+  it("an uncached remote 'only' task is refused", () => {
+    expect(taskRefusal({ exec: { command: 'x', remote: 'only' } })).toBe(
+      `${CFG}: tasks.t.exec.remote 'only' needs \`cache\`: its inputs are what a worker ` +
+        `reproduces and its key is the address of its remote record`,
+    )
   })
 
   it('a non-object env is refused, not read as an env with no fields', () => {
