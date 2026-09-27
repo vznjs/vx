@@ -827,6 +827,33 @@ describe('admit stage', () => {
   )
 
   it(
+    'a policy that refuses with nothing running is overridden once, by name — never a stalled run (item 1023)',
+    async () => {
+      // Only a completion asks the predicate again, so a refusal with
+      // nothing running was final: the run ended "something it awaited
+      // can never settle", exit 1, the task never run.
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([pluginSource('org/never', `{ admit() { return false } }`)])
+      const status: string[] = []
+      const log = { ...silent(), status: (m: string) => status.push(m) } as Logger
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log,
+        handleSignals: false,
+      })
+      expect({
+        ok: summary.ok,
+        ran: summary.outcomes.map((o) => `${o.node.id}:${o.status}`).sort(),
+        said: status.filter((m) => m.includes("'org/never'")).length,
+      }).toEqual({ ok: true, ran: ['a#build:success', 'b#build:success'], said: 1 })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'only an explicit `false` refuses — a policy that returns nothing admits',
     async () => {
       // The stage tests `=== false`, and that strictness is what keeps the

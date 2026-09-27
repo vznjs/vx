@@ -277,7 +277,10 @@ export async function applyScheduleHooks(
  * `admit` stage, built once per run into the predicate the scheduler asks
  * at every local dispatch: every plugin that answers must admit. A plugin
  * that throws is reported once and admits from then on — a policy never
- * breaks a run — so the predicate is never the reason a task hangs.
+ * breaks a run — and one that refuses while nothing local is running is
+ * overridden with a word, since only a completion asks again: that
+ * refusal stalled the run for good (item 1023). So the predicate is never
+ * the reason a task hangs.
  * Undefined when no plugin answers, which keeps the scheduler on its
  * count-only path.
  */
@@ -290,6 +293,7 @@ export function buildAdmission(
   const answering = plugins.filter((p) => p.admit !== undefined)
   if (answering.length === 0) return undefined
   const broken = new Set<VxPlugin>()
+  const overridden = new Set<VxPlugin>()
   return (id, running) => {
     // The scheduler asks only about ids in this same map, so the lookup
     // always lands: an unknown-id arm here was deleted with the whole core
@@ -302,7 +306,14 @@ export function buildAdmission(
     for (const plugin of answering) {
       if (broken.has(plugin)) continue
       try {
-        if (plugin.admit!(task, ctx) === false) return false
+        if (plugin.admit!(task, ctx) !== false) continue
+        if (running.size > 0) return false
+        if (!overridden.has(plugin)) {
+          overridden.add(plugin)
+          warn(
+            `plugin '${plugin.name}' refused ${id} in admit with nothing running; admitting it, since no completion would ask again`,
+          )
+        }
       } catch (err) {
         broken.add(plugin)
         const m = err instanceof Error ? err.message : String(err)

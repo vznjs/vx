@@ -54,7 +54,9 @@ it), so a workspace that declares nothing runs and caches here.
   `admit` (the scheduler then tracks nothing). Every declaring plugin is
   asked with the running tasks' nodes and the worker count, all must
   admit; a throw is warned once, naming the plugin, and that plugin
-  admits from then on.
+  admits from then on. A refusal while nothing local is running is
+  overridden with one warning per plugin: only a completion asks
+  again, so it stalled the run for good (item 1023).
 - `teardownPlugins(plugins, warn)` — end-of-run, in declaration order:
   each plugin's `teardown()` under try/catch and a time bound
   (`teardownTimeoutMs()`: `VX_TEARDOWN_TIMEOUT_MS`, 3 s by default; a

@@ -856,6 +856,19 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         and a throwing demand() named once while the run succeeds. Each
         red with its piece removed.
 
+1023. DONE (2026-09-27, the plugin-seam review's lead 3). An `admit`
+      policy that refused while nothing local was running stalled the
+      run: only a completion asks the predicate again, so the scheduler
+      parked every ready task and the run ended "something it awaited
+      can never settle", exit 1, no task run, though the stage's own doc
+      said the predicate is never the reason a task hangs.
+      - Fix (`plugin-host.ts` `buildAdmission`): such a refusal is
+        overridden, with one warning per plugin naming it. The module
+        pages say so.
+      - Row: `plugin-pipeline.test.ts` › a policy that refuses with
+        nothing running is overridden once, by name. Red with the
+        override removed, and with the once-per-plugin gate removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
