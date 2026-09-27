@@ -154,6 +154,16 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     )
     return 0
   }
+  if (parsed.dryRun === true) {
+    const earlier = await Cache.orphansBeforeReset(dir)
+    if (earlier !== null) {
+      warnToStderr(
+        `[vx] the cache index is schema ${earlier.found} from an earlier vx: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
+      )
+      printPruned({ evicted: 0, bytesFreed: 0, ...earlier }, true)
+      return 0
+    }
+  }
   const cache = parsed.dryRun === true ? Cache.inspect(dir) : new Cache(dir)
   // A prune deletes rows and artifacts; a cache this user cannot write is
   // refused up front with the directory named, as a run refuses it, rather
@@ -174,18 +184,23 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
     if (parsed.maxBytes !== undefined) opts.maxBytes = parsed.maxBytes
     if (parsed.dryRun) opts.dryRun = true
-    const result = await cache.prune(opts)
-    const dry = parsed.dryRun === true
-    const orphans =
-      result.orphans > 0
-        ? `, ${dry ? 'would reap' : 'reaped'} ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`
-        : ''
-    process.stdout.write(
-      `${dry ? 'Would prune' : 'Pruned'} ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)}${dry ? '' : ' freed'})${orphans}\n`,
-    )
+    printPruned(await cache.prune(opts), parsed.dryRun === true)
   } finally {
     cache.close()
     await releaseRunLock()
   }
   return 0
+}
+
+function printPruned(
+  result: { evicted: number; bytesFreed: number; orphans: number; orphanBytes: number },
+  dry: boolean,
+): void {
+  const orphans =
+    result.orphans > 0
+      ? `, ${dry ? 'would reap' : 'reaped'} ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`
+      : ''
+  process.stdout.write(
+    `${dry ? 'Would prune' : 'Pruned'} ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)}${dry ? '' : ' freed'})${orphans}\n`,
+  )
 }

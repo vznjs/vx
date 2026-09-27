@@ -537,6 +537,21 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         30 days, at most once a day". It is red without the change, and
         red with the daily clock removed.
 
+1083. DONE (2026-09-27, prune review #4). `vx cache prune --dry-run` on an
+      index from an earlier schema exited 1 ("this verb leaves it
+      untouched"), while the same prune without the flag reset the index
+      and reaped every aged artifact. So the dry run could not preview the
+      biggest prune there is, the one after an upgrade. `Cache.orphansBeforeReset`
+      reads the recorded version alone. On an earlier one, the dry run
+      warns that the real prune resets the index and names what the
+      reset leaves; it still touches nothing. Output is one
+      `printPruned` for both paths. cli.md says so.
+      - Row: `schema-reset-notice.test.ts` › "`vx cache prune --dry-run`
+        on an earlier schema names what the real prune reaps" pins the
+        dry run's stdout and stderr, the index unchanged, and the real
+        prune reaping the same count and bytes. It is red without the
+        change. The item-896 refusal rows keep `last`, `why` and `info`.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

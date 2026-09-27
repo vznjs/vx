@@ -1365,7 +1365,10 @@ Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
 `--dry-run` picks the victims under the same policy and counts the
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
-it named (an in-flight save aside).
+it named (an in-flight save aside). On an index an earlier vx wrote,
+which the real prune resets first, it says so on stderr and names every
+artifact past the hour's grace as an orphan, since that is what the
+reset leaves (item 1083).
 
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
