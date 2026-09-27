@@ -259,6 +259,7 @@ export async function loadResolvedProjects(
       lock: null,
       evalCache: {
         store: cache,
+        workspaceRoot,
         workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot, reads),
       },
       warn,

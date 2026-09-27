@@ -80,8 +80,8 @@ without naming it (`Reflect`, `getPrototypeOf`, `setPrototypeOf`,
 `getOwnPropertyNames`, `getOwnPropertyDescriptor`,
 `getOwnPropertyDescriptors`, `__proto__`, `prototype`,
 `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`,
-`__lookupSetter__`), `import.meta`, `Math.random` and a dynamic
-`import()` — the aliases and the property-name routes to each
+`__lookupSetter__`), `import.meta`, `random` (as a word, so a
+destructured `Math.random` too) and a dynamic `import()` — the aliases and the property-name routes to each
 (`global['proc' + 'ess']`, `({}).constructor.constructor`) included.
 A string literal naming `constructor`, `__proto__` or `prototype`
 evaluates live too. The list stops accidental impurity; a config built

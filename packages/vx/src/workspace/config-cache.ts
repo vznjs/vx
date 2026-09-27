@@ -109,6 +109,13 @@ export interface ConfigEvalKeyArgs {
    */
   hashFile?: (file: string) => Promise<string>
   bytes: Uint8Array
+  /**
+   * The workspace root, as the config path spells it. A symlink BELOW it on
+   * the way to the config makes the closure unindexable; one above it
+   * (macOS's `/var`) moves nothing the warm path could miss. Absent, any
+   * symlink on the way does.
+   */
+  workspaceRoot?: string | undefined
   workspaceFingerprint: string
 }
 
@@ -132,9 +139,10 @@ const MAX_CLOSURE_FILES = 32
 // literal naming it was stripped before the test ran; listed 2026-09-27
 // (item 957). A key assembled at run time (`'constru' + 'ctor'`) still
 // passes: the gate stops accidental impurity, not a config written to
-// defeat it.
+// defeat it. `random` is denied as a word, not as `Math.random`: a
+// destructured `const { random } = Math` was cached as pure (item 1036).
 const IMPURE_RE =
-  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*|Reflect|getPrototypeOf|setPrototypeOf|getOwnPropertyNames|getOwnPropertyDescriptor|getOwnPropertyDescriptors|__proto__|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__)\b|import\s*\.\s*meta|Math\s*\.\s*random|\bimport\s*\(/
+  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*|Reflect|getPrototypeOf|setPrototypeOf|getOwnPropertyNames|getOwnPropertyDescriptor|getOwnPropertyDescriptors|__proto__|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|random)\b|import\s*\.\s*meta|\bimport\s*\(/
 
 /** Literal text that names a way to `Function` when used as a computed key. */
 const IMPURE_LITERAL_RE = /constructor|__proto__|prototype/
@@ -143,10 +151,15 @@ const IMPURE_LITERAL_RE = /constructor|__proto__|prototype/
 // matched on `stripLiterals` output with its strings kept as placeholders
 // (`\0<n>\0`): a comment is gone, so an import after `/* … */` on its line
 // is seen, and a string-named binding (`import { 'a-b' as x }`) is a
-// placeholder like any other. `[^;]*?` spans newlines, so multi-line
-// specifier lists match.
+// placeholder like any other. The body spans newlines, so multi-line
+// specifier lists match, but never another statement's `import` or
+// `export`: in a file without semicolons a lazy `[^;]*?` ran from
+// `export type Mode = …` on to the next line's `from '@vzn/vx'`, and the
+// purity check read `type` and passed an impure import. Nor is a line
+// start required: `} export * from './side.ts'` went unscanned, and the
+// fail-closed count below counted only imports (item 1036).
 const IMPORT_RE =
-  /(?:^|[\n;])\s*(?:import|export)\b[^;]*?\bfrom\s*\0(\d+)\0|(?:^|[\n;])\s*import\s*\0(\d+)\0/g
+  /\b(?:import|export)\b(?:(?!\b(?:import|export)\b)[^;])*?\bfrom\s*\0(\d+)\0|\bimport\s*\0(\d+)\0/g
 
 /**
  * Every static import in `source` as its specifier and statement, or `null`
@@ -384,6 +397,31 @@ function realDirOf(file: string): string {
   return realpathSync(path.dirname(file))
 }
 
+/** Each workspace root's real path, asked once per process. */
+const realRoots = new Map<string, string>()
+
+/**
+ * Whether `realDir`, the real directory of `file`, is where its spelling
+ * says it is once the root's own links are resolved. A member directory
+ * linked in from elsewhere is not: the warm path keys the closure by the
+ * paths the last evaluation found, and a link retargeted to a config of
+ * the same bytes whose preset differs moves none of them (item 1036).
+ */
+function reachedThroughNoLink(file: string, realDir: string, root: string | undefined): boolean {
+  const dir = path.dirname(file)
+  // Without a root there is nothing to tell a member's own link from one
+  // above the tree (macOS's `/tmp` → `/private/tmp`), and comparing the
+  // spelling with the real path refused every config under such a link.
+  // Every run passes its root; a caller that does not keeps the index.
+  if (root === undefined) return true
+  let realRoot = realRoots.get(root)
+  if (realRoot === undefined) {
+    realRoot = realpathSync(root)
+    realRoots.set(root, realRoot)
+  }
+  return path.relative(realRoot, realDir) === path.relative(root, dir)
+}
+
 /** A regular file reached through no symlink: the path IS the file. */
 function isCanonicalFile(file: string): boolean {
   try {
@@ -439,10 +477,15 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
       // (item 950). The named file is taken without `Bun.resolveSync`,
       // whose directory cache answers a retargeted link with its old
       // target for the rest of the process.
-      try {
-        dir ??= realDirOf(file)
-      } catch {
-        return null
+      if (dir === undefined) {
+        try {
+          dir = realDirOf(file)
+          if (file === a.configPath && !reachedThroughNoLink(file, dir, a.workspaceRoot)) {
+            indexable = false
+          }
+        } catch {
+          return null
+        }
       }
       const named = path.resolve(dir, spec)
       let resolved: string

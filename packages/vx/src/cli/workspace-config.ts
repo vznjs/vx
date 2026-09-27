@@ -127,6 +127,7 @@ export async function loadCliProjects(
       lock,
       evalCache: {
         store: cache,
+        workspaceRoot,
         workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot),
       },
       warn: warnToStderr,
