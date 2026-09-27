@@ -23,7 +23,7 @@
 6. DONE (A-4). An output of mode 000 or mtime 0 (`SOURCE_DATE_EPOCH=0`) restores with
    the wrong metadata and is restored again on every hit; one with an
    mtime before 1970 is never cached ("corrupt artifact").
-7. A `cache.db` corrupt past its first pages fails every task as an
+7. DONE (A-8). A `cache.db` corrupt past its first pages fails every task as an
    internal error, and `vx cache prune` prints a stack.
 8. DONE (A-7). `cacheRetention` never runs under a local-read-only policy while
    remote hits are still ingested locally.
@@ -48,6 +48,9 @@
 - F: `vx-reapi` `wedged.test.ts` › "RST_STREAM(CANCEL) reads as CANCELLED
   and is not retried" failed once in a gate (`sent: 0` for 1), green in
   three runs after with no change: the probe's count races the cut.
+
+- C: a corrupt cache index (A-8) now reaches each task as the same `UserError`, and a 40-task run prints the line 40 times; the scheduler could say a run-wide refusal once.
+- C: the run-end output-directory snapshot (lead 4) vouches for a stray an unsandboxed dependant writes into an upstream's output directory after its save or restore, so later hits skip the walk and the stray survives, green. The fix needs `run.ts` (the snapshot call) and `hit-restore.ts` (its direct call) to pass the task's additions predicate, so the snapshot can refuse a file outside the entry's rows and outside the additions; `OutputIndex.recordOutputDirs` can take the predicate.
 
 ## Record
 
@@ -100,3 +103,10 @@ Under `core.trustctime=false` or `core.checkStat=minimal` git judges a file by m
 
 - Fix (`cache.ts`): retention is gated on the directory being this handle's to write (`writeBlocked`) and on the handle not being a reading verb's (`inspect`), not on the write axis.
 - Rows: `cache-retention.test.ts` › applies under a local-read-only policy, whose run still ingests remote hits (red without the fix); the old row "a handle that does not write evicts nothing" pinned the defect and now holds the real line: a reading verb's handle evicts nothing with an entry due (red with the `inspect` guard removed).
+
+### A-8 (2026-09-27, lead 7)
+
+The open reads the index's header and `schema_meta` alone (item 1005), so a `cache.db` corrupt deeper answered the first lookup that reached the bad page: on a 40-project workspace with the `entries` root page garbled, every task failed as `[vx] internal error in pN#build: SQLiteError: database disk image is malformed`, and `vx cache prune` printed the error with a stack.
+
+- Fix (`cache.ts` `guard`): every public entry point that reads or writes the index (lookups, saves and ingests, prune, retention, stats, run records, config evaluations, the file-hash memo, the output rows) maps SQLite's corrupt and not-a-database codes to the open's own `UserError`, naming the file and the remedy; every other error passes through. `modules/cache.md` says so.
+- Rows: `cache-unreadable.test.ts` › an index corrupt past the pages the open reads (the `entries` root page garbled after a checkpoint): get, getIngested, getMany, has, stats, prune, evictIfDue and save each refuse by name (red without the fix: the raw `SQLiteError`); control, the same index whole answers each.
