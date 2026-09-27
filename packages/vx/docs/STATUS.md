@@ -412,6 +412,20 @@ test is telling the truth.
         out and the task's own kept, with the agent flag asserted in both
         values so SRT's path is proven to have run. Red without the fix.
 
+996.  DONE (2026-09-27, the env-isolation review's lead 2). An
+      `inputs.runtime` probe ran on vx's own PATH, a task on one led by
+      its project's and the root's `node_modules/.bin`. With a tool only
+      in the workspace, `mytool --version` failed with 127; with a global
+      one too, the key followed the global tool while the task ran the
+      local one, and a changed local tool replayed the old output.
+      - Fix (`inputs.ts`): the probe's PATH leads with the task's two bin
+        directories; `workspaceRuntime` gets the root's only (its value is
+        shared by every project). The memo was already keyed per project
+        directory. `schema.md` says so; `modules/env.md` no longer says
+        the root's bin is never on a task's PATH.
+      - Row: `inputs.test.ts` › runs on the task's PATH: the project's
+        bin, then the root's. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -721,6 +721,11 @@ Semantics:
   as `inputs.env`): an env var that differs between machines silently
   changes the key; declare such inputs explicitly if you want them
   visible.
+- Its `PATH` does lead with the **same `node_modules/.bin` directories
+  the task's does** (the project's, then the workspace root's), so
+  `tsc --version` keys the `tsc` the task runs. Before item 996 it keyed
+  the global one, or failed with 127 where only the workspace had it, and
+  a changed local tool replayed the old output.
 - The command **runs whenever a task's key is derived** — that's every
   run (warm runs included, since the key decides hit vs miss), plus
   `vx run --dry` / `--graph` (which predict the key) and `vx run
@@ -737,7 +742,8 @@ workspace root) and are deduped **globally per command** across the
 whole run — a `node -v` declared in 500 projects spawns exactly once.
 The runtime-input analog of `workspaceFiles`: per-task, root-anchored.
 Use it for global tool versions, OS info, or any probe whose value is
-the same for every project.
+the same for every project. Its `PATH` leads with the workspace root's
+`node_modules/.bin` only (no project's: the value is shared by all).
 
 ```ts
 inputs: {
