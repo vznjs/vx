@@ -36,7 +36,8 @@ median 351 ms against 334, A/A 336, 15 rounds. Refuted the same day:
   syntax. astro no-op, compiled, 15 interleaved rounds: main median
   834 ms (min 779), patch 521 (462), A/A 803 (748); every run exit 0,
   keys unchanged (all hits on the patched binary). `stable keys` span
-  388 → 53 ms. Patch (vs f9512c8a), needs a row pinning the nested
+  388 → 53 ms. With no nested project (1,000 synthetic packages) it
+  is neutral: main 314, patch 306, A/A 305 median. Patch (vs f9512c8a), needs a row pinning the nested
   exclusion both ways:
 
   ```ts
