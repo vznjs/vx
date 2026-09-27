@@ -36,7 +36,6 @@ export {
   decodeDirectory,
   decodeTree,
   DIGEST_FUNCTION,
-  DigestCache,
   digestWith,
   encodeAction,
   encodeCommand,

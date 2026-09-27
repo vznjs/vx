@@ -2,7 +2,7 @@
 // of `reapiExecutor` undone. The fake (helpers/fake-reapi.ts) scripts what
 // each Execute answers; its CAS holds what a worker would have uploaded.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
@@ -104,6 +104,7 @@ pb.resolvePath = (_o, t) =>
       )
     : path.join(import.meta.dir, '..', 'protos', t)
 await pb.load('build/bazel/remote/execution/v2/remote_execution.proto')
+const lastActionRoot = (): string => (lastAction()['inputRootDigest'] as { hash: string }).hash
 const lastAction = () => {
   const call = fake.calls.filter((c) => c.method === 'Execute').at(-1)!
   const digest = call.request['action_digest'] as { hash: string }
@@ -117,6 +118,30 @@ const lastAction = () => {
       },
     ) as Record<string, unknown>
 }
+
+describe.if(CHUNKING_SUPPORTED)('an input rewritten at the same size and mtime (F-7)', () => {
+  // The executor memoised digests by (path, size, mtime) for the run, so the
+  // second task shipped the OLD blob under a key naming the NEW bytes, and
+  // recorded it there.
+  it('ships the bytes on disk, not a digest memoised by size and mtime', async () => {
+    const file = path.join(root, 'pkg', 'src', 'in.txt')
+    const NEW_OID = '2c9e08fc61ee2329ddad3ff0604ecb350f8d51b1'
+    await withExecutor(async (run) => {
+      await utimes(file, 1_700_000_000, 1_700_000_000)
+      await run(request({ cacheKey: 'k-old' }))
+      const before = lastActionRoot()
+      await writeFile(file, 'IN\n')
+      await utimes(file, 1_700_000_000, 1_700_000_000)
+      await run(
+        request({
+          cacheKey: 'k-new',
+          inputs: { ...request().inputs, files: [{ path: 'pkg/src/in.txt', digest: NEW_OID }] },
+        }),
+      )
+      expect(lastActionRoot()).not.toBe(before)
+    })
+  })
+})
 
 describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
   it('a record whose blobs exist is replayed: no Execute, stdout and outputs restored', async () => {

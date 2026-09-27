@@ -13,7 +13,6 @@ import {
   concat,
   decodeDirectory,
   decodeTreeWithBytes,
-  DigestCache,
   digestWith,
   encodeAction,
   encodeCommand,
@@ -281,7 +280,7 @@ function dangling(
   return missing
 }
 
-describe('buildInputTree and DigestCache', () => {
+describe('buildInputTree', () => {
   it('a grafted Tree whose child bytes are not ours still resolves every directory', async () => {
     const file = { name: 'f', digest: sha256(new Uint8Array()), is_executable: false }
     const raw = concat([
@@ -364,18 +363,5 @@ describe('buildInputTree and DigestCache', () => {
     const tree = await buildInputTree({ workspaceRoot: root, paths: ['grp.sh'] })
     const top = decodeDirectory(tree.blobs.find((b) => b.digest.hash === tree.root.hash)!.data)
     expect(top.files.map((f) => f.is_executable)).toEqual([false])
-  })
-
-  it('DigestCache: a hit is the stored digest; a new mtime at the same size is a miss', async () => {
-    const file = path.join(root, 'cached.txt')
-    await writeFile(file, 'aaaa')
-    const cache = new DigestCache()
-    const first = await cache.digestOf(file, new TextEncoder().encode('aaaa'))
-    expect(await cache.digestOf(file, new TextEncoder().encode('zzzz'))).toEqual(first)
-    await writeFile(file, 'bbbb')
-    const later = new Date(Date.now() + 10_000)
-    await utimes(file, later, later)
-    const bbbb = new TextEncoder().encode('bbbb')
-    expect(await cache.digestOf(file, bbbb)).toEqual(sha256(bbbb))
   })
 })

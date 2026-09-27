@@ -5,9 +5,9 @@
 // carries a GIT BLOB OID (sha1 over `blob <len>\0` + content), which is a
 // different function over different bytes than REAPI's sha256-of-content.
 // The key's digest cannot transfer, so the plugin hashes the worktree bytes
-// itself — once per (path, size, mtime), cached, because a cold monorepo has
-// tens of thousands of inputs and rehashing them per task would dwarf the
-// upload it is meant to avoid.
+// itself, from the bytes it reads for the upload anyway. A memo keyed by
+// (path, size, mtime) saved only that hash and served a stale digest for a
+// same-size rewrite within the mtime's resolution (F-7).
 
 import { createHash, type Hash } from 'node:crypto'
 import { lstat, readlink, stat } from 'node:fs/promises'
@@ -51,30 +51,6 @@ function carriesOid(bytes: Uint8Array, oid: string): boolean {
 
 export function sha256(data: Uint8Array): Digest {
   return { hash: createHash('sha256').update(data).digest('hex'), size_bytes: data.length }
-}
-
-/**
- * Content digests keyed by `(path, size, mtime_ns)` — Bazel's digest cache.
- * Not persisted in phase 1: a run's own reuse is where the win is, and a
- * stale on-disk cache keyed by mtime is a correctness risk this does not
- * need to take yet.
- */
-export class DigestCache {
-  private readonly entries = new Map<string, Digest>()
-
-  async digestOf(absPath: string, data: Uint8Array): Promise<Digest> {
-    const st = await stat(absPath)
-    const key = `${absPath}\0${st.size}\0${st.mtimeMs}`
-    const hit = this.entries.get(key)
-    if (hit !== undefined) return hit
-    const d = sha256(data)
-    this.entries.set(key, d)
-    return d
-  }
-
-  get size(): number {
-    return this.entries.size
-  }
 }
 
 interface DirNode {
@@ -161,7 +137,6 @@ function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
 export async function buildInputTree(args: {
   workspaceRoot: string
   paths: readonly string[]
-  digests?: DigestCache
   readFile?: (abs: string) => Promise<Uint8Array>
   /**
    * Directories that must EXIST in the tree even when nothing puts a file
@@ -183,7 +158,6 @@ export async function buildInputTree(args: {
    */
   expected?: ReadonlyMap<string, string>
 }): Promise<InputTree> {
-  const digests = args.digests ?? new DigestCache()
   const read =
     args.readFile ?? (async (abs: string) => new Uint8Array(await Bun.file(abs).arrayBuffer()))
   const root = emptyDir()
@@ -234,7 +208,11 @@ export async function buildInputTree(args: {
     const data = await read(abs)
     const want = args.expected?.get(rel)
     if (want !== undefined && !carriesOid(data, want)) moved.push(rel)
-    const digest = await digests.digestOf(abs, data)
+    // Hashed from the bytes just read, never memoised by (path, size,
+    // mtime): a same-size rewrite within the mtime's resolution kept the
+    // old digest while `expected` checked the new bytes, and the worker ran
+    // the old blob under a key naming the new one (F-7).
+    const digest = sha256(data)
     if (!seen.has(digest.hash)) {
       seen.add(digest.hash)
       blobs.push({ digest, data })

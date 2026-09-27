@@ -17,7 +17,6 @@ import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from 
 import {
   buildInputTree,
   decodeTreeWithBytes,
-  DigestCache,
   encodeAction,
   encodeCommand,
   encodeTree,
@@ -515,7 +514,6 @@ export function acceptsTask(task: TaskPlacement): boolean {
 }
 
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
-  const digests = new DigestCache()
   const warn = opts.warn ?? (() => undefined)
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
@@ -785,7 +783,6 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         expected,
         workspaceRoot: req.workspaceRoot,
         paths: inputPaths,
-        digests,
         // The working directory must exist in the input root (REAPI
         // requirement) even for a task with no file inputs at all. The
         // PROJECT dir is ensured too, and separately: in root-anchored mode

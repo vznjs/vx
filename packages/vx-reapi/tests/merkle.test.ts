@@ -6,7 +6,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { buildInputTree, DigestCache, encodeDirectory, sha256 } from '../src/merkle.js'
+import { buildInputTree, encodeDirectory, sha256 } from '../src/merkle.js'
 
 let root: string
 
@@ -93,24 +93,6 @@ describe('buildInputTree', () => {
   it('skips a path that is not a regular file rather than throwing', async () => {
     const tree = await buildInputTree({ workspaceRoot: root, paths: ['pkg', 'root.txt'] })
     expect(tree.fileCount).toBe(1)
-  })
-})
-
-describe('DigestCache', () => {
-  it('hashes a given file once', async () => {
-    const cache = new DigestCache()
-    let reads = 0
-    const read = async (abs: string): Promise<Uint8Array> => {
-      reads++
-      return new Uint8Array(await Bun.file(abs).arrayBuffer())
-    }
-    await buildInputTree({ workspaceRoot: root, paths, digests: cache, readFile: read })
-    const sizeAfterFirst = cache.size
-    await buildInputTree({ workspaceRoot: root, paths, digests: cache, readFile: read })
-    // Reads still happen (the tree needs the bytes to upload); the digest is
-    // what the cache saves, and the entry count must not grow.
-    expect(cache.size).toBe(sizeAfterFirst)
-    expect(reads).toBe(8)
   })
 })
 
