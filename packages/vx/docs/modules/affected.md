@@ -99,6 +99,13 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
      ran the owner alone (item 954). The `--affected` sugar has staged
      every config for its graph walk already; a bare `[ref]` filter pays
      that one load when something changed.
+   - **The base graph.** When a manifest changed, the package graph is
+     built again over the changed manifests as the base had them (one
+     `git cat-file --batch`), and every project whose `directDeps`
+     differ from today's is selected: a deleted package (item 959) or a
+     `version` / `name` that no longer satisfies a dependent's range
+     drops an edge its key folded, and today's graph has no dependent to
+     walk to (D-3). A root `workspaces` edit selects every project.
 
 Selection is never hashed, so widening it changes no cache key: every
 channel here may over-select safely — but it may not UNDER-select, and

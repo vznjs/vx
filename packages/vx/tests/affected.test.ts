@@ -350,16 +350,24 @@ describe('affectedProjects', () => {
       { ...projects[0]!, packageJson: { name: 'a', devDependencies: { lib: 'workspace:*' } } },
       projects[1]!,
     ]
-    const select = () =>
-      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withDeps }).then((s) =>
-        [...s].sort(),
-      )
+    const select = (extra: ProjectMeta[] = []) =>
+      affectedProjects({
+        workspaceRoot: root,
+        since: 'HEAD',
+        projects: [...withDeps, ...extra],
+      }).then((s) => [...s].sort())
     // Control: an edited manifest is its own project's change only.
     await writeFile(
       path.join(root, 'packages/lib/package.json'),
       JSON.stringify({ name: 'lib', version: '2' }),
     )
-    expect(await select()).toEqual([])
+    const libNow: ProjectMeta = {
+      name: 'lib',
+      dir: path.join(root, 'packages/lib'),
+      configPath: null,
+      packageJson: { name: 'lib', version: '2' },
+    }
+    expect(await select([libNow])).toEqual(['lib'])
     await rm(path.join(root, 'packages/lib'), { recursive: true })
     expect(await select()).toEqual(['a'])
   })
@@ -399,6 +407,44 @@ describe('affectedProjects', () => {
     await git(root, 'rm', '-q', '--cached', 'packages/a/sub/package.json')
     await git(root, 'commit', '-q', '-m', 'drop sub manifest')
     expect(await select()).toEqual(['a', 'sub'])
+  })
+
+  it('a manifest edit that drops an edge selects the dependent (D-3)', async () => {
+    // `a` declares `lib@^1`. A bump to 2.0.0, or a rename, drops the edge:
+    // `a` re-keys through its upstream while containment maps the change to
+    // `lib` alone and today's graph shows no dependent.
+    await mkdir(path.join(root, 'packages/lib'), { recursive: true })
+    const lib = (pkg: object) =>
+      writeFile(path.join(root, 'packages/lib/package.json'), JSON.stringify(pkg))
+    await lib({ name: 'lib', version: '1.0.0' })
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib')
+    const select = (libPkg: ProjectMeta['packageJson']) =>
+      affectedProjects({
+        workspaceRoot: root,
+        since: 'HEAD',
+        projects: [
+          { ...projects[0]!, packageJson: { name: 'a', dependencies: { lib: '^1.0.0' } } },
+          projects[1]!,
+          ...(libPkg.name === ''
+            ? []
+            : [
+                {
+                  name: libPkg.name,
+                  dir: path.join(root, 'packages/lib'),
+                  configPath: null,
+                  packageJson: libPkg,
+                },
+              ]),
+        ],
+      }).then((s) => [...s].sort())
+    // Control: a bump the range still admits keeps the edge.
+    await lib({ name: 'lib', version: '1.1.0' })
+    expect(await select({ name: 'lib', version: '1.1.0' })).toEqual(['lib'])
+    await lib({ name: 'lib', version: '2.0.0' })
+    expect(await select({ name: 'lib', version: '2.0.0' })).toEqual(['a', 'lib'])
+    await lib({ name: 'lib2', version: '1.0.0' })
+    expect(await select({ name: 'lib2', version: '1.0.0' })).toEqual(['a', 'lib2'])
   })
 
   it('a root `workspaces` edit selects every project (item 959)', async () => {

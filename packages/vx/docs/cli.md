@@ -264,10 +264,14 @@ plugin says per project, so `--affected` asks the plugin which projects
 the change touches — given the bytes at the base ref and in the working
 tree — and selects those; only a plugin that cannot tell widens.
 
-**A removed package selects its dependents.** A package the change
-deleted (its `package.json` was there at the base and is gone) is no
-project now, so its paths map to nothing; the projects that name it in
-any dependency field are selected instead, since their builds lost it.
+**A dropped edge selects its dependent.** A package the change deleted
+(its `package.json` was there at the base and is gone) is no project
+now, so its paths map to nothing; and one whose `version` or `name`
+moved may no longer satisfy what a dependent declares (`lib: ^1.0.0`
+after a bump to 2.0.0). Either drops an edge the dependent's key folded,
+while today's graph shows no dependent to walk to. So the package graph
+is built again over the changed manifests as the base had them, and
+every project whose workspace dependencies differ is selected.
 An edit to the root manifest's `workspaces` selects every project:
 which packages left the workspace is a discovery at the base.
 

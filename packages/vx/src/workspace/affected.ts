@@ -21,6 +21,7 @@ import { configImportOwners } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
+import { buildPackageGraph } from './package-graph.js'
 import type { PackageJson, ProjectMeta } from './workspace.js'
 
 /**
@@ -42,9 +43,19 @@ function spawnGitSync(
   }
 }
 
-function spawnGit(args: string[], cwd: string): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
+function spawnGit(
+  args: string[],
+  cwd: string,
+  stdin?: Uint8Array,
+): Bun.Subprocess<Uint8Array | 'ignore', 'pipe', 'pipe'> {
   try {
-    return Bun.spawn({ cmd: [executablePath('git'), ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
+    return Bun.spawn({
+      cmd: [executablePath('git'), ...args],
+      cwd,
+      stdin: stdin ?? 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
   } catch (err) {
     if (isExecutableMissing(err)) throw gitSpawnRefusal(cwd)
     throw err
@@ -225,15 +236,22 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   const owned = projectsContaining(args.workspaceRoot, changed, args.projects)
   for (const name of claimedOwned) owned.add(name)
 
-  // A package the change REMOVED is no project now, so containment maps its
-  // paths to nothing, and the dependents walk sees only today's graph: a
-  // `git rm -r pkgs/lib`, or `lib` dropped from `workspaces`, re-keyed and
-  // broke `app#build` while `--affected` said nothing affected (item 959).
-  const dependents = await dependentsOfRemoved(args.workspaceRoot, base, changed, args.projects)
-  if (dependents === undefined) return new Set(args.projects.map((p) => p.name))
-  for (const name of dependents) owned.add(name)
-  for (const name of await parentsOfNewNested(args.workspaceRoot, base, changed, args.projects)) {
-    owned.add(name)
+  // A manifest edit can drop an edge today's graph no longer shows: a
+  // package the change REMOVED is no project now (a `git rm -r pkgs/lib`,
+  // or `lib` dropped from `workspaces`, item 959), and one whose `version`
+  // or `name` moved no longer satisfies what a dependent declares. Either
+  // re-keys the dependent through its upstream, while containment maps the
+  // change to the package alone and the dependents walk sees only today's
+  // graph, so `--affected` left `app#build` out (D-3).
+  const manifests = changed.filter((rel) => path.posix.basename(rel) === 'package.json')
+  if (manifests.length > 0) {
+    const atBase = await gitBlobsAt(args.workspaceRoot, base, manifests)
+    const dependents = await dependentsAtBase(args.workspaceRoot, atBase, args.projects)
+    if (dependents === undefined) return new Set(args.projects.map((p) => p.name))
+    for (const name of dependents) owned.add(name)
+    for (const name of parentsOfNewNested(args.workspaceRoot, atBase, args.projects)) {
+      owned.add(name)
+    }
   }
 
   // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
@@ -257,22 +275,23 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
 }
 
 /**
- * The projects that depend on a package the change removed: a
- * `<dir>/package.json` the base had and the tree does not, read at the base
- * for its name. `undefined` (every project) when the root manifest's
- * `workspaces` moved: which packages left is a discovery at the base, and
- * selection cannot tell cheaply. Only DELETED manifests are read at the
- * base, one `git show` each; an edited one stays a project and is owned.
+ * The projects whose workspace dependencies at the base differ from
+ * today's: the package graph is built again over the changed manifests as
+ * the base had them, and every project whose `directDeps` (the edges its
+ * key folds) moved is selected. `undefined` (every project) when the root
+ * manifest's `workspaces` moved: which packages left is a discovery at the
+ * base, and selection cannot tell cheaply. `atBase` holds each changed
+ * manifest as the base had it, read in one `git cat-file --batch`.
  */
-async function dependentsOfRemoved(
+async function dependentsAtBase(
   workspaceRoot: string,
-  base: string,
-  changed: readonly string[],
+  atBase: ReadonlyMap<string, Uint8Array | null>,
   projects: readonly ProjectMeta[],
 ): Promise<Set<string> | undefined> {
-  const out = new Set<string>()
-  const removed = new Set<string>()
-  for (const rel of changed) {
+  const byDir = new Map<string, ProjectMeta>()
+  for (const p of projects) byDir.set(p.dir, p)
+  const changedDirs = new Set<string>()
+  for (const rel of atBase.keys()) {
     if (rel === 'package.json') {
       const workspacesOf = (bytes: Uint8Array | null): string => {
         if (bytes === null) return ''
@@ -284,33 +303,41 @@ async function dependentsOfRemoved(
           return 'unreadable'
         }
       }
-      const before = workspacesOf(await gitBytesAt(workspaceRoot, base, rel))
+      const before = workspacesOf(atBase.get(rel) ?? null)
       const after = workspacesOf(await bytesOrNull(path.join(workspaceRoot, rel)))
       if (before !== after) return undefined
-      continue
     }
-    if (path.posix.basename(rel) !== 'package.json') continue
-    if ((await bytesOrNull(path.join(workspaceRoot, rel))) !== null) continue
-    const bytes = await gitBytesAt(workspaceRoot, base, rel)
-    if (bytes === null) continue
+    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
+    changedDirs.add(dir)
+    byDir.delete(dir)
+    const bytes = atBase.get(rel)
+    if (bytes === undefined || bytes === null) continue
+    let pkg: PackageJson
     try {
-      const name = (JSON.parse(new TextDecoder().decode(bytes)) as PackageJson).name
-      if (typeof name === 'string' && name !== '') removed.add(name)
+      pkg = JSON.parse(new TextDecoder().decode(bytes)) as PackageJson
     } catch {
       // A manifest that did not parse at the base named no package.
+      continue
     }
+    if (
+      pkg === null ||
+      typeof pkg !== 'object' ||
+      typeof pkg.name !== 'string' ||
+      pkg.name === ''
+    ) {
+      continue
+    }
+    byDir.set(dir, { name: pkg.name, dir, packageJson: pkg, configPath: null })
   }
-  if (removed.size === 0) return out
+  const now = buildPackageGraph([...projects])
+  const then = buildPackageGraph([...byDir.values()])
+  const out = new Set<string>()
   for (const p of projects) {
-    const pkg = p.packageJson
-    for (const deps of [
-      pkg.dependencies,
-      pkg.devDependencies,
-      pkg.peerDependencies,
-      pkg.optionalDependencies,
-    ]) {
-      if (deps !== undefined && Object.keys(deps).some((d) => removed.has(d))) out.add(p.name)
-    }
+    // A project whose own manifest changed is owned by containment.
+    if (changedDirs.has(p.dir)) continue
+    const a = now.directDeps(p.name)
+    const b = then.directDeps(p.name)
+    if (a.length !== b.length || a.some((d, i) => d !== b[i])) out.add(p.name)
   }
   return out
 }
@@ -322,20 +349,17 @@ async function dependentsOfRemoved(
  * `**` lost the directory's files — while containment maps the change to
  * the new project alone, and `--affected` left the re-keyed parent out.
  * "New" is judged at the base: no manifest there, or one with no name,
- * which discovery skips. Only a changed manifest of a project with a
- * project above it is read at the base, one `git show` each.
+ * which discovery skips. `atBase` holds each changed manifest there.
  */
-async function parentsOfNewNested(
+function parentsOfNewNested(
   workspaceRoot: string,
-  base: string,
-  changed: readonly string[],
+  atBase: ReadonlyMap<string, Uint8Array | null>,
   projects: readonly ProjectMeta[],
-): Promise<Set<string>> {
+): Set<string> {
   const out = new Set<string>()
   const dirToName = new Map<string, string>()
   for (const p of projects) dirToName.set(p.dir, p.name)
-  for (const rel of changed) {
-    if (path.posix.basename(rel) !== 'package.json') continue
+  for (const [rel, bytes] of atBase) {
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
     if (!dirToName.has(dir)) continue
     let parent: string | undefined
@@ -344,7 +368,6 @@ async function parentsOfNewNested(
       if (path.dirname(d) === d) break
     }
     if (parent === undefined || out.has(parent)) continue
-    const bytes = await gitBytesAt(workspaceRoot, base, rel)
     let named = false
     if (bytes !== null) {
       try {
@@ -357,6 +380,56 @@ async function parentsOfNewNested(
     if (!named) out.add(parent)
   }
   return out
+}
+
+/**
+ * Each of `files` (workspace-root-relative) as `ref` has it, in one `git
+ * cat-file --batch`: null for a file the ref does not have. `./` anchors
+ * each path to the cwd, the workspace root, as `gitBytesAt` does.
+ */
+async function gitBlobsAt(
+  workspaceRoot: string,
+  ref: string,
+  files: readonly string[],
+): Promise<Map<string, Uint8Array | null>> {
+  const blobs = new Map<string, Uint8Array | null>()
+  // The batch reads one path per line; a name holding a newline asks alone.
+  const batched: string[] = []
+  for (const file of files) {
+    if (file.includes('\n')) blobs.set(file, await gitBytesAt(workspaceRoot, ref, file))
+    else batched.push(file)
+  }
+  if (batched.length === 0) return blobs
+  const proc = spawnGit(
+    ['cat-file', '--batch'],
+    workspaceRoot,
+    new TextEncoder().encode(batched.map((f) => `${ref}:./${f}\n`).join('')),
+  )
+  const [out, stderr, exit] = await Promise.all([
+    new Response(proc.stdout).bytes(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exit !== 0) {
+    throw new UserError(`git cat-file --batch failed (exit ${exit}): ${stderr.trim()}`)
+  }
+  let at = 0
+  for (const file of batched) {
+    const eol = out.indexOf(0x0a, at)
+    if (eol === -1) throw new UserError(`git cat-file --batch ended before ${ref}:./${file}`)
+    const header = new TextDecoder().decode(out.subarray(at, eol))
+    at = eol + 1
+    // `<oid> <type> <size>`, or `<spec> missing` / `<spec> ambiguous`.
+    const m = /^[0-9a-f]{40,64} (\w+) (\d+)$/.exec(header)
+    if (m === null) {
+      blobs.set(file, null)
+      continue
+    }
+    const size = Number(m[2])
+    blobs.set(file, m[1] === 'blob' ? out.slice(at, at + size) : null)
+    at += size + 1
+  }
+  return blobs
 }
 
 /**
