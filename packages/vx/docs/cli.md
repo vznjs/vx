@@ -1537,8 +1537,8 @@ document that is not JSON (a captive portal's page served with a 200):
 replaced; …`. The new binary
 keeps the old one's mode (and, as root, its owner), and must answer
 `--version` before the upgrade reports it installed: one that does not
-start on this machine is swapped back for the previous vx, and the
-command exits 1 saying so (item 1097). On the version it already is
+start on this machine — or does not answer within 10 s — is swapped back
+for the previous vx, and the command exits 1 saying so (item 1097). On the version it already is
 it says `already at <version>` and downloads nothing; a second tag is
 refused rather than ignored; and GitHub's hourly API limit for an
 unauthenticated address is named, with its reset time, instead of a

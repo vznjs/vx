@@ -10,6 +10,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import {
   fetchRelease,
   isBunfsPath,
+  startedVersion,
   isThisVersion,
   npmOwnedBinary,
   releaseAsset,
@@ -309,6 +310,31 @@ describe('fetchRelease', () => {
       message.endsWith(') — nothing replaced; check the network or the proxy and re-run'),
     ).toBe(true)
   })
+})
+
+describe('startedVersion', () => {
+  const fake = async (name: string, body: string): Promise<string> => {
+    const bin = path.join(dir, name)
+    await writeFile(bin, `#!/bin/sh\n${body}\n`)
+    await chmod(bin, 0o755)
+    return bin
+  }
+
+  it('is the version a binary answers as vx, and null for anything else', async () => {
+    expect(startedVersion(await fake('ok', 'echo "vx 9.9.9"'))).toBe('vx 9.9.9')
+    expect(startedVersion(await fake('failed', 'echo "vx 9.9.9"; exit 1'))).toBeNull()
+    expect(startedVersion(await fake('other', 'echo "bun 1.4.2"'))).toBeNull()
+  })
+
+  it('gives up on a binary that does not answer, so the rollback can run', async () => {
+    // The answer decides the rollback, and it was unbounded: a new binary
+    // that hung on start held `vx upgrade` forever with the old one never
+    // put back (E-22). Six seconds of silence against a 300 ms bound.
+    const hung = await fake('hung', 'exec sleep 6')
+    const t0 = performance.now()
+    expect(startedVersion(hung, 300)).toBeNull()
+    expect(performance.now() - t0).toBeLessThan(3_000)
+  }, 15_000)
 })
 
 describe('npmOwnedBinary', () => {

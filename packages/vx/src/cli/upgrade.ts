@@ -304,10 +304,27 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
   // rather than this process guessing, and one that cannot is rolled back.
   let installed = ''
   await replaceBinary(dest, asset.url, asset.sha256, (bin) => {
-    const proc = Bun.spawnSync({ cmd: [bin, '--version'], stdout: 'pipe', stderr: 'pipe' })
-    installed = new TextDecoder().decode(proc.stdout).trim()
-    return proc.exitCode === 0 && installed.startsWith('vx ')
+    installed = startedVersion(bin) ?? ''
+    return installed !== ''
   })
   process.stdout.write(`vx upgrade: installed ${installed}\n`)
   return 0
+}
+
+/**
+ * `bin --version` when it answers as vx within `timeoutMs`, else null. The
+ * answer decides whether a replaced binary is rolled back, so it is
+ * bounded: a binary that hung on start held `vx upgrade` forever, new
+ * binary in place, old one never restored.
+ */
+export function startedVersion(bin: string, timeoutMs = 10_000): string | null {
+  const proc = Bun.spawnSync({
+    cmd: [bin, '--version'],
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: timeoutMs,
+  })
+  const out = new TextDecoder().decode(proc.stdout).trim()
+  return proc.exitCode === 0 && out.startsWith('vx ') ? out : null
 }
