@@ -54,9 +54,10 @@ describe('auto-release.yml', () => {
     )
   })
 
-  it('skips a commit main has moved past, and one already tagged', () => {
-    expect(script).toContain('git ls-remote origin refs/heads/main')
+  it('skips a commit the last release is not behind, and one already tagged', () => {
+    expect(script).toContain('git merge-base --is-ancestor "$last" "$SHA"')
     expect(script).toContain('git tag --points-at "$SHA"')
+    expect(script).not.toContain('refs/heads/main')
   })
 
   it('holds only the two grants it uses, and none at the top', () => {
