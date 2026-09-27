@@ -274,16 +274,25 @@ describe('plan() — cache-status prediction', () => {
     expect(cache.probes.sort()).toEqual(['h:a#one', 'h:a#three', 'h:a#two'])
   })
 
-  it('predicts no-cache and issues ZERO probes when neither read axis is on', async () => {
+  it('issues ZERO probes when neither read axis is on: no-cache, or a miss that saves (item 991)', async () => {
     // `--no-cache` and `--force` both re-execute everything, so a plan that
     // reported "cache hit" for them would describe a run that cannot happen.
-    for (const policy of [NO_CACHE, FORCE]) {
+    // `--force` still writes, so its run is a miss that saves; the plan
+    // called it no-cache, as if the task had no `cache` block.
+    const seen: Array<[string, unknown, string[]]> = []
+    for (const [name, policy] of [
+      ['no-cache', NO_CACHE],
+      ['force', FORCE],
+    ] as const) {
       const nodes = makeNodes([{ id: 'a#build' }])
       const cache = stubCache(() => 'local')
       const p = await planUnit({ nodes, cache: cache.layer, cachePolicy: policy })
-      expect(statusById(p)).toEqual({ 'a#build': 'no-cache' })
-      expect(cache.probes).toEqual([])
+      seen.push([name, statusById(p), cache.probes])
     }
+    expect(seen).toEqual([
+      ['no-cache', { 'a#build': 'no-cache' }, []],
+      ['force', { 'a#build': 'miss' }, []],
+    ])
   })
 
   it('keeps predicting when only ONE read axis is on', async () => {
@@ -731,9 +740,10 @@ describe('planRun() — the plan describes the run you will get', () => {
         // `entries` counts BOTH cacheable tasks of the fixture graph.
         { name: 'full', policy: FULL, plan: 'miss', recorded: 'lR,lW', entries: 2 },
         { name: '--no-cache', policy: NO_CACHE, plan: 'no-cache', recorded: '', entries: 0 },
-        // Writes still refresh the cache, but nothing is READ — so a plan
-        // claiming a hit would be describing a run that cannot happen.
-        { name: '--force', policy: FORCE, plan: 'no-cache', recorded: 'lW', entries: 2 },
+        // Nothing is READ, so a plan claiming a hit would describe a run that
+        // cannot happen; but writes refresh the cache, so it is a miss that
+        // saves, not no-cache (item 991: the two entries below said so).
+        { name: '--force', policy: FORCE, plan: 'miss', recorded: 'lW', entries: 2 },
         { name: 'local:r', policy: LOCAL_READ_ONLY, plan: 'miss', recorded: 'lR', entries: 0 },
         // THE regression: reading the raw request here labelled this run
         // "cache miss — would exec" (a result that will be stored) for a run
@@ -779,10 +789,11 @@ describe('planRun() — the plan describes the run you will get', () => {
         // Cold, so a real run always executes regardless of policy.
         expect(executed.outcomes.every((o) => o.status === 'success')).toBe(true)
 
-        // The invariant behind the table: the plan says "no-cache" exactly
-        // when the policy the RUN recorded has no read axis at all.
-        const hasRead = inv.cache_policy.includes('lR') || inv.cache_policy.includes('rR')
-        expect(`${label}: readable=${hasRead}`).toBe(`${label}: readable=${c.plan !== 'no-cache'}`)
+        // The invariant behind the table: every fixture task has a `cache`
+        // block, so the plan says "no-cache" exactly when the policy the RUN
+        // recorded has no axis at all, read or write (item 991).
+        const anyAxis = inv.cache_policy !== ''
+        expect(`${label}: cached=${anyAxis}`).toBe(`${label}: cached=${c.plan !== 'no-cache'}`)
       }
     },
     TIMEOUT,
@@ -808,7 +819,7 @@ describe('planRun() — the plan describes the run you will get', () => {
         cacheDir,
         log: quietLogger,
       })
-      expect(forced.tasks.map((t) => t.cacheStatus)).toEqual(['no-cache', 'no-cache'])
+      expect(forced.tasks.map((t) => t.cacheStatus)).toEqual(['miss', 'miss'])
       const forcedRun = await run({
         cwd: root,
         tasks: ['build'],

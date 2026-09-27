@@ -341,6 +341,19 @@ test is telling the truth.
       - Row: `workspace.test.ts` › the nearest pnpm-workspace.yaml is the
         root, from any depth, with an outer member as the control. Red
         without the fix.
+991.  DONE (2026-09-27, a run-flags review agent's lead 1). A plan under
+      `--force` (or `--cache=local:w`) labelled every cacheable task
+      `no-cache`, the label a task with no `cache` block gets, while the
+      run it described was a miss that saved: the plan-predict row even
+      recorded two entries written under that label.
+      - Fix (`plan.ts`): no read axis and no write axis is `no-cache`; no
+        read axis with a write one is `miss`, still without a probe. The
+        dry-run legend in `cli.md` says so.
+      - Rows (`plan-predict.test.ts`): the zero-probe row now asks for
+        `no-cache` under `--no-cache` and `miss` under `--force` (red
+        without the fix); the two `planRun` rows that pinned `no-cache`
+        for `--force` now pin `miss`, and the invariant is "no axis at
+        all", not "no read axis".
 
 ## In flight
 

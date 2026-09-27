@@ -152,17 +152,20 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
       })
 
-      // Prediction keys off READS: a no-read policy (--no-cache /
-      // --force / --cache=local:,remote:) would re-execute every task,
-      // so we predict misses for it. The probe below routes through the
-      // policy-aware cache layer, which itself respects local/remote
-      // read gating.
+      // Prediction keys off READS: a no-read policy re-executes every task,
+      // so nothing is probed. Whether that run is a miss or no cache at all
+      // is the WRITE axes': `--force` and `--cache=local:w` save what they
+      // run, and the plan called them `no-cache`, the label a task with no
+      // `cache` block gets (item 991). The probe below routes through the
+      // policy-aware cache layer, which itself respects read gating.
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
-      const cacheEnabled =
-        node.config.cache !== undefined && (policy.localRead || policy.remoteRead)
+      const reads = policy.localRead || policy.remoteRead
+      const writes = policy.localWrite || policy.remoteWrite
       let status: CacheStatus
-      if (!cacheEnabled) {
+      if (node.config.cache === undefined || (!reads && !writes)) {
         status = 'no-cache'
+      } else if (!reads) {
+        status = 'miss'
       } else {
         const where = await args.cache.has(hash)
         status = where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local'
