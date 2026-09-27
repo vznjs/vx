@@ -785,7 +785,7 @@ export class Cache implements CacheLayer {
     const format = this.db
       .prepare("SELECT value FROM schema_meta WHERE key = 'cache_version'")
       .get() as { value: string } | null
-    if (format?.value !== CACHE_VERSION && this.writeBlocked === null) {
+    if (format?.value !== CACHE_VERSION && this.writeBlocked === null && !this.inspecting) {
       const hasEntries = this.db.prepare('SELECT 1 FROM entries LIMIT 1').get() != null
       if (this.schemaReset === null && (format !== null || hasEntries)) {
         this.formatChange = { from: format?.value ?? 'an earlier format', to: CACHE_VERSION }
