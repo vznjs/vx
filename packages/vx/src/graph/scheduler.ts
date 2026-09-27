@@ -77,6 +77,13 @@ export interface TaskOutcome {
    */
   groupUpstream?: readonly TaskOutcome[]
   /**
+   * This task RAN over inputs its key no longer describes: one moved while
+   * it ran, the workspace fingerprint moved, or an upstream carried this
+   * mark. Its save was withheld, and its outputs are not what `hash` names,
+   * so a dependant that folds `hash` saves nothing either (A-12).
+   */
+  unkeyed?: true
+  /**
    * On a `skipped` outcome: the task at the ROOT of what blocked it — the
    * failed (or aborted) upstream, followed through any chain of skips
    * between. Absent when the skip was fail-fast's (no upstream failed).

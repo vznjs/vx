@@ -62,6 +62,7 @@ import {
   type TaskInputComponent,
 } from './task-hash.js'
 import { getContext } from './remote-prefetch.js'
+import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 export interface ExecuteArgs {
   node: TaskNode
@@ -412,8 +413,27 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const willRead = !remoteOnly && cfgCacheable && (policy.localRead || policy.remoteRead)
   const willWrite = !remoteOnly && cfgCacheable && (policy.localWrite || policy.remoteWrite)
   // `willWrite` governs output hygiene (clean before exec); the save itself
-  // is also withheld from a task downstream of a failure (see `taintedUpstream`).
-  const willSave = willWrite && args.taintedUpstream !== true
+  // is also withheld from a task downstream of a failure (see `taintedUpstream`),
+  // and from one downstream of a task that ran over inputs its key no longer
+  // describes: this key folds that upstream's key, while the bytes on disk
+  // are not the ones that key names. With `a.txt` edited while `gen` ran,
+  // `gen` withheld its save, `use` saved over the edit under a key folding
+  // `gen`'s, and once `a.txt` was put back `use` hit the edit's output (A-12).
+  // Only an upstream whose key this one folds: one read by content
+  // (`tasks: []` and a file input) is judged by its bytes. `upstream` holds
+  // a hole where a dependency did not run (a skipped one, a restore-tier
+  // task's unfinished deps).
+  const present = upstream.filter((u): u is TaskOutcome => u !== undefined)
+  const folded = new Set(
+    filterUpstreamHashes(present, cacheCfg?.inputs?.tasks, node.projectName, node.id).map(
+      ([id]) => id,
+    ),
+  )
+  const unkeyedUpstream = expandGroupUpstream(present.filter((u) => folded.has(u.node.id))).find(
+    (u) => u.unkeyed === true,
+  )
+  let unkeyed = unkeyedUpstream !== undefined
+  const willSave = willWrite && args.taintedUpstream !== true && !unkeyed
 
   // Retain only what is read back. `cache.save` below is the single consumer
   // of `result.stdout`, and it runs only when this task will WRITE an entry;
@@ -968,7 +988,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * withholds it too: the key folded the old one.
    */
   async function keyStillTrue(): Promise<boolean> {
-    if (fingerprintMoved()) return false
+    if (fingerprintMoved()) {
+      unkeyed = true
+      return false
+    }
     const endCheck = span('miss: recheck inputs')
     const moved = await movedSinceKey()
     endCheck()
@@ -979,7 +1002,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         `but is not saved under a key that no longer describes it`,
     )
     forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
+    unkeyed = true
     return false
+  }
+
+  if (unkeyedUpstream !== undefined && willWrite && effectiveExitCode === 0) {
+    log.status(
+      `[vx] ${node.id}: ran over ${unkeyedUpstream.node.id}'s outputs, which its key no longer ` +
+        `describes — the result stands, but is not saved`,
+    )
   }
 
   const finalViolations = violations
@@ -991,6 +1022,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: spentMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
+    ...(unkeyed ? { unkeyed: true as const } : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),

@@ -110,6 +110,7 @@ async function summarizeJson(): Promise<unknown> {
     cpuMs: 5,
     peakRssBytes: 4,
     groupUpstream: [],
+    unkeyed: true,
     blockedBy: 'a#gen',
     timedOut: true,
     notReady: 'timeout',

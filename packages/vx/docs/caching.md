@@ -618,6 +618,11 @@ declare what it writes as an output. Not seen: a file ADDED under an input glob
 mid-run (the listing is not taken again; the next run's key holds the
 file, so a stale hit needs it to vanish again). Cost: one `lstat` per
 input on a miss that saves; a hit runs no command and checks nothing.
+Its dependants whose keys fold its key save nothing either,
+transitively: that key does not name the bytes they built from (`[vx] app#use: ran
+over app#gen's outputs, which its key no longer describes — …`). Until
+2026-09-27 (A-12) they saved, and once the input was put back they hit
+the edit's output.
 A workspace fingerprint a task rewrote since the run read it (§ Cache
 key derivation, step 3) withholds the save the same way.
 
