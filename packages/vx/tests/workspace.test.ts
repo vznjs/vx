@@ -628,6 +628,28 @@ describe('malformed workspace manifests', () => {
     expect(members.map((p) => p.name)).toEqual(['a'])
   })
 
+  it('a trailing slash on a member glob does not make it recursive (item 985)', async () => {
+    for (const [file, body] of [
+      ['package.json', JSON.stringify({ name: 'r', workspaces: ['packages/*/'] })],
+      ['pnpm-workspace.yaml', 'packages:\n  - "packages/*/"\n'],
+    ] as const) {
+      await rm(dir, { recursive: true, force: true })
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'r' }))
+      await writeFile(path.join(dir, file), body)
+      for (const [rel, name] of [
+        ['packages/a', 'a'],
+        ['packages/a/examples/demo', 'demo'],
+        ['packages/b/test/fixtures/proj', 'fixture'],
+      ] as const) {
+        await mkdir(path.join(dir, rel), { recursive: true })
+        await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
+      }
+      const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+      expect({ file, names }).toEqual({ file, names: ['a'] })
+    }
+  })
+
   it('rejects a pnpm-workspace.yaml that is not a mapping (item 984)', async () => {
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     for (const body of ['- packages/*\n', '42\n']) {

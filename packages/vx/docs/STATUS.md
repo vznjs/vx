@@ -273,6 +273,15 @@ test is telling the truth.
         `--force` run no-cache, `--dry` drops `--report`, a bad
         `--graph=<path>` prints a stack, `--report-file` does not make
         its directory.
+985.  DONE (2026-09-27, the discovery review's lead 3). A member glob
+      spelled `packages/*/` (in `workspaces` or `pnpm-workspace.yaml`)
+      found every example and fixture package at any depth: the task-glob
+      normalizer read the trailing slash as `/**`. npm and pnpm read the
+      two spellings alike.
+      - Fix (`workspace.ts`): a member glob's trailing slashes are dropped
+        before it is normalized. `modules/workspace.md` says so.
+      - Row: `workspace.test.ts` › a trailing slash on a member glob does
+        not make it recursive, in both manifests. Red without the fix.
 
 ## In flight
 

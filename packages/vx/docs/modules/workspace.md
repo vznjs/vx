@@ -9,7 +9,10 @@ its tree — in both discovery and the root-claim walk. Handed to the
 glob engine raw, a leading `!` negated the whole pattern and made every
 manifest in the tree a member (2026-09-10). Every entry goes through
 `normalizeBunGlob` first: `!./packages/legacy` and `!packages//legacy`
-excluded nothing until they did (same day). A member glob keeps the
+excluded nothing until they did (same day). A trailing slash is dropped
+before that, as npm and pnpm drop it: `normalizeBunGlob` gives a task
+glob's trailing slash the meaning `/**`, and `packages/*/` found every
+example and fixture package at any depth (item 985). A member glob keeps the
 package manager's grammar, so a bracket there is a class and `\[` a
 literal bracket — unlike a task glob, where a bracket is literal (item
 667). The one form it refuses is extglob (`!(…)`, `@(…)`, `+(…)`,
