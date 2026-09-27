@@ -5,6 +5,7 @@
 
 import readline from 'node:readline/promises'
 import path from 'node:path'
+import fs from 'node:fs'
 import {
   affectedProjects,
   refIsHead,
@@ -115,13 +116,33 @@ async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
 export async function findCwdProject(cwd: string): Promise<string | null> {
   const projects = await loadWorkspaceProjects(cwd)
   const abs = path.resolve(cwd)
-  let best: ProjectMeta | null = null
-  for (const p of projects) {
-    if (abs === p.dir || abs.startsWith(p.dir + path.sep)) {
-      if (!best || p.dir.length > best.dir.length) best = p
+  const within = (dirOf: (p: ProjectMeta) => string): string | null => {
+    let best: string | null = null
+    let bestLength = -1
+    for (const p of projects) {
+      const dir = dirOf(p)
+      if ((abs === dir || abs.startsWith(dir + path.sep)) && dir.length > bestLength) {
+        best = p.name
+        bestLength = dir.length
+      }
     }
+    return best
   }
-  return best?.name ?? null
+  // The cwd is a real path (the kernel's), and a member discovery reached
+  // through a link keeps the link's (`packages/b -> ../ext/b`, item 987),
+  // so inside such a member nothing matched and a run from there was "not
+  // inside a project" (item 1025). Only then are the members realpathed:
+  // one syscall each, paid only by a run no plain match could place.
+  return (
+    within((p) => p.dir) ??
+    within((p) => {
+      try {
+        return fs.realpathSync(p.dir)
+      } catch {
+        return p.dir
+      }
+    })
+  )
 }
 
 export type FilterResolution =

@@ -399,6 +399,40 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toContain('hello-cli')
   })
 
+  it('cwd inside a member reached through a link resolves to that member (item 1025)', async () => {
+    // `cd packages/two` where `packages/two -> ../ext/two`: the kernel's
+    // cwd is `ext/two`, discovery keeps `packages/two`, and the run said
+    // "not inside a project".
+    const path = await import('node:path')
+    const { mkdir, symlink, writeFile } = await import('node:fs/promises')
+    const real = path.join(workspaceRoot, 'ext', 'two')
+    await mkdir(real, { recursive: true })
+    await writeFile(path.join(real, 'package.json'), JSON.stringify({ name: 'two' }))
+    await writeFile(
+      path.join(real, 'vx.config.mjs'),
+      `export default { tasks: { hello: { exec: { command: "echo hello-two" } } } }`,
+    )
+    await symlink(path.join('..', 'ext', 'two'), path.join(workspaceRoot, 'packages', 'two'))
+    process.chdir(path.join(workspaceRoot, 'packages', 'two'))
+    let stdout = ''
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+
+    const code = await run(['run', 'hello'])
+    expect({ code, ran: stdout.includes('hello-two'), stderr }).toEqual({
+      code: 0,
+      ran: true,
+      stderr: '',
+    })
+  })
+
   it('pkg#task syntax targets a specific project', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
