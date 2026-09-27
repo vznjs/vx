@@ -36,6 +36,11 @@ run leaves out; the rest are refusals.
   gone" (local gate, twice in four gates).
 - F: `vx-reapi` "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is
   retried" failed once in a local gate, green on re-run.
+- A: `tests/git-subdir-workspace.test.ts` "a modified tracked file is
+  pruned…" reads the host's global git config: under
+  `core.checkStat=minimal` / `core.trustctime=false` (this container's)
+  A-6 trusts no OID and the sibling control fails. Isolate it
+  (`GIT_CONFIG_GLOBAL=/dev/null` in the fixture's git env).
 
 ## Entries
 
@@ -82,3 +87,8 @@ run leaves out; the rest are refusals.
 - **D-8** `MigrationPlan.notes` named "implicit Nx deps" as its example,
   a note G-7 removed; it names the Turbo mapper's, the one source that
   still writes it (coordinator's lead).
+- **D-9** Mutation sweep of `fingerprint.ts` (14 mutants: all caught or
+  equivalent) and of D-1/D-3's code in `affected.ts` (13). One behaviour
+  survivor: no row read two manifests in one `git cat-file --batch`, so
+  an offset slip between blobs (the bump read as absent at the base, the
+  edge never dropping) survived. Row: the D-3 row's two-manifest case.
