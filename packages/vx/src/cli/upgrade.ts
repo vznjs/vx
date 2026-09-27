@@ -73,6 +73,8 @@ function assetName(): string {
 
 /** What the release API says about the asset this platform installs. */
 export interface ReleaseAsset {
+  /** The release's tag, as the API names it (`v0.4.0`). */
+  tag: string
   url: string
   /** Lower-case hex SHA-256 of the asset's bytes. */
   sha256: string
@@ -116,7 +118,16 @@ export function releaseAsset(release: unknown, name: string): ReleaseAsset {
       `vx upgrade: release ${tag} publishes no SHA-256 digest for ${name} — nothing to verify the download against, so it is not attempted`,
     )
   }
-  return { url, sha256: m[1]!.toLowerCase() }
+  return { tag, url, sha256: m[1]!.toLowerCase() }
+}
+
+/**
+ * Whether a release tag names the version this binary is: the upgrade
+ * re-downloaded and replaced a binary with itself, printing `X → latest`
+ * (item 1098). Tags are `v<version>`; a bare version is accepted too.
+ */
+export function isThisVersion(tag: string, version: string): boolean {
+  return tag === `v${version}` || tag === version
 }
 
 /**
@@ -170,8 +181,16 @@ export async function fetchRelease(tag: string | undefined): Promise<unknown> {
     'read the release',
   )
   if (!res.ok) {
+    // GitHub answers an unauthenticated address past its hourly budget with
+    // 403 (or 429) and says so in the headers; "could not read the release
+    // (403)" read as a permissions fault (item 1098).
+    const reset = Number(res.headers.get('x-ratelimit-reset'))
+    const limited =
+      (res.status === 403 || res.status === 429) && res.headers.get('x-ratelimit-remaining') === '0'
     throw new UserError(
-      `vx upgrade: could not read the release (${res.status}) — ${url}${res.status === 404 && tag !== undefined ? ` (is ${tag} a release tag?)` : ''}`,
+      limited
+        ? `vx upgrade: GitHub's API rate limit for this address is spent${Number.isFinite(reset) && reset > 0 ? ` until ${new Date(reset * 1000).toISOString()}` : ''} — re-run after that`
+        : `vx upgrade: could not read the release (${res.status}) — ${url}${res.status === 404 && tag !== undefined ? ` (is ${tag} a release tag?)` : ''}`,
     )
   }
   // A body that is not JSON (a captive portal's page, a proxy's error
@@ -276,6 +295,10 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
     )
   }
   const asset = releaseAsset(await fetchRelease(tag), assetName())
+  if (isThisVersion(asset.tag, VERSION)) {
+    process.stdout.write(`vx upgrade: already at ${VERSION} (${asset.tag}) — nothing to do\n`)
+    return 0
+  }
   process.stdout.write(`vx upgrade: ${VERSION} → ${tag ?? 'latest'} (${dest})\n`)
   // The replaced binary's own version: the new build speaks for itself
   // rather than this process guessing, and one that cannot is rolled back.

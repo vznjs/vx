@@ -165,6 +165,23 @@ mkdir dist/out.js`) failed with "a path the output globs do not
         keeps the new bytes and no spare name. Both are red without the
         change; the executable-bit row still holds.
 
+1098. DONE (2026-09-27, upgrade review, the smaller points). `vx
+upgrade` on the latest version re-downloaded and replaced the
+      binary with itself, printing `X → latest`. It now reads the
+      release's tag (`ReleaseAsset.tag`, `isThisVersion`) and says
+      `already at X` without a download. `vx upgrade v1 v2` installed
+      `v1` and ignored `v2`; a second tag is now refused. A spent GitHub
+      rate limit (403 or 429 with `x-ratelimit-remaining: 0`) read as
+      `could not read the release (403)`; it is now named, with the reset
+      time. cli.md and upgrade.md say so. The review's last point, the
+      npm hint shown to a hand-installed binary on a failed rename, stays
+      as is: the rename failure says "check permissions" first.
+      - Rows: `upgrade.test.ts` › `isThisVersion` (with or without the
+        `v`; another version and a longer one as controls), "names
+        GitHub's rate limit, and a plain 403 stays plain", and "refuses a
+        second tag instead of ignoring it" (on a runtime copy, item 779).
+        `releaseAsset`'s row now reads the tag back.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

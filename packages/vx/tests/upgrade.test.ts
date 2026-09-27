@@ -10,6 +10,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import {
   fetchRelease,
   isBunfsPath,
+  isThisVersion,
   npmOwnedBinary,
   releaseAsset,
   replaceBinary,
@@ -359,6 +360,7 @@ describe('releaseAsset', () => {
 
   it('picks the platform asset and its lower-case hex digest', () => {
     expect(releaseAsset(release, 'vx-linux-x64')).toEqual({
+      tag: 'v0.0.21',
       url: 'https://x/l',
       sha256: 'b'.repeat(64),
     })
@@ -409,6 +411,43 @@ describe('releaseAsset', () => {
     )
     expect(() => releaseAsset(asset('sha256:' + 'c'.repeat(65)), 'vx-linux-x64')).toThrow(
       /publishes no SHA-256 digest for vx-linux-x64/,
+    )
+  })
+})
+
+// Item 1098: the upgrade to the version it already was downloaded and
+// replaced the binary with itself.
+describe('isThisVersion', () => {
+  it('matches the tag of this version, with or without the v', () => {
+    expect(isThisVersion('v0.4.0', '0.4.0')).toBe(true)
+    expect(isThisVersion('0.4.0', '0.4.0')).toBe(true)
+    // CONTROLS: another version, and a prefix of this one.
+    expect(isThisVersion('v0.4.1', '0.4.0')).toBe(false)
+    expect(isThisVersion('v0.4.0', '0.4.00')).toBe(false)
+  })
+})
+
+describe('the release lookup', () => {
+  // Item 1098: GitHub's rate limit read as `could not read the release (403)`.
+  it("names GitHub's rate limit, and a plain 403 stays plain", async () => {
+    const real = globalThis.fetch
+    const refusal = async (headers: Record<string, string>): Promise<string> => {
+      globalThis.fetch = (() =>
+        Promise.resolve(new Response('{}', { status: 403, headers }))) as unknown as typeof fetch
+      try {
+        await fetchRelease(undefined)
+        return 'resolved'
+      } catch (err) {
+        return (err as Error).message
+      } finally {
+        globalThis.fetch = real
+      }
+    }
+    expect(await refusal({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1790000000' })).toBe(
+      "vx upgrade: GitHub's API rate limit for this address is spent until 2026-09-21T14:13:20.000Z — re-run after that",
+    )
+    expect(await refusal({ 'x-ratelimit-remaining': '12' })).toBe(
+      'vx upgrade: could not read the release (403) — https://api.github.com/repos/vznjs/vx/releases/latest',
     )
   })
 })
