@@ -169,3 +169,10 @@ The `local-shortcircuit.ts` sweep left survivors; the code was right, but nothin
 - Rows (`local-shortcircuit.test.ts`): the per-task pool keeps a stable miss out of the tier; one throwing probe leaves only its own task unprobed; a throwing key derivation degrades to no short-circuit. Each is red under its own mutation and no other.
 - The "workspaceFiles INPUTS" row was disarmed: the cold run withholds rdr's save (`shared/g.txt` changed after its key was taken), so its reader missed and a miss never enters the tier. A second run saves it; the row now asserts the hit, and removing the `workspaceInputsReach` term reddens it.
 - Left: the reach and propagation exclusions (equal and ancestor prefix, root project, transitive dependants) still hold no row each.
+
+### A-17 (2026-09-27, coordinator lead)
+
+A persistent task had no key on any path, so a cached dependant folded nothing of it: a cached e2e behind a dev server stayed `up-to-date` after the server's sources changed (repro: `web#e2e` → `api#dev`, edit `api/src/server.js`).
+
+- Fix: a persistent task is keyed as a task with no `cache` (its whole project), on every key path: the live one (`executePersistentTask`, skipped when nothing depends on it), stable keys, the plan, excluded keys and the sandbox's keyed projects. Chosen over a refusal: it is the rule an uncached upstream already follows, and `cache.inputs.tasks` opts out. Docs: `caching.md`, `modules/{keyed-projects,plan,stable-keys,excluded-keys,cache}.md`.
+- Rows: `stale-hit.test.ts` › "a cached dependant of a persistent task re-runs when the server's sources change", red without the fix. Three rows that pinned the old rule flipped (`keyed-projects` R3 and R4, `in-run-writes` › through a persistent task).

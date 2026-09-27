@@ -206,7 +206,7 @@ export interface CacheEntry {
 }
 
 export interface RunRecord {
-  hash?: string // absent = no cache key derived (skipped / persistent); stored as ''
+  hash?: string // absent = no cache key derived (skipped, or persistent with no dependant); stored as ''
   project: string
   task: string
   status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'

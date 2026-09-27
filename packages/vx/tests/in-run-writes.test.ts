@@ -463,14 +463,16 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
   )
 
   it(
-    'through a persistent task, which has no key to fold, with no `tasks` filter anywhere',
+    'through a persistent task: keyed like any task, its fold carries the rewriter (A-17)',
     async () => {
       // Sandboxed with no write grant, so it is no producer itself.
       const srv = `{
         dependsOn: ['fmt'],
         exec: { command: 'true', persistent: {}, sandbox: { allow: { read: ['.'] } } },
       }`
-      expect(await sameProject(srv)).toBe(false)
+      expect(await sameProject(srv)).toBe(true)
+      await fresh()
+      expect(await sameProject(srv, '[]')).toBe(false)
     },
     TIMEOUT,
   )

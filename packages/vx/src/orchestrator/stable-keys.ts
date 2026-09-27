@@ -87,13 +87,12 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   const unfoldedById = new Map<string, ProjectSet>()
   const wsRewriters = new Set<string>()
   // A cached rewriter matters only to a key that leaves a dependency's key
-  // out: a `cache.inputs.tasks` filter, or a persistent dependency, which
-  // has no key. With neither in the graph every edge folds and the sets
-  // above stay empty, so they are not built (about 2 ms, median, of a 27 ms
-  // memoised walk over the 3,000-task bench; item 750).
+  // out: a `cache.inputs.tasks` filter. With none in the graph every edge
+  // folds and the sets above stay empty, so they are not built (about 2 ms,
+  // median, of a 27 ms memoised walk over the 3,000-task bench; item 750).
   let anyUnfolded = false
   for (const n of args.nodes.values()) {
-    if (n.config.cache?.inputs?.tasks !== undefined || n.config.exec?.persistent !== undefined) {
+    if (n.config.cache?.inputs?.tasks !== undefined) {
       anyUnfolded = true
       break
     }
@@ -188,12 +187,6 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       continue
     }
 
-    // A persistent task has no key on the live path (its outcome carries no
-    // hash, so a dependent folds nothing of it); recording one here gave
-    // its dependents a second key, which a `--force` or remote run never
-    // saved under.
-    if (node.config.exec?.persistent !== undefined) continue
-
     const hash = await computeTaskHash({
       node,
       upstream,
@@ -226,8 +219,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 /**
  * Does this task's key fold the dependency's? What `computeTaskHash` folds
  * (`filterUpstreamHashes` over the same synthetic outcomes); a group folds
- * every keyed member. A dependency with no key (persistent) is folded by
- * none.
+ * every keyed member.
  */
 function foldedBy(
   node: TaskNode,

@@ -1629,6 +1629,35 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
   )
 
   it(
+    "a cached dependant of a persistent task re-runs when the server's sources change",
+    async () => {
+      // The persistent `lib#build` had no key, so `app#build` folded nothing
+      // of it: a cached e2e behind a dev server replayed after the server
+      // changed (A-17). It is keyed now as a task with no `cache`.
+      await withLibConfig(
+        `export default { tasks: { build: {
+           exec: { command: 'echo ready && exec sleep 30', persistent: { readyWhen: 'ready' } },
+         } } }\n`,
+      )
+      await write(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           dependsOn: ['^build'],
+           exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'app behind a server')
+      expect(vx(root, 'run', 'app#build')).toContain('1 miss')
+      expect(vx(root, 'run', 'app#build')).toContain('1 up-to-date')
+      await write(path.join(root, 'packages', 'lib', 'src', 'x.txt'), 'server v2')
+      expect(vx(root, 'run', 'app#build')).toContain('1 miss')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a skipped dependency with a project nested inside it keeps that project out of its key',
     async () => {
       await withLibConfig(
