@@ -9,7 +9,10 @@ import { handleToolCall, listTools, type ToolContext } from './tools.js'
 
 /** The newest protocol revision this server speaks; an older client's version is echoed back. */
 export const PROTOCOL_VERSION = '2025-06-18'
-const KNOWN_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18'])
+// Not 2025-03-26: that revision says a server MUST accept JSON-RPC batches,
+// which this one refuses (2025-06-18 dropped them). Echoing it promised what
+// the next message broke (item 1067); such a client is offered the newest.
+const KNOWN_VERSIONS = new Set(['2024-11-05', '2025-06-18'])
 
 export interface ServerOptions extends ToolContext {}
 
@@ -62,8 +65,17 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
   // session: the next request was never answered (item 808).
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return INVALID
   const msg = parsed as Request
-  const id = msg.id ?? null
-  if (typeof msg.method !== 'string') {
+  // JSON-RPC 2.0's envelope: `jsonrpc` is exactly "2.0" and an id is a
+  // string, a number or null. A missing or "1.0" version and an object or
+  // boolean id were answered as valid requests, the bad id echoed back
+  // (item 1067); an id that is no id is answered as none.
+  const idOk =
+    msg.id === undefined ||
+    msg.id === null ||
+    typeof msg.id === 'string' ||
+    typeof msg.id === 'number'
+  const id = idOk ? (msg.id ?? null) : null
+  if (msg.jsonrpc !== '2.0' || !idOk || typeof msg.method !== 'string') {
     return { jsonrpc: '2.0', id, error: { code: -32600, message: 'invalid request' } }
   }
   // A notification carries no id and expects no reply.
@@ -95,8 +107,22 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
       case 'tools/call': {
         const name = msg.params?.['name']
         if (typeof name !== 'string') return fail(-32602, 'tools/call: name must be a string')
+        // Both are the call's shape, not a tool's answer: the spec lists an
+        // unknown tool as -32602, and `arguments` is an object or absent. A
+        // string or an array was read as no arguments and answered the full
+        // unfiltered history (item 1067).
+        if (!listTools().some((t) => t.name === name)) {
+          return fail(-32602, `tools/call: unknown tool: ${name}`)
+        }
+        const args = msg.params?.['arguments']
+        if (
+          args !== undefined &&
+          (args === null || typeof args !== 'object' || Array.isArray(args))
+        ) {
+          return fail(-32602, 'tools/call: arguments must be an object')
+        }
         try {
-          const result = await handleToolCall(name, msg.params?.['arguments'], ctx)
+          const result = await handleToolCall(name, args, ctx)
           return reply({ content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] })
         } catch (err) {
           // A tool's own refusal is a RESULT the agent should read, not a

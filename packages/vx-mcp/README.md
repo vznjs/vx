@@ -59,6 +59,11 @@ What a config or plugin stage prints through `console` or `process.stdout`
 while a tool loads the workspace goes to stderr. A write straight to fd 1
 (`fs.writeSync(1, …)`, `Bun.write(Bun.stdout, …)`, a child with inherited
 stdout) is not redirected and lands in the reply stream.
+It speaks revisions 2024-11-05 and 2025-06-18 (a client asking for
+another is offered the newest), takes no batches, and answers a request
+outside JSON-RPC 2.0's envelope with -32600 and a call to an unknown
+tool or with non-object `arguments` with -32602; a tool's own refusal
+is an `isError` result.
 
 ## Troubleshooting
 

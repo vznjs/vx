@@ -208,11 +208,67 @@ describe('handleMessage', () => {
     )) as { result: { content: Array<{ text: string }>; isError: boolean } }
     expect(refused.result.isError).toBe(true)
     expect(refused.result.content[0]!.text).toContain('project#task')
-    const missing = (await handleMessage(req(7, 'tools/call', { name: 'nope' }), ctx)) as {
-      result: { isError: boolean; content: Array<{ text: string }> }
-    }
-    expect(missing.result.isError).toBe(true)
-    expect(missing.result.content[0]!.text).toContain('unknown tool')
+  })
+
+  // Item 1067: the call's own shape is a protocol error, -32602, as the spec
+  // lists an unknown tool; a tool's refusal above stays a result. A string
+  // or an array `arguments` was read as none and answered the full history.
+  it('an unknown tool or non-object arguments is invalid params, not a tool result', async () => {
+    const answers = await Promise.all(
+      [
+        { name: 'nope' },
+        { name: 'getRunHistory', arguments: 'garbage' },
+        { name: 'getRunHistory', arguments: [1, 2] },
+        { name: 'getRunHistory', arguments: null },
+      ].map((params, i) => handleMessage(req(20 + i, 'tools/call', params), ctx)),
+    )
+    expect(answers as unknown[]).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 20,
+        error: { code: -32602, message: 'tools/call: unknown tool: nope' },
+      },
+      ...[21, 22, 23].map((id) => ({
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32602, message: 'tools/call: arguments must be an object' },
+      })),
+    ])
+  })
+
+  // Item 1067: JSON-RPC 2.0's envelope. Each of these was answered as a
+  // valid request, the object or boolean id echoed back.
+  it('a request with no "2.0" version or an id that is no id is invalid', async () => {
+    const invalid = (id: number | null) => ({
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32600, message: 'invalid request' },
+    })
+    const answers = await Promise.all(
+      [
+        { id: 1, method: 'ping' },
+        { jsonrpc: '1.0', id: 2, method: 'ping' },
+        { jsonrpc: '2.0', id: { a: 1 }, method: 'ping' },
+        { jsonrpc: '2.0', id: true, method: 'ping' },
+      ].map((raw) => handleMessage(JSON.stringify(raw), ctx)),
+    )
+    // A readable id is echoed on the error; one that is no id is answered as null.
+    expect(answers as unknown[]).toEqual([invalid(1), invalid(2), invalid(null), invalid(null)])
+    // Controls: a string id and a null id are ids.
+    expect(
+      await handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 'x', method: 'ping' }), ctx),
+    ).toEqual({ jsonrpc: '2.0', id: 'x', result: {} })
+    expect(
+      await handleMessage(JSON.stringify({ jsonrpc: '2.0', id: null, method: 'ping' }), ctx),
+    ).toEqual({ jsonrpc: '2.0', id: null, result: {} })
+  })
+
+  it('a 2025-03-26 client is offered the newest revision: this server takes no batches', async () => {
+    const r = (await handleMessage(
+      req(30, 'initialize', { protocolVersion: '2025-03-26', capabilities: {} }),
+      ctx,
+    )) as { result: { protocolVersion: string } }
+    expect(r.result.protocolVersion).toBe(PROTOCOL_VERSION)
   })
 })
 
