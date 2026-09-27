@@ -267,6 +267,23 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     await expect(writeLockfile(root, lock())).rejects.toThrow()
     expect(await readdir(root)).toEqual([LOCKFILE_NAME])
   })
+
+  it('a refused write names vx-lock.json, not its temp (item 972)', async () => {
+    // What a read-only checkout prints comes from this message. A root run
+    // is refused no write for permissions, and `Bun.write` makes a missing
+    // directory, so a FILE where the root should be stands in for it.
+    const gone = path.join(root, 'gone')
+    await writeFile(gone, '')
+    const err = await writeLockfile(gone, lock()).then(
+      () => null,
+      (e: NodeJS.ErrnoException) => e,
+    )
+    expect({ code: err?.code, path: err?.path }).toEqual({
+      code: 'ENOTDIR',
+      path: lockfilePath(gone),
+    })
+    expect(err?.message).toBe(`ENOTDIR: not a directory, open '${lockfilePath(gone)}'`)
+  })
 })
 
 describe('frozenProjectConfig — the trust model', () => {
