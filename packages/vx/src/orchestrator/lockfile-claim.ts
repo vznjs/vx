@@ -236,8 +236,8 @@ export interface ReachGraph {
  * does not. Lockfiles carry dependency cycles, so the unit is the
  * strongly connected component: Tarjan's walk (iterative — a dependency
  * chain can be thousands deep) emits components children-first, and each
- * folds its members' material (sorted) and its child components' digests
- * (sorted). O(nodes + edges): 1000 importers over 3000 packages digest in
+ * folds its members (sorted), each as its material and the materials its
+ * edges land on, and its child components' digests (sorted). O(nodes + edges): 1000 importers over 3000 packages digest in
  * ~20 ms where one traversal per importer took 400.
  */
 export function reachDigests(g: ReachGraph): string[] {
@@ -290,8 +290,17 @@ export function reachDigests(g: ReachGraph): string[] {
       for (const m of members) {
         for (const w of g.edges[m]!) if (comp[w] !== id) children.add(compHash[comp[w]!]!)
       }
+      // A member is its material AND where its edges land: all members
+      // share one digest, so retargeting an edge between two of them (an
+      // importer's `y@1.0.0` → `y@1.1.0` inside one cycle) moved nothing
+      // and replayed a stale output (item 1013). A self-loop reaches
+      // nothing new and is left out.
+      const lines = members.map((m) => {
+        const targets = [...new Set(g.edges[m]!.filter((w) => w !== m).map((w) => g.material[w]!))]
+        return `${g.material[m]!}\0${targets.sort().join('\0')}`
+      })
       let h = xxh3(`members:${members.length}`)
-      for (const m of members.map((m) => g.material[m]!).sort()) h = xxh3(`${m}\n`, h)
+      for (const line of lines.sort()) h = xxh3(`${line}\n`, h)
       h = xxh3(`children:${children.size}`, h)
       for (const c of [...children].sort()) h = xxh3(`${c}\n`, h)
       compHash.push(h.toString(16).padStart(16, '0'))
