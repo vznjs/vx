@@ -228,7 +228,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v34' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v35' // key-fold.ts
 export const SCHEMA_VERSION = 'v28'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
@@ -306,7 +306,7 @@ Determinism notes:
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
     │                        #   WORKSPACE-ROOT-relative (when any)
-    └── .vx-meta.json        #   { version, files: { <entry>: [mode, mtimeMs] }, exec? }
+    └── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, exec? }
 ```
 
 `exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution
@@ -454,7 +454,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v34'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v35'`; `SCHEMA_VERSION` is
 `'v28'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

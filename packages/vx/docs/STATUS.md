@@ -293,6 +293,29 @@ test is telling the truth.
       - Next from the same review: 943, an artifact is not bound to the
         key it was stored under, so a plugin's key mix-up replays another
         task's bytes. 944, a layer's `durationMs` is not sanitised.
+943.  DONE (2026-09-27, the remote-cache-seam review's lead 3). Nothing
+      tied an artifact to the key it was stored under. A remote layer
+      that answered one key with another's bytes replayed the other
+      task's outputs under a green `cache-hit-remote`; causes include a
+      truncated or colliding key mapping, or two namespaces mixed. The
+      review probed it: project `b`'s build restored project `a`'s
+      `out.txt`.
+      - The sidecar (`.vx-meta.json`) records the key. Ingest refuses an
+        artifact whose key is not the one it asked for, or that records
+        none, so the read is a miss.
+      - `CACHE_VERSION` v34 → v35: the container changed, and a v34
+        artifact records no key. The bump retires those rather than
+        refusing each one on read. `caching.md`'s bump list, the module
+        page, `cli.md`, CLAUDE.md and the bump skill say v35.
+      - Rows: `remote-artifact-names.test.ts` › an artifact packed under
+        another key, and under none, is a miss and its bytes are not
+        restored. Both are red without the check. The 942 rows' fake
+        remote now packs under the key it is asked for, so they still
+        reach the check they are there to hold. Three ingest fixtures
+        that built a keyless tar by hand now carry a sidecar with their
+        key, and the ms-mtime row re-ingests an entry under its own key
+        instead of another's. `key-fold.test.ts`'s digest is re-pinned,
+        as every bump does.
 
 ## In flight
 

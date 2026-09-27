@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v34'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v35'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -971,7 +971,7 @@ the same thing and called the task's outputs a corrupt artifact.
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
-`.vx-meta.json` — `{ version, files: { <entry>: [mode, mtimeMs] }, exec? }` —
+`.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, exec? }` —
 into the archive. Restore applies both. `exec` (`{ cpuMs?, peakRssBytes? }`,
 2026-09-12) is what the PRODUCING execution used: it rides the artifact
 so a machine that never ran the task — a fresh runner on a remote hit —
@@ -1383,6 +1383,15 @@ was not), and the cache tests.
 
 ### History
 
+- **v34 → v35**: the container changes (item 943). The sidecar records
+  the cache key the artifact was packed under, and ingest refuses bytes
+  whose key is not the one it asked for, or that record none. Nothing
+  tied an artifact to its key before: a remote layer that answered one
+  key with another's bytes (a truncated or colliding key mapping, two
+  namespaces mixed) replayed the other task's outputs under a green
+  `cache-hit-remote`, probed with project `b` restoring project `a`'s
+  `out.txt`. An artifact from v34 records no key, so the bump retires
+  them rather than refusing each one on read.
 - **v33 → v34**: stored bytes wrong under a key a CORRECT derivation now
   produces (item 750). A root task that rewrote the lockfile mid-run
   (`pnpm install` without `--frozen-lockfile`) let a reader after it save

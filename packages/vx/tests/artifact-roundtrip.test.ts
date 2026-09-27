@@ -612,7 +612,11 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
   })
 
   it('ingesting a large intact artifact indexes it and restores it (control)', async () => {
-    const tar = await new Bun.Archive({ stdout: 'hello', 'outputs/dist/big.bin': big }).bytes()
+    const tar = await new Bun.Archive({
+      stdout: 'hello',
+      'outputs/dist/big.bin': big,
+      '.vx-meta.json': JSON.stringify({ version: 1, key: 'bigin', files: {} }),
+    }).bytes()
     await cache.ingest('bigin', new Blob([Bun.zstdCompressSync(tar)]), {
       taskId: 'a#build',
       command: 'build',

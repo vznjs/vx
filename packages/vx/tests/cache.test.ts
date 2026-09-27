@@ -1157,7 +1157,11 @@ describe('Cache storage (v10)', () => {
     // untrusted boundary as a bomb shape; now it is decoded under the
     // running count instead, so vx's own artifacts ingest anywhere and a
     // sizeless bomb still has nowhere to expand.
-    const tar = await new Bun.Archive({ stdout: 'streamed', 'outputs/dist/a.js': 'a' }).bytes()
+    const tar = await new Bun.Archive({
+      stdout: 'streamed',
+      'outputs/dist/a.js': 'a',
+      '.vx-meta.json': JSON.stringify({ version: 1, key: 'h-sizeless', files: {} }),
+    }).bytes()
     const sizeless = new Uint8Array(
       await new Response(
         new Blob([tar]).stream().pipeThrough(new CompressionStream('zstd')),
@@ -2784,15 +2788,17 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     const stamp = new Date(Math.floor(Date.now() / 1000) * 1000 + 250)
     await utimes(outFile, stamp, stamp)
     await cache.save({
-      hash: 'ms3',
+      hash: 'ms3-remote',
       projectDir,
       outputFiles: [outFile],
       entry: { taskId: 'pkg#build', command: 'b', durationMs: 1, stdout: '' },
     })
-    const recorded = rowsOf('ms3')[0]!.mtimeMs
+    const recorded = rowsOf('ms3-remote')[0]!.mtimeMs
     expect(recorded % 1000).toBe(250)
 
-    const bytes = await Bun.file(cache.outputsPath('ms3')).bytes()
+    // Re-ingested under its own key (an artifact records it, item 943),
+    // so the rows below are the ingest path's.
+    const bytes = await Bun.file(cache.outputsPath('ms3-remote')).bytes()
     await cache.ingest('ms3-remote', new Blob([bytes]), {
       taskId: 'pkg#build',
       command: 'b',
