@@ -98,7 +98,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
               wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs,
               blocked_by AS blockedBy, timed_out AS timedOut,
               sandbox_violations AS sandboxViolations, not_ready AS notReady
-       FROM runs ${clause} ORDER BY started_at DESC LIMIT ?`,
+       FROM runs ${clause} ORDER BY id DESC LIMIT ?`,
     )
     .all(...params, limit) as RawRow[]
   return rows.map((r) => ({
@@ -280,7 +280,7 @@ export function listInvocations(
   const rows = db
     .query(
       `SELECT ${INVOCATION_COLUMNS} FROM invocations ${clause}
-       ORDER BY started_at DESC LIMIT ?`,
+       ORDER BY rowid DESC LIMIT ?`,
     )
     .all(...params, limit) as InvocationRawRow[]
   return rows.map(mapInvocation)
@@ -406,7 +406,7 @@ export function latestRunId(db: Database, taskId: string): string | null {
   const row = db
     .query(
       `SELECT run_id AS runId FROM runs WHERE project = ? AND task = ?
-       ORDER BY started_at DESC LIMIT 1`,
+       ORDER BY id DESC LIMIT 1`,
     )
     .get(project, task) as { runId: string | null } | undefined
   return row?.runId ?? null
@@ -416,11 +416,12 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      `SELECT hash, status, cache_hit AS cacheHit, cached, started_at AS startedAt
+      `SELECT id, hash, status, cache_hit AS cacheHit, cached, started_at AS startedAt
        FROM runs WHERE run_id = ? AND project = ? AND task = ?`,
     )
     .get(runId, project, task) as
     | {
+        id: number
         hash: string
         status: string
         cacheHit: number | null
@@ -443,10 +444,10 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   const prev = db
     .query(
       `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
-       FROM runs WHERE project = ? AND task = ? AND started_at < ? AND ${KEYED_RUNS_SQL}
-       ORDER BY started_at DESC LIMIT 1`,
+       FROM runs WHERE project = ? AND task = ? AND id < ? AND ${KEYED_RUNS_SQL}
+       ORDER BY id DESC LIMIT 1`,
     )
-    .get(project, task, this_.startedAt) as
+    .get(project, task, this_.id) as
     | { hash: string; status: string; cacheHit: number | null; startedAt: number }
     | undefined
   // …and this run must have one too, or there is nothing to compare.
@@ -456,9 +457,11 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
     taskId,
     found: true,
     thisRun: {
-      ...this_,
+      hash: this_.hash,
+      status: this_.status,
       cacheHit: this_.cacheHit === null ? null : Boolean(this_.cacheHit),
       cached: this_.cached === null ? null : Boolean(this_.cached),
+      startedAt: this_.startedAt,
     },
     previousRun: prev
       ? { ...prev, cacheHit: prev.cacheHit === null ? null : Boolean(prev.cacheHit) }
@@ -582,10 +585,10 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      'SELECT hash, cached, status, started_at AS startedAt FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+      'SELECT id, hash, cached, status, started_at AS startedAt FROM runs WHERE run_id = ? AND project = ? AND task = ?',
     )
     .get(runId, project, task) as
-    | { hash: string; cached: number | null; status: string; startedAt: number }
+    | { id: number; hash: string; cached: number | null; status: string; startedAt: number }
     | undefined
   if (!this_) {
     return {
@@ -617,10 +620,10 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const prev = db
     .query(
       `SELECT run_id AS runId, hash, status FROM runs
-       WHERE project = ? AND task = ? AND started_at < ? AND ${KEYED_RUNS_SQL}
-       ORDER BY started_at DESC LIMIT 1`,
+       WHERE project = ? AND task = ? AND id < ? AND ${KEYED_RUNS_SQL}
+       ORDER BY id DESC LIMIT 1`,
     )
-    .get(project, task, this_.startedAt) as
+    .get(project, task, this_.id) as
     | { runId: string | null; hash: string; status: string }
     | undefined
 

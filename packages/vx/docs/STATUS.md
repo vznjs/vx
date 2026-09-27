@@ -581,6 +581,19 @@ test is telling the truth.
         prefix when the task's value is the host's, with a value of the
         task's own as the control. Red without the fix.
 
+1008. DONE (2026-09-27, the run-history review's lead 4). History's
+      "latest" and "previous" were ordered by `started_at`: after the
+      clock stepped back an hour, `vx why` called the older run "this run"
+      and the newest "previous", diffing `x.txt` two→one for an edit one→two,
+      and `vx last` showed the older run.
+      - Fix (`metrics.ts`, `history.ts`): latest, previous, the lists and
+        the history window's floor follow recording order (`runs.id`,
+        `invocations.rowid`); `started_at` stays for display and windows.
+        `cli.md` says so. Retention still ages rows by the clock.
+      - Row: `metrics.test.ts` › the newest recorded run is the latest,
+        whatever the clock said (latest, why, the key diff and both lists).
+        Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

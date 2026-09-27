@@ -1727,7 +1727,9 @@ vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <pa
 ```
 
 By default it compares the task's **latest** recorded run against its
-immediately-previous run; `--run <id>` pins a specific run. A bare task
+immediately-previous run; `--run <id>` pins a specific run. Latest and
+previous are the order runs were recorded, not their clock: a clock that
+stepped back once swapped the two and diffed the edit backwards. A bare task
 name resolves when exactly one project ran it (several → an error
 listing the candidates; unknown → include-match suggestions).
 
