@@ -207,7 +207,7 @@ and graph traversal.
 - a range the local version does not satisfy is a registry dependency (turborepo#4214)
 - an installed entry, not a peer on the same key, decides the edge (turborepo#12640)
 - a key in two installed fields links when either precedence order installs the local copy
-- `*` and `workspace:^` take any version; a tag, a URL or an unmet `workspace:` range do not
+- `*`, `workspace:^` and `workspace:~` take any version; a tag, a URL or an unmet `workspace:` range do not
 - a `catalog:` entry keeps the edge its key names (turborepo#10785)
 - `vx run --dry=json`, `...pkg` and `--affected` follow the linked package, not the key
 

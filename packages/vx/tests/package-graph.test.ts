@@ -461,7 +461,7 @@ describe('buildPackageGraph', () => {
     ])
   })
 
-  it('`*` and `workspace:^` take any version; a tag, a URL or an unmet `workspace:` range do not', () => {
+  it('`*`, `workspace:^` and `workspace:~` take any version; a tag, a URL or an unmet `workspace:` range do not', () => {
     // `*` linked a prerelease in bun and npm; a versionless package
     // satisfies `*` alone; `latest` came from the registry in all four.
     const g = buildPackageGraph([
@@ -470,6 +470,7 @@ describe('buildPackageGraph', () => {
         dependencies: { bare: '^0.0.0', pre: '^2.0.0', lib: 'workspace:^2.0.0' },
       }),
       pkg('met', '1.0.0', { dependencies: { lib: 'workspace:~1.4.0', pre: '>=2.0.0-0' } }),
+      pkg('tilde', '1.0.0', { dependencies: { lib: 'workspace:~' } }),
       pkg('remote', '1.0.0', {
         dependencies: {
           lib: 'latest',
@@ -487,12 +488,13 @@ describe('buildPackageGraph', () => {
       pkg('pre', '2.0.0-beta.1'),
       pkg('lib', '1.4.2'),
     ])
-    expect(edges(g, ['any', 'ranged', 'met', 'remote', 'odd', 'wild']).order).toEqual([
+    expect(edges(g, ['any', 'ranged', 'met', 'tilde', 'remote', 'odd', 'wild']).order).toEqual([
       'any → bare',
       'any → lib',
       'any → pre',
       'met → lib',
       'met → pre',
+      'tilde → lib',
       'wild → lib',
     ])
   })
