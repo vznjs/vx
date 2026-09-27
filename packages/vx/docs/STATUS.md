@@ -885,6 +885,18 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Rows: `affected-sparse-tasks.test.ts` (e2e), with a typo and a
         user-named scope as controls. Each piece red when removed.
 
+1025. DONE (2026-09-27, the graph review's lead 3). Inside a member
+      reached through a link (`packages/b -> ../ext/b`), a run with no
+      scope flag said "not inside a project": the kernel's cwd is
+      `ext/b`, and discovery keeps `packages/b` (item 987).
+      - Fix (`select.ts` `findCwdProject`): when no member holds the cwd
+        as discovered, the members are realpathed and asked again. Only
+        a run no plain match placed pays those syscalls. The limit: a
+        root project (`'.'`) holds every cwd plainly, so there the
+        fallback is never reached. `cli.md` says so.
+      - Row: `cli.test.ts` › cwd inside a member reached through a link
+        resolves to that member. Red with the fallback removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

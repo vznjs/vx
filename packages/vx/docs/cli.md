@@ -52,7 +52,9 @@ shared task graph: `vx run build lint test` fans out all three across
 the resolved project scope. Anchored entries (`pkg#task`) target a
 specific project; bare entries follow the usual scope rules
 (default = the cwd project; broaden with `--all` / `--filter` /
-`--affected`).
+`--affected`). The cwd project is the deepest member holding the
+directory, a member reached through a link (`packages/b -> ../ext/b`)
+included.
 
 **Every requested name must resolve.** If any positional matches no
 project in scope, the run refuses to start — `no projects declare
