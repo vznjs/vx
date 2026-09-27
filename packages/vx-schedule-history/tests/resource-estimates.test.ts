@@ -210,6 +210,35 @@ describe('the reservation rules the sweep found unheld', () => {
     }
   })
 
+  // A declared NaN held its task alone and summed into what runs, so every
+  // reserving task beside it waited: the run went serial, unannounced.
+  it('a declared reservation axis that is no number above 0 reserves nothing; one warning names it', async () => {
+    const warned: string[] = []
+    const ctx = {
+      localCache: {
+        dbHandle() {
+          throw new Error('no history')
+        },
+      },
+      warn: (m: string) => warned.push(m),
+    }
+    const plugin = scheduleHistoryPlugin({
+      memory: 8192,
+      reservations: {
+        'a#build': { memory: Number(undefined) },
+        'b#build': { memory: 512, cpus: -1 },
+        'c#build': { memory: 0 },
+      },
+    })
+    const beside = (id: string, running: string) =>
+      plugin.admit!(node(id) as never, { running: [{ id: running }], concurrency: 4 } as never)
+    expect([beside('b#build', 'a#build'), beside('a#build', 'b#build')]).toEqual([true, true])
+    await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
+    expect(warned[0]).toBe(
+      '[vx] schedule-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none) — each must be a finite number above 0',
+    )
+  })
+
   it('a history read that fails costs the ordering, never the run: no weights, one warning', async () => {
     const plugin = scheduleHistoryPlugin()
     const warned: string[] = []

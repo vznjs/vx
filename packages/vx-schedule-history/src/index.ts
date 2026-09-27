@@ -103,9 +103,36 @@ function numberWarnings(options: ScheduleHistoryOptions, warn: (m: string) => vo
   if (options.resources !== false && options.resources !== undefined) {
     check('resources.headroom', options.resources.headroom, String(DEFAULT_HEADROOM))
   }
+  for (const [id, r] of Object.entries(options.reservations ?? {})) {
+    for (const axis of ['cpus', 'memory'] as const) {
+      const v = (r as Record<string, unknown> | null)?.[axis]
+      if (v !== 0) check(`reservations[${JSON.stringify(id)}].${axis}`, v, 'none')
+    }
+  }
   if (bad.length > 0) {
     warn(`[vx] schedule-history: ignores ${bad.join(', ')} — each must be a finite number above 0`)
   }
+}
+
+/**
+ * The declared reservations, each axis only where it is a number above 0.
+ * A NaN (`Number(process.env.X)`, X unset) held a task alone and every
+ * reserving task beside it waited — the NaN summed into what runs — so the
+ * run went serial and said nothing (G-4's class). A bad axis reserves
+ * nothing, named by `numberWarnings`.
+ */
+function declaredOf(
+  options: ScheduleHistoryOptions,
+): Readonly<Record<string, ResourceEstimate>> | undefined {
+  if (options.reservations === undefined) return undefined
+  const out: Record<string, ResourceEstimate> = {}
+  for (const [id, r] of Object.entries(options.reservations)) {
+    const e: { cpus?: number; memory?: number } = {}
+    if (usable(r?.cpus)) e.cpus = r.cpus
+    if (usable(r?.memory)) e.memory = r.memory
+    out[id] = e
+  }
+  return out
 }
 
 const headroomOf = (options: ScheduleHistoryOptions): number => {
@@ -128,7 +155,7 @@ const reservationsFor = (
 ): ReadonlyMap<string, ResourceEstimate> =>
   withDeclared(
     options.resources !== false ? estimatesFor(ids, table, headroomOf(options)) : new Map(),
-    options.reservations,
+    declaredOf(options),
   )
 
 const memoryBudgetMb = (options: ScheduleHistoryOptions): number =>
@@ -190,7 +217,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   // What the run's tasks reserve, learned in `schedule` (one history read
   // serves both) and declared in the options; asked at every dispatch.
   let reservations: ReadonlyMap<string, ResourceEstimate> = new Map(
-    Object.entries(options.reservations ?? {}),
+    Object.entries(declaredOf(options) ?? {}),
   )
   if (options.resources !== false || options.reservations !== undefined) {
     const memoryMb = memoryBudgetMb(options)
