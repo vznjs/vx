@@ -98,3 +98,10 @@ F-5. vx mcp read non-object `arguments` (a string, an array) as `{}` and
 answered a filtered question for the whole workspace; now a UserError
 naming the tool. Row red without the fix. README: the stdout guard
 covers `console` and `process.stdout`, not writes straight to fd 1.
+
+F-6. vx-github: a duration of 119.7 s printed `1m 60s` (seconds rounded
+after flooring the minutes); now rounded once, then split. Found by a
+mutation sweep of vx-github (147 mutants, 31 real survivors); rows now
+hold the severe ones: GITHUB_STEP_SUMMARY activation, each Actions var
+missing, POST/`vx`/head_sha, a throwing transport's warning, the trailing
+newline, and CR/NUL/non-Latin-1 tokens refused unprinted.

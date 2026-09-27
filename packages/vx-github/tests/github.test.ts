@@ -12,6 +12,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { github, GithubSummarySink } from '../src/plugin.js'
 import { MAX_JOB_SUMMARY_BYTES } from '../src/summary.js'
 import { renderJobSummary } from '../src/summary.js'
+import type { FetchFn } from '../src/checks.js'
 
 /**
  * Put `process.env` back IN PLACE: assigning a fresh object detaches it
@@ -741,5 +742,115 @@ describe('every output the vx-github sweep found unheld', () => {
     } finally {
       restoreEnv(prev)
     }
+  })
+})
+
+// F-6: the mutation sweep of vx-github (147 mutants, 31 real survivors).
+describe('what the F-6 sweep found unheld', () => {
+  const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
+  const ENV = { GITHUB_TOKEN: 't0ken', GITHUB_REPOSITORY: 'vznjs/vx', GITHUB_SHA: 'abc123' }
+  const durationOf = (ms: number): string =>
+    renderJobSummary(summary([task({ durationMs: ms })]), 'vx run')
+      .split('\n')
+      .find((l) => l.startsWith('| a#build |'))!
+      .split(' | ')[2]!
+      .replace(' |', '')
+
+  it('a duration rounds before it splits: 119.7 s is 2m 0s, not 1m 60s', () => {
+    expect([119_700, 61_000, 3_599_600].map(durationOf)).toEqual(['2m 0s', '1m 1s', '60m 0s'])
+  })
+
+  it('the page ends in a newline, so a second run in the step starts its own heading', () => {
+    expect(renderJobSummary(summary([task({})]), 'vx run').endsWith('\n')).toBe(true)
+  })
+
+  it('GITHUB_STEP_SUMMARY alone activates it, and is where the summary goes', async () => {
+    const prev = { ...process.env }
+    process.env['GITHUB_STEP_SUMMARY'] = '/tmp/from-env.md'
+    const writes: string[] = []
+    try {
+      const sink = github({
+        checks: false,
+        append: async (f) => void writes.push(f),
+      }).telemetry!(ctx) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      await sink.flush!()
+    } finally {
+      restoreEnv(prev)
+    }
+    expect(writes).toEqual(['/tmp/from-env.md'])
+  })
+
+  it('each of the three vars missing declines the check-run', async () => {
+    const { resolveCheckRunEnv } = await import('../src/checks.js')
+    const without = (k: keyof typeof ENV) => {
+      const e: Record<string, string> = { ...ENV }
+      delete e[k]
+      return resolveCheckRunEnv(e)
+    }
+    expect([without('GITHUB_TOKEN'), without('GITHUB_REPOSITORY'), without('GITHUB_SHA')]).toEqual([
+      null,
+      null,
+      null,
+    ])
+  })
+
+  const postWith = async (token: string, fetchFn: FetchFn): Promise<string[]> => {
+    const prev = { ...process.env }
+    Object.assign(process.env, ENV, { GITHUB_TOKEN: token })
+    const warns: string[] = []
+    try {
+      const sink = github({
+        summaryFile: '/tmp/sum.md',
+        append: async () => undefined,
+        fetchFn,
+      }).telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      await sink.flush!()
+    } finally {
+      restoreEnv(prev)
+    }
+    return warns
+  }
+
+  it('the POST is a POST, named `vx`, on the built commit', async () => {
+    const sent: Array<{ method: string; name: unknown; sha: unknown }> = []
+    await postWith('t0ken', async (_url, init) => {
+      const body = JSON.parse(init.body) as Record<string, unknown>
+      sent.push({ method: init.method, name: body['name'], sha: body['head_sha'] })
+      return { ok: true, status: 201, text: async () => '' }
+    })
+    expect(sent).toEqual([{ method: 'POST', name: 'vx', sha: 'abc123' }])
+  })
+
+  it('a transport that throws warns once, naming why', async () => {
+    const warns = await postWith('t0ken', async () => {
+      throw new Error('ECONNREFUSED')
+    })
+    expect(warns).toEqual(['vx-github: check-run POST failed: ECONNREFUSED'])
+  })
+
+  it('a token with CR, NUL or past Latin-1 is refused unprinted; a trailing newline is not', async () => {
+    const posts: string[] = []
+    const ok = async () => {
+      posts.push('posted')
+      return { ok: true, status: 201, text: async () => '' }
+    }
+    const refused = (fault: string) => [
+      `vx-github: GITHUB_TOKEN holds ${fault}, which no HTTP header can carry — no check-run will be created (the token is not printed)`,
+    ]
+    expect([
+      await postWith('ghs_S3CRET\rx', ok),
+      await postWith('ghs_S3CRET\0x', ok),
+      await postWith('ghs_S3CRET€', ok),
+      await postWith('ghs_S3CRET\n', ok),
+      posts,
+    ]).toEqual([
+      refused('a line break or NUL'),
+      refused('a line break or NUL'),
+      refused('a character past Latin-1'),
+      [],
+      ['posted'],
+    ])
   })
 })
