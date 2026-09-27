@@ -27,6 +27,13 @@
   directories are followed where `cache/inputs.ts` scans with
   `followSymlinks: false` and folds a link's target string.
 
+- **J-3** `architecture.md`: contract table named nonexistent
+  `CASBackend`/`Digest` and a `toPosix` export; matrix lacked
+  `index → exec`; plugins "never change what a task is" (the `project`
+  stage does); executor pinning, `prepareRun` order, a nonexistent
+  env-var remote layer, telemetry gate, `shell: true` spawn and a
+  post-exit second hash corrected.
+
 ## Leads for other streams
 
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a

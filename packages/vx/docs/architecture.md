@@ -41,16 +41,16 @@ single root file when it has no internals to hide. The design and
 migration history live in
 [`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-| Module         | Form                        | Contract highlights                                                                                                                                   |
-| -------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`/`toPosix`, `ulid`                                                                                            |
-| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                          |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx-lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint          |
-| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                                 |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution, `CASBackend`/`Digest`. `archive.ts` stays internal |
-| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                       |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                              |
-| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                    |
+| Module         | Form                        | Contract highlights                                                                                                                            |
+| -------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                               |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                   |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx-lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint   |
+| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                          |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                       |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                             |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `version.ts` (the `VERSION`
@@ -78,6 +78,7 @@ graph TD
   index --> graphmod["graph"]
   index --> cache
   index --> workspace
+  index --> exec
   index --> config
   cli --> orchestrator
   cli --> workspace
@@ -110,18 +111,19 @@ graph TD
 | **exec**         | ✓    | ✓      |         |           |       |       | —    |              |     |
 | **orchestrator** | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | —            |     |
 | **cli**          | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     |      | ✓            | —   |
-| **index**        | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     |      | ✓            |     |
+| **index**        | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | ✓            |     |
 | **bin**          | ✓    |        |         |           |       |       |      |              | ✓   |
 
 Composition happens only at `orchestrator` (wires workspace → graph →
 cache → exec into a run) and `cli` (wires argv → orchestrator).
-`cli → cache` is deliberate — `vx cache prune` / `vx info` open the
-cache without a run. `cli → exec` is deliberately absent.
+`cli → cache` is deliberate — `vx cache prune` / `vx last` / `vx why`
+open the cache without a run. `cli → exec` is deliberately absent.
 
 ### Enforcement
 
 The matrix is law, not convention: `tests/module-boundaries.test.ts`
-scans every import specifier under `src/` and fails the suite when
+scans every static `import … from` / `export … from` specifier under
+`src/` and fails the suite when
 (rule 1) a cross-module edge isn't in the matrix, or (rule 2) a
 cross-module import of a contracted module targets anything but its
 `index.ts`. Every directory module is contracted. Tests under
@@ -146,29 +148,32 @@ guard holds the relation, not the value.
 
 Core is extended in-process, per run, through `VxPlugin`
 (`orchestrator/plugin.ts`) — declared in `vx.workspace.ts` via
-`defineWorkspace({ plugins: [...] })`. No auto-discovery. A plugin
-changes WHERE a task's command executes (`executor`), never WHAT it is —
-the command string is the task (principle #3). The capabilities:
+`defineWorkspace({ plugins: [...] })`. No auto-discovery. An `executor`
+changes WHERE a task's command runs, never the command — the command
+string is the task (principle #3). Which tasks exist is the `project`
+stage's to change: it may add, remove or edit them, and the key hashes
+the result. The capabilities:
 
-| Capability    | Kind           | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `executor`    | behavior       | returns a `TaskExecutor` or declines. Consulted once per run; ALL kept in declaration order; each task is PLACED once before scheduling on the first that may take it (a `remote` executor is skipped for a task pinned local by `exec.remote: false` or a persistent dependency, then `accepts()` decides), and an executor with a `capacity` gets its own scheduler pool; core's own `localExecutor()` is appended at the TAIL, so a task every plugin declines runs here |
-| `config`      | pipeline stage | edits the workspace config in place, before anything is derived from it                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `project`     | pipeline stage | edits one loaded project's tasks in place (add / remove / edit) — a package with no config file is visited as `{ tasks: {} }`; core re-validates after EACH plugin (the refusal names it), and the key hashes the result. Every reader goes through the same staged load (`loadProjects`): `vx show`, `vx info`, the watch sweep, `--affected`, the picker, the MCP catalog                                                                                                 |
-| `graph`       | pipeline stage | edits the task graph in place (`deps`, `requested`); a dangling dep or a cycle is refused naming the plugin                                                                                                                                                                                                                                                                                                                                                                 |
-| `key`         | pipeline stage | per task: `{ name: value }` material folded into the cache key (only when non-empty, so keys without it are unchanged) and named in `vx why` as `plugin` components                                                                                                                                                                                                                                                                                                         |
-| `fingerprint` | claim          | `{ files, affected }`: the workspace-fingerprint files this plugin keys on its own. Core leaves them out of the digest every task key folds (the config-evaluation cache still folds them), and `--affected` asks `affected(change, ctx)` which projects a change touches instead of selecting every project. One claimant per file; only names core folds. `@vzn/vx-lockfile`'s plugins are the claimants                                                                  |
-| `schedule`    | pipeline stage | once per run: task id → weight, merged over the scheduler's structural baseline; `@vzn/vx-schedule-history` is the reference (expected remaining critical path from the local run history)                                                                                                                                                                                                                                                                                  |
-| `admit`       | pipeline stage | at every local dispatch: may this ready task start now beside the tasks running here (`ctx.running`, `ctx.concurrency`)? Synchronous and cheap; all answering plugins must admit; a throw is reported once and the plugin admits from then on; restore-tier hits and pooled tasks are never asked. Core keeps no notion of what a task needs — `@vzn/vx-schedule-history` packs what its past executions used                                                               |
-| `commands`    | CLI            | `{ verb: { description, run(argv, ctx) } }` — consulted for a verb core does not know, when the cwd is inside a workspace declaring the plugin; `vx help` lists them                                                                                                                                                                                                                                                                                                        |
-| `cache`       | behavior       | returns a `CacheLayer` or declines. ALL kept in declaration order and CHAINED (lookup walks, save reaches all, the first owns the run index); the host's local store is appended at the TAIL, and a layer wrapping that handle subsumes it                                                                                                                                                                                                                                  |
-| `telemetry`   | observe-only   | returns `TelemetrySink`(s) or declines. ALL plugins' sinks are additive; a sink receives immutable records and holds no run handle                                                                                                                                                                                                                                                                                                                                          |
+| Capability    | Kind           | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `executor`    | behavior       | returns a `TaskExecutor` or declines. Consulted once per run; ALL kept in declaration order; each task is PLACED once before scheduling on the first that may take it (a `remote` executor is skipped for a task pinned local — persistent, `exec.sandbox`, `exec.remote: false`, or a dependant of a pinned task — then `accepts()` decides), and an executor with a `capacity` gets its own scheduler pool; core's own `localExecutor()` is appended at the TAIL, so a task every plugin declines runs here                                                        |
+| `config`      | pipeline stage | edits the workspace config in place, before anything is derived from it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `project`     | pipeline stage | edits one loaded project's tasks in place (add / remove / edit) — a package with no config file is visited as `{ tasks: {} }`; core re-validates after EACH plugin (the refusal names it), and the key hashes the result. Every reader goes through the same staged load (`loadProjects`): `vx show`, `vx info`, the watch sweep, `--affected`, the picker, the MCP catalog                                                                                                                                                                                          |
+| `graph`       | pipeline stage | edits the task graph in place (`deps`, `requested`); a dangling dep or a cycle is refused naming the plugin                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `key`         | pipeline stage | per task: `{ name: value }` material folded into the cache key (only when non-empty, so keys without it are unchanged) and named in `vx why` as `plugin` components                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `fingerprint` | claim          | `{ files, affected }`: the workspace-fingerprint files this plugin keys on its own. Core leaves them out of the digest every task key folds (the config-evaluation cache still folds them), and `--affected` asks `affected(change, ctx)` which projects a change touches instead of selecting every project. A root file core does not fold (`turbo.json`) is claimed the same way: nothing is taken out, and `--affected` asks the claimant. A claim is a bare name at the workspace root; one claimant per file. `@vzn/vx-lockfile`'s plugins claim the lockfiles |
+| `schedule`    | pipeline stage | once per run: task id → weight, merged over the scheduler's structural baseline; `@vzn/vx-schedule-history` is the reference (expected remaining critical path from the local run history)                                                                                                                                                                                                                                                                                                                                                                           |
+| `admit`       | pipeline stage | at every local dispatch: may this ready task start now beside the tasks running here (`ctx.running`, `ctx.concurrency`)? Synchronous and cheap; all answering plugins must admit; a throw is reported once and the plugin admits from then on; restore-tier hits and pooled tasks are never asked. Core keeps no notion of what a task needs — `@vzn/vx-schedule-history` packs what its past executions used                                                                                                                                                        |
+| `commands`    | CLI            | `{ verb: { description, run(argv, ctx) } }` — consulted for a verb core does not know, when the cwd is inside a workspace declaring the plugin; `vx help` lists them                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `cache`       | behavior       | returns a `CacheLayer` or declines. ALL kept in declaration order and CHAINED (lookup walks, save reaches all, the first owns the run index); the host's local store is appended at the TAIL, and a layer wrapping that handle subsumes it                                                                                                                                                                                                                                                                                                                           |
+| `telemetry`   | observe-only   | returns `TelemetrySink`(s) or declines. ALL plugins' sinks are additive; a sink receives immutable records and holds no run handle                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 Plus optional `setup` (fail-fast with a clean `UserError` naming the
 plugin) and `teardown`. Consultation lives in `plugin-host.ts`
-(executor/cache) and `telemetry-host.ts` (telemetry). Every
-capability is resolved inside `prepareRun`/`run()` from the declared list
-(`prepared.plugins`). **No defaults:** core applies no plugin on its own
+(the stages, executor, cache, teardown), `plugin.ts` (`setup`),
+`telemetry-host.ts` (telemetry) and `cli/plugin-commands.ts`
+(commands). Every run capability is resolved inside
+`prepareRun`/`run()` from the declared list (`prepared.plugins`). **No defaults:** core applies no plugin on its own
 and ships none — running here (`src/exec/local-executor.ts`) and caching
 here (the local `Cache`) are its FLOOR, not plugins, appended at the tail
 of every executor list and cache chain (see `docs/modules/plugins.md`);
@@ -228,7 +233,8 @@ The cache is not a single file. It is composed:
 
 - **`cache.ts`** — local cache. `bun:sqlite` metadata index +
   one `<cacheDir>/<hash>.tar.zst` artifact per entry (`stdout` +
-  `outputs/<rel>`; metadata lives in the SQLite `entries` row).
+  `outputs/<rel>` + `workspace-outputs/<rel>`; metadata lives in the
+  SQLite `entries` row).
   The constructor takes the local slice of the 4-axis `CachePolicy`
   (`{ read, write }`) and gates only the task-artifact `get`/`save`.
 - **`layered-cache.ts`** — composes local + a remote layer behind the
@@ -242,9 +248,9 @@ The cache is not a single file. It is composed:
   sync; the remote upload is a fire-and-forget background task drained
   at end of run, so PUT latency never sits on a task's critical path
   and a remote outage never fails the build).
-- **`inputs.ts`** — git-backed input enumeration (`GitFilesCache`),
-  glob resolution with hard project boundaries, runtime-command
-  resolution, output cleaning.
+- **`git-inputs.ts`** — git-backed input enumeration (`GitFilesCache`).
+- **`inputs.ts`** — glob resolution with hard project boundaries,
+  runtime-command resolution, output cleaning.
 
 `prepareRun` constructs the local cache, then resolves the layer: an
 explicitly injected `RunOptions.remoteCache` wins outright (composed
@@ -268,10 +274,13 @@ never branches on layering.
   Failed tasks mark their dependents `skipped`; independent siblings
   keep running; restore-tier tasks bypass the failed-dep check (their
   key is dep-independent). Priority = transitive-reverse-dependent
-  count (bitset closure), optionally overridden by a caller-supplied
-  `priorities` map. The scheduler is pure / ignorant of caching —
-  it receives an `execute(node, upstream)` callback, an optional
-  `priorities` map, and an optional `restoreTier` set.
+  count (bitset closure), with a caller-supplied `priorities` map
+  merged over it (the baseline stays the tie-break). The scheduler is
+  pure / ignorant of caching — it receives an `execute(node, upstream)`
+  callback and, optionally, `priorities`, a `restoreTier` set, an
+  `admit` gate, `poolOf` (an executor's own pool), `settledOf` (the
+  deferred save a task's dependents wait on), `continueMode`, an abort
+  `signal`, and `onStart` / `onFinish` observers.
 - **`graph/dependency-spec.ts`** — shared Turbo/Nx micro-syntax parser
   (`'name'`, `'^name'`, `'pkg#name'`, plus `'*'` / `'^*'` / `'!form'`
   for filter contexts). Used by `task-graph` for `dependsOn` edges
@@ -281,12 +290,13 @@ never branches on layering.
 
 `exec/runner.ts` is the spawn primitive:
 
-- **`runCommand`** — spawn the user's `exec.command` via `Bun.spawn`
-  with `shell: true` so users get POSIX shell semantics (`&&`,
-  redirects, pipes). Captures stdout/stderr via stream callbacks, awaits
-  exit. On exit, calls `resourceUsage()` for `cpuMs` + `peakRssBytes`.
-  Stdin is `'ignore'` — no TTY input. Forwarded args (`--`) are
-  shell-quoted and appended. `exec.timeout` arms a SIGTERM timer
+- **`runCommand`** — spawn the user's `exec.command` as
+  `Bun.spawn([sh, '-c', execWrap(command)])` so users get POSIX shell
+  semantics (`&&`, redirects, pipes); a single external program is
+  `exec`ed in place of the shell. Captures stdout/stderr via stream
+  callbacks, awaits exit. On exit, calls `resourceUsage()` for
+  `cpuMs` + `peakRssBytes`. Stdin is `'ignore'` — no TTY input.
+  Forwarded args (`--`) are shell-quoted and appended. `exec.timeout` arms a SIGTERM timer
   (`armTimeout`); past the kill grace every process left in the task's
   group is SIGKILLed; an overrun is a real `failed`, never cached.
 - **`runPersistent`** — for dev servers + watchers. Spawns the command
@@ -334,33 +344,39 @@ never branches on layering.
 
 5. **`orchestrator/run.ts:run()`** is called with `RunOptions`.
    From here:
-   1. `prepareRun` (shared with `planRun`): workspace discovery →
-      **scoped** config loading via `loadProjects` (only in-scope
+   1. `prepareRun` (shared with `planRun`): workspace discovery
+      (`loadWorkspace` + the `config` stage, `listProjects`) →
+      package graph → local `Cache` open (the policy's local slice) +
+      workspace fingerprints → **scoped** config loading via
+      `loadProjects`, the `project` stage included (only in-scope
       projects + their transitive dep closure evaluate; `--frozen`
       loads from `vx-lock.json` instead of evaluating, with no
       staleness check of its own — `vx lock --check` is the audit) →
-      package graph → task-graph build → cache open (local `Cache`
-      with the policy's local slice, wrapped by a plugin cache or the
-      env-var remote layer) → bulk `git ls-files` populate →
-      per-run hash memo.
+      cache layer resolved (an injected `RunOptions.remoteCache`
+      composed into a `LayeredCache`, else a plugin cache, else the
+      bare local cache) → bulk `git ls-files` populate (started at the
+      top for an unscoped run) + per-run hash memo → task-graph build
+      → the `graph`, `key` and `schedule` stages.
    2. Plugins install as bus subscribers (`installPlugins` runs each
-      `setup(ctx)`), then — only when plugins are declared — the run
-      context (git/CI/host, one git spawn) is captured and
-      `subscribeTelemetry` wires the telemetry source (no-op when
-      every plugin declines). The pipeline stages ran inside
-      `prepareRun`, step 1.
+      `setup(ctx)`), then the run context (git/CI/host, one git spawn)
+      is captured for the `invocations` row. Only when a plugin has a
+      `telemetry` hook or `RunOptions.telemetrySinks` is set is the
+      telemetry run record built (plus `captureWorkspaceIdentity`) and
+      `subscribeTelemetry` wires the telemetry source (no-op when every
+      plugin declines). The pipeline stages ran inside `prepareRun`,
+      step 1.
    3. `markSurfacedDeps(nodes)` marks the display-only surfaced tasks
       for requested groups; the run banner context is built for the
       footer (there is no top-of-run header).
-   4. **Remote prefetch** (LayeredCache only): every stable-key
+   4. **Remote prefetch** (a layer with `hasRemote`): every stable-key
       cacheable task's key is derived up front and the remote GETs
       fire in the background so network latency overlaps execution.
    5. **Local short-circuit** (local-only cache, local reads on, ≥1
-      dep edge): derive stable keys + probe local ONCE → `preProbed`
+      task): derive stable keys + probe local ONCE → `preProbed`
       map (probe reuse) + `restoreTier` set (confirmed hits the
       scheduler may restore ahead of their deps).
    6. `runGraph({ nodes, concurrency, execute, priorities,
-restoreTier })` runs the DAG two-tier. Each ready node invokes
+restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.
    7. After the graph drains, dependency-only persistent subprocesses
       are `SIGTERM`ed (SIGKILL after the kill grace); persistent tasks
@@ -376,8 +392,9 @@ restoreTier })` runs the DAG two-tier. Each ready node invokes
       task's row plus one invocation header row, in one transaction.
       Group and `aborted` tasks are skipped.
    10. Telemetry summary emit + flush (only when a sink is active),
-       background prefetch/upload drain, `cache.close()`, sandbox
-       teardown, plugin disposal.
+       background prefetch/upload drain, plugin `teardown`,
+       `cache.close()`, sandbox teardown; the plugins' bus
+       subscriptions are disposed on the way out.
 6. **`orchestrator/execute-task.ts:executeTask`** per task:
    1. **Group task short-circuit** — no `exec` → return `success`
       with a hash rolled up from upstream (so downstream caches still
@@ -402,19 +419,23 @@ restoreTier })` runs the DAG two-tier. Each ready node invokes
       `restoreOutputs` (skipped when the on-disk tree already
       matches) + replay captured stdout → `cache-hit` /
       `cache-hit-remote` by entry source.
-      f. On miss + writes enabled: `cleanOutputs` first, so stale
+      f. `buildIsolatedEnv` — essential allowlist + `passThrough`
+      host values + `define` literals + two `node_modules/.bin`
+      directories (the project's, then the workspace root's) prepended
+      to PATH.
+      g. `describeTaskInputs` with `captureInto` (cacheable tasks
+      only), before the spawn: the input set the executor receives and
+      the miss-only input-fingerprint rows the save persists.
+      h. On miss + writes enabled: `cleanOutputs` first, so stale
       files from a previous build can't survive a fresh exec.
-      g. `buildIsolatedEnv` — essential allowlist + `passThrough`
-      host values + `define` literals + `<projectDir>/node_modules/.bin`
-      prepended to PATH.
-      h. `runCommand` (or `runSandboxed`) — `Bun.spawn` shell with the
-      command + forwarded args. Captures stdout / stderr / cpu / RSS.
-      i. On `exitCode === 0` + writes enabled: `resolveOutputs` + a
-      second `computeTaskHash` with `captureInto` (the miss-only
-      input-fingerprint capture) + `cache.save` (which persists the
-      `entry_inputs` rows in the same transaction). Otherwise nothing
-      is cached.
-      j. Return a `TaskOutcome` with hrtime spans relative to the
+      i. The placed `TaskExecutor`'s `execute(request)`; the local
+      floor runs `runCommand` (or `runSandboxed`) — `Bun.spawn` shell
+      with the command + forwarded args. Captures stdout / stderr /
+      cpu / RSS.
+      j. On `exitCode === 0` + writes enabled: `resolveOutputs` +
+      `cache.save` (which persists the captured `entry_inputs` rows in
+      the same transaction). Otherwise nothing is cached.
+      k. Return a `TaskOutcome` with hrtime spans relative to the
       run's `t=0` anchor.
 
 ## The project loader & the config-time imports problem
@@ -522,7 +543,7 @@ functions; those are the seam. Internal helpers can change.
 | `cache/layered-cache.ts`                   | Different layering (local → regional → global); `RemoteCacheLayer` = the wire seam                                                                                   |
 | `exec/runner.ts`                           | Spawn into containers / remote builders                                                                                                                              |
 | `exec/env.ts`                              | Adjust isolation policy (broader allowlist, OS-specific essentials)                                                                                                  |
-| `cache/inputs.ts`                          | Enumerate inputs from something other than git's index (a VFS, Jujutsu, a watchman daemon) — declared inputs stay the contract; inference is rejected, see CLAUDE.md |
+| `cache/git-inputs.ts`                      | Enumerate inputs from something other than git's index (a VFS, Jujutsu, a watchman daemon) — declared inputs stay the contract; inference is rejected, see CLAUDE.md |
 | `cache/archive.ts` + `cache/tar-stream.ts` | A different artifact container (zip, CAS-chunked); the pack/scan/extract seam and the name and containment checks stay                                               |
 | `orchestrator/logger.ts`                   | Plain-text logger, JSON-line logger, observability emitter                                                                                                           |
 | `exec/executor.ts`                         | Route a task's command elsewhere (a plugin `executor` does this without a fork)                                                                                      |
@@ -555,7 +576,7 @@ There is no first-party wire: core ships the seam and nothing else.
 `@vzn/vx-reapi` fills it with Bazel's ActionCache + CAS, re-hashing
 every blob it reads against the digest it was requested under. The **tar
 interior** is the local cache's own format — one `stdout` entry plus
-`outputs/<rel>` — shipped verbatim; local and remote layers transport
+`outputs/<rel>` and `workspace-outputs/<rel>` — shipped verbatim; local and remote layers transport
 the same tar.zst bytes end-to-end. The Turbo wire and the Nx wire
 (`turboCache()` and `nxCache()` in `@vzn/vx-migrate`) are plugins against the same seam,
 as is any other — the recipe lives in the plugins guide.
@@ -634,11 +655,11 @@ The codebase consistently chooses the same trade-offs:
    into separate tasks linked by `dependsOn`. Splitting gives you
    per-step caching for free.
 3. **Shell is the API.** Commands are strings; the shell is the
-   integration boundary. No JS-function tasks; no executor plugin
-   protocol. Presets are TypeScript helpers that _return_ `TaskConfig`
-   objects, evaluated at config-load time. (Run-level plugins exist —
-   executor / cache / telemetry — but they never change how a task
-   executes.)
+   integration boundary. No JS-function tasks. Presets are TypeScript
+   helpers that _return_ `TaskConfig` objects, evaluated at config-load
+   time. (Plugins exist — a `project` stage may add, remove or edit
+   tasks, and an `executor` changes where a command runs — but what a
+   task runs is still its command string.)
 4. **Resolved values, not source bytes.** The cache key derives from
    the _evaluated_ config object, not from the file's text. Imports
    and computed values participate naturally.
@@ -663,11 +684,13 @@ See [`README.md` § 5](./README.md#5-doing-all-that-without-becoming-the-platfor
 for the whole stance. The most relevant ones for understanding the
 architecture:
 
-- **No executor plugins.** Tasks are shell commands, full stop. The
-  shipped plugin system (`VxPlugin`) contributes run-level
-  infrastructure (executor / cache / telemetry) and can observe, but
-  no plugin can define how a task executes. Presets-as-imports cover
-  config reuse.
+- **No JS-function tasks.** Tasks are shell commands, full stop. The
+  plugin system (`VxPlugin`) fills the pipeline stages (`config`,
+  `project`, `graph`, `key`, `fingerprint`, `schedule`, `admit`),
+  `executor`, `cache`, `telemetry`, `setup` / `teardown` and CLI
+  `commands`: a `project` stage may add, remove or edit tasks, and an
+  executor changes where a command runs, never the command.
+  Presets-as-imports cover config reuse.
 - **No daemon.** Every `vx run` is a fresh process. Workspace
   re-discovery + config evaluation is cheap enough on Bun that a
   daemon doesn't pay for itself (and config loading is scoped to the
