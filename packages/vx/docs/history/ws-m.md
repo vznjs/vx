@@ -27,4 +27,11 @@ reached the log" is this: it did, above the window.
 - Row: `suite-coverage.unsafe.test.ts` › every task that launches bun
   test prints only its failures (red with any one launcher reverted).
 
+M-2. `runner.test.ts` › the peak is the child's own: its heavy child
+allocated a fixed 600 MB, and the floor withholds any peak under the
+parent's own mark, which the shard's earlier files set. On macOS it read
+as no peak (run 36356486722, `peakRssBytes` undefined). Reproduced on
+Linux with a 700 MB parent hold; the child is now sized mark + 300 MB, as
+its sibling row already was.
+
 ## Leads for other streams
