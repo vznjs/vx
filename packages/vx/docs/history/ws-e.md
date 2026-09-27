@@ -164,3 +164,8 @@ task picked`; neither prints a stack. Row in
   `spawnSync`; a new binary that hung on start held the verb forever
   with no rollback. `startedVersion()` bounds it at 10 s and a timeout
   counts as not started. Rows in `tests/upgrade.test.ts`.
+- E-23 — `--report` and `--report-file` were lost on a Ctrl-C or
+  SIGTERM (C's lead, 3 of 3 probes): `cli/run.ts` wrote the file with
+  awaited I/O after `run()` returned, and the signal path exits once
+  stdout drains. The write is now synchronous, done before that exit.
+  Row in `tests/run-exit-codes.test.ts`, red without the fix.
