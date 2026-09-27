@@ -30,6 +30,14 @@ export class TarFormatError extends Error {
 }
 
 const BLOCK = 512
+/**
+ * An extended header's body is read whole, so its size is a claim on
+ * memory the stream has not paid for: a 1 GiB pax header zstd-compresses
+ * to ~32 KB and cost 2 GiB of RSS where a regular entry of that size
+ * streams in 32 MiB (L-1). A real one holds a path (≤ PATH_MAX) and a few
+ * numbers; a MiB is far past any writer's.
+ */
+const MAX_EXTENDED_HEADER = 1024 * 1024
 const decoder = new TextDecoder()
 
 function field(h: Uint8Array, off: number, len: number): string {
@@ -173,6 +181,11 @@ export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGene
     pendingPath = undefined
     pendingSize = undefined
 
+    if ((type === 'x' || type === 'L' || type === 'g') && size > MAX_EXTENDED_HEADER) {
+      throw new TarFormatError(
+        `extended header of ${size} bytes, past ${MAX_EXTENDED_HEADER} (a hostile archive?)`,
+      )
+    }
     if (type === 'x' || type === 'L') {
       // Extended header: applies to the NEXT entry only.
       const body = await src.exact(padded, 'an extended header')
@@ -182,7 +195,14 @@ export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGene
         const p = pax.get('path')
         if (p !== undefined) pendingPath = p
         const s = pax.get('size')
-        if (s !== undefined) pendingSize = Number(s)
+        if (s !== undefined) {
+          // Digits only: `Number` reads `0.5` and `-1`, and a fractional
+          // size moved the reader to a fractional offset.
+          if (!/^[0-9]+$/.test(s) || !Number.isSafeInteger(Number(s))) {
+            throw new TarFormatError(`bad pax size: ${JSON.stringify(s)}`)
+          }
+          pendingSize = Number(s)
+        }
       } else {
         pendingPath = field(body, 0, size)
       }
