@@ -173,3 +173,20 @@ B-8. B-3's usage row burned 400 ms of wall time and asserted 300 ms of
 CPU; two loaded gates read 246 ms. It now burns 400 ms of CPU
 (`process.cpuUsage()`), which load cannot shrink. Green alone, green
 three of three beside four CPU burners.
+
+B-9. A task's group is listed before it runs (C's root cause, routed). vx
+wrote the guard's `+<pgid>` line after `spawn()` returned; under load
+the child ran first, and a `kill -9` of vx in between left its group
+unlisted and alive (4 of 40 local runs at tenfold load; macOS CI).
+
+- Fix (`kill-tree.ts` `spawnGuarded`, `guardLine`; `runner.ts`,
+  `sandbox-runtime.ts`): the child gets a copy of the guard's pipe and
+  its shell lists `$$` and closes the copy before anything else; strace
+  and the host socat are `exec`'d after that line. The child holds the
+  pipe until it has written, so the guard cannot reach EOF first.
+  `modules/kill-tree.md`. Per spawn: 1.31 ms against 1.32 (a tie).
+- Rows: `keep-alive.test.ts` › a task's group is listed before it runs,
+  and `sandbox-runtime.unsafe.test.ts` › a traced sandboxed one-shot
+  task's children die with vx that is descheduled after the spawn. A
+  preload blocks vx three seconds after each task spawn; both red
+  without the fix.

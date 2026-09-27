@@ -51,10 +51,13 @@ groups are polled every 20 ms, and only while one is left.
 A `kill -9` of vx, or the OOM killer, runs nothing in vx, so the kill
 has to live outside it. `spawnGuarded` wraps each task spawn and lists
 its group with the guard: one `sh` per vx process (argv0 `vx-group-guard`), its own group,
-reading a pipe on its fd 3 whose write end only vx holds. vx writes
-`+<pgid>` at a spawn and `-<pgid>` (`releaseGroup`) once it is done with
-the task, beside the `liveChildren` entry. When vx dies the kernel
-closes the write end, the guard's read ends, and it SIGKILLs every group
+reading a pipe on its fd 3 whose write end vx holds. The spawned child
+gets a copy of that end and lists itself: its shell writes `+$$` first
+and closes the copy (`guardLine`; a program that is not a shell, strace
+or the port bridge's socat, is `exec`'d after it), and vx writes
+`-<pgid>` (`releaseGroup`) once it is done with the task, beside the
+`liveChildren` entry. When vx and every child that has not yet listed
+itself have closed their ends, the guard's read ends, and it SIGKILLs every group
 still listed: the unsandboxed and the macOS sandboxed spawns get what
 bwrap's `--die-with-parent` gives a Linux sandboxed task (item 860,
 turborepo#9666). A group kill reaches what the task forked, so a
@@ -65,8 +68,14 @@ turborepo#9666). A group kill reaches what the task forked, so a
   no task starts no guard", which also pins the order). Before, not
   after: started after the first spawn, the guard's own spawn was a
   window in which the task ran unlisted, and under the gate's traced
-  sandbox a third of the `kill -9` rows landed in it. What is left is
-  the step from a spawn's return to one pipe write. A 300-project `test --all --no-cache` run
+  sandbox a third of the `kill -9` rows landed in it. vx then wrote the
+  `+` line after the spawn returned, and under load the child ran first:
+  a `kill -9` there left its group unlisted (4 of 40 runs at tenfold
+  load, and macOS CI). The child holds the pipe until it has listed
+  itself, so no window is left (B-9; `keep-alive.test.ts` and
+  `sandbox-runtime.unsafe.test.ts` stall vx after the spawn with a
+  preload, red without it). A `true` spawn cost 1.31 ms against 1.32
+  before it (min of 3 × 200, interleaved): a tie. A 300-project `test --all --no-cache` run
   (600 tasks) took 4,462 ms against 4,473 before it (min of 9,
   interleaved, one workspace copy per arm; medians 4,575 and 4,543): a
   tie. The cost is the one `sh` and two pipe writes per spawn.
