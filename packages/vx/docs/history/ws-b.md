@@ -89,3 +89,21 @@ root's old output.
   stops at the walls, through `sandboxRequestFor` and `runSandboxed` on
   both platforms. Pushed first on its own: red on the macOS job of #1141
   (the Linux job green, the punch already holding there).
+
+B-3. A Linux sandboxed task reports no usage that is not its own (found
+probing lead 6, a sandboxed peak read with no floor). bwrap runs the task
+in a pid namespace (`--unshare-pid`), and what its processes use never
+reaches vx's wait: a 500 ms busy loop read 2 ms of CPU under the flag and
+510 without it, and the peak was vx's own high-water mark inherited at
+exec (a sandboxed `true` from a 300 MB vx read 353 MB). Both went to
+history, the run artifact, the cache entry and telemetry as the task's.
+
+- Fix (`sandbox-runtime.ts` `runSandboxedOnce`): no `cpuMs` and no
+  `peakRssBytes` on Linux; macOS's `sandbox-exec` execs the command, so
+  its usage is the task's and stays. `cli.md` (the run artifact's
+  fields) and `modules/sandbox-runtime.md` say so.
+- Rows: `sandbox-usage.unsafe.test.ts` (a busy `bun -e` burns ≥ 300 ms
+  unsandboxed, and sandboxed reports neither number; red without the
+  fix, `17.43` and `60002304`), and the trace-log row in
+  `sandbox-runtime.unsafe.test.ts`, which had pinned the wrong numbers
+  as "the resources the task used".

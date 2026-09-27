@@ -3784,7 +3784,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     }
   })
 
-  it('removes its trace log, and reports the resources the task used', async () => {
+  it('removes its trace log, and reports no usage that is not the task’s', async () => {
     // The tmpdir is shared with every process on the box, so the row
     // follows this task's own log (the path its tracer was handed), not a
     // listing another suite's sandbox can change mid-run.
@@ -3807,7 +3807,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         [true],
         false,
       ])
-      expect([typeof r.cpuMs, typeof r.peakRssBytes]).toEqual(['number', 'number'])
+      expect([r.cpuMs, r.peakRssBytes]).toEqual([undefined, undefined])
     } finally {
       spy.mockRestore()
     }

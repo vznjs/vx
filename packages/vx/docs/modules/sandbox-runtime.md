@@ -226,8 +226,11 @@ export function punchWalls(readPath: string, walls: readonly string[]): string[]
      Linux — with `sh` and `strace` resolved on vx's own PATH
      (`util/which.ts`), so neither Bun nor strace walks the task's PATH,
      whose `node_modules/.bin` comes first, for the shell; and
-     captures stdout/stderr + resource usage exactly like
-     `runner.ts:runCommand`.
+     captures stdout/stderr + resource usage like
+     `runner.ts:runCommand`, except that on Linux it reports no CPU and
+     no peak: what bwrap's pid namespace used never reaches vx's wait (a
+     500 ms busy loop read 2 ms), and the peak read was vx's own mark
+     (B-3).
    - After `proc.exited`, reads back any violations from the macOS
      log monitor (macOS only — see the Linux row below for why the
      store's Linux feed is ignored) AND (on Linux) from the strace log

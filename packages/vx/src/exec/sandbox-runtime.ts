@@ -1210,7 +1210,15 @@ async function runSandboxedOnce(
     violations,
     ...(proc.signalCode ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
-    ...resourceUsageToCpuRss(proc.resourceUsage()),
+    // Linux: the task's CPU and peak never reach this wait. bwrap runs it
+    // in a pid namespace (`--unshare-pid`), and what the namespace's
+    // processes used is not folded into bwrap's usage: a 500 ms busy loop
+    // read 2 ms under it and 510 without the flag, and the peak read was
+    // vx's own high-water mark, inherited at exec (a sandboxed `true` from a
+    // 300 MB vx: 353 MB; B-3). Nothing is reported rather than a number
+    // that is someone else's. macOS's `sandbox-exec` execs the command, so
+    // its usage is the task's.
+    ...(process.platform === 'linux' ? {} : resourceUsageToCpuRss(proc.resourceUsage())),
     tracerFailed:
       straceLog !== undefined &&
       exitCode !== 0 &&
