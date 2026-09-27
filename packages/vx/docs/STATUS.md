@@ -877,6 +877,17 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         the change; `aborted-outcome.test.ts`'s self-SIGTERM row is the
         control that a task which ran still reads as killed.
 
+1063. DONE (2026-09-27, the local runner review's minor finding). A
+      timed-out task that outlived the SIGTERM grace died of the SIGKILL,
+      and its frame still said `killed (SIGTERM)` over the footer's
+      `exit 137`. The line names the signal the task died of:
+      `killed (SIGKILL after the SIGTERM grace)`. execution.md's table says 137. The review's other minor finding stays open: a dependency-only
+      server that crashed mid-run keeps its frame reading `running` and a
+      green footer tally over a red exit (the `vx:` line explains it).
+      - Row: `task-timeout.test.ts` › a timed-out task that IGNORES SIGTERM
+        now pins the line (red without the change);
+        `signal-death.test.ts` holds the SIGTERM line.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

@@ -385,6 +385,11 @@ describe('task timeout — classification + escalation', () => {
       expect(r.outcomes[0]!.status).toBe('failed')
       // Bounded by the SIGKILL escalation, NOT the 10s sleep.
       expect(elapsed).toBeLessThan(6000)
+      // And the line names the signal that did it: it said SIGTERM over an
+      // exit 137 (item 1063). signal-death.test.ts holds the SIGTERM case.
+      expect(fixture.err.join('')).toContain(
+        '[vx] timed out after 250ms — killed (SIGKILL after the SIGTERM grace)',
+      )
     },
     TIMEOUT,
   )
