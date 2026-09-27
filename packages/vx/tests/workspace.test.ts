@@ -650,6 +650,24 @@ describe('malformed workspace manifests', () => {
     }
   })
 
+  it("pnpm's `!**/test/**` excludes packages/test itself, as pnpm does (item 986)", async () => {
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'r' }))
+    await writeFile(
+      path.join(dir, 'pnpm-workspace.yaml'),
+      'packages:\n  - "packages/**"\n  - "!**/test/**"\n',
+    )
+    for (const [rel, name] of [
+      ['packages/a', 'a'],
+      ['packages/test', 't1'],
+      ['packages/a/test/fx', 'fx'],
+    ] as const) {
+      await mkdir(path.join(dir, rel), { recursive: true })
+      await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
+    }
+    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    expect(names).toEqual(['a'])
+  })
+
   it('rejects a pnpm-workspace.yaml that is not a mapping (item 984)', async () => {
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     for (const body of ['- packages/*\n', '42\n']) {
