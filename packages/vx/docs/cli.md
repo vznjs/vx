@@ -58,8 +58,8 @@ included.
 
 **Every requested name must resolve.** If any positional matches no
 project in scope, the run refuses to start — `No projects declare
-task(s): <name>.` on stderr (`vx run: no projects declare task(s):
-<name>.` under `--dry` / `--graph`), exit 1, with `Did you mean <task>?` when a
+task(s): <name>.` on stdout (`vx run: no projects declare task(s):
+<name>.` on stderr under `--dry` / `--graph`), exit 1, with `Did you mean <task>?` when a
 declared task (or, for `pkg#task`, a runnable spec) is within two edits
 — even when the other names resolved fine. A bare name declared by only SOME projects is normal and stays
 green; the guard fires only when a name matched nowhere. So a CI job
@@ -1542,10 +1542,11 @@ says `this vx was installed by npm … Update with: npm install -g
 @vzn/vx@latest`. A host it cannot reach (no route, a proxy that is
 down) is one line — `could not reach api.github.com to read the
 release (…) — check the network or the proxy and re-run` — never a
-stack; so is a transfer cut after the headers arrived, and a release
-document that is not JSON (a captive portal's page served with a 200):
-`could not download the release asset from github.com (…) — nothing
-replaced; …`. The new binary
+stack; so is a release document cut after the headers arrived or not
+JSON (a captive portal's page served with a 200): `could not read the
+release from api.github.com (…) — nothing replaced; …`, and an asset
+download cut the same way: `could not download the release asset from
+github.com (…) — nothing replaced; …`. The new binary
 keeps the old one's mode (and, as root, its owner), and must answer
 `--version` before the upgrade reports it installed: one that does not
 start on this machine — or does not answer within 10 s — is swapped back
