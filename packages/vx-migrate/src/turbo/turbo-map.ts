@@ -276,8 +276,24 @@ export async function mapTurboWorkspace(
     const scripts = packageScripts(meta)
     const pkgTasks = pkgTasksByName.get(meta.name)
     const own = emitted.get(meta.name)!
+    const defined = new Set(taskNamesFor(meta.name, rootTasks, pkgTasks))
+    const defFor = (name: string): TurboTask | undefined => {
+      if (!defined.has(name)) return undefined
+      const overlay = pkgTasks?.[name]
+      const def: TurboTask =
+        overlay?.extends === false
+          ? { ...overlay }
+          : // A root `pkg#task` REPLACES `task` for that package, as Turbo's
+            // `TurboJson::task` looks it up: merged field by field, the
+            // generic task's `inputs` narrowed a `pkg#task` that names none
+            // (Turbo's every file) and an edit outside them was a stale hit
+            // (item 935).
+            withOverlay({ ...(rootTasks[`${meta.name}#${name}`] ?? rootTasks[name]) }, overlay)
+      delete def.extends
+      return def
+    }
     const tasks: TurboMappedTask[] = []
-    for (const name of taskNamesFor(meta.name, rootTasks, pkgTasks)) {
+    for (const name of defined) {
       const script = scripts[name]
       if (!usableScript(script)) {
         // The turbo task exists and so does the script KEY, but its value
@@ -299,23 +315,13 @@ export async function mapTurboWorkspace(
         }
         continue
       }
-      const overlay = pkgTasks?.[name]
-      const def: TurboTask =
-        overlay?.extends === false
-          ? { ...overlay }
-          : // A root `pkg#task` REPLACES `task` for that package, as Turbo's
-            // `TurboJson::task` looks it up: merged field by field, the
-            // generic task's `inputs` narrowed a `pkg#task` that names none
-            // (Turbo's every file) and an edit outside them was a stale hit
-            // (item 935).
-            withOverlay({ ...(rootTasks[`${meta.name}#${name}`] ?? rootTasks[name]) }, overlay)
-      delete def.extends
       tasks.push(
         buildTask(
           name,
-          def,
+          defFor(name)!,
           scriptCommand(name, script, scripts),
           own,
+          defFor,
           emitted,
           emittedAnywhere,
           globals,
@@ -357,6 +363,7 @@ function buildTask(
   def: TurboTask,
   command: string,
   own: ReadonlySet<string>,
+  defFor: (name: string) => TurboTask | undefined,
   emitted: ReadonlyMap<string, ReadonlySet<string>>,
   emittedAnywhere: ReadonlySet<string>,
   globals: TurboMapping['globals'],
@@ -405,40 +412,57 @@ function buildTask(
 
   const deps: string[] = []
   const envDeps: string[] = []
-  for (const d of def.dependsOn ?? []) {
-    const envName = envDependency(d)
-    if (envName !== null) {
-      envDeps.push(envName)
-      continue
-    }
-    if (d.includes('$TURBO_ROOT$')) {
-      todos.push(
-        `dependsOn ${JSON.stringify(d)} uses $TURBO_ROOT$ — vx has no workspace-root tasks; ` +
-          'restructure manually',
-      )
-      continue
-    }
-    if (d.startsWith('^')) {
-      // A task no package runs gives `^name` no edges under turbo. Passed
-      // through, core refuses it as a typo: no project declares the name.
-      if (emittedAnywhere.has(d.slice(1))) deps.push(d)
-      continue
-    }
-    const hashAt = d.indexOf('#')
-    if (hashAt !== -1) {
-      const pkg = d.slice(0, hashAt)
-      const task = d.slice(hashAt + 1)
-      if (emitted.get(pkg)?.has(task)) deps.push(d)
-      else
+  // A same-package task Turbo defines but this package has no script for
+  // is still a node in Turbo's graph — a no-op that keeps its own edges.
+  // Dropping it dropped them too: `test → codegen → ^build` with no
+  // `codegen` script lost `^build`, so `test` ran before its dependency's
+  // build and its key never folded it (item 939). Its edges are followed
+  // in its place, once each.
+  const through = new Set<string>([name])
+  const walk = (dependsOn: readonly string[]): void => {
+    for (const d of dependsOn) {
+      const envName = envDependency(d)
+      if (envName !== null) {
+        envDeps.push(envName)
+        continue
+      }
+      if (d.includes('$TURBO_ROOT$')) {
         todos.push(
-          `dependsOn ${JSON.stringify(d)}: ${pkg} declares no ${task} script — edge dropped`,
+          `dependsOn ${JSON.stringify(d)} uses $TURBO_ROOT$ — vx has no workspace-root tasks; ` +
+            'restructure manually',
         )
-      continue
+        continue
+      }
+      if (d.startsWith('^')) {
+        // A task no package runs gives `^name` no edges under turbo. Passed
+        // through, core refuses it as a typo: no project declares the name.
+        if (emittedAnywhere.has(d.slice(1)) && !deps.includes(d)) deps.push(d)
+        continue
+      }
+      const hashAt = d.indexOf('#')
+      if (hashAt !== -1) {
+        const pkg = d.slice(0, hashAt)
+        const task = d.slice(hashAt + 1)
+        if (emitted.get(pkg)?.has(task)) {
+          if (!deps.includes(d)) deps.push(d)
+        } else
+          todos.push(
+            `dependsOn ${JSON.stringify(d)}: ${pkg} declares no ${task} script — edge dropped`,
+          )
+        continue
+      }
+      if (own.has(d)) {
+        if (!deps.includes(d)) deps.push(d)
+        continue
+      }
+      const hop = through.has(d) ? undefined : defFor(d)
+      if (hop !== undefined) {
+        through.add(d)
+        walk(hop.dependsOn ?? [])
+      }
     }
-    // Same-project dep on a script this package lacks: turbo silently
-    // skips the task there, so the edge simply doesn't exist.
-    if (own.has(d)) deps.push(d)
   }
+  walk(def.dependsOn ?? [])
 
   const envNames: string[] = [...envDeps]
   for (const e of def.env ?? []) {

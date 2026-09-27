@@ -168,6 +168,31 @@ describe('turbo-map: what the sweep found unheld', () => {
     })
   })
 
+  // Item 939: a task Turbo defines but the package has no script for is a
+  // no-op node that keeps its edges. Dropped whole, `test → codegen →
+  // ^build` lost `^build`: `test` ran before its dependency's build and its
+  // key never folded it. CONTROL: a dependency Turbo does not define at all
+  // is still no edge, and a cycle through two script-less tasks ends.
+  it('a script-less task in a chain passes its edges through', async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: {},
+          codegen: { dependsOn: ['^build', 'gen2'] },
+          gen2: { dependsOn: ['codegen', 'lint'] },
+          lint: {},
+          test: { dependsOn: ['codegen', 'nowhere', '^build'] },
+        },
+      },
+      {
+        a: { scripts: { test: 't', lint: 'l' } },
+        b: { scripts: { build: 'b' } },
+      },
+    )
+    const test = m.projects[0]!.tasks.find((t) => t.name === 'test')!
+    expect(test.task!['dependsOn']).toEqual(['^build', 'lint'])
+  })
+
   it('two tasks on one output path: the second runs uncached', async () => {
     const m = await map(
       { tasks: { build: { outputs: ['dist/**'] }, bundle: { outputs: ['dist/**'] } } },

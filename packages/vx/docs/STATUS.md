@@ -197,6 +197,22 @@ test is telling the truth.
         `migrate.test.ts` (a `.jsonc` root migrates, named as it is), and
         `init.test.ts` (the note names `turbo.jsonc`). Each is red without
         the fix.
+939.  DONE (2026-09-27, the turbo() review's lead 3). A task Turbo
+      defines but a package has no script for is still a node in Turbo's
+      graph: a no-op that keeps its own edges. The mapper dropped it,
+      edges and all. With `test → codegen → ^build` and no `codegen`
+      script, `app#test` ran before `lib#build` and its key never folded
+      it: a stale hit and a wrong order.
+      - A dependency on such a task follows that task's own `dependsOn`
+        in its place, once per task, and cycles end. A name Turbo does not
+        define is still no edge. The README says so.
+      - A `pkg#task` hop into a package without the script keeps its
+        dropped-edge todo: its `^` edges belong to that package and have
+        no form here.
+      - Row: `turbo-map-sweep.test.ts` › a script-less task in a chain
+        passes its edges through. Red without the fix. The review's
+        fixture, run through real vx, now plans `app#test` after
+        `lib#build`.
 
 ## In flight
 
