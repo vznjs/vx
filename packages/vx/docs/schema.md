@@ -1063,7 +1063,16 @@ the anchor is enforced, and removing the anchor there would make the
 project readable, which the baseline above says it is not. So the
 `cache.outputs matched no files` warning names this cause when it
 applies, and the remedy is the same either way: declare
-`allow: { write: [...] }`.
+`allow: { write: [...] }`. The scratch case is not only the
+single-package one: on Linux a write grant inside a read grant punches
+the read bind (its children are granted one by one, so the write path
+stays writable), and the directory holding them is the anchor's scratch
+again. With `read: ['.']` and `write: ['dist/']`, `echo > undeclared.txt`
+at the project root, or `mkdir dist2`, succeeds inside the task and
+leaves nothing on disk, with no violation reported (item 1011). A file
+the task does not declare never survives the run, so no stale output
+comes of it, but a task that writes one and reads it back in a later
+run finds it gone.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
@@ -1073,8 +1082,10 @@ that make a cache key wrong. To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
 
-**Policy: fail on violation.** An undeclared read or write fails the
-task, and a failed task is never cached. Activation is lazy (only when
+**Policy: fail on violation.** An undeclared read, or a write the
+sandbox refuses, fails the task, and a failed task is never cached (a
+new file in the anchor's scratch, above, is not refused and not
+reported). Activation is lazy (only when
 some task declares `exec.sandbox`); on an unsupported platform a
 sandboxed task fails fast rather than running unsandboxed. Linux needs
 `bubblewrap`, `socat` and `ripgrep` installed (the runtime expands its
