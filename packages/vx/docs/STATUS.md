@@ -620,6 +620,15 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         is refused as a user error that names the remedy. Red without
         the check.
 
+1044. DONE (2026-09-27, the config-cache review's minor leads). `vx lock
+--check` reported a config whose bytes were unchanged but whose
+      evaluation differed as "env-dependent config? … remove env reads
+      from config", and an edited preset the config imports is the same
+      drift: its author went looking for env reads the config did not
+      have. The message names both causes now.
+      - Row: `lock.test.ts` › freezes env-dependent configs pins the
+        whole sentence; red under the old wording.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

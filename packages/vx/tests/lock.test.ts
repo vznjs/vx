@@ -117,7 +117,9 @@ describe('vx lock (e2e)', () => {
       expect(checkDrift.err).toContain(
         'lock differs from fresh evaluation in this environment (app)',
       )
-      expect(checkDrift.err).toContain('env-dependent config?')
+      expect(checkDrift.err).toContain(
+        "lock differs from fresh evaluation in this environment (app) — a file the config imports changed, or the config reads the environment; run 'vx lock' here",
+      )
 
       // Plain `vx run` evaluates LIVE — local truth, no lock consumed.
       const live = await vx(

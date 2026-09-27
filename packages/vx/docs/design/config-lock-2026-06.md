@@ -115,7 +115,7 @@ stored, /* strict */ true)`. A mismatch reports:
 
    ```
    lock differs from fresh evaluation in this environment (<project>) —
-   env-dependent config? run 'vx lock' here or remove env reads from config
+   a file the config imports changed, or the config reads the environment; run 'vx lock' here
    ```
 
 Plus set-level drift: projects missing from the lock, and locked
