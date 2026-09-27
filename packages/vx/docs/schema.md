@@ -1054,26 +1054,18 @@ grants never depend on it. The key answers for the package, not the
 file: an edge to `ui#source` (inputs `src/**`) covers a read of
 `ui/README.md` too.
 
-**How a missing write grant FAILS depends on the layout.** In a
-multi-package workspace the task's write is refused outright and the
-task fails. In a single-package workspace — where the project directory
-IS the workspace root, and so is the boundary anchor below — the write
-instead lands in the sandbox's own scratch and the task exits 0, having
-produced nothing. Measured 2026-09-20 (item 444); it follows from how
-the anchor is enforced, and removing the anchor there would make the
-project readable, which the baseline above says it is not. So the
-`cache.outputs matched no files` warning names this cause when it
-applies, and the remedy is the same either way: declare
-`allow: { write: [...] }`. The scratch case is not only the
-single-package one: on Linux a write grant inside a read grant punches
-the read bind (its children are granted one by one, so the write path
-stays writable), and the directory holding them is the anchor's scratch
-again. With `read: ['.']` and `write: ['dist/']`, `echo > undeclared.txt`
-at the project root, or `mkdir dist2`, succeeds inside the task and
-leaves nothing on disk, with no violation reported (item 1011). A file
-the task does not declare never survives the run, so no stale output
-comes of it, but a task that writes one and reads it back in a later
-run finds it gone.
+**A missing write grant fails the task.** On macOS seatbelt refuses the
+write and reports it. On Linux the write meets a read-only bind, or, where
+the project directory is the boundary anchor's scratch, it succeeds inside
+the sandbox and leaves nothing on disk: in a single-package workspace
+(the project directory IS the workspace root, the anchor below), and at
+the project root around a write grant punched out of a read grant
+(`read: ['.']` with `write: ['dist/']`; the children are bound one by one
+and the directory holding them is the scratch). Either way the runtime's
+write observer saw the attempt, and a write no grant binds is reported
+and fails the task, even when the command swallowed the error and exited
+0 (B-5; before it, both Linux shapes passed with nothing reported, items
+444 and 1011). The remedy is to declare it: `allow: { write: [...] }`.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
@@ -1084,9 +1076,8 @@ inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
 
 **Policy: fail on violation.** An undeclared read, or a write the
-sandbox refuses, fails the task, and a failed task is never cached (a
-new file in the anchor's scratch, above, is not refused and not
-reported). Activation is lazy (only when
+sandbox refuses, fails the task, and a failed task is never cached.
+Activation is lazy (only when
 some task declares `exec.sandbox`); on an unsupported platform a
 sandboxed task fails fast rather than running unsandboxed. Linux needs
 `bubblewrap`, `socat` and `ripgrep` installed (the runtime expands its

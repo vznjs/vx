@@ -96,7 +96,7 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
  * The domain union is computed here from every sandboxed node, because
  * SRT runs ONE filtering proxy per run and checks every request against
  * the allowlist given to `initialize()` — never the per-call one
- * (`sandbox-manager.js` 0.0.75). A task that declares no domains still
+ * (`sandbox-manager.js`, 0.0.75 and 0.0.76). A task that declares no domains still
  * reaches nothing: its profile is not given the proxy's port at all.
  * The unix-socket allowance is per run the same way: SRT's Linux seccomp
  * filter on `socket(AF_UNIX)` is all-or-nothing and read at

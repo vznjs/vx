@@ -31,6 +31,9 @@ In order of harm:
 
 ## Leads for other streams
 
+- E/C: a task failing on a vx sandbox refusal (`exec.sandbox.allow.write: …`)
+  gets "(no output)" in the failure footer; the reason prints only above.
+
 - F: `vx-reapi/tests/wedged.test.ts` › "a call a proxy cuts in transit"
   (F-1's rows) failed twice in a full local gate, 2026-09-27, on
   ws-b/ignore-canonical rebased on d258208: RST_STREAM(CANCEL) read
@@ -107,3 +110,29 @@ history, the run artifact, the cache entry and telemetry as the task's.
   fix, `17.43` and `60002304`), and the trace-log row in
   `sandbox-runtime.unsafe.test.ts`, which had pinned the wrong numbers
   as "the resources the task used".
+
+B-5. A Linux write no grant binds is reported (found reviewing lead 4's
+neighbours). `schema.md` says a write the sandbox refuses fails the task;
+on Linux one the command swallowed passed with nothing reported. strace
+never sees a write: SRT's seccomp step hands every write-intent syscall
+to its observer (USER_NOTIF outranks strace's TRACE), and vx read the
+observer's records on macOS only, since SRT judges them against the
+run-wide config, which grants no write. `read: ['.']` plus a swallowed
+`echo x > src/gen.txt` (`EROFS`) exited 0, as did a write into the
+anchor's scratch (items 444, 1011).
+
+- Fix (`sandbox-violations.ts` `refusedWrites`, `sandbox-runtime.ts`):
+  on Linux the store's records for the command SRT wrapped (the group
+  wrapper included, which is what it keys by) are judged against the
+  task's own binds (`bindableWrites`); a write none covers is a
+  violation, silenced only by `ignore.write`. `schema.md` (a missing
+  write grant fails the task, both Linux shapes), `modules/sandbox-runtime.md`.
+- Rows: `sandbox-runtime.unsafe.test.ts` › an undeclared write, run for
+  real (the swallowed write fails with one line naming it; granted, it
+  lands and passes). Red without the fix; 15 of 15 repeats green with
+  it, and the repo's own gate reports no such write.
+
+Sweep, 2026-09-27: `sandbox-violations.ts`, 30 mutants, 29 caught. The
+survivor (dropping the empty-trace early return) is equivalent:
+`deniedCalls('')` is `[]`. B-5 also names SRT 0.0.76 beside 0.0.75 in
+three citations, each rechecked in 0.0.76.

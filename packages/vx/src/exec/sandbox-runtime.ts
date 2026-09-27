@@ -49,7 +49,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { buildCustomConfig } from './sandbox-binds.js'
+import { bindableWrites, buildCustomConfig } from './sandbox-binds.js'
 import {
   isMountableLiteral,
   localBindingOn,
@@ -57,7 +57,7 @@ import {
   toRealPath,
   unique,
 } from './sandbox-paths.js'
-import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
+import { parseStraceViolations, refusedWrites, reportableViolations } from './sandbox-violations.js'
 import {
   closeSignalChannel,
   killTree,
@@ -739,6 +739,8 @@ export async function wrapSandboxedCommand(
   wrapped: string
   tag: string
   taggedCommand: string
+  /** What SRT wrapped, and so what its store keys a record by (the group wrapper included on Linux). */
+  srtCommand: string
   baselines: CanonicalBaselines
   /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
   forwardsSignals: boolean
@@ -788,7 +790,14 @@ export async function wrapSandboxedCommand(
   if (process.platform === 'linux' && wrapped.startsWith('bwrap ')) wrapped = `exec ${wrapped}`
   if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) spawnHostBridges(ports, tag)
-  return { wrapped, tag, taggedCommand, baselines, forwardsSignals: grouped.forwards }
+  return {
+    wrapped,
+    tag,
+    taggedCommand,
+    srtCommand: inner,
+    baselines,
+    forwardsSignals: grouped.forwards,
+  }
 }
 
 /**
@@ -992,7 +1001,7 @@ async function runSandboxedOnce(
 ): Promise<SandboxedRunResult & { tracerFailed: boolean }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
-  const { wrapped, tag, taggedCommand, baselines, forwardsSignals } =
+  const { wrapped, tag, taggedCommand, srtCommand, baselines, forwardsSignals } =
     await wrapSandboxedCommand(args)
 
   // Linux: SRT's SandboxViolationStore is macOS-only, so structured
@@ -1129,14 +1138,15 @@ async function runSandboxedOnce(
       line: v.line,
       timestamp: v.timestamp,
     }))
-  // Darwin only. Since SRT 0.0.75 the store is fed on Linux too, by the
-  // seccomp helper's write observer — but SRT judges those reports against
-  // the GLOBAL `filesystem.allowWrite` from `initialize` (empty here; the
-  // per-task list travels in `customConfig`, which the monitor never sees),
-  // so every write a task makes to its own declared output arrived as
-  // `deny openat <output>` and failed the task (reproduced 2026-09-04 in a
-  // Linux container: exit 1, empty stderr). Linux detection is the strace
-  // pass below, judged against the task's own baselines.
+  // Read as is on darwin only. Since SRT 0.0.75 the store is fed on Linux
+  // too, by the seccomp helper's write observer — but SRT judges those
+  // reports against the GLOBAL `filesystem.allowWrite` from `initialize`
+  // (empty here; the per-task list travels in `customConfig`, which the
+  // monitor never sees), so every write a task makes to its own declared
+  // output arrived as `deny openat <output>` and, read as is, failed the
+  // task (reproduced 2026-09-04 in a Linux container: exit 1, empty
+  // stderr). On Linux the records are judged against the task's own binds
+  // below (`refusedWrites`).
   let macViolations = process.platform === 'darwin' ? readMacViolations() : []
   // No settle window: the store is read once, right after the child exits
   // (owner, 2026-09-05). It cost 300ms on EVERY clean sandboxed task — the
@@ -1152,9 +1162,28 @@ async function runSandboxedOnce(
   // syscall on a path inside denyRead that wasn't unconditionally
   // allowed. Best-effort — if parsing fails we surface no Linux
   // violations rather than fail the whole task.
-  const linuxViolations: SandboxViolation[] = straceLog
-    ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
-    : []
+  //
+  // strace never sees a write: SRT's seccomp step hands every write-intent
+  // syscall to its observer (USER_NOTIF, which takes precedence over
+  // strace's TRACE), and the observer feeds the store with every ATTEMPT,
+  // judged against the run-wide config, which grants no write. Judged here
+  // against this task's own binds, what is left is a write bwrap refused,
+  // or one into the anchor's scratch that vanished with the sandbox: a
+  // task that swallowed it exited 0 with nothing reported (B-5).
+  const linuxViolations: SandboxViolation[] =
+    process.platform === 'linux'
+      ? [
+          ...(straceLog
+            ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
+            : []),
+          ...refusedWrites(
+            // Keyed by what SRT wrapped, the in-sandbox group wrapper
+            // included, not by the tagged command macOS is keyed by.
+            store.getViolationsForCommand(srtCommand).map((v) => v.line),
+            bindableWrites(args.config.allowWrite),
+          ),
+        ]
+      : []
   if (straceLog) {
     // Listed until the unlink lands, as the run lock's taking (item 868).
     await unlink(straceLog).catch(() => undefined)
@@ -1260,7 +1289,7 @@ function sbplToken(value: string, field: string): string {
  * `systemInfo` has no SRT field at any level. The rest DO have fields,
  * but SRT reads `network.allowLocalBinding` / `allowUnixSockets` /
  * `allowMachLookup` off the config given to `initialize()` and never off
- * the per-call one (`sandbox-manager.js` getters, 0.0.75) — so a per-task
+ * the per-call one (`sandbox-manager.js` getters, 0.0.75 and 0.0.76) — so a per-task
  * grant passed there is silently dropped. vx is per-task by definition,
  * so it emits them itself. The rule text mirrors SRT's own.
  */
