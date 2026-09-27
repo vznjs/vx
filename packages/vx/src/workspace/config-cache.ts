@@ -28,7 +28,7 @@
 // `vx lock` both go through `JSON.stringify` — so a cached config derives
 // the same cache key as a live evaluation of the same bytes.
 
-import { lstatSync, realpathSync, statSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
@@ -322,9 +322,41 @@ export function blobOidOf(bytes: Uint8Array): string {
   return hasher.digest('hex')
 }
 
+let transpileMemo: string | undefined
+
+/**
+ * What this process's transpiler was told besides the file bytes: the
+ * `bunfig.toml` Bun loaded at startup (the cwd's, and the global one) and
+ * the flags it ran with (`--define`, `--preload`, directly or through
+ * `BUN_OPTIONS`). A `[define]` value is a bare identifier to the config, so
+ * no deny word sees it, and flipping `BUILD_MODE` from `dev` to `prod`
+ * replayed the `dev` evaluation (item 956). Read once per process: a
+ * running Bun does not reload them either. A bunfig the process never
+ * loaded (a compiled binary's) only costs a miss when it changes.
+ */
+export function transpileInputs(): string {
+  if (transpileMemo !== undefined) return transpileMemo
+  const home = process.env['HOME']
+  const xdg = process.env['XDG_CONFIG_HOME']
+  const files = [
+    path.join(process.cwd(), 'bunfig.toml'),
+    ...(xdg !== undefined && xdg !== '' ? [path.join(xdg, '.bunfig.toml')] : []),
+    ...(home !== undefined && home !== '' ? [path.join(home, '.bunfig.toml')] : []),
+  ]
+  const parts = [process.execArgv.join('\0'), process.env['BUN_OPTIONS'] ?? '']
+  for (const file of files) {
+    try {
+      parts.push(`${file}\0${blobOidOf(readFileSync(file))}`)
+    } catch {
+      // Absent: nothing loaded from it.
+    }
+  }
+  return (transpileMemo = xxh3(parts.join('\0')).toString(16))
+}
+
 function keySeed(workspaceFingerprint: string): bigint {
   return xxh3(
-    `vx-config-eval-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${workspaceFingerprint}\0`,
+    `vx-config-eval-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${workspaceFingerprint}\0${transpileInputs()}\0`,
   )
 }
 

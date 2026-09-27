@@ -357,3 +357,54 @@ describe('config worker settlement', () => {
     }
   }, 20_000)
 })
+
+describe('what the transpiler was told besides the bytes', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-bunfig-'))
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a bunfig.toml [define] the config reads is in the eval key: flipping it re-evaluates (item 956)',
+    async () => {
+      // `BUILD_MODE` is a bare identifier to the config, so no deny word sees
+      // it, and the evaluation cache replayed `dev` after the define said `prod`.
+      const pkg = path.join(root, 'packages/a')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+      )
+      await writeLocalWorkspace(root)
+      await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))
+      await writeFile(
+        path.join(pkg, 'vx.config.ts'),
+        "declare const BUILD_MODE: string\nexport default { tasks: { build: { exec: { command: 'echo MODE_' + BUILD_MODE } } } }\n",
+      )
+      git(root, 'init', '-q')
+      const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      const build = (mode: string) => {
+        const p = Bun.spawnSync({
+          cmd: ['bun', CLI, 'run', 'build'],
+          cwd: pkg,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        })
+        const out = p.stdout.toString() + p.stderr.toString()
+        return [p.exitCode, /MODE_\w+/.exec(out)?.[0] ?? out, mode]
+      }
+      await writeFile(path.join(pkg, 'bunfig.toml'), '[define]\nBUILD_MODE = "\\"dev\\""\n')
+      expect(build('dev')).toEqual([0, 'MODE_dev', 'dev'])
+      expect(build('dev again')).toEqual([0, 'MODE_dev', 'dev again'])
+      await writeFile(path.join(pkg, 'bunfig.toml'), '[define]\nBUILD_MODE = "\\"prod\\""\n')
+      expect(build('prod')).toEqual([0, 'MODE_prod', 'prod'])
+    },
+    TIMEOUT,
+  )
+})
