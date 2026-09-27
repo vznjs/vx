@@ -112,7 +112,10 @@ export interface RunSummary {
     their own, not cleanly (`CrashedPersistent`: a non-zero exit or a
     signal): each fails the run, and a status line names it
     (`vx: <id> exited with code <n>`, item 892). Read before the stop,
-    so the SIGTERM's own 143 is never one. The pin after the
+    so the SIGTERM's own 143 is never one; and on a stopped run (Ctrl-C,
+    an embedder's abort) only the servers that had ended when the stop
+    landed count, since the stop's own teardown kills the rest before
+    this runs (item 1061). The pin after the
     summary lists only the kept servers still up (`hasEnded`).
     The foreground then blocks until ONE kept-alive server exits, tears
     the others down the same way (`terminateChildren`, signals.md) and
