@@ -58,9 +58,12 @@ absent, which is what a conditional spread
 (`...(ci ? { retries: 2 } : {})`) relies on. The workspace config is not
 held to this: its plugins are objects of functions.
 
-`tasks` is a `Record<string, TaskConfig>`. Task names are arbitrary
-strings; they're referenced by `dependsOn`, by `cache.inputs.tasks`,
-and by the CLI (`vx run <taskName>` or `vx run <pkg>#<taskName>`).
+`tasks` is a `Record<string, TaskConfig>`. Task names are strings
+referenced by `dependsOn`, by `cache.inputs.tasks`, and by the CLI
+(`vx run <taskName>` or `vx run <pkg>#<taskName>`), so a name those
+could not spell is refused at load: an empty one, one with surrounding
+whitespace, one holding `#` (the project separator) or `*` (a pattern),
+and one starting with `^` (dependencies' tasks) or `!` (a negation).
 
 ## `TaskConfig`
 

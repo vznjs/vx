@@ -466,6 +466,18 @@ test is telling the truth.
         environment can hold is refused in every list, with exact
         messages and a controls line. Red without the fix.
 
+1000. DONE (2026-09-27, the config-validation review's lead 5b). Task
+      names `x#y`, `^gen`, `''` and `' sp '` loaded and could not be
+      referenced: `dependsOn: ['gen#x']` said no such project,
+      `['^gen']` looked in the dependencies, and `''` ran under `--all`
+      as `a#` while `vx run a#` refused it.
+      - Fix (`config-schema.ts`): a task name that is empty, padded,
+        holds `#` or `*`, or starts with `^` or `!` is refused, naming the
+        reason. `schema.md` says which names are refused and why.
+      - Row: `config-schema-refusals.test.ts` › a task name dependsOn and
+        the CLI cannot name is refused, seven exact messages and five
+        controls. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

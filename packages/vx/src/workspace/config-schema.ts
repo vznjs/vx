@@ -265,6 +265,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
   }
   for (const [name, task] of Object.entries(tasks)) {
     const where = `${configPath}: tasks.${name}`
+    assertTaskName(name, configPath)
     if (!task || typeof task !== 'object') {
       throw new UserError(`${where} must be an object`)
     }
@@ -781,6 +782,33 @@ function specForm(spec: string): SpecForm {
  */
 function isEnvName(name: unknown): name is string {
   return typeof name === 'string' && name.length > 0 && !name.includes('=') && !name.includes('\0')
+}
+
+/**
+ * A task name `dependsOn`, `cache.inputs.tasks` and the CLI can name. Each
+ * refused shape loaded and could not be referenced: `x#y` read as project
+ * `x`, `^gen` as every dependency's `gen`, a `*` as a pattern, `''` ran
+ * under `--all` as `a#` and `vx run a#` refused it, and a padded name was
+ * trimmed away by the reader (item 1000).
+ */
+function assertTaskName(name: string, configPath: string): void {
+  const why =
+    name.trim().length === 0
+      ? 'is empty'
+      : name.trim() !== name
+        ? 'has surrounding whitespace'
+        : name.includes('#')
+          ? "holds '#', which separates a project from its task"
+          : name.includes('*')
+            ? "holds '*', which makes it a pattern"
+            : name.startsWith('^') || name.startsWith('!')
+              ? `starts with '${name[0]}', which names dependencies' tasks or negates`
+              : null
+  if (why === null) return
+  throw new UserError(
+    `${configPath}: task name ${JSON.stringify(name)} ${why} — dependsOn, cache.inputs.tasks and ` +
+      `the CLI could not name it. Rename the task.`,
+  )
 }
 
 /** The graph's `*`-only task glob (`compileTaskPattern`), mirrored: `*` is the sole metacharacter. */

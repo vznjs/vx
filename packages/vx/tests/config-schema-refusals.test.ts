@@ -141,6 +141,36 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(cacheRefusal({ files: [], env: ['A_B'] })).toBeNull()
   })
 
+  // Each shape loaded and could not be referenced: `x#y` read as project
+  // `x`, `^gen` as the dependencies' `gen`, `''` ran as `a#` and `vx run a#`
+  // refused it (item 1000).
+  it('a task name dependsOn and the CLI cannot name is refused', () => {
+    const named = (name: string): string | null => {
+      try {
+        validateProjectConfig({ tasks: { [name]: { exec: { command: 'x' } } } } as never, CFG)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    const tail = ' — dependsOn, cache.inputs.tasks and the CLI could not name it. Rename the task.'
+    for (const [name, why] of [
+      ['', 'is empty'],
+      ['  ', 'is empty'],
+      [' sp ', 'has surrounding whitespace'],
+      ['x#y', "holds '#', which separates a project from its task"],
+      ['b.*', "holds '*', which makes it a pattern"],
+      ['^gen', "starts with '^', which names dependencies' tasks or negates"],
+      ['!gen', "starts with '!', which names dependencies' tasks or negates"],
+    ] as const) {
+      expect(named(name)).toBe(`${CFG}: task name ${JSON.stringify(name)} ${why}${tail}`)
+    }
+    // Controls: the separators vx does not read inside a name pass.
+    for (const name of ['build:prod', 'e2e-ci--src/app.cy.ts', 'gen^2', 'a!b', 'lint.fix']) {
+      expect(named(name)).toBeNull()
+    }
+  })
+
   it('a null cache is refused by name, not by a TypeError from the field scan', () => {
     // A non-null non-object is refused further down (`cache.inputs is
     // required`); null alone reaches `Object.keys` and throws a raw TypeError.
