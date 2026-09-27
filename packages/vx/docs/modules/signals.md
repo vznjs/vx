@@ -61,6 +61,7 @@ SIGKILLed mid-cleanup (2026-09-24).
 
 ```ts
 export const SIGNAL_SHUTDOWN_GRACE_MS = 2000
+export type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP' // what the process handler received
 export type ForwardedSignal = 'SIGINT' | 'SIGTERM' // SIGHUP forwards as SIGTERM
 export function forwardedSignal(received: unknown): ForwardedSignal // a SIGINT stays one; SIGTERM, SIGHUP, anything else → SIGTERM
 export async function terminateChildren(
@@ -77,7 +78,7 @@ export function forwardSignals(args: {
   stop: (signal: StopSignal) => void // aborts run()'s own controller
   done: Promise<void> // settles once run() has left its finally
   boundMs: number // how long a signal waits for `done`
-}): { remove(): void }
+}): SignalForwarding // { remove(): void }
 ```
 
 The two registries stay with `run()`, which hands them to the runner

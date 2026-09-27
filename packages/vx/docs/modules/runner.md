@@ -80,6 +80,18 @@ export function exitSignal(code: number): string | undefined
 // The bare word a shell would have run, when the command is a plain
 // `word args…` — what shell-verdict.ts names in a 127 frame line.
 export function execWord(command: string): string | undefined
+export function execWrap(command: string): string // `exec <command>` when execWord finds a word
+
+export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> }
+export const POST_EXIT_CUT_LINE: string
+export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
+export function spawnFailureText(err: unknown, cwd: string, what?: string): string
+export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
+export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
+export function droppedOutputLine(dropped: number): string
+export function ownRssHighWater(): number
+export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
+export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the runtime reported
 ```
 
 ## Spawning rules
@@ -126,8 +138,8 @@ The promise from `runCommand` always resolves (never rejects) with a
   settle before the drain.
 - `Bun.spawn` itself throwing → `exitCode = 127`, and the reason goes
   through `onStderr` (the task's frame) as well as onto `stderr`: a
-  missing `sh` says `vx runs each task with sh -c: failed to spawn 'sh'
-(working dir: <cwd>). Install a POSIX sh and re-run.`, anything else
+  missing `sh` says `[vx] vx runs each task with sh -c: failed to spawn
+'sh' (working dir: <cwd>). Install a POSIX sh and re-run.`, anything else
   `[vx] failed to spawn task: <message>`. The orchestrator retains no
   stderr, so a reason that only sat on the result reached nobody: a box
   without `sh` showed "failed (exit 127)" under a bare `$ <command>`
@@ -184,8 +196,9 @@ the peak there is unchanged — that term is deliberately unbounded.
 Bun's shape into our schema:
 
 - `cpuTime.total` is a microseconds bigint → `cpuMs = Number(...) / 1000`.
-- `maxRSS` is bytes on every platform (Bun normalizes the kernel's
-  `ru_maxrss`; typed and measured) → `peakRssBytes = maxRSS`. It was
+- `maxRSS` is bytes on Bun ≥ 1.4 (Bun normalizes the kernel's
+  `ru_maxrss`); a reading under 1 MiB is taken as kilobytes (1.3.11
+  passes them raw) and multiplied (`peakRssBytes`). It was
   multiplied by 1024 on Linux until 2026-09-12, which made every Linux
   peak 1024× too big; `tests/runner.test.ts` now reads a known
   allocation back within a bounded factor, so a unit slip cannot pass a

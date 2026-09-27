@@ -20,9 +20,11 @@ export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL')
 export async function untilGroupsGone(children: readonly Child[], graceMs: number): Promise<Child[]>
 export function signalThrough(child: Child, fd: number): void
 export function closeSignalChannel(child: Child): void
-export function spawnGuarded(spawn: () => Child): Child
+export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child // guard: the pipe's fd in the child
+export function guardLine(fd: number): string // the shell line that lists `$$`'s group and closes the pipe
 export function releaseGroup(child: Child): void
 export function holdGroups(children: readonly Child[]): () => void
+export function markGroupIfGone(child: Child): void
 ```
 
 `signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx

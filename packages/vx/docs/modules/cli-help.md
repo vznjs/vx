@@ -14,7 +14,18 @@ export function helpText(pluginCommands: readonly string[] = []): string
 export function verbHelpText(verb: string): string
 export function documentedFlags(verb: string): string[]
 export function seeHelp(verb: string): string
+export function acceptedFlags(verb: string): string[] // Usage-line flags; `[OPTIONS]` adds run's, less watch's refusals
+export const WATCH_REFUSED_FLAGS: readonly string[]
 export { CORE_VERBS } from '../util/index.js'
+
+// `completions.ts`
+export type CompletionShell = 'bash' | 'zsh' | 'fish'
+export function verbFlags(verb: string): string[] // `--help` + acceptedFlags(verb)
+export function completionScript(shell: CompletionShell, verbs: readonly string[]): string
+export async function completionsCmd(
+  args: readonly string[],
+  pluginVerbs: readonly string[],
+): Promise<number>
 
 // `core-alias.ts`: registers the `@vzn/vx` virtual module so a
 // `vx.config.ts` can import the façade inside the compiled binary,

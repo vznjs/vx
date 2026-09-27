@@ -56,7 +56,7 @@ exec: {
       gitConfig?: boolean
     },
     deny?: { network?: string[] },
-    ignore?: /* same shape as allow — what to leave out of the report */,
+    ignore?: { read?, write?, systemInfo?, network? }, // what to leave out of the report
     weakerWhenNested?: boolean,       // Linux
     weakerNetworkIsolation?: boolean, // macOS
   },
@@ -126,6 +126,9 @@ export interface SandboxedRunArgs {
   forwardArgs?: readonly string[]
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  timeoutMs?: number
+  capture?: CaptureConfig
   baseAllowRead: readonly string[] // node_modules + resolved workspace links
   baseDenyRead: readonly string[] // [workspaceRoot] — the task may not leave its project
   reportWithin: string // projectDir — only denials in here are worth reporting
@@ -136,6 +139,9 @@ export interface SandboxedRunArgs {
 export interface SandboxViolation {
   line: string
   timestamp: Date
+  target?: string
+  path?: string
+  ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 export interface SandboxedRunResult extends RunResult {
   violations: SandboxViolation[]
@@ -147,11 +153,12 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
 // built from. What an executor running the command ITSELF needs.
 export function wrapSandboxedCommand(
   args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config' | 'env'> &
-    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'>,
+    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & { server?: boolean },
 ): Promise<{
   wrapped: string
   tag: string
   taggedCommand: string
+  srtCommand: string
   baselines: CanonicalBaselines
   forwardsSignals: boolean // the command reads its polite signals off fd 3 (item 752)
 }>
@@ -163,6 +170,21 @@ export function releaseBridges(tag: string): void
 // A thrown value as a line a user can read — an FS refusal keeps its
 // errno, anything else its message. The sandbox never reports a stack.
 export function thrownReason(err: unknown, what?: string): string
+// The probe's verdicts as one line each: a failed start, missing
+// dependencies, a temp dir too long for the socket path.
+export function unavailableReason(exitCode: number | null, stderr: string): string
+export function dependencyReason(errors: readonly string[]): string
+export function socketPathRefusal(tmpdir?: string): string | undefined
+
+// The port bridge (Linux; § Port bridge)
+export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[]
+export function portBridgeSocket(tag: string, port: number): string
+export function portBridgeInner(ports: readonly number[], tag: string): string
+export function portBridgeHostArgv(tag: string, port: number): string[]
+
+// macOS: the per-task seatbelt rules vx emits, and a path refused, never escaped
+export function macProfileRules(c: ResolvedSandboxConfig): string[]
+export function sbplResolvedPath(value: string, field: string): string
 
 // sandbox-paths.ts: the wildcard alphabet of a GRANT. Smaller than
 // util/paths.ts's BUN_GLOB_WILDCARDS on purpose — `{}` is a literal to a
@@ -173,6 +195,10 @@ export const MOUNT_WILDCARDS: RegExp
 export function isMountableLiteral(grant: string): boolean
 // A path with its existing prefix realpath'd and the rest re-appended.
 export function toRealPath(p: string): string
+export function absolutize(p: string, cwd?: string): string
+export function isUnderAny(abs: string, allow: Set<string>): boolean
+export function unique(arr: readonly string[]): string[]
+export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean
 
 // sandbox-binds.ts: the binds a write grant becomes on Linux (a file grant
 // widened to its directory), and a read grant cut around the walls a
@@ -180,6 +206,26 @@ export function toRealPath(p: string): string
 // that would hold a wall and punches the read grants.
 export function bindableWrites(paths: readonly string[]): string[]
 export function punchWalls(readPath: string, walls: readonly string[]): string[]
+export function punchWritePaths(readPath: string, writePaths: readonly string[]): string[]
+// The SRT customConfig: the baselines merged with the resolved block
+export function buildCustomConfig(args, baselines): SrtCustomConfig
+
+// sandbox-violations.ts: what a trace or a seatbelt log reports
+export interface DeniedCall {
+  syscall: string
+  rawPath: string
+  errno: string
+}
+export function deniedCalls(text: string): DeniedCall[] // strace lines, split calls paired
+export function parseStraceViolations(logPath, args, baselines): Promise<SandboxViolation[]>
+export function reportableViolations(
+  violations: readonly SandboxViolation[],
+  opts: { within: string; linked?: readonly string[]; config: ResolvedSandboxConfig },
+): SandboxViolation[]
+export function refusedWrites(
+  records: readonly string[],
+  writable: readonly string[],
+): SandboxViolation[]
 ```
 
 ## How it works

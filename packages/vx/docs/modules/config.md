@@ -71,8 +71,8 @@ field's meaning.
 ## Why an identity helper
 
 ```ts
-export function defineProject<T extends ProjectConfig>(config: T): T {
-  return config
+export function defineProject<const T extends ProjectConfig>(config: T & DependsOnTyped<T>): T {
+  return config as T
 }
 ```
 

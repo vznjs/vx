@@ -11,7 +11,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; capacity?; accepts?(task); execute(req) }`
+- `TaskExecutor { name; remote?; capacity?; accepts?(task); demand?(remaining); execute(req) }`
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `capacity` is how
   many tasks it runs at once (a positive integer, else the run is

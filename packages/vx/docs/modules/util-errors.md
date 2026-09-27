@@ -18,7 +18,7 @@ export function isUserError(err: unknown): err is UserError // by name, across a
 // The environment's refusals, reported like a UserError — one line naming the path, never a stack:
 export function isPermissionError(err: unknown): err is NodeJS.ErrnoException // EACCES, EPERM, EROFS
 export const PERMISSION_HINT: string
-export function isDiskFull(err: unknown): err is NodeJS.ErrnoException // ENOSPC
+export function isDiskFull(err: unknown): err is NodeJS.ErrnoException // ENOSPC, EDQUOT
 export const DISK_FULL_HINT: string
 export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException // either of the two
 export function fsRefusalHint(err: NodeJS.ErrnoException): string

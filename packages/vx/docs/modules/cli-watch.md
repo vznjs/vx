@@ -32,6 +32,8 @@ export function makeRootEventFilter(workspaceRoot: string, projectDirs: readonly
 export function modifiedBefore(abs: string, t: number): boolean
 export function fsClockNow(dir: string): number
 export function memberEntries(base: string): ReadonlySet<string>
+export function watchRefusal(parsed: RunArgs): string | null // the refusal line for a flag watch cannot honour
+export function pendingAfterCycle(pending: ReadonlyMap<string, string>, aborted: boolean): [abs: string, label: string] | undefined
 ```
 
 `cli/index.ts` dispatches `vx watch <...>` here. Returns the exit code

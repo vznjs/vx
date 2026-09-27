@@ -31,6 +31,8 @@ export async function replaceBinary(
   starts?: (dest: string) => boolean, // false puts the previous binary back (item 1097)
 ): Promise<void>
 export async function upgradeCmd(args: readonly string[]): Promise<number>
+// `bin --version` when it answers as vx within the bound, else null: what `starts` asks
+export function startedVersion(bin: string, timeoutMs?: number): string | null // default 10 s
 ```
 
 A host the box cannot reach — the release API or the asset's — is

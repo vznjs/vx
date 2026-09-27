@@ -49,8 +49,8 @@ compiled binary no second copy of core transpiled from `node_modules`
    shebang `#!/usr/bin/env -S bun --no-env-file`. Bun runs the
    TypeScript directly.
 2. **As a standalone binary** — `bun build --compile
---no-compile-autoload-dotenv --bytecode src/bin.ts --outfile
-dist/vx-<target>`. The cross-target binaries are published on each
+--no-compile-autoload-dotenv --minify --bytecode --target=bun-<target>
+src/bin.ts --outfile dist/vx-<target>`. The cross-target binaries are published on each
    GitHub release.
 
 Both switches keep Bun from loading `.env`, `.env.local` and

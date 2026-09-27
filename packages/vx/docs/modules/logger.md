@@ -64,8 +64,8 @@ export function defaultLogger(
 3. CLI-detected flow (`RunOptions.flow`) → `focused` or `broad`.
 4. Nothing (programmatic callers) → `full`.
 
-`gha: true` is attached whenever the resolved mode is `full` and
-`GITHUB_ACTIONS` is truthy; `ci: true` whenever `CI` is truthy.
+`gha: true` is attached whenever `GITHUB_ACTIONS` is truthy, whatever
+the mode; `ci: true` whenever `CI` is truthy.
 
 ## Default logger behavior by mode
 

@@ -117,6 +117,7 @@ export class Cache implements CacheLayer {
     localPolicy?: { read: boolean; write: boolean },
     repoDir?: string,
     artifactCeiling?: number,
+    mode?: 'open' | 'inspect', // 'inspect' (Cache.inspect): a reading verb, never resets the index
   )
   // ... CacheLayer methods
 }
@@ -148,6 +149,7 @@ export interface CacheKeyInput {
   workspaceFingerprint: string
   forwardArgs?: readonly string[] // CLI args after `--`
   fileHashes?: ReadonlyMap<string, string> // (v20) abs path → git blob OID; mapped paths skip hashFile
+  pluginParts?: ReadonlyArray<readonly [name: string, value: string]> // `key` stage parts; folded as `plugin:<n>`
   // (Tier 3) Pure side-channel: when set, key() pushes each component
   // (kind,name,hash) it folds, at the same fold sites. Does NOT change
   // the digest — used (on a cache MISS only) to persist entry_inputs
@@ -190,7 +192,7 @@ export interface InvocationRecord {
 // path only), via INSERT OR IGNORE.
 export interface TaskInputRow {
   entryHash: string
-  kind: string // file|env|runtime|ws-runtime|upstream|package|config|forward|workspace
+  kind: string // file|env|runtime|ws-runtime|upstream|plugin|package|config|forward|workspace
   name: string
   hash: string
 }
@@ -504,14 +506,21 @@ through `guard` (A-8). Before, every task of a run failed on it as an
 "internal error" and `vx cache prune` printed a stack. The open that drops them says
 so: `Cache.schemaReset` carries `{ from, to }` on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
-status line, or a verb's stderr — `[vx] cache index reset: schema v24 →
+status line, or a verb's stderr — ``[vx] cache index reset: schema v24 →
 v25 (vx upgraded); every cached task misses once and re-saves, and
-\`vx cache prune\` reclaims the old artifacts`. An upgrade's all-miss
+`vx cache prune` reclaims the old artifacts``. An upgrade's all-miss
 run, and the `vx last` with nothing to show after it, are explained
-rather than silent (`tests/schema-reset-notice.test.ts`). A `CACHE_VERSION`bump alone keeps the index, so`Cache.formatChange`carries`{ from, to }`on the open that first sees the new version (from`schema_meta.cache_version`; a store with entries and no record reads `an earlier format`), and the same `noteSchemaReset`prints`[vx] cache format changed: …`instead (item 671). A new`CacheKeyInput`field that
-is **NOT folded** (a pure side-channel like`captureInto`/`upstreamIds`) needs neither bump: the key is byte-identical. The Tier-3
-tables (`invocations`, `entry_inputs`) rolled `SCHEMA_VERSION`to`v22`but left`CACHE_VERSION`at`v24`for exactly this reason — they persist
-components already fed to`key()`.
+rather than silent (`tests/schema-reset-notice.test.ts`). A
+`CACHE_VERSION` bump alone keeps the index, so `Cache.formatChange`
+carries `{ from, to }` on the open that first sees the new version (from
+`schema_meta.cache_version`; a store with entries and no record reads
+`an earlier format`), and the same `noteSchemaReset` prints
+`[vx] cache format changed: …` instead (item 671). A new
+`CacheKeyInput` field that is **NOT folded** (a pure side-channel like
+`captureInto` / `upstreamIds`) needs neither bump: the key is
+byte-identical. The Tier-3 tables (`invocations`, `entry_inputs`)
+rolled `SCHEMA_VERSION` to `v22` but left `CACHE_VERSION` at `v24` for
+exactly this reason — they persist components already fed to `key()`.
 
 Bumping `CACHE_VERSION` invalidates every previously-stored entry.
 Pre-alpha tolerates this freely. See

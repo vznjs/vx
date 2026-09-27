@@ -8,6 +8,7 @@ disagree: the CLI renders, this gathers.
 
 ```ts
 collectInfo(cwd, { cacheDir?, warn? }): Promise<InfoFacts>
+stableSandboxReason(reason: string): string // the probe's reason with the pid-named socket path masked
 ```
 
 `InfoFacts` is the typed object `vx info --format json` prints: `vx`,

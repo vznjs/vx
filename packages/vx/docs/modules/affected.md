@@ -19,6 +19,9 @@ export interface AffectedArgs {
   /** The fingerprint files a plugin claims and its answer for a change to
    *  one; resolved lazily, only when a diff touches a root file. */
   fingerprintClaims?: () => Promise<FingerprintClaims>
+  /** Cross-project `dependsOn` edges, project → projects its tasks name;
+   *  asked only when a package was renamed or removed (item 1085). */
+  taskEdges?: () => Promise<ReadonlyMap<string, readonly string[]>>
 }
 
 export function affectedProjects(args: AffectedArgs): Promise<Set<string>>
@@ -61,8 +64,9 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
 1. `verifyRef(workspaceRoot, since)` — `git rev-parse --verify --quiet
 --end-of-options <ref>`. Throws `UserError` if the ref doesn't resolve
    locally.
-2. `git diff --name-only <since>` — emits the union of committed +
-   staged + unstaged changes. Matches Turbo's `[<since>]` semantics.
+2. `git diff --name-only <merge-base(since, HEAD)>` (`<since>` itself
+   when there is no merge base) — emits the union of committed + staged
+   - unstaged changes. Matches Turbo's `[<since>]` semantics.
 3. Untracked files (`git ls-files --others --exclude-standard`) are
    unioned in — a brand-new source file is a change. `vx-lock.json` is
    filtered out, so re-running `vx lock` never selects everything.

@@ -9,7 +9,7 @@ rule, so a typo is hinted the same way wherever it is typed.
 ## Public surface
 
 ```ts
-editDistance(a, b): number            // Levenshtein, capped: past two edits reads as 3
+editDistance(a, b, cap = 3): number   // Levenshtein, capped: `cap` or more edits read as `cap`
 nearest(name, candidates, maxEdits = 2): string | undefined
 nearMatches(name, candidates, limit = 3): string[]
 ```

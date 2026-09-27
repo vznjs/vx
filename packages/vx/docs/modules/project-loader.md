@@ -17,15 +17,18 @@ Two paths, chosen by whether this process has loaded that path before:
 ## Public surface
 
 ```ts
-export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
+export async function loadProjectConfig(
+  configPath: string,
+  opts?: LoadProjectConfigOptions,
+): Promise<ProjectConfig>
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
 
 // The batch form every reading verb goes through: one staged evaluation
 // for many configs, served from the evaluation cache unless `fresh`.
 export interface LoadProjectConfigOptions {
-  // Observe the CURRENT environment: no module-cache reuse, no eval cache.
+  // Observe the CURRENT environment: no eval cache, even beside `evalCache`.
   fresh?: boolean
-  evalCache?: { store: ConfigEvalStore; workspaceFingerprint: string }
+  evalCache?: { store: ConfigEvalStore; workspaceRoot?: string; workspaceFingerprint: string }
 }
 export async function loadProjectConfigs(
   configPaths: readonly string[],
@@ -39,6 +42,10 @@ export const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.js',
   'vx.workspace.mjs',
 ]
+
+// A Bun `ResolveMessage` / `BuildMessage` as a one-line UserError naming the
+// config (and the file, for a syntax error in an import); null for anything else.
+export function configLoadError(err: unknown, configPath: string, kind: string): UserError | null
 ```
 
 What the evaluated object may contain is `config-schema.ts`'s
@@ -60,7 +67,8 @@ readers that reach it here.
 - On a repeat load the path is evaluated in a Worker instead, and the
   resolved object comes back as JSON.
 - The default export must be a non-null object. Anything else throws
-  `"Project config at <path> did not export a default object"` — from
+  `"Project config at <path> did not export a default object"`
+  (`Workspace config at …` for a workspace file) — from
   the same check on both paths.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker

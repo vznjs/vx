@@ -137,6 +137,11 @@
   evaluation runs in a worker, `runs.attempts` counts attempts, a
   signal-stopped run records no history, the prefetch gate is any
   remote layer, and the batch loader's name.
+- **J-18** Module pages against the source (97 pages, 39 fixed): stale
+  signatures and fields (`Cache`, `ExecuteArgs`, `TaskExecutor.demand`,
+  `TaskNode`, sandbox types), wrong behaviour (`--affected` diffs from
+  the merge base, `gha` in any mode, `maxRSS` units, `EDQUOT`, the
+  status region's rows) and exports each page's own list omitted.
 
 ## Leads for other streams
 

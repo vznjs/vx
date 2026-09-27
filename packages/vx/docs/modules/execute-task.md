@@ -20,13 +20,18 @@ export interface ExecuteArgs {
   forwardArgs?: readonly string[]
   retries?: number // run-level retry default (--retry); exec.retries wins
   log: Logger
+  executor: TaskExecutor // where run.ts placed this task
+  keyedProjects: (node: TaskNode) => ReadonlySet<string> // keyed-projects.md
   nestedProjectDirs: string[]
   runStartHrTimeNs: bigint
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
+  // … and the optional run-scoped fields (timeout, preProbed, download,
+  // deferSave, taintedUpstream, fingerprintWatch, noDependants, …)
 }
 
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
+export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
