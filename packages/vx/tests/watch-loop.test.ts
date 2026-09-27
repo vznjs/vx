@@ -28,6 +28,28 @@ import {
 describe('vx watch loop (e2e)', () => {
   const f = useWatchFixture()
 
+  it('a task no project declares exits 1 as `vx run` does, instead of watching', async () => {
+    // `vx watch buidl` printed the refusal with its "did you mean" and then
+    // watched forever, re-running the same refusal on every change.
+    const w = startWatch(f.root, ['--all'], {}, 'buidl')
+    let code: number | string
+    try {
+      code = await Promise.race([w.proc.exited, Bun.sleep(15_000).then(() => 'still watching')])
+    } finally {
+      w.proc.kill('SIGTERM')
+      await w.proc.exited
+    }
+    expect({ code, watching: w.out().includes('vx watch: watching') }).toEqual({
+      code: 1,
+      watching: false,
+    })
+    expect(w.out()).toContain('No projects declare task(s): buidl. Did you mean build?')
+    // CONTROL: the declared name watches (the case above never got there).
+    f.watch = startWatch(f.root)
+    const ok = f.watch
+    await until(() => ok.out().includes('vx watch: watching'), 'the watching marker')
+  }, 40_000)
+
   it('an edit re-runs once; the same bytes again re-execute nothing; a new edit re-runs', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
