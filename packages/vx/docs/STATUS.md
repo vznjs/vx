@@ -357,6 +357,20 @@ test is telling the truth.
           notice.
         - 949: a config's imports outside its project, and the workspace
           config's imports, are neither watched nor re-read.
+946.  DONE (2026-09-27, the `vx watch` review's lead 4). Watch's ignore
+      list folded every task's declared outputs, in every project. So an
+      in-place formatter declaring `src/**` as its outputs hid every
+      `src` edit from a `build` watched beside it: no cycle ran, and
+      `vx run build` would have run it.
+      - The sweep also collects each project's declared input globs, and
+        `makeWatchIgnore` never drops a path some task reads, whoever
+        declares it as an output. A formatter's own rewrite costs at most
+        one settled cycle; the streak notice catches a loop.
+      - `cli.md` and the module page say so.
+      - Rows: `watch-rules.test.ts` checks that an input under a declared
+        output still counts, with the same map without inputs hiding it
+        as control. `watch-loop.test.ts` re-runs `build` on a `src` edit
+        beside a `src/**` formatter. The loop row is red without the fix.
 
 ## In flight
 

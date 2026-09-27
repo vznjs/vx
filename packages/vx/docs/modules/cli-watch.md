@@ -14,7 +14,7 @@ export async function watchCmd(args: readonly string[]): Promise<number>
 
 // The loop's parts, exported for the watch suites:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
-export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output
+export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output no task reads
 export const WATCH_PROBE = '.vx-watch-probe'
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export interface WatchHandle {
@@ -115,7 +115,9 @@ are refused too: they format one run's result.
      cache directory (a relocated `cacheDir` would otherwise re-trigger
      every cycle), and each project's declared outputs
      (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
-     that writes `dist/` is not an edit, and neither is `dist` itself —
+     that writes `dist/` is not an edit, and neither is `dist` itself;
+     a path some task declares as an input is never dropped, whoever
+     declares it as an output (item 946) —
      the directory holding an output tree, `outputContainer`, which the
      clean before a miss prunes and the task re-creates; a literal entry
      is its whole tree, as in the schema (`makeWatchIgnore`, pinned in
