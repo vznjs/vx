@@ -1019,6 +1019,15 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Rows: `init.test.ts` › vx init writes what the next run reads
         (three rows, e2e). Each of the four pieces red when removed.
 
+1034. DONE (2026-09-27, the CLI-verb review's low leads). A duration
+      chose its unit before rounding to it: `vx last` printed 119,600 ms
+      as `1m 60s` and 59,996 ms as `60.00s`, and every run's output
+      printed 999.6 ms as `1000ms`.
+      - Fix: one `formatElapsed` (`util/num.ts`) behind both formatters
+        rounds to the unit shown first. `modules/util-num.md` says so.
+      - Row: `util-num.test.ts` › formatElapsed (eight values). Four red
+        under the old algorithm.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

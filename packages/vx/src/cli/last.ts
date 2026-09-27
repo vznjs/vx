@@ -14,7 +14,7 @@ import {
   listInvocations,
   type RunSummaryRow,
 } from '../orchestrator/index.js'
-import { UserError } from '../util/index.js'
+import { formatElapsed, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 
@@ -78,12 +78,7 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 
-function fmtMs(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`
-  const m = Math.floor(ms / 60_000)
-  return `${m}m ${Math.round((ms - m * 60_000) / 1000)}s`
-}
+const fmtMs = (ms: number): string => formatElapsed(ms, true)
 
 /**
  * What an executed task used — its peak RSS and its CPU parallelism (CPU
