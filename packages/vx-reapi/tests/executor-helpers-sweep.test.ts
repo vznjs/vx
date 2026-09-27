@@ -7,6 +7,7 @@ import { lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from '
 import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import * as grpc from '@grpc/grpc-js'
 import protobuf from 'protobufjs'
 import type { ExecuteRequest } from '@vzn/vx'
 import { execDigestFor } from '../src/cache.js'
@@ -208,6 +209,34 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     executeReturning('mods', fake.put(new Uint8Array()))
     await refusal(run('k-rootless', ['mods/*/gen']))
     expect(recordOf('k-rootless').map((d) => d.path)).toEqual(['pkg/mods'])
+  })
+
+  // A whole-tree capture is the working directory itself, path ''. It was
+  // recorded as `pkg/`, which no decomposition matched and a graft turned
+  // into a directory with an empty name (item 1040).
+  it('a whole-tree capture is recorded at the project, not at `pkg/`', async () => {
+    executeReturning('', fake.put(encodeTree(dir(['a.txt']), [])))
+    await refusal(run('k-whole', ['*.txt']))
+    expect(recordOf('k-whole').map((d) => d.path)).toEqual(['pkg'])
+  })
+
+  // Splitting a capture reads its Tree. A Read that failed there threw out
+  // of the record, which is best-effort, and failed a task whose action
+  // had succeeded (item 1040).
+  it('a Tree read that fails while recording records it whole, and the task stands', async () => {
+    const gen = dir(['g'])
+    executeReturning('mods', fake.put(encodeTree(dir([], { gen }), [gen])))
+    const planned = fake.onExecute
+    fake.onExecute = (req, method) => {
+      fake.fail('Read', grpc.status.INTERNAL, 1)
+      return planned(req, method)
+    }
+    const warns: string[] = []
+    expect(await refusal(run('k-readfail', ['mods/*'], warns))).toBe('resolved')
+    expect(recordOf('k-readfail').map((d) => d.path)).toEqual(['pkg/mods'])
+    expect(warns.filter((w) => w.includes('recording it whole'))).toEqual([
+      'vx/reapi: could not read the Tree for pkg/mods (13 INTERNAL: injected INTERNAL) — recording it whole',
+    ])
   })
 
   it('a glob that matches nothing, or has a partial wildcard, is recorded whole', async () => {

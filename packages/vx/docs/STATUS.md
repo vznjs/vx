@@ -1112,6 +1112,22 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         its Tree executes, whatever the capture. Red with the replay's
         strictness removed.
 
+1040. DONE (2026-09-27, the vx-reapi review's last two leads). The
+      execution record a success writes could fail the task, or name its
+      capture wrongly.
+      - Splitting a capture into its glob's matches reads the capture's
+        Tree, and a Read that failed there threw out of the record, which
+        is best-effort: a task whose action had succeeded failed with
+        `internal error … 13 INTERNAL`. The entry is now recorded whole
+        with a warning, as an unreadable Tree already was.
+      - A whole-tree capture's path is `''`, which the rebase spelled
+        `pkg/`: no decomposition matched it, and a graft of it built a
+        directory with an empty name. It is recorded at `pkg`.
+      - Rows: `executor-helpers-sweep.test.ts` › a whole-tree capture is
+        recorded at the project; a Tree read that fails while recording
+        records it whole, and the task stands. Each red with its fix
+        removed. The vx-reapi review's six leads are all closed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

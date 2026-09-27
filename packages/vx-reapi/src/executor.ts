@@ -952,8 +952,15 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // Written for every successful remote execution, not just remote-only
       // tasks: it is what lets a 50-task chain flow worker→CAS→worker.
       if (req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0) {
+        // A whole-tree capture's path is '' — the working directory itself,
+        // which `${wd}/` spelled `pkg/`: never matched by a decomposition,
+        // and grafted as a directory with an empty name (item 1040).
         const rebase = (rel: string): string =>
-          workingDirectory === '' ? rel : `${workingDirectory}/${rel}`
+          workingDirectory === ''
+            ? rel
+            : rel === ''
+              ? workingDirectory
+              : `${workingDirectory}/${rel}`
         // Stdout rides the record as a blob so a short-circuited repeat run
         // can replay it. Best-effort: a record without it replays empty,
         // never wrong bytes.
@@ -991,7 +998,16 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         }
         for (const d of result.output_directories ?? []) {
           const rebased = { path: rebase(d.path), tree_digest: d.tree_digest }
-          const split = await decomposeOutputDir(client, rebased, declaredGlobs, warn)
+          // The record is best-effort like its write below: a Read that
+          // fails while splitting failed a task whose action had succeeded.
+          const split = await decomposeOutputDir(client, rebased, declaredGlobs, warn).catch(
+            (err: unknown) => {
+              warn(
+                `vx/reapi: could not read the Tree for ${rebased.path} (${errText(err)}) — recording it whole`,
+              )
+              return { directories: [rebased], files: [], symlinks: [] }
+            },
+          )
           recorded.directories.push(...split.directories)
           recorded.files.push(...split.files)
           recorded.symlinks.push(...split.symlinks)
