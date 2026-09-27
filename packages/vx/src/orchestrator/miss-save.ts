@@ -13,9 +13,10 @@ import {
   type GitFilesCache,
   resolveOutputs,
   resolveWorkspaceOutputs,
+  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { span, wholeSubtreePrefixes } from '../util/index.js'
+import { asTrees, span, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { TaskInputComponent } from './task-hash.js'
 
@@ -24,6 +25,32 @@ export interface OutputDirSnapshot {
   hash: string
   projectDir: string
   prefixes: readonly string[]
+  /** Whether the files the run-end walk saw are the entry's rows (`recordOutputDirs`). */
+  holds: (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean
+}
+
+/**
+ * The `holds` of a run-end snapshot: the files under the prefixes are the
+ * entry's project rows, by the rule the next hit's walk applies. An
+ * additive task's rows need only be present (the upstream's files sit
+ * beside them); an upstream's tree may also hold what a dependant's glob
+ * adds. A stray a later task or another process wrote there before run
+ * end refuses the snapshot, and the next hit walks and restores
+ * (item 1087). The run reads every snapshot's rows in one batch.
+ */
+export function entryHolds(
+  node: TaskNode,
+): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean {
+  return (files, rows) => {
+    const expected = new Set(
+      rows.map((r) => r.path).filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX)),
+    )
+    const seen = new Set(files)
+    if ((node.addsToOutputsOf?.length ?? 0) > 0) return [...expected].every((p) => seen.has(p))
+    const added = (node.outputsAddedToBy ?? []).flatMap((g) => asTrees([g])).map(taskGlob)
+    const kept = files.filter((f) => expected.has(f) || !added.some((g) => g.match(f)))
+    return kept.length === expected.size && kept.every((f) => expected.has(f))
+  }
 }
 
 export interface SaveMissArgs {
@@ -151,6 +178,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
         hash: a.hash,
         projectDir: node.projectDir,
         prefixes: savedDirPrefixes,
+        holds: entryHolds(node),
       })
     }
   }

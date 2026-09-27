@@ -22,6 +22,7 @@ import {
 import type { TaskOutcome } from '../graph/index.js'
 import { asTrees, span, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
+import { entryHolds } from './miss-save.js'
 
 export interface RestoreHitArgs {
   args: ExecuteArgs
@@ -232,7 +233,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     // ~75 ms of the no-op's CPU (2026-09-11). A caller with no list gets
     // no snapshot (item 637: recording here was that same refusal).
     if (dirPrefixes !== null && args.outputDirSnapshots !== undefined) {
-      args.outputDirSnapshots.push({ hash, projectDir: node.projectDir, prefixes: dirPrefixes })
+      args.outputDirSnapshots.push({
+        hash,
+        projectDir: node.projectDir,
+        prefixes: dirPrefixes,
+        holds: entryHolds(node),
+      })
     }
     // Restored outputs changed the project's tree — but on this
     // path we know the EXACT changed paths (wiped declared

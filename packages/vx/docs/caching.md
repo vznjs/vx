@@ -456,7 +456,11 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    contains it. The rows are taken per task and written together — one
    transaction at the first read, at prune, at stats or at close, since
    item 622; a thousand commits at run end were the whole snapshot stage
-   before — and a reader in the same process flushes them first. Any other glob shape (`**/*.js`, `dist/*`), a missing
+   before — and a reader in the same process flushes them first. A
+   save's or restore's snapshot is taken at run end, once the directories
+   are past the racy window, and by then a later task or another process
+   may have written into them: the walk collects the files it passes and
+   records nothing unless they are the entry's rows (item 1087). Any other glob shape (`**/*.js`, `dist/*`), a missing
    row set (a remote ingest records none), a moved directory, or more
    than 8,192 directories (`OUTPUT_DIRS_CAP`) keeps the walk — and a walk that proves the tree
    current records the directories so the following hit can skip it.

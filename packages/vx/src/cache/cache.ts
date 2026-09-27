@@ -1051,8 +1051,9 @@ export class Cache implements CacheLayer {
     hash: string,
     projectDir: string,
     prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
   ): Promise<void> {
-    await this.outputs.recordOutputDirs(hash, projectDir, prefixes)
+    await this.outputs.recordOutputDirs(hash, projectDir, prefixes, holds)
   }
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
     this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot)

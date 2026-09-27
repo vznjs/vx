@@ -21,7 +21,11 @@ export interface OutputDirSnapshot {
   hash: string
   projectDir: string
   prefixes: readonly string[] // the whole-subtree output prefixes
+  holds: (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean // the run-end walk's files are the entry's rows (item 1087)
 }
+export function entryHolds(
+  node: TaskNode,
+): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean
 
 export interface SaveMissArgs {
   node: TaskNode

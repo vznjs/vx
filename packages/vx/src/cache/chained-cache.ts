@@ -161,8 +161,15 @@ export class ChainedCache implements CacheLayer {
 
   // The directory short-circuit lives with the layer that owns the local
   // rows — the first, like the file check.
-  recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void> {
-    return this.layers[0]!.recordOutputDirs?.(hash, projectDir, prefixes) ?? Promise.resolve()
+  recordOutputDirs(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void> {
+    return (
+      this.layers[0]!.recordOutputDirs?.(hash, projectDir, prefixes, holds) ?? Promise.resolve()
+    )
   }
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
     this.layers[0]!.recordOutputStamps?.(hash, projectDir, workspaceRoot)

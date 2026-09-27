@@ -585,9 +585,17 @@ export interface CacheLayer {
    * `loadOutputDirsBatch` reads them back; `outputDirsCurrent` is true iff
    * every recorded directory still carries its recorded mtime, which proves
    * no file was added or removed anywhere the glob could see. Machine-local
-   * state, like the output rows: a remote ingest records none.
+   * state, like the output rows: a remote ingest records none. `holds`,
+   * when given, is asked with every non-directory path the walk saw
+   * (project-relative); false records nothing, since a snapshot of a tree
+   * the entry does not hold would vouch for it on every later hit.
    */
-  recordOutputDirs?(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void>
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
   /**
    * Stamp `hash`'s output rows with each file's inode and ctime once a
    * save or restore has left the tree equal to the entry (optional — a

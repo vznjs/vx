@@ -531,8 +531,13 @@ export class LayeredCache implements CacheLayer {
     return this.local.isOutputsCurrent(projectDir, expected)
   }
 
-  recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void> {
-    return this.local.recordOutputDirs(hash, projectDir, prefixes)
+  recordOutputDirs(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void> {
+    return this.local.recordOutputDirs(hash, projectDir, prefixes, holds)
   }
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
     this.local.recordOutputStamps(hash, projectDir, workspaceRoot)
