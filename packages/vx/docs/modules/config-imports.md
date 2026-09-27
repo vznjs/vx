@@ -56,9 +56,22 @@ does not apply.
    reaching into another project records the edge and stops.
 4. One reverse BFS from the changed set answers every root at once.
 
-Any read / parse / resolve failure skips that file silently. A config
-that will not load cannot be shown to import anything, and failing
-selection over a broken out-of-scope file would break a working build.
+Any read or parse failure skips that file silently: failing selection
+over a broken out-of-scope file would break a working build. A
+specifier that does not RESOLVE still records its edge, to the path it
+names (and, bare of an extension, to each file Bun would have tried):
+most often the change itself deleted or renamed the target, and the
+config importing it is the project the change broke. Without the edge,
+`--filter '[HEAD]'` exited 0 with that config broken (item 958).
+
+**A file a config READS is not followed.** The scan sees imports only:
+a config that reads `shared/cfg.json` with `readFileSync` folds its
+bytes into the key (resolved-config hashing) while selection never
+learns of the edge. Import the file instead (`import cfg from
+'../../shared/cfg.json' with { type: 'json' }` is followed), or declare
+it in `cache.inputs.workspaceFiles`. Selecting every config the purity
+gate cannot vouch for on any unowned change was weighed and left: it
+would run every such project on a README edit.
 
 ## The two rules that bound it
 

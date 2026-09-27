@@ -136,7 +136,8 @@ export function unprovidedBareImports(
 }
 
 /**
- * Absolute resolved targets of the RELATIVE specifiers in `source`.
+ * Absolute resolved targets of the RELATIVE specifiers in `source`; one that
+ * does not resolve contributes the paths it names.
  *
  * Paths come back realpath'd, because `Bun.resolveSync` realpaths them — see
  * the caller, which realpaths everything it compares against for exactly that
@@ -158,9 +159,18 @@ function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'):
     try {
       out.push(Bun.resolveSync(spec, fromDir))
     } catch {
-      // Unresolvable (deleted, typo, extensionless miss) — a config that will
-      // not load cannot be shown to import anything, and failing selection
-      // over it would break a working build.
+      // Unresolvable: most often the change itself deleted or renamed the
+      // target, and the config that imports it is exactly the project the
+      // change broke. The edge is the path the specifier names (and, bare
+      // of an extension, the files Bun would have tried), so the deleted
+      // path in the diff still reaches its importer (item 958). Selection
+      // may widen; it is never hashed.
+      const named = path.resolve(fromDir, spec)
+      out.push(named)
+      if (path.extname(spec) === '') {
+        for (const ext of RESOLVED_EXTENSIONS)
+          out.push(named + ext, path.join(named, 'index' + ext))
+      }
     }
   }
   return out
@@ -199,6 +209,9 @@ async function realDirIndex(projects: readonly ProjectMeta[]): Promise<Map<strin
 }
 
 const TS_EXT = new Set(['.ts', '.mts', '.cts'])
+
+/** The extensions Bun tries for a specifier that names none. */
+const RESOLVED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.json']
 
 /** The deepest project containing `file`, or undefined when none does. */
 function ownerOf(file: string, dirToName: ReadonlyMap<string, string>): string | undefined {
