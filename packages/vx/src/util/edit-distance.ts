@@ -1,10 +1,11 @@
 /**
- * Levenshtein distance, capped: anything past two edits reads as 3. Used
- * by the "did you mean" hints for task names and flags, where a hint
- * beyond two edits would guess rather than help.
+ * Levenshtein distance, capped: anything at or past `cap` edits reads as
+ * `cap` (3 by default: past two edits a hint would guess rather than
+ * help). A caller that allows three edits needs a cap of four — under a
+ * cap of 3, a candidate nine edits away read as 3 and was offered.
  */
-export function editDistance(a: string, b: string): number {
-  if (Math.abs(a.length - b.length) > 2) return 3
+export function editDistance(a: string, b: string, cap = 3): number {
+  if (Math.abs(a.length - b.length) >= cap) return cap
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
   for (let i = 1; i <= a.length; i++) {
     const cur = [i]
@@ -17,7 +18,7 @@ export function editDistance(a: string, b: string): number {
     }
     prev = cur
   }
-  return Math.min(prev[b.length]!, 3)
+  return Math.min(prev[b.length]!, cap)
 }
 
 /**
@@ -35,7 +36,10 @@ export function nearest(
   let best: string | undefined
   let bestD = maxEdits + 1
   for (const c of candidates) {
-    const d = editDistance(name, c)
+    // Capped one past the budget, so "past it" never reads as within it:
+    // `--continue-on-error` was nine edits from `--concurrency`, capped to
+    // the three `vx run`'s same-prefix hint allows, and offered.
+    const d = editDistance(name, c, maxEdits + 1)
     if (d < bestD) {
       bestD = d
       best = c

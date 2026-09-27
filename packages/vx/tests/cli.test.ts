@@ -14,6 +14,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
+import { editDistance, nearest } from '../src/util/index.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -2251,6 +2252,34 @@ describe('unknown-flag hints reach three edits', () => {
     // The third edit is only for flags sharing a stem: a plain three-edit
     // budget hinted `--all` for `--zzz`.
     expect(parseRunArgs(['build', '--zzz']).error).not.toContain('did you mean')
+  })
+
+  it('a flag sharing the stem but past three edits gets no hint', () => {
+    // The distance was capped at 3, so "three or more" read as three: the
+    // same-stem budget offered `--concurrency` for `--continue-on-error`
+    // (nine edits) and `--cache` for `--cache-directory`.
+    expect(parseRunArgs(['build', '--continue-on-error']).error).toBe(
+      'unknown flag: --continue-on-error (see `vx run --help`)',
+    )
+    expect(parseRunArgs(['build', '--cache-directory', 'd']).error).toBe(
+      'unknown flag: --cache-directory (see `vx run --help`)',
+    )
+    // CONTROL: within three edits the stem still hints.
+    expect(parseRunArgs(['build', '--timeouts']).error).toBe(
+      'unknown flag: --timeouts (did you mean --timeout?) (see `vx run --help`)',
+    )
+  })
+})
+
+describe('nearest', () => {
+  it('holds its budget exactly: a distance past it is never inside it', () => {
+    expect(editDistance('abcdefgh', 'abcdzzzzzz', 4)).toBe(4)
+    expect(editDistance('abcd', 'abcxyz', 4)).toBe(3)
+    expect(nearest('continue-on-error', ['concurrency'], 3)).toBeUndefined()
+    expect(nearest('retries', ['retry'], 3)).toBe('retry')
+    // The default budget of two: unchanged.
+    expect(nearest('buidl', ['build'])).toBe('build')
+    expect(nearest('bxyzl', ['build'])).toBeUndefined()
   })
 })
 
