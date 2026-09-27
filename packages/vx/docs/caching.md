@@ -983,7 +983,11 @@ next run misses), a restore that does is the task's failure line
 `could not write its outputs (ENOSPC: …). Free space on that disk and
 re-run.`, and a run record that does is `[vx] run history not recorded:
 … — the verdict above stands` (the run exits by its tasks; `vx last`
-will not know that one).
+will not know that one). A full index (`SQLITE_FULL`) gives way where the
+write is only a memo: the file-hash memo, the output stamps and the
+access times are skipped and the run goes on; a prune unlinks the
+artifacts first, so the rows it then deletes have room to go, and a
+save's temp file is removed when its write fails.
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)

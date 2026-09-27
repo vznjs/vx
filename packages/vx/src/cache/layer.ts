@@ -439,6 +439,16 @@ export interface IngestMeta {
 }
 
 /**
+ * SQLite's answer when the disk under the index is full. It is a code on
+ * the `SQLiteError` (`SQLITE_FULL`), never an `ENOSPC` errno, so
+ * `isDiskFull` does not see it: a memo write, a snapshot flush or a prune's
+ * delete on a full disk reached the user as a stack (A-14).
+ */
+export function isIndexFull(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === 'SQLITE_FULL'
+}
+
+/**
  * The supplied artifact bytes don't decompress/parse as a vx artifact.
  * Thrown by `save`/`ingest` BEFORE anything reaches the final cache
  * path — a rejected artifact leaves no `<hash>.tar.zst` and no SQL row.

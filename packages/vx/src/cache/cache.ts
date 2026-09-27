@@ -62,6 +62,7 @@ import {
   type DeclaredOutputs,
   type IngestMeta,
   type InvocationRecord,
+  isIndexFull,
   type OutputDirRow,
   type OutputFileRow,
   type PruneOptions,
@@ -1483,7 +1484,12 @@ export class Cache implements CacheLayer {
       // node's writeFile, not Bun.write: the latter copies the buffer first
       // (measured on 150 MiB: +151 MiB and 33 ms against +0 and 21 ms).
       const endWrite = span('save: write temp')
-      await writeFile(tmpPath, compressed)
+      // A write that fails part-way (a full disk) leaves the temp behind,
+      // and a fresh one is an orphan only an hour on (A-14).
+      await writeFile(tmpPath, compressed).catch(async (err: unknown) => {
+        await unlink(tmpPath).catch(() => undefined)
+        throw err
+      })
       endWrite()
     } else {
       // `save` or `ingest` already streamed the artifact into its temp.
@@ -1625,6 +1631,16 @@ export class Cache implements CacheLayer {
     const hashes = [...this.touched]
     this.touched.clear()
     const now = Date.now()
+    // LRU bookkeeping: on a full disk the bumps are dropped, never the prune
+    // or the stats that asked for them (A-14).
+    try {
+      this.writeAccessed(hashes, now)
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+    }
+  }
+
+  private writeAccessed(hashes: readonly string[], now: number): void {
     // Chunked: SQLite's bound-parameter ceiling is 32k on modern
     // builds, but 900 keeps us safe on any build at negligible cost.
     for (let i = 0; i < hashes.length; i += 900) {
@@ -1824,15 +1840,25 @@ export class Cache implements CacheLayer {
     if (victims.size > 0 || stale.length > 0) {
       const hashes = [...victims]
       const rows = [...hashes, ...stale]
-      this.db.transaction(() => {
+      // Artifacts first: a row whose artifact is gone reads as a miss, so the
+      // order is safe, and on a full disk the delete's own journal needs the
+      // space the unlinks free. Rows-first failed there before any file went,
+      // and the one verb meant to free a full disk freed nothing (A-14).
+      await Promise.all(hashes.map((h) => rm(this.tarPath(h), { force: true })))
+      const deleteRows = this.db.transaction(() => {
         for (let i = 0; i < rows.length; i += 900) {
           const chunk = rows.slice(i, i + 900)
           this.db
             .prepare(`DELETE FROM entries WHERE hash IN (${chunk.map(() => '?').join(',')})`)
             .run(...(chunk as readonly SQLQueryBindings[]))
         }
-      })()
-      await Promise.all(hashes.map((h) => rm(this.tarPath(h), { force: true })))
+      })
+      try {
+        deleteRows()
+      } catch (err) {
+        if (!isIndexFull(err)) throw err
+        deleteRows()
+      }
     }
 
     const orphans = await this.reapOrphans()
@@ -1853,9 +1879,14 @@ export class Cache implements CacheLayer {
   private async reapOrphans(
     now: number = Date.now(),
   ): Promise<{ orphans: number; orphanBytes: number }> {
-    this.db
-      .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
-      .run(SWEPT_AT, String(now))
+    try {
+      this.db
+        .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
+        .run(SWEPT_AT, String(now))
+    } catch (err) {
+      // The sweep's clock: on a full disk the sweep runs again next time.
+      if (!isIndexFull(err)) throw err
+    }
     let orphans = 0
     let orphanBytes = 0
     await Promise.all(
