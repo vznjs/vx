@@ -129,7 +129,7 @@ interface ExecConfig {
 }
 ```
 
-`command` is a string. Run via `Bun.spawn` with `shell: true`, so POSIX
+`command` is a string. Run via `sh -c`, so POSIX
 shell semantics work directly — pipes, redirects, `&&` chaining:
 
 ```ts
@@ -144,12 +144,12 @@ exec: {
 }
 ```
 
-CLI args after `--` are appended to `command`, shell-quoted via
-`JSON.stringify(arg)`:
+CLI args after `--` are appended to `command`, each POSIX single-quoted
+unless it holds only safe characters:
 
 ```sh
-vx run test -- --bail --watch
-# child sees:   bun test "--bail" "--watch"
+vx run test -- --bail 'a b'
+# child sees:   bun test --bail 'a b'
 ```
 
 Forwarded args are folded into the cache key — different args produce
@@ -622,7 +622,7 @@ Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
 - **Always-ignored** — `node_modules/**`, `.git/**`, `.vx/**`,
-  `*.tsbuildinfo`.
+  `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`.
 - **Declared `outputs.files`** are excluded — a task never invalidates
   itself via its own output.
 - **Nested-project subtree** — files belonging to a project rooted
@@ -635,7 +635,7 @@ Always applied to every glob pass (regardless of what you wrote):
 Workspace-root-relative globs — the Turbo `$TURBO_ROOT$` / Nx
 `{workspaceRoot}` equivalent, for inputs that live outside the project
 dir (a root `tsconfig.base.json`, shared codegen output, …). Same
-syntax as `files` (`!` negation, last-write-wins), same git-aware
+syntax as `files` (`!` negation subtracts, in any order), same git-aware
 resolution (tracked + untracked-not-ignored; gitignored files are
 invisible), and the resolved paths join the same cache-key file list.
 
@@ -656,7 +656,7 @@ project-boundary rule continues to apply to project-relative `files`
 globs only.
 
 Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
-`.vx/**`, `*.tsbuildinfo`) and the task's own declared
+`.vx/**`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`) and the task's own declared
 `outputs.workspaceFiles` (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
