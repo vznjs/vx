@@ -589,7 +589,9 @@ The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
 directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
-path. This holds for every task glob — `inputs.files`,
+path. An input brace of one alternative (`{b}.ts`) is refused: it
+would match `b.ts` and never a file named `{b}.ts`; write the one you
+mean, `\{b\}.ts` for the braces. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,

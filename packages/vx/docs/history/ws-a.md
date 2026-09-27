@@ -154,3 +154,10 @@ On a full disk the cache's side writes threw: the file-hash memo, the output sta
 
 - Fix (`layer.ts` `isIndexFull`): the memo, stamp and access writes skip on a full index; prune unlinks first and retries its row delete once; the temp is unlinked on a failed write; the orphan sweep stamp is best-effort. `caching.md` says so.
 - Rows: `cache-disk-full.test.ts`, each red without the fix.
+
+### A-15 (2026-09-27, coordinator lead)
+
+`cache.inputs.files: ['src/{b}.ts']` matched `src/b.ts` (Bun.Glob reads a one-alternative brace) and never the file named `src/{b}.ts`, so an edit to it was a hit.
+
+- Fix (`inputs.ts` `refuseOneAlternativeBrace`): such an entry in `files` or `workspaceFiles` is refused, naming both spellings. `schema.md` says so.
+- Rows: `one-alternative-brace.test.ts`, three red without the fix; control: the escaped form and a two-way brace.

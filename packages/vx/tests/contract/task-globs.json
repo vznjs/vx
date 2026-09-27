@@ -134,7 +134,7 @@
     "[\"src/{a,index}.ts\"]": ["src/index.ts"],
     "[\"{src,lib}/**/*.js\"]": ["lib/b.js", "src/a.js"],
     "[\"src/[id].ts\"]": ["src/[id].ts"],
-    "[\"src/{b}.ts\"]": [],
+    "[\"src/{b}.ts\"]": "refused: cache.inputs.files: \"src/{b}.ts\" holds a brace with one alternative, which matches \"b\" and never a name holding \"{b}\". Write \"src/b.ts\", or \"src/\\{b\\}.ts\" for the braces themselves.",
     "[\"src/(group)/page.ts\"]": ["src/(group)/page.ts"],
     "[\"src/(group)/*\"]": ["src/(group)/page.ts"],
     "[\"src/file with space.ts\"]": ["src/file with space.ts"],
