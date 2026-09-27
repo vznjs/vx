@@ -1,5 +1,5 @@
 // What a run is asked to run: the projects a `--filter` selects, the
-// ones `--affected` touches (with the orphan-path owners), the project the
+// ones `--affected` touches (with the `workspaceFiles` owners), the project the
 // cwd sits in, and the interactive picker. Every read of the workspace
 // here goes through the staged load, so the answer is the run's.
 
@@ -31,8 +31,8 @@ import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './worksp
 
 /**
  * The projects whose tasks declare a `cache.inputs.workspaceFiles` glob
- * matching an ORPHAN changed path (one no project owns): `--affected`
- * selects them, since the glob is that task's input. Through the run
+ * matching a changed path, one inside another project included (item
+ * 954): `--affected` selects them, since the glob is that task's input. Through the run
  * path's staged load, so a glob a `project` plugin gave a config-less
  * package counts; evaluated live as a default run does, or read from the
  * lock as a `--frozen` run does. A load that fails drops to the config files that
@@ -42,7 +42,7 @@ import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './worksp
 export async function workspaceGlobOwners(
   root: string,
   projects: readonly ProjectMeta[],
-  orphans: readonly string[],
+  changed: readonly string[],
   load: CliLoadOptions = {},
   stagedLoad: () => Promise<ReadonlyMap<string, ProjectEntry>> = () =>
     loadCliProjects(root, projects, 'all', load),
@@ -51,7 +51,7 @@ export async function workspaceGlobOwners(
     for (const task of Object.values(config.tasks ?? {})) {
       const globs = task.cache?.inputs?.workspaceFiles
       if (globs === undefined) continue
-      if (orphans.some((rel) => workspaceGlobsMatch(globs, rel))) return true
+      if (changed.some((rel) => workspaceGlobsMatch(globs, rel))) return true
     }
     return false
   }
@@ -182,7 +182,7 @@ export async function resolveFilters(
   const parsed = raw.map((r) => parseFilter(r, root))
   const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
   // Every reader of the staged configs in this pass — the `pkg#task`
-  // edge walk, the `workspaceFiles` owners of an orphan path — shares
+  // edge walk, the `workspaceFiles` owners of a changed path — shares
   // ONE load, and the run reuses it (`RunOptions.staged`): the `project`
   // stage runs once per project per run.
   let stagedPromise: Promise<Map<string, ProjectEntry>> | undefined
@@ -209,8 +209,8 @@ export async function resolveFilters(
         workspaceRoot: root,
         since: f.gitSince,
         projects,
-        workspaceGlobOwners: (orphans) =>
-          workspaceGlobOwners(root, projects, orphans, load, stagedOnce),
+        workspaceGlobOwners: (changed) =>
+          workspaceGlobOwners(root, projects, changed, load, stagedOnce),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
       })
       affectedByFilter.set(f, names)

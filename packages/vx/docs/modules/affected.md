@@ -14,7 +14,7 @@ export interface AffectedArgs {
   since: string // required: ref / commit / branch
   projects: readonly ProjectMeta[]
   /** Which projects declare a `workspaceFiles` glob matching these paths.
-   *  Asked ONLY about paths that belong to no project. */
+   *  Asked about every changed path, once something changed (item 954). */
   workspaceGlobOwners?: (paths: readonly string[]) => Promise<Set<string>>
 }
 
@@ -82,8 +82,8 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
      [`config-imports.md`](./config-imports.md). Resolved-config
      hashing folds those values into the key, so selection has to see
      them too.
-   - **Workspace globs.** For paths that belong to no project,
-     `workspaceGlobOwners` (`cli/run.ts`) asks which projects declare
+   - **Workspace globs.** For every changed path, `workspaceGlobOwners`
+     (`cli/select.ts`) asks which projects declare
      a matching `cache.inputs.workspaceFiles` glob — through the run
      path's staged load, so a glob a `project` plugin gave a
      config-less package counts. The match runs the entries through
@@ -91,7 +91,12 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
      this answers the question the KEY answers: with the entries raw,
      `./shared/**` and the literal `shared` folded a changed file into
      a project's key while selecting nothing, so `--affected` skipped a
-     project its own key called stale (item 445).
+     project its own key called stale (item 445). Every path, not only
+     the ones no project owns: a glob may name a file inside another
+     project (`schema.md` allows it), and asking only the unowned ones
+     ran the owner alone (item 954). The `--affected` sugar has staged
+     every config for its graph walk already; a bare `[ref]` filter pays
+     that one load when something changed.
 
 Selection is never hashed, so widening it changes no cache key: every
 channel here may over-select safely — but it may not UNDER-select, and

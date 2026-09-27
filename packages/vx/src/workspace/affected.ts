@@ -60,18 +60,18 @@ export interface AffectedArgs {
    * Which projects declare a `cache.inputs.workspaceFiles` glob matching one of
    * these workspace-relative paths.
    *
-   * A workspace-anchored glob is the documented escape hatch for shared files
-   * that belong to NO project, so mapping changed paths to project directories
-   * structurally cannot see it — the path resolves to no project and the run
-   * selects nothing for a change that re-keyed the task.
-   *
-   * Answering needs the RESOLVED configs, which selection runs before loading;
-   * that ordering is what left this open. It is resolved by asking only when
-   * the question can matter: this is called ONLY with paths that belong to no
-   * project, so a run whose every change is inside a project — the common case
-   * — never invokes it and pays nothing.
+   * A workspace-anchored glob is the documented escape hatch for inputs
+   * outside the project, so mapping changed paths to project directories
+   * structurally cannot see it. Answering needs the RESOLVED configs, which
+   * selection runs before loading, so it is a callback, asked only when
+   * something changed. It is asked about EVERY changed path, the ones a
+   * project owns included: the glob may name a file inside another project
+   * (`schema.md` allows it), and asking only the paths no project owns
+   * left the declaring project out of a run its key called stale
+   * (item 954). The `--affected` sugar's graph walk has already staged every
+   * config, so there it costs nothing more.
    */
-  workspaceGlobOwners?: (orphanPaths: readonly string[]) => Promise<Iterable<string>>
+  workspaceGlobOwners?: (changedPaths: readonly string[]) => Promise<Iterable<string>>
   /**
    * The fingerprint files a plugin claims (`VxPlugin.fingerprint`) and its
    * answer for a change to one. Resolved lazily: loading the workspace
@@ -210,15 +210,15 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     }
   }
 
-  const { owned, orphans } = projectsContaining(args.workspaceRoot, changed, args.projects)
+  const owned = projectsContaining(args.workspaceRoot, changed, args.projects)
   for (const name of claimedOwned) owned.add(name)
 
   // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
   // Resolved-config hashing folds those values into the key, so the same
   // sentence above applies — input hashing sees it, so selection must. This
-  // runs on the FULL changed set, not just `orphans`: the common shape is a
-  // config reaching into ANOTHER project (`../../src/index.ts`), whose target
-  // is owned and therefore never an orphan at all.
+  // runs on the FULL changed set, not just the paths no project owns: the
+  // common shape is a config reaching into ANOTHER project
+  // (`../../src/index.ts`), whose target is owned.
   for (const name of await configImportOwners({
     workspaceRoot: args.workspaceRoot,
     projects: args.projects,
@@ -228,8 +228,8 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     owned.add(name)
   }
 
-  if (orphans.length === 0 || args.workspaceGlobOwners === undefined) return owned
-  for (const name of await args.workspaceGlobOwners(orphans)) owned.add(name)
+  if (changed.length === 0 || args.workspaceGlobOwners === undefined) return owned
+  for (const name of await args.workspaceGlobOwners(changed)) owned.add(name)
   return owned
 }
 
@@ -430,7 +430,7 @@ function projectsContaining(
   workspaceRoot: string,
   changedRelPaths: readonly string[],
   projects: readonly ProjectMeta[],
-): { owned: Set<string>; orphans: string[] } {
+): Set<string> {
   // Index projects by their (canonical) dir, then for each changed path walk
   // its ancestor dirs bottom-up until one is a project dir. The FIRST hit is
   // the DEEPEST containing project — so a nested project still wins over its
@@ -441,9 +441,6 @@ function projectsContaining(
   const dirToName = new Map<string, string>()
   for (const p of projects) dirToName.set(p.dir, p.name)
   const owned = new Set<string>()
-  // Paths that belong to no project. Only these can reach a task through a
-  // workspace-anchored glob, so they are the exact set worth asking about.
-  const orphans: string[] = []
   for (const rel of changedRelPaths) {
     let dir = path.resolve(workspaceRoot, rel)
     let hit = false
@@ -468,17 +465,10 @@ function projectsContaining(
     // already keys those projects on their files (git-inputs.ts); without
     // this, `--affected` after an edit inside selected none of them.
     const abs = path.resolve(workspaceRoot, rel)
-    let under = false
     if (isDirectory(abs)) {
       const prefix = abs + path.sep
-      for (const [dir, name] of dirToName) {
-        if (dir.startsWith(prefix)) {
-          owned.add(name)
-          under = true
-        }
-      }
+      for (const [dir, name] of dirToName) if (dir.startsWith(prefix)) owned.add(name)
     }
-    if (!under) orphans.push(rel)
   }
-  return { owned, orphans }
+  return owned
 }
