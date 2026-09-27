@@ -17,6 +17,9 @@ median 351 ms against 334, A/A 336, 15 rounds. Refuted the same day:
 - astro's git enumeration (122 ms) is mostly `git status` itself
   (57–71 ms alone); a restore's extract is the item 193 floor.
 
+I-3. `nx()` and `turbo()`'s per-run mapping cost split by stage (G
+leads below): the map, not the read or the parse.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
@@ -26,6 +29,15 @@ median 351 ms against 334, A/A 336, 15 rounds. Refuted the same day:
   run asks for 35; self time in `nx-map`, `nx-dotenv`, `nx-upstream`,
   `nx-outputs`, `shared-outputs` ~57 ms. Lever: map only the projects
   the run loads, or cache the mapping keyed on the snapshot's mtime.
+  Split (I-3), `parseNxGraph` + `mapNxWorkspace` called on refine's
+  snapshot, 6 calls: read 0.6–2.9 ms, parse 1.3–1.6, map 35–66 (the
+  first, cold call is what a CLI run pays). The map is the cost.
+- **G: `turbo()` has the same shape (I-3).** `mapTurboWorkspace` on
+  astro, 6 calls: 43 ms cold, 24–26 warm, for all 553 members when the
+  run needs 32. A wall control against written configs failed: the
+  written `vx.config.mjs` files fall inside astro's `**/*` inputs, the
+  keys moved, and a copied pnpm repo cannot rebuild here (it
+  reinstalls, and the registry is out of reach).
 - **A: nested-project boundaries matched as one glob each; 38 % of
   astro's warm run.** `resolveFiles` and `scanUnion` test every file
   against one `<nested>/**` glob per nested project: O(files × nested),
@@ -65,3 +77,8 @@ median 351 ms against 334, A/A 336, 15 rounds. Refuted the same day:
   synthetic packages `--filter '*'` main median 369 ms (min 341),
   patch 351 (305), A/A 375 (336); astro's filtered no-op main 819
   (752), patch 733 (682), A/A 774 (755); every run exit 0.
+- **F: `wedged.test.ts` › "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL
+  and is retried" failed once in a local gate (I-3): `sent` 3 where 4
+  is expected, 2,199 ms, on c2f0fa79; green on the next gate at
+  233e6e59. The retry count reads as time-bounded under load. Not
+  root-caused.
