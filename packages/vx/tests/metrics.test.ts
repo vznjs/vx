@@ -262,7 +262,7 @@ describe('listInvocations', () => {
     })
   })
 
-  it('accepts a bare number for the limit (back-compat)', () => {
+  it('caps the list at its limit', () => {
     withCache((cache) => {
       for (let i = 0; i < 5; i++) {
         cache.recordRunBundle({
@@ -270,94 +270,7 @@ describe('listInvocations', () => {
           invocation: mkInvocation({ runId: `r-${i}`, startedAt: 1000 + i }),
         })
       }
-      expect(listInvocations(cache.dbHandle(), 2).length).toBe(2)
-    })
-  })
-
-  it('filters by branch, ci, and tag', () => {
-    withCache((cache) => {
-      cache.recordRunBundle({
-        runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-main' })],
-        invocation: mkInvocation({
-          runId: 'r-main',
-          startedAt: 1000,
-          branch: 'main',
-          ci: false,
-          tags: JSON.stringify({ env: 'dev' }),
-        }),
-      })
-      cache.recordRunBundle({
-        runs: [mkRun({ hash: 'h2', project: 'pkg', task: 'build', runId: 'r-feat' })],
-        invocation: mkInvocation({
-          runId: 'r-feat',
-          startedAt: 2000,
-          branch: 'feature',
-          ci: true,
-          ciProvider: 'github',
-          tags: JSON.stringify({ env: 'prod', pr: '42' }),
-        }),
-      })
-
-      const byBranch = listInvocations(cache.dbHandle(), { branch: 'feature' })
-      expect(byBranch.map((r) => r.runId)).toEqual(['r-feat'])
-
-      const byCi = listInvocations(cache.dbHandle(), { ci: true })
-      expect(byCi.map((r) => r.runId)).toEqual(['r-feat'])
-      expect(byCi[0]!.ciProvider).toBe('github')
-
-      const notCi = listInvocations(cache.dbHandle(), { ci: false })
-      expect(notCi.map((r) => r.runId)).toEqual(['r-main'])
-
-      const byTag = listInvocations(cache.dbHandle(), { tagKey: 'env', tagValue: 'prod' })
-      expect(byTag.map((r) => r.runId)).toEqual(['r-feat'])
-      expect(byTag[0]!.tags).toEqual({ env: 'prod', pr: '42' })
-
-      const byTagDev = listInvocations(cache.dbHandle(), { tagKey: 'env', tagValue: 'dev' })
-      expect(byTagDev.map((r) => r.runId)).toEqual(['r-main'])
-
-      // TWO filters at once. Every assertion above passes exactly one, and a
-      // single clause joins the same under AND or OR — so this function's
-      // clause builder was free, while `listRuns`'s identical one is held by
-      // a row that does pass two. `branch: 'main'` and `ci: true` select
-      // different rows, so OR would return both.
-      expect(
-        listInvocations(cache.dbHandle(), { branch: 'main', ci: true }).map((r) => r.runId),
-      ).toEqual([])
-    })
-  })
-
-  it('needs BOTH halves of a tag pair before it filters on one', () => {
-    withCache((cache) => {
-      for (const [runId, startedAt, tags] of [
-        ['r-a', 1000, { env: 'dev' }],
-        ['r-b', 2000, { env: 'prod' }],
-      ] as const) {
-        cache.recordRunBundle({
-          runs: [mkRun({ hash: 'h', project: 'pkg', task: 'build', runId })],
-          invocation: mkInvocation({ runId, startedAt, tags: JSON.stringify(tags) }),
-        })
-      }
-      // A key with no value cannot name a pair, so it must not narrow — the
-      // LIKE fragment would otherwise be built from `undefined`.
-      expect(listInvocations(cache.dbHandle(), { tagKey: 'env' }).length).toBe(2)
-      expect(listInvocations(cache.dbHandle(), { tagValue: 'prod' }).length).toBe(2)
-      expect(listInvocations(cache.dbHandle(), { tagKey: 'env', tagValue: 'prod' }).length).toBe(1)
-    })
-  })
-
-  it('escapes a tag key or value into the serialized pair it matches on', () => {
-    withCache((cache) => {
-      // The filter is a LIKE over the JSON text, so the fragment has to be
-      // spelled the way JSON.stringify spelled the column — a quote or a
-      // backslash in either half is escaped there and must be here too, or
-      // the pair never matches its own row.
-      const tags = { 'we"ird': 'va\\lue' }
-      cache.recordRunBundle({
-        runs: [mkRun({ hash: 'h', project: 'pkg', task: 'build', runId: 'r-q' })],
-        invocation: mkInvocation({ runId: 'r-q', startedAt: 1000, tags: JSON.stringify(tags) }),
-      })
-      const found = listInvocations(cache.dbHandle(), { tagKey: 'we"ird', tagValue: 'va\\lue' })
-      expect(found.map((r) => r.runId)).toEqual(['r-q'])
+      expect(listInvocations(cache.dbHandle(), { limit: 2 }).length).toBe(2)
     })
   })
 })

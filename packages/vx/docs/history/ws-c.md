@@ -180,6 +180,18 @@ with the transfer flag (cli.md: "Never affects cache keys"). Such a task
 now reads its whole project in the gate; one nothing cached depends on
 does not. Row: `download-policy.test.ts`.
 
+## C-18: drop `listInvocations`' unused filters
+
+Its branch, ci and tag filters had no caller (`vx last` passes a limit
+alone) and the tag one matched by `LIKE`: case-insensitive, and `%`/`_`
+in a value were wildcards. Removed with the bare-number signature; the
+limit stays. Also measured, no change: the warm `run graph` stage at
+5,000 projects is 290 ms here, the scheduler's own share 25–50 ms, the
+rest the per-hit output stats and the execute path (the one repeat,
+`wholeSubtreePrefixes`, is 4–6 ms, inside noise); a server gives its
+slot back at ready, so one-shot tasks never starve behind it; `run.ts`'s
+only clean seam is the ~40-line footer, which removes no duplication.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
