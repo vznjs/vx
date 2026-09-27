@@ -101,9 +101,13 @@ describe('a .gitattributes the index does not hold as clean', () => {
   // stops trusting such an OID looked for `.gitattributes` among the
   // TRUSTED paths only, so one untracked or modified was never seen, and
   // the rewrite replayed the CRLF output (item 977).
-  async function crlfThenLf(attributes: 'untracked' | 'modified'): Promise<string> {
+  async function crlfThenLf(attributes: 'untracked' | 'modified' | 'ignored'): Promise<string> {
     const dir = await addProject(root, 'a', { config: CONFIG })
     const git = gitIn(root)
+    if (attributes === 'ignored') {
+      await writeFile(path.join(dir, '.gitignore'), '.gitattributes\n')
+      git('add', path.join(dir, '.gitignore'))
+    }
     if (attributes === 'modified') {
       await writeFile(path.join(dir, '.gitattributes'), '# none yet\n')
       git('add', '-A')
@@ -143,6 +147,14 @@ describe('a .gitattributes the index does not hold as clean', () => {
     'a modified one does too (item 977)',
     async () => {
       expect(await crlfThenLf('modified')).toBe('a\nb\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an ignored one does too: git applies it, and the enumeration never lists it (A-19)',
+    async () => {
+      expect(await crlfThenLf('ignored')).toBe('a\nb\n')
     },
     TIMEOUT,
   )

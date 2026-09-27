@@ -11,7 +11,9 @@ filter (`text`, `eol`, `ident`, a `filter` driver, `working-tree-encoding`,
 `core.autocrlf`) could make the blob
 differ from the bytes on disk. The gate looks for a `.gitattributes`
 among every listed path, untracked and modified ones too: git applies
-those, and a scan of the trusted paths alone never saw them (item 977). Split from `inputs.ts` on 2026-09-10:
+those, and a scan of the trusted paths alone never saw them (item 977),
+and an ignored one, which the status walk names with `--ignored=matching`
+(A-19). Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
 

@@ -834,7 +834,8 @@ is gated in three steps, and the common case pays nothing:
    auto-detected text file with no attribute needed, so no OID is
    trusted.
 2. Otherwise, if no attributes source exists anywhere (no in-tree
-   `.gitattributes`, no `$GIT_DIR/info/attributes`, and none of the
+   `.gitattributes`, an ignored one included, which `git status
+--ignored=matching` names from the walk it already does, no `$GIT_DIR/info/attributes`, and none of the
    files git reads outside the tree: the global one, which is
    `core.attributesFile` or by default `$XDG_CONFIG_HOME/git/attributes`
    or `~/.config/git/attributes`, and the system one), no rule can name
