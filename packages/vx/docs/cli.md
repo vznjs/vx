@@ -29,14 +29,14 @@ released binary carries its own Bun and the row never says it.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
-vx cache prune [--older-than <duration>] [--max-size <size>]
+vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--cache-dir <path>]
 vx lock [--check]
 vx init [--dry] [--force] [--mjs]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
-vx info
+vx info [--format pretty|json] [--cache-dir <path>]
 vx stats              # deprecated alias of vx info
-vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json]
-vx last [runId] [--list[=N]] [--format pretty|json]
+vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]
+vx last [runId] [--list[=N]] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [tag]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
@@ -57,8 +57,9 @@ directory, a member reached through a link (`packages/b -> ../ext/b`)
 included.
 
 **Every requested name must resolve.** If any positional matches no
-project in scope, the run refuses to start — `no projects declare
-task(s): <name>` on stderr, exit 1, with `Did you mean <task>?` when a
+project in scope, the run refuses to start — `No projects declare
+task(s): <name>.` on stderr (`vx run: no projects declare task(s):
+<name>.` under `--dry` / `--graph`), exit 1, with `Did you mean <task>?` when a
 declared task (or, for `pkg#task`, a runnable spec) is within two edits
 — even when the other names resolved fine. A bare name declared by only SOME projects is normal and stays
 green; the guard fires only when a name matched nowhere. So a CI job
@@ -405,12 +406,13 @@ anything past `2^53` (it would parse to a number you did not type).
 These all used to be silently reinterpreted — `--concurrency 0x10` ran
 16 workers.
 
-An empty `=` value on an OPTIONAL-value flag means "no value", so it
-takes that flag's documented default: `--profile=` writes `profile.json`
-and `--summarize=` writes `<cacheDir>/runs/<run_id>.json`, exactly like
-their bare forms. Value flags that have no bare form (`--retry=`,
-`--timeout=`, `--cache-dir=`, `--filter=`, `--cache=`)
-reject an empty value instead.
+An empty `=` value means "no value" on four flags, which then act like
+their bare forms: `--profile=` writes `profile.json`, `--summarize=`
+writes `<cacheDir>/runs/<run_id>.json`, `--graph=` prints to stdout and
+`--affected=` uses the default base. Every other flag refuses an empty
+value: `--dry=`, `--report=`, `--continue=` and
+`--exclude-dependencies=` as well as the ones with no bare form
+(`--retry=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache=`).
 
 #### Cache control: `--cache`, `--no-cache`, `--force`
 
@@ -765,15 +767,18 @@ Status legend:
       "description": "oxlint with tsgolint-backed type-aware checks",
       "hash": "d66cfed2...",
       "cacheStatus": "hit-local",
-      "deps": []
+      "deps": [],
+      "p50Ms": 72640
     }
   ],
-  "predicted": { "wallMs": 72640, "workMs": 72640, "unknownCount": 0 }
+  "predicted": { "wallMs": 0, "workMs": 0, "unknownCount": 0 }
 }
 ```
 
-Each would-run task with history also carries `p50Ms`; `predicted` is
-present whenever local history was readable.
+Every task with history carries `p50Ms`, hits included (only the text
+view's `~p50` is limited to tasks that would run); `predicted` counts
+would-run tasks only and is present whenever local history was
+readable.
 
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):
@@ -799,41 +804,43 @@ Writes a per-run JSON file:
 
 ```json
 {
-  "runId": "01HKQ...",
+  "runId": "01a0e3ef-206c-708d-95bf-c2b07211adf6",
   "ok": true,
   "exitCode": 0,
-  "startedAt": "2026-05-13T22:00:00.123Z",
-  "endedAt": "2026-05-13T22:00:05.567Z",
-  "totalMs": 5443.7,
+  "startedAt": "2026-09-27T17:34:54.572Z",
+  "endedAt": "2026-09-27T17:34:54.586Z",
+  "totalMs": 14.123643,
   "tasks": [
     {
-      "id": "@vzn/vx#lint",
-      "project": "@vzn/vx",
-      "task": "lint",
+      "id": "a#build",
+      "project": "a",
+      "task": "build",
       "status": "cache-hit",
       "exitCode": 0,
-      "durationMs": 4,
-      "hash": "...",
-      "storedCpuMs": 123,
-      "storedPeakRssBytes": 45678,
-      "wallclockStartNs": "12345678",
-      "wallclockEndNs": "12356789"
+      "durationMs": 3,
+      "hash": "48007ccadd42ed7d",
+      "storedCpuMs": 2.059,
+      "wallclockStartNs": "9456491",
+      "wallclockEndNs": "12902888"
     }
   ],
   "aborted": [],
   "summary": {
-    "successful": 3,
+    "successful": 1,
     "failed": 0,
     "skipped": 0,
-    "cachedLocal": 2,
+    "cachedLocal": 1,
+    "restoredLocal": 0,
+    "restoredRemote": 0,
+    "upToDate": 1,
     "cachedRemote": 0,
     "aborted": 0,
-    "total": 3
+    "total": 1
   }
 }
 ```
 
-Default path: `<cacheDir>/runs/<run_id>.json`. hrtime fields are
+`runId` is a UUIDv7. Default path: `<cacheDir>/runs/<run_id>.json`. hrtime fields are
 strings (bigints serialized as strings) to preserve ns precision
 through JSON. `cpuMs` / `peakRssBytes` are what the task's own
 execution used and appear on executed rows only (`peakRssBytes` only
@@ -1163,8 +1170,9 @@ run...` precedes it.
    edit, at any depth: another watcher's, seen under a nested project,
    ran a cycle (and restarted a dev server) with no edit made (item
    1016). A
-   watcher that stays silent for 2 s is kept, with a warning that early
-   edits there may be missed.
+   watcher whose probe is not heard within 2 s is replaced by a poller
+   that checks every 250 ms, with the notice `vx watch: <dir>: no OS
+watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** The triggering path is logged
    (`vx watch: <project> <relpath>; re-running...`) and the
    orchestrator is invoked again with the same options. Events arriving
@@ -1228,8 +1236,8 @@ run):
 
 - `--dry` / `--graph` — those skip execution; nothing to watch.
 - `--summarize` / `--profile` — would overwrite their target per cycle.
-- `--report` / `--verbosity <n>` (n > 0) — both format ONE run's
-  result; a watch loop has no single run to report. (`--verbosity 0`
+- `--report` / `--report-file` / `--verbosity <n>` (n > 0) — all
+  format ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
 Persistent tasks (`exec.persistent`) re-spawn each cycle. A requested
@@ -1329,13 +1337,13 @@ $ vx cache prune --older-than 30d
 Pruned 42 entries (1.3 GB freed)
 
 $ vx cache prune --older-than 7d --max-size 500M
-Pruned 18 entries (320.1 MB freed)
+Pruned 18 entries (320 MB freed)
 
 $ vx cache prune --older-than 30d      # after a SCHEMA_VERSION bump
 Pruned 0 entries (0 B freed), reaped 42 orphaned artifacts (1.3 GB)
 
 $ vx cache prune --older-than 30d --dry-run
-Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12.4 MB)
+Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
 ```
 
 `--dry-run` picks the victims under the same policy and counts the
@@ -1503,8 +1511,9 @@ replaced; …`.
 ## `vx init`
 
 Scaffold a workspace that comes from nowhere: one `vx.config.ts` per
-package from its `package.json` scripts, plus `vx.workspace.ts`
-declaring the local executor and cache. The same mapping as `@vzn/vx-migrate
+package from its `package.json` scripts, plus a `vx.workspace.ts` of
+`{ plugins: [] }` whose comment says running and caching here are the
+floor, so it declares no executor or cache. The same mapping as `@vzn/vx-migrate
 --from scripts`, with the same `--dry` / `--force` flags; the one
 difference is a workspace with no scripts at all, which `init` still
 scaffolds (the workspace file, a printed example config, and the next
@@ -1561,10 +1570,9 @@ still maps scripts only and says so, naming the richer path:
 `bunx @vzn/vx-migrate` (which auto-detects the source) or `plugins: [turbo()]`
 / `plugins: [nx()]` from `@vzn/vx-migrate`.
 
-A run in a root with no `vx.workspace.*` at all fails before any task
-with `no vx.workspace.ts found — run vx init …` ahead of the usual
-`no cache plugin declared` snippet; a file that declares no plugins gets
-the plain error, since `init` refuses to overwrite it.
+A missing `vx.workspace.*` is not an error. A run where no package has
+a config fails before any task, exit 1:
+``No projects declare task(s): build. No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.``
 
 Two npm conventions are mapped rather than copied, because copying them
 loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
@@ -1706,7 +1714,7 @@ memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
 cache versions:   keys vx-cache-v35 · index schema v28
 cache entries:    42 (1.3 GB)
-orphans:          3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
+orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
 flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
 sandbox:          available (9 tasks declare exec.sandbox)
@@ -1762,7 +1770,8 @@ exec.sandbox and will fail` says it first: root inside a container
   flight). They are never a hit and nothing but `vx cache prune`
   reclaims them, so the doctor says so.
 - `--format json` prints the same facts as one typed object, for a
-  script or a bug-report template: `vx`, `bun`, `git` (null when not
+  script or a bug-report template: `vx`, `bun`, `bunSupported` (false
+  below Bun 1.4.0), `git` (null when not
   found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
   `configErrors` (`[{ path, message }]`, the configs that did not load,
@@ -1773,7 +1782,9 @@ cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
-  empty when none), `lockfile`. The pretty rows render this object;
+  empty when none), `lockfile`, `sandbox` (`{ available, reason,
+declared }`, `declared` the count of tasks with `exec.sandbox`). The
+  pretty rows render this object;
   there is no second source.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
   it); it prints byte-identical output.
@@ -1891,10 +1902,11 @@ a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 (cwd-relative, absolute used as-is): a run that wrote its history
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cacheDir })`
-or `.vx/cache`). None of them creates anything: a `--cache-dir` that is
-not there is refused by name (`--cache-dir .vx/cahce: no such
-directory`), and a workspace that never ran reads as empty with no `.vx`
-made (item 900).
+or `.vx/cache`). A `--cache-dir` that is not there is refused by name
+(`--cache-dir .vx/cahce: no such directory`). In a workspace that never
+ran, `vx why`, `vx last`, `vx info` and `vx cache prune --dry-run` read
+it as empty and create nothing (item 900); a real `vx cache prune`
+creates an empty `.vx/cache`.
 
 ## `vx completions`
 
@@ -1907,9 +1919,12 @@ vx completions fish > ~/.config/fish/completions/vx.fish
 ```
 
 The script completes the verbs — core's, and the plugin verbs the
-workspace around the cwd declares at generation time — and every flag
-of each verb, read from the same help text `vx <verb> --help` prints,
-so a flag cannot be documented and not completed. Task and project
+workspace around the cwd declares at generation time — and, for a core
+verb, every `--word` its `vx <verb> --help` text mentions. That text
+also names flags the verb refuses, so some are offered anyway: `vx
+watch` offers `--dry` / `--graph` / `--summarize` / `--profile`, `vx lock`
+`--frozen`, `vx show` and `vx info` `--run` / `--list`. A plugin verb
+completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). An unknown
 shell is an error naming the three.
@@ -1919,9 +1934,10 @@ shell is an error naming the three.
 A plugin declared in `vx.workspace.ts` can add verbs:
 
 ```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
 export function mcp(): VxPlugin {
-  return {
-    name: 'org/mcp',
+  return definePlugin(import.meta, {
     commands: {
       mcp: {
         description: 'serve the run history to an AI agent over stdio',
@@ -1931,9 +1947,12 @@ export function mcp(): VxPlugin {
         },
       },
     },
-  }
+  })
 }
 ```
+
+The plugin's name is its package name, which `definePlugin` reads from
+`import.meta`; a plain object is refused when the workspace loads.
 
 (`@vzn/vx-mcp` ships exactly this: declare `mcp()` and `vx mcp` serves
 six read-only tools to AI agents — four over the run history, one
@@ -1976,8 +1995,9 @@ task are the last row.
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx             | —       | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`). |
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
-`FORCE_COLOR`); `GITHUB_STEP_SUMMARY` is where `--report` writes on
-Actions.
+`FORCE_COLOR`). Core never reads `GITHUB_STEP_SUMMARY`: `--report`
+prints to stdout, and `--report-file=<path>` appends to a file, so on
+Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
 
 ## Output format
 
@@ -2140,7 +2160,7 @@ consult). The retired `VX_REMOTE_CACHE_*` env vars are gone.
 
 `vx info` surfaces the aggregate cache stats (entry count, total
 size, runs + hits in the last 24 h). For anything deeper, vx records
-every task to a `runs` table in `cache.db` (ULID `run_id`, hrtime
+every task to a `runs` table in `cache.db` (UUIDv7 `run_id`, hrtime
 wallclock spans, cpu_ms, peak RSS, status, cache_hit flag) plus one
 `invocations` header row per run (command, git/CI context, tags,
 counts). The SQLite file IS the API:
