@@ -142,7 +142,13 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
   for (const neg of negative) {
     if (neg.length === 0) continue
     if (rel === neg || rel.startsWith(`${neg}/`)) return true
-    if (BUN_GLOB_WILDCARDS.test(neg) && new Bun.Glob(neg).match(rel)) return true
+    if (!BUN_GLOB_WILDCARDS.test(neg)) continue
+    if (new Bun.Glob(neg).match(rel)) return true
+    // pnpm matches the MANIFEST (`<pattern>/package.json`), so its documented
+    // `!**/test/**` excludes `packages/test` itself; matched against the
+    // directory, `**/test/**` needs something below `test` and the package
+    // stayed a member (item 986).
+    if (new Bun.Glob(`${neg}/package.json`).match(`${rel}/package.json`)) return true
   }
   return false
 }

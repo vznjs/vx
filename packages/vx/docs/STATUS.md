@@ -282,6 +282,15 @@ test is telling the truth.
         before it is normalized. `modules/workspace.md` says so.
       - Row: `workspace.test.ts` › a trailing slash on a member glob does
         not make it recursive, in both manifests. Red without the fix.
+986.  DONE (2026-09-27, the discovery review's lead 4). pnpm's documented
+      `!**/test/**` left `packages/test` a member: the exclusion was
+      matched against the directory, where `**/test/**` needs something
+      below `test`. pnpm matches `<pattern>/package.json`.
+      - Fix (`workspace.ts`): a wildcard exclusion also matches the
+        member's manifest path, so nothing it excluded before is kept.
+        `modules/workspace.md` says so.
+      - Row: `workspace.test.ts` › pnpm's `!**/test/**` excludes
+        packages/test itself. Red without the fix.
 
 ## In flight
 
