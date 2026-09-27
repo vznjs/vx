@@ -367,6 +367,101 @@ function current(): Record<'workspace' | 'project', SurfaceRecord> {
   }
 }
 
+const RULES_RECORD = path.join(import.meta.dir, 'contract', 'config-schema-rules.json')
+
+/** A field of a task set to one of its seed values, or `exec` taken away. */
+interface Unit {
+  path: string[]
+  value: unknown
+}
+
+const unitName = (u: Unit): string =>
+  `${u.path.join('.')}=${u.value === ABSENT ? '<absent>' : JSON.stringify(u.value)}`
+
+/**
+ * The fields of a task and of its `exec`, each with every distinct value
+ * the seed tasks give it, plus `exec` taken away. Whole blocks, not their
+ * leaves: a cross-field rule is between blocks (`persistent` and `cache`),
+ * and a leaf alone (`cache.inputs.env`) is refused by its own block.
+ */
+function taskUnits(): Unit[] {
+  const out = new Map<string, Unit>([['exec=<absent>', { path: ['exec'], value: ABSENT }]])
+  for (const task of Object.values(projectSeed()['tasks'] as Record<string, object>)) {
+    for (const [k, v] of Object.entries(task)) {
+      if (k !== 'exec') out.set(unitName({ path: [k], value: v }), { path: [k], value: v })
+    }
+    const exec = (task as { exec?: Record<string, unknown> }).exec ?? {}
+    for (const [k, v] of Object.entries(exec)) {
+      if (k !== 'command')
+        out.set(unitName({ path: ['exec', k], value: v }), { path: ['exec', k], value: v })
+    }
+  }
+  return [...out.values()].sort((a, b) => unitName(a).localeCompare(unitName(b)))
+}
+
+function applyUnit(task: Record<string, unknown>, u: Unit): void {
+  let node = task
+  for (const seg of u.path.slice(0, -1)) {
+    node[seg] ??= {}
+    node = node[seg] as Record<string, unknown>
+  }
+  const last = u.path.at(-1)!
+  if (u.value === ABSENT) delete node[last]
+  else node[last] = structuredClone(u.value)
+}
+
+/** Two units on one path, or one inside the other, are one edit, not a pair. */
+const overlaps = (a: Unit, b: Unit): boolean =>
+  a.path.slice(0, b.path.length).join('.') === b.path.join('.') ||
+  b.path.slice(0, a.path.length).join('.') === a.path.join('.')
+
+/**
+ * The rules between fields, found by trying every seed value alone and
+ * every pair together on a plain task (`exec.command` only) and, for the
+ * task's own fields, on a group task (`dependsOn` only). A unit refused alone is listed; a pair is
+ * listed when it disagrees with its halves: both pass alone and together
+ * are refused (a conflict: `persistent` with `cache`), or one is refused
+ * alone and the pair passes (a requirement: `remote: 'only'` needs
+ * `cache`). A rule that needs three fields to show is outside this table;
+ * schema.md's error table holds those (schema-doc-drift.test.ts).
+ */
+function taskRules(): Record<
+  string,
+  { alone: Record<string, string>; pairs: Record<string, string> }
+> {
+  const validate = validator(validateProjectConfig, PROJECT_PATH)
+  const bases: Record<string, () => Record<string, unknown>> = {
+    'exec task': () => ({ exec: { command: 'true' } }),
+    'group task': () => ({ dependsOn: ['^t'] }),
+  }
+  const out: ReturnType<typeof taskRules> = {}
+  for (const [name, base] of Object.entries(bases)) {
+    // A group task has no `exec` to put a field in.
+    const units = taskUnits().filter((u) => name === 'exec task' || u.path.length === 1)
+    const outcome = (...us: Unit[]): string => {
+      const task = base()
+      for (const u of us) applyUnit(task, u)
+      return validate({ tasks: { t: task } })
+    }
+    const alone = new Map(units.map((u) => [unitName(u), outcome(u)]))
+    const pairs: Record<string, string> = {}
+    for (const [i, a] of units.entries()) {
+      for (const b of units.slice(i + 1)) {
+        if (overlaps(a, b)) continue
+        const [oa, ob, both] = [alone.get(unitName(a))!, alone.get(unitName(b))!, outcome(a, b)]
+        const conflict = oa === 'ok' && ob === 'ok' && both !== 'ok'
+        const requirement = both === 'ok' && (oa !== 'ok' || ob !== 'ok')
+        if (conflict || requirement) pairs[`${unitName(a)} + ${unitName(b)}`] = both
+      }
+    }
+    out[name] = {
+      alone: Object.fromEntries([...alone].filter(([, o]) => o !== 'ok')),
+      pairs,
+    }
+  }
+  return out
+}
+
 describe('the config schema contract (versioning-1.0.md)', () => {
   // Built inside the rows, so a seed that misses a new field fails a named
   // row rather than the file.
@@ -388,5 +483,13 @@ describe('the config schema contract (versioning-1.0.md)', () => {
     // record (header) only if the change is meant to ship, and say so in
     // the release notes.
     expect(live()).toEqual(recorded as ReturnType<typeof current>)
+  })
+
+  it('the rules between fields agree with tests/contract/config-schema-rules.json', () => {
+    const rules = taskRules()
+    if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
+      writeFileSync(RULES_RECORD, JSON.stringify(rules, null, 2) + '\n')
+    }
+    expect(rules).toEqual(JSON.parse(readFileSync(RULES_RECORD, 'utf8')) as typeof rules)
   })
 })

@@ -1,0 +1,24 @@
+{
+  "exec task": {
+    "alone": {
+      "exec.remote=\"only\"": "$CONFIG: tasks.t.exec.remote 'only' needs `cache`: its inputs are what a worker reproduces and its key is the address of its remote record",
+      "exec=<absent>": "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` (group tasks exist to chain dependencies)"
+    },
+    "pairs": {
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `cache` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache",
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.remote=\"only\"": "ok",
+      "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `cache` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache",
+      "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.remote=\"only\"": "ok",
+      "dependsOn=[\"^t\"] + exec=<absent>": "ok",
+      "dependsOn=[\"t\"] + exec=<absent>": "ok",
+      "exec.persistent={\"readyWhen\":\"ready\"} + exec.retries=1": "$CONFIG: tasks.t: `retries` is not allowed on a persistent task — persistent tasks don't terminate, so there's no failed exit to retry"
+    }
+  },
+  "group task": {
+    "alone": {
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}}": "$CONFIG: tasks.t: `cache` requires `exec` — a group task has nothing to cache",
+      "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}}": "$CONFIG: tasks.t: `cache` requires `exec` — a group task has nothing to cache"
+    },
+    "pairs": {}
+  }
+}
