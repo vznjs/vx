@@ -65,8 +65,9 @@ keeps vx from quietly becoming a product: there is no built-in remote
 anything to grow a business model around.
 
 **Seam over special case.** When core grows a branch for one consumer,
-the seam is too narrow. `vx prune` and the history-based scheduler both
-left core for their own packages once the seam they needed existed.
+the seam is too narrow. `vx migrate` and the history-based scheduler
+both left core for their own packages once the seam they needed
+existed.
 
 **Once per run.** Within a run, nothing outside vx changes the files it
 reads, so each fact is learned once: a file read once, a path looked up

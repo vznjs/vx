@@ -29,7 +29,8 @@ match.
 
 Your tasks are unaffected. `tsc`, `vite`, `eslint` run under whatever
 Node your project uses, because a task is a shell command and vx only
-prepends the package's `node_modules/.bin` to its `PATH`. vx's runtime
+prepends the project's and the workspace root's `node_modules/.bin` to
+its `PATH`. vx's runtime
 is vx's business.
 
 ## What that buys

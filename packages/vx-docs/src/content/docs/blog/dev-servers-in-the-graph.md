@@ -67,10 +67,10 @@ When the requested tasks are persistent, vx stays in the foreground
 until one of them exits, then reports which one and stops the rest:
 
 ```
-vx: web#dev exited with code 1; stopping 2 other persistent task(s)
+vx: web#dev exited with code 1; stopping 2 other persistent tasks
 ```
 
-The exit code is the child's, so a crashed server is a non-zero `vx`.
+A crashed server makes `vx` exit 1.
 
 ## What it costs elsewhere
 

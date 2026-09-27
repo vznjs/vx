@@ -107,7 +107,8 @@ root (a shared `tsconfig.base.json`) and says so in its name.
 - `exec.env.passThrough` values. They reach the command but not the
   key, because a `HOME` or a `CI` that differs per machine would defeat
   a shared cache. If a variable changes the output, list it under
-  `cache.inputs.env` instead.
+  `cache.inputs.env` too: that puts it in the key, and `passThrough`
+  still passes it to the task.
 - Tool versions you did not declare. `node --version` is a
   `cache.inputs.runtime` line away.
 - `exec.remote`. Placement. Where a task ran says nothing about what it
