@@ -56,6 +56,8 @@ plugins: [
 ]
 ```
 
+`window`, `memory` and `headroom` must each be a finite number above 0 (`window` a whole one). One that is not — `Number(process.env.X)` with `X` unset is NaN, and no reservation fits a NaN budget, so every task that reserved memory would wait for an idle machine — runs on its default, named in one warning per run and in `vx history`.
+
 `vx history` (a verb this plugin adds) shows what it learned per task
 and the reservation it will pack, with the budgets it packs into:
 

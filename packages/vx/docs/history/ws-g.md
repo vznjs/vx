@@ -68,3 +68,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   over the history it shows, reservations taken through
   `resourceEstimates` and `withDeclared` — red on the old sample and on
   `· 2 cores` alone.
+- **G-4.** `vx-schedule-history`'s number options are checked. A NaN
+  `memory` (`Number(process.env.X)`, X unset) fitted no reservation,
+  so every task that reserved memory waited for an idle machine and
+  the run went serial with no word; a NaN `headroom` dropped every
+  learned reservation; a fractional or NaN `window` reached the
+  history query. Each non-finite, non-positive value (and a fractional
+  `window`) runs on its default, named in one warning per run and by
+  `vx history`, as `assume` does (item 930). Rows: `resource-estimates`
+  › a `memory` that is no number above 0 packs against the default
+  (NaN, 0, −1); `schedule-history-e2e` › `vx history` shows the default
+  budget and the learned reservation, the warning on stderr. Both red
+  without the fix.
