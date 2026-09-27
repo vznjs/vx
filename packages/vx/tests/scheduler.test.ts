@@ -704,6 +704,63 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(order.indexOf('start-down#build')).toBeLessThan(order.indexOf('end-up#prep'))
   })
 
+  it("a restore-tier task's dependents wait for its own deps (item 963)", async () => {
+    // q#check (slow exec) → p#build (restore hit) → p#deploy (exec). The hit
+    // restores early, but deploy keeps the order dependsOn states: it ran
+    // beside check whenever build was a hit.
+    const order: string[] = []
+    await runGraph({
+      nodes: nodes(node('q#check'), node('p#build', ['q#check']), node('p#deploy', ['p#build'])),
+      concurrency: 4,
+      restoreTier: new Set(['p#build']),
+      execute: async (n) => {
+        order.push(`start-${n.id}`)
+        if (n.id === 'q#check') await new Promise((r) => setTimeout(r, 30))
+        order.push(`end-${n.id}`)
+        return n.id === 'p#build' ? hit(n) : success(n)
+      },
+    })
+    expect(order.indexOf('start-p#build')).toBeLessThan(order.indexOf('end-q#check'))
+    expect(order.indexOf('start-p#deploy')).toBeGreaterThan(order.indexOf('end-q#check'))
+  })
+
+  it("a failed dep of a restore-tier task skips the task's dependents, naming the root (item 963)", async () => {
+    // The hit stays a hit (its key is its deps' inputs, not their outcome);
+    // deploy ran green after check failed.
+    const ran: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('q#check'), node('p#build', ['q#check']), node('p#deploy', ['p#build'])),
+      concurrency: 4,
+      restoreTier: new Set(['p#build']),
+      execute: async (n) => {
+        ran.push(n.id)
+        if (n.id === 'q#check') {
+          await new Promise((r) => setTimeout(r, 30))
+          return { node: n, status: 'failed', exitCode: 1, durationMs: 0 }
+        }
+        return n.id === 'p#build' ? hit(n) : success(n)
+      },
+    })
+    expect(out.get('p#build')?.status).toBe('cache-hit')
+    expect(out.get('p#deploy')?.status).toBe('skipped')
+    expect(out.get('p#deploy')?.blockedBy).toBe('q#check')
+    expect(ran).not.toContain('p#deploy')
+    // Control: under --continue=always the dependent runs.
+    const always = await runGraph({
+      nodes: nodes(node('q#check'), node('p#build', ['q#check']), node('p#deploy', ['p#build'])),
+      concurrency: 4,
+      continueMode: 'always',
+      restoreTier: new Set(['p#build']),
+      execute: async (n) =>
+        n.id === 'q#check'
+          ? { node: n, status: 'failed', exitCode: 1, durationMs: 0 }
+          : n.id === 'p#build'
+            ? hit(n)
+            : success(n),
+    })
+    expect(always.get('p#deploy')?.status).toBe('success')
+  })
+
   it('exec-tier (misses) own the pool; restores backfill only idle slots', async () => {
     // 2 workers. Two exec misses + two restore hits, all independent.
     // With exec drained first, both misses start before any restore

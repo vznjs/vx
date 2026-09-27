@@ -655,6 +655,25 @@ test is telling the truth.
         itself is `aborted`, a deliberate reading (`aborted-outcome.test.ts`).
       - Next from the scheduler review: 1 (a restore-tier hit releases its
         exec-tier dependents before its own dependencies finish).
+963.  DONE (2026-09-27, the scheduler review's lead 1). A restore-tier hit
+      (a confirmed local hit, run before its deps) released its dependents
+      at its own finish. `q#check` → `p#build` (hit) → `p#deploy`: deploy
+      started 300 ms before check ended, and when check FAILED deploy ran
+      and reported success, under fail-fast too. The skip test read direct
+      deps only, and the hit's `cache-hit` hid the failure behind it. The
+      docs promised the opposite.
+      - Fix (`scheduler.ts`): a restore-tier task that finishes before its
+        deps holds its dependents until they settle; at release, a dep that
+        failed, was skipped or aborted (or blocked a restore itself) marks
+        it blocking, and its dependents are skipped naming the root. The
+        hit stays a hit. `--continue=always` blocks nothing.
+      - Rows: `scheduler.test.ts` › a restore-tier task's dependents wait
+        for its own deps; a failed dep skips them, naming the root (the
+        `always` run its control). Both red without the fix.
+      - Warm path (the scheduler is on it): 1,000 projects all-hit,
+        interleaved, n=21, one pre-warmed copy per arm: item 962's head
+        min 363.0 ms (median 385.3), this head 361.6 (396.1), A/A 366.0
+        (379.5). A tie; the medians spread 17 ms between identical arms.
       - The review is done: its six leads are items 951, 953–955, 958,
         959 and 961.
 

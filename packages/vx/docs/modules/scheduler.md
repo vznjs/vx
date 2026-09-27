@@ -160,7 +160,10 @@ tasks). Ties break in graph-insertion order: `ReadyHeap` is a binary
 max-heap ordered by (priority DESC, enqueue-seq ASC).
 With a restore tier the count is `tieredReverseDepCount` (item 754): a
 restore-tier task never waits on its deps, so it blocks only the
-exec-tier tasks that depend on it. An exec-tier task's count is the
+exec-tier tasks that depend on it. Its dependents do wait on its deps:
+one that finishes early releases them once its own deps have settled,
+so `dependsOn` order holds through a hit (released at its own finish,
+an `e2e` ran beside the `db:migrate` two edges up; item 963). An exec-tier task's count is the
 exact closure over the exec tier alone; a restore's is the sum over its
 direct exec-tier dependents of one plus theirs, a rank that can count a
 diamond twice, which only reorders restores among themselves, on a lane
@@ -177,7 +180,9 @@ computes one; it is the seam a scheduling-policy plugin
 ## Failure isolation
 
 A failed task does not stop the scheduler: its transitive exec-tier
-dependents get `skipped`; unrelated tasks continue; the promise
+dependents get `skipped`, through a restore-tier hit between them too
+(the hit stays a `cache-hit`, its key being its deps' inputs, and passes
+the block down with the root); unrelated tasks continue; the promise
 resolves only after every task has _some_ outcome. This is Turbo's
 middle `--continue` setting, `deps-ok`, as the default; `never` stops
 dispatch at the first failure (in-flight tasks finish, everything not
