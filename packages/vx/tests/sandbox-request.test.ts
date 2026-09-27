@@ -281,6 +281,70 @@ describe.skipIf(process.platform !== 'linux')('a glob grant takes no link out of
   })
 })
 
+// A root project's `read: ['.']` bound every nested project, `.git` and
+// `.vx` readable, and its key, which excludes nested projects, replayed a
+// nested file's old bytes; `write: ['out.txt']` bound the whole workspace
+// writable, `.git` included (item 1010).
+describe('a root project stops at the walls: nested projects, .git, .vx', () => {
+  const rootNode = (): TaskNode => ({ ...node(), id: 'root#build', projectDir: root })
+  const walled = async () => {
+    for (const d of ['packages/b/src', 'packages/c', '.git', '.vx/cache', 'src']) {
+      await mkdir(path.join(root, d), { recursive: true })
+    }
+    await writeFile(path.join(root, 'package.json'), '{}')
+  }
+  const nested = () => [path.join(root, 'packages/b'), path.join(root, 'proj')]
+
+  it.skipIf(process.platform !== 'linux')(
+    'a read grant over them is punched around them',
+    async () => {
+      await walled()
+      const r = await sandboxRequestFor(
+        rootNode(),
+        { allow: { read: ['.'] } },
+        root,
+        undefined,
+        nested(),
+      )
+      expect([...r.sandbox.config.allowRead].sort()).toEqual(
+        ['package.json', 'packages/c', 'src'].map((n) => path.join(root, n)),
+      )
+    },
+  )
+
+  it('a write grant whose bind would hold one is refused', async () => {
+    await walled()
+    const grants = process.platform === 'linux' ? ['out.txt', '.'] : ['.']
+    for (const grant of grants) {
+      await expect(
+        sandboxRequestFor(rootNode(), { allow: { write: [grant] } }, root, undefined, nested()),
+      ).rejects.toThrow(
+        `exec.sandbox.allow.write: the grant binding ${root} would make ${path.join(root, 'packages/b')} writable`,
+      )
+    }
+  })
+
+  it('CONTROL: a leaf project, and a grant naming a wall on purpose, stay whole', async () => {
+    await walled()
+    const leaf = await sandboxRequestFor(
+      node(),
+      { allow: { read: ['.'], write: ['dist/'] } },
+      root,
+      undefined,
+      [],
+    )
+    expect(leaf.sandbox.config.allowRead).toEqual([dir])
+    const named = await sandboxRequestFor(
+      rootNode(),
+      { allow: { read: ['packages/b'] } },
+      root,
+      undefined,
+      nested(),
+    )
+    expect(named.sandbox.config.allowRead).toEqual([path.join(root, 'packages/b')])
+  })
+})
+
 describe('the request derives nothing from cache', () => {
   // `SandboxConfig`'s doc comment claimed the baseline could "write the
   // prefixes of its `cache.outputs.files`" — three times over — while the
