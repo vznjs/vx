@@ -325,11 +325,15 @@ export interface PickedTask {
   description?: string
 }
 
+/**
+ * The task the user picks from a numbered menu; null when nothing was
+ * picked (said on stderr), `'interrupted'` for a Ctrl-C at the prompt.
+ */
 export async function pickTask(
   cwd: string,
   io: { input?: NodeJS.ReadableStream; output?: NodeJS.WritableStream } = {},
   load: CliLoadOptions = {},
-): Promise<PickedTask | null> {
+): Promise<PickedTask | null | 'interrupted'> {
   const projects = await loadWorkspaceProjects(cwd)
   // The staged load: a task a `project` plugin gave a config-less package
   // is on the menu, as it is in a run.
@@ -362,8 +366,30 @@ export async function pickTask(
     input: io.input ?? process.stdin,
     output: io.output ?? process.stdout,
   })
+  // On a terminal readline takes Ctrl-C and Ctrl-D itself, raw, and
+  // rejects the pending question with an AbortError — which reached the
+  // user as `vx: AbortError: Aborted with Ctrl+C` and a stack, exit 1.
+  // A SIGINT listener tells the two apart: Ctrl-C is an interrupt (exit 130,
+  // as a run's), Ctrl-D an answer that never came.
+  const abort = new AbortController()
+  let interrupted = false
+  rl.on('SIGINT', () => {
+    interrupted = true
+    abort.abort()
+  })
   try {
-    const answer = (await rl.question(`Pick a task [1-${entries.length}]: `)).trim()
+    let answer: string
+    try {
+      answer = (
+        await rl.question(`Pick a task [1-${entries.length}]: `, { signal: abort.signal })
+      ).trim()
+    } catch (err) {
+      if (!(err instanceof Error) || err.name !== 'AbortError') throw err
+      if (interrupted) return 'interrupted'
+      out.write('\n')
+      process.stderr.write(`vx run: no task picked\n`)
+      return null
+    }
     const n = Number(answer)
     if (!Number.isInteger(n) || n < 1 || n > entries.length) {
       process.stderr.write(`vx run: invalid selection: ${answer}\n`)

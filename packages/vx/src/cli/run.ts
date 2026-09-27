@@ -556,6 +556,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         ...(parsed.frozen ? { frozen: true } : {}),
       },
     )
+    if (picked === 'interrupted') return 130
     if (!picked) return 1
     tasks = [`${picked.project}#${picked.task}`]
   }
