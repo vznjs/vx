@@ -724,7 +724,7 @@ describe('nx(): what the sweep found unheld', () => {
   )
 
   it(
-    'the mapper’s notes are reported: an implicit dep no package declares',
+    'an implicit dep no package declares is an edge, not a note',
     async () => {
       await writeFile(
         path.join(root, 'graph.json'),
@@ -734,12 +734,15 @@ describe('nx(): what the sweep found unheld', () => {
             target: 'app',
             type: 'implicit',
           })
+          ;(x.graph.nodes.lib.data.targets.lint as { dependsOn?: string[] }).dependsOn = ['^build']
         }),
       )
       const log = silent()
-      await planRun({ cwd: root, tasks: ['lint'], log })
-      expect(log.lines.filter((l) => l.includes('implicit Nx dep'))).toEqual([
-        '[@vzn/vx-migrate] 1 implicit Nx dep not representable (lib → app); review dependsOn',
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(log.lines.filter((l) => l.includes('implicit'))).toEqual([])
+      expect(plan.tasks.find((t) => t.node.id === 'lib#lint')!.node.config.dependsOn).toEqual([
+        '^build',
+        'app#build',
       ])
     },
     TIMEOUT,

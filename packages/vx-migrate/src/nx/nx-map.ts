@@ -110,8 +110,6 @@ export interface MapNxOptions {
 
 export interface NxMapping {
   readonly projects: GeneratedProject[]
-  /** Report lines for the whole workspace (implicit deps). */
-  readonly notes: string[]
 }
 
 function normRel(p: string): string {
@@ -257,10 +255,39 @@ export async function mapNxWorkspace(
   // a `^name` no project declares as a typo, so such an edge is dropped
   // before the shared-output rule reads which tasks have a `^` edge.
   const emitted = new Set<string>()
-  for (const { tasks } of mapped) for (const t of tasks) if (t.task !== null) emitted.add(t.name)
+  const emittedIds = new Set<string>()
+  for (const { meta, tasks } of mapped) {
+    for (const t of tasks) {
+      if (t.task === null) continue
+      emitted.add(t.name)
+      emittedIds.add(`${meta.name}#${t.name}`)
+    }
+  }
+  const nxEdges = nxDependencyTargets(nodeMap, g.dependencies)
+  // What vx's `^` already reaches: a manifest path, direct or through
+  // another project, orders `^x` and folds its key (item 931). Built once,
+  // on the first `^` edge.
+  let reach: ((name: string) => ReadonlySet<string>) | undefined
+  const reached = (name: string): ReadonlySet<string> => {
+    if (reach === undefined) {
+      const graph = buildPackageGraph([...metas])
+      const memo = new Map<string, ReadonlySet<string>>()
+      reach = (n) => {
+        let r = memo.get(n)
+        if (r === undefined) memo.set(n, (r = new Set(graph.transitiveDeps(n))))
+        return r
+      }
+    }
+    return reach(name)
+  }
   const projects: GeneratedProject[] = []
   for (const { meta, tasks } of mapped) {
-    for (const t of tasks) dropUnheldDeps(t.task, emitted)
+    const nodeName = nodeNameOf.get(meta)
+    for (const t of tasks) {
+      if (nodeName !== undefined)
+        followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
+      dropUnheldDeps(t.task, emitted)
+    }
     projects.push({
       name: meta.name,
       dir: meta.dir,
@@ -269,22 +296,8 @@ export async function mapNxWorkspace(
     })
   }
 
-  const notes: string[] = []
-  // Named, not just counted: "1 implicit Nx dep" sends a reader looking
-  // through the whole graph for it, and the pair is what they need to
-  // write the `dependsOn` by hand (walked the Nx path, 2026-09-20).
-  const implicit = implicitDeps(g?.dependencies, metas, metaByNode)
-  if (implicit.length > 0) {
-    const shown = implicit.slice(0, 5).join(', ')
-    const rest = implicit.length > 5 ? ` and ${implicit.length - 5} more` : ''
-    notes.push(
-      `${implicit.length} implicit Nx dep${implicit.length === 1 ? '' : 's'} not representable ` +
-        `(${shown}${rest}); review dependsOn`,
-    )
-  }
-
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
-  return { projects, notes }
+  return { projects }
 }
 
 /**
@@ -673,35 +686,73 @@ function persistentTarget(target: NxTarget): boolean {
   return known?.persistent ?? false
 }
 
-/** `a → b` for every graph edge vx's package graph cannot see. */
-function implicitDeps(
+/**
+ * The projects Nx links a `^target` edge of `from` to
+ * (`processTasksForDependencies`): each dependency on the NX graph that
+ * has the target, and through one that lacks it, that one's
+ * dependencies. vx's `^target` follows package.json alone, so an edge Nx
+ * draws from `implicitDependencies` or a tsconfig path (nx-examples'
+ * e2e projects → their apps) ordered nothing and folded nothing: an
+ * app's source edit left its e2e `typecheck` a hit. It was reported
+ * "not representable"; it is an explicit `pkg#target` edge.
+ */
+function nxDependencyTargets(
+  nodeMap: Readonly<Record<string, NxNode>>,
   dependencies: unknown,
-  metas: readonly ProjectMeta[],
-  metaByNode: ReadonlyMap<string, ProjectMeta>,
-): string[] {
-  if (typeof dependencies !== 'object' || dependencies === null) return []
-  // Whether vx sees sm → tm is vx's rule, not a name lookup: a
-  // `"b": "^1.0.0"` beside a local b@2 is a registry dependency and no
-  // edge. One graph of the workspace answers it, and a manifest path
-  // through a third project reaches tm as a direct entry does: `^build`
-  // runs tm's first and sm's key folds it. A two-project graph per edge
-  // saw only the direct entry, at 36 ms a warm run for 1,474 edges
-  // (item 931).
-  const graph = buildPackageGraph([...metas])
-  const reach = new Map<string, ReadonlySet<string>>()
-  const pairs: string[] = []
-  for (const [source, edges] of Object.entries(dependencies as Record<string, NxEdge[]>)) {
-    const sm = metaByNode.get(source)
-    if (!sm || !Array.isArray(edges)) continue
-    let seen = reach.get(sm.name)
-    if (seen === undefined) reach.set(sm.name, (seen = new Set(graph.transitiveDeps(sm.name))))
-    const named = new Set<string>()
-    for (const edge of edges) {
-      const tm = typeof edge?.target === 'string' ? metaByNode.get(edge.target) : undefined
-      if (!tm || tm === sm || named.has(tm.name)) continue
-      named.add(tm.name)
-      if (!seen.has(tm.name)) pairs.push(`${sm.name} → ${tm.name}`)
+): (from: string, target: string) => readonly string[] {
+  const direct = new Map<string, string[]>()
+  if (typeof dependencies === 'object' && dependencies !== null) {
+    for (const [source, edges] of Object.entries(dependencies as Record<string, NxEdge[]>)) {
+      if (!Array.isArray(edges)) continue
+      const to = edges
+        .map((e) => e?.target)
+        // An `npm:` node has no root: a package, not a project.
+        .filter(
+          (t): t is string => typeof t === 'string' && typeof nodeMap[t]?.data?.root === 'string',
+        )
+      direct.set(source, [...new Set(to)])
     }
   }
-  return pairs
+  const memo = new Map<string, readonly string[]>()
+  return (from, target) => {
+    const key = `${from}\0${target}`
+    const known = memo.get(key)
+    if (known !== undefined) return known
+    const out: string[] = []
+    const seen = new Set<string>([from])
+    const stack = [...(direct.get(from) ?? [])].reverse()
+    while (stack.length > 0) {
+      const n = stack.pop()!
+      if (seen.has(n)) continue
+      seen.add(n)
+      if (Object.hasOwn(nodeMap[n]?.data?.targets ?? {}, target)) out.push(n)
+      else stack.push(...[...(direct.get(n) ?? [])].reverse())
+    }
+    memo.set(key, out)
+    return out
+  }
+}
+
+/** Each `^name` of `task` gains the explicit edges Nx's graph draws for it and vx's `^` does not. */
+function followNxGraph(
+  task: Record<string, unknown> | null,
+  nodeName: string,
+  pkgName: string,
+  nxEdges: (from: string, target: string) => readonly string[],
+  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  emittedIds: ReadonlySet<string>,
+  reached: (name: string) => ReadonlySet<string>,
+): void {
+  const deps = task?.['dependsOn']
+  if (!Array.isArray(deps)) return
+  for (const d of [...deps]) {
+    if (typeof d !== 'string' || !d.startsWith('^')) continue
+    const name = d.slice(1)
+    for (const n of nxEdges(nodeName, name)) {
+      const m = metaByNode.get(n)
+      if (m === undefined || reached(pkgName).has(m.name)) continue
+      const id = `${m.name}#${name}`
+      if (emittedIds.has(id) && !deps.includes(id)) deps.push(id)
+    }
+  }
 }

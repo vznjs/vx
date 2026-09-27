@@ -24,6 +24,6 @@ export async function migrateNx(
     ],
     projects: mapped.projects,
     extraFiles: [],
-    notes: mapped.notes,
+    notes: [],
   }
 }
