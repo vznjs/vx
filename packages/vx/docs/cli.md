@@ -767,7 +767,8 @@ Status legend:
 | `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
-`--dry=json` emits the same data as a structured object:
+`--dry=json` emits the same data as a structured object, alone on stdout
+(a stage's warnings go to stderr):
 
 ```json
 {

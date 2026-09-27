@@ -1192,7 +1192,9 @@ async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<
  * existence check — no artifact download, no ingest, no accessed_at bump.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
-  const log = options.log ?? defaultLogger()
+  // The plan is the product and goes to stdout (`--dry=json` is parsed):
+  // what a stage says on the way goes to stderr (C-6).
+  const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const prepared = await prepareRun(options, log)
   try {
     if (prepared.unresolvedTasks.length > 0) {

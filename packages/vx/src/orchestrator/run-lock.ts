@@ -3,11 +3,13 @@
 // Two vx processes on one workspace race on every task's OUTPUT TREE: both
 // clean and restore the same `dist/`, and a clean landing while the other
 // run's restore is staging takes its files out from under it (item 215).
-// The cache itself is safe (SQLite waits, artifacts land by rename); the
-// tree is not, and a run that finished "green" can have had its restored
-// outputs deleted by the other run's clean a moment later. So a run takes
-// this lock before it schedules and releases it with its cache handle —
-// before a persistent task's wait, so a dev server never holds it.
+// The cache itself is safe (SQLite waits, and an artifact lands by rename
+// inside its rows' transaction, A-3), across workspaces sharing one
+// `--cache-dir` too; the tree is not, and a run that finished "green" can
+// have had its restored outputs deleted by the other run's clean a moment
+// later. So a run takes this lock before it schedules and releases it with
+// its cache handle — before a persistent task's wait, so a dev server never
+// holds it.
 //
 // Keyed by the workspace, not the cache directory (`--cache-dir` must not
 // make two runs strangers), and kept under the temp directory so a

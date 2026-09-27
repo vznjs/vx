@@ -68,6 +68,17 @@ opens it as `vx last` does now (`Cache.inspect`); an index it refuses
 serves nothing and the configs evaluate live. Row:
 `scoped-config-loading.test.ts` (red without the change).
 
+## C-6: keep a plan's stage warnings off `--dry=json` stdout
+
+`planRun`'s default logger wrote status lines to stdout, so a `project`
+stage's warning (turbo() warns there) landed ahead of the JSON and
+`vx run --dry=json` did not parse. The plan is the product on stdout;
+its warnings go to stderr. A run keeps its status on stdout, where its
+tasks' output goes. Also restates `run-lock.ts`'s cache-safety claim on
+what makes it true since A-3 (an artifact lands by rename inside its
+rows' transaction, across workspaces sharing one `--cache-dir` too).
+Row: `dry-json-stdout.test.ts` (red without the change).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
