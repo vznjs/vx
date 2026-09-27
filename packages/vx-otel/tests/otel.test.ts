@@ -259,7 +259,7 @@ describe('OTLP builders', () => {
     }
     const m = attrMap(taskSpanAttributes(t, TASK_RUN))
     expect(m['cicd.pipeline.task.name']).toBe('a#build')
-    expect(m['cicd.pipeline.task.run.result']).toBe('failed')
+    expect(m['cicd.pipeline.task.run.result']).toBe('failure')
     expect(m['vx.cache.source']).toBe('miss')
     expect(m['vx.task.hash']).toBe('deadbeef')
     expect(m['vx.peak_rss_bytes']).toBe('2048')
@@ -695,6 +695,39 @@ describe('OTLP losslessness', () => {
     const a = attrMap(runSpanAttributes(RUN) as never)
     expect(a['vx.run.task_count']).toBeUndefined()
     expect(a['vx.run.exit_ok']).toBeUndefined()
+  })
+
+  // F-12: the semconv attribute is an enum; vx's status went out verbatim.
+  it('maps each vx status onto the cicd.pipeline.task.run.result enum, and keeps it', () => {
+    const { timedOut: _, ...untimed } = FULL_TASK
+    const got = (
+      [
+        ['success', false],
+        ['cache-hit', false],
+        ['cache-hit-remote', false],
+        ['failed', false],
+        ['failed', true],
+        ['skipped', false],
+        ['aborted', false],
+      ] as const
+    ).map(([status, timedOut]) => {
+      const a = attrMap(
+        taskSpanAttributes(
+          { ...untimed, status, ...(timedOut ? { timedOut: true as const } : {}) },
+          TASK_RUN,
+        ) as never,
+      )
+      return [a['cicd.pipeline.task.run.result'], a['vx.task.status']]
+    })
+    expect(got).toEqual([
+      ['success', 'success'],
+      ['success', 'cache-hit'],
+      ['success', 'cache-hit-remote'],
+      ['failure', 'failed'],
+      ['timeout', 'failed'],
+      ['skip', 'skipped'],
+      ['cancellation', 'aborted'],
+    ])
   })
 
   it('carries every task field on the task span', () => {

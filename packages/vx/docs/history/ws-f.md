@@ -68,6 +68,12 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
   vx-reapi's `accepts` declines such a task (it runs here). A worker-side
   guard cannot match core's probe exactly (PATH with `.bin`, trim).
 
+- C (resolved on main): leads 4 and 5 by item 1055 (the flush signal,
+  wired into both sinks); the runtime-probe lead by C-2 (such a task is
+  pinned local, and vx-reapi is never offered a pinned task).
+- C: `ExecuteRequest` carries no abort signal, so Ctrl-C does not cancel a
+  remote Execute; the operation runs on and its record is still written.
+
 ## Merged
 
 F-1. vx-reapi retries INTERNAL as it retries UNAVAILABLE. Probe, Bun 1.4.2,
@@ -148,3 +154,13 @@ or upstream read failed) reached the scheduler as a plain Error and printed
 `[vx] internal error in pkg#gen: 7 PERMISSION_DENIED…`, a vx bug by its
 wording; it is now a UserError naming the task and the status. Row red
 without the fix; a plain Error stays one (control).
+
+F-12. vx-otel sent vx's task status as `cicd.pipeline.task.run.result`, an
+enum in the CI/CD conventions (success, failure, error, timeout,
+cancellation, skip); `failed`, `skipped`, `aborted` and the hit statuses
+matched none, so a conventions-aware backend counted no failed task. Now
+mapped (a timed-out failure is `timeout`), with the exact status on
+`vx.task.status`. Row over every status, red without the fix. Also checked
+this phase: vx mcp against the official MCP SDK client (handshake, all six
+tools, errors, ping) is clean; STATUS Next 1 (a local NativeLink) is
+blocked here: ghcr blobs and the GitHub API are refused by egress policy.

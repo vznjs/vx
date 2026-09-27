@@ -107,6 +107,7 @@ export const VX_ATTR = {
   taskTask: 'vx.task.task',
   cacheSource: 'vx.cache.source',
   taskExitCode: 'vx.task.exit_code',
+  taskStatus: 'vx.task.status',
   taskDurationMs: 'vx.task.duration_ms',
   taskHash: 'vx.task.hash',
   cpuMs: 'vx.cpu_ms',
@@ -215,6 +216,26 @@ interface TaskSpanRunContext {
 }
 
 /**
+ * `cicd.pipeline.task.run.result` is an enum (success, failure, error,
+ * timeout, cancellation, skip). vx's own status went out verbatim, so
+ * `failed`, `skipped`, `aborted` and the two hit statuses matched none of it
+ * and a conventions-aware backend counted no task as failed (F-12). The
+ * exact status still rides `vx.task.status`.
+ */
+function runResult(t: TaskTelemetry): string {
+  switch (t.status) {
+    case 'failed':
+      return t.timedOut === true ? 'timeout' : 'failure'
+    case 'skipped':
+      return 'skip'
+    case 'aborted':
+      return 'cancellation'
+    default:
+      return 'success'
+  }
+}
+
+/**
  * Attributes for a child `vx.task` span — every `TaskTelemetry` field.
  *
  * The wallclock offsets ride as int64 STRINGS (OTLP's own int64 encoding), not
@@ -230,7 +251,8 @@ interface TaskSpanRunContext {
 export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): KeyValue[] {
   const attrs: KeyValue[] = [
     strAttr(SEMCONV.taskName, t.taskId),
-    strAttr(SEMCONV.taskRunResult, t.status),
+    strAttr(SEMCONV.taskRunResult, runResult(t)),
+    strAttr(VX_ATTR.taskStatus, t.status),
     // Which run, which workspace, and when that run began. Required, not
     // optional: OTLP is re-batched in transit, so a task span can arrive in a
     // payload its root span is not in, and a span that can only be read
