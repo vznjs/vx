@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import {
   asTrees,
@@ -258,6 +259,13 @@ export interface BuildGraphOptions {
    * workspace and the builder refuses it itself.
    */
   undeclaredDeps?: (taskId: string, name: string) => void
+  /**
+   * The workspace root, where `cache.outputs.workspaceFiles` is anchored.
+   * Given, a root-anchored output is also compared with every project's
+   * `files` outputs (item 1088); absent (a graph built for a unit row), only
+   * with other root-anchored ones.
+   */
+  workspaceRoot?: string
 }
 
 /**
@@ -505,7 +513,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
   }
 
-  checkGraph(nodes)
+  checkGraph(nodes, options.workspaceRoot)
   return nodes
 }
 
@@ -520,7 +528,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
  * marks are derived here, so they are cleared first and follow the edges
  * the graph has now.
  */
-export function checkGraph(nodes: Map<string, TaskNode>): void {
+export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
   for (const [key, node] of nodes) {
     if (node.id !== key) {
       throw new Error(`the task ${node.id} is stored under '${key}', not its own id`)
@@ -534,7 +542,7 @@ export function checkGraph(nodes: Map<string, TaskNode>): void {
     delete node.outputsAddedToBy
   }
   detectCycle(nodes)
-  detectOutputCollisions(nodes)
+  detectOutputCollisions(nodes, workspaceRoot)
 }
 
 /**
@@ -718,7 +726,7 @@ function covers(tree: string, glob: string): boolean {
  * project boundaries by design, so ANY two tasks can. No cache key changes —
  * this only refuses a graph that was already destroying files.
  */
-function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
+function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
   // Does `from` reach `to` through deps? Asked only for a colliding pair,
   // so the walk is rare; memoised per source across the detector's calls.
   const reachMemo = new Map<string, Set<string>>()
@@ -778,11 +786,87 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
       collide(a, b, filesOf(a), filesOf(b), 'files', reaches)
     }
   }
-  if (wsDeclarers.length < 2) return
-  for (const [i, j] of overlapCandidates(wsDeclarers, wsFilesOf)) {
-    const a = wsDeclarers[i]!
-    const b = wsDeclarers[j]!
-    collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches)
+  if (wsDeclarers.length >= 2) {
+    for (const [i, j] of overlapCandidates(wsDeclarers, wsFilesOf)) {
+      const a = wsDeclarers[i]!
+      const b = wsDeclarers[j]!
+      collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches)
+    }
+  }
+  // A root-anchored output that reaches into ANOTHER project's `files`
+  // outputs was compared with neither: `a` writing `packages/b/dist/a.txt`
+  // beside `b`'s `dist/**` had its file deleted by `b`'s clean and still
+  // replayed `up-to-date` (item 1088). Each `files` declarer joins the
+  // root-anchored domain with its globs rebased to the root, and only the
+  // mixed pairs are compared.
+  if (wsDeclarers.length === 0 || workspaceRoot === undefined) return
+  interface Entry {
+    node: TaskNode
+    globs: readonly string[]
+    /** The project's root-relative dir for a rebased `files` entry; undefined for a root-anchored one. */
+    rel?: string
+  }
+  const entries: Entry[] = wsDeclarers.map((node) => ({ node, globs: wsFilesOf(node) ?? [] }))
+  for (const bucket of byProject.values()) {
+    for (const node of bucket) {
+      const rel = path.relative(workspaceRoot, node.projectDir).split(path.sep).join('/')
+      const globs = (filesOf(node) ?? []).map((g) => (rel === '' ? g : `${rel}/${g}`))
+      entries.push({ node, globs, rel })
+    }
+  }
+  for (const [i, j] of overlapCandidates(entries, (e) => e.globs)) {
+    const x = entries[i]!
+    const y = entries[j]!
+    if ((x.rel === undefined) === (y.rel === undefined) || x.node === y.node) continue
+    const [ws, files] = x.rel === undefined ? [x, y] : [y, x]
+    collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches)
+  }
+}
+
+/**
+ * `collide` for a root-anchored output against another project's `files`
+ * output rebased to the root. With an edge the dependant adds to its
+ * upstream's tree, and the upstream is told the dependant's globs in its
+ * OWN namespace: root-relative for the root-anchored side, project-relative
+ * for the `files` side, where a glob that does not start in that project
+ * cannot be told apart and the pair is refused.
+ */
+function collideAcross(
+  ws: TaskNode,
+  wsGlobs: readonly string[],
+  files: TaskNode,
+  rebased: readonly string[],
+  rel: string,
+  reaches: (from: string, to: string) => boolean,
+): void {
+  if (neverWritesLocally(ws) || neverWritesLocally(files)) return
+  for (const ga of wsGlobs) {
+    for (const gb of rebased) {
+      if (!outputsOverlap(ga, gb)) continue
+      if (reaches(files.id, ws.id)) {
+        ;(files.addsToOutputsOf ??= []).push(ws.id)
+        ;(ws.outputsAddedToBy ??= []).push(...rebased)
+        return
+      }
+      if (reaches(ws.id, files.id)) {
+        const own = wsGlobs.map((g) =>
+          rel === '' ? g : g.startsWith(`${rel}/`) ? g.slice(rel.length + 1) : null,
+        )
+        if (own.every((g): g is string => g !== null)) {
+          ;(ws.addsToOutputsOf ??= []).push(files.id)
+          ;(files.outputsAddedToBy ??= []).push(...own)
+          return
+        }
+      }
+      throw new UserError(
+        `${ws.id} declares the output ${JSON.stringify(ga)} in cache.outputs.workspaceFiles, ` +
+          `inside ${files.id}'s ${JSON.stringify(gb.slice(rel === '' ? 0 : rel.length + 1))} in ` +
+          `cache.outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
+          `cache-hit restore, so whichever of these runs second DELETES the other's output and ` +
+          `the run still reports success. Give each task its own output path, or make one ` +
+          `depend on the other.`,
+      )
+    }
   }
 }
 
@@ -815,9 +899,9 @@ const GLOB_HEAD_END = /[*?{}\\!]/
  * literal prefix lies at or under it, found the same way from the glob's
  * side (item 941).
  */
-function overlapCandidates(
-  tasks: readonly TaskNode[],
-  globsOf: (n: TaskNode) => readonly string[] | undefined,
+function overlapCandidates<T>(
+  tasks: readonly T[],
+  globsOf: (n: T) => readonly string[] | undefined,
 ): Array<[number, number]> {
   const globs = new Map<string, number[]>()
   const globsUnder = new Map<string, number[]>()

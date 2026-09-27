@@ -919,10 +919,15 @@ uses, so `dist` collides with `dist/app.js` (item 442). A whole subtree
 collides with any glob whose literal head lies inside it: `dist/**` with
 `dist/extra/**` or `dist/*.js` (item 941). Globs that only _might_
 overlap (`dist/*` and `dist/sub/**`) are let through; there, last
-restore wins. An overlap
+restore wins. A workspace output is also compared with every other
+project's `files` outputs, read from the root: `packages/b/dist/a.txt`
+collides with `b`'s `dist/**` (item 1088). An overlap
 between two tasks one of which depends on the other is not refused: the
 dependant is additive and owns only what its run adds to the tree
-(`caching.md` § Additive outputs, item 588).
+(`caching.md` § Additive outputs, item 588). Across the two namespaces
+an upstream `files` task is told the dependant's globs in its own
+project's terms, so a workspace glob that does not start inside that
+project (`**/a.txt`) is refused even with the edge.
 
 ### `exec.sandbox` (optional)
 
