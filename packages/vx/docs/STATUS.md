@@ -594,6 +594,19 @@ test is telling the truth.
         whatever the clock said (latest, why, the key diff and both lists).
         Red without the fix.
 
+1009. DONE (2026-09-27, the run-history review's lead 3). `vx why` on an
+      unchanged key that re-executed always said "re-executed on the same
+      key (--no-cache / --force, or unrelated)": after a failed run on the
+      same key, and after `vx cache prune` evicted the entry, with no flag
+      passed and the invocation recording a full policy.
+      - Fix (`metrics.ts`): the verdict reads the evidence in order — the
+        previous run on the key failed; the invocation's `cache_policy`
+        read no cache; the key's entry was created at or after this run's
+        start (none was there when it ran) — and keeps the old text only
+        when none applies. `cli.md` and `modules/metrics.md` say so.
+      - Row: `metrics.test.ts` › names why an unchanged key re-executed,
+        three causes and the old text as the control. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -132,7 +132,10 @@ app#build — run 019f5a02-…
 | --- | --- |
 | `cache key changed between the previous run and this one (inputs differ)` | the lines below name what changed |
 | `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
-| `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | you forced it, or something unkeyed |
+| `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit` | a failure saves no entry |
+| `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)` | the run's policy read no cache |
+| `cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one` | the entry was gone |
+| `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | none of the above: you forced it, or something unkeyed |
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
 | `` this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only `` | not cached at all |
 

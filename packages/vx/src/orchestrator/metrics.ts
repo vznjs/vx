@@ -386,14 +386,44 @@ export interface WhyDidThisRerun {
   note: string
 }
 
-/** The three endings an UNCHANGED cache key can have. */
-function unchangedKeyNote(cacheHit: number | null): string {
-  if (cacheHit === null) {
+/**
+ * The endings an UNCHANGED cache key can have. A re-execution is told apart
+ * by the evidence the index holds: every one used to blame `--no-cache` /
+ * `--force`, when the previous run on the key had failed (a failure saves
+ * nothing) or the entry had been pruned, and the invocation recorded that
+ * no flag was passed (item 1009).
+ */
+function unchangedKeyNote(
+  db: Database,
+  runId: string,
+  this_: { hash: string; cacheHit: number | null; startedAt: number },
+  prev: { status: string },
+): string {
+  if (this_.cacheHit === null) {
     return 'cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown'
   }
-  return cacheHit
-    ? 'cache key unchanged — this run was served from cache, nothing re-ran'
-    : 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
+  if (this_.cacheHit) return 'cache key unchanged — this run was served from cache, nothing re-ran'
+  if (prev.status === 'failed') {
+    return 'cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit'
+  }
+  const policy = (
+    db.query('SELECT cache_policy AS p FROM invocations WHERE run_id = ?').get(runId) as {
+      p: string
+    } | null
+  )?.p
+  if (policy !== undefined && !policy.split(',').some((axis) => axis === 'lR' || axis === 'rR')) {
+    return 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)'
+  }
+  // `get` answers null, not undefined, for no row.
+  const createdAt = (
+    db.query('SELECT created_at AS at FROM entries WHERE hash = ?').get(this_.hash) as {
+      at: number
+    } | null
+  )?.at
+  if (createdAt !== undefined && createdAt >= this_.startedAt) {
+    return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
+  }
+  return 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
 }
 
 /**
@@ -482,7 +512,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
               // have applied. Only a run that EXECUTED on an unchanged key is
               // the case this verb exists to explain. A row with no recorded
               // cacheHit (older rows) is neither — say that, do not guess.
-              unchangedKeyNote(this_.cacheHit)
+              unchangedKeyNote(db, runId, this_, prev)
             : 'no prior run for this (project, task)',
   }
 }

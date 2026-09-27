@@ -1735,9 +1735,13 @@ listing the candidates; unknown → include-match suggestions).
 
 An **unchanged** key has three endings, and the verdict distinguishes
 them rather than calling all three a re-run: the run was served from
-cache (nothing re-ran), it re-executed on the same key (`--no-cache` /
-`--force`, or something outside the key), or it recorded no cache
-outcome at all, in which case vx says so instead of guessing.
+cache (nothing re-ran), it re-executed on the same key, or it recorded
+no cache outcome at all, in which case vx says so instead of guessing.
+A re-execution names its cause when the index shows one: the previous
+run on the key failed and saved nothing, the run did not read the cache
+(`--force`, or a `--cache` without read), or no entry for the key was
+there when it ran (pruned or evicted). Otherwise it names `--no-cache` /
+`--force`, or something outside the key.
 
 ```
 $ vx why app#build
