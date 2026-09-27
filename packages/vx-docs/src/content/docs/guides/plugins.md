@@ -157,6 +157,57 @@ function hello(): VxPlugin {
 export default defineWorkspace({ plugins: [hello()] })
 ```
 
+## Where a task runs
+
+`executor` returns a `TaskExecutor`: a `name`, an optional `accepts`
+that picks its tasks, and `execute`, which runs one command and returns
+its exit code and output. A task every executor declines runs here.
+Stream output through `onStdout` / `onStderr`, and stop on
+`req.signal`, which core aborts on Ctrl-C or an embedder's abort: core
+cannot reach a process your executor spawned, so a stop that misses the
+shell's children leaves them running after vx exits.
+
+```ts
+import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'
+
+export function nice(): VxPlugin {
+  return definePlugin(import.meta, {
+    executor: () => ({
+      name: 'nice',
+      accepts: (task) => task.taskId.endsWith('#e2e'),
+      async execute(req): Promise<ExecuteResult> {
+        const started = performance.now()
+        const child = Bun.spawn(['nice', 'sh', '-c', req.command, 'sh', ...req.forwardArgs], {
+          cwd: req.cwd,
+          env: { ...req.env, ...req.envDefine },
+          stdout: 'pipe',
+          stderr: 'pipe',
+          detached: true, // its own process group, so a stop reaches what the shell starts
+        })
+        const stop = () => process.kill(-child.pid, 'SIGTERM')
+        req.signal?.addEventListener('abort', stop, { once: true })
+        const drain = async (from: ReadableStream<Uint8Array>, to: (s: string) => void) => {
+          const text = new TextDecoder()
+          let all = ''
+          for await (const bytes of from) {
+            const s = text.decode(bytes, { stream: true })
+            to(s)
+            all += s
+          }
+          return all
+        }
+        const [stdout, stderr] = await Promise.all([
+          drain(child.stdout, req.onStdout),
+          drain(child.stderr, req.onStderr),
+        ])
+        const exitCode = await child.exited
+        return { exitCode, durationMs: performance.now() - started, stdout, stderr, violations: [] }
+      },
+    }),
+  })
+}
+```
+
 ## Your own cache
 
 Implement core's `RemoteCacheLayer`: `has`, `get` and `put`, plus an
