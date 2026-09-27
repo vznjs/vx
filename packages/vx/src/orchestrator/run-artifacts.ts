@@ -29,6 +29,8 @@ export interface SummarizeArgs {
   totalMs: number
   /** The run's verdict — the same value the CLI turns into the exit code. */
   ok: boolean
+  /** The process's exit code where it is not `ok ? 0 : 1`: a stopping signal's. */
+  exitCode?: number
   outcomes: readonly TaskOutcome[]
   /** What `detectFlaky` found this run; the footer's Flaky section, typed. */
   flaky?: readonly FlakyFinding[]
@@ -96,12 +98,13 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
   // parser must not be told less than a human is.
   const aborted = args.outcomes.filter((o) => !isGroupTask(o.node) && o.status === 'aborted')
   const flakyById = new Map((args.flaky ?? []).map((f) => [f.taskId, f]))
+  const exitCode = args.exitCode ?? (args.ok ? 0 : 1)
   const payload = {
     runId: args.runId,
     // The run-level verdict, first: a consumer gating on this artifact must
     // not have to re-derive it by re-implementing the bucket rules.
-    ok: args.ok,
-    exitCode: args.ok ? 0 : 1,
+    ok: exitCode === 0,
+    exitCode,
     startedAt: new Date(args.startedAtMs).toISOString(),
     endedAt: new Date(args.endedAtMs).toISOString(),
     totalMs: args.totalMs,

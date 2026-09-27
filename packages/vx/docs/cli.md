@@ -874,7 +874,8 @@ the run. The footer's `info` row sums the waits, task-seconds:
 a 160 s run).
 
 **`ok` / `exitCode`** are the run's verdict — the same value the CLI
-exits with. Gate on these rather than re-deriving a pass from the
+exits with: a stopping signal's code (130 for Ctrl-C), and with a kept
+server, its exit (the file is written again when the server ends). Gate on these rather than re-deriving a pass from the
 buckets: a run can be red without a single failed task (see `aborted`).
 
 **`tasks[]` and `summary` describe the same population**, so

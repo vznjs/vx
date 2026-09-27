@@ -99,6 +99,15 @@ once. The private dedupes in `wireForwarder` and the telemetry source
 went with it. Rows: `plugin-e2e.test.ts` (one `run:end`),
 `events.test.ts` (`runEnd` emits once).
 
+## C-9: state the process's exit in `--summarize`
+
+The summary said `exitCode: 1` on a Ctrl-C (the process exits 130) and
+`ok: true` when a kept server later crashed (exit 1): it was written
+before the keep-alive wait and derived its code from `ok`. It now takes a
+stopping signal's code and is written again when the kept server ends.
+Rows: `keep-alive.test.ts` (a server exiting 1, a Ctrl-C after the
+summary).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -136,3 +145,7 @@ went with it. Rows: `plugin-e2e.test.ts` (one `run:end`),
   project (`caching.md`). A cached e2e task behind a dev server does not
   re-key when the server's sources change unless it declares them. Worth
   a line in `caching.md` or the uncached rule.
+- **E:** `--report` / `--report-file` are never written on a Ctrl-C:
+  `cli/run.ts` renders them after `run()` returns, and the signal
+  handler exits once `run()` has left (`signals.ts`), before that code
+  (no report in 3 of 3 Ctrl-C probes).
