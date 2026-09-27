@@ -64,6 +64,7 @@ import {
   killTree,
   releaseGroup,
   signalThrough,
+  guardLine,
   spawnGuarded,
 } from './kill-tree.js'
 
@@ -902,13 +903,20 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       // listening on the port under init, where the next run's bridge
       // could not bind it (item 873).
       procs.push(
-        spawnGuarded(() =>
-          Bun.spawn(portBridgeHostArgv(tag, p), {
-            stdin: 'ignore',
-            stdout: 'ignore',
-            stderr: 'ignore',
-            detached: true,
-          }),
+        spawnGuarded((guard) =>
+          guard === undefined
+            ? Bun.spawn(portBridgeHostArgv(tag, p), {
+                stdio: ['ignore', 'ignore', 'ignore'],
+                detached: true,
+              })
+            : Bun.spawn(
+                [
+                  executablePath('sh'),
+                  '-c',
+                  `${guardLine(3)}exec ${portBridgeHostArgv(tag, p).map(shellQuote).join(' ')}`,
+                ],
+                { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true },
+              ),
         ),
       )
     } catch {
@@ -1086,16 +1094,35 @@ async function runSandboxedOnce(
           wrapped,
         ]
       : [sh, '-c', wrapped]
-    proc = spawnGuarded(() =>
-      Bun.spawn(spawnArgv, {
-        argv0: straceLog ? 'strace' : 'sh',
-        cwd: args.cwd,
-        env: args.env as Record<string, string>,
-        // fd 3 is the signal channel the in-sandbox watcher reads.
-        stdio: forwardsSignals ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
-        // As the unsandboxed spawn: its own process group (kill-tree.ts).
-        detached: true,
-      }),
+    // With the guard, a shell lists the group first and `exec`s the
+    // spawn: strace itself would hold the guard's pipe for its lifetime.
+    const guardAt = forwardsSignals ? 4 : 3
+    proc = spawnGuarded((guard) =>
+      Bun.spawn(
+        guard === undefined
+          ? spawnArgv
+          : [
+              sh,
+              '-c',
+              guardLine(guardAt) +
+                (straceLog ? `exec ${spawnArgv.map(shellQuote).join(' ')}` : wrapped),
+            ],
+        {
+          argv0: straceLog && guard === undefined ? 'strace' : 'sh',
+          cwd: args.cwd,
+          env: args.env as Record<string, string>,
+          // fd 3 is the signal channel the in-sandbox watcher reads.
+          stdio: [
+            'ignore',
+            'pipe',
+            'pipe',
+            ...(forwardsSignals ? ['pipe' as const] : []),
+            ...(guard === undefined ? [] : [guard]),
+          ],
+          // As the unsandboxed spawn: its own process group (kill-tree.ts).
+          detached: true,
+        },
+      ),
     )
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {

@@ -14,6 +14,7 @@ import {
   markGroupIfGone,
   releaseGroup,
   signalThrough,
+  guardLine,
   spawnGuarded,
   untilGroupsGone,
 } from './kill-tree.js'
@@ -435,27 +436,40 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   let child: ReturnType<typeof Bun.spawn>
   try {
-    child = spawnGuarded(() =>
-      Bun.spawn([executablePath('sh'), '-c', execWrap(opts.command)], {
-        argv0: 'sh',
-        cwd: opts.cwd,
-        env: opts.env as Record<string, string>,
-        // A pipe vx holds and never writes: stdin stays open while vx
-        // lives and ends when it does. A dev server that exits on stdin
-        // EOF (esbuild --watch, Vite's case in turborepo#8915) became ready
-        // and exited 0 under 'ignore'. Not the terminal: several servers
-        // would steal each other's keystrokes, and a CI's /dev/null stdin
-        // is the same EOF. The one-shot spawn below keeps 'ignore', so a
-        // task that reads stdin can never hang CI.
-        stdio:
-          opts.signalChannel === true ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
-        // Its own session and process group, so a kill reaches what it
-        // forked (kill-tree.ts). stdin is a pipe, so a background group
-        // never stops on a terminal read.
-        detached: true,
-      }),
+    const signalFd = opts.signalChannel === true
+    child = spawnGuarded((guard) =>
+      Bun.spawn(
+        [
+          executablePath('sh'),
+          '-c',
+          (guard === undefined ? '' : guardLine(signalFd ? 4 : 3)) + execWrap(opts.command),
+        ],
+        {
+          argv0: 'sh',
+          cwd: opts.cwd,
+          env: opts.env as Record<string, string>,
+          // A pipe vx holds and never writes: stdin stays open while vx
+          // lives and ends when it does. A dev server that exits on stdin
+          // EOF (esbuild --watch, Vite's case in turborepo#8915) became ready
+          // and exited 0 under 'ignore'. Not the terminal: several servers
+          // would steal each other's keystrokes, and a CI's /dev/null stdin
+          // is the same EOF. The one-shot spawn below keeps 'ignore', so a
+          // task that reads stdin can never hang CI.
+          stdio: [
+            'pipe',
+            'pipe',
+            'pipe',
+            ...(signalFd ? ['pipe' as const] : []),
+            ...(guard === undefined ? [] : [guard]),
+          ],
+          // Its own session and process group, so a kill reaches what it
+          // forked (kill-tree.ts). stdin is a pipe, so a background group
+          // never stops on a terminal read.
+          detached: true,
+        },
+      ),
     )
-    if (opts.signalChannel === true) {
+    if (signalFd) {
       signalThrough(child, child.stdio[3] as number)
       const spawned = child
       void spawned.exited.then(() => closeSignalChannel(spawned))
@@ -651,19 +665,24 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
 
   let proc: ReturnType<typeof Bun.spawn>
   try {
-    proc = spawnGuarded(() =>
-      Bun.spawn([executablePath('sh'), '-c', execWrap(fullCommand)], {
-        argv0: 'sh',
-        cwd: opts.cwd,
-        env: opts.env as Record<string, string>,
-        stdin: 'ignore',
-        stdout: 'pipe',
-        stderr: 'pipe',
-        // Its own session and process group, so a kill reaches what it
-        // forked (kill-tree.ts). stdin is ignored, so a background group
-        // never stops on a terminal read.
-        detached: true,
-      }),
+    proc = spawnGuarded((guard) =>
+      Bun.spawn(
+        [
+          executablePath('sh'),
+          '-c',
+          (guard === undefined ? '' : guardLine(3)) + execWrap(fullCommand),
+        ],
+        {
+          argv0: 'sh',
+          cwd: opts.cwd,
+          env: opts.env as Record<string, string>,
+          stdio: ['ignore', 'pipe', 'pipe', ...(guard === undefined ? [] : [guard])],
+          // Its own session and process group, so a kill reaches what it
+          // forked (kill-tree.ts). stdin is ignored, so a background group
+          // never stops on a terminal read.
+          detached: true,
+        },
+      ),
     )
   } catch (err) {
     const stderr = spawnFailureText(err, opts.cwd)

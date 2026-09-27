@@ -3731,6 +3731,28 @@ describe.skipIf(!available || process.platform !== 'linux')(
  * the bridge release, the spawn failure, the process group, the live-child
  * set, the timeout, the capture flags) could each go with the suite green.
  */
+/**
+ * The tracer's argv among a spy's `Bun.spawn` calls: spawned as is, or
+ * `exec`'d by the shell that first lists its group with the guard (B-9),
+ * whose words `shellQuote` wrote.
+ */
+function tracerArgv(calls: ReadonlyArray<ReadonlyArray<unknown>>): string[] | undefined {
+  for (const [cmd] of calls) {
+    if (!Array.isArray(cmd)) continue
+    let argv = cmd as string[]
+    if (argv[1] === '-c' && typeof argv[2] === 'string' && argv[2].includes('; exec ')) {
+      const words = argv[2]
+        .slice(argv[2].lastIndexOf('; exec ') + 7)
+        .match(/'(?:[^']|'\\'')*'|\S+/g)
+      argv = (words ?? []).map((w) =>
+        w.startsWith("'") ? w.slice(1, -1).replaceAll("'\\''", "'") : w,
+      )
+    }
+    if ((argv[0] ?? '').endsWith('/strace') && argv.includes('-o')) return argv
+  }
+  return undefined
+}
+
 describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, driven directly', () => {
   let dir = ''
   beforeEach(async () => {
@@ -3878,9 +3900,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       await runSandboxed(args('true'))
       // `strace --version` is the availability probe; the trace carries `-o`.
       // The tracer is spawned by its absolute path (util/which.ts).
-      const argv = spy.mock.calls
-        .map((c) => c[0] as unknown as string[])
-        .find((c) => Array.isArray(c) && (c[0] ?? '').endsWith('/strace') && c.includes('-o'))
+      const argv = tracerArgv(spy.mock.calls)
       expect(argv?.[0]).toBe(Bun.which('strace')!)
       expect(argv?.slice(1, 5)).toEqual(['-f', '--seccomp-bpf', '-e', 'trace=openat'])
     } finally {
@@ -3895,9 +3915,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const spy = spyOn(Bun, 'spawn')
     const during: boolean[] = []
     const logOf = (): string | undefined => {
-      const argv = spy.mock.calls
-        .map((c) => c[0] as unknown as string[])
-        .find((c) => Array.isArray(c) && (c[0] ?? '').endsWith('/strace') && c.includes('-o'))
+      const argv = tracerArgv(spy.mock.calls)
       return argv?.[argv.indexOf('-o') + 1]
     }
     try {
@@ -4442,6 +4460,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
     const survivors = async (
       sandboxed: boolean,
       persistent = true,
+      // Blocks vx three seconds after each task spawn returns, so the task
+      // runs before vx's next step, as on a loaded box (B-9).
+      stall = false,
     ): Promise<{ started: number; alive: number[]; leaders: number[] }> => {
       const nonce = `${1000 + Math.floor(Math.random() * 1000)}.${process.pid}`
       await addProject(
@@ -4461,11 +4482,22 @@ describe.skipIf(!available || process.platform !== 'linux')(
           }
         `,
       )
-      const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-        cwd: root,
-        stdout: 'ignore',
-        stderr: 'ignore',
-      })
+      const preload = path.join(root, 'stall-spawns.ts')
+      if (stall)
+        await writeFile(
+          preload,
+          `const spawn = Bun.spawn
+Bun.spawn = (cmd, opts) => {
+  const child = spawn(cmd, opts)
+  if (opts?.argv0 === 'sh' || opts?.argv0 === 'strace') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000)
+  return child
+}
+`,
+        )
+      const proc = Bun.spawn(
+        [process.execPath, ...(stall ? ['--preload', preload] : []), BIN, 'run', 'dev', '--all'],
+        { cwd: root, stdout: 'ignore', stderr: 'ignore' },
+      )
       let pids: number[] = []
       const deadline = Date.now() + 20_000
       while (Date.now() < deadline) {
@@ -4501,6 +4533,18 @@ describe.skipIf(!available || process.platform !== 'linux')(
       'a traced sandboxed one-shot task’s children die with vx',
       async () => {
         expect(await survivors(true, false)).toEqual({ started: 2, alive: [], leaders: [] })
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'a traced sandboxed one-shot task’s children die with vx that is descheduled after the spawn',
+      async () => {
+        expect(await survivors(true, false, true)).toEqual({
+          started: 2,
+          alive: [],
+          leaders: [],
+        })
       },
       TIMEOUT,
     )

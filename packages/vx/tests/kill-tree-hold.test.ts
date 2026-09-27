@@ -18,11 +18,11 @@ async function outlivesHolder(steps: string): Promise<boolean> {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-hold-'))
   try {
     const script = `
-      import { holdGroups, releaseGroup, spawnGuarded } from ${JSON.stringify(KILL_TREE)}
-      const child = spawnGuarded(() =>
-        Bun.spawn(['sh', '-c', '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt; wait'], {
+      import { guardLine, holdGroups, releaseGroup, spawnGuarded } from ${JSON.stringify(KILL_TREE)}
+      const child = spawnGuarded((guard) =>
+        Bun.spawn(['sh', '-c', guardLine(3) + '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt; wait'], {
           cwd: ${JSON.stringify(dir)},
-          stdio: ['ignore', 'ignore', 'ignore'],
+          stdio: ['ignore', 'ignore', 'ignore', guard],
           detached: true,
         }),
       )

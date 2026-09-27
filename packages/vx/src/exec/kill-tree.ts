@@ -103,18 +103,31 @@ function guardWrite(line: string): void {
 }
 
 /**
- * Spawn a task child and list its group for the guard to kill if vx dies
- * holding it. The guard starts BEFORE the spawn: started after it, the
- * guard's own spawn was a window in which the task ran and a `kill -9`
- * of vx found its group unlisted — under a traced sandbox, a third of
- * the kills landed there. What is left is the step from the spawn's
- * return to one pipe write.
+ * Spawn a task child whose group the guard kills if vx dies holding it.
+ * The CHILD lists its own group, before it runs anything: vx wrote the
+ * line after the spawn returned, and under load the child ran first, so a
+ * `kill -9` of vx in between left its group unlisted and alive (4 of 40
+ * runs at tenfold load; B-9). `spawn` gets the guard's pipe, to hand the
+ * child at some descriptor `n`, and runs `guardLine(n)` in the child's
+ * shell first. The child holds the pipe until it has written, so the
+ * guard cannot reach EOF before the line: vx's death alone no longer
+ * races it. The guard starts BEFORE the spawn, so there is a pipe to hand.
+ * `undefined` when the guard could not start: nothing lists anything.
  */
-export function spawnGuarded(spawn: () => Child): Child {
+export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child {
   startGuard()
-  const child = spawn()
-  if (child.pid > 0) guardWrite(`+${child.pid}\n`)
-  return child
+  return spawn(typeof guardFd === 'number' ? guardFd : undefined)
+}
+
+/**
+ * The shell line that lists `$$`'s group on the guard's pipe at `fd` and
+ * closes it, so the task never holds the guard open. `$$` is the spawned
+ * shell, which leads its group (every guarded spawn is `detached`); a
+ * program that is not a shell is `exec`'d after it. A write to a guard
+ * that has died is ignored rather than a SIGPIPE that kills the task.
+ */
+export function guardLine(fd: number): string {
+  return `trap '' PIPE; printf '+%s\\n' $$ >&${fd} 2>/dev/null; trap - PIPE; exec ${fd}>&-; `
 }
 
 /**

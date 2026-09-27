@@ -385,18 +385,32 @@ describe('a SIGKILLed vx takes the groups it holds with it', () => {
   // group kill takes it (turborepo#9666). It writes `late.txt` a second
   // after it starts: a file, not a pid, because under a sandbox's pid
   // namespace a killed orphan stays a zombie that signal 0 still finds.
-  async function outlivesVx(exec: string): Promise<boolean> {
+  // `stall` preloads a Bun.spawn that blocks vx for three seconds after
+  // each task spawn returns: the child runs first, as on a loaded box, and
+  // the kill lands before vx's own next step (B-9).
+  async function outlivesVx(exec: string, stall = false): Promise<boolean> {
     const dir = await addProject(
       root,
       'app',
       `export default { tasks: { dev: { exec: ${exec} } } }`,
     )
+    const preload = path.join(root, 'stall-spawns.ts')
+    if (stall)
+      await Bun.write(
+        preload,
+        `const spawn = Bun.spawn
+Bun.spawn = (cmd, opts) => {
+  const child = spawn(cmd, opts)
+  if (opts?.argv0 === 'sh') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000)
+  return child
+}
+`,
+      )
     const proc = track(
-      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
-        cwd: root,
-        stdout: 'ignore',
-        stderr: 'ignore',
-      }),
+      Bun.spawn(
+        [process.execPath, ...(stall ? ['--preload', preload] : []), BIN, 'run', 'dev', '--all'],
+        { cwd: root, stdout: 'ignore', stderr: 'ignore' },
+      ),
     )
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     process.kill(proc.pid, 'SIGKILL')
@@ -419,6 +433,15 @@ describe('a SIGKILLed vx takes the groups it holds with it', () => {
       // It ignores SIGTERM, as a server's cleanup might: only a SIGKILL takes it.
       await outlivesVx(
         `{ command: '(trap "" INT TERM; sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' }`,
+      ),
+    ).toBe(false)
+  }, 20_000)
+
+  it('a task’s group is listed before it runs: a kill -9 while vx is descheduled takes it', async () => {
+    expect(
+      await outlivesVx(
+        `{ command: '(trap "" INT TERM; sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' }`,
+        true,
       ),
     ).toBe(false)
   }, 20_000)
