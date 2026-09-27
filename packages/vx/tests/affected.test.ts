@@ -1374,6 +1374,25 @@ describe('affectedProjects: config import closures', () => {
   it('CONTROL: a docs-only change still selects nothing', async () => {
     expect(await editThenSelect('docs/x.md', `# docs edited\n`)).toEqual([])
   })
+  it('PIN: deleting an imported orphan selects the importer it broke (item 958)', async () => {
+    // The target no longer resolves, and an unresolvable import contributed
+    // no edge: `--filter '[HEAD]'` exited 0 with app's config broken.
+    await rm(path.join(root, 'shared/a.mjs'))
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out].sort()).toEqual(['app'])
+  })
+
+  it('PIN: an extensionless import whose target is deleted reaches its importer too (item 958)', async () => {
+    await writeFile(
+      path.join(root, 'packages/lib/vx.config.mjs'),
+      `import { B } from '../../shared/b'\nexport default { tasks: {} }\n`,
+    )
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib imports b')
+    await rm(path.join(root, 'shared/b.mjs'))
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out].sort()).toEqual(['lib'])
+  })
 })
 
 // The root `"."` member is a supported (and, in this repo, load-bearing)

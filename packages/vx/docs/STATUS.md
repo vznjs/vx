@@ -555,6 +555,21 @@ test is telling the truth.
         `[^)]*`).
       - The review is done: leads 1–6 are items 950, 952, 956, 957 (1, 2
         and 4 were one fix).
+958.  DONE (2026-09-27, the `--affected` review's lead 5). A deleted or
+      renamed config-import target does not resolve, and an unresolvable
+      import contributed no edge: `--filter '[HEAD]'` exited 0 with the
+      importing config broken.
+      - Fix: such a specifier records its edge to the path it names (and,
+        bare of an extension, each file Bun would have tried), so the
+        deleted path reaches its importer.
+      - The lead's other half, a file a config READS with `fs`, is
+        documented as a limit in the config-imports module page, with the
+        remedy (a JSON import is followed, or `workspaceFiles`): selecting
+        every config the purity gate cannot vouch for on any unowned change
+        would run them all on a README edit.
+      - Rows: `affected.test.ts` › deleting an imported orphan, and an
+        extensionless import's target, selects the importer. Both red
+        without the fix.
 
 ## In flight
 
