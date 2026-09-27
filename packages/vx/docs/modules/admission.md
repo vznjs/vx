@@ -22,17 +22,29 @@ rules stand between them and neither changes what the task is:
   seeds the same taint (`seeds`): a task whose key folds a dependency
   that did not run (`excluded-keys.md`) has bytes nothing vouches for,
   and so does everything built on it. No seed and no `always` keeps
-  the check off.
+  the check off. A task's taint is read from its deps' SETTLED outcomes
+  (the scheduler's `onFinish` feeds `settled`), not from what it saw at
+  dispatch: a restore-tier hit dispatches before its deps settle, saw
+  holes, and passed nothing on, so its dependent saved a failed dep's
+  partial tree on its healthy key (C-1). Its dependents are released
+  only once its deps have settled (scheduler.ts, item 963), so the
+  answer is complete by the time anyone asks. The walk is iterative
+  and memoized once every dep has settled.
 
 Split from `run.ts` on 2026-09-10 (pure motion).
 
 ## Public surface
 
 ```ts
+export interface TaintTracker {
+  judge: (node: TaskNode, upstream: TaskOutcome[]) => boolean
+  settled: (outcome: TaskOutcome) => void // the scheduler's onFinish
+}
 export function taintTracker(
   continueAlways: boolean,
   seeds: ReadonlySet<string>,
-): (node: TaskNode, upstream: TaskOutcome[]) => boolean
+  nodes: ReadonlyMap<string, TaskNode>,
+): TaintTracker
 
 export interface AdmissionArgs {
   inflight: Map<string, Promise<void>> | undefined
@@ -84,6 +96,8 @@ no lane, at once.
 `tests/inflight.test.ts` (two runs sharing a registry execute a key
 once; the joiner hits; the barrier is released on failure),
 `tests/continue-taint.test.ts` (the tainted task runs and does not
-save; taint reaches the grand-dependent; other modes skip),
-`tests/taint-tracker.test.ts` (each poisoning status, and a seed with
-no failure upstream).
+save; taint reaches the grand-dependent; other modes skip; a hit
+between the failure and the dependent carries it),
+`tests/taint-tracker.test.ts` (each poisoning status, a seed with no
+failure upstream, a hit judged before its deps settled, a 50,000-deep
+chain of hits).
