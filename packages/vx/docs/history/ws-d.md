@@ -47,3 +47,9 @@ run leaves out; the rest are refusals.
   (`packages/{a,nested/b}`) as its expansions; `Bun.Glob`'s scan found
   none of its members. Row: `tests/workspace.test.ts` "a brace whose
   alternatives hold a slash lists every member (D-2)".
+- **D-3** `--affected` selects a dependent whose edge a manifest edit
+  dropped (lead 2): the package graph is rebuilt over the changed
+  manifests as the base had them (one `git cat-file --batch`, shared
+  with D-1's check) and every project whose `directDeps` differ is
+  selected; replaces the removed-package walk. Row: `tests/affected.test.ts`
+  "a manifest edit that drops an edge selects the dependent (D-3)".
