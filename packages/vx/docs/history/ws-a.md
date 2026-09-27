@@ -140,3 +140,10 @@ F asked about an upstream whose recorded outputs are partly on disk. Locally, a 
 
 - Fix (`execute-task.ts`, `TaskOutcome.unkeyed`): a task whose key no longer held carries `unkeyed`; a dependant whose key folds one (per its `cache.inputs.tasks`; one reading it by content is judged by its bytes) saves nothing and carries it on. The public `TaskOutcome` gains the optional field (contract regenerated). `caching.md` says so.
 - Row: `unkeyed-upstream.test.ts` (gen → use → pack, the edit on a marker): neither dependant saves; the next run rebuilds. Red without the fix (both hit).
+
+### A-13 (2026-09-27, coordinator lead from H)
+
+An output glob `**/*.js` reached `node_modules`, so the clean before each run deleted installed files; a `workspaceFiles` output glob reached `.git`.
+
+- Fix (`inputs.ts` `outputExcludes`): `node_modules` is excluded unless a glob names it; workspace outputs take `OUTPUT_NEVER` too. `caching.md` says so.
+- Row: `output-reach.test.ts` (the clean itself; an install task's `node_modules/**` as control). Red without the fix.

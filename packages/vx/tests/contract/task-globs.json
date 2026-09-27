@@ -173,13 +173,7 @@
     "[\"dist\"]": ["dist/nested/chunk.js", "dist/out.js"],
     "[\"dist/\"]": ["dist/nested/chunk.js", "dist/out.js"],
     "[\"dist/*\"]": ["dist/out.js"],
-    "[\"**/*.js\"]": [
-      "dist/nested/chunk.js",
-      "dist/out.js",
-      "lib/b.js",
-      "node_modules/m/index.js",
-      "src/a.js"
-    ],
+    "[\"**/*.js\"]": ["dist/nested/chunk.js", "dist/out.js", "lib/b.js", "src/a.js"],
     "[\"lib/*.js\"]": ["lib/b.js"],
     "[\"src/[id].ts\"]": ["src/[id].ts"],
     "[\".github/**\"]": [".github/ci.yml"]

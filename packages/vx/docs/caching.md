@@ -687,9 +687,11 @@ Declared `cache.outputs.files` are wiped in two distinct places:
 
 Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
 with the same boundary rules, and two directories stay off the wipe
-whatever the glob: `.git` and `.vx` (`OUTPUT_NEVER`) — an output glob is
-otherwise taken as written, `node_modules/**` being an install task's
-legitimate output. Skipped when:
+whatever the glob: `.git` and `.vx` (`OUTPUT_NEVER`). `node_modules` is
+off it too unless a glob names it (`node_modules/**`, an install task's
+legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
+installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
+Workspace outputs take the same rules. Skipped when:
 
 - `cache.outputs.files` is empty (nothing declared as output).
 - The task's `willWrite` is false — no write axis is enabled (e.g.
