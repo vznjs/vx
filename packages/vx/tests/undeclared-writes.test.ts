@@ -199,8 +199,9 @@ describe('execute-task drops what the command may have written, and nothing else
   async function survivors(
     config: TaskNode['config'],
     executor: TaskExecutor = localExecutor(),
-  ): Promise<{ partitions: string[]; manifests: string[] }> {
+  ): Promise<{ partitions: string[]; manifests: string[]; said?: string[] }> {
     const dir = await addProject(root, 'app', { files: { 'config.json': 'X' } })
+    const said: string[] = []
     const cache = new Cache(path.join(root, '.vx', 'cache'))
     // The true digest, so a cached task's re-check before its save finds
     // its package.json unmoved and drops nothing of its own.
@@ -231,7 +232,7 @@ describe('execute-task drops what the command may have written, and nothing else
         workspaceRoot: root,
         workspaceFingerprint: 'fp',
         cache,
-        log: logger([]),
+        log: logger(said),
         executor,
         nestedProjectDirs: [],
         runStartHrTimeNs: process.hrtime.bigint(),
@@ -247,9 +248,13 @@ describe('execute-task drops what the command may have written, and nothing else
       expect([dir, OTHER, root].filter((p) => git.oidsFor(p) !== undefined)).toEqual(
         [dir, OTHER, root].filter((p) => git.has(p)),
       )
+      // What the task said rides the result, so a drop names its reason:
+      // the cached control dropped both on macOS CI twice with no word of
+      // which input it judged moved (M-3).
       return {
         partitions: [...git.keys()].map(name).sort(),
         manifests: [...hashCache.packageJson.keys()].map(name).sort(),
+        ...(said.length > 0 ? { said } : {}),
       }
     } finally {
       cache.close()
