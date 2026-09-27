@@ -794,7 +794,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     return xxh3(Buffer.from(entries.join('\n')))
   }
   // A path this loop has never judged is a change only if it moved since
-  // the watchers went live. macOS delivers the initial run's own writes
+  // the watchers went live (its mtime or ctime, `modifiedBefore`). macOS delivers the initial run's own writes
   // AFTER the arm (CI, 2026-09-11: `app dist; re-running...` with no edit
   // made — FSEvents hands a stream what landed just before it started),
   // and a first sighting used to pass unconditionally; the path's mtime
@@ -1244,7 +1244,12 @@ export function pendingAfterCycle(
 /** True when `abs` was last modified before `t` (epoch ms); false when it cannot be read. */
 export function modifiedBefore(abs: string, t: number): boolean {
   try {
-    return fs.statSync(abs).mtimeMs < t
+    // The later of the two clocks: `mv`, `cp -p`, `rsync -a` and `tar x`
+    // carry a file's OLD mtime onto the new one, and judged by mtime alone
+    // such an edit was "before the arm" and never ran (item 945). No
+    // process can set a ctime, and a rename or a write moves it.
+    const st = fs.statSync(abs)
+    return Math.max(st.mtimeMs, st.ctimeMs) < t
   } catch {
     return false
   }

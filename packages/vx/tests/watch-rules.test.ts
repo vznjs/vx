@@ -6,7 +6,7 @@
 // time could never help), and the config-worker deadline that exists because a
 // worker the OS kills fires no `error` event and its caller waits forever.
 
-import { mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
 import fs, { chmodSync, existsSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
@@ -702,6 +702,27 @@ describe('a first sighting is a change only if the path moved since the arm', ()
       const exact = (await stat(f)).mtimeMs
       expect(modifiedBefore(f, exact)).toBe(false)
       expect(modifiedBefore(path.join(dir, 'missing'), later)).toBe(false)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('a first sighting reads the later of mtime and ctime (item 945)', () => {
+  it('a file moved in with an old mtime is not "before" the arm: its ctime is new', async () => {
+    // `mv`, `cp -p`, `rsync -a` and `tar x` keep the source's mtime, so a
+    // backup restored over an input read as the initial run's and never
+    // ran. `utimes` is the same shape: an old mtime, a ctime of now.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-ctime-'))
+    try {
+      const f = path.join(dir, 'in.txt')
+      await writeFile(f, 'x')
+      const armedAt = fsClockNow(dir)
+      const old = new Date(Date.now() - 3_600_000)
+      await utimes(f, old, old)
+      const st = await stat(f)
+      expect(st.mtimeMs).toBeLessThan(armedAt) // CONTROL: the mtime alone says "before"
+      expect(modifiedBefore(f, armedAt)).toBe(false)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
