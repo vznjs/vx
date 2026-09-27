@@ -689,6 +689,54 @@ packages:
     expect(movedDirs(lock('1.0.0'), lock('1.0.1'))).toEqual(['.'])
   })
 
+  /** The env document pnpm 10.x / 11 writes ahead of the project lockfile. */
+  const withEnv = (main: string, pnpmVersion: string) => `---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: ${pnpmVersion}
+        version: ${pnpmVersion}
+
+packages:
+
+  pnpm@${pnpmVersion}:
+    resolution: {integrity: sha512-pnpm${pnpmVersion}}
+
+snapshots:
+
+  pnpm@${pnpmVersion}: {}
+
+---
+${main}`
+
+  it('a multi-document lockfile (pnpm 10.x / 11) reads its last document as the lockfile', () => {
+    // Turbo's own pnpm-lock.yaml is this shape; parsed as one document it
+    // was an array, and the run was refused.
+    const lock = parseLockfile(withEnv(v9(), '11.0.0'))
+    expect([...lock.importers.keys()]).toEqual(['.', 'packages/a', 'packages/b', 'packages/c'])
+    expect(movedDirs(withEnv(v9(), '11.0.0'), withEnv(v9({ bar: '2.0.1' }), '11.0.0'))).toEqual([
+      'packages/a',
+    ])
+  })
+
+  it("a multi-document lockfile's env document moves every importer", () => {
+    expect(movedDirs(withEnv(v9(), '11.0.0'), withEnv(v9(), '11.0.1'))).toEqual([
+      '.',
+      'packages/a',
+      'packages/b',
+      'packages/c',
+    ])
+  })
+
+  it('a one-document lockfile behind a `---` marker keys as it does without one', () => {
+    expect(digests(`---\n${v9()}`)).toEqual(digests(v9()))
+  })
+
   it('a lockfile below v5 is refused; v5 is read', () => {
     expect(() => parseLockfile("lockfileVersion: '4.0'\n")).toThrow(
       'pnpm-lock.yaml: unsupported lockfileVersion "4.0"',
