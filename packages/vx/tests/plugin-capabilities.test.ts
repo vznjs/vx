@@ -506,6 +506,47 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it("an executor's throw reaches the task's own stderr, where its frame and recap read it", async () => {
+    // It went to process.stderr past the logger, and the failure recap
+    // said "(no output)" for a reason vx had printed above.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource(
+            'org/down',
+            `{ executor() {
+               return { name: 'down', async execute() { throw new Error('pool down') } }
+             },
+           }`,
+          ),
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      // Before the completion: the frame and the recap close on it.
+      const seen: string[] = []
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: {
+          ...makeSilentLogger(),
+          taskStderr: (n, c) => void (c.startsWith('[vx]') && seen.push(`${n.id}: ${c}`)),
+          taskComplete: (n) => void seen.push(`done ${n.id}`),
+        },
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(false)
+      expect(seen).toEqual([
+        'pkg-a#hello: [vx] internal error in pkg-a#hello: pool down\n',
+        'done pkg-a#hello',
+      ])
+    } finally {
+      cleanup()
+    }
+  })
+
   it('a cacheable task executed by a plugin executor is saved and replayed as a hit', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

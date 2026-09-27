@@ -150,6 +150,16 @@ The restore tier is now judged first, as `modules/scheduler.md` says
 restores at `--concurrency 1`: six at once without the change, one
 with).
 
+## C-14: carry a rejected task's reason into its frame and the recap
+
+The scheduler wrote the line naming a rejected `execute` (an executor's
+throw, a corrupt index) to `process.stderr` past the logger, after the
+outcome had landed, so the task's frame was empty and the failure recap
+said "(no output)" for a reason vx had printed above. `runGraph` now
+hands the line to `onError` before the outcome, and a run routes it to
+the task's own stderr. Row: `plugin-capabilities.test.ts` (red without
+the wiring, and with the line after the outcome).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

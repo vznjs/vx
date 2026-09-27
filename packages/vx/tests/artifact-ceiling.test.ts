@@ -8,7 +8,7 @@
 
 import { readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache, CorruptArtifactError } from '../src/cache/cache.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -136,21 +136,14 @@ describe('an output set past the artifact ceiling', () => {
     await workspace(CEILING / 2)
     await run({ cwd: root, tasks: ['build'], log: collecting([]) })
     await rm(path.join(root, 'packages', 'big', 'dist'), { recursive: true, force: true })
-    // The scheduler writes a task's crash to stderr itself, not through the logger.
-    const stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
-    let refused: Awaited<ReturnType<typeof run>>
-    let lines: string[]
-    try {
-      refused = await run({
-        cwd: root,
-        tasks: ['build'],
-        log: collecting([]),
-        artifactCeiling: 1024,
-      })
-      lines = stderr.mock.calls.map(([chunk]) => String(chunk).trimEnd())
-    } finally {
-      stderr.mockRestore()
-    }
+    // The scheduler hands a task's crash to the task's own stderr.
+    const lines: string[] = []
+    const refused = await run({
+      cwd: root,
+      tasks: ['build'],
+      log: { ...collecting([]), taskStderr: (_n, c) => void lines.push(c.trimEnd()) },
+      artifactCeiling: 1024,
+    })
     expect(refused.outcomes.map((o) => o.status)).toEqual(['failed'])
     expect(lines.filter((l) => l.startsWith('[vx] internal error'))).toEqual([
       expect.stringMatching(

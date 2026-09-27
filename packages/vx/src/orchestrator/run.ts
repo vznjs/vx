@@ -806,6 +806,7 @@ async function runOnBus(
         log.taskComplete(o.node, o)
         narrowDemand(o.node.id)
       },
+      onError: (node, line) => log.taskStderr(node, line),
       execute: (node, upstream) => executeWithDedup(node, keyUpstream(node, upstream)),
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
