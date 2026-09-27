@@ -755,6 +755,17 @@ projects warm, source runs: a tie. n=15 medians 404 / 422, A/A 424;
 n=21 418 / 420, A/A 401. Stage mins over 15 runs move within the A/A
 spread.
 
+Later the same day (main 3e927f9c, after the `turbo()` / `nx()` mapping
+cache and `--filter` discovering once), no-op, 15 interleaved rounds,
+A/A beside: astro 763 → 715 ms median (A/A 719). refine did not move
+(375 → 396, A/A 410, git defaults): `nx()`'s graph key now runs a
+whole-repo `git status -uall` each run (80–99 ms alone on refine), which
+ate what the mapping cache saved. Restore is not bound by worker count:
+refine at `--concurrency 6` 1,057 ms median against 1,148 at 3, A/A
+1,183. Under a git config that weakens stat (`core.checkStat=minimal`,
+`core.trustctime=false`) every input hashes instead of trusting git's
+OIDs, by design: refine's no-op read 448 ms there against 396.
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
