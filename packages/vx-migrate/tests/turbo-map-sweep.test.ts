@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import { UserError, type ProjectMeta } from '@vzn/vx'
 import { mapTurboWorkspace, type TurboMappedTask } from '../src/turbo/turbo-map.js'
 
 let root: string
@@ -37,6 +37,18 @@ const taskOf = async (...args: Parameters<typeof map>): Promise<TurboMappedTask>
   (await map(...args)).projects[0]!.tasks[0]!
 
 describe('turbo-map: what the sweep found unheld', () => {
+  // A bare ENOENT with a stack, until item 1043.
+  it('a workspace with no Turbo config is refused as a user error that names the remedy', async () => {
+    const err = await mapTurboWorkspace(root, [], opts).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect((err as Error).message).toBe(
+      `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from vx.workspace.ts`,
+    )
+  })
+
   it('turbo 1’s `pipeline` is read like `tasks`', async () => {
     const t = await taskOf(
       { pipeline: { build: { outputs: ['dist/**'] } } },
