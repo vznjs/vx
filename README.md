@@ -88,6 +88,8 @@ rm -rf packages/*/dist
 npx vx run build --all    # restored from the cache, not rebuilt
 ```
 
+<img src="https://vznjs.github.io/vx/demo.svg" width="760" alt="vx run ci --all on examples/basic: cold, three tasks run; again, three up-to-date.">
+
 Or copy [`examples/basic`](examples/basic), a two-package starter CI
 runs on every commit. More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 [Configure](https://vznjs.github.io/vx/guides/configure/) ·

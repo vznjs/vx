@@ -230,6 +230,14 @@ describe('the landing page', () => {
     expect(buttons.map((m) => text(m[1]!))).toEqual(['Quickstart →', 'GitHub'])
   })
 
+  // The demo is a real run (scripts/terminal-demo.ts); core's
+  // examples.unsafe.test.ts re-runs it against the committed file.
+  it('shows the recorded run under the buttons', () => {
+    const imgs = [...hero.matchAll(/<img\b[^>]*class="demo"[^>]*src="([^"]+)"/g)].map((m) => m[1])
+    expect(imgs).toEqual([`${BASE}demo.svg`])
+    expect(readFileSync(path.join(DIST, 'demo.svg'), 'utf8')).toContain('$ </tspan>')
+  })
+
   it('draws the one picture, both layouts, and lists its six lines at their anchors', () => {
     const run = section(html, 'one-run')
     const figures = [...run.matchAll(/<figure\b[^>]*data-picture="([^"]+)"/g)].map((m) => m[1])
