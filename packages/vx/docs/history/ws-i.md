@@ -4,6 +4,19 @@ I-1. Roadmap 2.5, real repos re-measured through `turbo()` / `nx()`
 (benchmarks.md § Real repos re-measured). vx leads every row on astro
 and refine. Day-end A/B of main against item 960: a tie.
 
+I-2. The harnesses time vx without the caller's `BUN_OPTIONS`
+(`bench-env.ts`, used by `run.ts` and `compare.ts`; the two real-repo
+scripts unset it). `--smol` from this box's shell: 1,000 packages warm,
+median 351 ms against 334, A/A 336, 15 rounds. Refuted the same day:
+
+- astro's output shortcut widened: `dist/**` outputs (the shortcut
+  taken) 502 ms median against the shipped `dist/**/*` + `mod.js` 493,
+  A/A 486. The `output glob` span overlaps other work.
+- A member walk pruning `node_modules` for `packages/**/*` on astro:
+  26–37 ms against `Bun.Glob`'s 35–38, same 522 members. Noise.
+- astro's git enumeration (122 ms) is mostly `git status` itself
+  (57–71 ms alone); a restore's extract is the item 193 floor.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
