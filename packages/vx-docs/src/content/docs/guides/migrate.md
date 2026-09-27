@@ -33,7 +33,7 @@ export default defineWorkspace({ plugins: [turbo()] })
 | `cache: false`                                              | no `cache` block: the task always runs                                   |
 | `persistent: true`                                          | `exec.persistent: { … }`                                                 |
 | `outputLogs`                                                | `"new-only"` is the default; other values are the run's `--output-logs` |
-| `dotEnv` (Turbo 1)                                          | `cache.inputs.files`                                                     |
+| `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob; a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime` |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `extends`                                                   | nothing: a package task merges over the root's, field by field           |
 | `$TURBO_ROOT$/file`                                         | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
@@ -86,7 +86,7 @@ installed.
 | `inputs` / `namedInputs`             | `cache.inputs.files`                                      |
 | `{workspaceRoot}/file`               | `cache.inputs.workspaceFiles`                             |
 | `{ "env": "VAR" }`                   | `cache.inputs.env` **and** `exec.env.passThrough`         |
-| `{ "runtime": "<cmd>" }`             | `cache.inputs.runtime`                                    |
+| `{ "runtime": "<cmd>" }`             | `cache.inputs.workspaceRuntime`: it runs at the workspace root, as Nx's does |
 | `outputs`                            | `cache.outputs.files` (or `workspaceFiles` for `dist/<project>`) |
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |

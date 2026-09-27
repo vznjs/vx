@@ -26,8 +26,8 @@ These are reproducible on your own machine, not marketing figures:
   172 ms), and a restore costs about the same as an untouched tree;
   the current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo and Nx** — `bun packages/vx-bench/compare.ts` scaffolds
-  one repo (1,090 packages, 100 dependency layers, a `build` + `test` task
-  each) and runs all three runners across the same three cache states.
+  one repo (1,090 packages, 100 dependency layers, a `build`,
+  `installDeps` and `test` task each: 3,270 tasks) and runs all three runners across the same three cache states.
   vx leads on the warm paths; the committed results live in
   [Benchmarks](../../benchmarks/). Run it yourself — every number here is
   a command away.
@@ -45,8 +45,10 @@ and faster:
    object, so imports, presets, and computed values participate in the
    key. Static-JSON config can't see them.
 3. **Strict output ownership.** Declared outputs are wiped before exec
-   *and* restore, so the tree is always exactly the cached snapshot — no
-   stale files, ever. Turborepo/Nx restore additively.
+   *and* restore, so the tree ends as the cached snapshot, with no stale
+   files. The one exception is a task that adds files to an upstream
+   task's outputs: it cleans only the files it recorded. Turborepo/Nx
+   restore additively.
 4. **Daemonless.** No background process, no staleness window, no socket
    to corrupt — and the fastest warm/cached runs in the head-to-head
    benchmark all the same.
@@ -95,9 +97,12 @@ Speed by subtraction is still speed:
   traced input set describes what the task read *that time*, on that
   machine, which is not the same as what it depends on; and it cannot be
   known before the task runs, which is exactly when the key is needed.
-  vx asks you to declare inputs and then lets you ENFORCE the
-  declaration: a task with `sandbox` runs with the declared paths as the
-  only readable ones. Guessing is replaced by a boundary.
+  vx asks you to declare inputs and gives you a boundary to check them
+  against: inside the workspace, a task with `sandbox` reads only what
+  `allow.read` grants, plus `node_modules` and the linked packages it
+  depends on. Reads outside the workspace stay open, and `cache.inputs`
+  grants nothing, so the sandbox checks the input list only where
+  `allow.read` mirrors it. Guessing is replaced by a boundary.
 
 ## Go deeper
 

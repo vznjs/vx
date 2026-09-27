@@ -8,7 +8,7 @@ Prove a task reads only what it declares.
 ## Steps
 
 1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the workspace, not even the package. Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold into no key: declare what the output depends on as a key input.
-2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. Another package of yours, linked there, is readable when the task depends on one of that package's tasks.
+2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. Another package of yours, linked there, is readable when the task depends on one of that package's tasks; an uncached task reads every linked package.
 3. Grant each output directory in `write`, and each host in `network`. The sandbox does not read `cache`: declare both.
 4. Run the task. An undeclared read or write fails it and names the path.
 5. Declare that path, or silence a noisy tool's path with `ignore`.
@@ -42,7 +42,7 @@ export default defineProject({
 
 ## What you can grant
 
-`allow`, `deny` and `ignore` take the same keys.
+`allow` takes every key below. `deny` takes only `network`. `ignore` takes the rest as lists and refuses `pty` and `gitConfig`, which are flags.
 
 | Key            | Grants                                                            |
 | -------------- | ----------------------------------------------------------------- |
