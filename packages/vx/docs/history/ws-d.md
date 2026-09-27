@@ -33,7 +33,10 @@ run leaves out; the rest are refusals.
   has the same shape; not probed.
 - C/E: flaky rows seen here: `watch-loop` "a server that rewrites a file
   … (item 948)" (CI, PR 1125), `signal-handling` "every task process is
-  gone" (local gate, twice in four gates).
+  gone" (local gate, twice in four gates), and `keep-alive` "a kill -9
+  in a Ctrl-C's grace takes the child of a shell that died on the
+  signal": under load vx exits within the row's 200 ms sleep, so its
+  `kill(pid, 'SIGKILL')` throws ESRCH (local gate, once; 3/3 alone).
 - F: `vx-reapi` "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is
   retried" failed once in a local gate, green on re-run.
 - A: `tests/git-subdir-workspace.test.ts` "a modified tracked file is
@@ -105,3 +108,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   confirmed the rest of the backlog, no fix owed: `workspace:` / `link:`
   / `catalog:` specs and glob negations (rows exist), and lazy `byDir` in
   `buildPackageGraph` bought nothing (14.3 vs 14.0 ms, A/A 14.1).
+- **D-13** Mutation sweep of `config-imports.ts` (38 mutants). Two
+  behaviour survivors, now rows: dropping the relative-specifier skip in
+  `unprovidedBareImports` refused a config's `./helper.mjs` as a missing
+  package when no `node_modules` sat above
+  (`tests/config-missing-import.test.ts` "a RELATIVE specifier resolves
+  by path…"), and dropping the `index` candidates of an unresolved
+  extensionless import lost the importer of a deleted directory
+  (`tests/affected.test.ts` "…a deleted directory index…"). Equivalent
+  or cost-only: the textual prefilter, both early returns, the `skip`
+  filter, the start of `ownerOf`, the workspace and `node_modules`
+  bounds.

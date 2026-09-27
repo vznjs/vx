@@ -96,6 +96,11 @@ describe('unprovidedBareImports', () => {
     expect(unprovidedBareImports(src, dir, 'js')).toEqual(['nope-pkg'])
   })
 
+  it('a RELATIVE specifier resolves by path, never as a package, beside one that is', () => {
+    const src = `import a from './helper.mjs'\nimport b from 'nope-pkg'`
+    expect(unprovidedBareImports(src, dir, 'js')).toEqual(['nope-pkg'])
+  })
+
   it('is empty for unparseable source even when it names a package: the syntax error is the report', () => {
     // A bare candidate gets it past the textual pass; the scan then throws.
     expect(unprovidedBareImports(`import x from 'nope-pkg'\nimport { from`, dir, 'ts')).toEqual([])
