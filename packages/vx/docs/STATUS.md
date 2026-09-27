@@ -655,6 +655,18 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         the config imports changed, naming it (with an unchanged reload
         and a config-only edit as controls). Red without the check.
 
+1047. DONE (2026-09-27, the gate at 1045 went red on it). The run-lock
+      e2e row "the second waits for the first and says so" held the first
+      run's task for a fixed 1.5 s after its marker, and the notice prints
+      after one second of waiting: a second run that took over half a
+      second to start (the gate's twelve shards on four workers) took the
+      lock inside the second and printed nothing. The first task now waits
+      for a `release` file the row writes once the second has printed the
+      notice (or after ten seconds), so the row makes no claim about time.
+      - Differential: with the notice's delay at 60 s the row fails at the
+        ten-second release; with the fix it passes, and the file's other
+        three rows are unchanged.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

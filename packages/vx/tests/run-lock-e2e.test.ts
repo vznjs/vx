@@ -3,7 +3,7 @@
 // tree intact — the race of item 215 (both cleaning and restoring one
 // `dist/`) cannot start.
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -16,7 +16,10 @@ const SLOW = `
   export default {
     tasks: {
       build: {
-        exec: { command: 'touch started && sleep 1.5 && mkdir -p dist && echo hi > dist/out.txt' },
+        // Held until the test writes \`release\`: a fixed sleep let a second
+        // run that started slowly under load take the lock inside the notice's
+        // one second, and the row saw no notice (item 1047).
+        exec: { command: 'touch started && while [ ! -f release ]; do sleep 0.05; done && mkdir -p dist && echo hi > dist/out.txt' },
         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
       },
     },
@@ -36,6 +39,7 @@ const MANY = `
 async function vx(
   cwd: string,
   args: string[],
+  onOutput?: (chunk: string) => void,
 ): Promise<{ code: number; out: string; err: string }> {
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd,
@@ -43,11 +47,17 @@ async function vx(
     stderr: 'pipe',
     env: { ...process.env, NO_COLOR: '1' },
   })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
+  const read = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
+    const decoder = new TextDecoder()
+    let text = ''
+    for await (const bytes of stream) {
+      const chunk = decoder.decode(bytes, { stream: true })
+      text += chunk
+      onOutput?.(chunk)
+    }
+    return text
+  }
+  const [out, err, code] = await Promise.all([read(proc.stdout), read(proc.stderr), proc.exited])
   return { code, out, err }
 }
 
@@ -78,7 +88,16 @@ describe('two runs on one workspace', () => {
         if (Date.now() > deadline) throw new Error('the first run never started its task')
         await new Promise((r) => setTimeout(r, 20))
       }
-      const second = vx(root, ['run', 'build', '--all'])
+      // The first holds the lock until the second says it is waiting, or
+      // for ten seconds: then the notice either came or never will.
+      let heard = ''
+      const second = vx(root, ['run', 'build', '--all'], (chunk) => (heard += chunk))
+      const notice = /\[vx\] waiting for another vx run \(pid \d+\) on this workspace to finish…/
+      const until = Date.now() + 10_000
+      while (!notice.test(heard) && Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      await writeFile(path.join(root, 'packages', 'app', 'release'), '')
       const [a, b] = await Promise.all([first, second])
       expect(`${a.code}\n${a.err}`).toStartWith('0\n')
       expect(`${b.code}\n${b.err}`).toStartWith('0\n')
