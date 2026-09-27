@@ -62,10 +62,10 @@ and the reservation it will pack, with the budgets it packs into:
 ```
 $ vx history
 history: last 20 runs · budgets 4 cores (the default worker count; --concurrency changes it per run) · 13567 MB (what this process may use)
-  task             runs      p50  peak rss    cpu  reserves
-  app#build          12    8.41s    612 MB   1.9×  768 MB · 2 cores
-  app#e2e             3   41.2s    1.4 GB   1.1×  4096 MB · 2 cores (declared)
-  lib#test           12    1.02s         —   1.0×  —
+  task       runs      p50  peak rss    cpu  reserves
+  app#build    12    8.41s    612 MB   1.9×  768 MB
+  app#e2e       3   41.20s    1.4 GB   1.1×  4096 MB · 2 cores (declared)
+  lib#test     12    1.02s         —   1.0×  —
   3 tasks with no execution in the window reserve nothing
 ```
 

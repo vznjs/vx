@@ -35,10 +35,10 @@ export interface ScheduleHistoryOptions {
   /**
    * Pack tasks by what their last `window` executions actually used
    * (`admit` stage): a task's reservation is the largest peak RSS seen
-   * times `headroom`, rounded up to 64 MB, and the most CPU parallelism
-   * seen, rounded to a core; a task is admitted while the reservations of
-   * everything running beside it fit the budgets, and a task over a
-   * whole budget runs alone. A task with no execution in the window
+   * times `headroom`, rounded up to 64 MB. Cores are never learned (see
+   * `resourceEstimates`), only declared in `reservations`. A task is
+   * admitted while the reservations of everything running beside it fit
+   * the budgets, and a task over a whole budget runs alone. A task with no execution in the window
    * reserves nothing and runs freely. `false` turns packing off.
    * Default `{ headroom: 1.25 }`.
    */
