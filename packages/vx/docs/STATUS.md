@@ -240,6 +240,16 @@ test is telling the truth.
       starts past the window, so the entry was saved and replayed. The
       guard narrowed the bug to edits older than 50 ms at the run's
       start; it is not the fix. 977's note and the row's comment say so.
+983.  DECLINED (2026-09-27, the cache-key review's lead 4, measured). The
+      task config is hashed as `JSON.stringify`, so writing `cache` before
+      `exec` with the same values moves the key: one false miss, then the
+      new order hits. Sorting keys in that stringify (a replacer that
+      rebuilds only out-of-order objects) cost 15.6 ms against 2.4 ms per
+      3,000 configs, min of 30, on every run. Sorting once where a config
+      is stored (the eval cache, the live load, the lock) would move the
+      cost off the warm path but spreads the rule over three writers, for
+      a miss that happens once per reordering. Not taken; reopen with a
+      design that keeps the warm path at one stringify.
 
 ## In flight
 
