@@ -22,6 +22,7 @@ import {
   releaseBridges,
   wrapSandboxedCommand,
   signalExitCode,
+  isLocalExecutor,
   type CaptureConfig,
   type ExecuteRequest,
   assertExecuteResult,
@@ -32,7 +33,9 @@ import {
   PersistentReadyError,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { relPosix, span } from '../util/index.js'
+import { killGraceMs, relPosix, span } from '../util/index.js'
+import { SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { executorLabel } from './plugin-host.js'
 import {
   mayWriteFingerprint,
   type Placeholder,
@@ -493,6 +496,49 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     return stop.signal
   }
+  // An executor that ignores `signal` held its task, and so the run, past
+  // the stop and past `exec.timeout` (H-14). Once the signal aborts it has
+  // the kill grace the local executor gives a process group; then core
+  // settles the attempt without it and says so. Its work is abandoned: core
+  // cannot reach what it started.
+  function boundAfterAbort(
+    running: Promise<unknown>,
+    signal: AbortSignal | undefined,
+  ): Promise<unknown> {
+    if (signal === undefined || isLocalExecutor(args.executor)) return running
+    const started = Date.now()
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
+    let onAbort: (() => void) | undefined
+    const abandoned = new Promise<ExecuteResult>((resolve) => {
+      onAbort = (): void => {
+        const graceMs = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS)
+        graceTimer = setTimeout(() => {
+          const why = timeoutFired ? `timeout (${effectiveTimeout}ms)` : 'stop'
+          log.taskStderr(
+            node,
+            `vx: ${executorLabel(args.executor)} did not return within ${graceMs}ms of the ${why}; abandoned\n`,
+          )
+          const reason: unknown = signal.reason
+          resolve({
+            exitCode: signalExitCode(reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'),
+            durationMs: Date.now() - started,
+            stdout: '',
+            stderr: '',
+            violations: [],
+            ...(timeoutFired ? { timedOut: true } : {}),
+          })
+        }, graceMs)
+      }
+      if (signal.aborted) onAbort()
+      else signal.addEventListener('abort', onAbort, { once: true })
+    })
+    // The abandoned call may still settle, or reject, later: nobody awaits it.
+    running.catch(() => {})
+    return Promise.race([running, abandoned]).finally(() => {
+      clearTimeout(graceTimer)
+      if (onAbort !== undefined) signal.removeEventListener('abort', onAbort)
+    })
+  }
 
   // When the task started, as a ns offset from run start — captured for
   // EVERY outcome (hits included) so the run-detail timeline reflects when
@@ -722,8 +768,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // no other trace. Rethrown unchanged — the scheduler still classifies it,
     // and still prints it plainly for a UserError.
     const endExec = span('miss: execute')
-    let res = await args.executor
-      .execute(req)
+    let res = await boundAfterAbort(args.executor.execute(req), req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
         return r

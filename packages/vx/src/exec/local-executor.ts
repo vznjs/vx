@@ -8,9 +8,20 @@ import { runCommand } from './runner.js'
 import { runSandboxed } from './sandbox-runtime.js'
 import type { TaskExecutor } from './executor.js'
 
+const locals = new WeakSet<TaskExecutor>()
+
+/**
+ * Whether `executor` is core's own. By identity: a plugin may name its
+ * executor 'local', and core bounds a plugin's `execute` after an abort,
+ * which the local one (it SIGKILLs its own group) never needs.
+ */
+export function isLocalExecutor(executor: TaskExecutor): boolean {
+  return locals.has(executor)
+}
+
 /** The local executor. Accepts every task. */
 export function localExecutor(): TaskExecutor {
-  return {
+  const executor: TaskExecutor = {
     name: 'local',
     async execute(req) {
       const common = {
@@ -38,4 +49,6 @@ export function localExecutor(): TaskExecutor {
       })
     },
   }
+  locals.add(executor)
+  return executor
 }
