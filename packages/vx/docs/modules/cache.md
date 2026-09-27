@@ -34,7 +34,9 @@ and key derivation logic live here.
   transaction per run), the SQL binders, and the 30-day retention (run
   on a writing handle's close only: a reading verb's `Cache.inspect` and
   a dry-run prune delete nothing, item 1004).
-- `cache.ts` — the schema (the one place every table is declared), the
+- `schema.ts` — `createTables`: every table's DDL, the one place each is
+  declared, with what each row means.
+- `cache.ts` — opening the index (`SCHEMA_VERSION` check and reset), the
   entry store (get / save / ingest / restore / prune), and the `Cache`
   class that composes the four slices above over one handle and
   delegates to them. Re-exports `layer.ts`, `policy.ts` and `zstd.ts`

@@ -204,3 +204,7 @@ The stability gate called any same-project reader of an `outputs.files` producer
 - Fix (`stable-keys.ts`): a declared-output producer reaches a same-project reader only where their globs can meet (literal prefixes, ancestor or equal); undeclared writers, and rewriters the key does not fold, stay project-wide. `caching.md` already said so; `modules/stable-keys.md` does now.
 - Cost, 5,000-package warm no-op (10,000 up-to-date), 12 rounds A/B/A, a copy per arm: median 1.236 s against 1.471 and A/A 1.438; min 1.149 against 1.296 and 1.339; CPU median 2.44 s against 2.71 and 2.68.
 - Rows: `stable-keys.test.ts` › the gate's glob cases; `local-shortcircuit.test.ts` › "a same-project reader whose globs miss…", red without the fix.
+
+### A-21 (2026-09-27, backlog: split cache.ts)
+
+`cache.ts` (2,049 lines) declared every table inline in the `Cache` constructor. The DDL is the one seam that touches nothing but the handle: it moves to `schema.ts` (`createTables`, 215 lines); the version check, reset and statements stay. Retention was the other candidate and is not a seam: it reads seven private fields and interlocks with the access flush and the write gates. No behaviour change; `modules/cache.md` and the module index name the file.
