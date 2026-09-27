@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -478,11 +479,10 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     // '' — the spec sanctions that spelling only for the deprecated
     // output_directories field ("the entire working directory tree,
     // including inputs"), so this pins that a real worker honors it on the
-    // v2.1 output_paths field too. Whole-tree capture is also the closest
-    // parity with a LOCAL run, where everything the command writes stays
-    // on disk: the undeclared sibling comes back alongside the declared
-    // match, and the cache stays narrow because save re-globs the declared
-    // patterns from disk afterwards.
+    // v2.1 output_paths field too. The capture holds the whole tree,
+    // sources included, but only what a declared glob names is written
+    // back: writing the rest put the worker's copy of the sources over the
+    // user's (item 1038). The undeclared sibling stays remote.
     const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
     await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
     await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'seed\n')
@@ -508,7 +508,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       )
       expect(res.exitCode).toBe(0)
       expect((await readFile(path.join(root, 'pkg', 'a.js'), 'utf8')).trim()).toBe('AA')
-      expect((await readFile(path.join(root, 'pkg', 'b.txt'), 'utf8')).trim()).toBe('BB')
+      expect(existsSync(path.join(root, 'pkg', 'b.txt'))).toBe(false)
       expect((await readFile(path.join(root, 'pkg', 'src', 'in.txt'), 'utf8')).trim()).toBe('seed')
     } finally {
       client.close()

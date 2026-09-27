@@ -1083,6 +1083,22 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         green; a failed Tree read while recording fails a success; a
         whole-tree capture records `pkg/`.
 
+1038. DONE (2026-09-27, the vx-reapi review's second lead). Remote
+      execution wrote a coarse output capture back whole, sources
+      included.
+      - `src/*.gen.js` has no REAPI spelling past its wildcard, so it is
+        captured as `src`, and the worker returns the whole directory.
+        `materialiseTree` wrote every entry: the worker's copy of
+        `src/app.js` replaced an edit made during the action, and core,
+        finding its input rewritten, never saved the task (every run
+        missed). Only an entry a declared glob names, or one under a
+        directory it names, is written now; a directory a literal glob
+        names is still written whole. A record replay applies the same
+        filter, with the project's own path carried in.
+      - Row: `executor.test.ts` › a directory captured for a wildcard
+        glob writes only what the glob names (with the literal control).
+        Red when every capture is written whole.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

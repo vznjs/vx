@@ -2,7 +2,7 @@
 // placement acceptance. The gRPC-touching half lives in reapi-e2e.test.ts.
 
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
@@ -12,6 +12,7 @@ import {
   materialiseOutputs,
   outputPathSets,
 } from '../src/executor.js'
+import { encodeDirectory, encodeTree, sha256 } from '../src/merkle.js'
 import { UserError } from '@vzn/vx'
 import type { ExecuteRequest, TaskPlacement } from '@vzn/vx'
 
@@ -251,6 +252,56 @@ describe('materialiseOutputs: a declared output that cannot be fetched', () => {
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('contents\n')
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // `src/*.gen.js` is captured as all of `src`, the sources included. The
+  // worker's copy of them was written over the user's: an edit made while
+  // the action ran was lost, and core, finding its inputs rewritten, never
+  // saved the task (item 1038).
+  it('a directory captured for a wildcard glob writes only what the glob names', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
+    const dir = path.join(root, 'pkg')
+    try {
+      const enc = new TextEncoder()
+      const have = new Map<string, Uint8Array>()
+      const blob = (s: string) => {
+        const b = enc.encode(s)
+        const d = sha256(b)
+        have.set(d.hash, b)
+        return d
+      }
+      const lib = {
+        files: [{ name: 'x.js', digest: blob('lib copy'), is_executable: false }],
+        directories: [],
+        symlinks: [],
+      }
+      const src = {
+        files: [
+          { name: 'app.gen.js', digest: blob('generated'), is_executable: false },
+          { name: 'app.js', digest: blob('worker copy'), is_executable: false },
+        ],
+        directories: [{ name: 'lib', digest: sha256(encodeDirectory(lib)) }],
+        symlinks: [],
+      }
+      const treeBytes = encodeTree(src, [lib])
+      const treeDigest = sha256(treeBytes)
+      have.set(treeDigest.hash, treeBytes)
+      const captured = { output_directories: [{ path: 'src', tree_digest: treeDigest }] }
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'app.js'), 'USER EDIT')
+      await materialiseOutputs(stub(have), req(['src/*.gen.js'], dir), captured, () => undefined)
+      expect({
+        gen: await readFile(path.join(dir, 'src', 'app.gen.js'), 'utf8'),
+        app: await readFile(path.join(dir, 'src', 'app.js'), 'utf8'),
+        lib: await readFile(path.join(dir, 'src', 'lib', 'x.js'), 'utf8').catch(() => null),
+      }).toEqual({ gen: 'generated', app: 'USER EDIT', lib: null })
+      // CONTROL: a directory a literal glob names is written whole.
+      await materialiseOutputs(stub(have), req(['src'], dir), captured, () => undefined)
+      expect(await readFile(path.join(dir, 'src', 'app.js'), 'utf8')).toBe('worker copy')
+      expect(await readFile(path.join(dir, 'src', 'lib', 'x.js'), 'utf8')).toBe('lib copy')
+    } finally {
+      await rm(root, { recursive: true, force: true })
     }
   })
 
