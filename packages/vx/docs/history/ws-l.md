@@ -24,5 +24,11 @@
   zstd is decoded no further than the size, and a batch entry is held to
   the digest asked for (one not asked for is dropped). Rows in
   `read-bounds.test.ts`.
+- L-5. `fix(cache)`: `ingest` wrote a remote body to its temp with no
+  bound, so a body that never ends (turbo, nx or reapi remote) filled the
+  disk before the decode's ceiling saw a byte. The compressed body is now
+  held to the ceiling's zstd bound (length header, Blob size, running
+  count on a stream). Cost: 4.4 ms per 64 MiB streamed (min of 7).
+  Row in `artifact-ceiling.test.ts`.
 
 ## Leads for other streams

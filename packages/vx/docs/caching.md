@@ -1047,6 +1047,9 @@ restore row when every artifact is a one-file `dist/` — and then fed
 to the same reader and extractor, so there is one extraction path.
 The 2 GiB decompression ceiling applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
+An ingest bounds the compressed body first: a remote body past the
+ceiling's zstd bound (a length header, a Blob's size, or a running count
+on a chunked stream) is refused before it can fill the disk.
 A frame that declares no content size (what a streaming compressor
 writes — vx's own saves above 4 MiB) is always decoded as a stream, so
 a sizeless bomb has nowhere to expand and vx's artifacts ingest

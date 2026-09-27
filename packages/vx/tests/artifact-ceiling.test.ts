@@ -179,4 +179,48 @@ describe('an output set past the artifact ceiling', () => {
       other.close()
     }
   })
+
+  it('an ingest bounds the compressed body too: an endless remote body never fills the disk (L-5)', async () => {
+    const other = new Cache(path.join(root, 'other-cache'), undefined, undefined, 1024)
+    const bound = 1024 + (1024 >> 8) + 64 * 1024
+    const meta = { taskId: 'big#build', command: 'x', durationMs: 1 }
+    const refusal = (e: unknown): string => (e as Error).message
+    try {
+      // A chunked body with no length: 64 MiB of junk, counted as pulled.
+      let pulled = 0
+      const chunk = new Uint8Array(64 * 1024)
+      const endless = new Response(
+        new ReadableStream<Uint8Array>({
+          pull(c) {
+            if (pulled >= 64 * 1024 * 1024) return c.close()
+            pulled += chunk.byteLength
+            c.enqueue(chunk)
+          },
+        }),
+      )
+      const streamed = await other.ingest('aa', endless, meta).then(() => 'ingested', refusal)
+      // A body whose length says it is over, and a Blob that is, never start.
+      const declared = new Response('x', { headers: { 'content-length': String(bound + 1) } })
+      const headed = await other.ingest('bb', declared, meta).then(() => 'ingested', refusal)
+      const blob = await other
+        .ingest('cc', new Blob([new Uint8Array(bound + 1)]), meta)
+        .then(() => 'ingested', refusal)
+      const msg = (h: string): string =>
+        `cache: corrupt artifact for ${h}: remote body runs past ${bound} bytes (the artifact ceiling's bound)`
+      expect({ streamed, headed, blob, stopped: pulled < 4 * 1024 * 1024 }).toEqual({
+        streamed: msg('aa'),
+        headed: msg('bb'),
+        blob: msg('cc'),
+        stopped: true,
+      })
+      // Nothing of the three is left behind, a partial temp included.
+      expect(
+        (await readdir(path.join(root, 'other-cache'), { recursive: true })).filter((f) =>
+          f.includes('.tar.zst'),
+        ),
+      ).toEqual([])
+    } finally {
+      other.close()
+    }
+  })
 })
