@@ -5,7 +5,7 @@
 // the `nx` package `nx-exec` loads to run an executor — so the executor
 // round trip (vx → nx-exec → runExecutor → a file on disk → the cache) is
 // real, and only Nx's own graph computation is stubbed.
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -231,7 +231,7 @@ describe('nx()', () => {
   )
 
   it(
-    'a project.json newer than the snapshot re-exports the graph, and the new graph is what runs',
+    'an edited project.json re-exports the graph, and the new graph is what runs',
     async () => {
       await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(await nxCalls(root)).toBe(1)
@@ -242,13 +242,50 @@ describe('nx()', () => {
       const changed = structuredClone(GRAPH)
       changed.graph.nodes.lib.data.targets.lint.options.command = 'echo lint-v2 > lint.log'
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(changed))
-      const later = new Date(Date.now() + 5_000)
-      await utimes(path.join(root, 'packages', 'lib', 'project.json'), later, later)
+      await appendFile(path.join(root, 'packages', 'lib', 'project.json'), '\n')
       const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(await nxCalls(root)).toBe(2)
       expect(plan.tasks.find((t) => t.node.id === 'lib#lint')!.node.config.exec?.command).toBe(
         'echo lint-v2 > lint.log',
       )
+    },
+    TIMEOUT,
+  )
+
+  // Next 26: Nx derives edges from source imports, and freshness read only
+  // the manifests' mtimes, so an added `import` kept the old snapshot and an
+  // edit to the imported project replayed its dependant. The second edit is
+  // the one the status text alone misses: the file is already listed.
+  it(
+    'a source file under a project root, added or edited again, re-exports (Next 26)',
+    async () => {
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
+      const src = path.join(root, 'packages', 'app', 'src', 'index.ts')
+      await mkdir(path.dirname(src), { recursive: true })
+      await writeFile(src, "import { b } from 'lib'\n")
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(2)
+      await appendFile(src, "import { c } from 'lib/c'\n")
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(3)
+      // Control: nothing moved, no export.
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(3)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a touch alone, or a stray file at the root, does not re-export',
+    async () => {
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
+      const later = new Date(Date.now() + 5_000)
+      await utimes(path.join(root, 'packages', 'lib', 'project.json'), later, later)
+      await writeFile(path.join(root, 'report.json'), '{}\n')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
     },
     TIMEOUT,
   )
@@ -306,8 +343,7 @@ describe('nx()', () => {
         path.join(root, 'node_modules', '.bin', 'nx'),
         '#!/bin/sh\necho boom >&2\nexit 7\n',
       )
-      const later = new Date(Date.now() + 5_000)
-      await utimes(path.join(root, 'nx.json'), later, later)
+      await appendFile(path.join(root, 'nx.json'), '\n')
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['lint'], log })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
@@ -513,8 +549,7 @@ describe('nx()', () => {
         expect((await libFile('out/env.txt').text()).trim()).toBe('abc')
         expect(status(await run(opts), 'lib#withenv')).toBe('cache-hit')
         await libTargets(withenv('xyz'))
-        const later = new Date(Date.now() + 5_000)
-        await utimes(path.join(root, 'packages', 'lib', 'project.json'), later, later)
+        await appendFile(path.join(root, 'packages', 'lib', 'project.json'), '\n')
         expect(status(await run(opts), 'lib#withenv')).toBe('success')
         expect((await libFile('out/env.txt').text()).trim()).toBe('xyz')
       },
@@ -823,19 +858,16 @@ describe('nx(): what the sweep found unheld', () => {
     TIMEOUT,
   )
 
-  // One file per row: a file dated in the future stays newer than every
-  // snapshot after it, so a second touch in the same row proves nothing.
   for (const [what, rel] of [
     ['the root package.json', 'package.json'],
     ['a package’s package.json', 'packages/lib/package.json'],
   ] as const) {
     it(
-      `${what} newer than the snapshot re-exports`,
+      `${what} edited re-exports`,
       async () => {
         await planRun({ cwd: root, tasks: ['lint'], log: silent() })
         expect(await nxCalls(root)).toBe(1)
-        const later = new Date(Date.now() + 5_000)
-        await utimes(path.join(root, rel), later, later)
+        await appendFile(path.join(root, rel), '\n')
         await planRun({ cwd: root, tasks: ['lint'], log: silent() })
         expect(await nxCalls(root)).toBe(2)
       },
@@ -846,14 +878,13 @@ describe('nx(): what the sweep found unheld', () => {
   // A base nx.json extends is part of what Nx reads, and its edit went
   // unseen by the snapshot's freshness (item 1050).
   it(
-    'a base nx.json extends, newer than the snapshot, re-exports',
+    'a base nx.json extends, edited, re-exports',
     async () => {
       await writeFile(path.join(root, 'nx.base.json'), JSON.stringify({ namedInputs: {} }))
       await writeFile(path.join(root, 'nx.json'), JSON.stringify({ extends: './nx.base.json' }))
       await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(await nxCalls(root)).toBe(1)
-      const later = new Date(Date.now() + 5_000)
-      await utimes(path.join(root, 'nx.base.json'), later, later)
+      await appendFile(path.join(root, 'nx.base.json'), '\n')
       await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(await nxCalls(root)).toBe(2)
     },

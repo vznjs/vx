@@ -34,6 +34,11 @@ const PERSISTENT_NOTE =
 
 /** The snapshot's name under vx's cache dir — local to the machine, like the cache. */
 const SNAPSHOT = 'nx-project-graph.json'
+/** What the snapshot was exported from (`graphInputKey`), beside it. */
+const SNAPSHOT_KEY = 'nx-project-graph.key'
+/** The files at the workspace root whose edit can move Nx's graph. */
+const ROOT_GRAPH_FILE =
+  /^(nx\.json|package\.json|\.nxignore|tsconfig[^/]*\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|bun\.lockb?)$/
 
 export interface NxPluginOptions {
   /**
@@ -225,6 +230,84 @@ async function newestInput(root: string, metas: readonly ProjectMeta[]): Promise
   return Math.max(...mtimes)
 }
 
+/**
+ * What the graph is computed from, as one digest: nx.json's chain by content,
+ * and — since Nx derives edges from SOURCE imports
+ * (`@nx/js`) — the worktree as git sees it: HEAD, `git status -z -uall`, and
+ * the content of every path that lists. Freshness by manifest mtimes kept a
+ * snapshot without the edge an added `import` makes, and a later edit to the
+ * imported project replayed its dependant from cache (Next 26). The status
+ * text alone is not enough: it names a modified file by path, not by what it
+ * holds, so a second edit to a dirty file kept the key (measured, item 1075).
+ * Null outside a git worktree: the caller falls back to the mtimes.
+ */
+async function graphInputKey(
+  root: string,
+  cacheDir: string,
+  metas: readonly ProjectMeta[],
+): Promise<string | null> {
+  const git = (args: string[]) =>
+    Bun.spawn(['git', ...args], { cwd: root, stdout: 'pipe', stderr: 'ignore' })
+  const head = git(['rev-parse', '--verify', '-q', 'HEAD'])
+  const status = git(['status', '--porcelain', '-z', '-uall'])
+  const [headOut, statusOut, statusCode] = await Promise.all([
+    new Response(head.stdout).text(),
+    new Response(status.stdout).text(),
+    status.exited,
+  ])
+  await head.exited
+  if (statusCode !== 0) return null
+  // The cache dir holds the snapshot itself: a workspace that does not
+  // ignore it would see the export move the key it was keyed on.
+  const cacheRel = path.relative(root, cacheDir).split(path.sep).join('/')
+  const inCache = (p: string): boolean =>
+    cacheRel !== '' &&
+    !cacheRel.startsWith('..') &&
+    (p === cacheRel || p.startsWith(`${cacheRel}/`))
+  // What can move the graph: a file under a project root (its sources, the
+  // configs a plugin infers targets from), or a root file Nx reads. A task's
+  // stray write at the root (a report, a log) is not, and counting it
+  // re-exported the graph on every run after it.
+  const roots = metas.map((m) => path.relative(root, m.dir).split(path.sep).join('/'))
+  const graphFile = (p: string): boolean =>
+    roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
+    (!p.includes('/') && ROOT_GRAPH_FILE.test(p))
+  const listed: string[] = []
+  const records = statusOut.split('\0')
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i]!
+    if (r.length < 4) continue
+    const p = r.slice(3)
+    // A rename or copy carries its source as the next record.
+    if (r[0] === 'R' || r[0] === 'C') i++
+    if (!inCache(p) && graphFile(p)) listed.push(p)
+  }
+  // A manifest needs no read of its own: git lists it when it is edited, and
+  // HEAD moves when an edit is committed (reading all 2,000 cost 50 ms at
+  // 1,000 projects). nx.json's chain does: a base may sit in node_modules,
+  // where git does not look.
+  const nxJson = await readNxJson(root).catch(() => null)
+  const files = [
+    ...(nxJson?.files ?? [path.join(root, 'nx.json')]),
+    ...listed.sort().map((p) => path.join(root, p)),
+  ]
+  const hasher = new Bun.CryptoHasher('sha256')
+  hasher.update(`${headOut.trim()}\0`)
+  const bodies = await Promise.all(
+    files.map((f) =>
+      Bun.file(f)
+        .bytes()
+        .catch(() => null),
+    ),
+  )
+  files.forEach((f, i) => {
+    const body = bodies[i] ?? null
+    hasher.update(`${f}\0${body === null ? 'gone' : body.length}\0`)
+    if (body !== null) hasher.update(body)
+  })
+  return hasher.digest('hex')
+}
+
 async function loadGraph(
   root: string,
   cacheDir: string,
@@ -243,18 +326,27 @@ async function loadGraph(
     return { text, label: exported }
   }
   const snapshot = path.join(cacheDir, SNAPSHOT)
-  const [have, newest] = await Promise.all([
+  const keyFile = path.join(cacheDir, SNAPSHOT_KEY)
+  const [have, key, keyed] = await Promise.all([
     stat(snapshot).then(
       (s) => s.mtimeMs,
       () => -1,
     ),
-    newestInput(root, metas),
+    graphInputKey(root, cacheDir, metas),
+    Bun.file(keyFile)
+      .text()
+      .catch(() => null),
   ])
-  if (have < newest) {
+  // Keyed before the export, so an edit made while Nx computes costs one
+  // more export instead of hiding under the new snapshot.
+  const stale = key === null ? have < (await newestInput(root, metas)) : have < 0 || keyed !== key
+  if (stale) {
     const failure = await exportGraph(root, snapshot)
     if (failure !== null) {
       if (have < 0) throw new UserError(`[@vzn/vx-migrate] nx(): ${failure}`)
       notes.push(`${failure} — running on the previous graph snapshot`)
+    } else if (key !== null) {
+      await Bun.write(keyFile, key)
     }
   }
   return { text: await Bun.file(snapshot).text(), label: path.relative(root, snapshot) }
