@@ -479,7 +479,11 @@ async function runOnBus(
   // SIGKILL after the grace, and a run that returned first left that child
   // running past vx's exit (turborepo#14043's class).
   let aborting: Promise<void> | undefined
+  // The servers that had ended when the stop landed: those crashed. One that
+  // ends after it is the stop's own kill, and was named a crash (item 1061).
+  let endedBeforeStop: ReadonlySet<ReturnType<typeof Bun.spawn>> | undefined
   const onAbort = (): void => {
+    endedBeforeStop = new Set([...persistentRegistry.values()].filter(hasEnded))
     aborting = terminateChildren(
       () => [...liveChildren, ...persistentRegistry.values()],
       forwardedSignal(stopRun.signal.reason),
@@ -815,7 +819,9 @@ async function runOnBus(
     // An aborted run's children are already being torn down: nothing to hold.
     const hold = options.holdPersistent === true && !stopRun.signal.aborted
     const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
-    const crashedPersistent = await shutdownPersistent(persistentRegistry, keepAlive.children)
+    const crashedPersistent = (
+      await shutdownPersistent(persistentRegistry, keepAlive.children)
+    ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
 
     mark('run graph')
     // Clear the status line for good before the summary prints.

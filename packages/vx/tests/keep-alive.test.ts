@@ -203,6 +203,59 @@ describe('a persistent server that dies before the run stops it', () => {
     expect(await run(root, ['e2e'])).toEqual({ code: 0, said: [], pinned: [] })
   }, 20_000)
 
+  // Item 1061: a Ctrl-C tears the servers down before the graph ends, so
+  // each one the stop killed had ended by the time the end of the run asked,
+  // and was named as a crash. The dependant holds on in its INT trap, so the
+  // server is reaped before that question: the report was 4 in 6 without
+  // the hold. The control: a server that died BEFORE the stop is named.
+  const interrupted = async (srv: string): Promise<{ code: number; said: string[] }> => {
+    const dir = await addProject(root, 'app', {
+      config: `export default { tasks: {
+        srv: { exec: { command: ${JSON.stringify(srv)}, persistent: { readyWhen: 'READY' } } },
+        e2e: {
+          dependsOn: ['srv'],
+          exec: { command: "while [ ! -f gone ]; do sleep 0.02; done; trap 'sleep 0.3; exit 1' INT; echo up > e2e.up; while :; do sleep 0.02; done" },
+        },
+      } }`,
+    })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all', '--output-logs=none'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '400' },
+      }),
+    )
+    const text = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+    const up = path.join(dir, 'e2e.up')
+    const deadline = Date.now() + 10_000
+    while (!(existsSync(up) && readFileSync(up, 'utf8') === 'up\n')) {
+      if (Date.now() > deadline) throw new Error('the dependant never started')
+      await Bun.sleep(20)
+    }
+    proc.kill('SIGINT')
+    const code = await proc.exited
+    const said = (await text)
+      .join('')
+      .split('\n')
+      .filter((l) => l.startsWith('vx: '))
+    return { code, said }
+  }
+
+  it('a Ctrl-C does not name the servers it stopped as crashed', async () => {
+    expect(await interrupted('touch gone; echo READY; exec sleep 30')).toEqual({
+      code: 130,
+      said: [],
+    })
+  }, 20_000)
+
+  it('CONTROL: a server that died before the Ctrl-C is still named', async () => {
+    expect(await interrupted('echo READY; sleep 0.1; touch gone; exit 3')).toEqual({
+      code: 130,
+      said: ['vx: app#srv exited with code 3 before the run stopped it'],
+    })
+  }, 20_000)
+
   it('a requested server that died while its dependant ran is not pinned as running', async () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
     expect(await run(root, ['srv', 'e2e'])).toEqual({

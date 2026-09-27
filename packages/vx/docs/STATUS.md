@@ -829,7 +829,7 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         `output-memory.unsafe.test.ts` gains a no-line-break flood, since
         a `\r` now ends a line and no longer drives the 64 KiB window.
       - Left from the review: Ctrl-C reports a persistent server vx
-        killed as "exited … before the run stopped it"; the Aborted
+        killed as "exited … before the run stopped it" (1061); the Aborted
         section lists never-started tasks as killed with exit 1; forwarded
         args after a command ending in a `#` comment are dropped (1060).
 
@@ -849,6 +849,19 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         on an earlier line, a quoted `#`, `a#b`, `$#`, `\#`, `a\ #b`);
         `persistent.test.ts` › appends forwardArgs to a persistent command
         WITH a readyWhen (was the row pinning the drop; red with it back).
+
+1061. DONE (2026-09-27, the local runner review's lead 3). A Ctrl-C of a
+      run with a dependency-only server ended with
+      `vx: app#srv exited with code SIGINT before the run stopped it`: the
+      stop's own teardown signals every server before the graph ends, so
+      by the end-of-run check each had ended, not cleanly, and was named
+      a crash (4 in 6 runs, timing-dependent). The run now notes which
+      servers had already ended when the stop landed, and on a stopped run
+      only those are named. orchestrator.md says so.
+      - Rows: `keep-alive.test.ts` › a Ctrl-C does not name the servers it
+        stopped as crashed (the dependant holds in its INT trap so the
+        server is reaped first: red 3 of 3 without the change), and the
+        control, a server that died before the Ctrl-C is still named.
 
 ## In flight
 
