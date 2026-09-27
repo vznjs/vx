@@ -386,6 +386,9 @@ async function runRuntimeCommand(
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
+      // Its own group, so the probe's whole tree can be taken down with vx
+      // (`killProbesOnExit`).
+      detached: true,
     })
   } catch (err) {
     // The probe runs through `sh -c` like a task: a box without sh names
@@ -397,11 +400,18 @@ async function runRuntimeCommand(
     }
     throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
+  liveProbes.add(proc)
+  killProbesOnExit()
+  let stdout, stderr, exitCode
+  try {
+    ;[stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+  } finally {
+    liveProbes.delete(proc)
+  }
   const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
     throw new UserError(
@@ -410,6 +420,31 @@ async function runRuntimeCommand(
     )
   }
   return output
+}
+
+/**
+ * Runtime probes still running. A probe that outlives its answer's need — a
+ * run stopped by Ctrl-C, or ended by a refusal, while `node -e …` or a hung
+ * `git` still ran — was left behind: vx exited and the probe's shell and
+ * what it started ran on under init (A-9). Every probe is its own group, and
+ * the ones still listed when vx exits are SIGKILLed with their trees. A
+ * `kill -9` of vx runs no exit hook; that residual is the task groups' guard's
+ * (exec/kill-tree.ts), which probes are not on.
+ */
+const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
+let probeExitHooked = false
+function killProbesOnExit(): void {
+  if (probeExitHooked) return
+  probeExitHooked = true
+  process.on('exit', () => {
+    for (const p of liveProbes) {
+      try {
+        process.kill(-p.pid, 'SIGKILL')
+      } catch {
+        // the group is gone
+      }
+    }
+  })
 }
 
 /**

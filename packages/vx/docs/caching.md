@@ -886,6 +886,11 @@ exactly that, `tests/in-run-writes.test.ts`). So declare the producing
 task's output as an input (`dependsOn` + files) rather than sampling it
 from a runtime command: files are re-checked, answers are not.
 
+A probe runs in its own process group. One still running when vx exits
+— a Ctrl-C, or a refusal, while a hung `git` or `node -e …` answers — is
+SIGKILLed with its whole tree; until 2026-09-27 (A-9) it ran on under
+init. A `kill -9` of vx runs no exit hook, and leaves it.
+
 So `vx run --frozen` loads the frozen command strings but still spawns
 them and folds their current output into the key. A `node -v` that goes
 from `v20` to `v22` after the lock was written busts the cache under
