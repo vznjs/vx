@@ -168,3 +168,8 @@ Sweep, 2026-09-27: `sandbox-binds.ts`, 28 mutants, 25 caught. The
 `punchWalls` separator survived (row above). Not reachable here: the
 non-Linux return of `bindableWrites`, and `punchWalls`'s unreadable
 directory fallback (root reads everything).
+
+B-8. B-3's usage row burned 400 ms of wall time and asserted 300 ms of
+CPU; two loaded gates read 246 ms. It now burns 400 ms of CPU
+(`process.cpuUsage()`), which load cannot shrink. Green alone, green
+three of three beside four CPU burners.

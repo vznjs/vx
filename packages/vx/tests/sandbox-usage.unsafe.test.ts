@@ -15,7 +15,9 @@ import { runCommand } from '../src/exec/runner.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox usage test')
-const BUSY = `bun -e "const t = Date.now(); while (Date.now() - t < 400) {}"`
+// Burns 400 ms of its own CPU, however long the box takes to give it: a
+// wall-clock loop read 246 ms of CPU in a loaded gate.
+const BUSY = `bun -e "while (process.cpuUsage().user < 400000) {}"`
 
 describe.skipIf(!available || process.platform !== 'linux')('a sandboxed task’s usage', () => {
   let dir = ''
