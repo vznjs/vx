@@ -188,6 +188,21 @@ test is telling the truth.
       - Rows: `git-trust.test.ts` › a filter= driver, and a
         working-tree-encoding, through the CLI; each red with its
         attribute removed from the probe.
+979.  DONE (2026-09-27, a graph review agent's lead 1). A run given
+      `--filter '!b' --filter 'a...'` ran `b`: filters applied in argv
+      order, so the include after the exclude added it back. Item 955 fixed only
+      `--affected`'s place in the line.
+      - Fix (`filter.ts`): every include first, every exclude after them;
+        expansions still taken in argv order, so an unmatched filter is
+        named as typed.
+      - `cli.md` says so, and no longer says `--all` overrides a filter's
+        scope: filters refine `--all` (`run.ts` resolves them first; the
+        review's doc lead).
+      - Row: `filter.test.ts` › an exclude removes what any include adds,
+        whatever the order. Red without the fix.
+      - Next: `--exclude-dependencies` dropping an edge to a task in the
+        same run, the `graph` stage skipping the builder's checks, and the
+        config key order (a false miss).
 
 ## In flight
 
