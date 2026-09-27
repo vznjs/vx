@@ -30,6 +30,7 @@ interface AdoptionMapping {
 export function adoptionPlugin(
   meta: ImportMeta,
   mapRun: (ctx: ProjectHookContext) => Promise<AdoptionMapping>,
+  reads: readonly string[] = [],
 ): VxPlugin {
   // One mapping per RUN, not per process: the workspace module — and so
   // this plugin instance — outlives a run under `vx watch`, and a mapping
@@ -65,6 +66,12 @@ export function adoptionPlugin(
         config.tasks[t.name] ??= t.task as unknown as TaskConfig
       }
     },
+    // The root files the mapping reads (`turbo.json`, `nx.json`) shape every
+    // task and belong to no project: claimed, so `--affected` selects every
+    // project on an edit and `vx watch` re-runs on one (item 961). Which
+    // tasks an edit moved would take mapping both sides; every project is
+    // the answer a claimant gives when it cannot tell.
+    ...(reads.length > 0 ? { fingerprint: { files: reads, affected: () => undefined } } : {}),
   })
   return plugin
 }

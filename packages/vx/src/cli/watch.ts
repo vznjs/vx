@@ -25,6 +25,7 @@ import {
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import {
+  fingerprintClaims,
   forwardedSignal,
   run as runOrchestrator,
   type HeldPersistent,
@@ -508,6 +509,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
   const swept = await sweepConfigs(allProjects, workspaceRoot, load)
   const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
+  const ws = await loadCliWorkspace(workspaceRoot)
   return await runWatchLoop({
     opts,
     held: initial.persistent,
@@ -544,8 +546,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         packageDirs: new Set(all.map((p) => p.dir)),
       }
     },
+    claimedRootFiles: new Set(fingerprintClaims(ws.plugins).keys()),
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
-    cacheDir: opts.cacheDir ?? (await loadCliWorkspace(workspaceRoot)).cacheDir,
+    cacheDir: opts.cacheDir ?? ws.cacheDir,
   })
 }
 
@@ -714,6 +717,7 @@ export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
+  claimedRootFiles: ReadonlySet<string> = new Set(),
 ): (filename: string) => boolean {
   const dirs = projectDirs.map((d) => path.resolve(d))
   const globs = workspaceInputs
@@ -732,7 +736,10 @@ export function makeRootEventFilter(
     // actually pin is that the predicates stay exact rather than becoming
     // a basename or suffix match, which is the change that WOULD make
     // this line load-bearing.
-    if (!rel.includes('/') && (isWorkspaceFingerprintFile(rel) || isWorkspaceConfigFile(rel))) {
+    if (
+      !rel.includes('/') &&
+      (isWorkspaceFingerprintFile(rel) || isWorkspaceConfigFile(rel) || claimedRootFiles.has(rel))
+    ) {
       return true
     }
     const abs = path.resolve(workspaceRoot, filename)
@@ -767,6 +774,12 @@ interface WatchLoopArgs {
   configImports: readonly string[]
   /** Files the workspace config imports: loaded once per process, so an edit is named, not run. */
   workspaceConfigImports: readonly string[]
+  /**
+   * Root files a plugin claims (`VxPlugin.fingerprint`): a lockfile, or a
+   * file its stages read (`turbo.json`, item 961). The workspace config is
+   * loaded once per process, so the set is fixed for the loop.
+   */
+  claimedRootFiles: ReadonlySet<string>
   /** The directory each `<dir>/*` package glob names; a member coming or going there is a cycle. */
   memberBases: readonly string[]
   /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
@@ -1043,7 +1056,12 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
   let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-  let matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
+  let matters = makeRootEventFilter(
+    workspaceRoot,
+    projectDirs,
+    workspaceInputs,
+    args.claimedRootFiles,
+  )
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   let reread = false
 
@@ -1140,7 +1158,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           // lockfile + pnpm-workspace.yaml edits trigger re-runs even when
           // no project dir saw the change.
           arm(workspaceRoot, false, (filename) => {
-            if (isWorkspaceFingerprintFile(filename) || isWorkspaceConfigFile(filename)) {
+            if (
+              isWorkspaceFingerprintFile(filename) ||
+              isWorkspaceConfigFile(filename) ||
+              args.claimedRootFiles.has(filename)
+            ) {
               if (shapesWatchedSet(filename)) reread = true
               trigger(`root ${filename}`, path.join(workspaceRoot, filename))
             }
@@ -1289,7 +1311,12 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     wsConfigImportFiles = next.workspaceConfigImports
     packageDirs = next.packageDirs
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-    matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
+    matters = makeRootEventFilter(
+      workspaceRoot,
+      projectDirs,
+      workspaceInputs,
+      args.claimedRootFiles,
+    )
     if (next.workspaceWide !== workspaceWide) {
       // A task started or stopped declaring `workspaceFiles`: the other
       // arm's shape. Until item 891 the choice was made once, at start, and

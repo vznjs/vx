@@ -601,6 +601,32 @@ test is telling the truth.
       - Expected: the warm config path keys from the closure index, which
         none of the day's items touched; the transpile seed is three
         reads once per process.
+961.  DONE (2026-09-27, the `--affected` review's lead 1, second half, its
+      last). A root file a plugin's stages read without importing it
+      (`turbo()`'s `turbo.json`, `nx()`'s `nx.json`) re-keyed every
+      mapped task through the resolved configs while no project owns the
+      path: `--affected` selected nothing, exit 0, and `vx watch` dropped
+      the edit as a stray root file.
+      - Seam: `VxPlugin.fingerprint` may now claim any bare root name, not
+        only a lockfile core folds. For a name core folds nothing changes;
+        for another nothing is taken out, `--affected` asks the claimant
+        (claims load only when a ROOT name changed), and `vx watch`'s root
+        arms treat it as they treat a lockfile. A path is refused (the
+        root arm is not recursive); the refusal row and the schema table
+        say so.
+      - `turbo()` claims `turbo.json` and `turbo.jsonc`, `nx()` claims
+        `nx.json` (both at the workspace root only), answering every
+        project: which tasks an edit moved would take mapping both sides.
+      - Rows: `affected.test.ts` › a claimed root file core does not fold is
+        asked (an unclaimed README its control); `watch-rules.test.ts` › a
+        claimed root file is an event, only at the root; vx-migrate
+        `turbo.test.ts` › an edit to turbo.json selects every project
+        through the real CLI, red with either half reverted; `nx.test.ts`
+        › `nx()`'s claim. All red without the fix. The e2e row's own
+        commit is asserted: its first cut committed nothing under the
+        gate's sandbox and read as "HEAD did not resolve".
+      - The review is done: its six leads are items 951, 953–955, 958,
+        959 and 961.
 
 ## In flight
 

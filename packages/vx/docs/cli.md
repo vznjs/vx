@@ -262,8 +262,11 @@ which packages left the workspace is a discovery at the base.
 every project: the `config` and `project` stages its plugins install
 shape every resolved config, so the edit can re-key any task, and
 selection cannot tell which. It is not in the fingerprint (a key moves
-only when a stage's output does). A file a plugin reads at run time
-without importing it (`turbo()`'s `turbo.json`) is not yet seen.
+only when a stage's output does). A root file a plugin's stages read
+without importing it is seen when the plugin CLAIMS it
+(`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
+`turbo.jsonc`, `nx()` claims `nx.json`, and an edit asks the claimant,
+which answers every project (item 961).
 
 **A file your config IMPORTS selects that project.** vx hashes the
 resolved config, so a shared preset a `vx.config.*` imports is part of
@@ -1179,8 +1182,10 @@ Edits to a lockfile (`pnpm-lock.yaml`, `bun.lock`, …) or
 `pnpm-workspace.yaml` at the root invalidate every task's cache key
 via the [workspace fingerprint](./caching.md#cache-key-derivation).
 Watch mode hears those because it watches the workspace root
-(non-recursively). A lockfile a plugin claims still triggers a cycle;
-the keys then decide which projects actually re-run.
+(non-recursively). A lockfile a plugin claims still triggers a cycle,
+and so does any other root file a plugin claims (`turbo.json` under
+`turbo()`, item 961); the keys then decide which projects actually
+re-run.
 
 ### Constraints
 

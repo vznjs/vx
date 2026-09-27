@@ -23,7 +23,6 @@ import {
   UserError,
   BUN_GLOB_WILDCARDS,
 } from '../util/index.js'
-import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -188,11 +187,20 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           )
         }
         for (const file of claim.files as unknown[]) {
-          // A name core never folds has nothing to take out; claiming it
-          // would read as covered while the plugin's material is all there is.
-          if (typeof file !== 'string' || !WORKSPACE_FINGERPRINT_FILES.includes(file)) {
+          // A bare name at the workspace root: a lockfile core folds (taken
+          // out of the fingerprint), or a root file the plugin's stages read
+          // (`turbo.json`: nothing to take out; `--affected` and `vx watch`
+          // ask the claimant about it, item 961). A path is refused: the
+          // root arm `vx watch` keeps is not recursive.
+          if (
+            typeof file !== 'string' ||
+            file === '' ||
+            file === '.' ||
+            file === '..' ||
+            /[/\\]/.test(file)
+          ) {
             throw new UserError(
-              `${configPath}: plugin '${plug.name}' claims fingerprint file ${JSON.stringify(file)}, which core does not fold — one of ${WORKSPACE_FINGERPRINT_FILES.join(', ')}`,
+              `${configPath}: plugin '${plug.name}' claims fingerprint file ${JSON.stringify(file)}, which is not a file name at the workspace root`,
             )
           }
           const owner = fileClaimants.get(file)

@@ -401,9 +401,9 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [${plugin('p', '{ fingerprint: { files: [] } }')}] }`),
   ],
   [
-    'plugin \'<name>\' claims fingerprint file "<file>", which core does not fold',
+    'plugin \'<name>\' claims fingerprint file "<file>", which is not a file name at the workspace root',
     workspaceConfig(
-      `{ plugins: [${plugin('p', '{ fingerprint: { files: ["Cargo.lock"], affected() {} } }')}] }`,
+      `{ plugins: [${plugin('p', '{ fingerprint: { files: ["config/turbo.json"], affected() {} } }')}] }`,
     ),
   ],
   [

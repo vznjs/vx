@@ -324,6 +324,63 @@ describe('turbo()', () => {
   )
 })
 
+describe('turbo.json is a claimed root file (item 961)', () => {
+  it('turbo() claims turbo.json at the root and cannot tell which tasks an edit moved', () => {
+    const claim = turbo().fingerprint!
+    expect([...claim.files]).toEqual(['turbo.json', 'turbo.jsonc'])
+    expect(claim.affected({ file: 'turbo.json', before: null, after: null }, {} as never)).toBe(
+      undefined,
+    )
+    // A turbo.json elsewhere is no root name; nothing is claimed.
+    expect(turbo({ root: path.join(root, 'sub') }).fingerprint).toBeUndefined()
+  })
+
+  it(
+    'an edit to turbo.json selects every project under --affected',
+    async () => {
+      // It re-keyed every mapped task, and no project owns the path: the
+      // run said nothing affected and exited 0.
+      const git = (...args: string[]) =>
+        Bun.spawnSync({
+          cmd: [
+            'git',
+            '-c',
+            'user.email=t@vx.local',
+            '-c',
+            'user.name=vx',
+            '-c',
+            'commit.gpgsign=false',
+            ...args,
+          ],
+          cwd: root,
+          stderr: 'pipe',
+        })
+      const commit = git('commit', '-qm', 'init')
+      expect({ code: commit.exitCode, err: commit.stderr.toString() }).toEqual({ code: 0, err: '' })
+      const edited = { ...TURBO_JSON, globalEnv: ['GLOBAL_MODE', 'OTHER'] }
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(edited, null, 2))
+      const p = Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+          'run',
+          'lint',
+          '--affected=HEAD',
+          '--dry=json',
+        ],
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+      })
+      expect({ code: p.exitCode, err: p.stderr.toString() }).toEqual({ code: 0, err: '' })
+      const ids = (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks.map(
+        (t) => t.id,
+      )
+      expect(ids).toEqual(['app#lint'])
+    },
+    TIMEOUT,
+  )
+})
+
 describe('output negation', () => {
   it(
     'a negation that carves the package root out of a wildcard output runs the task uncached',
