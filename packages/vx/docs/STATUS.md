@@ -522,6 +522,21 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
       - Row: `cache.test.ts` › "prune() drops a row whose artifact is
         gone …" now gives the in-grace row 1 MB; red without the change.
 
+1082. DONE (2026-09-27, prune review #3). `file_hashes.seen_at` was
+      written and never read: a row stayed for every path ever hashed,
+      including deleted generated inputs and other worktrees' and CI
+      checkouts' paths, and `cache.db` grew for good. Neither `--max-size`
+      nor `vx info` counts it. A writing close now drops rows unwritten
+      for 30 days, on the same window as run history. The scan costs
+      0.4 ms at 10,000 rows and 8.3 ms at 100,000 (in-memory, min of
+      7), so it runs at most once a day on its own `schema_meta` clock:
+      one indexed read per close otherwise. A hit does not refresh
+      `seen_at`, so a file unchanged for a month is read once more; a
+      dropped row is only a memo miss. caching.md says so.
+      - Row: `cache-hash-files.test.ts` › "a close drops rows unseen for
+        30 days, at most once a day". It is red without the change, and
+        red with the daily clock removed.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

@@ -1835,6 +1835,7 @@ export class Cache implements CacheLayer {
         const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
         this.history.pruneOlderThan(cutoff)
         this.configEvals.pruneOlderThan(cutoff)
+        if (this.write) this.files.pruneOlderThan(cutoff)
       }
     } catch {
       // Retention is best-effort; never block closing the handle.
