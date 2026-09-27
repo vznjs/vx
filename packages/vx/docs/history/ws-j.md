@@ -101,6 +101,14 @@
   below this box's noise. Row: `load-reads.test.ts` counts one read of a
   member manifest across the filter pass and the run.
 
+- **J-15** First-run walk (npm install, `vx init`, run, why, watch, `--affected`): a
+  SIGINT sent to the npm launcher killed the Node process and left the
+  `vx` binary running under init. The launcher now spawns asynchronously,
+  forwards SIGINT/SIGTERM/SIGHUP unless it is in the terminal's foreground
+  group (a keyboard Ctrl-C already reached vx, and a second signal means
+  "stop now"), and exits with the binary's code. Row in
+  `npm-launcher.test.ts`, red without the fix.
+
 ## Leads for other streams
 
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a

@@ -15,8 +15,8 @@
 //      with no prebuilt binary if the user happens to have Bun).
 // Anything else is a clear, actionable error.
 
-import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -57,35 +57,63 @@ function hasBun() {
   return probe.status === 0
 }
 
-function run(cmd, cmdArgs) {
-  const res = spawnSync(cmd, cmdArgs, { stdio: 'inherit' })
-  if (res.error) {
-    process.stderr.write(`${base}: failed to launch (${res.error.message})\n`)
-    process.exit(1)
+// Is this launcher in its terminal's foreground process group? Then a
+// keyboard Ctrl-C reached the binary too, and a forward would be its second
+// signal, which vx reads as "stop now".
+function inForeground() {
+  try {
+    const stat = readFileSync('/proc/self/stat', 'utf8')
+    const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+    return f[2] === f[5] // pgrp === tpgid
+  } catch {
+    try {
+      const out = execFileSync('ps', ['-o', 'pgid=,tpgid=', '-p', String(process.pid)], {
+        encoding: 'utf8',
+      })
+      const [pgid, tpgid] = out.trim().split(/\s+/)
+      return pgid === tpgid
+    } catch {
+      return false
+    }
   }
+}
+
+function run(cmd, cmdArgs) {
+  const child = spawn(cmd, cmdArgs, { stdio: 'inherit' })
+  // A signal sent to this launcher alone (`kill`, a process manager, a CI
+  // cancel) reaches vx only through here; unhandled, it killed the launcher
+  // and left vx running under init. Either way the launcher waits for vx.
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => {
+      if (!inForeground()) child.kill(sig)
+    })
+  }
+  child.on('error', (err) => {
+    process.stderr.write(`${base}: failed to launch (${err.message})\n`)
+    process.exit(1)
+  })
   // Mirror the child's exit; a signal death maps to the POSIX 128+signo code.
-  if (res.signal) process.exit(128 + (osConstants.signals[res.signal] ?? 1))
-  process.exit(res.status ?? 0)
+  child.on('exit', (code, signal) => {
+    process.exit(signal ? 128 + (osConstants.signals[signal] ?? 1) : (code ?? 0))
+  })
 }
 
 const bin = platformBinary()
-if (bin !== undefined) {
-  run(bin, args)
-}
-
 // No prebuilt binary for this platform — fall back to the shipped source if Bun
 // is available (a source checkout, or an unsupported platform + Bun installed).
 const source = join(here, sourceEntry)
-if (existsSync(source) && hasBun()) {
+if (bin !== undefined) {
+  run(bin, args)
+} else if (existsSync(source) && hasBun()) {
   run('bun', [source, ...args])
+} else {
+  const supported = SUPPORTED.join(', ')
+  process.stderr.write(
+    `${base}: no prebuilt binary for ${key}.\n` +
+      `  Supported platforms: ${supported}.\n` +
+      `  If your platform should be supported, reinstall so npm fetches the\n` +
+      `  matching ${name}-${key} optionalDependency, or install Bun (>=1.4) to\n` +
+      `  run ${base} from source.\n`,
+  )
+  process.exit(1)
 }
-
-const supported = SUPPORTED.join(', ')
-process.stderr.write(
-  `${base}: no prebuilt binary for ${key}.\n` +
-    `  Supported platforms: ${supported}.\n` +
-    `  If your platform should be supported, reinstall so npm fetches the\n` +
-    `  matching ${name}-${key} optionalDependency, or install Bun (>=1.4) to\n` +
-    `  run ${base} from source.\n`,
-)
-process.exit(1)

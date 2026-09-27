@@ -64,6 +64,38 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     expect(r.code).toBe(7)
   })
 
+  it('a signal sent to the launcher alone reaches the binary, and the launcher exits with it', async () => {
+    // Differential: under spawnSync, SIGINT killed the Node launcher and
+    // left the binary running under init.
+    await launcherReady()
+    const plat = path.join(root, 'node_modules', '@vzn', `vx-${KEY}`)
+    mkdirSync(plat, { recursive: true })
+    writeFileSync(path.join(plat, 'package.json'), JSON.stringify({ name: `@vzn/vx-${KEY}` }))
+    const bin = path.join(plat, 'vx')
+    const heard = path.join(root, 'heard')
+    const ready = path.join(root, 'ready')
+    writeFileSync(
+      bin,
+      `#!/bin/sh\ntrap 'echo INT > ${heard}; exit 130' INT\necho up > ${ready}\nwhile :; do sleep 0.05; done\n`,
+    )
+    chmodSync(bin, 0o755)
+    const p = Bun.spawn({
+      cmd: [NODE!, path.join(pkgDir, 'launcher.mjs')],
+      cwd: root,
+      env: { PATH: '/usr/bin:/bin', HOME: root },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    const deadline = Date.now() + 10_000
+    while (!(await Bun.file(ready).exists())) {
+      if (Date.now() > deadline) throw new Error('the fake binary never started')
+      await Bun.sleep(20)
+    }
+    p.kill('SIGINT')
+    expect(await p.exited).toBe(130)
+    expect(await Bun.file(heard).text()).toBe('INT\n')
+  })
+
   it('with no platform package and no bun, fails with the actionable message', async () => {
     await launcherReady()
     const r = run(['--version'], ['/usr/bin', '/bin'])
