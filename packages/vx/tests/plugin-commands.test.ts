@@ -85,6 +85,21 @@ describe('plugin commands', () => {
     expect(err.join('')).not.toContain('unknown command')
   })
 
+  // `vx <verb> --help` answers from core's reference for a CORE verb only: a
+  // plugin verb owns its arguments, `--help` included (docs/cli.md). The
+  // gate that says so could go with the suite green (E-10's sweep of the
+  // dispatcher): `vx hello --help` would have printed core's reference and
+  // never run the plugin.
+  it('a plugin verb gets its own --help; a core verb gets the reference', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    expect(await cli(['hello', '--help'])).toBe(7)
+    expect((globalThis as { __vxCmd?: { argv: string[] } }).__vxCmd?.argv).toEqual(['--help'])
+    expect(out.join('')).not.toContain('Usage:')
+    // CONTROL: a core verb's --help is the reference cut, and exits 0.
+    expect(await cli(['show', '--help'])).toBe(0)
+    expect(out.join('')).toContain('Usage:\n  vx show')
+  })
+
   // `process.exit(undefined)` is exit 0: a JS-authored verb that forgets its
   // return on a failure branch read as SUCCESS (probed 2026-09-03). The
   // contract is an exit code; a verb that cannot say fails, naming its owner.

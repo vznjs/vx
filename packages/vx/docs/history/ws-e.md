@@ -17,6 +17,11 @@ What did not:
    four it rejects; `show --run --list`; `lock --frozen`; `run --check`)
    and `vx run --chek` suggested the refused `--check` (E-4).
 5. A plugin verb resolving 256 exited 0, the OS keeping eight bits (E-5).
+6. Ctrl-C or Ctrl-D at the `vx run` picker printed `vx: AbortError` with
+   a stack, exit 1 (E-6).
+7. `vx cache prune` on a workspace that never ran created `.vx/cache`
+   (E-7).
+8. `vx watch buidl` printed the refusal and watched forever (E-8).
 
 ## Leads for other streams
 
@@ -61,3 +66,16 @@ What did not:
   reaching the cache would have deleted with the suite green. Rows in
   `tests/cli.test.ts`, `tests/cache-prune-verb.test.ts` (new),
   `tests/schema-reset-notice.test.ts`.
+- E-5 — A plugin verb's exit code must be an integer 0–255; 256 exited
+  0 and -1 exited 255. Row in `tests/plugin-commands.test.ts`.
+- E-6 — Ctrl-C at the run picker exits 130, Ctrl-D exits 1 with `no
+task picked`; neither prints a stack. Row in
+  `tests/cli-picker.test.ts` drives both through a TTY-mode interface.
+- E-7 — `vx cache prune` with no cache prunes nothing, exits 0 and
+  creates nothing. Rows in `tests/inspect-no-create.test.ts`.
+- E-8 — `vx watch` exits 1 when its initial run refuses a name no
+  project declares, as `vx run` does. Row in `tests/watch-loop.test.ts`.
+- E-10 — Sweep of `cli/index.ts` and `cli/help.ts` (never swept): 30
+  mutants, 26 caught, 3 equivalent under the current text, 1 unheld —
+  the gate that keeps `vx <plugin-verb> --help` for the plugin. Row in
+  `tests/plugin-commands.test.ts`.
