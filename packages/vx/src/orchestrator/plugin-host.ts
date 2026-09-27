@@ -364,6 +364,17 @@ export async function resolveCache(
   })
 }
 
+/** The plugin each resolved executor came from, so a hook of it that throws is named. */
+const executorPlugin = new WeakMap<TaskExecutor, string>()
+
+/** How a message names `executor`: its plugin and its own name, or its name alone (the floor). */
+export function executorLabel(executor: TaskExecutor): string {
+  const plugin = executorPlugin.get(executor)
+  return plugin === undefined
+    ? `executor '${executor.name}'`
+    : `plugin '${plugin}' (executor '${executor.name}')`
+}
+
 /**
  * Collect every plugin's `executor`, in declaration order, with core's
  * own appended at the tail: per task, `selectExecutor` takes the first
@@ -383,6 +394,7 @@ export async function resolveExecutors(
     if (typeof executor.name !== 'string' || executor.name.length === 0) {
       throw new UserError(`plugin '${plugin.name}' returned an executor with no name`)
     }
+    executorPlugin.set(executor, plugin.name)
     executors.push(executor)
   }
   // Core's own executor is the TAIL of every list, so a plugin executor

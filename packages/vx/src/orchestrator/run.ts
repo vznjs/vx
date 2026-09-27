@@ -40,7 +40,7 @@ import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
 import { installPlugins, PluginSetupError } from './plugin.js'
-import { buildAdmission, resolveExecutors, teardownPlugins } from './plugin-host.js'
+import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
@@ -364,16 +364,26 @@ async function runOnBus(
     remaining.add(id)
   }
   // The SAME set is handed back every time, narrowed in place: a consumer
-  // reading it later sees the truth rather than a stale snapshot.
-  await abandoning(() => {
-    for (const [executor, remaining] of demandOf) executor.demand!(remaining)
-  })
+  // reading it later sees the truth rather than a stale snapshot. A hint,
+  // as `admit` is: one that throws is named once and asked no more, where
+  // it surfaced as a bare stack, or mid-run from the completion path
+  // (item 1022).
+  const tellDemand = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
+    try {
+      executor.demand!(remaining)
+    } catch (err) {
+      demandOf.delete(executor)
+      const m = err instanceof Error ? err.message : String(err)
+      log.status(`[vx] ${executorLabel(executor)} failed in demand: ${m}; not asked again this run`)
+    }
+  }
+  for (const [executor, remaining] of demandOf) tellDemand(executor, remaining)
   const narrowDemand =
     demandOf.size === 0
       ? (): void => {}
       : (id: string): void => {
           for (const [executor, remaining] of demandOf) {
-            if (remaining.delete(id)) executor.demand!(remaining)
+            if (remaining.delete(id)) tellDemand(executor, remaining)
           }
         }
 

@@ -461,8 +461,36 @@ describe('the lifecycle is reached on a run that never started', () => {
     await withPlugins(
       `executor() { return { name: 'x', accepts() { throw new Error('accepts boom') }, execute() {} } },`,
     )
-    expect(await settle(runT())).toContain('accepts boom')
+    expect(await settle(runT())).toBe(
+      "plugin 'org/b' (executor 'x') failed in accepts for a#t: accepts boom",
+    )
     expect(seen()).toEqual(['a-setup', 'a-teardown', 'b-teardown'])
+  })
+
+  it('an executor whose demand() throws is named once, and the run goes on (item 1022)', async () => {
+    await withPlugins(
+      `executor() { return { name: 'x', execute: async () => ({ exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }),
+         demand() { globalThis.__vxAbort.push('demand'); throw new Error('demand boom') } } },`,
+    )
+    const lines: string[] = []
+    const summary = await run({
+      cwd: root,
+      projects: ['a'],
+      tasks: ['t'],
+      log: { ...quiet, status: (m: string) => void lines.push(m) },
+      handleSignals: false,
+    })
+    expect({
+      ok: summary.ok,
+      said: lines.filter((l) => l.includes('demand')),
+      seen: seen(),
+    }).toEqual({
+      ok: true,
+      said: [
+        "[vx] plugin 'org/b' (executor 'x') failed in demand: demand boom; not asked again this run",
+      ],
+      seen: ['a-setup', 'demand', 'a-teardown', 'b-teardown'],
+    })
   })
 
   it('a task no project declares tears every plugin down', async () => {

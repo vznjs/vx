@@ -134,6 +134,28 @@ describe('selectExecutor', () => {
     expect(selectExecutor([remote, accepting], placement({ pinnedLocal: false }))).toBe(remote)
   })
 
+  it('an accepts() that throws is refused as the label names the executor (item 1022)', () => {
+    const throwing: TaskExecutor = {
+      name: 't',
+      accepts: () => {
+        throw new Error('accepts boom')
+      },
+      execute: () => Promise.reject(new Error('unused')),
+    }
+    const refusal = (label?: (e: TaskExecutor) => string): string => {
+      try {
+        selectExecutor([throwing, accepting], placement(), label)
+        return 'placed'
+      } catch (err) {
+        return `${(err as Error).name}: ${(err as Error).message}`
+      }
+    }
+    expect([refusal(), refusal((e) => `plugin 'org/p' (executor '${e.name}')`)]).toEqual([
+      `UserError: executor 't' failed in accepts for ${placement().taskId}: accepts boom`,
+      `UserError: plugin 'org/p' (executor 't') failed in accepts for ${placement().taskId}: accepts boom`,
+    ])
+  })
+
   it('passes the placement to accepts()', () => {
     const seen: string[] = []
     const spy: TaskExecutor = {

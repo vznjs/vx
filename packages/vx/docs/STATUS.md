@@ -840,6 +840,22 @@ The loop itself:
         run that never started (six exits). Each red with its call
         removed. No row drives the empty-graph return (defensive, per its comment) or the finally's call (a throw inside the schedule).
 
+1022. DONE (2026-09-27, the plugin-seam review's lead 2, its second
+      half). An executor's `accepts()` or `demand()` that threw reached
+      the user as a bare stack (`vx: Error: accepts boom at
+selectExecutor …`) naming no plugin, and a `demand()` throw from
+      the completion path would do so mid-run. Every other hook failure
+      is a `UserError` naming the plugin.
+      - Fix: `selectExecutor` refuses a throwing `accepts` as a
+        `UserError` its `label` names; the run passes `executorLabel`
+        (`plugin-host.ts`), which names the plugin and executor.
+        `demand` is a hint, as `admit` is: a throw is warned once by
+        name and that executor is asked no more. The module pages say so.
+      - Rows: `executor.test.ts` › an accepts() that throws is refused as
+        the label names it; `plugin-teardown.test.ts` › the e2e message,
+        and a throwing demand() named once while the run succeeds. Each
+        red with its piece removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
