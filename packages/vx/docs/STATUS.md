@@ -384,6 +384,9 @@ failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
         without the change; the green control reads `2 success · 2 total`
         both ways.
 
+1072. SUPERSEDED (2026-09-27) by G-1 (`docs/history/ws-g.md`), which
+      landed first: pnpm() reads pnpm 11's two-document lockfile.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
