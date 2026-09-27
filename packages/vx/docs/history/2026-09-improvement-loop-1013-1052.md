@@ -82,9 +82,10 @@ cancelled`; bazel-remote logged the 1 MiB write `context canceled`
       patch version, creates the GitHub release (notes from the merged PR
       titles) and dispatches `release.yml` and `npm.yml`, because a release
       the workflow token creates fires no `release` event. `release.yml`
-      takes the tag as a dispatch input. Only main's current tip is
-      released (a slower CI run for an older commit skips), and a commit
-      already tagged is skipped. `tests/auto-release.unsafe.test.ts` reads
+      takes the tag as a dispatch input. A commit is released only when
+      the last release is its ancestor (first tip-only, which released
+      nothing once main's CI ran serially under ten streams), and a
+      commit already tagged is skipped. `tests/auto-release.unsafe.test.ts` reads
       the three workflow files: the trigger names the workflow `ci.yml`
       calls itself, the green-push guard, the two skips, the job's two
       grants, and every `-f` input a dispatch passes is one its target

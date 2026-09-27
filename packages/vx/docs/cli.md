@@ -1453,11 +1453,11 @@ Every green merge releases itself. When CI finishes green on a push to
 from the merged PR titles, and dispatches `release.yml` (with `tag`) and
 `npm.yml` (with `version` and `ref`). A release made with the workflow
 token fires no `release` event in other workflows, which is why the two
-are dispatched rather than triggered. Only `main`'s current tip is
-released: a CI run that finishes for a commit `main` has already moved
-past skips, and the newer commit's own run releases it, so a burst of
-merges yields one release of the newest green head. A commit that
-already carries a `v*` tag is skipped.
+are dispatched rather than triggered. A green commit is released only
+when the last release is its ancestor, so an older tree never gets a
+higher version; `main`'s CI runs one at a time and drops the queued
+runs between, so a burst of merges yields one release per finished
+run. A commit that already carries a `v*` tag is skipped.
 
 A minor or major is cut by hand: publish a GitHub release (say
 `v0.1.0`) and the next auto-release continues from it (`v0.1.1`).

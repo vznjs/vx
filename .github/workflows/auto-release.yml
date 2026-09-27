@@ -6,11 +6,12 @@ name: Auto release
 # two release workflows. A minor or major (0.1.0) is still cut by hand as a
 # GitHub release; the next auto-release continues from it (0.1.1).
 #
-# Only main's CURRENT tip is released. A CI run that finishes for an older
-# commit after a newer one landed skips — the newer commit's own CI run
-# releases it — so a burst of merges yields one release of the newest green
-# head, and a slow run can never publish an older tree under a higher
-# version. `concurrency` keeps two releases from racing for the same number.
+# A green commit is released when the last release is its ancestor, so a
+# slow run can never publish an older tree under a higher version. It need
+# not be main's tip: main's CI runs one at a time (ci.yml), and under a
+# steady stream of merges the tip has always moved on by the time a run
+# ends, so a tip-only rule released nothing. `concurrency` keeps two
+# releases from racing for the same number.
 
 on:
   workflow_run:
@@ -45,18 +46,17 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --quiet --tags --force origin
-          tip="$(git ls-remote origin refs/heads/main | cut -f1)"
-          if [ "$tip" != "$SHA" ]; then
-            echo "main moved on to $tip — that commit's CI run releases it; skipping $SHA"
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           if git tag --points-at "$SHA" | grep -q '^v'; then
             echo "$SHA is already tagged ($(git tag --points-at "$SHA" | tr '\n' ' ')); nothing to release"
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           last="$(git tag -l 'v*' | sort -V | tail -1)"
+          if [ -n "$last" ] && ! git merge-base --is-ancestor "$last" "$SHA"; then
+            echo "$last is not an ancestor of $SHA — a newer commit is already released; skipping"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -z "$last" ]; then
             next="0.0.1"
           else
