@@ -5,6 +5,12 @@
 // matched no files`, a key that never moved, and a stale hit under a green run
 // after the project's source changed (reproduced 2026-09-16). Such a project
 // gets no partition; its own repository's git enumerates it.
+//
+// The other direction: a nested repository INSIDE a project (a vendored
+// submodule under `**`). The same one entry stood for its whole tree, and a
+// directory is no input, so its files never reached the key: an edit there
+// was a green hit on the old output while `git status` named the path
+// (2026-09-27, A-1). Its entry is replaced by what its own git lists.
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -149,6 +155,117 @@ describe('a project inside a nested repository', () => {
       for (const dir of Object.values(dirs)) {
         expect(await readFile(path.join(dir, 'dist/out.txt'), 'utf8')).toBe('two')
       }
+    },
+    TIMEOUT,
+  )
+})
+
+/**
+ * `packages/a` holding two nested repositories its task reads under `**`:
+ * `vendor/lib` taken as a gitlink, `vendor/loose` left untracked, and
+ * `vendor/empty`, a gitlink whose repository is not there (a submodule never
+ * initialised).
+ */
+async function vendoredFixture(root: string): Promise<string> {
+  await write(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+  )
+  initRepo(root)
+  const a = path.join(root, 'packages/a')
+  await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
+  await write(
+    path.join(a, 'vx.config.mjs'),
+    `export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cat vendor/lib/x.txt vendor/loose/y.txt > dist/out.txt' },
+          cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }`,
+  )
+  await write(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+  for (const [sub, file] of [
+    ['vendor/lib', 'x.txt'],
+    ['vendor/loose', 'y.txt'],
+    ['vendor/empty', 'z.txt'],
+  ] as const) {
+    await write(path.join(a, sub, file), 'one')
+    initRepo(path.join(a, sub))
+    git(path.join(a, sub), 'add', '-A')
+    git(path.join(a, sub), 'commit', '-qm', 'init')
+  }
+  git(root, 'add', '.gitignore', 'package.json', 'packages/a/package.json')
+  git(root, 'add', 'packages/a/vx.config.mjs', 'packages/a/vendor/lib', 'packages/a/vendor/empty')
+  git(root, 'commit', '-qm', 'init')
+  await rm(path.join(a, 'vendor/empty'), { recursive: true, force: true })
+  await mkdir(path.join(a, 'vendor/empty'))
+  return a
+}
+
+describe('a nested repository inside a project', () => {
+  it(
+    'lists its files through its own git, gitlink or untracked, with no index OID',
+    async () => {
+      const a = await vendoredFixture(root)
+      for (const workspaceWide of [false, true]) {
+        const memo = new GitFilesCache()
+        await populateGitFilesCache(root, [a], memo, workspaceWide)
+        expect(memo.get(a)).toEqual([
+          'package.json',
+          'vendor/lib/x.txt',
+          'vendor/loose/y.txt',
+          'vx.config.mjs',
+        ])
+        const oids = memo.oidsFor(a)
+        expect(oids?.has(path.join(a, 'package.json'))).toBe(true)
+        expect(oids?.has(path.join(a, 'vendor/lib/x.txt'))).toBe(false)
+      }
+      // The per-project spawn a re-enumeration takes lists them the same way.
+      const resolved = await resolveInputs({
+        projectDir: a,
+        workspaceRoot: root,
+        inputs: { files: ['vendor/**'] },
+        ownOutputs: ['dist/**'],
+        nestedProjectDirs: [],
+        envSource: {},
+      })
+      expect(resolved.files).toEqual([
+        path.join(a, 'vendor/lib/x.txt'),
+        path.join(a, 'vendor/loose/y.txt'),
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an edit inside it is a miss, not a stale hit',
+    async () => {
+      const a = await vendoredFixture(root)
+      await writeLocalWorkspace(root)
+      const run = (): string => {
+        const p = Bun.spawnSync({
+          cmd: ['bun', CLI, 'run', 'build', '--all'],
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        })
+        return new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
+      }
+      expect(run()).toMatch(/1 miss/)
+      expect(run()).toMatch(/1 up-to-date/)
+      for (const [sub, file] of [
+        ['vendor/lib', 'x.txt'],
+        ['vendor/loose', 'y.txt'],
+      ] as const) {
+        await write(path.join(a, sub, file), `two ${sub}`)
+        expect(run()).toMatch(/1 miss/)
+      }
+      expect(await readFile(path.join(a, 'dist/out.txt'), 'utf8')).toBe(
+        'two vendor/libtwo vendor/loose',
+      )
     },
     TIMEOUT,
   )

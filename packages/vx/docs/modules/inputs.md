@@ -125,9 +125,10 @@ other walker: a project outside a git work tree is a `UserError`
    honored — git applies them for us. This matches what Turbo and Nx
    do internally. The listing is memoized per run in `GitFilesCache`
    (one spawn per project, or one workspace-wide spawn through
-   `populateGitFilesCache`); a project inside a nested repository — a
-   submodule, an embedded repository, which the workspace's git holds
-   as one gitlink — is enumerated by its own git.
+   `populateGitFilesCache`); a nested repository — a submodule, an
+   embedded repository, which the workspace's git holds as one gitlink
+   — is enumerated by its own git, whether a project sits inside it or
+   it sits inside a project.
 2. **Positive globs** — `cache.inputs.files` strings without `!`.
    The default when `cache.inputs.files` is undefined is `['**/*']`.
    Each is normalized (a leading `./`, inner `./` segments, doubled

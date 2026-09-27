@@ -257,6 +257,8 @@ interface GitLsResult {
   oids: Map<string, string>
   /** Paths flagged skip-worktree / assume-unchanged (only when `-v` was passed). */
   flagged: Set<string>
+  /** Gitlinks (mode 160000): a submodule or an embedded repository, one entry for its whole tree. */
+  gitlinks: Set<string>
   /** cwd-relative paths whose names are not UTF-8, spelled lossily (`decodeGitZ`). */
   undecodable: string[]
 }
@@ -334,7 +336,46 @@ export function runGitLsFiles(cwd: string): GitLsResult {
     )
   }
   const { text, undecodable } = decodeGitZ(proc.stdout)
-  return parseLsFilesOutput(text, undecodable)
+  const parsed = parseLsFilesOutput(text, undecodable)
+  const nested = expandNestedRepos(cwd, parsed.files, parsed.gitlinks)
+  parsed.files = nested.files
+  parsed.undecodable.push(...nested.undecodable)
+  return parsed
+}
+
+/**
+ * Replace each nested repository in a listing — a gitlink (a submodule) or
+ * an untracked `dir/` (an embedded repository) — with the files its OWN git
+ * lists, prefixed by its path. The outer repository holds one entry for the
+ * whole tree and none of its files, and a directory is no input, so a task
+ * reading `vendor/lib/x.txt` under `**` folded nothing of it: an edit there
+ * was a green hit on the old output while `git status` named the path. The
+ * files carry no index OID from here, so they hash by content. A nested
+ * repository with no `.git` (a submodule never initialised) has no files to
+ * read and stays out. A listing with none is returned as it came.
+ */
+function expandNestedRepos(
+  cwd: string,
+  files: string[],
+  gitlinks: ReadonlySet<string>,
+): { files: string[]; undecodable: string[] } {
+  let out: string[] | undefined
+  const undecodable: string[] = []
+  for (let i = 0; i < files.length; i++) {
+    const rel = files[i]!
+    const nested = rel.endsWith('/') ? rel.slice(0, -1) : gitlinks.has(rel) ? rel : undefined
+    if (nested === undefined) {
+      out?.push(rel)
+      continue
+    }
+    out ??= files.slice(0, i)
+    const abs = path.join(cwd, nested)
+    if (!existsSync(path.join(abs, '.git'))) continue
+    const inner = runGitLsFiles(abs)
+    for (const f of inner.files) out.push(`${nested}/${f}`)
+    for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
+  }
+  return { files: out ?? files, undecodable }
 }
 
 /**
@@ -359,8 +400,9 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
   const files: string[] = []
   const oids = new Map<string, string>()
   const flagged = new Set<string>()
+  const gitlinks = new Set<string>()
   const undecodable: string[] = []
-  if (out.length === 0) return { files, oids, flagged, undecodable }
+  if (out.length === 0) return { files, oids, flagged, gitlinks, undecodable }
   // NUL-separated; trailing NUL produces an empty segment we skip.
   for (const record of out.split('\0')) {
     if (record.length === 0) continue
@@ -373,6 +415,8 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
     const stage = m[4]!
     if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === '0') {
       oids.set(filePath, fileIdentity(mode, m[3]!))
+    } else if (mode === '160000') {
+      gitlinks.add(filePath)
     }
     // A LOWERCASE letter means skip-worktree or assume-unchanged (`S` is the
     // older spelling of skip-worktree): git has been told to stop looking at
@@ -380,7 +424,7 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
     const flag = m[1]
     if (flag !== undefined && (flag === 'S' || (flag >= 'a' && flag <= 'z'))) flagged.add(filePath)
   }
-  return { files, oids, flagged, undecodable }
+  return { files, oids, flagged, gitlinks, undecodable }
 }
 
 /** One completed `git` invocation. */
@@ -825,6 +869,7 @@ export async function startGitEnumeration(
     files: tracked,
     oids,
     flagged,
+    gitlinks,
     undecodable,
   } = parseLsFilesOutput(ls.stdout, ls.undecodable)
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
@@ -846,7 +891,10 @@ export async function startGitEnumeration(
   // set. Without a status answer the enumeration is the index alone.
   const untracked =
     parsedStatus === null ? [] : [...stripPrefixFromSet(new Set(parsedStatus.untracked), gitPrefix)]
-  const all = untracked.length === 0 ? tracked : tracked.concat(untracked)
+  const listed = untracked.length === 0 ? tracked : tracked.concat(untracked)
+  const nested = expandNestedRepos(workspaceRoot, listed, gitlinks)
+  const all = nested.files
+  undecodable.push(...nested.undecodable)
   // Aggregate dirtiness for the Tier-3 invocation record — derived from
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
@@ -939,12 +987,12 @@ export function applyGitEnumeration(
       if (oid !== undefined) projOids.set(path.join(workspaceRoot, rel), oid)
     }
     // An empty slice is a directory git did not see, not an empty project:
-    // a project has at least its package.json, tracked or untracked. What
-    // hides a directory from this listing is a nested repository — a
-    // submodule, an embedded repository — which the workspace's git holds as
-    // ONE entry (a gitlink, `dir/` when untracked) and, under a pathspec
-    // naming the project, as nothing at all; or a directory ignored
-    // outright. Storing the empty slice made the key never move: `cache.inputs
+    // a project has at least its package.json, tracked or untracked. A
+    // nested repository — a submodule, an embedded repository, which the
+    // workspace's git holds as ONE entry (a gitlink, `dir/` when untracked)
+    // — is listed through its own git above (`expandNestedRepos`), but under
+    // a pathspec naming a project inside it the workspace's git lists
+    // nothing at all; so is a directory ignored outright. Storing the empty slice made the key never move: `cache.inputs
     // matched no files`, then a stale hit under a green run once the source
     // changed (2026-09-16). No partition instead: `resolveFiles` spawns
     // `git ls-files` in the project's own directory, which a nested
