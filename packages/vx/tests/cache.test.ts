@@ -1555,13 +1555,13 @@ describe('Cache storage (v10)', () => {
       return file
     }
 
-    const orphan = await agedFile('h-real-orphan.tar.zst', 'x'.repeat(11))
+    const orphan = await agedFile('0123456789abcdef.tar.zst', 'x'.repeat(11))
     // Not an artifact name at all.
     const foreign = await agedFile('notes.txt', 'n')
     // The temp suffix with no hash in front of it.
     const hashless = await agedFile('.tar.zst.tmp-1-2-3', 't')
     // A directory wearing the artifact name.
-    const dir = path.join(cacheDir, 'h-dir.tar.zst')
+    const dir = path.join(cacheDir, 'fedcba9876543210.tar.zst')
     await mkdir(dir, { recursive: true })
     await age(dir)
     // The index itself, aged: prune's own writes go to the -wal, so
@@ -1579,6 +1579,39 @@ describe('Cache storage (v10)', () => {
     expect(existsSync(hashless)).toBe(true)
     expect(existsSync(dir)).toBe(true)
     expect(existsSync(path.join(cacheDir, 'cache.db'))).toBe(true)
+  })
+
+  it('the orphan sweep leaves a *.tar.zst vx did not name (item 968)', async () => {
+    // `cacheDir` may be any directory the user names, and the sweep took
+    // every row-less `*.tar.zst` an hour old in it: a release tarball
+    // beside the index was unlinked by the retention a run applies on
+    // close. Only the names vx writes are its to reap.
+    const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
+    const agedFile = async (name: string) => {
+      const file = path.join(cacheDir, name)
+      await writeFile(file, 'x')
+      await utimes(file, twoHoursAgo, twoHoursAgo)
+      return file
+    }
+    const names = [
+      'release.tar.zst',
+      '0123456789ABCDEF.tar.zst',
+      '0123456789abcde.tar.zst',
+      '0123456789abcdef0.tar.zst',
+      'backup-0123456789abcdef.tar.zst',
+      '0123456789abcdef.tar.zst.tmp-mine',
+      'release.tar.zst.tmp-1-2-3',
+    ]
+    const kept = await Promise.all(names.map(agedFile))
+    const reaped = [
+      await agedFile('0123456789abcdef.tar.zst'),
+      await agedFile('0123456789abcdef.tar.zst.tmp-1-2-abc'),
+    ]
+
+    expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: 2 })
+    await cache.prune({ olderThanMs: 1 })
+    expect(reaped.filter((f) => existsSync(f))).toEqual([])
+    expect(kept.filter((f) => existsSync(f))).toEqual(kept)
   })
 
   it('the orphan scan swallows a readdir failure instead of rejecting', async () => {
@@ -1639,15 +1672,15 @@ describe('Cache storage (v10)', () => {
       return file
     }
     // Orphans: an artifact with no row and a temp a crashed save left.
-    const orphanTar = await aged('h-orphan.tar.zst', 'x'.repeat(10))
-    const orphanTmp = await aged('h-inflight.tar.zst.tmp-123-456-abc', 'y'.repeat(5))
+    const orphanTar = await aged('00000000000000aa.tar.zst', 'x'.repeat(10))
+    const orphanTmp = await aged('00000000000000bb.tar.zst.tmp-123-456-abc', 'y'.repeat(5))
     // Controls: the indexed artifact (aged too — age alone is not the
     // rule), a fresh row-less artifact (a save between rename and
     // commit), a fresh temp (a save mid-write), and the index itself.
     await utimes(cache.outputsPath('h-indexed'), twoHoursAgo, twoHoursAgo)
-    const freshTar = path.join(cacheDir, 'h-fresh.tar.zst')
+    const freshTar = path.join(cacheDir, '00000000000000cc.tar.zst')
     await writeFile(freshTar, 'z')
-    const freshTmp = path.join(cacheDir, 'h-fresh.tar.zst.tmp-1-2-3')
+    const freshTmp = path.join(cacheDir, '00000000000000cc.tar.zst.tmp-1-2-3')
     await writeFile(freshTmp, 'z')
 
     // What `vx info` reports before anyone prunes is exactly what prune reaps.
@@ -1679,7 +1712,7 @@ describe('Cache storage (v10)', () => {
     // 14 bytes, the directory otherwise exactly right), where POSIX and
     // Linux give the loser ENOENT. The code is right for the rule; the
     // runtime there is not, and the Linux job is the gate for this claim.
-    const again = await aged('h-orphan-2.tar.zst', 'w'.repeat(7))
+    const again = await aged('00000000000000dd.tar.zst', 'w'.repeat(7))
     const other = new Cache(cacheDir, { read: true, write: true })
     if (process.platform !== 'linux') {
       other.close()
@@ -1704,8 +1737,8 @@ describe('Cache storage (v10)', () => {
         orphans: [0, 1],
         orphanBytes: 7,
         artifacts: [
-          'h-fresh.tar.zst',
-          'h-fresh.tar.zst.tmp-1-2-3',
+          '00000000000000cc.tar.zst',
+          '00000000000000cc.tar.zst.tmp-1-2-3',
           path.basename(cache.outputsPath('h-indexed')),
         ].sort(),
       })
@@ -2240,7 +2273,7 @@ describe('Cache schema/version recovery', () => {
     try {
       await writeFile(path.join(projectDir, 'out.txt'), 'built')
       await c1.save({
-        hash: 'h-artifact',
+        hash: '00000000000000ee',
         projectDir,
         outputFiles: [path.join(projectDir, 'out.txt')],
         entry: { taskId: 'pkg#build', command: 'noop', durationMs: 0, stdout: '' },
@@ -2312,8 +2345,8 @@ describe('Cache schema/version recovery', () => {
       // The drop orphaned round 1's artifact: no row knows it, so a
       // lookup misses, and prune's sweep is what reclaims the bytes
       // once the file is past the in-flight grace window.
-      const orphan = c2.outputsPath('h-artifact')
-      expect(await c2.get('h-artifact')).toBeNull()
+      const orphan = c2.outputsPath('00000000000000ee')
+      expect(await c2.get('00000000000000ee')).toBeNull()
       expect(existsSync(orphan)).toBe(true)
       const aged = (Date.now() - 2 * 60 * 60 * 1000) / 1000
       await utimes(orphan, aged, aged)

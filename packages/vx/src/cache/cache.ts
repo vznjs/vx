@@ -93,6 +93,15 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
  */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
+/**
+ * The only names the orphan sweep may unlink: an artifact under a key
+ * `foldKey` prints (16 lowercase hex) and the temp `tempPath` makes of
+ * one. `cacheDir` is the user's to point anywhere (`build/`, a shared
+ * directory), and the sweep once took any `*.tar.zst` an hour old there,
+ * the user's own release tarball included (item 968).
+ */
+const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.tar\.zst(\.tmp-\d+-\d+-[0-9a-z]*)?$/
+
 /** The `schema_meta` key holding when the orphan sweep last ran (ms epoch). */
 const SWEPT_AT = 'orphans_swept_at'
 
@@ -1685,11 +1694,9 @@ export class Cache implements CacheLayer {
     const cutoff = Date.now() - ORPHAN_GRACE_MS
     const candidates: string[] = []
     for (const name of names) {
-      if (name.indexOf('.tar.zst.tmp-') > 0) {
-        candidates.push(name)
-      } else if (name.endsWith('.tar.zst') && !indexed.has(name.slice(0, -'.tar.zst'.length))) {
-        candidates.push(name)
-      }
+      const m = VX_ARTIFACT_NAME.exec(name)
+      if (m === null) continue
+      if (m[2] !== undefined || !indexed.has(m[1]!)) candidates.push(name)
     }
     const found: Array<{ file: string; size: number }> = []
     await Promise.all(

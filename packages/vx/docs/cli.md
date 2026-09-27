@@ -1254,7 +1254,10 @@ crashed never renamed. Nothing else reclaims them — a lookup starts at
 the row, so an orphan is never a hit, and only a save of the same key
 overwrites it. Files younger than one hour are left alone: a save
 renames its artifact into place before the row commits, so a fresh
-row-less file is a save in flight. The sweep runs on every prune, under
+row-less file is a save in flight. Only the names vx writes are taken:
+`<hash>` is the key's 16 lowercase hex digits and the temp suffix is
+the one a save makes, so a `release.tar.zst` beside the index in a
+`cacheDir` you share is never touched (item 968). The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions. A
 workspace's `cacheRetention` runs it too, at the end of a run, at most
 once an hour even when nothing the index holds is due (the policy sums
