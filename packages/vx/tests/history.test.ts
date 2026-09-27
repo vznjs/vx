@@ -751,3 +751,52 @@ describe('LocalHistoryProvider', () => {
     }
   })
 })
+
+// Retention ran in every handle's close, a reading verb's included: `vx
+// last --list` over month-old runs emptied the history it listed, and
+// `vx cache prune --dry-run` pruned it (item 1004).
+describe('a reading handle prunes no history', () => {
+  let dir: string | undefined
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+    dir = undefined
+  })
+
+  it('month-old runs survive an inspect close; a writing close prunes them (CONTROL)', () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'vx-inspect-prune-'))
+    const old = Date.now() - 40 * 24 * 60 * 60 * 1000
+    const counts = (db: Database) => [
+      (db.query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n,
+      (db.query('SELECT COUNT(*) AS n FROM invocations').get() as { n: number }).n,
+    ]
+    const writer = new Cache(dir)
+    writer.recordRunBundle({
+      runs: [
+        mkRun({
+          hash: 'h',
+          project: 'p',
+          task: 't',
+          status: 'success',
+          durationMs: 5,
+          startedAt: old,
+        }),
+      ],
+      invocation: mkInvocation('r-' + old, old),
+    })
+    expect(counts(writer.dbHandle())).toEqual([1, 1])
+    // Released without its own close, which would prune: the rows under
+    // test are the reader's to keep.
+    writer.dbHandle().close()
+
+    const reader = Cache.inspect(dir)
+    expect(counts(reader.dbHandle())).toEqual([1, 1])
+    reader.close()
+
+    const again = new Cache(dir)
+    expect(counts(again.dbHandle())).toEqual([1, 1])
+    again.close()
+    const after = Cache.inspect(dir)
+    expect(counts(after.dbHandle())).toEqual([0, 0])
+    after.close()
+  })
+})

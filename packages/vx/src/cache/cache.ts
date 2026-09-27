@@ -367,6 +367,8 @@ export class Cache implements CacheLayer {
    */
   private readonly read: boolean
   private readonly write: boolean
+  /** A reading verb's handle (`Cache.inspect`): it prunes no history. */
+  private readonly inspecting: boolean
   /** Why this process cannot write into `cacheDir`, or `null`; decided at open. */
   private readonly writeBlocked: string | null
 
@@ -410,6 +412,7 @@ export class Cache implements CacheLayer {
      */
     mode: 'open' | 'inspect' = 'open',
   ) {
+    this.inspecting = mode === 'inspect'
     this.read = localPolicy.read
     // The directory exists before the DB opens — bun:sqlite won't create
     // parent dirs for us. A directory this user cannot write into is a
@@ -1776,10 +1779,15 @@ export class Cache implements CacheLayer {
     // header would outlive its `runs` rows, so `vx info`/`vx last` would
     // list an invocation whose task detail is already gone, and the
     // table would grow unbounded on a long-lived checkout.
+    // A reading verb and a dry run delete nothing: `vx last --list` over
+    // month-old runs emptied the history it listed, and `vx cache prune
+    // --dry-run` pruned it (item 1004).
     try {
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
-      this.history.pruneOlderThan(cutoff)
-      this.configEvals.pruneOlderThan(cutoff)
+      if (!this.inspecting) {
+        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+        this.history.pruneOlderThan(cutoff)
+        this.configEvals.pruneOlderThan(cutoff)
+      }
     } catch {
       // Retention is best-effort; never block closing the handle.
     }

@@ -527,6 +527,19 @@ test is telling the truth.
         links; nothing created at the targets), the sweep leaves a link,
         and an in-project link as the control. Red without the fix.
 
+1004. DONE (2026-09-27, a run-history review agent's lead 1). History
+      retention ran in every cache handle's close, a reading verb's
+      included: with runs 40 days old, `vx last --list` listed them and
+      emptied the tables, the next `vx last` said "no recorded runs yet",
+      and `vx cache prune --dry-run` ("delete nothing") pruned them too.
+      A `--cache-dir` pointed at a copied CI cache was wiped by reading.
+      - Fix (`cache.ts`): the handle remembers `Cache.inspect`'s mode and
+        its close prunes nothing. `modules/cache.md` and
+        `modules/config-cache.md` say so.
+      - Row: `history.test.ts` › a reading handle prunes no history, with
+        a writing close pruning the same rows as the control. Red without
+        the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

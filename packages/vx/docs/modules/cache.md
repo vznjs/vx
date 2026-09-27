@@ -31,7 +31,9 @@ and key derivation logic live here.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore.
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
-  transaction per run), the SQL binders, and the 30-day retention.
+  transaction per run), the SQL binders, and the 30-day retention (run
+  on a writing handle's close only: a reading verb's `Cache.inspect` and
+  a dry-run prune delete nothing, item 1004).
 - `cache.ts` — the schema (the one place every table is declared), the
   entry store (get / save / ingest / restore / prune), and the `Cache`
   class that composes the four slices above over one handle and
