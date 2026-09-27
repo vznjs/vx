@@ -326,6 +326,7 @@ export async function resolveCache(
   ctx: CacheContext,
 ): Promise<CacheLayer> {
   const layers: CacheLayer[] = []
+  const owners = new Map<CacheLayer, string>()
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
     const layer = await safe(plugin, 'cache', () => plugin.cache!(ctx))
@@ -337,6 +338,7 @@ export async function resolveCache(
     // passed and died at its first hit inside restoreOutputs.
     assertShape(plugin, 'cache', layer, CACHE_LAYER_METHODS, 'a cache layer')
     layers.push(layer)
+    if (!owners.has(layer)) owners.set(layer, `plugin '${plugin.name}'`)
   }
   // Core's own store is the TAIL of the chain — the floor under every
   // lookup, not a plugin a workspace has to declare. A layer that WRAPS
@@ -345,7 +347,21 @@ export async function resolveCache(
   if (!layers.includes(ctx.localCache)) layers.push(ctx.localCache)
   const wrapsLocal = layers.some((l) => l !== ctx.localCache && l.local === ctx.localCache)
   const distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
-  return distinct.length === 1 ? distinct[0]! : new ChainedCache(distinct)
+  if (distinct.length === 1) return distinct[0]!
+  // One line per layer and method: a layer that throws on every lookup
+  // would otherwise print once per task.
+  const told = new Set<string>()
+  return new ChainedCache(distinct, (i, method, err) => {
+    const layer = distinct[i]!
+    const who =
+      layer === ctx.localCache ? 'the local cache' : (owners.get(layer) ?? 'a cache layer')
+    if (told.has(`${i}\0${method}`)) return
+    told.add(`${i}\0${method}`)
+    const m = err instanceof Error ? err.message : String(err)
+    const then =
+      method === 'save' ? 'the other layers still save' : 'a miss there; the next layer answers'
+    ctx.warn(`[vx] ${who} failed in cache ${method}: ${m}; ${then}`)
+  })
 }
 
 /**

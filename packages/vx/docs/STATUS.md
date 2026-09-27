@@ -808,6 +808,22 @@ The loop itself:
         and a chain with two dropped links keys as the full run. Each
         red with its piece removed.
 
+1020. DONE (2026-09-27, the plugin-seam review's lead 1). A plugin's raw
+      cache layer that threw ended the chain's walk above the local
+      floor. A throwing `get` failed the task as an internal error naming
+      no plugin; a throwing `save` kept the entry out of the local store,
+      so nothing ever cached. "A remote cache error degrades to a miss"
+      held only inside `LayeredCache`.
+      - Fix (`chained-cache.ts`): each layer's lookup and save is
+        isolated; a lookup throw is a miss there, a save throw skips that
+        layer, a save failing everywhere still throws. `resolveCache`
+        warns once per layer and method, naming the plugin.
+        `modules/chained-cache.md` says so.
+      - Rows: `chained-cache.test.ts` › a lookup that throws is a miss
+        there; a save that throws in one layer saves in the others, in
+        every layer it throws; a throwing plugin layer is named once per
+        method. Each red with its piece removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
