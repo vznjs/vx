@@ -167,3 +167,14 @@ the forward, a 20 s timeout without it.
   step 1 promises a deprecated surface "warns once per run, naming what
   replaces it", from the CLI's parser. A stderr line keeps `cli.md`'s
   "byte-identical output" true on stdout. Pre-1.0 it may also simply go.
+
+## H-11: the 1.0 release checklist
+
+`versioning-1.0.md` said when 1.0 takes effect but not how to cut it.
+§ Releasing 1.0 lists the six steps in order, each with how it is checked:
+milestone 3 and the soak, the contract records (the gate runs every
+`contract-*.test.ts`), the notes (`git diff --stat <last-tag> --
+packages/vx/tests/contract/` lists every surface that moved), the plugins
+on npm, the README's status section, the tag. Pinned: every record the
+contract table names must exist (`contract-versioning-doc.test.ts`; a
+misspelt record path fails it).
