@@ -143,7 +143,7 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
 // violations are reported under, and the canonical baselines it was
 // built from. What an executor running the command ITSELF needs.
 export function wrapSandboxedCommand(
-  args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config'> &
+  args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config' | 'env'> &
     Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'>,
 ): Promise<{
   wrapped: string
@@ -168,6 +168,15 @@ export function thrownReason(err: unknown, what?: string): string
 // request builder reads it to decide whether an output grant is a glob.
 export const MOUNT_WILDCARDS: RegExp
 export function isMountableLiteral(grant: string): boolean
+// A path with its existing prefix realpath'd and the rest re-appended.
+export function toRealPath(p: string): string
+
+// sandbox-binds.ts: the binds a write grant becomes on Linux (a file grant
+// widened to its directory), and a read grant cut around the walls a
+// project stops at (item 1010). The request builder refuses a write bind
+// that would hold a wall and punches the read grants.
+export function bindableWrites(paths: readonly string[]): string[]
+export function punchWalls(readPath: string, walls: readonly string[]): string[]
 ```
 
 ## How it works
@@ -323,6 +332,22 @@ replayed b's old bytes (item 1006). A hit whose real path leaves the
 directory holding the pattern's first wildcard is now dropped, so a glob
 reaches no further through a link than the directory grant would. The
 baseline `node_modules` reads are granted apart and are unaffected.
+
+## The walls a project stops at
+
+The key of a project excludes the projects nested in it, and the deny
+anchor is the workspace root, which is a ROOT project's own directory: its
+`read: ['.']` bound every nested project, `.git` and `.vx` readable, and a
+cached root task replayed a nested file's old bytes; a file grant there
+(`write: ['out.txt']`) is widened to its directory, which bound the whole
+workspace writable, `.git` included (item 1010). The request now carries
+the node's nested project directories, and with the root's `.git` and
+`.vx` they are walls: on Linux a read grant containing one is punched
+around it (`punchWalls`, the write-path punch with the wall dropped), and
+a write grant whose bind, widened or not, would hold one is refused,
+naming the wall. A grant that names a wall or a path inside it is the
+user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
+`~`). A custom `cacheDir` inside a project is not a wall.
 
 ## A write grant that names a file
 

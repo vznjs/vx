@@ -607,6 +607,24 @@ test is telling the truth.
       - Row: `metrics.test.ts` › names why an unchanged key re-executed,
         three causes and the old text as the control. Red without the fix.
 
+1010. DONE (2026-09-27, the sandbox-grants review's lead 1). A root
+      project (`workspaces: [".", "packages/*"]`) read every nested project
+      through `read: ['.']`: the deny anchor is the workspace root, its own
+      directory, while its key excludes nested projects, so a change in
+      `packages/b` replayed the root task's old output. A file grant
+      (`out.txt`) there was widened to the workspace root and the task
+      wrote into `packages/b` and `.git` with exit 0.
+      - Fix (`sandbox-request.ts`, `sandbox-binds.ts`): the request takes
+        the node's nested project directories; with the root's `.git` and
+        `.vx` they are walls. On Linux a read grant containing one is
+        punched around it; a write grant whose bind inside the workspace
+        would hold one is refused, naming it. A grant naming a wall, and a
+        bind outside the workspace, stay. `modules/sandbox-runtime.md`
+        § The walls a project stops at.
+      - Rows: `sandbox-request.test.ts` › a root project stops at the
+        walls (the punch, both write refusals, a leaf project and a named
+        wall as controls). Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

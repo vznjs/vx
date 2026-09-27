@@ -287,7 +287,13 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     await args.armSandbox?.()
     // A persistent task never declares `cache` (the loader refuses it), so
     // it keeps the whole linked grant: no key of its can be stale.
-    const sb = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot, undefined)
+    const sb = await sandboxRequestFor(
+      node,
+      step.sandbox,
+      args.workspaceRoot,
+      undefined,
+      args.nestedProjectDirs,
+    )
     placeholders = sb.placeholders
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
@@ -837,6 +843,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       step.sandbox!,
       args.workspaceRoot,
       cfgCacheable ? args.keyedProjects(node) : undefined,
+      args.nestedProjectDirs,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld

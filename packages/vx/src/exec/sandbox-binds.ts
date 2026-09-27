@@ -26,7 +26,7 @@ type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
  * the task cannot produce. macOS needs none of this (seatbelt matches
  * paths, it does not mount), so the grant stays exact there.
  */
-function bindableWrites(paths: readonly string[]): string[] {
+export function bindableWrites(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return unique(
     paths.map((p) => {
@@ -40,6 +40,36 @@ function bindableWrites(paths: readonly string[]): string[] {
       return path.dirname(p)
     }),
   )
+}
+
+/**
+ * A read grant with the WALLS inside it cut out: the directories of the
+ * projects nested in this one, the repository and vx's own directory. A
+ * root project's `read: ['.']` bound every nested project, `.git` and the
+ * cache readable, and the key, which excludes nested projects, replayed a
+ * nested file's old bytes (item 1010). The cut is the punch above, a wall
+ * dropped where a write path is bound: its siblings are granted, the wall
+ * is not. A grant that IS a wall, or lies inside one, names it on purpose
+ * and stays. Linux only, as the punch is; a grant with no wall under it
+ * costs nothing.
+ */
+export function punchWalls(readPath: string, walls: readonly string[]): string[] {
+  if (process.platform !== 'linux') return [readPath]
+  const under = walls.filter((w) => w !== readPath && w.startsWith(readPath + path.sep))
+  if (under.length === 0) return [readPath]
+  let entries: string[]
+  try {
+    entries = readdirSync(readPath)
+  } catch {
+    return [readPath]
+  }
+  const out: string[] = []
+  for (const entry of entries) {
+    const child = path.join(readPath, entry)
+    if (under.includes(child)) continue
+    out.push(...punchWalls(child, under))
+  }
+  return out
 }
 
 /** Directories already warned about below — once per process, not per spawn. */
