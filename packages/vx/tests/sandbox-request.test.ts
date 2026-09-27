@@ -263,6 +263,24 @@ describe('a write grant that leaves the project through a link is refused', () =
   })
 })
 
+// On Linux a glob grant is expanded to its hits and each bound, and bwrap
+// binds a link by its target: `read: ['*']` over `shared -> ../b/src` bound
+// project b readable, where `read: ['.']` did not, and a cached task
+// replayed b's old bytes (item 1006). macOS matches real paths already.
+describe.skipIf(process.platform !== 'linux')('a glob grant takes no link out of its base', () => {
+  it('the link hit is dropped from a read glob; a file and an inside link are kept', async () => {
+    await mkdir(path.join(root, 'b', 'src'), { recursive: true })
+    await writeFile(path.join(dir, 'x.txt'), 'x')
+    await mkdir(path.join(dir, 'real'))
+    await symlink('../b/src', path.join(dir, 'shared'))
+    await symlink('real', path.join(dir, 'alias'))
+    const r = await sandboxRequestFor(node(), { allow: { read: ['*'] } }, root, undefined)
+    expect([...r.sandbox.config.allowRead].sort()).toEqual(
+      ['alias', 'real', 'x.txt'].map((n) => path.join(dir, n)),
+    )
+  })
+})
+
 describe('the request derives nothing from cache', () => {
   // `SandboxConfig`'s doc comment claimed the baseline could "write the
   // prefixes of its `cache.outputs.files`" — three times over — while the

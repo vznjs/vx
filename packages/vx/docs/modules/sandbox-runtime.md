@@ -314,6 +314,14 @@ placeholder is made only where nothing is (an exclusive create after an
 `lstat`), and the sweep takes back only a regular file. A read grant may
 still resolve out through a link: `node_modules` links into the store.
 
+A GLOB grant is expanded on Linux to its hits, each bound, and bwrap binds
+a link by its target: `read: ['*']` over `shared -> ../b/src` bound
+project b readable where `read: ['.']` did not, and a cached task
+replayed b's old bytes (item 1006). A hit whose real path leaves the
+directory holding the pattern's first wildcard is now dropped, so a glob
+reaches no further through a link than the directory grant would. The
+baseline `node_modules` reads are granted apart and are unaffected.
+
 ## A write grant that names a file
 
 On Linux a grant is a bind mount, and a grant naming a FILE binds that

@@ -555,6 +555,19 @@ test is telling the truth.
         code asserted first and a sound index as the control. Red without
         the fix.
 
+1006. DONE (2026-09-27, the sandbox-grants review's lead 3). On Linux a
+      glob grant is expanded to its hits and each bound, and bwrap binds a
+      link by its target: `read: ['*']` over `shared -> ../b/src` let the
+      task read project b, which `read: ['.']` did not, and with
+      `inputs: ['**/*']` a change in b's file replayed the old output.
+      - Fix (`sandbox-runtime.ts` `expandGrants`): a hit whose real path
+        leaves the directory holding the pattern's first wildcard is
+        dropped (and a write glob left with no hit says so, as before).
+        `modules/sandbox-runtime.md` says so.
+      - Row: `sandbox-request.test.ts` › a glob grant takes no link out of
+        its base, with a file and an in-project link kept. Red without the
+        fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

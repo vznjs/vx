@@ -1352,9 +1352,20 @@ function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[
     // walk the whole filesystem to find its matches.
     const base = path.dirname(p.slice(0, p.search(MOUNT_WILDCARDS)))
     const pattern = path.relative(base, p)
+    // A hit that leaves the scan's base through a link is not what the
+    // pattern named: bwrap binds by the link's target, so `read: ['*']`
+    // over `shared -> ../b/src` bound project b readable, a read `'.'`
+    // never gives, and a cached task replayed b's old bytes (item 1006).
+    // The boundary is the directory holding the first wildcard component,
+    // not the scan's anchor: that sits one component higher.
+    const head = p.slice(0, p.search(MOUNT_WILDCARDS))
+    const home = toRealPath(head.endsWith('/') ? head.slice(0, -1) : path.dirname(head))
     let hits = 0
     for (const hit of new Bun.Glob(pattern).scanSync({ cwd: base, onlyFiles: false, dot: true })) {
-      out.push(path.join(base, hit))
+      const abs = path.join(base, hit)
+      const real = toRealPath(abs)
+      if (real !== home && !real.startsWith(home + path.sep)) continue
+      out.push(abs)
       hits++
     }
     if (hits === 0 && kind === 'write') writeGrantMatchedNothing(p)
