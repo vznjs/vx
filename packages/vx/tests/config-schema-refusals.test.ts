@@ -147,6 +147,12 @@ describe('task refusals the sweep found unheld (item 653)', () => {
         `${CFG}: tasks.t.cache.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
       )
     }
+    // Item 1090: a wildcard passed nothing through and loaded clean.
+    for (const n of ['VITE_*', 'A?', 'A{B,C}', 'A[B]']) {
+      expect(taskRefusal({ exec: { command: 'x', env: { passThrough: [n] } } })).toBe(
+        `${CFG}: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got ${JSON.stringify(n)}) — list explicit env var names instead`,
+      )
+    }
     // Controls: a name with no `=` or NUL, and a value holding `=`, pass.
     expect(define({ A_B: 'x=y' })).toBeNull()
     expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['A_B'] } } })).toBeNull()

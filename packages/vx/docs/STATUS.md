@@ -640,6 +640,19 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         over a workspace `.env`; without the flag it fails with
         `VX_DOTENV_PROBE=from-dotenv`.
 
+1090. DONE (2026-09-27, env review #3). `exec.env.passThrough:
+['VITE_*']` loaded clean and passed nothing through: the name is
+      read literally, and no environment holds `VITE_*`. Turbo's
+      `passThroughEnv` expands it, so a migrating user met a silent
+      no-op. `cache.inputs.env` already refused the same text. Now
+      `passThrough` refuses any `Bun.Glob` wildcard (`* ? [ ] { }`) with
+      the same message. The class is closed: `turbo()` already refused a
+      wildcard `passThroughEnv`, and `nx()`'s env inputs are exact names.
+      schema.md says so.
+      - Row: `config-schema-refusals.test.ts` › "an env name that no
+        environment can hold is refused in every list" gains the four
+        wildcard shapes, red without the change. `A_B` stays the control.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

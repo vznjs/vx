@@ -366,7 +366,7 @@ Semantics:
 
 ```ts
 interface ExecEnv {
-  passThrough?: string[] // names taken from host process.env
+  passThrough?: string[] // names taken from host process.env; exact names, a wildcard is refused
   define?: Record<string, string> // explicit name=value pairs
 }
 ```

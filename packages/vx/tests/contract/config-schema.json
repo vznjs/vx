@@ -642,8 +642,6 @@
           "[\"!x\"]",
           "[\"!!x\",\"y\"]",
           "[\".\"]",
-          "[\"**\"]",
-          "[\"A*\"]",
           "[\"CI\"]"
         ],
         "$CONFIG: tasks.t.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)": [
@@ -668,6 +666,12 @@
           "[\"A=B\"]",
           "{}",
           "{\"x\":\"y\"}"
+        ],
+        "$CONFIG: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got \"**\") — list explicit env var names instead": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got \"A*\") — list explicit env var names instead": [
+          "[\"A*\"]"
         ]
       },
       "tasks.*.exec.env.define": {
