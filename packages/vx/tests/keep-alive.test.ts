@@ -197,6 +197,14 @@ describe('a persistent server that dies before the run stops it', () => {
     })
   }, 20_000)
 
+  // Item 1102: a signal death printed the signal's name as its code.
+  it('a dependency-only server killed by a signal is named by its exit code', async () => {
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; kill -TERM $$'))
+    expect((await run(root, ['e2e'])).said).toEqual([
+      'vx: app#srv exited with code 143 before the run stopped it',
+    ])
+  }, 20_000)
+
   it('CONTROL: one that exits 0 on its own, and one the run stops, leave the run green', async () => {
     // The stopped server's own exit is the SIGTERM's (143): read after the
     // stop, it would fail every run that used a server.

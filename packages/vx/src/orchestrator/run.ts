@@ -872,8 +872,13 @@ async function runOnBus(
     for (const line of formatAbortedSection(list)) log.status(line)
     // And a dependency-only server that died before the end of the graph
     // stopped it: the footer counts it failed, this says why.
-    for (const c of crashedPersistent)
-      log.status(`vx: ${c.id} exited with code ${c.code} before the run stopped it`)
+    // A signal death is named as its exit code, as the keep-alive wait
+    // names it: `code SIGTERM` read beside `code 143` for one event (item
+    // 1102).
+    for (const c of crashedPersistent) {
+      const code = typeof c.code === 'number' ? c.code : signalExitCode(c.code)
+      log.status(`vx: ${c.id} exited with code ${code} before the run stopped it`)
+    }
     // The footer's "N skipped" names no task; this names each under the
     // failure that blocked it.
     for (const line of formatSkippedSection(list)) log.status(line)
