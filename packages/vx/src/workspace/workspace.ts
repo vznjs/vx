@@ -87,7 +87,11 @@ export async function findWorkspaceRoot(start: string, reads?: LoadReads): Promi
     }
     const parent = path.dirname(dir)
     if (parent === dir) break
-    below.push(dir)
+    // Only a directory holding a manifest can be a member: a glob that
+    // matched `packages/tools`, which has none, claimed the standalone
+    // package below it, and `packages/tools/standalone` ran as a stranger
+    // in a workspace that does not list it (item 989).
+    if (globs !== null) below.push(dir)
     dir = parent
   }
   if (nearest !== null) return nearest
