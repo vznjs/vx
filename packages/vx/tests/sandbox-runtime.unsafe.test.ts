@@ -2666,6 +2666,31 @@ describe('reportableViolations', () => {
       await rm(d, { recursive: true, force: true })
     }
   })
+
+  // B-2: both producers record the path where it LANDS, and `ignore` was
+  // anchored at the project directory as given. Under a workspace reached
+  // through a link (macOS's `/var` is `/private/var`) no relative pattern
+  // matched, and the denial it names failed the task.
+  it('matches an `ignore` pattern where the project lands through a link', async () => {
+    const d = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-ignore-link-')))
+    try {
+      await mkdir(path.join(d, 'proj', 'gen'), { recursive: true })
+      await symlink(path.join(d, 'proj'), path.join(d, 'alias'))
+      const alias = path.join(d, 'alias')
+      const produced = ['s.txt', 'gen/a.ts', 'abs.txt', 'kept.txt'].map((f) =>
+        linux(`${d}/proj/${f}`),
+      )
+      const cfg = resolveSandboxConfig(
+        { ignore: { read: ['s.txt', 'gen/*.ts', `${alias}/abs.txt`] } },
+        alias,
+      )
+      expect(lines(reportableViolations(produced, { within: alias, config: cfg }))).toEqual([
+        `openat(x) = -1 ENOENT  [${d}/proj/kept.txt]`,
+      ])
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
+  })
 })
 
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {

@@ -41,6 +41,7 @@ import {
   type RunResult,
 } from './runner.js'
 import {
+  BUN_GLOB_WILDCARDS,
   executablePath,
   grantPrefix,
   isTmpdirRefusal,
@@ -647,10 +648,19 @@ export function resolveSandboxConfig(
     r.weakerNetworkIsolation = cfg.weakerNetworkIsolation
   }
   if (cfg.ignore !== undefined) {
-    // Relative patterns anchor at the project dir; absolute and `~` ones
-    // are taken as written. NOT realpath'd — a pattern is not a path.
-    const anchor = (pat: string): string =>
-      pat.startsWith('~') || path.isAbsolute(pat) ? pat : path.join(projectDir, pat)
+    // Relative patterns anchor at the project dir; `~` ones are taken as
+    // written. A pattern is not a path, but its literal head is: both
+    // producers record where a denial LANDS, so the head is canonicalized
+    // like every other side of the policy. Anchored at a project reached
+    // through a link (macOS's `/var`), no pattern matched and the denial it
+    // named failed the task (B-2).
+    const anchor = (pat: string): string => {
+      if (pat.startsWith('~')) return pat
+      const abs = path.isAbsolute(pat) ? pat : path.join(projectDir, pat)
+      const wild = abs.search(BUN_GLOB_WILDCARDS)
+      const head = wild === -1 ? abs : abs.slice(0, abs.lastIndexOf(path.sep, wild)) || path.sep
+      return toRealPath(head) + abs.slice(head.length)
+    }
     r.ignore = {
       ...(cfg.ignore.read ? { read: cfg.ignore.read.map(anchor) } : {}),
       ...(cfg.ignore.write ? { write: cfg.ignore.write.map(anchor) } : {}),
