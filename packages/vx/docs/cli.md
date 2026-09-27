@@ -1964,7 +1964,9 @@ the workspace config from the cwd to find them (outside a workspace the
 verb is simply unknown). A plugin verb that names a core verb, or one
 two plugins both declare, is refused when the workspace loads — such a
 verb could never run, or would hide the other plugin's. A plugin verb's
-return value is the exit code, and a thrown `UserError` prints as
+return value is the exit code, an integer 0–255 (anything else — nothing,
+a fraction, 256, which the OS would keep as 0 — fails naming the plugin
+and the verb), and a thrown `UserError` prints as
 cleanly as core's own. `vx help` lists every plugin verb under "Plugin
 commands", with the plugin's name.
 

@@ -102,9 +102,35 @@ describe('plugin commands', () => {
       ]),
     )
     await expect(cli(['noret'])).rejects.toThrow(
-      "plugin 'org/forgetful': command 'noret' resolved undefined instead of an exit code",
+      "plugin 'org/forgetful': command 'noret' resolved undefined instead of an exit code (an integer 0–255)",
     )
     expect(await cli(['ok'])).toBe(0) // CONTROL: an integer passes through
+  })
+
+  // The OS keeps an exit status's low eight bits: `process.exitCode = 256`
+  // exits 0 (probed on Bun 1.4.2), so a verb returning a count of 256
+  // failures read as success, and -1 as 255.
+  it('a verb that resolves an integer past a byte fails instead of wrapping', async () => {
+    await writeFile(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/counts',
+          `{ commands: {
+          many: { description: 'returns a count', async run() { return 256 } },
+          below: { description: 'negative', async run() { return -1 } },
+          top: { description: 'control', async run() { return 255 } },
+        } }`,
+        ),
+      ]),
+    )
+    await expect(cli(['many'])).rejects.toThrow(
+      "plugin 'org/counts': command 'many' resolved 256 instead of an exit code (an integer 0–255)",
+    )
+    await expect(cli(['below'])).rejects.toThrow(
+      "plugin 'org/counts': command 'below' resolved -1 instead of an exit code (an integer 0–255)",
+    )
+    expect(await cli(['top'])).toBe(255) // CONTROL: the top of the range passes through
   })
 
   it('a plugin naming a core verb is refused on every verb, not silently never run', async () => {

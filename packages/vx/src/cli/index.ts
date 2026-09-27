@@ -79,10 +79,12 @@ export async function run(argv: readonly string[]): Promise<number> {
         const code = await resolved.command.run(rest, resolved.ctx)
         // A plugin is a boundary: a JS-authored verb that resolves nothing
         // would reach `process.exit(undefined)` and read as SUCCESS. A verb
-        // that cannot say whether it succeeded fails, naming its owner.
-        if (!Number.isInteger(code)) {
+        // that cannot say whether it succeeded fails, naming its owner. So
+        // does one past a byte: the OS keeps the low eight bits, and a verb
+        // that returned 256 (a count of failures, say) exited 0.
+        if (!Number.isInteger(code) || code < 0 || code > 255) {
           throw new UserError(
-            `plugin '${resolved.plugin.name}': command '${command}' resolved ${JSON.stringify(code)} instead of an exit code`,
+            `plugin '${resolved.plugin.name}': command '${command}' resolved ${JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
           )
         }
         return code
