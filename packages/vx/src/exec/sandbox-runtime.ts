@@ -633,6 +633,30 @@ export interface SandboxedRunResult extends RunResult {
 }
 
 /**
+ * The shell that gives a sandboxed task its OWN `JAVA_TOOL_OPTIONS`. When
+ * SRT restricts the network it sets the variable to its proxy agent's flag
+ * composed with VX'S value (`process.env`, read inside the wrap), over the
+ * one vx gave the task: a host value no layer passes reached the task, out
+ * of its key, and a changed host value replayed the old output; a task's
+ * own `define` never arrived (item 995). Where SRT left the variable alone
+ * it already holds the task's value and this is a no-op; elsewhere the
+ * host's value is cut out and the task's appended to what SRT added.
+ */
+function javaToolOptionsFix(host: string | undefined, task: string | undefined): string {
+  if (!host && !task) return ''
+  const cut = host
+    ? `__vx_h=${shellQuote(host)}; case "$__vx_j" in *"$__vx_h"*) __vx_j="\${__vx_j%%"$__vx_h"*}\${__vx_j#*"$__vx_h"}";; esac; `
+    : ''
+  const add = task ? `__vx_j="$__vx_j $__vx_t"; ` : ''
+  return (
+    `__vx_t=${shellQuote(task ?? '')}; __vx_j=\${JAVA_TOOL_OPTIONS-}; ` +
+    `if [ "$__vx_j" != "$__vx_t" ]; then ${cut}${add}` +
+    `case "$__vx_j" in *[![:space:]]*) export JAVA_TOOL_OPTIONS="$__vx_j";; *) unset JAVA_TOOL_OPTIONS;; esac; fi; ` +
+    `unset __vx_j __vx_h __vx_t; `
+  )
+}
+
+/**
  * The sandboxed form of a command: SRT's wrapper over the tagged command,
  * with vx's own seatbelt rules appended on macOS. This is the ENFORCEMENT
  * half of `runSandboxed`, shared with persistent tasks — a dev server is
@@ -641,7 +665,7 @@ export interface SandboxedRunResult extends RunResult {
  * exit). Returns the wrapped command and the tag the store keys by.
  */
 export async function wrapSandboxedCommand(
-  args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config'> &
+  args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config' | 'env'> &
     Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & {
       /** A persistent server: the sandbox outlives a run's reset until `releaseBridges(tag)`. */
       server?: boolean
@@ -665,7 +689,10 @@ export async function wrapSandboxedCommand(
   mkdirSync(tmp, { recursive: true })
   trackTaskTmpdir(tmp)
   // After the tag: SRT keys violations by the command's first 100 chars.
-  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${userCommand}`
+  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${javaToolOptionsFix(
+    process.env['JAVA_TOOL_OPTIONS'],
+    args.env['JAVA_TOOL_OPTIONS'],
+  )}${userCommand}`
   const taggedCommand = `: 'vx-${tag}'; ${inTmp}`
 
   const baselines = canonicalBaselines(args)

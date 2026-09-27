@@ -394,6 +394,24 @@ test is telling the truth.
         dependsOn entry of that form names, four refusals and eight
         controls. Red without the fix.
 
+995.  DONE (2026-09-27, the env-isolation review's lead 1). With the
+      network restricted, SRT sets a sandboxed task's `JAVA_TOOL_OPTIONS`
+      to its proxy agent's flag composed with the value in vx's own
+      environment. A host value no layer passes reached the task out of
+      its key, and a changed host value replayed the old output; a task's
+      own `define` of the name never arrived.
+      - Fix (`sandbox-runtime.ts`): the command's prefix cuts the host's
+        value out of what SRT set and appends the task's own; where SRT
+        left the variable alone it already holds the task's value and
+        the prefix changes nothing. A persistent task's wrap is given its
+        env too. `modules/sandbox-runtime.md` § The environment SRT sets
+        says so, and names the proxy, CA and git variables SRT sets over
+        a task's own (documented, not repaired: the sandbox's network
+        goes through SRT's proxy only).
+      - Row: `sandbox-runtime.unsafe.test.ts` › the host's value is cut
+        out and the task's own kept, with the agent flag asserted in both
+        values so SRT's path is proven to have run. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

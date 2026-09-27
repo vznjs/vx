@@ -425,7 +425,10 @@ exec: {
 }
 ```
 
-Anything outside these three layers is invisible to the child. This
+Anything outside these three layers is invisible to the child (a
+sandboxed task with a restricted network also gets the sandbox's own
+proxy, CA and `TMPDIR` values over these names:
+`modules/sandbox-runtime.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
 - **Cache stability.** If every host env var entered the key, every

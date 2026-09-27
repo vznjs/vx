@@ -1896,6 +1896,48 @@ describe.skipIf(!available)('the sandbox temp directory', () => {
   )
 })
 
+describe.skipIf(!available)("a sandboxed task's JAVA_TOOL_OPTIONS is its own", () => {
+  // SRT sets JAVA_TOOL_OPTIONS to its proxy agent's flag composed with the
+  // value in VX's environment, over the task's: a host value no layer
+  // passes reached the task out of its key (a changed one replayed the old
+  // output), and a task's own define never arrived (item 995). The agent
+  // flag in each value proves SRT's path ran, or both rows pass unasked.
+  it(
+    "the host's value is cut out and the task's own kept",
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-jto-' })
+      const previous = process.env['JAVA_TOOL_OPTIONS']
+      process.env['JAVA_TOOL_OPTIONS'] = '-Dhost.leak=1'
+      try {
+        const dir = await addProject(root, 'app', {
+          files: {},
+          config: `export default { tasks: {
+            bare: { exec: { command: 'printf "%s" "\${JAVA_TOOL_OPTIONS-unset}" > bare.txt', sandbox: { allow: { write: ['bare.txt'] } } } },
+            own: { exec: { command: 'printf "%s" "\${JAVA_TOOL_OPTIONS-unset}" > own.txt', env: { define: { JAVA_TOOL_OPTIONS: '-Xmx1g' } }, sandbox: { allow: { write: ['own.txt'] } } } },
+          } }`,
+        })
+        const fixture: Fixture = { root, log: [] }
+        expectOk(
+          await run({ cwd: root, tasks: ['bare', 'own'], log: collectingLogger(fixture) }),
+          fixture,
+        )
+        const bare = await readFile(path.join(dir, 'bare.txt'), 'utf8')
+        const own = await readFile(path.join(dir, 'own.txt'), 'utf8')
+        expect(bare).toContain('-javaagent:')
+        expect(own).toContain('-javaagent:')
+        expect(bare).not.toContain('host.leak')
+        expect(own).not.toContain('host.leak')
+        expect(own.split(/\s+/)).toContain('-Xmx1g')
+      } finally {
+        if (previous === undefined) delete process.env['JAVA_TOOL_OPTIONS']
+        else process.env['JAVA_TOOL_OPTIONS'] = previous
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe.skipIf(!available)("a task's temp directory is its own", () => {
   // SRT points every sandboxed task at one host directory, bound read-write
   // and kept across runs: a file one task wrote in $TMPDIR was the next
@@ -3918,6 +3960,7 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
       await wrapSandboxedCommand({
         command: 'true',
         cwd: dir,
+        env: {},
         config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
         baseAllowRead: [],
         baseDenyRead: [],

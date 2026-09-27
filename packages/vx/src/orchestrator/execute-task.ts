@@ -292,6 +292,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
+      env,
       ...sb.sandbox,
       server: true,
     })
