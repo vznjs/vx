@@ -79,6 +79,17 @@ what makes it true since A-3 (an artifact lands by rename inside its
 rows' transaction, across workspaces sharing one `--cache-dir` too).
 Row: `dry-json-stdout.test.ts` (red without the change).
 
+## C-7: hold the scheduler's lanes, settles and refusal hint
+
+A mutation sweep of `scheduler.ts` and `admission.ts` (80 mutants, 55
+caught) left five scheduler paths no row held, each red under its
+mutant now: the local lane past its concurrency under an `admit`
+policy (at two slots: at one the serial lane answers first), a pooled
+task waiting behind a full local lane, pooled ids in `admit`'s running
+set, a rejected settle promise hanging `runGraph`, and a file-system
+refusal from `execute` printed as an internal error. The sweep's
+restore-tier findings are C-1's rows; admission's taint and dedup held.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -96,7 +107,7 @@ Row: `dry-json-stdout.test.ts` (red without the change).
   ancestor prefix, root project, every dependant, transitive dependants)
   hold no row.
 - **B:** `sandbox-usage.unsafe.test.ts` › "is not reported, since what
-  bwrap's namespace used never reaches the wait" failed two of two full
+  bwrap's namespace used never reaches the wait" failed three of three full
   gates on a timing floor (`>= 300`, got 246 ms), green alone.
 - **F:** `wedged.test.ts` RST_STREAM rows raced (`sent: 0`) under gate
   load twice.

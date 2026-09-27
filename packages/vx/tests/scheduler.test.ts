@@ -1748,3 +1748,99 @@ describe('a throwing observer never breaks the run, and never does it silently',
     expect(notices[0]).toContain('p#a')
   })
 })
+
+// A mutation sweep of scheduler.ts (C-7) found these held by no row.
+describe('runGraph — lanes, settles and refusals the sweep found unheld', () => {
+  const peak = async (opts: Partial<Parameters<typeof runGraph>[0]>): Promise<number> => {
+    let cur = 0
+    let max = 0
+    await runGraph({
+      nodes: nodes(node('a#x'), node('b#x'), node('c#x')),
+      concurrency: 1,
+      execute: async (n) => {
+        cur++
+        max = Math.max(max, cur)
+        await new Promise((r) => setTimeout(r, 20))
+        cur--
+        return success(n)
+      },
+      ...opts,
+    })
+    return max
+  }
+
+  it('an admit policy never lets the local lane past its concurrency', async () => {
+    // Two slots and four tasks: at one slot the serial lane answers first.
+    expect(
+      await peak({
+        nodes: nodes(node('a#x'), node('b#x'), node('c#x'), node('d#x')),
+        concurrency: 2,
+        admit: () => true,
+      }),
+    ).toBe(2)
+    expect(await peak({ admit: () => true })).toBe(1)
+  })
+
+  it('a pooled task runs beside a full local lane, which still holds its one slot', async () => {
+    expect(
+      await peak({ poolOf: (id) => (id === 'c#x' ? { name: 'r', capacity: 4 } : undefined) }),
+    ).toBe(2)
+  })
+
+  it("an admit policy's running set holds only local exec-tier tasks", async () => {
+    const seen: string[][] = []
+    await runGraph({
+      nodes: nodes(node('r#x'), node('p#x'), node('l#x'), node('l#y')),
+      concurrency: 1,
+      restoreTier: new Set(['r#x']),
+      poolOf: (id) => (id === 'p#x' ? { name: 'q', capacity: 2 } : undefined),
+      admit: (_id, running) => {
+        seen.push([...running])
+        return true
+      },
+      execute: async (n) => {
+        await new Promise((r) => setTimeout(r, 20))
+        return n.id === 'r#x' ? { ...success(n), status: 'cache-hit' } : success(n)
+      },
+    })
+    expect(seen.flat().filter((id) => id !== 'l#x' && id !== 'l#y')).toEqual([])
+  })
+
+  it('a settle promise that rejects still ends the run with every outcome', async () => {
+    const out = await Promise.race([
+      runGraph({
+        nodes: nodes(node('a#x'), node('b#x', ['a#x'])),
+        concurrency: 2,
+        settledOf: () => Promise.reject(new Error('save lane lost')),
+        execute: async (n) => success(n),
+      }).then((m) => [...m.keys()].sort()),
+      new Promise((r) => setTimeout(() => r('hung'), 2_000)),
+    ])
+    expect(out).toEqual(['a#x', 'b#x'])
+  })
+
+  it('a file-system refusal thrown by execute names the path and the fix, not an internal error', async () => {
+    const err = Object.assign(new Error('EACCES: permission denied, open /x'), {
+      code: 'EACCES',
+      path: '/x',
+      syscall: 'open',
+    })
+    const write = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      const out = await runGraph({
+        nodes: nodes(node('a#x')),
+        concurrency: 1,
+        execute: async () => {
+          throw err
+        },
+      })
+      expect(out.get('a#x')?.status).toBe('failed')
+      const said = write.mock.calls.map((c) => String(c[0])).join('')
+      expect(said).toBe(
+        '[vx] a#x: EACCES: permission denied, open /x — a path vx must write is not writable by this user\n',
+      )
+    } finally {
+      write.mockRestore()
+    }
+  })
+})
