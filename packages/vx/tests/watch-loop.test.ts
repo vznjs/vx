@@ -157,6 +157,15 @@ describe('vx watch loop (e2e)', () => {
     // the cycle, so it is the run's, not an edit (the pid-file loop's rule,
     // `watch-loop-selfwrite.test.ts`).
     expect(w.cycles()).toBe(1)
+
+    // An edit AFTER that cycle ended is the user's again: "written during
+    // the last cycle" is bounded by the cycle's end as well as its start.
+    // Without the end bound every later write read as the run's own, and
+    // this second edit re-ran nothing (E-20; the row above made one edit
+    // only, before any cycle had run).
+    await writeFile(path.join(f.dir, '.env.local'), 'A=3\n')
+    await until(async () => (await executions(f.log)) === 3, 'the re-run after a second edit')
+    expect(await readFile(path.join(f.dir, 'shown.txt'), 'utf8')).toBe('A=3\n')
   }, 40_000)
 
   it('a shared preset outside the project is watched, and its edit re-runs under it (item 949)', async () => {
