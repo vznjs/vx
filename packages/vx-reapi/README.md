@@ -5,6 +5,10 @@ A vx **remote cache** backed by any server speaking Bazel's
 BuildBuddy, Buildbarn, bazel-remote. Six mature server implementations, none of
 which we had to write, because a REAPI server is deliberately dumb.
 
+```sh
+npm install -D @vzn/vx @vzn/vx-reapi   # or: pnpm add -D · yarn add -D · bun add -d
+```
+
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'

@@ -7,6 +7,10 @@ Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo 
 - **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json` or an exported Nx project graph, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
+```sh
+npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D · yarn add -D · bun add -d
+```
+
 ```ts
 // vx.workspace.ts — a Turbo repo, unchanged, with its remote cache
 import { defineWorkspace } from '@vzn/vx'
