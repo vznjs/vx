@@ -13,6 +13,7 @@ import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-works
 import { gitInitCommit } from './helpers/workspace.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { run } from '../src/index.js'
+import { invocationCommand } from '../src/orchestrator/run.js'
 import { busLogger, createEventBus } from '../src/orchestrator/events.js'
 import {
   assembleRunSummary,
@@ -893,6 +894,57 @@ describe('telemetry — end-to-end through run()', () => {
       expect(rec.run.workspaceId).toMatch(/^[0-9a-f]{16}$/)
       expect(rec.run.workspaceName.length).toBeGreaterThan(0)
     } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true })
+    }
+  })
+  // What follows `--` is the task's arguments, often a token, and the
+  // command line reached an OTLP span, the job summary and a check-run
+  // verbatim (item 1057). It is counted, not quoted, in what sinks receive.
+  it('a sink never receives what follows `--` on the command line', async () => {
+    expect(invocationCommand(['vx', 'run', 'build', '--', '--token=S', 'x'])).toBe(
+      'vx run build -- <2 arguments>',
+    )
+    expect(invocationCommand(['vx', 'run', 'build'])).toBe('vx run build')
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-telemetry-argv-'))
+    const argv = process.argv
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'package.json'),
+        JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/package.json'),
+        JSON.stringify({ name: 'pkg-a' }),
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
+      )
+      await writeLocalWorkspace(workspaceRoot)
+      gitInitCommit(workspaceRoot)
+      process.argv = [argv[0]!, 'vx', 'run', 'hello', '--', '--token=SECRET123']
+      const seen: string[] = []
+      await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+        telemetrySinks: [
+          {
+            onRecord: (r) => void seen.push(JSON.stringify(r)),
+            onRunSummary: (s) => void seen.push(JSON.stringify(s)),
+          },
+        ],
+      })
+      process.argv = argv
+      expect(seen.length).toBeGreaterThan(1)
+      expect(seen.filter((r) => r.includes('SECRET123'))).toEqual([])
+      expect(seen.filter((r) => r.includes('vx run hello -- <1 argument>')).length).toBeGreaterThan(
+        1,
+      )
+    } finally {
+      process.argv = argv
       rmSync(workspaceRoot, { recursive: true, force: true })
     }
   })

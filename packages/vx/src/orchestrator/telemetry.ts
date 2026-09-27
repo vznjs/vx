@@ -107,7 +107,7 @@ export interface RunContextRecord {
   /** ULID, shared by every record in one `vx run`. */
   runId: string
   vxVersion: string
-  /** The invocation command line (process.argv-derived). */
+  /** The invocation command line (process.argv-derived), what follows `--` counted, not quoted. */
   command: string
   requestedTasks: readonly string[]
   /** Compact cache-policy flags, e.g. `'lR,lW,rR,rW'`. */

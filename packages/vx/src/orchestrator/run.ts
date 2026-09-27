@@ -173,6 +173,20 @@ export function shouldShortCircuit(
   return nodes.size > 0
 }
 
+/**
+ * The command line a run hands to its telemetry sinks, with what follows
+ * `--` counted, not quoted. Those are the task's arguments,
+ * often a token (`-- --token=…`), and the line reached an OTLP span, the
+ * GitHub job summary and a check-run posted over the API verbatim (item
+ * 1057). Local history (`vx last`) keeps the whole line, on this machine.
+ */
+export function invocationCommand(argv: readonly string[]): string {
+  const sep = argv.indexOf('--')
+  if (sep === -1) return argv.join(' ')
+  const rest = argv.length - sep - 1
+  return [...argv.slice(0, sep), '--', `<${rest} argument${rest === 1 ? '' : 's'}>`].join(' ')
+}
+
 export async function run(options: RunOptions): Promise<RunSummary> {
   // Color decision: a custom logger (tests, embedders) handles its
   // own formatting and asserts on plain strings, so we suppress
@@ -566,7 +580,7 @@ async function runOnBus(
       runContextRecord = {
         runId,
         vxVersion: VERSION,
-        command: options.command ?? process.argv.slice(1).join(' '),
+        command: options.command ?? invocationCommand(process.argv.slice(1)),
         requestedTasks: [...options.tasks],
         cachePolicy: compactCachePolicy(policy),
         concurrency,
