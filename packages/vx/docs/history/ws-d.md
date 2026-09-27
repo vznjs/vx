@@ -79,3 +79,6 @@ run leaves out; the rest are refusals.
   byte-identical `bun.lock`, so a build relying on a hoisted undeclared
   package kept its hit. Row: `tests/fingerprint.test.ts` "an install
   setting that leaves the lockfile byte-identical moves the digest (D-7)".
+- **D-8** `MigrationPlan.notes` named "implicit Nx deps" as its example,
+  a note G-7 removed; it names the Turbo mapper's, the one source that
+  still writes it (coordinator's lead).

@@ -101,7 +101,7 @@ export interface MigrationPlan {
   projects: GeneratedProject[]
   /** extra root-relative files (e.g. the preset) */
   extraFiles: { relPath: string; contents: string }[]
-  /** trailing report lines (e.g. implicit Nx deps) */
+  /** trailing report lines (e.g. what a turbo.json holds that vx has no place for) */
   notes: string[]
 }
 
