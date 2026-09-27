@@ -38,6 +38,7 @@ import {
   listProjects,
   loadProjectConfig,
   loadWorkspace,
+  LOCKFILE_NAME,
   memberBaseDirs,
   PROJECT_CONFIG_FILENAMES,
   WORKSPACE_CONFIG_FILENAMES,
@@ -546,7 +547,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         packageDirs: new Set(all.map((p) => p.dir)),
       }
     },
-    claimedRootFiles: new Set(fingerprintClaims(ws.plugins).keys()),
+    // Under --frozen every cycle's configs are the lock's, so a re-lock is
+    // the one edit that changes what a cycle runs; unheard, the loop ran
+    // the old lock until a restart (item 971).
+    claimedRootFiles: new Set([
+      ...fingerprintClaims(ws.plugins).keys(),
+      ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
+    ]),
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir: opts.cacheDir ?? ws.cacheDir,
   })
@@ -1151,7 +1158,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           // / .git / .vx and declared outputs out of what remains.
           arm(workspaceRoot, true, (filename) => {
             if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
-            if (shapesWatchedSet(filename)) reread = true
+            if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
             trigger(`root ${filename}`, path.join(workspaceRoot, filename))
           })
         : // The root itself, non-recursive, beside the per-project arms, so
@@ -1163,7 +1170,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
               isWorkspaceConfigFile(filename) ||
               args.claimedRootFiles.has(filename)
             ) {
-              if (shapesWatchedSet(filename)) reread = true
+              if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
               trigger(`root ${filename}`, path.join(workspaceRoot, filename))
             }
           })

@@ -58,6 +58,32 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
+  it('under --frozen a re-lock re-runs, and a config edit alone does not change the command (item 971)', async () => {
+    const lock = () => {
+      const r = Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: f.root, stderr: 'pipe' })
+      if (r.exitCode !== 0) throw new Error(`vx lock: ${r.stderr.toString()}`)
+    }
+    lock()
+    f.watch = startWatch(f.root, ['--all', '--frozen'])
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    // The config's command changes; the lock still holds the old one, so
+    // the cycle this edit starts is a hit and executes nothing.
+    const config = path.join(f.dir, 'vx.config.mjs')
+    const before = await readFile(config, 'utf8')
+    await writeFile(config, before.replace('cat src/*.txt', 'cat src/*.txt src/*.txt'))
+    await until(() => w.cycles() === 1, 'the cycle the config edit starts')
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(f.log)).toBe(1)
+
+    // The re-lock is the edit that changes what a frozen cycle runs.
+    lock()
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
+    expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\na1\n')
+  }, 40_000)
+
   it('another task declaring an input as its output does not hide the input (item 946)', async () => {
     // An in-place formatter declares `src/**` as its outputs; the watch
     // ignore folded every task's outputs, so `build`'s `src` edits were

@@ -774,6 +774,17 @@ test is telling the truth.
       the workspace it would outlive a reboot, and off Linux an entry
       names no start time, so a reused pid would read as a live holder
       forever.
+971.  DONE (2026-09-27, the `vx lock` review's lead 2). Under
+      `vx watch --frozen` every cycle loads configs from `vx-lock.json`,
+      and no watcher heard the lock: a re-lock ran the old configs until a
+      restart.
+      - Fix (`watch.ts`): under `--frozen` the lock is a root file the
+        loop listens for, beside a plugin's claims, and its edit re-reads
+        the watched set. `cli.md` says so.
+      - Row: `watch-loop.test.ts` › under --frozen a re-lock re-runs. A
+        config edit first starts a hit cycle that executes nothing; then
+        `vx lock` must run the new command. Red without the fix (timed
+        out waiting for the re-run).
 
 ## In flight
 
