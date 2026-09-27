@@ -136,6 +136,38 @@ describe('turbo-map: what the sweep found unheld', () => {
     })
   })
 
+  // Item 938: Turbo 2.5+ reads `turbo.jsonc`. Only `turbo.json` was
+  // looked for: a `.jsonc` root failed the run (ENOENT), and a package's
+  // `.jsonc` overlay was skipped in silence, so its `inputs` keyed nothing.
+  it('reads `turbo.jsonc` at the root and in a package', async () => {
+    await writeFile(
+      path.join(root, 'turbo.jsonc'),
+      '{ // Turbo 2.5+\n "tasks": { "build": { "inputs": ["src/**"] } } }',
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, 'turbo.jsonc'),
+      '{ "extends": ["//"], "tasks": { "build": { "inputs": ["$TURBO_EXTENDS$", "config.json"] } } }',
+    )
+    const m = await mapTurboWorkspace(
+      root,
+      [
+        {
+          name: 'a',
+          dir,
+          packageJson: { name: 'a', scripts: { build: 'b' } } as never,
+          configPath: null,
+        },
+      ],
+      opts,
+    )
+    const t = m.projects[0]!.tasks[0]!
+    expect((t.task!['cache'] as { inputs: unknown }).inputs).toEqual({
+      files: ['src/**', 'config.json'],
+    })
+  })
+
   it('two tasks on one output path: the second runs uncached', async () => {
     const m = await map(
       { tasks: { build: { outputs: ['dist/**'] }, bundle: { outputs: ['dist/**'] } } },

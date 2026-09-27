@@ -17,7 +17,7 @@ export default defineWorkspace({ plugins: [turboCache(), turbo()] })
 
 ## `turbo()` — run a Turbo repo unchanged
 
-Then `vx run build --all` runs every package's `build` script the way `turbo run build` would: `dependsOn` edges (`^build`, same-package deps, `pkg#task`), `inputs` / `outputs` as the cache block, `env` / `passThroughEnv`, `cache: false`, `persistent`. Turbo's global fields (`globalDependencies`, `globalEnv`, `globalPassThroughEnv`, Turbo 1's `globalDotEnv`) are inlined into every task, a wildcard env name among them reported once and left out; per-package `turbo.json` overlays apply. What runs is what a migration would have written, minus the file: the key a task derives here equals the key the written config would derive.
+Then `vx run build --all` runs every package's `build` script the way `turbo run build` would: `dependsOn` edges (`^build`, same-package deps, `pkg#task`), `inputs` / `outputs` as the cache block, `env` / `passThroughEnv`, `cache: false`, `persistent`. Turbo's global fields (`globalDependencies`, `globalEnv`, `globalPassThroughEnv`, Turbo 1's `globalDotEnv`) are inlined into every task, a wildcard env name among them reported once and left out; per-package `turbo.json` overlays apply. A `turbo.jsonc` (Turbo 2.5+) is read wherever a `turbo.json` would be, at the root and in a package. What runs is what a migration would have written, minus the file: the key a task derives here equals the key the written config would derive.
 
 | Option | Meaning                                                         |
 | ------ | --------------------------------------------------------------- |

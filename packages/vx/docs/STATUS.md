@@ -184,6 +184,19 @@ test is telling the truth.
       - Rows: `turbo-map-sweep.test.ts` › a global env wildcard is a note,
         and turbo 1's `globalDotEnv` and task `dotEnv` key the task. Each
         is red without the fix.
+938.  DONE (2026-09-27, the turbo() review's lead 4). Turbo 2.5+ reads
+      `turbo.jsonc` too, but only `turbo.json` was looked for.
+      - A `turbo.jsonc` root failed the `turbo()` run with ENOENT.
+      - A package's `turbo.jsonc` overlay was skipped in silence, so the
+        inputs it added keyed nothing: a stale hit.
+      - `bunx @vzn/vx-migrate` said there was nothing to migrate, and
+        `vx init` did not name the file.
+      - The mapper, the migrate CLI and `vx init` now take `turbo.json`,
+        else `turbo.jsonc`. The README says so.
+      - Rows: `turbo-map-sweep.test.ts` (root and package `.jsonc`),
+        `migrate.test.ts` (a `.jsonc` root migrates, named as it is), and
+        `init.test.ts` (the note names `turbo.jsonc`). Each is red without
+        the fix.
 
 ## In flight
 

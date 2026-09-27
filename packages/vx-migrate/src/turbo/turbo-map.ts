@@ -99,6 +99,20 @@ export interface MapTurboOptions {
   persistentTodo: string
 }
 
+/**
+ * A directory's Turbo config: `turbo.json`, else `turbo.jsonc` (Turbo 2.5+
+ * reads either). Only `turbo.json` was looked for, so a `turbo.jsonc` root
+ * failed the run with ENOENT and a package's `turbo.jsonc` overlay was
+ * skipped in silence — its `inputs` then keyed nothing (item 938).
+ */
+export async function turboConfigFile(dir: string): Promise<string | null> {
+  for (const name of ['turbo.json', 'turbo.jsonc']) {
+    const file = path.join(dir, name)
+    if (await Bun.file(file).exists()) return file
+  }
+  return null
+}
+
 async function readTurboJson(file: string, root: string): Promise<TurboJson> {
   const text = await Bun.file(file).text()
   try {
@@ -190,7 +204,10 @@ export async function mapTurboWorkspace(
   metas: readonly ProjectMeta[],
   opts: MapTurboOptions,
 ): Promise<TurboMapping> {
-  const rootCfg = await readTurboJson(path.join(root, 'turbo.json'), root)
+  const rootCfg = await readTurboJson(
+    (await turboConfigFile(root)) ?? path.join(root, 'turbo.json'),
+    root,
+  )
   const rootTasks = tasksOf(rootCfg)
 
   // Turbo 1 lists an env var as `$NAME` among `globalDependencies` (and a
@@ -228,8 +245,8 @@ export async function mapTurboWorkspace(
 
   const pkgTasksByName = new Map<string, Record<string, TurboTask>>()
   for (const meta of metas) {
-    const file = path.join(meta.dir, 'turbo.json')
-    if (await Bun.file(file).exists()) {
+    const file = await turboConfigFile(meta.dir)
+    if (file !== null) {
       pkgTasksByName.set(meta.name, tasksOf(await readTurboJson(file, root)))
     }
   }

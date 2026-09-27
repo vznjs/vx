@@ -954,6 +954,25 @@ describe('vx migrate (turbo) — unusable package.json scripts', () => {
 
 describe('vx migrate source detection', () => {
   it(
+    'a `turbo.jsonc` root is a Turbo source, named as it is (Turbo 2.5+, item 938)',
+    async () => {
+      const root = await makeRoot('vx-migrate-jsonc-')
+      try {
+        await writeFile(path.join(root, 'turbo.jsonc'), '{ // comment\n "tasks": { "build": {} } }')
+        await addPackage(root, 'app', { build: 'tsc' })
+        const r = await vx(root, [])
+        expect(r.code).toBe(0)
+        const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+        expect(config.tasks!.build!.exec?.command).toBe('tsc')
+        expect(`${r.out}${r.err}`).toContain('vx-migrate: turbo.jsonc → vx.config.ts')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'nx.json without the graph file tells the user how to generate it',
     async () => {
       const root = await makeRoot('vx-migrate-det1-')

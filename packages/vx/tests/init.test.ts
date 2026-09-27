@@ -407,6 +407,20 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('names a turbo.jsonc it did not read (Turbo 2.5+, item 938)', async () => {
+    const root = await makeScriptsWorkspace()
+    try {
+      await Bun.write(path.join(root, 'turbo.jsonc'), '{ "tasks": { "build": {} } }\n')
+      const r = await vx(root, ['init'])
+      expect(r.code).toBe(0)
+      expect(`${r.out}${r.err}`).toContain(
+        'note: turbo.jsonc found and not read — `bunx @vzn/vx-migrate` maps it',
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('names a turbo.json it did not read, with both ways to use it', async () => {
     // `init` maps scripts only; on a Turbo repo it used to generate the
     // scripts' TODOs and say nothing about the edges turbo.json declares.
