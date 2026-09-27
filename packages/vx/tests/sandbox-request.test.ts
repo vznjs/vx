@@ -362,6 +362,26 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
     },
   )
 
+  // The sweep of sandbox-binds.ts (B-7): `punchWalls` could lose the
+  // separator in its "under" test with the suite green. A wall that only
+  // shares a grant's name prefix is not under it, and the grant stays whole.
+  it.skipIf(process.platform !== 'linux')(
+    'a wall sharing a grant’s name prefix does not punch it',
+    async () => {
+      await walled()
+      await mkdir(path.join(root, 'packages/c/src'), { recursive: true })
+      await mkdir(path.join(root, 'packages/c-docs'), { recursive: true })
+      const r = await sandboxRequestFor(
+        rootNode(),
+        { allow: { read: ['packages/c'] } },
+        root,
+        undefined,
+        [path.join(root, 'packages/c-docs')],
+      )
+      expect(r.sandbox.config.allowRead).toEqual([path.join(root, 'packages/c')])
+    },
+  )
+
   it('CONTROL: a leaf project, and a grant naming a wall on purpose, stay whole', async () => {
     await walled()
     const leaf = await sandboxRequestFor(

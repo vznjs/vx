@@ -984,6 +984,45 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   }
 }
 
+/** The records collected for the commands running, by SRT's key for each. */
+const collecting = new Map<string, SandboxViolation[]>()
+let collectorOn = false
+
+/**
+ * Start collecting SRT's store records for `command`; the returned function
+ * stops and hands them over. The store is a 100-record ring the whole run
+ * shares, and on Linux its write observer reports every write any task
+ * makes, so a refused write followed by 150 declared ones was gone before
+ * the task's exit read it (B-7). One subscription takes each record as it
+ * arrives and keeps it only for a command still running. SRT keys a record
+ * by the base64 of the command's first 100 characters
+ * (`encodeSandboxedCommand`, not exported).
+ */
+function collectRecords(
+  store: ReturnType<SrtModule['SandboxManager']['getSandboxViolationStore']>,
+  command: string,
+): () => SandboxViolation[] {
+  if (!collectorOn) {
+    collectorOn = true
+    let seen = store.getTotalCount()
+    store.subscribe((all) => {
+      const total = store.getTotalCount()
+      const fresh = Math.min(total - seen, all.length)
+      seen = total
+      for (const v of fresh > 0 ? all.slice(-fresh) : []) {
+        collecting.get(v.encodedCommand ?? '')?.push({ line: v.line, timestamp: v.timestamp })
+      }
+    })
+  }
+  const key = Buffer.from(command.slice(0, 100)).toString('base64')
+  const list: SandboxViolation[] = []
+  collecting.set(key, list)
+  return () => {
+    collecting.delete(key)
+    return list
+  }
+}
+
 /** strace's own message, as the last line a failed traced task printed. */
 const STRACE_OWN_ERROR = /^strace: /
 
@@ -1001,12 +1040,11 @@ async function runSandboxedOnce(
 ): Promise<SandboxedRunResult & { tracerFailed: boolean }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
-  const { wrapped, tag, taggedCommand, srtCommand, baselines, forwardsSignals } =
-    await wrapSandboxedCommand(args)
+  const { wrapped, tag, srtCommand, baselines, forwardsSignals } = await wrapSandboxedCommand(args)
+  const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
 
-  // Linux: SRT's SandboxViolationStore is macOS-only, so structured
-  // detection on Linux requires us to wrap the spawn with strace and
-  // parse the trace for denied syscalls. The trace is per-task (unique
+  // Linux: SRT's store sees only writes (below), so read denials need
+  // the spawn wrapped with strace and the trace parsed for denied syscalls. The trace is per-task (unique
   // log path keyed by the command tag) so parallel tasks don't share
   // a stream. Skipped when strace isn't on PATH — bwrap still enforces
   // structurally; we just lose the structured violation list.
@@ -1066,6 +1104,7 @@ async function runSandboxedOnce(
     const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
     args.onStderr?.(stderr)
     releaseBridges(tag)
+    takeRecords()
     return {
       exitCode: 127,
       durationMs: Date.now() - start,
@@ -1128,16 +1167,11 @@ async function runSandboxedOnce(
   // DROPPED by the unified log under pressure, not delayed. Reporting on
   // macOS is therefore lossy-by-OS under load; ENFORCEMENT is unaffected
   // (every observed loss still denied the read and failed the child).
-  const store = SandboxManager.getSandboxViolationStore()
-  // EVERY record the store holds for this command, unfiltered (owner,
+  // EVERY record SRT's store saw for this command, unfiltered (owner,
   // 2026-09-05). A sandboxed task that fails must say what it was denied;
   // deciding on the user's behalf that a record was "just traversal" is how
   // a failure ends up with an empty violations section and no explanation.
-  const readMacViolations = (): SandboxViolation[] =>
-    store.getViolationsForCommand(taggedCommand).map((v) => ({
-      line: v.line,
-      timestamp: v.timestamp,
-    }))
+  const records = takeRecords()
   // Read as is on darwin only. Since SRT 0.0.75 the store is fed on Linux
   // too, by the seccomp helper's write observer — but SRT judges those
   // reports against the GLOBAL `filesystem.allowWrite` from `initialize`
@@ -1147,7 +1181,7 @@ async function runSandboxedOnce(
   // task (reproduced 2026-09-04 in a Linux container: exit 1, empty
   // stderr). On Linux the records are judged against the task's own binds
   // below (`refusedWrites`).
-  let macViolations = process.platform === 'darwin' ? readMacViolations() : []
+  const macViolations = process.platform === 'darwin' ? records : []
   // No settle window: the store is read once, right after the child exits
   // (owner, 2026-09-05). It cost 300ms on EVERY clean sandboxed task — the
   // full budget, since a task with nothing to report can only prove that by
@@ -1179,7 +1213,7 @@ async function runSandboxedOnce(
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
             // included, not by the tagged command macOS is keyed by.
-            store.getViolationsForCommand(srtCommand).map((v) => v.line),
+            records.map((v) => v.line),
             bindableWrites(args.config.allowWrite),
           ),
         ]
