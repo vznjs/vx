@@ -89,6 +89,17 @@ function unheld(markdown: string, read: (file: string) => string | null): string
     if (row.verdict === 'covered' && row.cites.length === 0) {
       out.push(`${row.line}: covered cites nothing`)
     }
+    // A limit is documented or it is a bug: its verdict names the page and
+    // the heading that states it, and both must exist.
+    if (row.verdict.startsWith('open (limit')) {
+      const m = /^open \(limit: (\S+\.md) § (.+)\)$/.exec(row.verdict)
+      const page = m === null ? null : read(m[1]!)
+      const heading =
+        m === null ? null : new RegExp(`^#+ ${m[2]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm')
+      if (page === null || !heading!.test(page)) {
+        out.push(`${row.line}: limit names no heading: ${row.verdict}`)
+      }
+    }
     for (const { file, title } of row.cites) {
       if (!titles.has(file)) {
         const source = read(file)
@@ -127,9 +138,7 @@ describe('docs/upstream-ledger.md', () => {
           .replace(/^open \(.+\)$/, 'open (id)'),
       ),
     )
-    // No row is open since item 860 took the last one: an `open (id)` row
-    // added later belongs in this set too.
-    expect([...verdicts].sort()).toEqual(['covered', 'fixed-in-item-N', 'n/a'])
+    expect([...verdicts].sort()).toEqual(['covered', 'fixed-in-item-N', 'n/a', 'open (id)'])
   })
 
   // The law's own control: each way a citation can rot is caught.
@@ -139,7 +148,8 @@ describe('docs/upstream-ledger.md', () => {
       'it(`built ${"from"} a template`, () => {})',
       "test.skipIf(false)('an \\u2019escaped\\u2019 title', () => {})",
     ].join('\n')
-    const read = (file: string) => (file === 'x/a.test.ts' ? src : null)
+    const read = (file: string) =>
+      file === 'x/a.test.ts' ? src : file === 'x/doc.md' ? '# Page\n\n## Held\n' : null
     const table = [
       '| issue | class | verdict | vx test | note |',
       '| --- | --- | --- | --- | --- |',
@@ -149,12 +159,17 @@ describe('docs/upstream-ledger.md', () => {
       '| [d] | c | covered | `x/a.test.ts` › "built from a template" |  |',
       '| [e] | c | covered |  |  |',
       '| [f] | c | n/a |  | why |',
+      '| [g] | c | open (limit: x/doc.md § Held) |  | why |',
+      '| [h] | c | open (limit: x/doc.md § Gone) |  | why |',
+      '| [i] | c | open (limit: undocumented) |  | why |',
     ].join('\n')
     expect(unheld(table, read)).toEqual([
       '4: x/a.test.ts › "a real titel"',
       '5: no such file: x/b.test.ts',
       '6: x/a.test.ts › "built from a template"',
       '7: covered cites nothing',
+      '10: limit names no heading: open (limit: x/doc.md § Gone)',
+      '11: limit names no heading: open (limit: undocumented)',
     ])
   })
 })
