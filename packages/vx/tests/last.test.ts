@@ -237,6 +237,13 @@ describe('vx last (e2e)', () => {
       const parsed = JSON.parse(r.out) as { invocation: { runId: string }; tasks: unknown[] }
       expect(parsed.invocation.runId.length).toBeGreaterThan(0)
       expect(parsed.tasks.length).toBeGreaterThan(0)
+      // `--list --format json` is an array of that same invocation object,
+      // newest first: the replay's invocation is the list's first row,
+      // field for field (docs/cli.md says so).
+      const list = JSON.parse((await vx(root, ['last', '--list', '--format', 'json'])).out) as {
+        runId: string
+      }[]
+      expect(list[0]).toEqual(parsed.invocation)
     },
     TIMEOUT,
   )

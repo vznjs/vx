@@ -1930,7 +1930,8 @@ a hit's row tells. `--format json` lists every row.
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids (`--list 5` and `--list=5` alike); `vx last <runId>` replays a
 specific one, and the two do not combine. `--format json`
-emits `{ invocation, tasks }` for scripting. An unknown run id fails
+emits `{ invocation, tasks }` for scripting, and `--list --format json`
+an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`.
 
 `vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache

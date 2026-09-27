@@ -143,3 +143,19 @@ task picked`; neither prints a stack. Row in
   `wholeSubtreePrefixes`, and an entry folding to nothing (`./`) kept
   by `asTrees` as `''` plus `/**`. Rows in `tests/output-dirs.test.ts`
   and `tests/util-paths.test.ts`.
+- E-19 — `vx watch`'s poller (the fallback on a macOS sandbox, a network
+  mount, a bind, or `VX_WATCH_POLL=1`) compared mtime alone, so a
+  replacement carrying the old mtime (`cp -p`, `rsync -a`, a `mv`) was
+  no edit to it while the OS watcher saw the rename. It samples the
+  later of mtime and ctime, as `modifiedBefore` does since item 945.
+  Row in `tests/watch-rules.test.ts` (`touch -r`, then a rename).
+- E-20 — Sweep of the watch loop's judgement (14 mutants: 5 caught, 3
+  equivalent, 1 macOS-only, 2 that only reword the notice, 1 recorded —
+  a streak not reset on a different path — and 2 held now): the
+  self-write window's end bound (without it an uncached task's
+  git-ignored input, edited a second time after the first cycle,
+  re-ran nothing) and the notice's threshold of three. Rows in
+  `tests/watch-loop.test.ts` and `tests/watch-loop-selfwrite.test.ts`.
+- E-21 — `vx last --list --format json` is an array of the same
+  invocation objects as the replay's, newest first: documented, and
+  pinned field for field in `tests/last.test.ts`.
