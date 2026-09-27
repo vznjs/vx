@@ -37,7 +37,9 @@ const ALLOWED: Record<string, readonly string[]> = {
   orchestrator: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec'],
   cli: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'orchestrator'],
   index: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec', 'orchestrator'],
-  bin: ['util', 'cli'],
+  // `index`: bin lazy-loads the façade so a plugin's `@vzn/vx` resolves
+  // to this copy (registerCoreAlias).
+  bin: ['util', 'cli', 'index'],
 }
 
 // Modules whose contract (index.ts) is the only legal cross-module
@@ -66,10 +68,14 @@ async function collectEdges(): Promise<Edge[]> {
   for await (const rel of glob.scan({ cwd: SRC })) {
     const norm = rel.split(path.sep).join('/')
     const text = await Bun.file(path.join(SRC, rel)).text()
-    // Static `import ... from 'x'` / `export ... from 'x'` specifiers.
-    // No dynamic imports exist on boundary paths today; if one appears
-    // the matrix below is the place to encode the decision.
-    for (const m of text.matchAll(/^(?:import|export)[^'"]*from\s+['"]([^'"]+)['"]/gm)) {
+    // Static `import ... from 'x'` / `export ... from 'x'` specifiers, and
+    // `import('x')`: a lazy load crosses a boundary as a static one does
+    // (bin.ts loads the façade that way).
+    const specs = [
+      ...text.matchAll(/^(?:import|export)[^'"]*from\s+['"]([^'"]+)['"]/gm),
+      ...text.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g),
+    ]
+    for (const m of specs) {
       const spec = m[1]!
       if (!spec.startsWith('.')) continue // bare imports = packages, not modules
       if (spec.endsWith('.json')) continue // JSON is data (e.g. version.ts → package.json)
