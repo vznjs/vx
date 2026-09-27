@@ -93,3 +93,8 @@ F-4. vx-otel's export-failed warning printed the URL whole, leaking a
 credential in userinfo or query to CI logs; now masked as `***`. Row red
 without the fix. README now lists the default logs export (task output
 tails, which can hold secrets) and its opt-out.
+
+F-5. vx mcp read non-object `arguments` (a string, an array) as `{}` and
+answered a filtered question for the whole workspace; now a UserError
+naming the tool. Row red without the fix. README: the stdout guard
+covers `console` and `process.stdout`, not writes straight to fd 1.
