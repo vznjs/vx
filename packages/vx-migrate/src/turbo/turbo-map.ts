@@ -42,7 +42,8 @@ interface TurboJson {
   /** A package config's parents: `//` (the root) first, then packages by name. */
   extends?: string[]
   /** Turbo 2.11 `futureFlags.globalConfiguration`: the global lists live here. */
-  global?: { inputs?: string[]; env?: string[]; passThroughEnv?: string[] }
+  global?: { inputs?: string[]; env?: string[]; passThroughEnv?: string[]; envMode?: unknown }
+  envMode?: unknown
 }
 
 const KNOWN_TASK_KEYS = new Set([
@@ -453,6 +454,15 @@ export async function mapTurboWorkspace(
   // and the var re-keyed nothing (item 909).
   const globalDeps = rootCfg.globalDependencies ?? []
   const notes: string[] = []
+  // Loose mode hands every task the whole environment; vx's is isolated,
+  // so a task that reads an undeclared variable ran without it, and said
+  // nothing (a build baking a URL from the env built without one).
+  if ((rootCfg.global?.envMode ?? rootCfg.envMode) === 'loose') {
+    notes.push(
+      'envMode "loose": Turbo passes every environment variable to every task; vx passes only ' +
+        'the declared ones — list what each task reads in exec.env.passThrough (or cache.inputs.env)',
+    )
+  }
   // A wildcard or `!` entry names no one variable: core refuses it, and in
   // a global list that refusal failed every task of the run (item 937).
   // Reported once, as a task's own `env` wildcard is per task.
