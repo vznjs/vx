@@ -443,6 +443,16 @@ test is telling the truth.
         holding a manifest is refused, with a manifest-less directory as
         the control. Red without the fix.
 
+998.  DONE (2026-09-27, the config-validation review's lead 3). A
+      `persistent.readyWhen` of `'('` loaded, and the runner's
+      `new RegExp` then failed the task as an internal error (a
+      `SyntaxError` from the engine) with "(no output)".
+      - Fix (`config-schema.ts`): the loader compiles it as the runner
+        does and refuses it naming the field and the engine's reason.
+        `schema.md`'s table has the row.
+      - Row: `schema-doc-drift.test.ts` › emits the documented symptom
+        for the invalid regex. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

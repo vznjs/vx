@@ -353,6 +353,17 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (readyWhen !== undefined && typeof readyWhen !== 'string') {
           throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
         }
+        // Compiled here as the runner compiles it: an unbalanced `(` loaded
+        // and then failed the task as "internal error" (item 998).
+        if (readyWhen !== undefined) {
+          try {
+            new RegExp(readyWhen)
+          } catch (err) {
+            throw new UserError(
+              `${where}.exec.persistent.readyWhen is not a valid regex (${(err as Error).message})`,
+            )
+          }
+        }
         if (cache !== undefined) {
           throw new UserError(
             `${where}: \`cache\` is not allowed on a persistent task — persistent tasks ` +
