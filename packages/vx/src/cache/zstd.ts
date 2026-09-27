@@ -48,6 +48,36 @@ export function zstdContentSize(b: Uint8Array): bigint | null {
 }
 
 /**
+ * Whether `b` is exactly ONE zstd frame: its header, its blocks by their
+ * own sizes (RFC 8878 §3.1.1.2), the checksum when the header asks for one,
+ * and not a byte after. `zstdContentSize` reads the first frame alone, and
+ * `Bun.zstdDecompress` decodes every frame there is: a 100-byte frame with a
+ * second one appended passed a 64 MiB ceiling and expanded to 2 GiB of
+ * memory from a 32 KB remote body before the result's length was checked
+ * (A-5). Anything but one whole frame decodes as a stream, under the running
+ * count. A few header reads per block, on bytes already in memory.
+ */
+function isOneFrame(b: Uint8Array): boolean {
+  if (b.length < 6) return false
+  const desc = b[4]!
+  const fcsFlag = desc >> 6
+  const singleSegment = (desc >> 5) & 1
+  const checksum = (desc >> 2) & 1
+  const dictIdFlag = desc & 3
+  let off = 5 + (singleSegment === 0 ? 1 : 0) + (dictIdFlag === 3 ? 4 : dictIdFlag)
+  off += fcsFlag === 0 ? singleSegment : 1 << fcsFlag
+  for (;;) {
+    if (off + 3 > b.length) return false
+    const h = b[off]! | (b[off + 1]! << 8) | (b[off + 2]! << 16)
+    const type = (h >> 1) & 3
+    if (type === 3) return false
+    off += 3 + (type === 1 ? 1 : h >>> 3)
+    if ((h & 1) === 1) break
+  }
+  return off + (checksum === 1 ? 4 : 0) === b.length
+}
+
+/**
  * Decompress a zstd artifact that DECLARES its content size, with a hard
  * output ceiling: refused before a byte is allocated when the declaration
  * is over the cap. The re-check on the actual length below is a backstop
@@ -65,13 +95,13 @@ async function zstdDecompressBounded(
   assertDeclaredSize(compressed, hash, cap)
   const out = await Bun.zstdDecompress(compressed)
   // UNREACHABLE as written, and kept deliberately. `assertDeclaredSize`
-  // above refuses any frame DECLARING more than the cap, and Bun refuses a
+  // above refuses any frame DECLARING more than the cap, Bun refuses a
   // frame whose declaration disagrees with its body ("Decompression
-  // failed" on a forged Frame_Content_Size, measured item 487) — so a frame
-  // that gets here declared <= cap and produced exactly that. The only way
-  // this fires again is a decoder that stops validating the declaration.
-  // That is what it is for; it is not a second live layer, and no test can
-  // reach it.
+  // failed" on a forged Frame_Content_Size, measured item 487), and only
+  // ONE whole frame comes here (`isOneFrame`) — so what gets here declared
+  // <= cap and produced exactly that. Before A-5 a second frame appended
+  // after the first reached it, past the whole expansion. The only way it
+  // fires again is a decoder that stops validating the declaration.
   if (out.length > cap) {
     throw new CorruptArtifactError(hash, `decompressed to ${out.length} bytes (> ${cap} cap)`)
   }
@@ -139,14 +169,16 @@ export async function decodedTar(
   cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
 ): Promise<ReadableStream<Uint8Array>> {
   if (source instanceof Uint8Array) {
-    if (assertDeclaredSize(source, hash, cap) === null) {
+    if (assertDeclaredSize(source, hash, cap) === null || !isOneFrame(source)) {
       return zstdDecodeStream(new Blob([source]), hash, cap)
     }
     return oneChunk(await zstdDecompressBounded(source, hash, cap))
   }
   if (source.size <= STREAM_DECODE_FROM) {
     const bytes = await source.bytes()
-    if (assertDeclaredSize(bytes, hash, cap) === null) return zstdDecodeStream(source, hash, cap)
+    if (assertDeclaredSize(bytes, hash, cap) === null || !isOneFrame(bytes)) {
+      return zstdDecodeStream(source, hash, cap)
+    }
     return oneChunk(await zstdDecompressBounded(bytes, hash, cap))
   }
   assertDeclaredSize(await source.slice(0, 32).bytes(), hash, cap)
