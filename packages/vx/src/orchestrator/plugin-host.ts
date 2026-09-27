@@ -151,7 +151,7 @@ export async function applyGraphHooks(
     last = plugin
   }
   if (last === undefined) return
-  await safe(last, 'graph', () => checkGraph(nodes))
+  await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot))
 }
 
 /**

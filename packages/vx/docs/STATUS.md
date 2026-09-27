@@ -598,6 +598,29 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         before run end is not recorded as the entry", red without the
         change. The run-end restore row still records.
 
+1088. DONE (2026-09-27, restore review #1; a declared output lost under a
+      green run). `detectOutputCollisions` compared `files` within one
+      project and `workspaceFiles` only with other `workspaceFiles`. So
+      `a#build` writing `packages/b/dist/a.txt` beside `b#build`'s
+      `dist/**`, with no edge, was neither refused nor an addition.
+      `b`'s clean deleted `a.txt` and `a#build` replayed `up-to-date`;
+      one round even failed `a`'s restore with the concurrent-run message.
+      Given the workspace root (`BuildGraphOptions.workspaceRoot`, from
+      `prepareRun`, the `graph` stage's `checkGraph` and the playground),
+      each `files` declarer joins the root-anchored index with its globs
+      rebased to the root, and only the mixed pairs are compared. With an
+      edge the pair is the item-588 addition, the upstream told the
+      dependant's globs in its own namespace; a workspace glob that does
+      not start in the `files` task's project cannot be, and is refused.
+      Without `workspaceRoot` (a unit graph) the pass is off. No cost
+      without a workspace output declarer. schema.md says so.
+      - Rows: `output-collision.test.ts` › "a workspaceFiles output inside
+        another project's files output": refused without an edge, and an
+        addition in each direction with the globs in the upstream's
+        namespace. All three are red without the change; the control (a
+        root-anchored output beside the tree) passes both ways. The
+        reviewer's fixture now refuses at plan.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

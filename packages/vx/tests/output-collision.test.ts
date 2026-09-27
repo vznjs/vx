@@ -62,6 +62,7 @@ function graph(projects: Record<string, Record<string, TaskConfig>>): void {
     requested: [...entries.values()].flatMap((e) =>
       Object.keys(e.config.tasks ?? {}).map((t) => ({ project: e.name, task: t })),
     ),
+    workspaceRoot: '/w',
   })
 }
 
@@ -87,6 +88,7 @@ function graphNodes(projects: Record<string, Record<string, TaskConfig>>): Map<s
     requested: [...entries.values()].flatMap((e) =>
       Object.keys(e.config.tasks ?? {}).map((t) => ({ project: e.name, task: t })),
     ),
+    workspaceRoot: '/w',
   })
 }
 
@@ -146,6 +148,50 @@ describe('an overlap WITH an edge is the addition shape, and is allowed (item 58
     const nodes = graphNodes({ app: { build: task(['dist']), docs: dependant(['out'], 'build') } })
     expect(nodes.get('app#docs')?.addsToOutputsOf).toBeUndefined()
     expect(nodes.get('app#build')?.outputsAddedToBy).toBeUndefined()
+  })
+})
+
+// Item 1088: a root-anchored output was compared only with other
+// root-anchored ones, so one reaching into another project's `files` tree
+// was neither refused nor an addition: that project's clean deleted it,
+// and the run still replayed `up-to-date`.
+describe("a workspaceFiles output inside another project's files output", () => {
+  it('is refused without an edge', () => {
+    expect(() =>
+      graph({
+        a: { build: task([], ['b/dist/a.txt']) },
+        b: { build: task(['dist/**']) },
+      }),
+    ).toThrow(
+      `a#build declares the output "b/dist/a.txt" in cache.outputs.workspaceFiles, inside b#build's "dist/**" in cache.outputs.files`,
+    )
+  })
+
+  it("is an addition when it runs after the project task, told in that project's namespace", () => {
+    const nodes = graphNodes({
+      a: { build: { ...task([], ['b/dist/a.txt']), dependsOn: ['b#build'] } as TaskConfig },
+      b: { build: task(['dist/**']) },
+    })
+    expect(nodes.get('a#build')?.addsToOutputsOf).toEqual(['b#build'])
+    expect(nodes.get('b#build')?.outputsAddedToBy).toEqual(['dist/a.txt'])
+  })
+
+  it('is an addition when the project task runs after it, told in root namespace', () => {
+    const nodes = graphNodes({
+      a: { build: task([], ['b/dist/**']) },
+      b: { build: { ...task(['dist/b.txt']), dependsOn: ['a#build'] } as TaskConfig },
+    })
+    expect(nodes.get('b#build')?.addsToOutputsOf).toEqual(['a#build'])
+    expect(nodes.get('a#build')?.outputsAddedToBy).toEqual(['b/dist/b.txt'])
+  })
+
+  it('CONTROL: a root-anchored output beside the project tree is allowed', () => {
+    expect(() =>
+      graph({
+        a: { build: task([], ['b/gen/a.txt']) },
+        b: { build: task(['dist/**']) },
+      }),
+    ).not.toThrow()
   })
 })
 

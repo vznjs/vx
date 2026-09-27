@@ -206,7 +206,12 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
   const candidates = [...projects.keys()]
   const requested = expandRequested(input.tasks, candidates, projects)
   const unresolvedTasks = unresolvedRequests(input.tasks, candidates, projects)
-  const nodes: Map<string, TaskNode> = buildTaskGraph({ projects, packageGraph, requested })
+  const nodes: Map<string, TaskNode> = buildTaskGraph({
+    projects,
+    packageGraph,
+    requested,
+    workspaceRoot: root,
+  })
 
   const fingerprints = await computeWorkspaceFingerprints(root, new Set())
   const gitFilesCache = new GitFilesCache()

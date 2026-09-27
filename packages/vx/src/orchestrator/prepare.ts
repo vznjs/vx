@@ -405,6 +405,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       packageGraph,
       requested,
+      workspaceRoot,
       ...(projects.size < projectsWithConfigs.length
         ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
         : {}),
