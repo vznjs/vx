@@ -2,7 +2,13 @@ import type { Dirent } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { BUN_GLOB_WILDCARDS, relPosix, UserError, normalizeBunGlob } from '../util/index.js'
+import {
+  BUN_GLOB_WILDCARDS,
+  relPosix,
+  slashBraceExpansions,
+  UserError,
+  normalizeBunGlob,
+} from '../util/index.js'
 import { type LoadReads, readOnce } from './load-reads.js'
 
 export interface PackageJson {
@@ -439,40 +445,6 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
     }
   }
   return dirs
-}
-
-/**
- * `pattern` with its first brace group expanded, recursively, while that
- * group holds a `/`; any other pattern as itself, since `Bun.Glob`
- * expands a slash-free brace on its own. An unbalanced or escaped brace
- * is left to the glob.
- */
-function slashBraceExpansions(pattern: string): string[] {
-  if (pattern.includes('\\')) return [pattern]
-  for (let open = pattern.indexOf('{'); open !== -1; open = pattern.indexOf('{', open + 1)) {
-    let depth = 0
-    const cuts: number[] = []
-    let close = -1
-    for (let i = open; i < pattern.length && close === -1; i++) {
-      const c = pattern[i]
-      if (c === '{') depth++
-      else if (c === '}' && --depth === 0) close = i
-      else if (c === ',' && depth === 1) cuts.push(i)
-    }
-    if (close === -1) return [pattern]
-    const body = pattern.slice(open + 1, close)
-    if (cuts.length === 0 || !body.includes('/')) continue
-    const head = pattern.slice(0, open)
-    const tail = pattern.slice(close + 1)
-    const bounds = [open, ...cuts, close]
-    const out: string[] = []
-    for (let k = 0; k + 1 < bounds.length; k++) {
-      const alt = pattern.slice(bounds[k]! + 1, bounds[k + 1])
-      out.push(...slashBraceExpansions(head + alt + tail))
-    }
-    return [...new Set(out)]
-  }
-  return [pattern]
 }
 
 /**

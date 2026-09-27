@@ -118,3 +118,10 @@ A `cache.inputs.runtime` probe ran in vx's own process group with nothing listin
 
 - Fix (`inputs.ts` `runRuntimeCommand`): each probe is spawned `detached`, its own group; the probes still running when vx exits are SIGKILLed with their trees (a `process.on('exit')` hook, as `sandbox-runtime.ts` does for its temp files). A `kill -9` of vx still leaves one: the task groups' guard (`exec/kill-tree.ts`) is B's, and probes are not on it. `caching.md` says so.
 - Rows: `runtime-probe-exit.test.ts` › a probe running when vx exits on SIGINT is gone with its tree (the shell and its child, both proven alive first). Red without the fix.
+
+### A-10 (2026-09-27, coordinator lead from D)
+
+`cache.outputs.files: ['{dist,lib/esm}/**']`: `Bun.Glob`'s scan skips a brace holding `/`, so the save packed nothing and a hit cleaned the outputs and restored nothing, green. `schema.md` promised brace sets in every task glob.
+
+- Fix: `scanUnion` (`inputs.ts`) expands slash braces with `slashBraceExpansions` (moved from `workspace.ts` to `util/paths.ts`, one helper for both).
+- Row: `brace-outputs.test.ts` (save, wipe, hit restores both dirs). Red without the fix.

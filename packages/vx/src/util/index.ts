@@ -30,6 +30,7 @@ export {
   staticPrefix,
   taskGlob,
   wholeSubtreePrefixes,
+  slashBraceExpansions,
 } from './paths.js'
 export { killGraceMs, settleWithin, teardownTimeoutMs } from './settle.js'
 export { formatBytes, parseDuration, parseSize } from './size.js'

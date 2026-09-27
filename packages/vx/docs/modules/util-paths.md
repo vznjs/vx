@@ -19,6 +19,9 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
 export function asTrees(patterns: readonly string[]): string[]
 export function isLiteralPattern(glob: string): boolean
 export function taskGlob(pattern: string): Bun.Glob
+// A brace whose alternatives hold `/` expanded (Bun.Glob's scan skips one):
+// workspace discovery and the output scan (A-10).
+export function slashBraceExpansions(pattern: string): string[]
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
 ```
