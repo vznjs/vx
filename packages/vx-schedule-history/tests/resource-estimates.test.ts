@@ -181,6 +181,35 @@ describe('the reservation rules the sweep found unheld', () => {
     expect(scheduleHistoryPlugin({ resources: false }).admit).toBeUndefined()
   })
 
+  // A NaN budget fits no reservation: every task that reserved memory
+  // waited for an idle machine and the run went serial, unannounced.
+  it('a `memory` that is no number above 0 packs against the default; one warning names it', async () => {
+    const warned: string[] = []
+    const ctx = {
+      localCache: {
+        dbHandle() {
+          throw new Error('no history')
+        },
+      },
+      warn: (m: string) => warned.push(m),
+    }
+    for (const memory of [Number(undefined), 0, -1]) {
+      warned.length = 0
+      const plugin = scheduleHistoryPlugin({
+        memory,
+        resources: { headroom: Number(undefined) },
+        window: 2.5,
+        reservations: { 'a#build': { memory: 64 }, 'b#build': { memory: 64 } },
+      })
+      const admitCtx = { running: [{ id: 'b#build' }], concurrency: 4 }
+      expect(plugin.admit!(node('a#build') as never, admitCtx as never)).toBe(true)
+      await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
+      expect(warned[0]).toBe(
+        `[vx] schedule-history: ignores window 2.5 (using 20), memory ${memory} (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0`,
+      )
+    }
+  })
+
   it('a history read that fails costs the ordering, never the run: no weights, one warning', async () => {
     const plugin = scheduleHistoryPlugin()
     const warned: string[] = []

@@ -73,7 +73,46 @@ const DEFAULT_WINDOW = 20
 
 // Each option is read in ONE place that a run's hooks and `vx history`
 // share: two copies of each let either drift unseen (item 805).
-const windowOf = (options: ScheduleHistoryOptions): number => options.window ?? DEFAULT_WINDOW
+const windowOf = (options: ScheduleHistoryOptions): number =>
+  usable(options.window, true) ? options.window : DEFAULT_WINDOW
+
+/**
+ * A number option's value when it is one: finite and above zero (a whole
+ * number where `integer`). `memory: Number(process.env.X)` with X unset
+ * is NaN, and against a NaN budget no reservation ever fits, so every
+ * task that reserved memory waited for an idle machine: the run went
+ * serial and said nothing. A NaN `headroom` dropped every learned
+ * reservation. Each bad value is the default instead, named by
+ * `numberWarnings`, as `assume` does (item 930).
+ */
+function usable(v: unknown, integer = false): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 && (!integer || Number.isInteger(v))
+}
+
+/** One warning naming every number option that is not one, and the default it runs on. */
+function numberWarnings(options: ScheduleHistoryOptions, warn: (m: string) => void): void {
+  const bad: string[] = []
+  const check = (name: string, v: unknown, fallback: string, integer = false): void => {
+    if (v !== undefined && !usable(v, integer)) {
+      bad.push(
+        `${name} ${typeof v === 'number' ? String(v) : JSON.stringify(v)} (using ${fallback})`,
+      )
+    }
+  }
+  check('window', options.window, String(DEFAULT_WINDOW), true)
+  check('memory', options.memory, 'what this process may use')
+  if (options.resources !== false && options.resources !== undefined) {
+    check('resources.headroom', options.resources.headroom, String(DEFAULT_HEADROOM))
+  }
+  if (bad.length > 0) {
+    warn(`[vx] schedule-history: ignores ${bad.join(', ')} — each must be a finite number above 0`)
+  }
+}
+
+const headroomOf = (options: ScheduleHistoryOptions): number => {
+  const h = options.resources === false ? undefined : options.resources?.headroom
+  return usable(h) ? h : DEFAULT_HEADROOM
+}
 
 const readHistory = (
   cache: Cache,
@@ -89,14 +128,12 @@ const reservationsFor = (
   options: ScheduleHistoryOptions,
 ): ReadonlyMap<string, ResourceEstimate> =>
   withDeclared(
-    options.resources !== false
-      ? estimatesFor(ids, table, options.resources?.headroom ?? DEFAULT_HEADROOM)
-      : new Map(),
+    options.resources !== false ? estimatesFor(ids, table, headroomOf(options)) : new Map(),
     options.reservations,
   )
 
 const memoryBudgetMb = (options: ScheduleHistoryOptions): number =>
-  options.memory ?? Math.floor(machineMemoryBytes() / MB)
+  usable(options.memory) ? options.memory : Math.floor(machineMemoryBytes() / MB)
 
 /**
  * The `assume` durations that are finite non-negative numbers. A NaN
@@ -135,6 +172,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     // Core calls it once per run, so the history is read once per run, and
     // a second run in the same process (`vx watch`) reads its own.
     async schedule(nodes, ctx) {
+      numberWarnings(options, ctx.warn)
       let table: HistoryTable
       try {
         table = await readHistory(ctx.localCache, [...nodes.keys()], options)
@@ -302,6 +340,7 @@ async function historyCmd(
   for (const p of projects.values()) {
     for (const t of Object.keys(p.config.tasks ?? {})) ids.push(`${p.name}#${t}`)
   }
+  numberWarnings(options, ctx.warn)
   const window = windowOf(options)
   const cache = new Cache(ctx.cacheDir)
   let table: HistoryTable
@@ -331,6 +370,6 @@ async function historyCmd(
     process.stdout.write(`${JSON.stringify({ window, budgets, tasks: rows })}\n`)
     return 0
   }
-  process.stdout.write(renderHistory(rows, window, budgets, options.memory !== undefined))
+  process.stdout.write(renderHistory(rows, window, budgets, usable(options.memory)))
   return 0
 }

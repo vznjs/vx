@@ -345,6 +345,46 @@ describe('schedule-history plugin end to end', () => {
     TIMEOUT,
   )
 
+  // `memory: Number(process.env.X)` with X unset is NaN: no reservation
+  // fits it, so every task that reserved memory ran alone; a NaN
+  // `headroom` dropped every learned reservation. Both run on the default.
+  it(
+    'a `memory` or `headroom` that is no number above 0 is the default, named on stderr',
+    async () => {
+      await pkg(
+        'a',
+        'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"\' } } } }\n',
+      )
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource([
+            'scheduleHistoryPlugin({ memory: Number(undefined), resources: { headroom: Number(undefined) } })',
+          ]),
+      )
+      const r1 = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      expect(r1.ok).toBe(true)
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      expect(json.exitCode).toBe(0)
+      const out = JSON.parse(json.stdout.toString()) as {
+        budgets: { memory: number | null }
+        tasks: { id: string; maxPeakRssBytes: number; reservation: { memory?: number } | null }[]
+      }
+      expect(out.budgets.memory).toBeGreaterThan(64)
+      const a = out.tasks.find((t) => t.id === 'a#build')!
+      expect(a.reservation?.memory).toBe(
+        Math.ceil((a.maxPeakRssBytes * 1.25) / (1024 * 1024) / 64) * 64,
+      )
+      expect(json.stderr.toString()).toContain(
+        '[vx] schedule-history: ignores memory NaN (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0',
+      )
+    },
+    TIMEOUT,
+  )
+
   // Item 930: a NaN or a string assumption became a weight core refuses as
   // a UserError, so an ordering hint failed the run.
   it(
