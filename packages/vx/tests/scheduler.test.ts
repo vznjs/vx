@@ -708,6 +708,27 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(await peak(2)).toBe(2)
   })
 
+  it('a restore placed on a pooled executor stays on the restore lane', async () => {
+    // It took the pool's arm: every restore ran at once, past the lane's
+    // cap and `--concurrency 1`, and pushed the pool over its capacity.
+    let inFlight = 0
+    let max = 0
+    const ids = Array.from({ length: 6 }, (_, i) => `r${i}#hit`)
+    await runGraph({
+      nodes: nodes(...ids.map((id) => node(id))),
+      concurrency: 1,
+      restoreTier: new Set(ids),
+      poolOf: () => ({ name: 'pool', capacity: 4 }),
+      execute: async (n) => {
+        max = Math.max(max, ++inFlight)
+        await new Promise((r) => setTimeout(r, 10))
+        inFlight--
+        return hit(n)
+      },
+    })
+    expect(max).toBe(1)
+  })
+
   it('runs a restore-tier task BEFORE its (unfinished) deps', async () => {
     // up#prep is a slow exec; down#build is its dep but a confirmed
     // local hit (restore-tier). The restore must start without waiting
