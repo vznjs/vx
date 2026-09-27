@@ -314,6 +314,22 @@ test is telling the truth.
         without the change; the row that pinned the unknown tool as a
         result moved into the first.
 
+1068. DONE (2026-09-27, the MCP and schedule-history review's lead 6,
+      first half). `vx history` printed "budgets 4 cores (the default
+      worker count…)" beside a workspace that says `concurrency: 1`,
+      which is what a run there uses and what `vx info` reports: the verb
+      asked `machineParallelism()` itself, since a plugin verb had no way
+      to learn the workspace's setting. `CommandContext` now carries
+      `concurrency`, the worker count a `vx run` there uses without
+      `--concurrency` (the same rule as `run.ts`), and the verb budgets
+      it. plugin-commands.md says so.
+      - Row: `schedule-history-e2e.test.ts` › `vx history` budgets the
+        worker count a run here uses (red with the machine's count: 4
+        against 1).
+      - Left: a config's `Bun.write(Bun.stdout, …)` still reaches
+        `vx mcp`'s JSON-RPC stream (`console.*` and
+        `process.stdout.write` are redirected, item 922).
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
