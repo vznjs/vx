@@ -673,6 +673,21 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
 1049. SUPERSEDED (2026-09-27) by A-4 (`docs/history/ws-a.md`), which
       landed first: an output's mode 000 and an mtime at or before 1970 round-trip.
 
+1050. DONE (2026-09-27, the nx() review's lead 2). `nx()` read the raw
+      `nx.json` and ignored its `extends`: named inputs a base declared
+      (`default`, `sharedGlobals`) fell back to `{projectRoot}/**` with no
+      word, so a `global.cfg` edit Nx re-ran on was a hit here (a stale
+      hit, reproduced with Nx 22.7.12). `readNxJson` resolves the chain as
+      Nx does (a path or package from the file's directory, merged
+      shallowly, the base first), and the snapshot's freshness stats every
+      file in it. The README and the design doc say so.
+      - Rows: `nx-map-sweep.test.ts` › a base's named inputs apply, and
+        nx.json's own field replaces the base's whole; `nx.test.ts` › a
+        base nx.json extends, newer than the snapshot, re-exports. Each red
+        without its half.
+      - Lead 1 (a source import's edge the snapshot misses) is Next 26: a
+        fix puts a graph export into every edit, which needs numbers.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
@@ -1052,6 +1067,21 @@ next?".
     task costs to load and key, so the lever is per-task cost in those
     two stages, not a new kind. Item 932 took 23 ms of the load share
     back: a guard that stopped holding after the first round.
+
+26. **`nx()`'s graph snapshot misses edges an import adds** (the nx
+    review's lead 1, reproduced with Nx 22.7.12). Freshness stats
+    `nx.json`'s chain and the manifests, but Nx derives dependency edges
+    from source imports (`@nx/js`), and those edges choose the `^` twins a
+    task folds: `import { b } from '@w/b'` added in `a` left the snapshot
+    at `{a:[],b:[]}`, and a later edit to `b` hit `a#test` as up-to-date
+    (a stale hit; control: the snapshot deleted, the same edit re-ran it).
+    The fix is a re-export whenever a tracked or untracked file under a
+    project root is newer than the snapshot, and that puts an export into
+    every edit-then-run: 1.7 s daemon off at 1,000 projects, 1.3 s under
+    `vx watch` (README). Measure the daemon-on export and the walk's cost
+    (git's list, or the stats) before choosing; keying the snapshot on the
+    tree's git state is the other candidate. The README says a new
+    cross-package import needs an Nx command before the next run.
 
 ## Decisions (this arc)
 

@@ -152,7 +152,8 @@ installed (a workspace with only `nx` and custom executors).
   `.nx/workspace-data/project-graph.json` in its own shape, written by
   every daemon-less Nx command; `nx graph --file=<path>` writes
   `{ graph: { nodes, dependencies } }`. The mapper accepts both.
-- Freshness: once per run, the plugin stats `nx.json`, every discovered
+- Freshness: once per run, the plugin stats `nx.json` (and every file
+  its `extends` chain names, item 1050), every discovered
   project's `project.json` and `package.json`, and the snapshot; when
   the snapshot is older than any of them, or missing, it runs
   `node_modules/.bin/nx graph --file=<snapshot>` and reads that. A

@@ -821,6 +821,23 @@ describe('nx(): what the sweep found unheld', () => {
     )
   }
 
+  // A base nx.json extends is part of what Nx reads, and its edit went
+  // unseen by the snapshot's freshness (item 1050).
+  it(
+    'a base nx.json extends, newer than the snapshot, re-exports',
+    async () => {
+      await writeFile(path.join(root, 'nx.base.json'), JSON.stringify({ namedInputs: {} }))
+      await writeFile(path.join(root, 'nx.json'), JSON.stringify({ extends: './nx.base.json' }))
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
+      const later = new Date(Date.now() + 5_000)
+      await utimes(path.join(root, 'nx.base.json'), later, later)
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(2)
+    },
+    TIMEOUT,
+  )
+
   it(
     'an export that exits 0 and writes nothing is a failure; a failure names its last three lines',
     async () => {

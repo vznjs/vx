@@ -342,12 +342,42 @@ interface NxJsonFacts {
   readonly cacheable: ReadonlySet<string>
 }
 
+/**
+ * `nx.json` as Nx reads it: an `extends` base (a path or a package,
+ * resolved from the file's directory) merged shallowly under it, the base's
+ * own `extends` first. Only the raw file was read, so named inputs a base
+ * declared fell back to `{projectRoot}/**` with no word and a `sharedGlobals`
+ * edit re-ran nothing (item 1050). `files` lists every file read, which the
+ * graph snapshot's freshness stats. Null when `nx.json` is absent; a file
+ * that does not parse throws.
+ */
+export async function readNxJson(
+  root: string,
+): Promise<{ json: Record<string, unknown>; files: string[] } | null> {
+  const first = path.join(root, 'nx.json')
+  if (!(await Bun.file(first).exists())) return null
+  const files: string[] = []
+  const layers: Record<string, unknown>[] = []
+  let at: string | null = first
+  while (at !== null && !files.includes(at)) {
+    files.push(at)
+    const parsed = (Bun.JSONC.parse(await Bun.file(at).text()) ?? {}) as Record<string, unknown>
+    layers.unshift(parsed)
+    const ext = parsed['extends']
+    at = typeof ext === 'string' ? Bun.resolveSync(ext, path.dirname(at)) : null
+  }
+  const json: Record<string, unknown> = {}
+  for (const layer of layers) Object.assign(json, layer)
+  delete json['extends']
+  return { json, files }
+}
+
 export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
   const none: NxJsonFacts = { namedInputs: null, cacheable: new Set() }
-  const file = Bun.file(path.join(root, 'nx.json'))
-  if (!(await file.exists())) return none
   try {
-    const parsed = Bun.JSONC.parse(await file.text()) as {
+    const read = await readNxJson(root)
+    if (read === null) return none
+    const parsed = read.json as {
       namedInputs?: unknown
       tasksRunnerOptions?: { default?: { options?: { cacheableOperations?: unknown } } }
     }
@@ -361,7 +391,7 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
       ),
     }
   } catch {
-    // Unreadable nx.json just degrades named-input refs to TODOs.
+    // An unreadable nx.json (or base) just degrades named-input refs to TODOs.
     return none
   }
 }

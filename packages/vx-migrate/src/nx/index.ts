@@ -22,8 +22,8 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
-import { collectGaps } from '../plugin-gaps.js'
-import { mapNxWorkspace, type NxGraph, parseNxGraph } from './nx-map.js'
+import { collectGaps, type Gaps } from '../plugin-gaps.js'
+import { mapNxWorkspace, type NxGraph, parseNxGraph, readNxJson } from './nx-map.js'
 import { listDotenv } from './nx-dotenv.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 
@@ -205,7 +205,12 @@ async function index(
 
 /** The newest mtime among the files whose edit changes the graph, or 0 when none is readable. */
 async function newestInput(root: string, metas: readonly ProjectMeta[]): Promise<number> {
-  const files = [path.join(root, 'nx.json'), path.join(root, 'package.json')]
+  // nx.json's `extends` chain too: a base's edit changes the graph as much.
+  const nxJson = await readNxJson(root).catch(() => null)
+  const files = [
+    ...(nxJson?.files ?? [path.join(root, 'nx.json')]),
+    path.join(root, 'package.json'),
+  ]
   for (const m of metas)
     files.push(path.join(m.dir, 'project.json'), path.join(m.dir, 'package.json'))
   const mtimes = await Promise.all(
