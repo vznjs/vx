@@ -72,3 +72,37 @@ it("an aborted run aborts a plugin executor's request, so its child ends and run
   expect(Date.now() - started).toBeLessThan(10_000)
   expect(await waitForDead(pid, 1_000)).toBe(true)
 }, 20_000)
+
+it("exec.timeout aborts a plugin executor's request, and the task fails as timed out", async () => {
+  await Bun.write(
+    path.join(root, 'vx.workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/spawner',
+        `{ executor() { return { name: 'spawner', async execute(req) {
+            const child = Bun.spawn(['sh', '-c', req.command], { cwd: req.cwd, env: req.env })
+            req.signal?.addEventListener('abort', () => child.kill(), { once: true })
+            const exitCode = await child.exited
+            return { exitCode, durationMs: 0, stdout: '', stderr: '', violations: [] }
+          } } } }`,
+      ),
+    ]),
+  )
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: { slow: { exec: { command: 'exec sleep 30', timeout: 300 } } } }`,
+  )
+  const started = Date.now()
+  const r = await run({
+    cwd: root,
+    tasks: ['slow'],
+    projects: ['app'],
+    log: silent,
+    handleSignals: false,
+  })
+  expect(r.outcomes.map((o) => [o.node.id, o.status, o.timedOut === true])).toEqual([
+    ['app#slow', 'failed', true],
+  ])
+  expect(Date.now() - started).toBeLessThan(10_000)
+}, 20_000)

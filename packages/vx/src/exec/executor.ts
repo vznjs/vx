@@ -140,10 +140,11 @@ export interface ExecuteRequest {
   readonly onStdout: (chunk: string) => void
   readonly onStderr: (chunk: string) => void
   /**
-   * Aborted when the run stops: Ctrl-C, SIGTERM, SIGHUP or an embedder's
-   * `RunOptions.signal`. An executor ends its work and returns; core waits
-   * for `execute` before its teardown, and a child an executor spawned is
-   * not one core can reach (item H-10).
+   * Aborted when the run stops (Ctrl-C, SIGTERM, SIGHUP or an embedder's
+   * `RunOptions.signal`) or when `timeoutMs` elapses. An executor ends its
+   * work and returns; core waits for `execute`, and a child an executor
+   * spawned is not one core can reach (H-10, H-12). A non-zero exit after
+   * the timeout's abort is recorded `timedOut`.
    */
   readonly signal?: AbortSignal
   /** See `RunOptions.liveChildren`: the run's SIGINT/SIGTERM registry. */

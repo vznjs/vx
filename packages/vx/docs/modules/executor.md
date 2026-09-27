@@ -31,9 +31,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - `ExecuteRequest` — `taskId`, `workspaceRoot`, `command`, `forwardArgs`,
   `cwd`, `env`, `envDefine` (`exec.env.define` verbatim: the host-free
   part of `env`, safe to ship), `capture`, `outputs`, `timeoutMs?`,
-  `onStdout`, `onStderr`, `signal?` (aborted when the run stops: an
-  executor ends its work and returns, since core cannot reach a process it
-  spawned), `liveChildren?`, `sandbox?: ExecuteSandbox`,
+  `onStdout`, `onStderr`, `signal?` (aborted when the run stops or
+  `timeoutMs` elapses: an executor ends its work and returns, since core
+  cannot reach a process it spawned; a non-zero exit after the timeout's
+  abort is recorded `timedOut`), `liveChildren?`, `sandbox?: ExecuteSandbox`,
   `inputs?: TaskInputs`, `cacheKey?` (a cacheable task's key, the address
   an executor's own remote record uses), `refresh?` (cache reads are off:
   do not answer from that record), `remoteOnly?` (`exec.remote: 'only'`:

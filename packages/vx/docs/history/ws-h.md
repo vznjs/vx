@@ -137,6 +137,22 @@ by `plugins-guide-snippets.test.ts`, and run under Ctrl-C in a scratch
 workspace: no child left). Row: `plugin-executor-abort.test.ts`, green with
 the forward, a 20 s timeout without it.
 
+## H-12: `exec.timeout` reaches a plugin executor
+
+Found writing H-10's guide example: core passes `timeoutMs` to an executor
+and enforces nothing, so a task's declared `exec.timeout` meant nothing on
+a plugin executor that kept no clock (the guide's own example ran forever).
+The request's `signal` now also aborts when the timeout elapses, and a
+non-zero exit after that abort is recorded `timedOut` (the frame, the retry
+line and the outcome say "timed out"). Row in
+`plugin-executor-abort.test.ts`: fails as timed out in 300 ms with the
+change, hangs to the row's 20 s bound without it. The first cut declared
+its timer after the retry loop that used it; the row caught the throw.
+Leads: **A** — a plugin executor that ignores `req.signal` still holds its
+task past `exec.timeout` (core awaits `execute` unbounded). **B** —
+`resourceUsageToCpuRss` "the peak is the child's own" failed on macOS CI on
+#1269, a docs-only diff (timing-sensitive).
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.

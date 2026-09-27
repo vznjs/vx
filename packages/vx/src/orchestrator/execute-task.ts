@@ -472,6 +472,27 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // (`--timeout`/`RunOptions.timeout` → `VX_TASK_TIMEOUT` → workspace
   // `timeout`, already collapsed into `args.timeout` by run.ts).
   const effectiveTimeout = step.timeout ?? args.timeout
+  // `signal` stops a plugin executor on the run's stop AND on
+  // `exec.timeout`: core cannot kill a process an executor spawned, so a
+  // declared timeout meant nothing on one that kept its own clock (H-12).
+  // The local executor keeps its own timer (it signals the process group).
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined
+  let timeoutFired = false
+  function requestSignal(): AbortSignal {
+    const stop = new AbortController()
+    const abort = (): void => stop.abort(args.stopSignal?.reason)
+    if (args.stopSignal?.aborted === true) abort()
+    else args.stopSignal?.addEventListener('abort', abort, { once: true })
+    if (effectiveTimeout !== undefined) {
+      clearTimeout(timeoutTimer)
+      timeoutFired = false
+      timeoutTimer = setTimeout(() => {
+        timeoutFired = true
+        stop.abort(new Error(`timed out after ${effectiveTimeout}ms`))
+      }, effectiveTimeout)
+    }
+    return stop.signal
+  }
 
   // When the task started, as a ns offset from run start — captured for
   // EVERY outcome (hits included) so the run-detail timeline reflects when
@@ -701,7 +722,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // no other trace. Rethrown unchanged — the scheduler still classifies it,
     // and still prints it plainly for a UserError.
     const endExec = span('miss: execute')
-    const res = await args.executor
+    let res = await args.executor
       .execute(req)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
@@ -713,7 +734,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         await sweepPlaceholders(placeholders)
         throw err
       })
+      .finally(() => clearTimeout(timeoutTimer))
     endExec()
+    // An executor that stopped on the timeout's abort exits non-zero; say
+    // why, so the frame, the retry line and `timedOut` read as a timeout.
+    if (timeoutFired && res.exitCode !== 0 && res.timedOut !== true) {
+      res = { ...res, timedOut: true }
+    }
     violations = [...res.violations]
     // A denial under a dependency the key does not answer for says only
     // ENOENT; the line beside it names the package and how to key it. Only
@@ -875,7 +902,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
-      ...(args.stopSignal !== undefined ? { signal: args.stopSignal } : {}),
+      signal: requestSignal(),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
