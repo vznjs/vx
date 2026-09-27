@@ -139,6 +139,7 @@ async function index(
   const mapped = await mapNxWorkspace(root, metas, graph, {
     persistentTodo: PERSISTENT_NOTE,
     cacheable: new Set(),
+    attached: new Set(metas.map((m) => m.name)),
   })
   const byName = new Map<string, GeneratedProject>()
   const visited = new Set(metas.map((m) => m.name))

@@ -82,6 +82,18 @@ describe('mapNxOutputs', () => {
     expect(out(['./build/../out'], 'packages/a').wsOutFiles).toEqual(['out/**'])
   })
 
+  // Mapped as a `!` workspace glob, core refused the project's whole
+  // config and none of its tasks ran (item 1051).
+  it('a negated output is dropped with a todo, the positive one kept', () => {
+    expect(out(['{projectRoot}/dist', '!{projectRoot}/dist/cache'])).toEqual({
+      outFiles: ['dist/**'],
+      wsOutFiles: [],
+      todos: [
+        'output "!{projectRoot}/dist/cache": vx outputs cannot exclude — the other outputs also save what it excludes',
+      ],
+    })
+  })
+
   it('a non-string option and an unknown token are reported', () => {
     expect(out(['{options.outDir}', '{foo}/x'], 'packages/a', { outDir: 42 }).todos).toEqual([
       'output "{options.outDir}": option "outDir" is not a literal string — resolve manually',
