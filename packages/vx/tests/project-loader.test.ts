@@ -697,7 +697,9 @@ describe('loadProjectConfig', () => {
       file,
       `export default { tasks: { build: { exec: { command: 'tsc', resources: { cpus: 2 } } } } }`,
     )
-    await expect(loadProjectConfig(file)).rejects.toThrow(/unknown field "resources"/)
+    await expect(loadProjectConfig(file)).rejects.toThrow(
+      /has field "resources", which vx 0\.0\.19 removed — use `@vzn\/vx-schedule-history`/,
+    )
   })
 
   // A typo'd field was silently DROPPED, so the task hashed as if it had

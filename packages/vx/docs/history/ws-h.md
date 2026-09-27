@@ -35,6 +35,24 @@ member added to `TaskExecutor`, a type changed in the non-exported
 `BaseContext`, and a hook added to `VxPlugin` alone each fail; a reworded
 comment passes (control).
 
+## H-3: a removed config field is refused naming its replacement
+
+`versioning-1.0.md` § Deprecation promised that a removed field's refusal
+names the replacement and the version that removed it; nothing did.
+`exec.resources` (removed in 0.0.19 with the reservations, item 157) was
+refused as `unknown field "resources"`, a message that sends a reader to
+the history. `REMOVED_FIELDS` in `config-schema.ts` maps a level's field
+set to its removed fields; `assertKnownFields` consults it before calling a
+key unknown. The version came from the release tags: v0.0.18's
+`config.ts` declares `resources?: ResourcesConfig`, v0.0.19's does not.
+`tests/contract-removed-fields.test.ts` holds the message word for word
+(red with the lookup disabled), a control that a never-known field is
+still unknown, and every entry's shape; `schema.md`'s error table gains
+the row, provoked in `schema-doc-drift.test.ts`. The warning of step 1 is
+not built: no field is deprecated, and the doc says so. Written in stream
+D's file because the plan assigned the mechanism to H; the change is the
+table and one lookup.
+
 ## Leads for other streams
 
 - **D / B:** `exec.sandbox.ignore.localBinding` accepts ANY value (the
@@ -47,3 +65,8 @@ comment passes (control).
   forward the two name lists.
 - **D:** `dependsOn` accepts `['']` and `['!x']` at load; whether the graph
   refuses each with the task named is unchecked.
+- **F:** `@vzn/vx-reapi#test`'s "a call a proxy cuts in transit >
+  RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is retried" failed once
+  in a full local gate (2026-09-27, Bun 1.4.2, 2164 ms, "the collector
+  hung up") and passed twice run alone. Timing-dependent under load;
+  unexamined.
