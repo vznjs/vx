@@ -28,8 +28,7 @@ export interface OtelPluginOptions {
   metrics?: boolean
   /**
    * Ship each executed task's captured output tail as an OTel log record.
-   * Default: true — an endpoint is configured, so the intent is to export;
-   * the same default the cloud sink applies once a connection resolves.
+   * Default: true — an endpoint is configured, so the intent is to export.
    * Set false (or `OTEL_LOGS_EXPORTER=none`) to export traces + metrics only.
    */
   logs?: boolean
