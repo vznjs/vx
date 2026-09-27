@@ -76,6 +76,67 @@ describe('parseOtlpHeaders', () => {
 })
 
 describe('resolveOtelConfig', () => {
+  // A curl-style `Authorization: Basic …=` splits at its first `=` into a
+  // NAME holding the credential; fetch refused it quoting the name, so the
+  // secret reached the log and every export failed (item 1056).
+  it('a header name no request can carry is dropped, neither name nor value printed', () => {
+    const warns: string[] = []
+    const c = resolveOtelConfig(
+      {},
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_HEADERS: 'Authorization: Basic dXNlcjpwYXNz==,x-ok=1',
+      },
+      (m) => warns.push(m),
+    )!
+    expect([c.headers, warns]).toEqual([
+      { 'x-ok': '1' },
+      [
+        '[vx-otel] a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
+      ],
+    ])
+  })
+
+  // `Authorization` and `authorization` were two keys, and fetch joined
+  // them into one header: `Bearer shared, Bearer traces-only` (item 1056).
+  it('header names merge case-insensitively, the later spelling winning', () => {
+    const c = resolveOtelConfig(
+      {},
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20shared',
+        OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'authorization=Bearer%20traces-only',
+      },
+    )!
+    const sent = { ...c.headers, ...c.signalHeaders?.traces }
+    expect(sent).toEqual({ authorization: 'Bearer traces-only' })
+    // The option stays on top of the env, in any spelling.
+    const o = resolveOtelConfig(
+      { headers: { authorization: 'Bearer option' } },
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20env',
+      },
+    )!
+    expect(o.headers).toEqual({ authorization: 'Bearer option' })
+  })
+
+  // Only `OTEL_LOGS_EXPORTER=none` was read; the rest still exported
+  // (item 1056).
+  it('the SDK opt-outs are honoured: disabled, and traces or metrics none', () => {
+    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+    expect(resolveOtelConfig({}, { ...base, OTEL_SDK_DISABLED: 'true' })).toBeUndefined()
+    const t = resolveOtelConfig({}, { ...base, OTEL_TRACES_EXPORTER: 'none' })!
+    expect([t.tracesEnabled, t.metricsEnabled]).toEqual([false, true])
+    const m = resolveOtelConfig({}, { ...base, OTEL_METRICS_EXPORTER: 'none' })!
+    expect([m.tracesEnabled, m.metricsEnabled]).toEqual([undefined, false])
+    // CONTROL: the plugin's own option still wins over the env.
+    expect(
+      resolveOtelConfig({ metrics: true }, { ...base, OTEL_METRICS_EXPORTER: 'none' })!
+        .metricsEnabled,
+    ).toBe(true)
+  })
+
   // Item 928: fetch refuses a header no request can carry and QUOTES its
   // value in the error the export warning printed — an auth secret.
   it('a header value no request can carry is dropped by name, its value unprinted', () => {
@@ -399,6 +460,23 @@ describe('OtelSink end-to-end', () => {
     driveOneTask(sink)
     await sink.flush()
     expect(calls.some((c) => c.url.endsWith('/v1/metrics'))).toBe(false)
+  })
+
+  // `OTEL_TRACES_EXPORTER=none` resolved to `tracesEnabled: false`, and the
+  // sink shipped traces regardless (item 1056).
+  it('a sink with traces off POSTs no traces, and the other signals as before', async () => {
+    const urls: string[] = []
+    const sink = new OtelSink({
+      ...mkConfig().cfg,
+      tracesEnabled: false,
+      post: async (url) => {
+        urls.push(url)
+      },
+    })
+    driveOneTask(sink)
+    await sink.flush()
+    expect(urls.some((u) => u.endsWith('/v1/traces'))).toBe(false)
+    expect(urls.length).toBeGreaterThan(0)
   })
 
   it('is never-fail: a throwing transport does not reject flush', async () => {

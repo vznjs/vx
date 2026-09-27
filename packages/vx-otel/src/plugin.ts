@@ -93,6 +93,9 @@ function headerValueFault(value: string): string | null {
   return past ? 'a character past Latin-1' : null
 }
 
+/** An HTTP header name: an RFC 7230 token. */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+
 function joinSignal(base: string, signal: string): string {
   return `${base.replace(/\/+$/, '')}/v1/${signal}`
 }
@@ -120,11 +123,15 @@ export function resolveOtelConfig(
     present(env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']) ??
     (base ? joinSignal(base, 'logs') : undefined)
   if (tracesUrl === undefined) return undefined
-  // `OTEL_LOGS_EXPORTER=none` is the standard SDK opt-out; honour it so a
-  // pipeline already configured that way does not start receiving build logs
-  // just because it upgraded vx.
-  const logsWanted = opts.logs ?? env['OTEL_LOGS_EXPORTER']?.trim().toLowerCase() !== 'none'
-  const metricsWanted = opts.metrics ?? true
+  // The standard SDK opt-outs, honoured so a pipeline already configured
+  // that way does not start receiving vx's telemetry because it upgraded
+  // vx. Only the logs one was read; `OTEL_SDK_DISABLED=true` and the traces
+  // and metrics `=none` were ignored and still exported (item 1056).
+  if (env['OTEL_SDK_DISABLED']?.trim().toLowerCase() === 'true') return undefined
+  const off = (name: string): boolean => env[name]?.trim().toLowerCase() === 'none'
+  const tracesWanted = !off('OTEL_TRACES_EXPORTER')
+  const logsWanted = opts.logs ?? !off('OTEL_LOGS_EXPORTER')
+  const metricsWanted = opts.metrics ?? !off('OTEL_METRICS_EXPORTER')
   // A signal ships only to its OWN url. With only a traces endpoint set, the
   // metrics payload used to go to the traces url — a request the collector
   // refuses on every run (item 807). A signal asked for by name and given no
@@ -142,17 +149,33 @@ export function resolveOtelConfig(
 
   // A header value fetch refuses is refused here, by name: fetch's error
   // quotes the whole value, and the export warning printed it — an auth
-  // header's secret in the log (item 928).
+  // header's secret in the log (item 928). A NAME fetch refuses is refused
+  // too, and never printed: a curl-style `Authorization: Basic …=` split at
+  // its first `=` is a name holding the credential, and every export failed
+  // quoting it (item 1056). Names are lower-cased so the later of two
+  // spellings replaces the earlier, as the spec orders them: `Authorization`
+  // and `authorization` were both sent, joined into one bad credential.
   const dropped = new Set<string>()
+  let badName = false
   const clean = (h: Record<string, string>): Record<string, string> => {
     const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries(h)) {
+    for (const [raw, v] of Object.entries(h)) {
+      if (!HEADER_NAME.test(raw)) {
+        if (!badName) {
+          badName = true
+          warn?.(
+            '[vx-otel] a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
+          )
+        }
+        continue
+      }
+      const k = raw.toLowerCase()
       const fault = headerValueFault(v)
       if (fault === null) out[k] = v
       else if (!dropped.has(k)) {
         dropped.add(k)
         warn?.(
-          `[vx-otel] header ${JSON.stringify(k)} holds ${fault}, which no HTTP header can carry — not sent (its value is not printed)`,
+          `[vx-otel] header ${JSON.stringify(raw)} holds ${fault}, which no HTTP header can carry — not sent (its value is not printed)`,
         )
       }
     }
@@ -178,6 +201,7 @@ export function resolveOtelConfig(
       }),
       logs: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers }),
     },
+    ...(tracesWanted ? {} : { tracesEnabled: false }),
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,
     timeoutMs: opts.timeoutMs ?? 15_000,
