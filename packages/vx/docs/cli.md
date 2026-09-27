@@ -167,6 +167,11 @@ needs it.
 | `!<pattern>` | Exclude packages matching `<pattern>`, from everything the includes select, in any order. |
 | `[<git-ref>]` | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …). |
 
+A filter that names no project (`...`, a bare `!`) is refused, and one
+whose pattern matched but whose walk selected nothing says what it
+matched: `no projects selected: filter "...^core" matched core, and no
+project depends on it` (item 1030).
+
 Examples:
 
 ```sh

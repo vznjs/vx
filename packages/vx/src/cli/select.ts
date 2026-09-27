@@ -202,7 +202,12 @@ export async function resolveFilters(
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await loadWorkspaceProjects(cwd)
-  const parsed = raw.map((r) => parseFilter(r, root))
+  let parsed: ReturnType<typeof parseFilter>[]
+  try {
+    parsed = raw.map((r) => parseFilter(r, root))
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
   const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
   // Every reader of the staged configs in this pass — the `pkg#task`
   // edge walk, the `workspaceFiles` owners of a changed path — shares
@@ -244,6 +249,7 @@ export async function resolveFilters(
   }
 
   const unmatched: string[] = []
+  const emptyWalks: string[] = []
   const selected = applyFilters({
     filters: parsed,
     projects,
@@ -254,6 +260,17 @@ export async function resolveFilters(
     // matched nothing is worth flagging as a probable typo.
     onNoMatch: (f) => {
       if (f.gitSince === undefined) unmatched.push(f.raw)
+    },
+    // A pattern that matched, with nothing on the walk it asked for: the
+    // fact to say, where "no projects matched" read as a typo (item 1030).
+    onEmptyWalk: (f, matched) => {
+      if (f.negate || f.gitSince !== undefined) return
+      const which = matched.join(', ')
+      emptyWalks.push(
+        f.onlyDeps
+          ? `filter "${f.raw}" matched ${which}, which depends on no project`
+          : `filter "${f.raw}" matched ${which}, and no project depends on it`,
+      )
     },
   })
   if (selected.size === 0) {
@@ -272,6 +289,9 @@ export async function resolveFilters(
           ? ''
           : ` — ${self.gitSince} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
       return { empty: `nothing affected since ${refs}${hint}` }
+    }
+    if (unmatched.length === 0 && emptyWalks.length > 0) {
+      return { error: `no projects selected: ${emptyWalks.join('; ')}` }
     }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the

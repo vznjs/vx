@@ -564,6 +564,40 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).toContain('no projects matched filter(s): ../packages/*')
   })
 
+  it('a filter that matched but walked to nothing, or names no project, says so (item 1030)', async () => {
+    // `...^one` matched `one`, which nothing depends on, and was reported as
+    // a typo; `...` was hinted "Did you mean one?"; a bare `!` excluded
+    // nothing and every project ran.
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const said = async (filter: string): Promise<[number, string]> => {
+      stderr = ''
+      const code = await run(['run', '--filter', filter, 'hello'])
+      return [code, stderr.trim()]
+    }
+    expect([
+      await said('...^one'),
+      await said('one^...'),
+      await said('...'),
+      await said('!'),
+    ]).toEqual([
+      [
+        1,
+        'vx run: no projects selected: filter "...^one" matched one, and no project depends on it',
+      ],
+      [
+        1,
+        'vx run: no projects selected: filter "one^..." matched one, which depends on no project',
+      ],
+      [1, 'vx run: filter "..." names no project'],
+      [1, 'vx run: filter "!" names no project'],
+    ])
+  })
+
   it('a filter that matches nothing warns, even when another one matched', async () => {
     let stdout = ''
     let stderr = ''
