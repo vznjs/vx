@@ -38,7 +38,10 @@ behavior lives in the plugin package (vite-style), not in core.
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely
   on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no
-  exception (item 849); a second signal, or a `kill -9`, is. (The older `eventSink` seam is gone since
+  exception (item 849), nor is one that never started its schedule (a
+  refused setup, a factory that threw, an unresolved name) or a plan
+  (item 1021); a second signal, or a `kill -9`, is. A plugin whose own
+  `setup` threw is not torn down. (The older `eventSink` seam is gone since
   pipeline v2; `setup(ctx)` on the bus and `telemetry` are the two
   observe paths.)
 - **No defaults, one floor.** Core applies no plugin on its own; its

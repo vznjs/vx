@@ -396,9 +396,10 @@ export async function resolveExecutors(
  * End-of-run plugin lifecycle: each plugin's optional `teardown()`, in
  * declaration order. Crash-isolated — a throwing teardown is logged and
  * skipped, never propagated — and each call is time-bounded by
- * {@link teardownTimeoutMs}. Runs on the normal completion path only; the
- * finally-path disposers just unsubscribe. (Telemetry sinks flush before
- * this, in telemetry-host.ts, with the same reporting rule.)
+ * {@link teardownTimeoutMs}. Runs on every exit of a run once its plugins'
+ * factories ran, and of a plan (item 1021); the finally-path disposers
+ * just unsubscribe. (Telemetry sinks flush before this, in
+ * telemetry-host.ts, with the same reporting rule.)
  *
  * The bound is PER CALL and the calls are sequential, so the worst case
  * composes: measured at the 3s default, 1/2/3 simultaneously-hung plugins

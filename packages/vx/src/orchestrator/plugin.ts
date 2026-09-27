@@ -443,6 +443,20 @@ export interface InstallPluginsArgs {
 }
 
 /**
+ * A plugin's `setup` threw. It names the plugin so the run can tear down
+ * every other one: their capability factories and setups ran, and the
+ * one that failed set up nothing to release.
+ */
+export class PluginSetupError extends UserError {
+  constructor(
+    readonly plugin: Plugin,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+/**
  * Install every plugin's `setup` hook against a shared bus + context.
  * Synchronous loop; setup() promises are awaited in order so a plugin's
  * hooks are subscribed before the next plugin's setup runs. Throws if any
@@ -534,7 +548,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     try {
       await plugin.setup(ctx)
     } catch (err) {
-      throw new UserError(
+      throw new PluginSetupError(
+        plugin,
         `plugin '${plugin.name}' failed to load: ${err instanceof Error ? err.message : String(err)}`,
       )
     }

@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { teardownPlugins } from '../src/orchestrator/plugin-host.js'
-import { run, type Logger } from '../src/index.js'
+import { planRun, run, type Logger } from '../src/index.js'
 import { createEventBus } from '../src/orchestrator/index.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 
@@ -377,5 +377,116 @@ describe('an injected bus outlives the run: what a run subscribed leaves with it
     expect(completes).toBe(1)
     expect((await run(opts)).ok).toBe(true)
     expect(completes).toBe(2)
+  })
+})
+
+// Item 1021: teardown ran on the normal end alone. A refused setup, a
+// factory or `accepts` that threw, an unresolved name and a plan each left
+// every plugin's capabilities opened and never released: once per cycle
+// under `vx watch`.
+describe('the lifecycle is reached on a run that never started', () => {
+  let root: string
+  const quiet = {
+    runStart: () => undefined,
+    taskStart: () => undefined,
+    taskStdout: () => undefined,
+    taskStderr: () => undefined,
+    taskComplete: () => undefined,
+    runStatus: () => undefined,
+    runEnd: () => undefined,
+    status: () => undefined,
+  }
+
+  beforeEach(async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'vx-plugin-abort-'))
+    await Bun.write(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['a'] }),
+    )
+    await Bun.write(path.join(root, 'a/package.json'), JSON.stringify({ name: 'a' }))
+    await Bun.write(
+      path.join(root, 'a/vx.config.mjs'),
+      `export default { tasks: { t: { exec: { command: 'true' } } } }`,
+    )
+    gitInitCommit(root, 'i')
+  })
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  /** Plugin `org/a` logs its setup and teardown; `org/b` gets `bHooks` and a teardown. */
+  const withPlugins = async (bHooks: string): Promise<void> => {
+    await Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/a',
+            `{ setup() { globalThis.__vxAbort.push('a-setup') },
+               teardown() { globalThis.__vxAbort.push('a-teardown') } }`,
+          ),
+          pluginSource(
+            'org/b',
+            `{ ${bHooks} teardown() { globalThis.__vxAbort.push('b-teardown') } }`,
+          ),
+        ],
+        `globalThis.__vxAbort = []
+`,
+      ),
+    )
+  }
+  const seen = (): string[] => (globalThis as unknown as { __vxAbort: string[] }).__vxAbort
+  const settle = (p: Promise<unknown>): Promise<string> =>
+    p.then(
+      () => 'resolved',
+      (e: Error) => e.message,
+    )
+  const runT = (tasks = ['t']) =>
+    run({ cwd: root, projects: ['a'], tasks, log: quiet, handleSignals: false })
+
+  it('a setup that throws tears down every other plugin, not the one that threw', async () => {
+    await withPlugins(`setup() { throw new Error('b boom') },`)
+    expect(await settle(runT())).toBe("plugin 'org/b' failed to load: b boom")
+    expect(seen()).toEqual(['a-setup', 'a-teardown'])
+  })
+
+  it('an executor factory that throws tears every plugin down', async () => {
+    await withPlugins(`executor() { throw new Error('factory boom') },`)
+    expect(await settle(runT())).toContain('factory boom')
+    expect(seen()).toEqual(['a-setup', 'a-teardown', 'b-teardown'])
+  })
+
+  it('an executor whose accepts() throws tears every plugin down', async () => {
+    await withPlugins(
+      `executor() { return { name: 'x', accepts() { throw new Error('accepts boom') }, execute() {} } },`,
+    )
+    expect(await settle(runT())).toContain('accepts boom')
+    expect(seen()).toEqual(['a-setup', 'a-teardown', 'b-teardown'])
+  })
+
+  it('a task no project declares tears every plugin down', async () => {
+    await withPlugins('')
+    expect((await runT(['nope'])).ok).toBe(false)
+    expect(seen()).toEqual(['a-teardown', 'b-teardown'])
+  })
+
+  it('a run refused as nested in its own workspace tears every plugin down', async () => {
+    await withPlugins('')
+    const prev = process.env['VX_RUN_WORKSPACE']
+    process.env['VX_RUN_WORKSPACE'] = root
+    try {
+      expect(await settle(runT())).toContain('inside its own workspace')
+    } finally {
+      if (prev === undefined) delete process.env['VX_RUN_WORKSPACE']
+      else process.env['VX_RUN_WORKSPACE'] = prev
+    }
+    expect(seen()).toEqual(['a-teardown', 'b-teardown'])
+  })
+
+  it('a plan tears every plugin down', async () => {
+    await withPlugins('')
+    await planRun({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })
+    expect(seen()).toEqual(['a-teardown', 'b-teardown'])
   })
 })

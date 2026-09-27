@@ -39,7 +39,7 @@ import { admitTasks, taintTracker } from './admission.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
-import { installPlugins } from './plugin.js'
+import { installPlugins, PluginSetupError } from './plugin.js'
 import { buildAdmission, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
@@ -217,6 +217,19 @@ async function runOnBus(
 
   const prepared = await prepareRun(options, log)
   mark('plugin stages')
+  // Every exit from here tears the plugins down: their capability
+  // factories ran in prepareRun, and teardown is what releases what those
+  // opened (a client, a channel). Until item 1021 only the normal end did,
+  // so an early return, a refused setup or a throw left them held — once
+  // per cycle under `vx watch`. A plugin whose own setup threw set up
+  // nothing, and is the one left out.
+  let tornDown = false
+  const teardown = async (except?: unknown): Promise<void> => {
+    if (tornDown) return
+    tornDown = true
+    const plugins = prepared.plugins.filter((p) => p !== except)
+    await teardownPlugins(plugins, (m) => log.status(m))
+  }
   // A task whose command re-enters `vx run` in the workspace running it
   // is refused. When the inner run reaches this task again it forks a run
   // per run until the machine gives out; when it does not (`ci` shelling
@@ -226,6 +239,7 @@ async function runOnBus(
   // name the task; the check is on the root so both shapes are caught.
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
   if (outerRoot !== undefined && path.resolve(outerRoot) === path.resolve(prepared.workspaceRoot)) {
+    await teardown()
     prepared.cache.close()
     throw new UserError(
       `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
@@ -241,6 +255,7 @@ async function runOnBus(
     log.status(
       `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
     )
+    await teardown()
     prepared.cache.close()
     return { ok: false, outcomes: [] }
   }
@@ -254,6 +269,7 @@ async function runOnBus(
         ? `No projects declare task(s): ${options.tasks.join(', ')}.${await initHint(prepared)}`
         : 'No tasks to run.'
     log.status(msg)
+    await teardown()
     prepared.cache.close()
     return { ok: false, outcomes: [] }
   }
@@ -273,8 +289,20 @@ async function runOnBus(
     })
   } catch (err) {
     disposePlugins?.()
+    await teardown(err instanceof PluginSetupError ? err.plugin : undefined)
     prepared.cache.close()
     throw err
+  }
+  // Until the run's own try below, a throw leaves through here.
+  const abandoning = async <T>(step: () => T | Promise<T>): Promise<T> => {
+    try {
+      return await step()
+    } catch (err) {
+      disposePlugins?.()
+      await teardown()
+      prepared.cache.close()
+      throw err
+    }
   }
   const {
     workspaceRoot,
@@ -293,24 +321,19 @@ async function runOnBus(
 
   // Resolved ONCE per run, in declaration order, the local executor last.
   // A broken factory aborts here, before any task starts.
-  let executors: readonly TaskExecutor[]
-  try {
-    executors = await resolveExecutors(prepared.plugins, {
+  const executors: readonly TaskExecutor[] = await abandoning(() =>
+    resolveExecutors(prepared.plugins, {
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
       warn: (m: string) => log.status(m),
       concurrency,
-    })
-  } catch (err) {
-    disposePlugins?.()
-    prepared.cache.close()
-    throw err
-  }
+    }),
+  )
   // Placement: decided ONCE per task, before scheduling, so the scheduler
   // can admit a remote-pooled task against its pool instead of a local
   // worker slot. Group tasks run nothing; persistent tasks never reach an
   // executor (local by construction) — both stay off the map.
-  const placements = placeTasks(nodes, executors)
+  const placements = await abandoning(() => placeTasks(nodes, executors))
   // A `remote: 'only'` task nobody takes succeeds WITHOUT running. That is
   // deliberate — on a machine with no remote pool the ambient state already
   // is what the task would have produced — but it must not be SILENT: a task
@@ -342,7 +365,9 @@ async function runOnBus(
   }
   // The SAME set is handed back every time, narrowed in place: a consumer
   // reading it later sees the truth rather than a stale snapshot.
-  for (const [executor, remaining] of demandOf) executor.demand!(remaining)
+  await abandoning(() => {
+    for (const [executor, remaining] of demandOf) executor.demand!(remaining)
+  })
   const narrowDemand =
     demandOf.size === 0
       ? (): void => {}
@@ -457,10 +482,12 @@ async function runOnBus(
   }
   // Taken after the early exits above (nothing they do touches a tree) and
   // before the schedule: from here on tasks clean, restore and write.
-  const releaseRunLock = await acquireRunLock(prepared.workspaceRoot, {
-    log: (m) => log.status(m),
-    signal: stopRun.signal,
-  })
+  const releaseRunLock = await abandoning(() =>
+    acquireRunLock(prepared.workspaceRoot, {
+      log: (m) => log.status(m),
+      signal: stopRun.signal,
+    }),
+  )
   try {
     // One run-id per `vx run` invocation. Every task in the resulting
     // graph carries it so analytics queries can group by invocation.
@@ -900,8 +927,8 @@ async function runOnBus(
     }
     // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
     // + time-bounded inside teardownPlugins, so a faulty plugin can neither
-    // fail nor hang the run. Normal completion path only — the finally
-    // below just unsubscribes.
+    // fail nor hang the run. Here on the normal path, after the drains
+    // below; every other exit takes it through `teardown` too.
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
@@ -939,7 +966,7 @@ async function runOnBus(
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).
     if (!stopRun.signal.aborted) await applyCacheRetention(prepared, log)
-    await teardownPlugins(prepared.plugins, (m) => log.status(m))
+    await teardown()
     await closeCache()
     mark('close')
     printTimings()
@@ -1019,6 +1046,8 @@ async function runOnBus(
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()
     telemetry?.dispose()
+    // No-op after the normal path's teardown; on a throw, the only one.
+    await teardown()
     // No-op after the normal path's close. On a throw this is the only
     // close there is, and it must not itself throw — that would replace
     // the run's real error with a teardown one. Background uploads are
@@ -1123,6 +1152,9 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     mark('plan')
     return planned
   } finally {
+    // The plan called the cache and executor factories; teardown releases
+    // what they opened, as a run's end does (item 1021).
+    await teardownPlugins(prepared.plugins, (m) => log.status(m))
     prepared.cache.close()
     // The same table a run prints: a dry run is how the prepare stages
     // (discovery, config load, the git enumeration) get profiled on a
