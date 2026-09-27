@@ -153,9 +153,10 @@ describe('the server, exactly', () => {
     expect(text).toContain('\n  "taskId": "a#build"')
   })
 
-  it('a tool that fails for its own reasons is -32603 carrying the reason', async () => {
-    // A cache.db that is not a database: SQLite's own error, not a
-    // UserError, and the agent is told it rather than a bare "internal error".
+  it('a cache index that is not a database is a result naming the file and the remedy', async () => {
+    // It was SQLite's own error and -32603; core now refuses it by name
+    // (item 1005), so the agent reads the file and the fix as a tool result.
+    // A tool's raw error is still -32603: server.test.ts holds that.
     const broken = path.join(root, 'broken-cache')
     await mkdir(broken, { recursive: true })
     await writeFile(path.join(broken, 'cache.db'), 'not a sqlite database at all. '.repeat(100))
@@ -167,8 +168,13 @@ describe('the server, exactly', () => {
         params: { name: 'getCacheStats', arguments: {} },
       }),
       { cacheDir: broken, workspaceRoot: root },
-    )) as { error: { code: number; message: string } }
-    expect(r.error).toEqual({ code: -32603, message: 'file is not a database' })
+    )) as { result: { content: Array<{ text: string }>; isError: boolean } }
+    expect(r.result.isError).toBe(true)
+    expect(r.result.content[0]!.text).toBe(
+      `the cache index ${path.join(broken, 'cache.db')} is not a database SQLite can read ` +
+        `(file is not a database) — it holds nothing a run cannot rebuild: remove it with its ` +
+        `-wal and -shm files and re-run, and \`vx cache prune\` reclaims the artifacts it indexed`,
+    )
   })
 
   it('a blank or whitespace-only line is no message and gets no reply', async () => {

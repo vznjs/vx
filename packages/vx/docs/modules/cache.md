@@ -475,7 +475,12 @@ newer one, each with a `UserError` that names the directory and both
 versions and leaves the index as it was (item 896). Over a directory
 with no `cache.db`, `Cache.inspect` reads an empty index in memory and
 creates nothing on disk: no directory, no `.gitignore`, no database
-(item 900). The open that drops them says
+(item 900). A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,
+`SQLITE_CORRUPT*` from the open's first statements) is refused by both
+opens with a `UserError` naming the file and the remedy (remove it with
+its `-wal` and `-shm`; the index holds nothing a run cannot rebuild):
+it reached every verb as a raw stack (item 1005). Corruption deeper in
+the file surfaces where it is read. The open that drops them says
 so: `Cache.schemaReset` carries `{ from, to }` on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
 status line, or a verb's stderr — `[vx] cache index reset: schema v24 →

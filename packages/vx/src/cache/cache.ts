@@ -110,6 +110,12 @@ export interface SchemaReset {
   to: string
 }
 
+/** SQLite's answer for a file that is not a readable database: corrupt, or not one at all. */
+function unreadableIndex(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code
+  return typeof code === 'string' && (code.startsWith('SQLITE_CORRUPT') || code === 'SQLITE_NOTADB')
+}
+
 /** Say once, on the channel the opener has, that an upgrade emptied the index. */
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void {
   if (cache.formatChange !== null) {
@@ -440,17 +446,34 @@ export class Cache implements CacheLayer {
     // `database is locked` right here, on macOS's slower disk first
     // (2026-09-16, the run lock's own e2e; the lock is taken after the
     // cache opens, so the open is the one moment two runs still overlap).
-    this.db.exec('PRAGMA busy_timeout = 5000')
-    this.db.exec('PRAGMA journal_mode = WAL')
-    this.db.exec('PRAGMA synchronous = NORMAL')
-    this.db.exec('PRAGMA foreign_keys = ON')
-
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS schema_meta (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `)
+    // A file SQLite cannot read as a database answers the first statement
+    // that reads it, and reached every verb as `SQLiteError: file is not a
+    // database` and a stack, `vx run` and the doctor included (item 1005).
+    const readable = <T>(read: () => T): T => {
+      try {
+        return read()
+      } catch (err) {
+        if (!unreadableIndex(err)) throw err
+        this.db.close()
+        throw new UserError(
+          `the cache index ${dbFile} is not a database SQLite can read (${(err as Error).message}) — ` +
+            `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
+            `re-run, and \`vx cache prune\` reclaims the artifacts it indexed`,
+        )
+      }
+    }
+    readable(() => {
+      this.db.exec('PRAGMA busy_timeout = 5000')
+      this.db.exec('PRAGMA journal_mode = WAL')
+      this.db.exec('PRAGMA synchronous = NORMAL')
+      this.db.exec('PRAGMA foreign_keys = ON')
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS schema_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+      `)
+    })
 
     // Schema-version gate runs BEFORE the rest of the schema lands so
     // a column rename (e.g. v15's `sha256` → `content_hash`) actually
@@ -487,7 +510,7 @@ export class Cache implements CacheLayer {
         )
       }
     }
-    const current = readVersion()
+    const current = readable(readVersion)
     if (current !== SCHEMA_VERSION) {
       try {
         if (current !== undefined) refuseUnreadable(current)

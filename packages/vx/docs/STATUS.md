@@ -540,6 +540,21 @@ test is telling the truth.
         a writing close pruning the same rows as the control. Red without
         the fix.
 
+1005. DONE (2026-09-27, the run-history review's lead 2). A `cache.db`
+      SQLite could not read (garbage, or a garbled schema page) crashed
+      every verb — `vx run`, `why`, `last`, `info` — with a raw
+      `SQLiteError` and a stack, and the user had to find the file.
+      - Fix (`cache.ts`): the open's pragmas, `schema_meta` and version
+        read turn `SQLITE_NOTADB` / `SQLITE_CORRUPT*` into a `UserError`
+        naming the file and the remedy, for a run and a reading verb
+        alike. A delete of a live `-wal` gave `SQLITE_IOERR_SHORT_READ`
+        in a probe and is not caught (an I/O code is also a real disk's).
+        Corruption deeper in the file surfaces where it is read.
+        `modules/cache.md` says so.
+      - Rows: `cache-unreadable.test.ts`, the two shapes with SQLite's own
+        code asserted first and a sound index as the control. Red without
+        the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
