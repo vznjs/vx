@@ -419,6 +419,13 @@ export async function resolveExecutors(
     if (typeof executor.name !== 'string' || executor.name.length === 0) {
       throw new UserError(`plugin '${plugin.name}' returned an executor with no name`)
     }
+    // The pool's room is `active < capacity`: 0 or NaN parks its tasks for good.
+    const capacity: unknown = executor.capacity
+    if (capacity !== undefined && !(Number.isInteger(capacity) && (capacity as number) > 0)) {
+      throw new UserError(
+        `plugin '${plugin.name}' returned executor '${executor.name}' with capacity ${typeof capacity === 'number' ? String(capacity) : JSON.stringify(capacity)}: it must be a positive integer`,
+      )
+    }
     executorPlugin.set(executor, plugin.name)
     executors.push(executor)
   }

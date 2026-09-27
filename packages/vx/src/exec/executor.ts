@@ -190,7 +190,8 @@ export interface TaskExecutor {
   /**
    * How many tasks this executor runs at once. Its tasks then occupy a pool
    * of this size instead of the local worker slots, so a remote pool is not
-   * throttled by the local CPU count. Absent = the local pool.
+   * throttled by the local CPU count. A positive integer; anything else
+   * is refused when the executor is resolved. Absent = the local pool.
    */
   readonly capacity?: number
   /** Per-task opt-out at placement time. Absent = accepts every task it is offered. */
