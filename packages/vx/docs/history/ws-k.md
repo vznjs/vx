@@ -23,13 +23,14 @@
   copies it into a fresh repo and drives cold (3 miss), warm (cache
   hits) and an edit to lib (all three re-run); red with app's `^build`
   dropped.
+- **K-5** npm discoverability (coordinator backlog 4): `@vzn/vx` shipped
+  as "An open, extensible monorepo task runner." with its homepage on the
+  GitHub README; no plugin had keywords. Core's `package.json` now holds
+  the site's hero line, the docs site as homepage and keywords, which
+  `build-npm.ts` publishes instead of its own hard-coded list; each
+  plugin carries `vx`, `vx-plugin`, `monorepo` and its subject.
+  `build-npm.unsafe.test.ts` holds it for every published package.
 
 ## Leads for other streams
 
 - **I**: `update-site.ts` gained the chart (K-1); it is stream I's file.
-- **H/E** npm discoverability: `build-npm.ts` publishes `@vzn/vx` with
-  the description "An open, extensible monorepo task runner." (the site
-  and README say "A fast, correct task runner and build cache for
-  JavaScript monorepos") and `homepage` on the GitHub README, not the
-  docs site; the plugin `package.json` files carry no `keywords`, so
-  npm search cannot find them by `vx`, `monorepo` or their subject.

@@ -143,6 +143,42 @@ describe('the published plugin packages', async () => {
     )
   })
 
+  // npm search ranks on description and keywords; the release shipped
+  // @vzn/vx as "An open, extensible monorepo task runner." with its homepage
+  // on the GitHub README, and every plugin with no keywords at all.
+  it('are found on npm by vx and monorepo, @vzn/vx pointing at the docs site', async () => {
+    const found: unknown[] = []
+    for (const dir of [mainDir, ...emitted.map((e) => e.dir)]) {
+      const m = (await Bun.file(path.join(dir, 'package.json')).json()) as {
+        name: string
+        description?: string
+        keywords?: string[]
+      }
+      found.push({
+        name: m.name,
+        described: (m.description ?? '').length > 0,
+        vx: m.keywords?.includes('vx') ?? false,
+        monorepo: m.keywords?.includes('monorepo') ?? false,
+      })
+    }
+    expect(found).toEqual(
+      ['@vzn/vx', ...emitted.map((e) => e.name)].map((name) => ({
+        name,
+        described: true,
+        vx: true,
+        monorepo: true,
+      })),
+    )
+    const main = (await Bun.file(path.join(mainDir, 'package.json')).json()) as Record<
+      string,
+      unknown
+    >
+    expect([main.description, main.homepage]).toEqual([
+      'A fast, correct task runner and build cache for JavaScript monorepos.',
+      'https://vznjs.github.io/vx/',
+    ])
+  })
+
   it('ship every file they declare, with every bin still executable', async () => {
     const missing: string[] = []
     const notExecutable: string[] = []

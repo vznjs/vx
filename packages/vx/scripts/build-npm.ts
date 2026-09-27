@@ -152,7 +152,9 @@ export function coreEntries(exports: Readonly<Record<string, unknown>>): readonl
 export async function emitMainPackage(args: { version: string; outDir: string }): Promise<string> {
   const { version, outDir } = args
   const corePkg = (await Bun.file(join(CORE, 'package.json')).json()) as {
-    description?: string
+    description: string
+    homepage: string
+    keywords: string[]
     dependencies?: Record<string, string>
     exports: Record<string, unknown>
   }
@@ -174,7 +176,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
   await writeJson(join(mainDir, 'package.json'), {
     name: '@vzn/vx',
     version,
-    description: corePkg.description ?? 'An open, extensible monorepo task runner.',
+    description: corePkg.description,
     type: 'module',
     // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
     // The same exports map the workspace package declares; `coreEntries`
@@ -190,10 +192,10 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     dependencies: corePkg.dependencies ?? {},
     files: [...entries, 'launcher.mjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
-    homepage: `${REPO_URL}#readme`,
+    homepage: corePkg.homepage,
     bugs: `${REPO_URL}/issues`,
     license: 'MIT',
-    keywords: ['monorepo', 'task-runner', 'build', 'cache', 'bun', 'turborepo', 'nx'],
+    keywords: corePkg.keywords,
   })
 
   return mainDir
