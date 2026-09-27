@@ -29,6 +29,7 @@ import {
   GitFilesCache,
   attributeFilesOutsideTree,
   autocrlfConverts,
+  gitStatWeakened,
   parseCheckAttrOutput,
   populateGitFilesCache,
 } from '../src/cache/inputs.js'
@@ -948,6 +949,79 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  for (const [key, value] of [
+    ['core.trustctime', 'false'],
+    ['core.checkStat', 'minimal'],
+  ] as const) {
+    it(
+      `${key}=${value}: a same-size rewrite that keeps its mtime is a miss (A-6)`,
+      async () => {
+        // git then judges the file by mtime and size alone (with minimal,
+        // whole seconds): `cp -p` or `tar -x` over a tracked input reads
+        // clean, and its index OID keyed the old bytes.
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        await write(
+          path.join(root, 'vx.config.mjs'),
+          `export default {
+             tasks: {
+               build: {
+                 exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
+                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               },
+             },
+           }`,
+        )
+        await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+        const src = path.join(root, 'src/a.txt')
+        await write(src, 'AAAA')
+        // An mtime well before the index is written, so git's own racy
+        // check does not re-read the file.
+        const old = new Date(1_600_000_000_000)
+        await utimes(src, old, old)
+        git(root, 'init', '-q')
+        git(root, 'config', 'user.email', 'test@vx.local')
+        git(root, 'config', 'user.name', 'vx test')
+        git(root, 'config', key, value)
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
+
+        vx(root, 'run', 'build')
+        expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('AAAA')
+        await writeFile(src, 'BBBB')
+        await utimes(src, old, old)
+        vx(root, 'run', 'build')
+        expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('BBBB')
+      },
+      TIMEOUT,
+    )
+  }
+
+  it(
+    'the index OIDs are kept under the default stat and dropped under a weakened one',
+    async () => {
+      await write(path.join(root, 'src/a.txt'), 'AAAA')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      // Pinned here: a machine's global config may weaken either (this
+      // container's does both).
+      git(root, 'config', 'core.trustctime', 'true')
+      git(root, 'config', 'core.checkStat', 'default')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      const trusted = async (): Promise<boolean> => {
+        const memo = new GitFilesCache()
+        await populateGitFilesCache(root, [root], memo)
+        return memo.oidsFor(root)?.has(path.join(root, 'src/a.txt')) === true
+      }
+      expect(await trusted()).toBe(true)
+      git(root, 'config', 'core.checkStat', 'minimal')
+      expect(await trusted()).toBe(false)
+    },
+    TIMEOUT,
+  )
+
   it(
     'a repo with no attributes and no autocrlf never runs check-attr',
     async () => {
@@ -1747,6 +1821,24 @@ describe('autocrlfConverts', () => {
     expect(autocrlfConverts('core.eol=lf\ncore.autocrlf=TRUE')).toBe(true)
     // The last value wins, as it does in git.
     expect(autocrlfConverts('core.autocrlf=true\ncore.autocrlf=false')).toBe(false)
+  })
+})
+
+describe('gitStatWeakened', () => {
+  it('is true for a ctime git does not trust or a minimal stat, and only then', () => {
+    for (const v of ['false', 'no', 'off', '0', 'FALSE']) {
+      expect(gitStatWeakened(`core.trustctime=${v}`)).toBe(true)
+    }
+    expect(gitStatWeakened('core.checkstat=minimal')).toBe(true)
+    for (const vars of [
+      '',
+      'core.trustctime=true',
+      'core.trustctime=',
+      'core.checkstat=default',
+      'core.trustctime=false\ncore.trustctime=true',
+    ]) {
+      expect(gitStatWeakened(vars)).toBe(false)
+    }
   })
 })
 

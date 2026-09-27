@@ -635,6 +635,28 @@ function restampModes(trusted: Map<string, string>, workspaceRoot: string): void
   }
 }
 
+/**
+ * `true` when the repository's config weakens the stat `git status` judges
+ * a file clean by: `core.trustctime` off, or `core.checkStat=minimal`
+ * (whole-second mtime and size only). Then a same-size rewrite that restores
+ * its mtime — `cp -p`, `tar -x`, a formatter that keeps times — reads clean
+ * and would keep its index OID, while the file hasher's own memo still keys
+ * on ctime and inode (A-6). Read from the `git var -l` the run already
+ * spawns; git's false spellings, the last value winning.
+ */
+export function gitStatWeakened(gitVars: string): boolean {
+  const vars = gitVarList(gitVars)
+  const trustctime = vars.get('core.trustctime')?.trim().toLowerCase()
+  const checkStat = vars.get('core.checkstat')?.trim().toLowerCase()
+  return (
+    trustctime === 'false' ||
+    trustctime === 'no' ||
+    trustctime === 'off' ||
+    trustctime === '0' ||
+    checkStat === 'minimal'
+  )
+}
+
 /** `true` when git may rewrite bytes for EVERY auto-detected text file. */
 export function autocrlfConverts(gitVars: string): boolean {
   const v = gitVarList(gitVars).get('core.autocrlf')?.trim().toLowerCase()
@@ -945,6 +967,9 @@ export async function startGitEnumeration(
   // Dropping the OID sends these back through the probe, where they correctly
   // fall out of the input set while unmaterialized.
   for (const rel of flagged) trusted.delete(rel)
+  // Under a weakened stat, `git status` vouches for nothing a same-size,
+  // time-keeping rewrite made: every file is hashed from disk instead.
+  if (vars !== null && vars.exitCode === 0 && gitStatWeakened(vars.stdout)) trusted.clear()
   // An index OID is only the file's content hash when git stores the worktree
   // bytes VERBATIM. Under a clean filter (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) the blob is a
   // DIFFERENT sequence of bytes — the LF-normalized form — while the task
