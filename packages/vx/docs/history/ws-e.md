@@ -48,6 +48,16 @@ What did not:
   distrusts every entry. The sandbox's HOME hides that config, so the
   gate is green. The fixture could pin `GIT_CONFIG_GLOBAL=/dev/null`.
 
+- B: the sandbox runtime's init runs `getGlobalNpmPaths`
+  (`generate-seccomp-filter.js`, an `execSync`), 128 ms of `vx info`'s
+  321 ms (compiled binary, this repo; CPU profile of the
+  `trySandboxedTrue` probe). A run that arms the sandbox likely pays it
+  too; unmeasured.
+- B: the unsafe suite's row "a traced sandboxed one-shot task's
+  children die with vx that is descheduled after the spawn" failed once
+  on PR 1254's CI (a diff that touched only a watch test); main was
+  green.
+
 ## Merged
 
 - E-1 — `vx upgrade`: a transfer cut mid-body and a release document
@@ -191,3 +201,8 @@ task picked`; neither prints a stack. Row in
   SIGKILLs vx mid-storm in its teardown: it stops watch with SIGTERM,
   asserts exit 0, and asserts no server survives (red when the stop
   skips the held server).
+- E-27 — `tests/module-boundaries.test.ts` scanned static `from`
+  specifiers only, and said no dynamic import crossed a boundary (J's
+  lead): `bin.ts` lazy-loads the façade, and a lazy deep import such as
+  `import('../orchestrator/run.js')` from `cli/` passed unseen. It now
+  scans `import('…')` too; `bin → index` joins the matrix with its why.
