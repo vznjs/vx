@@ -609,6 +609,35 @@ describe('malformed workspace manifests', () => {
     await expect(loadWorkspace(dir)).rejects.toThrow(/`packages` must be an array of glob strings/)
   })
 
+  it('a pnpm-workspace.yaml with no packages list defers to package.json (item 984)', async () => {
+    // pnpm 10 keeps settings and catalogs in this file for a single-package
+    // repo too. Read as an empty package list, the root found no project,
+    // and `vx show` printed nothing and exited 0.
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'onlyBuiltDependencies:\n  - esbuild\n')
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    const single = await listProjects(await loadWorkspace(dir))
+    expect(single.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
+
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'root', workspaces: ['packages/*'] }),
+    )
+    await mkdir(path.join(dir, 'packages/a'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
+    const members = await listProjects(await loadWorkspace(dir))
+    expect(members.map((p) => p.name)).toEqual(['a'])
+  })
+
+  it('rejects a pnpm-workspace.yaml that is not a mapping (item 984)', async () => {
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    for (const body of ['- packages/*\n', '42\n']) {
+      await writeFile(path.join(dir, 'pnpm-workspace.yaml'), body)
+      await expect(loadWorkspace(dir)).rejects.toThrow(
+        /pnpm-workspace\.yaml: must be a mapping \(`packages:` and pnpm's settings\)$/,
+      )
+    }
+  })
+
   it('rejects a non-string entry in package.json workspaces', async () => {
     await writeFile(
       path.join(dir, 'package.json'),
