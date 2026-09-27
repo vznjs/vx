@@ -1486,7 +1486,12 @@ the `cache` block).
 ## Schema validation errors
 
 The loader (`src/workspace/project-loader.ts`) validates at load time
-and surfaces `UserError` (clean output, no stack):
+and surfaces `UserError` (clean output, no stack). Every field's
+accepted values and exact refusal text are recorded in
+`tests/contract/config-schema.json`, which a test regenerates from the
+validator and compares, so a change to either is deliberate
+(`design/versioning-1.0.md` § How the contract is held). The table below
+lists the messages a user meets most:
 
 | Symptom                                                                                                           | Cause                                                                                                                                                                                                                          |
 | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
