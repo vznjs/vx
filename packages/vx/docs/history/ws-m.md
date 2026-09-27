@@ -27,4 +27,20 @@ reached the log" is this: it did, above the window.
 - Row: `suite-coverage.unsafe.test.ts` › every task that launches bun
   test prints only its failures (red with any one launcher reverted).
 
+M-2. `runner.test.ts` › the peak is the child's own: its heavy child
+allocated a fixed 600 MB, and the floor withholds any peak under the
+parent's own mark, which the shard's earlier files set. On macOS it read
+as no peak (run 36356486722, `peakRssBytes` undefined). Reproduced on
+Linux with a 700 MB parent hold; the child is now sized mark + 300 MB, as
+its sibling row already was.
+
+M-3. `undeclared-writes.test.ts` › control: the cached case dropped its
+project and the workspace partition on macOS CI twice (runs 36326699119,
+36336505992): `movedSinceKey` judged something moved, 38 ms in, with no
+word of what. The row now carries what the task said, so the next red
+names the input (proven with a mutant that moves `package.json`).
+Unproven lead: `movedInput`'s item-1015 test compares a ctime against
+`Date.now()`, two clocks; on Linux 1 of 3,000 writes after a `Date.now()`
+stamped 3 ms before it (`fsClockNow` in watch.ts documents the same).
+
 ## Leads for other streams
