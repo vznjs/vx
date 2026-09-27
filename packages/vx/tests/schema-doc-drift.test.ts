@@ -322,6 +322,11 @@ const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
     '<file>: packages must be an array of glob strings',
     () => failure({ 'pnpm-workspace.yaml': 'packages: "packages/*"\n' }, loadWorkspace),
   ],
+  ['<file>: must be a JSON object', () => failure({ 'package.json': 'null' }, loadWorkspace)],
+  [
+    '<file>: "name" must be a string with no surrounding whitespace',
+    () => failure({ 'package.json': '{"name":123}' }, loadWorkspace),
+  ],
   [
     "<file>: must be a mapping (packages: and pnpm's settings)",
     () => failure({ 'pnpm-workspace.yaml': '- packages/*\n' }, loadWorkspace),

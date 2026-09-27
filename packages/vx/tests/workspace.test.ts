@@ -683,6 +683,48 @@ describe('malformed workspace manifests', () => {
     expect(names).toEqual(['a'])
   })
 
+  it('refuses a package.json of the wrong shape by name (item 988)', async () => {
+    const cases: Array<[string, string]> = [
+      ['null', 'must be a JSON object'],
+      ['[]', 'must be a JSON object'],
+      ['{"name":123}', '"name" must be a string with no surrounding whitespace'],
+      ['{"name":{"x":1}}', '"name" must be a string with no surrounding whitespace'],
+      ['{"name":" a"}', '"name" must be a string with no surrounding whitespace'],
+    ]
+    const seen: string[] = []
+    for (const [body] of cases) {
+      // The root's own manifest, then a member's.
+      await writeFile(path.join(dir, 'package.json'), body)
+      seen.push(
+        await loadWorkspace(dir).then(
+          () => 'loaded',
+          (e: Error) => e.message,
+        ),
+      )
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: ['packages/*'] }),
+      )
+      await mkdir(path.join(dir, 'packages/m'), { recursive: true })
+      await writeFile(path.join(dir, 'packages/m/package.json'), body)
+      seen.push(
+        await loadWorkspace(dir)
+          .then((ws) => listProjects(ws))
+          .then(
+            () => 'loaded',
+            (e: Error) => e.message,
+          ),
+      )
+      await rm(path.join(dir, 'packages'), { recursive: true, force: true })
+    }
+    expect(seen).toEqual(
+      cases.flatMap(([, why]) => [
+        `${path.join(dir, 'package.json')}: ${why}`,
+        `${path.join(dir, 'packages/m/package.json')}: ${why}`,
+      ]),
+    )
+  })
+
   it('rejects a pnpm-workspace.yaml that is not a mapping (item 984)', async () => {
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     for (const body of ['- packages/*\n', '42\n']) {
