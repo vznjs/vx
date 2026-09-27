@@ -270,6 +270,42 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     ).rejects.toThrow("plugin 'org/anon' returned an executor with no name")
   })
 
+  it('resolveExecutors: a capacity that is not a positive integer is refused by name', async () => {
+    // 0, NaN or a negative number parked every task placed there and the
+    // run hung with no output.
+    const said = async (capacity: unknown): Promise<string> => {
+      const plugins: VxPlugin[] = [
+        testPlugin('org/pool', {
+          executor: () => ({
+            name: 'pool',
+            capacity: capacity as number,
+            execute: () => Promise.reject(new Error('unused')),
+          }),
+        }),
+      ]
+      try {
+        await resolveExecutors(plugins, { ...baseCtx, concurrency: 1 })
+        return 'ok'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    for (const [bad, shown] of [
+      [0, '0'],
+      [-1, '-1'],
+      [Number.NaN, 'NaN'],
+      [1.5, '1.5'],
+      [Infinity, 'Infinity'],
+      ['2', '"2"'],
+    ] as const) {
+      expect(await said(bad)).toBe(
+        `plugin 'org/pool' returned executor 'pool' with capacity ${shown}: it must be a positive integer`,
+      )
+    }
+    expect(await said(1)).toBe('ok')
+    expect(await said(undefined)).toBe('ok')
+  })
+
   it('resolveExecutors: a throwing executor factory aborts with a named UserError', async () => {
     const plugins: VxPlugin[] = [
       testPlugin('org/broken-exec', {

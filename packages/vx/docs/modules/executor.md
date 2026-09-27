@@ -14,8 +14,9 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 - `TaskExecutor { name; remote?; capacity?; accepts?(task); execute(req) }`
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `capacity` is how
-  many tasks it runs at once, which makes its tasks a POOL of that size
-  instead of local worker slots.
+  many tasks it runs at once (a positive integer, else the run is
+  refused), which makes its tasks a POOL of that size instead of local
+  worker slots.
 - `TaskPlacement { taskId; projectName; projectDir; command; pinnedLocal;
 cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   before scheduling, so it cannot depend on anything resolved per attempt.

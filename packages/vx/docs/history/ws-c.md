@@ -131,6 +131,14 @@ disables the plugin and warns once, as a throw does; the bus drops an
 async subscriber's rejection as it drops a throw. Row:
 `plugin.test.ts` (red under either half removed).
 
+## C-12: refuse an executor capacity that is not a positive integer
+
+A pooled task has room while `active < capacity`, so a `capacity` of 0,
+NaN or a negative number parked every task placed on that executor, and
+the run hung with no output (or, with no handle open, died with no
+summary and no teardown). `resolveExecutors` now refuses such a value by
+plugin and executor name. Row: `plugin-capabilities.test.ts`.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
