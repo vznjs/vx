@@ -390,8 +390,10 @@ Mutual exclusion:
   `--report-file` were accepted and silently wrote nothing until item 992.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
-nearest documented `vx run` flag when one is within two edits
-(`unknown flag: --concurency (did you mean --concurrency?)`).
+nearest flag the verb accepts when one is within two edits
+(`unknown flag: --concurency (did you mean --concurrency?)`). Every verb
+does this against its own usage line: `vx info --formt` hints
+`--format`, `vx lock --chek` hints `--check`.
 
 **Optional-value flags take their value with `=` only.** `--affected`,
 `--exclude-dependencies`, `--dry`, `--graph`, `--summarize`, `--profile`,

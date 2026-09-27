@@ -6,7 +6,7 @@
 
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { formatBytes } from './format.js'
-import { seeHelp } from './help.js'
+import { flagHint, seeHelp } from './help.js'
 import {
   exitSignal,
   getInvocation,
@@ -62,7 +62,8 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       i = cd.next
       continue
     }
-    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('last')}` }
+    if (a.startsWith('-'))
+      return { ...out, error: `unknown flag: ${a}${flagHint('last', a)}${seeHelp('last')}` }
     if (out.runId !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     out.runId = a
   }

@@ -5,7 +5,7 @@
 // too; this file parses the flags and renders the rows.
 
 import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/index.js'
-import { seeHelp } from './help.js'
+import { flagHint, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
 import { MIN_BUN } from '../util/index.js'
@@ -36,7 +36,7 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
       i = cd.next
       continue
     }
-    return { ...out, error: `unknown argument: ${a}${seeHelp('info')}` }
+    return { ...out, error: `unknown argument: ${a}${flagHint('info', a ?? '')}${seeHelp('info')}` }
   }
   return out
 }

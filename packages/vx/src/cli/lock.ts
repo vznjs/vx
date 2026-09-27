@@ -3,7 +3,7 @@
 // current environment. Design: docs/design/config-lock-2026-06.md.
 
 import type { ProjectConfig } from '../config.js'
-import { seeHelp } from './help.js'
+import { flagHint, seeHelp } from './help.js'
 import { relPosix, xxh3hex } from '../util/index.js'
 import {
   findWorkspaceRoot,
@@ -29,7 +29,11 @@ export function parseLockArgs(args: readonly string[]): LockArgs {
   const out: LockArgs = { check: false }
   for (const a of args) {
     if (a === '--check') out.check = true
-    else return { check: false, error: `unknown argument: ${a}${seeHelp('lock')}` }
+    else
+      return {
+        check: false,
+        error: `unknown argument: ${a}${flagHint('lock', a)}${seeHelp('lock')}`,
+      }
   }
   return out
 }

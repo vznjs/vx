@@ -4,7 +4,7 @@
 // the scripts is the richer source, and `@vzn/vx-migrate` maps it.
 
 import path from 'node:path'
-import { seeHelp } from './help.js'
+import { flagHint, seeHelp } from './help.js'
 import {
   applyMigration,
   findWorkspaceRoot,
@@ -28,7 +28,8 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
     if (a === '--dry') out.dry = true
     else if (a === '--force') out.force = true
     else if (a === '--mjs') out.mjs = true
-    else if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('init')}` }
+    else if (a.startsWith('-'))
+      return { ...out, error: `unknown flag: ${a}${flagHint('init', a)}${seeHelp('init')}` }
     else return { ...out, error: `unexpected argument: ${a}` }
   }
   return out

@@ -8,7 +8,7 @@
 
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
-import { seeHelp } from './help.js'
+import { flagHint, seeHelp } from './help.js'
 import { nearMatches, relPosix, UserError } from '../util/index.js'
 import { loadCliProjects } from './workspace-config.js'
 import {
@@ -33,7 +33,8 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     let format: string | undefined
     if (a === '--format') format = args[++i] ?? ''
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
-    else if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('show')}` }
+    else if (a.startsWith('-'))
+      return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
     else if (out.target !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     else out.target = a
 
