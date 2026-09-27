@@ -104,6 +104,17 @@ I-7. Scale, CI and the day's A/B (main 4b7c396a, compiled, git defaults).
   new; all 12 shards 95 and 95 s against 91 and 92 (the suite is
   work-bound, so the tail is what moves).
 
+I-9. Restore and CI's cache, sized.
+
+- refine restore (outputs wiped, 35 artifacts, 6,790 files), 12
+  interleaved rounds: `--concurrency 3` 1,148 ms median, 6 1,057, A/A
+  (3) 1,183. Not worker-bound; extraction is the item 193 floor. A
+  warm restore's `run graph` is 376–510 ms of a 590–641 ms run.
+- CI keeping vx's cache (the owner's call, I-7): 131 of main's 321
+  commits on 2026-09-27 (41 %) touched no core source (`src/`,
+  `index.ts`, `tsconfig.json`), so a restored cache would have skipped
+  the core shards on each.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
@@ -172,6 +183,12 @@ I-7. Scale, CI and the day's A/B (main 4b7c396a, compiled, git defaults).
   Bound (the key returning null, mtime fallback), 15 rounds with git
   defaults: main 417 ms median, bound 321, A/A 399. Reuse core's
   enumeration or scope the status to the project roots.
+- **B: `sandbox-runtime.unsafe.test.ts:4514` races an exiting pid
+  (I-9).** "a traced sandboxed one-shot task's children die with vx that
+  is descheduled after the spawn" failed once in a local gate at
+  029aa62d: a pid passed `isAlive`, then exited before
+  `readFileSync(/proc/<pid>/stat)`, which threw ENOENT. Reading the stat
+  should count a vanished pid as dead.
 - **F: `wedged.test.ts` › "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL
   and is retried" failed once in a local gate (I-3): `sent` 3 where 4
   is expected, 2,199 ms, on c2f0fa79; green on the next gate at
