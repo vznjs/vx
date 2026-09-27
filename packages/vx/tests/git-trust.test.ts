@@ -192,7 +192,7 @@ describe('a clean filter driver', () => {
         config: `export default {
           tasks: {
             build: {
-              exec: { command: 'mkdir -p dist && od -An -tx1 src.txt > dist/out.txt' },
+              exec: { command: 'mkdir -p dist && cp src.txt dist/out.bin' },
               cache: { inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] } },
             },
           },
@@ -204,13 +204,20 @@ describe('a clean filter driver', () => {
       git('add', '-A')
       git('commit', '-q', '-m', 'fixture')
       cli()
-      const before = await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')
+      const hex = async (): Promise<string> =>
+        (await readFile(path.join(dir, 'dist', 'out.bin'))).toString('hex')
+      const before = await hex()
 
       await writeFile(path.join(dir, 'src.txt'), Buffer.from([0xfe, 0xff, 0, 0x61, 0, 0x0a]))
-      expect(git('status', '--porcelain', '--', path.join(dir, 'src.txt'))).toBe('')
+      // One assertion, so a platform whose git answers otherwise (a status
+      // that calls the edit dirty) says so beside the bytes.
+      const status = git('status', '--porcelain', '--', path.join(dir, 'src.txt'))
       cli()
-      const after = await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')
-      expect([before.trim(), after.trim()]).toEqual(['ff fe 61 00 0a 00', 'fe ff 00 61 00 0a'])
+      expect({ status, before, after: await hex() }).toEqual({
+        status: '',
+        before: 'fffe61000a00',
+        after: 'feff0061000a',
+      })
     },
     TIMEOUT,
   )
