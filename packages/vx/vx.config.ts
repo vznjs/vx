@@ -12,7 +12,7 @@ export const SHARD_COUNT = 12
 // can change what `git status` vouches for (`core.trustctime=false`,
 // `core.checkStat=minimal`, which vx then declines to trust, A-6) or sign
 // every commit a fixture makes; neither is the code under test.
-const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null' }
+const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
 const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
 const shardTask = (i: number) => ({
   description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,

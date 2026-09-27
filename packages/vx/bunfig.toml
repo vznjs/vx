@@ -1,0 +1,3 @@
+[test]
+# Refuses a host git config the fixtures cannot override (git-hermetic.ts).
+preload = ["./tests/helpers/git-hermetic.ts"]
