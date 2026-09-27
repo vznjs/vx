@@ -437,9 +437,10 @@ export async function resolveRunOptions(
   // changed-only `[<base>]` (item 287). `--filter '[<base>]'` stays the
   // "only what I touched" form. Merging it into the filter list means the
   // same code path handles plain filter use, --affected alone, and the combo.
-  // It goes FIRST: filters apply in argv order, and appended last it came
-  // after every `!` exclude, so `--affected --filter '!app'` still ran app
-  // (item 955). An include's place does not change a union.
+  // Its place does not change the selection: `applyFilters` takes every
+  // include before any exclude (item 979), so `--affected --filter '!app'`
+  // drops app from either side (item 955 had put it first for that). First
+  // it stays, so a message naming the filters names it first.
   const filterStrings = [...parsed.filters]
   if (parsed.affected !== undefined) {
     const root = await findWorkspaceRoot(cwd)
