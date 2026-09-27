@@ -1132,7 +1132,10 @@ run...` precedes it.
    under it (`.vx-watch-probe`, re-written on a short backoff until its
    event arrives, then removed): on macOS a directory watcher can return
    before its event stream is live, and an edit in that gap is silently
-   lost — so the line is a promise, not a hope. A
+   lost — so the line is a promise, not a hope. A probe is never an
+   edit, at any depth: another watcher's, seen under a nested project,
+   ran a cycle (and restarted a dev server) with no edit made (item
+   1016). A
    watcher that stays silent for 2 s is kept, with a warning that early
    edits there may be missed.
 3. **On change.** The triggering path is logged

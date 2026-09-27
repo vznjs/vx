@@ -439,6 +439,33 @@ describe('armWatcher', () => {
   }
 })
 
+// Another arm's probe under a nested directory (a nested project's watcher,
+// a member base inside a project) reached this recursive watcher as
+// `examples/ex/.vx-watch-probe`, and a cycle ran — restarting a dev server —
+// with no edit made (item 1016).
+describe.skipIf(!probeDelivered)("armWatcher drops another arm's probe", () => {
+  it('a probe under a nested directory is not an event; an edit beside it is', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-nested-'))
+    await mkdir(path.join(dir, 'nested'))
+    const seen: string[] = []
+    const armed = armWatcher(dir, true, (f) => seen.push(f))
+    try {
+      expect(await armed.ready).toBe(true)
+      await writeFile(path.join(dir, 'nested', WATCH_PROBE), 'x')
+      await rm(path.join(dir, 'nested', WATCH_PROBE))
+      await writeFile(path.join(dir, 'nested', 'edit.txt'), 'x')
+      const edit = path.join('nested', 'edit.txt')
+      const start = Date.now()
+      while (!seen.includes(edit) && Date.now() - start < 3000) await Bun.sleep(5)
+      expect(seen).toContain(edit)
+      expect(seen.filter((f) => path.basename(f) === WATCH_PROBE)).toEqual([])
+    } finally {
+      armed.watcher.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 /**
  * The fallback the loop swaps in when `armWatcher` cannot prove delivery.
  * It is the only watcher that works where `fs.watch` is answered by an OS
