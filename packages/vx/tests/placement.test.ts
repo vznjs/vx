@@ -45,6 +45,28 @@ describe('pinnedLocalSet', () => {
     expect([...set].sort()).toEqual(['a#dev', 'b#e2e', 'c#test'])
   })
 
+  // C-2: a runtime probe (`node -v`) is answered by THIS machine and folded
+  // into the key; a remote worker running another Node saved its output
+  // under this machine's key, a stale hit for every later run here.
+  it('a task whose key folds a runtime probe is pinned; its dependants are not', () => {
+    const probed = (id: string, inputs: Record<string, unknown>, deps: string[] = []): TaskNode => {
+      const n = node(id, {}, deps)
+      return {
+        ...n,
+        config: { ...n.config, cache: { inputs: { files: ['src/**'], ...inputs } } },
+      } as TaskNode
+    }
+    const set = pinnedLocalSet(
+      graph(
+        probed('a#build', { runtime: ['node -v'] }),
+        probed('b#build', { workspaceRuntime: ['node -v'] }),
+        probed('c#build', {}, ['a#build']),
+        probed('d#build', { runtime: [] }),
+      ),
+    )
+    expect([...set].sort()).toEqual(['a#build', 'b#build'])
+  })
+
   it('exec.remote: false pins the task and its dependants', () => {
     const set = pinnedLocalSet(
       graph(node('a#build', { remote: false }), node('b#test', {}, ['a#build'])),

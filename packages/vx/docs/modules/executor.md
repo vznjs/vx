@@ -92,7 +92,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - A task is `pinnedLocal` when it is persistent, transitively depends on a
   persistent task (a worker cannot reach a port on the submitter), is
   sandboxed (the sandbox is this machine's machinery), depends on a
-  sandboxed task, or declares `exec.remote: false`. `placement.ts`
+  sandboxed task, declares `exec.remote: false`, or folds a runtime
+  probe (`cache.inputs.runtime` / `workspaceRuntime`) into its key: the
+  probe is this machine's answer, and a worker's output under it is a
+  stale hit (C-2). `placement.ts`
   computes the set once per run (`tests/placement.test.ts`).
 - The executor list is resolved ONCE per run (`plugin-host.resolveExecutors`)
   and each task is PLACED once, before scheduling — every attempt of a task,

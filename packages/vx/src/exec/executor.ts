@@ -173,8 +173,9 @@ export interface TaskPlacement {
   readonly command: string
   /**
    * Must run on this machine: the task is persistent, depends (transitively)
-   * on a persistent or sandboxed task, is sandboxed itself, or declares
-   * `exec.remote: false`. A `remote` executor is never offered such a task.
+   * on a persistent or sandboxed task, is sandboxed itself, declares
+   * `exec.remote: false`, or folds a runtime probe into its key (this
+   * machine's `node -v`). A `remote` executor is never offered such a task.
    */
   readonly pinnedLocal: boolean
   /** Declares `cache` — the only tasks whose input set is described, and so the only ones that can ship. */
