@@ -11,7 +11,7 @@ import { defineWorkspace } from '@vzn/vx'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
-  // The local cache is the floor under every declared layer: a remote hit is consulted first.
+  // Reads try the local cache first, then the remote; a remote hit is copied to local.
   plugins: [reapi({ endpoint: 'cache.example.com:443' })],
 })
 ```

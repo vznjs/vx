@@ -148,7 +148,7 @@ Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.jso
 
 Store vx artifacts in any server speaking Turbo's `/v8/artifacts` API — Vercel's hosted cache or a self-hosted implementation of the published OpenAPI spec (Bearer auth, `x-artifact-duration`, HMAC-SHA256 `x-artifact-tag` signatures). The wire is theirs; the bytes are vx's own artifacts under vx's own keys. The server is storage — the other tool cannot read what vx stores there, and vx does not read its entries.
 
-Nothing is on by default. Declare the plugin in `vx.workspace.ts`, **before** the local cache so a remote hit is consulted first, and configure it explicitly:
+Nothing is on by default. Declare the plugin in `vx.workspace.ts` and configure it explicitly. Reads try the local cache first and the remote only on a local miss:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx'
