@@ -131,11 +131,14 @@ export interface PreparedRun {
    *     user's task names were resolved against `projects`. Typically
    *     a typo'd task name; `run()` treats this as a CI footgun and
    *     returns NOT-ok.
+   *   - `'none-affected'`     — as `'no-tasks-declared'`, but the scope
+   *     came from a diff and every name is declared somewhere else in the
+   *     workspace: nothing changed that runs them, a clean outcome.
    *   - `'empty-graph'`       — `requested` was non-empty but the
    *     graph builder still produced no nodes. Defensive; unreachable
    *     under current `buildTaskGraph` semantics.
    */
-  empty: null | 'no-tasks-declared' | 'empty-graph'
+  empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 
 /**
@@ -286,7 +289,16 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     : [...projects.keys()]
 
   const requested = expandRequested(options.tasks, candidateProjects, projects)
-  const unresolvedTasks = unresolvedRequests(options.tasks, candidateProjects, projects)
+  let unresolvedTasks = unresolvedRequests(options.tasks, candidateProjects, projects)
+  if (
+    options.selectedByDiff === true &&
+    projects.size < projectsWithConfigs.length &&
+    unresolvedTasks.some((t) => !t.includes('#'))
+  ) {
+    unresolvedTasks = await declaredNowhere(unresolvedTasks, () =>
+      loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
+    )
+  }
 
   // Cache seam precedence: an EXPLICITLY injected remote layer
   // (RunOptions.remoteCache — a distribution agent or daemon that already
@@ -369,7 +381,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       gitFilesCache,
       hashCache,
       workspaceProjectCount: projectMetas.length,
-      empty: 'no-tasks-declared',
+      empty:
+        options.selectedByDiff === true && unresolvedTasks.length === 0
+          ? 'none-affected'
+          : 'no-tasks-declared',
     }
   }
 
@@ -458,6 +473,29 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     workspaceProjectCount: projectMetas.length,
     empty: nodes.size === 0 ? 'empty-graph' : null,
   }
+}
+
+/**
+ * The names in `unresolved` no project in the whole workspace declares: an
+ * anchored `pkg#task` stays as it is, a bare name leaves when a config the
+ * diff's scope left out declares it. `load` evaluates those configs; one
+ * failing to load leaves every name as it was, so the guard still speaks.
+ */
+async function declaredNowhere(
+  unresolved: readonly string[],
+  load: () => Promise<LoadedProjects>,
+): Promise<string[]> {
+  let all: LoadedProjects
+  try {
+    all = await load()
+  } catch {
+    return [...unresolved]
+  }
+  const declared = new Set<string>()
+  for (const p of all.projects.values()) {
+    for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+  }
+  return unresolved.filter((t) => t.includes('#') || !declared.has(t))
 }
 
 /**

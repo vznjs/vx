@@ -259,6 +259,12 @@ async function runOnBus(
     prepared.cache.close()
     return { ok: false, outcomes: [] }
   }
+  if (prepared.empty === 'none-affected') {
+    log.status(`No affected project declares task(s): ${options.tasks.join(', ')}.`)
+    await teardown()
+    prepared.cache.close()
+    return { ok: true, outcomes: [] }
+  }
   if (prepared.empty !== null) {
     // `no-tasks-declared` is almost always a typo in CI; we surface
     // a clear message and return NOT-ok so the script exits 1.

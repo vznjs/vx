@@ -14,6 +14,7 @@ export interface RunOptions {
   cwd: string
   tasks: readonly string[] // bare names and `pkg#task` specs
   projects?: string[] // the selection's project names; undefined = no scope needed
+  selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   concurrency?: number
   cacheDir?: string // --cache-dir, resolved against cwd

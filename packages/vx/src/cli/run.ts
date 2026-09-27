@@ -461,6 +461,7 @@ export async function resolveRunOptions(
   const anchoredTasks = tasks.filter((t) => t.includes('#'))
   let projects: string[] | undefined
   let staged: RunOptions['staged']
+  let selectedByDiff = false
   if (bareTasks.length === 0) {
     projects = undefined
   } else if (filterStrings.length > 0) {
@@ -480,6 +481,7 @@ export async function resolveRunOptions(
       projects = []
     } else {
       projects = resolved.names
+      selectedByDiff = resolved.byDiff
       // The graph walk staged every config; the run reuses those entries
       // instead of evaluating and staging them a second time.
       staged = resolved.staged
@@ -515,6 +517,7 @@ export async function resolveRunOptions(
     opts.excludeDependencies = parsed.excludeDependencies
   }
   if (projects !== undefined) opts.projects = projects
+  if (selectedByDiff) opts.selectedByDiff = true
   if (staged !== undefined) opts.staged = staged
   if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
@@ -582,6 +585,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       return 1
     }
     if (plan.tasks.length === 0) {
+      if (opts.selectedByDiff === true) {
+        process.stderr.write(`vx run: no affected project declares task(s): ${tasks.join(', ')}.\n`)
+        return 0
+      }
       process.stderr.write(`vx run: no projects declare task(s): ${tasks.join(', ')}.\n`)
       return 1
     }
