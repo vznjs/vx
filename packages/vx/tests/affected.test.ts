@@ -468,6 +468,18 @@ describe('affectedProjects', () => {
     expect(await select({ name: 'lib', version: '2.0.0' })).toEqual(['a', 'lib'])
     await lib({ name: 'lib2', version: '1.0.0' })
     expect(await select({ name: 'lib2', version: '1.0.0' })).toEqual(['a', 'lib2'])
+    // Two manifests in one `git cat-file --batch`: `b` sorts first, so the
+    // bump is the second blob read, and a misread offset between blobs read
+    // it as absent at the base, where the edge could not drop.
+    await writeFile(path.join(root, 'packages/b/package.json'), JSON.stringify({ name: 'b' }))
+    await git(root, 'add', 'packages/b/package.json')
+    await git(root, 'commit', '-q', '-m', 'b manifest')
+    await writeFile(
+      path.join(root, 'packages/b/package.json'),
+      JSON.stringify({ name: 'b', version: '2.0.0' }),
+    )
+    await lib({ name: 'lib', version: '2.0.0' })
+    expect(await select({ name: 'lib', version: '2.0.0' })).toEqual(['a', 'b', 'lib'])
   })
 
   // Item 1084 (superseded by D-3): a deleted dependency named by an alias
