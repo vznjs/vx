@@ -11,8 +11,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger, RunOptions } from '../src/orchestrator/index.js'
 import { prepareRun } from '../src/orchestrator/index.js'
+import { parseRunArgs, resolveRunOptions } from '../src/cli/index.js'
 import { gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000
@@ -114,6 +115,23 @@ describe('a run reads each root file once', () => {
         'packages/a/package.json': ['text'],
         'packages/a/vx.config.mjs': ['bytes'],
       })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a --filter run discovers the workspace once: the run takes the selection pass's projects",
+    async () => {
+      // Differential: with `discovered` not handed from resolveFilters to
+      // the run, discovery reads each member manifest a second time.
+      const ops = await fileOps(async () => {
+        const parsed = parseRunArgs(['build', '--filter', 'a'])
+        const opts = (await resolveRunOptions(parsed, root, parsed.tasks)) as RunOptions
+        const p = await prepareRun({ ...opts, concurrency: 1 }, log)
+        p.cache.close()
+        expect([...p.nodes.keys()]).toEqual(['a#build'])
+      })
+      expect(ops['packages/a/package.json']).toEqual(['text'])
     },
     TIMEOUT,
   )

@@ -179,7 +179,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     log.status(m),
   )
   mark('workspace config')
-  const projectMetas = await listProjects(workspace)
+  const projectMetas =
+    options.discovered?.root === workspaceRoot
+      ? options.discovered.projects
+      : await listProjects(workspace)
   mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090

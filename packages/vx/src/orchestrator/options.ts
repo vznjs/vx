@@ -8,7 +8,7 @@ import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
-import type { ProjectEntry } from '../workspace/index.js'
+import type { ProjectEntry, ProjectMeta } from '../workspace/index.js'
 
 export interface RunOptions {
   cwd: string
@@ -39,6 +39,13 @@ export interface RunOptions {
    * it per cycle).
    */
   staged?: ReadonlyMap<string, ProjectEntry>
+  /**
+   * The projects a selection pass in this same process discovered under
+   * `root` (`--filter`, `--affected`). The run takes them instead of
+   * walking the workspace again when its root is the same. One run only,
+   * as `staged` is.
+   */
+  discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
   /**
    * Cache directory override (`--cache-dir <path>`). Absolute, or relative
