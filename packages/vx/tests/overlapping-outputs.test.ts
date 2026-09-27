@@ -13,6 +13,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun, run } from '../src/orchestrator/index.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
+import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 const TIMEOUT = 30_000
@@ -254,6 +255,74 @@ describe('overlapping outputs, addition shape at the workspace root', () => {
       expect(statusOf(warm)).toEqual({ build: 'cache-hit', individual: 'cache-hit' })
       expect(readFileSync(path.join(ws.root, 'gen', 'a.txt'), 'utf8')).toBe('A1')
       expect(readFileSync(path.join(ws.root, 'gen', 'individual', 'b.txt'), 'utf8')).toBe('B1')
+    },
+    TIMEOUT,
+  )
+})
+
+// The run-end directory snapshot of each side of the same-tree pair (A-25).
+// An upstream's tree also holds what its dependant added, and the snapshot
+// ignores those files; an additive task's rows need only be present among
+// the upstream's. Held alone, each rule is a mutant the suite passed: the
+// upstream refused its snapshot (every hit walked), the additive one
+// vouched for a tree that lost its file.
+describe('overlapping outputs: the run-end snapshot of each side', () => {
+  const sameTree = (tail: string): string => `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+        individual: {
+          dependsOn: ['build'],
+          exec: { command: 'cp srcb/b.txt dist/b.txt' },
+          cache: { inputs: { files: ['srcb/**'], tasks: [] }, outputs: { files: ['dist/**'] } },
+        },
+        tail: {
+          dependsOn: ['individual'],
+          exec: { command: '${tail}sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' },
+        },
+      },
+    }
+  `
+  const recordedFor = (root: string, task: string): string[] => {
+    const c = new Cache(path.join(root, '.vx/cache'))
+    try {
+      const { hash } = c.dbHandle().query('SELECT hash FROM entries WHERE task = ?').get(task) as {
+        hash: string
+      }
+      return (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)
+    } finally {
+      c.close()
+    }
+  }
+
+  it(
+    'both sides record the shared tree when it holds what each saved',
+    async () => {
+      const ws = await workspace('a', 'b', sameTree(''))
+      try {
+        expect((await run({ cwd: ws.root, tasks: ['tail'], log: silent })).ok).toBe(true)
+        expect(recordedFor(ws.root, 'build')).toEqual(['dist'])
+        expect(recordedFor(ws.root, 'individual')).toEqual(['dist'])
+      } finally {
+        await rm(ws.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the additive side does not vouch for a tree that lost its file',
+    async () => {
+      const ws = await workspace('a', 'b', sameTree('rm dist/b.txt && '))
+      try {
+        expect((await run({ cwd: ws.root, tasks: ['tail'], log: silent })).ok).toBe(true)
+        expect(recordedFor(ws.root, 'individual')).toEqual([])
+      } finally {
+        await rm(ws.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
