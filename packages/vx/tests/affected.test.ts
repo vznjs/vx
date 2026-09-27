@@ -364,6 +364,43 @@ describe('affectedProjects', () => {
     expect(await select()).toEqual(['a'])
   })
 
+  it('a new nested project selects the project it took files from (D-1)', async () => {
+    // `a`'s inputs stop at every project below it, so a manifest that makes
+    // `packages/a/sub` a project re-keys `a` while containment maps the
+    // change to `sub` alone.
+    await mkdir(path.join(root, 'packages/a/sub'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/sub/data.txt'), 'data')
+    await writeFile(path.join(root, 'packages/a/sub/package.json'), JSON.stringify({}))
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'sub')
+    const sub: ProjectMeta = {
+      name: 'sub',
+      dir: path.join(root, 'packages/a/sub'),
+      configPath: null,
+      packageJson: { name: 'sub' },
+    }
+    const select = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: [...projects, sub] }).then(
+        (s) => [...s].sort(),
+      )
+    // Control: an edit to a manifest that already named a project.
+    await writeFile(path.join(root, 'packages/a/sub/package.json'), JSON.stringify({ name: 'sub' }))
+    await git(root, 'commit', '-q', '-am', 'name sub')
+    await writeFile(
+      path.join(root, 'packages/a/sub/package.json'),
+      JSON.stringify({ name: 'sub', version: '2' }),
+    )
+    expect(await select()).toEqual(['sub'])
+    // A nameless manifest at the base was no project, and a missing one neither.
+    await git(root, 'checkout', '-q', 'HEAD~1', '--', 'packages/a/sub/package.json')
+    await git(root, 'commit', '-q', '-m', 'unname sub')
+    await writeFile(path.join(root, 'packages/a/sub/package.json'), JSON.stringify({ name: 'sub' }))
+    expect(await select()).toEqual(['a', 'sub'])
+    await git(root, 'rm', '-q', '--cached', 'packages/a/sub/package.json')
+    await git(root, 'commit', '-q', '-m', 'drop sub manifest')
+    expect(await select()).toEqual(['a', 'sub'])
+  })
+
   it('a root `workspaces` edit selects every project (item 959)', async () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
     await git(root, 'add', '-A')
