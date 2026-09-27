@@ -101,10 +101,12 @@ with the invariant that keeps it valid —
 
 ## Built for trust
 
-- **Corruption can't go live.** A remote artifact is verified against
-  its content digest and validated before it enters the store
-  (zstd-bomb and oversize downloads refused); bad bytes degrade to a
-  cache miss, never a wrong hit and never a crash.
+- **Corruption can't go live.** A remote artifact is validated before
+  it enters the store: a zstd bomb, bytes that are not a vx archive,
+  and an archive recording another key than the one it was fetched
+  under are refused, and `@vzn/vx-reapi` re-hashes every blob against
+  its content digest; bad bytes degrade to a cache miss, never a wrong
+  hit and never a crash.
 - **Clean exits.** SIGINT/SIGTERM reap every child process — no
   orphaned dev servers in CI.
 - **Readiness you can bound.** Persistent tasks gate downstream work
