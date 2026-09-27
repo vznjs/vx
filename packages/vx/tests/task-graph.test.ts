@@ -3,6 +3,7 @@ import type { TaskConfig } from '../src/config.js'
 import type { PackageGraph } from '../src/workspace/package-graph.js'
 import {
   buildTaskGraph,
+  checkGraph,
   excludeDependencies,
   expandRequested,
   markSurfacedDeps,
@@ -862,6 +863,38 @@ describe('splitTaskId', () => {
       ['a', 'b#c'],
       ['a', 'b'],
       ['a', ''],
+    ])
+  })
+})
+
+describe('checkGraph re-derives the addition marks (item 981)', () => {
+  it('drops a mark whose edge and overlap a later edit took away', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', {
+          gen: { ...cmd('gen'), cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } } },
+          extra: {
+            ...cmd('extra'),
+            dependsOn: ['gen'],
+            cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } },
+          },
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'a', task: 'extra' }],
+    })
+    const extra = nodes.get('a#extra')!
+    expect(extra.addsToOutputsOf).toEqual(['a#gen'])
+    // A `graph` plugin's edit: no edge, and outputs that no longer overlap.
+    extra.deps = []
+    extra.config = {
+      ...extra.config,
+      cache: { inputs: { files: [] }, outputs: { files: ['out/**'] } },
+    }
+    checkGraph(nodes)
+    expect([extra.addsToOutputsOf, nodes.get('a#gen')!.outputsAddedToBy]).toEqual([
+      undefined,
+      undefined,
     ])
   })
 })

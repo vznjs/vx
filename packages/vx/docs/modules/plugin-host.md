@@ -7,8 +7,14 @@ edits the object in place, in declaration order; `hasHook` is the
 zero-cost gate that skips a stage nobody declares), consults the
 run-level capabilities (`executor`, `cache`), and runs each plugin's
 `teardown()` at the end of the run, crash-isolated and time-bounded.
-After the `graph` stage the graph is re-checked (every dep names a node,
-no cycle) and a violation is reported against the last plugin that ran.
+After the `graph` stage the graph is re-checked the way the builder
+checks its own (`checkGraph`: each node under its own id, every dep a
+node, no cycle, no two tasks deleting each other's outputs, the addition
+marks derived again) and a violation is reported against the last plugin
+that ran. Only the first two were checked until item 981: a plugin that
+dropped the edge between two overlapping outputs lost one task's files
+under a green run, and one that moved a node to another key crashed
+the scheduler with a raw TypeError.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved
