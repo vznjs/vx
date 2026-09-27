@@ -194,3 +194,14 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
 --dry=json` (2.11.4) on every task's inputs, outputs, env and edges.
   Rows (`turbo-map-sweep` › a package config that extends another
   package): both red without the fix.
+- **G-14.** turbo() reads two Turbo 2.11 turbo.json shapes. The `global`
+  block (`futureFlags.globalConfiguration`) was ignored: its `inputs`
+  and `env` keyed nothing, so an edit to a global file was a hit on
+  every task; it now replaces the top-level lists, as Turbo's
+  `resolve_global_config` does. A structured `inputs` entry
+  (`{ mode, globs, withDefaults }`) crashed the plugin and failed the
+  run; `startup` / `jit` now map to their globs (`**/*` with
+  `withDefaults`), `dependencyOutputs` to none (vx folds the
+  dependency's key). Probed against `turbo --dry=json` 2.11.4. Rows
+  (`turbo-map-sweep` › the `global` block, structured inputs): red
+  without the fix.
