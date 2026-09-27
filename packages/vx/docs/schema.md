@@ -425,6 +425,11 @@ exec: {
 }
 ```
 
+Every name in these lists (and in `cache.inputs.env`) must be one an
+environment can hold: non-empty, with no `=` and no NUL, and a `define`
+value holds no NUL. Such a name is refused at load; it used to reach the
+child split at its `=` or not at all.
+
 Anything outside these three layers is invisible to the child (a
 sandboxed task with a restricted network also gets the sandbox's own
 proxy, CA and `TMPDIR` values over these names:
