@@ -270,7 +270,8 @@ daemon, a Docker socket, a device, a VPN-only host.
   executor it succeeds without running and dependents use the machine's
   ambient state (the dev's own `node_modules`), exactly as before the field
   existed. An `'only'` task must declare `cache` — its inputs are what a
-  worker reproduces and its key is the address of its remote record.
+  worker reproduces and its key is the address of its remote record. One
+  without is refused at load.
 
   ```ts
   install: {
