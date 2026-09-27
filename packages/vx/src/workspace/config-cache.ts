@@ -201,8 +201,6 @@ export const PURE_CORE_EXPORTS: ReadonlySet<string> = new Set([
   'normalizeGlob',
   'isLiteralPattern',
   'PLUGIN_HOOKS',
-  'TASK_STATUSES',
-  'PERSISTENT_TASK_NAMES',
 ])
 
 /** Whether an `import`/`export … from '@vzn/vx'` statement takes only pure values. */

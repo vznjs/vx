@@ -15,9 +15,6 @@ export { VERSION } from './version.js'
 // fractional SQL LIMIT is a datatype mismatch, not a smaller page) should
 // have one implementation.
 export { clampInt, UserError, isUserError } from './util/index.js'
-// "Did you mean": the hint core's own verbs give for a near-miss name, for a
-// plugin verb to give the same one.
-export { nearMatches } from './util/index.js'
 // Every hook a plugin may fill, in pipeline order — the one list the
 // loader, the host and `vx info` read; exported so a doc pin outside core
 // (the site's guides) holds its tables to the same list.
@@ -116,7 +113,6 @@ export type { ProjectEntry } from './workspace/index.js'
 export {
   applyMigration,
   foldScriptHooks,
-  PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
   quoteTsLiteral,
 } from './workspace/index.js'
@@ -184,18 +180,15 @@ export type {
 // that added them found: with only the raw `TaskStatus` union exported, every
 // consumer rolls its own Set of status literals — and a Set has no
 // compile-time tripwire when the union gains a member, so it silently answers
-// "no" for the new one. `TASK_STATUSES` is the union at runtime, for a
-// consumer that needs the list rather than the predicate.
+// "no" for the new one.
 // `escapeMarkdownCell` is on the façade for the same demonstrated need: a
 // plugin that renders a run as a markdown table takes the same unvalidated
 // task names core does, and the cloud job summary shipped without the escape.
 export {
   escapeMarkdownCell,
   TELEMETRY_SCHEMA_VERSION,
-  deriveCacheSource,
   isCacheHit,
   isPassStatus,
-  TASK_STATUSES,
 } from './orchestrator/index.js'
 // `TaskLogBuffer` is on the façade on the same demonstrated need: EVERY
 // telemetry sink that ships build output has to bound it, and the retention

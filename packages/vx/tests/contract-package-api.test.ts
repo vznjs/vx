@@ -9,8 +9,8 @@
 // declaration the façade re-exports, followed through imports, with every
 // type it names, transitively; comments and blank lines dropped, a function
 // cut at its body, a class to its public members. Constants add their
-// runtime value, so `TASK_STATUSES` (built from an object's keys) is pinned
-// by what it holds, not by the expression.
+// runtime value, so a constant built by an expression is pinned by what it
+// holds.
 //
 // Regenerate after a deliberate change, then review the diff:
 //   VX_UPDATE_CONTRACT=1 bun test tests/contract-package-api.test.ts
@@ -29,7 +29,10 @@ function values(): string[] {
   return Object.entries(facade)
     .filter(([name, v]) => typeof v !== 'function' && name !== 'VERSION')
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, v]) => `${name} = ${JSON.stringify(v instanceof Set ? [...v] : v)}`)
+    .map(
+      ([name, v]) =>
+        `${name} = ${JSON.stringify(v instanceof Set ? Array.from(v as Set<unknown>) : v)}`,
+    )
 }
 
 function current(): string {

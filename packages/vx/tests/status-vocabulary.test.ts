@@ -19,13 +19,8 @@
 
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import {
-  deriveCacheSource,
-  isCacheHit,
-  isPassStatus,
-  TASK_STATUSES,
-  type TaskStatus,
-} from '../src/index.js'
+import { isCacheHit, isPassStatus, type TaskStatus } from '../src/index.js'
+import { deriveCacheSource, TASK_STATUSES } from '../src/orchestrator/index.js'
 
 const ROOT = path.join(import.meta.dir, '..')
 const read = (rel: string) => Bun.file(path.join(ROOT, rel)).text()

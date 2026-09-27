@@ -120,10 +120,8 @@ describe('package boundaries', () => {
       'LOG_WIRE_VERSION',
       'LayeredCache',
       'LocalHistoryProvider',
-      'PERSISTENT_TASK_NAMES',
       'PERSISTENT_TODO',
       'PLUGIN_HOOKS',
-      'TASK_STATUSES',
       'TELEMETRY_SCHEMA_VERSION',
       'TaskLogBuffer',
       'UserError',
@@ -135,7 +133,6 @@ describe('package boundaries', () => {
       'definePlugin',
       'defineProject',
       'defineWorkspace',
-      'deriveCacheSource',
       'escapeMarkdownCell',
       'exitSignal',
       'findWorkspaceRoot',
@@ -155,7 +152,6 @@ describe('package boundaries', () => {
       'lockfileClaim',
       'machineMemoryBytes',
       'machineParallelism',
-      'nearMatches',
       'normalizeGlob',
       // Widened 2026-09-20 (item 445): `@vzn/vx-migrate` asks the same
       // "do these two output globs provably overlap?" question at
