@@ -508,6 +508,20 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         "`vx cache prune … --dry-run` leaves the format notice to the next
         run", both red without the change.
 
+1081. DONE (2026-09-27, prune review #1). `--max-size` still counted an
+      index row whose artifact was gone if the row had been used within
+      the hour, and evicted a real entry to make room for it: three ~200 KB
+      entries, one artifact removed by hand, and `prune --max-size 450K`
+      deleted a real one though the disk held 408 KB. `phantomRows` now
+      reads the rows BEFORE listing the directory. A save renames its
+      artifact in before its row commits, so a row read without its file
+      is gone, whatever its age. Every such row is left out of the total;
+      only those past the grace window are dropped. `evictIfDue` and
+      `vx info` still sum the index: an over-count there only triggers a
+      prune that now evicts nothing. cli.md says so.
+      - Row: `cache.test.ts` › "prune() drops a row whose artifact is
+        gone …" now gives the in-grace row 1 MB; red without the change.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

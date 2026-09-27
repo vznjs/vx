@@ -1323,7 +1323,8 @@ index row whose artifact is gone (deleted by hand), is dropped by the
 same prune, and its bytes count toward neither `--max-size` nor the
 evicted total: they are on no disk, and counting them evicted real
 entries to make room for them (item 975). A row used within the hour
-is left alone, as a save may be landing. The sweep runs on every prune, under
+is kept until a later prune, but its bytes are left out all the same
+(item 1081). The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions. A
 workspace's `cacheRetention` runs it too, at the end of a run, at most
 once an hour even when nothing the index holds is due (the policy sums
