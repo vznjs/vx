@@ -129,6 +129,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: 42 } } } } }),
   ],
   [
+    'exec.persistent.readyWhen is not a valid regex (<error>)',
+    () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: '(' } } } } }),
+  ],
+  [
     'cache is not allowed on a persistent task',
     () =>
       validated({
