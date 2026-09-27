@@ -560,13 +560,18 @@ is on):
    characters of the task's output, the dropped middle named where it was), the `outputs/<rel>` (+
    `workspace-outputs/<rel>`) entries and the `.vx-meta.json` sidecar —
    is packed in-process (no staging dir, no subprocess) into a
-   single `<hash>.tar.zst`, written to a temp name, validated, and
-   atomically renamed into place. Concurrent readers see either no
-   entry or a complete entry — never a partial one.
-4. One SQLite transaction upserts the `entries` row (taskId, command,
-   exit code, duration, size, stdout, timestamps), the `output_files`
-   fingerprint rows, and the `entry_inputs` component rows
-   (`INSERT OR IGNORE`).
+   single `<hash>.tar.zst`, written to a temp name and validated.
+4. One `BEGIN IMMEDIATE` SQLite transaction renames the artifact into
+   place and upserts the `entries` row (taskId, command, exit code,
+   duration, size, stdout, timestamps), the `output_files` fingerprint
+   rows, and the `entry_inputs` component rows (`INSERT OR IGNORE`).
+   Concurrent readers see either no entry or a complete entry — never a
+   partial one — and bytes and rows go live together: the rename waits
+   for the write lock, so no other writer's rows land beside it, and a
+   commit that fails takes the artifact back out (the key then misses).
+   Until 2026-09-27 (A-3) the rename came first, and a commit refused
+   past the busy timeout left the new bytes beside the old rows: every
+   later hit on the key failed the task as a corrupt artifact.
 
 **The key is re-checked before the save** (item 743). It was taken
 before the command ran — at the task's start, or up front by the local

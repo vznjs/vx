@@ -68,7 +68,6 @@ Spans, accumulated per call:
 - `restore: rows`
 - `save: index tx`
 - `save: pack`
-- `save: rename`
 - `save: scan`
 - `save: write temp`
 - `stable keys`
