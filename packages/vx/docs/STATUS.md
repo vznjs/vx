@@ -983,6 +983,24 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Rows: `turbo-map-sweep.test.ts` › Turbo's glob grammar (inputs,
         outputs, two wildcard roots). Each piece red when removed.
 
+1032. DONE (2026-09-27, the vx-migrate review's lead 1, a stale hit).
+      Turbo hashes the `.env` files turbo.json names although git ignores
+      them; `turbo()` mapped them as file globs, which read only what git
+      reports. An edit to `packages/a/.env.local` under
+      `inputs: ['$TURBO_DEFAULT$', '.env*']`, or to a root `.env.local`
+      under create-turbo's `globalDependencies: ['**/.env.*local']`, was
+      served from cache with the old value. Turbo 1's `dotEnv` with no
+      `inputs` was the same, and a literal `.env.local` input failed the
+      task on core's gitignored-literal refusal.
+      - Fix (`turbo-map.ts`): a `.env`-shaped input leaves the file list
+        and the task gets a probe that hashes every `.env` file under the
+        package (`cache.inputs.runtime`), or the workspace for a root
+        entry (`workspaceRuntime`); a superset, so a change misses. The
+        README says so.
+      - Rows: `turbo.test.ts` › a gitignored .env file a task or the root
+        names re-keys the task (e2e); `turbo-map-sweep.test.ts` › `.env`
+        inputs (five shapes). Each piece red when removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

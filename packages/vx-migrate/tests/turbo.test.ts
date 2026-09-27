@@ -580,3 +580,42 @@ describe('turbo(): what the sweep found unheld', () => {
     TIMEOUT,
   )
 })
+
+// Item 1032: Turbo hashes the `.env` files turbo.json names although git
+// ignores them; vx keyed only what git reports, so an edit to one replayed
+// the build made with the old value. create-turbo's own
+// `globalDependencies: ['**/.env.*local']` and a task's `.env*` input.
+describe('`.env` inputs', () => {
+  it(
+    'a gitignored .env file a task or the root names re-keys the task',
+    async () => {
+      await writeFile(path.join(root, '.gitignore'), 'dist\n.env*.local\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          globalDependencies: ['**/.env.*local'],
+          tasks: { build: { inputs: ['$TURBO_DEFAULT$', '.env*'], outputs: ['dist/**'] } },
+        }),
+      )
+      const envFile = path.join(root, 'packages', 'lib', '.env.local')
+      const rootEnv = path.join(root, '.env.local')
+      await writeFile(envFile, 'SECRET=1\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () =>
+        (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks.find(
+          (t) => t.node.id === 'lib#build',
+        )!.hash
+      const first = await key()
+      await writeFile(envFile, 'SECRET=2\n')
+      const pkgEdit = await key()
+      await writeFile(rootEnv, 'ROOT=1\n')
+      const rootEdit = await key()
+      expect({
+        pkgMoved: pkgEdit !== first,
+        rootMoved: rootEdit !== pkgEdit,
+        stable: (await key()) === rootEdit,
+      }).toEqual({ pkgMoved: true, rootMoved: true, stable: true })
+    },
+    TIMEOUT,
+  )
+})
