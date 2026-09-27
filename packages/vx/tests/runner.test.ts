@@ -778,14 +778,18 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
         expect(light.exitCode).toBe(0)
         expect(light.cpuMs).toBeDefined()
         expect(light.peakRssBytes).toBeUndefined()
+        // Sized from the floor, as the row above is: the shard's files
+        // before this one set it, and a fixed 600 MB read as no peak on a
+        // macOS shard (M-2).
+        const mb = Math.ceil(ownRssHighWater() / MB) + 300
         const heavy = await runCommand({
-          command: `bun -e "const b = Buffer.alloc(600 * 1024 * 1024, 1); console.log(b.length)"`,
+          command: `bun -e "const b = Buffer.alloc(${mb} * 1024 * 1024, 1); console.log(b.length)"`,
           cwd,
           env,
         })
         expect(heavy.exitCode).toBe(0)
-        expect(heavy.peakRssBytes!).toBeGreaterThanOrEqual(600 * MB)
-        expect(heavy.peakRssBytes!).toBeLessThan(2000 * MB)
+        expect(heavy.peakRssBytes!).toBeGreaterThanOrEqual(mb * MB)
+        expect(heavy.peakRssBytes!).toBeLessThan(mb * MB * 4)
       } finally {
         await rm(cwd, { recursive: true, force: true })
       }
