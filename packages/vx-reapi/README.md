@@ -138,6 +138,14 @@ cannot be told apart from real outputs, so a missing blob there only
 warns; prefer a literal first segment (`dist/*.js`) when you want the
 stricter check.
 
+A capture cut at a wildcard holds more than the outputs: `src/*.gen.js`
+is sent as `src`, and the worker returns the sources beside the
+generated files. Only what a declared glob names (or what sits under a
+directory it names) is written back; the rest stays as it is on disk.
+Writing all of it once put the worker's copy of the sources over the
+user's, so an edit made while the action ran was lost. A directory a
+literal glob names is written whole.
+
 ## The existence probe confirms the artifact, not just the entry
 
 `has()` — what `vx run --dry` and `--graph` use to predict hit vs miss —

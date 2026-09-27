@@ -587,7 +587,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // The record's paths are WORKSPACE-relative (rebased when it was
           // written), so the anchor is the workspace root, not the cwd.
           const fromRecord = (created?: string[]): Promise<void> =>
-            materialiseOutputs(client, { ...req, cwd: req.workspaceRoot }, prior, warn, created)
+            materialiseOutputs(
+              client,
+              {
+                ...req,
+                cwd: req.workspaceRoot,
+                projectRel: toPosix(path.relative(req.workspaceRoot, req.cwd)),
+              },
+              prior,
+              warn,
+              created,
+            )
           const deferRecord = req.remoteOnly !== true && req.download === 'deferred'
           // The replay is still the cache read: a Read that fails on its
           // stdout or on any output is a record that cannot be served, and
@@ -660,7 +670,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // The server reports output paths relative to `working_directory`, so
       // in root mode materialisation anchors at the workspace root — the same
       // rebase the record-replay path above already does for its own reason.
-      const matReq = rootAnchored ? { ...req, cwd: req.workspaceRoot } : req
+      const matReq = rootAnchored ? { ...req, cwd: req.workspaceRoot, projectRel } : req
 
       // Upstream outputs reach this action's input root one of two ways.
       // PREFERRED: by REFERENCE — the upstream executed remotely and left an
@@ -1191,6 +1201,13 @@ export function outputPathSets(
 }
 
 /**
+ * A request as materialisation reads it: `cwd` is where the result's paths
+ * are anchored, which is not the project when the action ran at the input
+ * root or a record replays; `projectRel` then says where the project is.
+ */
+type MaterialiseRequest = ExecuteRequest & { readonly projectRel?: string }
+
+/**
  * Bring the action's outputs back to disk. Core's contract is that after an
  * executor returns, the declared outputs are where the task would have
  * written them — that is what lets the ordinary save path tar them up with no
@@ -1198,7 +1215,7 @@ export function outputPathSets(
  */
 export async function materialiseOutputs(
   client: ReapiClient,
-  req: ExecuteRequest,
+  req: MaterialiseRequest,
   result: ActionResult,
   warn: (m: string) => void,
   created?: string[],
@@ -1223,6 +1240,22 @@ export async function materialiseOutputs(
       )
     }
     warn(`vx/reapi: output ${what} missing from CAS (${hash.slice(0, 12)})`)
+  }
+  // A glob cut at its wildcard captured a directory that holds more than
+  // the outputs — `src/*.gen.js` returns all of `src`, inputs included.
+  // Only what a declared glob names is written: writing the rest put the
+  // worker's copy of the sources over the user's, an edit made during the
+  // action was lost, and core, seeing its inputs rewritten, never saved
+  // the task (item 1038). A directory a LITERAL glob names is written whole.
+  const projectRel = req.projectRel ?? toPosix(path.relative(req.workspaceRoot, req.cwd))
+  const declared = [
+    ...(req.outputs?.files ?? []).map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+    ...(req.outputs?.workspaceFiles ?? []),
+  ].map((g) => normalizeGlob(g))
+  const matchers = declared.map((g) => new Bun.Glob(g))
+  const isDeclared = (abs: string): boolean => {
+    const rel = toPosix(path.relative(req.workspaceRoot, abs))
+    return declared.includes(rel) || matchers.some((m) => m.match(rel))
   }
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
@@ -1261,7 +1294,9 @@ export async function materialiseOutputs(
   }
 
   for (const d of result.output_directories ?? []) {
-    await materialiseTree(client, path.join(req.cwd, d.path), d.tree_digest, missing, created)
+    const dest = path.join(req.cwd, d.path)
+    const whole = isDeclared(dest)
+    await materialiseTree(client, dest, d.tree_digest, missing, created, whole ? null : isDeclared)
   }
 }
 
@@ -1321,6 +1356,9 @@ async function materialiseTree(
   // entry is a hole in a DECLARED output directory, so it fails the task.
   missing: (what: string, hash: string) => void,
   created: string[] | undefined,
+  // Null writes the whole Tree; otherwise only an entry it names, or one
+  // under a directory it names, is written.
+  declared: ((abs: string) => boolean) | null,
 ): Promise<void> {
   const blob = await client.readBlob(treeDigest)
   if (blob === null) {
@@ -1339,13 +1377,15 @@ async function materialiseTree(
   const byDigest = new Map<string, Directory>()
   tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
 
-  const walk = async (dir: Directory, at: string): Promise<void> => {
-    await makeDir(at, created)
-    const small = dir.files.filter(
-      (f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024,
-    )
+  const walk = async (dir: Directory, at: string, whole: boolean): Promise<void> => {
+    const wanted = (abs: string): boolean => whole || declared!(abs)
+    if (whole) await makeDir(at, created)
+    const files = dir.files.filter((f) => wanted(path.join(at, f.name)))
+    const symlinks = dir.symlinks.filter((sl) => wanted(path.join(at, sl.name)))
+    if (!whole && files.length + symlinks.length > 0) await makeDir(at, created)
+    const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
     const batched = await client.batchReadBlobs(small.map((f) => f.digest))
-    for (const f of dir.files) {
+    for (const f of files) {
       const bytes =
         f.digest.size_bytes === 0
           ? new Uint8Array()
@@ -1361,19 +1401,22 @@ async function materialiseTree(
       const mode = f.node_properties?.unixMode
       if (mode !== undefined) await chmod(abs, mode & 0o7777)
     }
-    for (const sl of dir.symlinks) {
+    for (const sl of symlinks) {
       await placeSymlink(sl.target, path.join(at, sl.name), created)
     }
     for (const child of dir.directories) {
+      const childAt = path.join(at, child.name)
       const node = byDigest.get(child.digest.hash)
       if (node === undefined) {
-        missing(`${path.join(at, child.name)} (not present in the Tree blob)`, child.digest.hash)
+        if (wanted(childAt)) {
+          missing(`${childAt} (not present in the Tree blob)`, child.digest.hash)
+        }
         continue
       }
-      await walk(node, path.join(at, child.name))
+      await walk(node, childAt, whole || declared!(childAt))
     }
   }
-  await walk(tree.root, destDir)
+  await walk(tree.root, destDir, declared === null)
 }
 
 const toPosix = (p: string): string => p.split(path.sep).join('/')
