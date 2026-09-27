@@ -795,7 +795,11 @@ test is telling the truth.
       - Rows (`lockfile-boundary.test.ts`): a name hard-linked to the old
         lock keeps the old bytes (red with a write in place); a rename
         onto a directory rejects and leaves no temp (red with the cleanup
-        removed).
+        removed); a refused write names `vx-lock.json`, not its temp (CI's
+        read-only-checkout row, skipped as root, caught the temp's name in
+        the message; the cleanup's own ENOTDIR had also replaced the
+        refusal, so it is best effort now). Each of the three is red
+        with its line removed.
 
 ## In flight
 

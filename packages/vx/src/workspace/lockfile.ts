@@ -107,7 +107,14 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
     await Bun.write(tmp, `${JSON.stringify(lock, null, 2)}\n`)
     await rename(tmp, file)
   } catch (err) {
-    await rm(tmp, { force: true })
+    // Best effort: where the write was refused the temp cannot be named
+    // either (ENOTDIR), and that must not replace the refusal itself.
+    await rm(tmp, { force: true }).catch(() => {})
+    // The refusal names the file the user knows: a read-only checkout read
+    // `open '…/vx-lock.json.tmp-…'` where it had read the lock's own name.
+    const e = err as NodeJS.ErrnoException
+    if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
+    if (e.path === tmp) e.path = file
     throw err
   }
 }
