@@ -24,6 +24,7 @@
 // `<pm> run <other>` becomes a GROUP over `<other>`, so the graph sees the
 // dependency instead of a package-manager subprocess it cannot cache.
 
+import { taskNameProblem } from './config-schema.js'
 import type { ProjectMeta } from './workspace.js'
 import {
   foldScriptHooks,
@@ -116,10 +117,19 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   const projects: GeneratedProject[] = []
   for (const meta of metas) {
     const scripts = scriptsOf(meta)
-    const names = Object.keys(scripts).filter(
+    const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
-    if (names.length === 0) continue
+    // A script whose name no task may carry (`lint#fix`, `^up`) was written
+    // as one, and the next run refused the whole config (item 1033). It is
+    // left out, with a TODO, and a script delegating to it keeps its
+    // command rather than naming it as an edge.
+    const refused = runnable.flatMap((n) => {
+      const why = taskNameProblem(n)
+      return why === null ? [] : [[n, why] as const]
+    })
+    const names = runnable.filter((n) => taskNameProblem(n) === null)
+    if (runnable.length === 0) continue
     const hasBuild = names.includes('build')
     const has = (n: string): boolean => names.includes(n)
     const tasks: GeneratedTask[] = []
@@ -172,6 +182,15 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
         task['dependsOn'] = ['build']
       }
       tasks.push({ name, todos, task })
+    }
+    for (const [name, why] of refused) {
+      tasks.push({
+        name,
+        todos: [
+          `script ${JSON.stringify(name)} not migrated: its name ${why} — rename the script, or add it by hand under another name`,
+        ],
+        task: null,
+      })
     }
     upstreamBuildOnWorker(tasks)
     if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })

@@ -822,23 +822,27 @@ function isEnvName(name: unknown): name is string {
  * trimmed away by the reader (item 1000).
  */
 function assertTaskName(name: string, configPath: string): void {
-  const why =
-    name.trim().length === 0
-      ? 'is empty'
-      : name.trim() !== name
-        ? 'has surrounding whitespace'
-        : name.includes('#')
-          ? "holds '#', which separates a project from its task"
-          : name.includes('*')
-            ? "holds '*', which makes it a pattern"
-            : name.startsWith('^') || name.startsWith('!')
-              ? `starts with '${name[0]}', which names dependencies' tasks or negates`
-              : null
+  const why = taskNameProblem(name)
   if (why === null) return
   throw new UserError(
     `${configPath}: task name ${JSON.stringify(name)} ${why} — dependsOn, cache.inputs.tasks and ` +
       `the CLI could not name it. Rename the task.`,
   )
+}
+
+/** Why `name` cannot be a task name, or null; `vx init` skips such a script (item 1033). */
+export function taskNameProblem(name: string): string | null {
+  return name.trim().length === 0
+    ? 'is empty'
+    : name.trim() !== name
+      ? 'has surrounding whitespace'
+      : name.includes('#')
+        ? "holds '#', which separates a project from its task"
+        : name.includes('*')
+          ? "holds '*', which makes it a pattern"
+          : name.startsWith('^') || name.startsWith('!')
+            ? `starts with '${name[0]}', which names dependencies' tasks or negates`
+            : null
 }
 
 /** The graph's `*`-only task glob (`compileTaskPattern`), mirrored: `*` is the sole metacharacter. */

@@ -836,3 +836,84 @@ describe('vx init (package.json scripts)', () => {
     }
   })
 })
+
+// Item 1033: three ways `vx init` wrote a workspace the next command read
+// differently from what the report said.
+describe('vx init writes what the next run reads', () => {
+  const roots: string[] = []
+  afterAll(async () => {
+    for (const r of roots) await rm(r, { recursive: true, force: true })
+  })
+  const fresh = async (): Promise<string> => {
+    const root = await makeRoot('vx-init-1033-')
+    roots.push(root)
+    return root
+  }
+
+  it(
+    'a hand-written vx.workspace.mts is a workspace file: none is written beside it',
+    async () => {
+      const root = await fresh()
+      await addPackage(root, 'a', { build: 'echo a' })
+      await writeFile(path.join(root, 'vx.workspace.mts'), 'export default { plugins: [] }\n')
+      const r = await vx(root, ['init'])
+      expect({ code: r.code, wrote: existsSync(path.join(root, 'vx.workspace.ts')) }).toEqual({
+        code: 0,
+        wrote: false,
+      })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--force replaces a config of another extension instead of writing a second',
+    async () => {
+      const root = await fresh()
+      const dir = await addPackage(root, 'a', { build: 'echo a' })
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'echo OLD' } } } }\n",
+      )
+      const r = await vx(root, ['init', '--force'])
+      expect({
+        code: r.code,
+        mjs: existsSync(path.join(dir, 'vx.config.mjs')),
+        ts: existsSync(path.join(dir, 'vx.config.ts')),
+        said: r.out.includes('replaced:\n  packages/a/vx.config.mjs'),
+      }).toEqual({ code: 0, mjs: false, ts: true, said: true })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a script no task may be named after is left out with a TODO, and the config loads',
+    async () => {
+      const root = await fresh()
+      const dir = await addPackage(root, 'a', {
+        build: 'echo a',
+        'lint#fix': 'echo fix',
+        '^up': 'echo up',
+        ['__proto__']: 'echo proto',
+        fix: 'pnpm run lint#fix',
+      })
+      const r = await vx(root, ['init'])
+      expect(r.code).toBe(0)
+      const config = await loadProjectConfig(path.join(dir, 'vx.config.ts'))
+      const text = await Bun.file(path.join(dir, 'vx.config.ts')).text()
+      expect({
+        tasks: Object.keys(config.tasks!).sort(),
+        proto: Object.getPrototypeOf(config.tasks) === Object.prototype,
+        fix: config.tasks!['fix']!.exec?.command,
+        todo: text.includes(
+          `TODO(vx-migrate): script "lint#fix" not migrated: its name holds '#', which separates a project from its task`,
+        ),
+      }).toEqual({
+        tasks: ['__proto__', 'build', 'fix'],
+        proto: true,
+        fix: 'pnpm run lint#fix',
+        todo: true,
+      })
+    },
+    TIMEOUT,
+  )
+})
