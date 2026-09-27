@@ -10,7 +10,7 @@ import type { Database } from 'bun:sqlite'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileIdentity, repoFacts } from './git-inputs.js'
-import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
+import { FILE_HASH_RACY_MS, isIndexFull, racyWindowMs } from './layer.js'
 
 const FILE_HASHES_SWEPT_AT = 'file_hashes_swept_at'
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -163,7 +163,12 @@ export class FileHashStore {
     // than memoised; the warm path never meets it (keys are derived long
     // after the files were written).
     if (this.write && Date.now() - ctimeMs >= racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) {
-      this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
+      // A memo: on a full disk the digest stands and the row is skipped.
+      try {
+        this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
+      } catch (err) {
+        if (!isIndexFull(err)) throw err
+      }
     }
     return fileIdentity(mode, ch)
   }
@@ -261,20 +266,30 @@ export class FileHashStore {
       misses.map((p) => this.hashFileFromDisk(p).catch(() => undefined)),
     )
     const now = Date.now()
-    this.db.transaction(() => {
-      for (let i = 0; i < misses.length; i++) {
-        const digest = digests[i]
-        if (digest === undefined) continue
-        const p = misses[i]!
-        const st = stats.get(p)!
-        out.set(p, fileIdentity(st.mode, digest))
-        // The same racy-clean rule as `hashFile`: a stat taken within the
-        // window of the file's last change is not memoised.
-        if (this.write && now - st.ctimeMs >= racyWindowMs(st.ctimeRaw, FILE_HASH_RACY_MS)) {
+    const rows: Array<[string, Stat, string]> = []
+    for (let i = 0; i < misses.length; i++) {
+      const digest = digests[i]
+      if (digest === undefined) continue
+      const p = misses[i]!
+      const st = stats.get(p)!
+      out.set(p, fileIdentity(st.mode, digest))
+      // The same racy-clean rule as `hashFile`: a stat taken within the
+      // window of the file's last change is not memoised.
+      if (this.write && now - st.ctimeMs >= racyWindowMs(st.ctimeRaw, FILE_HASH_RACY_MS)) {
+        rows.push([p, st, digest])
+      }
+    }
+    // Every digest is in `out` before the memo is written: on a full disk the
+    // rows are skipped and the answer stands.
+    try {
+      this.db.transaction(() => {
+        for (const [p, st, digest] of rows) {
           this.upsertFileHash.run(p, st.mtimeMs, st.size, st.ctimeMs, st.ino, digest, now)
         }
-      }
-    })()
+      })()
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+    }
     return out
   }
 

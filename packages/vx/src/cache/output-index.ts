@@ -16,6 +16,7 @@ import {
   OUTPUT_DIRS_CAP,
   OUTPUT_DIRS_RACY_MS,
   type OutputDirRow,
+  isIndexFull,
   racyWindowMs,
   type OutputFileRow,
   WORKSPACE_OUTPUT_PREFIX,
@@ -265,6 +266,16 @@ export class OutputIndex {
 
   /** Land every pending stamp and snapshot in one transaction each; a null snapshot clears its rows. */
   flushOutputDirs(): void {
+    // A memo either way: on a full disk the pending rows are dropped (the
+    // next hit walks, or restores), never a failed run (A-14).
+    try {
+      this.flushPending()
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+    }
+  }
+
+  private flushPending(): void {
     if (this.pendingStamps.size > 0) {
       const stamps = [...this.pendingStamps]
       this.pendingStamps.clear()

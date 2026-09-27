@@ -147,3 +147,10 @@ An output glob `**/*.js` reached `node_modules`, so the clean before each run de
 
 - Fix (`inputs.ts` `outputExcludes`): `node_modules` is excluded unless a glob names it; workspace outputs take `OUTPUT_NEVER` too. `caching.md` says so.
 - Row: `output-reach.test.ts` (the clean itself; an install task's `node_modules/**` as control). Red without the fix.
+
+### A-14 (2026-09-27)
+
+On a full disk the cache's side writes threw: the file-hash memo, the output stamps and the access-time flush failed the task on `SQLITE_FULL`; prune deleted rows before unlinking, so its delete could not get room; a save whose temp write failed left the temp.
+
+- Fix (`layer.ts` `isIndexFull`): the memo, stamp and access writes skip on a full index; prune unlinks first and retries its row delete once; the temp is unlinked on a failed write; the orphan sweep stamp is best-effort. `caching.md` says so.
+- Rows: `cache-disk-full.test.ts`, each red without the fix.
