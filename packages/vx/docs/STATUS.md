@@ -625,6 +625,20 @@ test is telling the truth.
         walls (the punch, both write refusals, a leaf project and a named
         wall as controls). Red without the fix.
 
+1011. DONE (2026-09-27, the sandbox-grants review's lead 4, documented).
+      With `read: ['.']` and `write: ['dist/']` in a multi-package
+      workspace, a new file at the project root (`undeclared.txt`,
+      `dist2/y`) was written inside the task, read back, and gone
+      afterwards, with no violation: the write grant punches the read
+      bind into per-child binds, and the project directory is the deny
+      anchor's writable scratch. `schema.md` said the write "is refused
+      outright" and that an undeclared write fails the task.
+      - Fix (`schema.md`): the scratch case is described where it occurs,
+        and the fail-on-violation policy says which writes it covers. No
+        stale output follows (nothing undeclared survives the run).
+        Remounting the punched ancestor read-only needs a bwrap argument
+        SRT does not emit; not pursued here.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
