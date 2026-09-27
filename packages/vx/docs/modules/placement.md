@@ -22,6 +22,8 @@ export function placeTasks(
   nodes: Map<string, TaskNode>,
   executors: readonly TaskExecutor[],
 ): Placements
+// `ids` whose executor is not `remote` — they write in place
+export function locallyPlaced(placements: Placements, ids: Iterable<string>): Set<string>
 
 export async function planExecutorOf(
   prepared: PreparedRun,

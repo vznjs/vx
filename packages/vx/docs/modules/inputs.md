@@ -19,7 +19,8 @@ The git side is `git-inputs.ts` (see git-inputs.md); this module
 re-exports it for readers that reach it here: `GitFilesCache`,
 `populateGitFilesCache`, `runGitLsFiles`, `startGitEnumeration`,
 `applyGitEnumeration`, `gitPathspecs`, `parseCheckAttrOutput`,
-`autocrlfConverts` and the `GitEnumeration` type.
+`autocrlfConverts`, `gitStatWeakened`, `attributeFilesOutsideTree` and
+the `GitEnumeration` type.
 
 ```ts
 export interface ResolvedInputs {

@@ -30,6 +30,8 @@ export interface RemoteCacheLayer {
   readonly endpoint?: string
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
+  /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */
+  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */

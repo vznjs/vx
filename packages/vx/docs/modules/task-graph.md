@@ -19,6 +19,8 @@ export interface TaskNode {
   deps: string[] // ids of tasks that must finish first; sorted
   orderOnly?: string[] // members of deps that order and key nothing (--exclude-dependencies, item 1019)
   requested: boolean // user-requested vs dep-pulled
+  surfaced?: boolean // display-only: a task a requested group stands for (markSurfacedDeps)
+  keyParts?: ReadonlyArray<readonly [name: string, value: string]> // the `key` stage's material, sorted
   addsToOutputsOf?: string[] // upstream ids whose output trees this task adds to (item 588)
   outputsAddedToBy?: string[] // dependants' output globs that add into this task's tree
   excludedUpstream?: TaskOutcome[] // dependencies --exclude-dependencies dropped, with their keys
@@ -33,6 +35,7 @@ export interface BuildGraphOptions {
   // Set when `projects` is a scoped load: a literal `^name` nothing in
   // `projects` declares is handed here instead of refused (see below).
   undeclaredDeps?: (taskId: string, name: string) => void
+  workspaceRoot?: string // lets root-anchored outputs be checked against `files` outputs (item 1088)
 }
 
 export function taskId(project: string, task: string): string
@@ -54,7 +57,7 @@ export function declaredTask(
   config: ProjectConfig | null | undefined,
   name: string,
 ): TaskConfig | undefined
-export function checkGraph(nodes: Map<string, TaskNode>): void // id keys, deps, cycle, output collisions
+export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string): void // id keys, deps, cycle, output collisions
 // The refusal of a `^name` no project in the workspace declares; thrown by
 // the builder, or by `prepareRun` once a scoped run's other configs agree.
 export function undeclaredDepsError(taskId: string, name: string): UserError

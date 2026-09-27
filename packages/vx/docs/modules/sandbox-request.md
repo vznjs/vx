@@ -49,6 +49,8 @@ export async function sandboxRequestFor(
 ): Promise<SandboxRequest>
 
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
+// One shared sweep: every caller gets the same answer, whoever asked first
+export function placeholderSweeper(placeholders: readonly Placeholder[]): () => Promise<string[]>
 export function untouchedPlaceholderLine(projectDir: string, placeholder: string): string
 export function reachedWithheld(
   withheld: readonly WithheldLink[],

@@ -35,6 +35,8 @@ for the extension seams.
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
 export function shouldShortCircuit(nodes, policy, cache): boolean
+export function invocationCommand(argv: readonly string[]): string // the args after `--` as `<n arguments>`
+export function runLockPath(workspaceRoot: string, dir?: string): string // the lock directory
 // The workspace's run lock (below); `vx cache prune` takes it too.
 export function acquireRunLock(
   workspaceRoot: string,

@@ -32,6 +32,7 @@ clean tree costs the same. The flag does not reach `--affected`'s
 export class GitFilesCache extends Map<string, readonly string[]> {
   setWorkspaceRoot(root: string): void
   setWorktreeDirty(dirty: boolean | null): void // what `git status` said, for the run context
+  get worktreeDirty(): boolean | null
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
@@ -84,6 +85,9 @@ export interface RepoFacts {
   objectFormat: 'sha1' | 'sha256'
 }
 export function repoFacts(dir: string): RepoFacts | null
+export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // the repo root, from `--show-prefix`
+// The identity the key folds: the blob OID, prefixed `<mode>:` unless mode is 100644 (item 887)
+export function fileIdentity(mode: string, oid: string): string
 export function parseCheckAttrOutput(out: string): Set<string>
 export function autocrlfConverts(gitVars: string): boolean // over `git var -l`
 // `core.trustctime` off or `core.checkStat=minimal`: `git status` cannot see a

@@ -14,6 +14,8 @@ what a config may SAY, the loader decides HOW a file is evaluated.
 ```ts
 export function validateProjectConfig(config: ProjectConfig, configPath: string): void
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void
+// Why `name` cannot be a task name (empty, padded, holds `#`, …), or null; `vx init` skips such a script
+export function taskNameProblem(name: string): string | null
 // A level's field set → the fields a release removed from it (item H-3)
 export const REMOVED_FIELDS: ReadonlyMap<
   ReadonlySet<string>,

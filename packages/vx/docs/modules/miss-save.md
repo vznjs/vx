@@ -54,6 +54,12 @@ export type UnsavedArgs = Pick<
   'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'gitFilesCache' | 'outputs' | 'wsOutputs'
 >
 export function markUnsaved(a: UnsavedArgs): Promise<void>
+
+// save-lane.ts
+export interface SaveLane {
+  defer(save: () => Promise<void>): Promise<void> // resolves once the save settled, a failure too
+}
+export function createSaveLane(cap: number, onError: (err: unknown) => void): SaveLane
 ```
 
 `markUnsaved` is step 5 alone, for a miss that ran here and saves

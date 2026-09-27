@@ -13,6 +13,7 @@ machineParallelism(probe?): number   // cores, capped by the CPU quota, rounded 
 machineMemoryBytes(probe?): number   // os.totalmem(), capped by the memory limit
 cgroupCpuQuota(probe?): number | undefined          // cores as a fraction (1.5 for --cpus=1.5)
 cgroupMemoryLimitBytes(probe?): number | undefined  // bytes
+interface CgroupProbe { root?: string; procSelfCgroup?: string }
 ```
 
 `probe` (`{ root, procSelfCgroup }`, default `/sys/fs/cgroup` and

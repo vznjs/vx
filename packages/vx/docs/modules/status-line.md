@@ -44,12 +44,13 @@ the writes.
 
 ## formatStatusRegion
 
-A pinned zone, then one row per worker slot, then a stats line.
+A blank separator line, a pinned zone, one row per worker slot, then
+the live summary section.
 
 The pinned zone (owner: "always pinned until exit"):
 
-- **Persistent** — `▸ <id> ── running` for every ready persistent
-  task (its outcome lands at ready while the child keeps running; the
+- **Persistent** — a `▸` row (no elapsed, `running`, the id) for every
+  ready persistent task (its outcome lands at ready while the child keeps running; the
   orchestrator SIGTERMs persistent children when the graph finishes,
   so runEnd is the honest end). Pins keep identity-colored ids —
   status colors only on glyph + outcome.
@@ -65,34 +66,28 @@ describing the zone until 2026-09-16.
 Slot rules (the point of the design — the display derives from the
 **stable worker set**, not the churning task set):
 
-- Sized `min(concurrency, 10)` at runStart; the footer's `run` row
-  states the pool (`N tasks · C workers`).
+- Sized `min(concurrency, 10)` at runStart; the footer's `info` row
+  states the pool (`C workers`).
 - A task takes the lowest free row and **stays there for its whole
   life**; idle rows hold their place dimmed, so the height and the
   rows never shift.
 - More running tasks than rows queue for a freed row and surface as
-  `+k more` on the stats line.
-- Ids are identity-colored (`paintIdParts`): project hue hashed
-  stably from the project name, task in fixed pink — never status
-  colors. Long ids middle-truncate; padding counts visible
-  characters, not ANSI bytes.
+  a `… +k more running` line under the rows.
+- A worker row leads with the ticking elapsed time (no glyph), then
+  `running` and the id. Ids are identity-colored (`paintIdParts`):
+  project hue hashed stably from the project name, task in fixed pink —
+  never status colors. The id is the last column and is never
+  truncated.
 
-Stats line, every bucket always present in fixed order (stable layout
-beats compactness):
-
-```
-▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 00:16
-```
-
-The buckets feed from the same outcome predicates as the end-of-run
-summary (`restored === false` splits up-to-date from restored-local /
-restored-remote), so the live numbers and the final summary can never
+Below the rows, the live summary section: the same section
+(`formatSummarySection`) the final footer prints, filling in as the run
+proceeds, so the live numbers and the final summary can never
 disagree.
 
 ## Lifecycle
 
 `defaultLogger` drives it through the optional `runStart` /
 `taskStart` / `taskComplete` / `runEnd` hooks. A 100 ms unref'd ticker
-advances the spinner and elapsed times between events. Focused flow:
+advances the elapsed times between events (there is no spinner). Focused flow:
 the region lives only while dependency nodes run and is killed
 permanently when a requested node starts streaming.

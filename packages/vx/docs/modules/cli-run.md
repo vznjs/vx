@@ -83,13 +83,14 @@ export async function resolveRunOptions(
    (`documentedFlags('run')` reads the help text's `(for run)` sections,
    so there is no second list to drift).
 4. Mutually-exclusive combinations checked at the end:
-   `--dry` + `--graph`; either + `--summarize` / `--profile` (they
-   skip execution; the artifacts need a real run). `--no-cache` beats
+   `--dry` + `--graph`; either + `--summarize` / `--profile` /
+   `--report` / `--report-file` (they skip execution; the artifacts need
+   a real run). `--no-cache` beats
    `--force`, both layered over a `--cache` spec.
 
 ## Scope resolution
 
-After parsing, `runCmd` builds the orchestrator's `projects` field:
+After parsing, `resolveRunOptions` builds the orchestrator's `projects` field:
 
 | Condition                                  | `projects`                       |
 | ------------------------------------------ | -------------------------------- |
@@ -99,7 +100,7 @@ After parsing, `runCmd` builds the orchestrator's `projects` field:
 | Any bare positional + default              | `[findCwdProject(cwd)]` or error |
 
 `--affected[=<base>]` is sugar for an extra `...[<base>]` filter —
-the changed projects and their dependents (#446) — appended to
+the changed projects and their dependents (#446) — put first in
 `filterStrings` before `resolveFilters` runs. `defaultAffectedBase(root)`
 resolves the no-value form (`origin/HEAD` → fall back `HEAD~1`); a
 base that is HEAD itself (a single-branch clone) is named, with the

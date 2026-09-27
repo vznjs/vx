@@ -26,6 +26,9 @@ export interface PrefetchArgs {
 }
 
 export function startRemotePrefetch(args: PrefetchArgs): Promise<void>
+// The CacheGetContext a lookup passes: task id, command, declared outputs;
+// shared with execute-task's own lookup
+export function getContext(node: TaskNode, command: string): CacheGetContext
 ```
 
 - `startRemotePrefetch(args)` → `Promise<void>` handle. Fire-and-forget

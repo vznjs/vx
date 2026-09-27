@@ -18,6 +18,10 @@ is pre-folded, bigint wallclock spans are decimal strings.
   shutdown signal or an embedder's abort killed; they are not in the
   task list, which holds real runs only, so without it a stopped run
   read as a failure with nothing failed.
+- `assembleRunSummary(run, tasks, timing)` — builds the `RunSummaryRecord`
+  from the context and the `TaskTelemetry[]`, the per-task tallies
+  derived from `tasks`, so a distributed run and a local one produce
+  the same summary.
 - `deriveCacheSource(status)` — the `CacheSource`: `'local'` / `'remote'`
   for the two hits, `'miss'` for `success` / `failed`, `'none'` for
   `skipped` / `aborted`; never null.

@@ -56,11 +56,12 @@ export interface ConfigEvalKeyArgs {
   workspaceFingerprint: string
 }
 
-export function stripLiterals(source: string): string | null
+export const PURE_CORE_EXPORTS: ReadonlySet<string> // the `@vzn/vx` values a pure config may import
+export function stripLiterals(source: string, strings?: string[]): string | null
 export function blobOidOf(bytes: Uint8Array): string
+export function transpileInputs(): string // the bunfig, flags and BUN_OPTIONS the key folds; once per process
 export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKeyResult | null>
 export async function configEvalKeyFromClosure(a: {
-  configPath: string
   closure: readonly string[]
   hashFile: (file: string) => Promise<string>
   workspaceFingerprint: string
@@ -134,7 +135,8 @@ closure is provably pure:
   word in the list. Every spelling in the last two rules was cached as
   pure before it was listed (2026-09-03).
 
-`stripLiterals` refuses (returns `null`) on any `/` outside a comment: a
+`stripLiterals` refuses (returns `null`) on a `/` in code position that
+is neither a comment nor a division it can prove: a
 regex literal can contain a quote, and a lexer that misread one would
 swallow real code as a string — a false SAFE, the one outcome this
 module must never produce. A false negative costs one evaluation,

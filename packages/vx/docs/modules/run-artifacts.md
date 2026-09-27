@@ -24,6 +24,7 @@ export interface SummarizeArgs {
   endedAtMs: number
   totalMs: number
   ok: boolean // the run's verdict, the CLI's exit code
+  exitCode?: number // the exit code where it is not `ok ? 0 : 1`: a stopping signal's
   outcomes: readonly TaskOutcome[]
   flaky?: readonly FlakyFinding[] // detectFlaky's findings → per-task `flaky`
 }

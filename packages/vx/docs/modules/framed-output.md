@@ -34,6 +34,29 @@ export function formatTaskHitLine(node, outcome, colors?): string
 
 // ` ⏺ <time> success miss <id>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?): string
+// ` ⊘ <blank> skipped <id> • blocked by <id>` — a skip never ran
+export function formatTaskSkippedLine(node, colors?, blockedBy?): string
+// the grid all three share: `<glyph> <time> <status> <cache> <id>`
+export function formatTaskRow(
+  glyph,
+  ms,
+  status,
+  statusColor,
+  cache,
+  cacheColor,
+  paintedId,
+  colors?,
+): string
+export const TIME_COL = 7 // the time cell's width
+// `project#task` halves in identity hues, hashed from `hueSource`
+export function paintIdParts(hueSource, projectText, taskText, colors, opts?): string
+
+// Focused mode's live frame around a streamed task
+export function formatFrameOpen(node, colors?): string // `┌─ <id> > $ <cmd>`
+export function formatFrameClose(node, outcome, colors?): string
+// A held persistent task's output since ready; '' for an empty body
+export function formatPersistentTailBlock(node, outcome, body, dropped?, colors?): string
+export function formatPersistentList(nodes, colors?): string[] // `▸ <id> running` rows
 
 export interface RecapEntry {
   node: TaskNode
