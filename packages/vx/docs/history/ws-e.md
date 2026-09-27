@@ -115,3 +115,16 @@ task picked`; neither prints a stack. Row in
   rejection is handled either way — the row for it passes both ways),
   1 held now: `procfsIsOwn()` inverted, pinned against `/proc/self/stat`'s
   pid in `tests/util-procfs.test.ts` (new).
+- E-16 — `vx run`'s same-stem flag hint (a third edit, so `--retries`
+  reaches `--retry`) read every capped distance as three: under the cap
+  of 3, `--continue-on-error` hinted `--concurrency` (nine edits) and
+  `--cache-directory` hinted `--cache`. `editDistance` takes its cap and
+  `nearest` caps one past its budget. Rows in `tests/cli.test.ts`.
+- E-17 — Sweeps of `bin.ts`, `cli/init.ts`, `cli/core-alias.ts` (18
+  mutants: 16 caught; bin's `isFsRefusal` branch inconclusive here, its
+  rows `skipIf(root)` and held by CI's non-root job; bin's
+  `registerCoreAlias` call changes only a compiled binary's load time,
+  since the plugin marker is `Symbol.for`) and of `util/edit-distance.ts`
+  on E-16 (14 mutants: 9 caught, 2 equivalent early exits, 3 held now in
+  `nearMatches`: nearest-first order, containment either way and
+  case-insensitively, the limit). Rows in `tests/near-miss.test.ts`.
