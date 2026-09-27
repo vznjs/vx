@@ -62,6 +62,9 @@ readers that reach it here.
 - The default export must be a non-null object. Anything else throws
   `"Project config at <path> did not export a default object"` — from
   the same check on both paths.
+- A Promise default export is awaited on both paths, so an async
+  config resolves to its object on the first load and in the Worker
+  alike (D-5).
 - Validation runs on whichever object the two paths produced, so a
   malformed config reports the identical `UserError` either way.
 - A value JSON cannot carry (a function, `NaN`, a `Map`, …) is refused

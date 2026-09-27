@@ -53,3 +53,9 @@ run leaves out; the rest are refusals.
   with D-1's check) and every project whose `directDeps` differ is
   selected; replaces the removed-package walk. Row: `tests/affected.test.ts`
   "a manifest edit that drops an edge selects the dependent (D-3)".
+- **D-5** The config worker awaits a Promise default export, as the
+  in-process first load's async return already did: an async config
+  loaded on a run and was refused as "an instance of Promise" on every
+  later evaluation in the process (a `vx watch` cycle). Row:
+  `tests/config-eval.test.ts` "reads a Promise default export the same on
+  the first and the repeat load (D-5)".

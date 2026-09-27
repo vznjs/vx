@@ -414,6 +414,20 @@ describe('validation stays in the parent process', () => {
     // same on cycle 1 and cycle 9 of a watch session.
   })
 
+  it('reads a Promise default export the same on the first and the repeat load (D-5)', async () => {
+    // The first load's async return flattens the Promise; the worker read
+    // it raw and refused it as "an instance of Promise" on cycle 2 of a watch.
+    const body = `export default Promise.resolve({ tasks: { build: { exec: { command: 'x' } } } })\n`
+    const file = await write(body)
+    const first = await loadProjectConfig(file)
+    const repeat = await loadProjectConfig(file)
+    expect(first).toEqual({ tasks: { build: { exec: { command: 'x' } } } })
+    expect(repeat).toEqual(first)
+    // Control: a Promise of no object is refused on the repeat load as on the first.
+    await writeFile(file, 'export default Promise.resolve(42)\n')
+    await expect(loadProjectConfig(file)).rejects.toThrow(/did not export a default object/)
+  })
+
   it('only rejects a typo whose value JSON drops on the FIRST load', async () => {
     // KNOWN DIVERGENCE, pinned rather than fixed. Unknown-field rejection walks
     // `Object.keys`, and `JSON.stringify` drops keys whose value is `undefined`

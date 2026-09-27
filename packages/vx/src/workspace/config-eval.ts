@@ -45,7 +45,10 @@ self.onmessage = async (e) => {
   const { id, path } = e.data
   try {
     const ns = await import(path)
-    const mod = ns?.default
+    // Awaited as the in-process load's async return flattens it: a Promise
+    // default loaded on a run and was refused as "an instance of Promise"
+    // on every later evaluation in the process (D-5).
+    const mod = await ns?.default
     const isObject = mod !== null && typeof mod === 'object'
     const nonJson = isObject ? nonJsonPaths(mod) : []
     postMessage({
