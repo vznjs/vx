@@ -134,8 +134,26 @@ async function fetchOrRefuse(url: string, init: RequestInit, what: string): Prom
   }
 }
 
+/**
+ * A response's body, read to the end. The headers can arrive and the
+ * connection drop before the body does (a proxy that cuts a transfer):
+ * Bun rejects the read with its own `TypeError` (`ECONNRESET`, "The socket
+ * connection was closed unexpectedly"), which `fetchOrRefuse` never sees
+ * and the CLI printed as an internal error with a stack.
+ */
+async function readOrRefuse<T>(read: () => Promise<T>, url: string, what: string): Promise<T> {
+  try {
+    return await read()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new UserError(
+      `vx upgrade: could not ${what} from ${new URL(url).host} (${message}) — nothing replaced; check the network or the proxy and re-run`,
+    )
+  }
+}
+
 /** The release document for `latest` or a tag, from the GitHub API. */
-async function fetchRelease(tag: string | undefined): Promise<unknown> {
+export async function fetchRelease(tag: string | undefined): Promise<unknown> {
   const url =
     tag === undefined
       ? `https://api.github.com/repos/${REPO}/releases/latest`
@@ -153,7 +171,9 @@ async function fetchRelease(tag: string | undefined): Promise<unknown> {
       `vx upgrade: could not read the release (${res.status}) — ${url}${res.status === 404 && tag !== undefined ? ` (is ${tag} a release tag?)` : ''}`,
     )
   }
-  return (await res.json()) as unknown
+  // A body that is not JSON (a captive portal's page, a proxy's error
+  // page served with a 200) is the same refusal as a cut one.
+  return await readOrRefuse(() => res.json() as Promise<unknown>, url, 'read the release')
 }
 
 /**
@@ -167,7 +187,9 @@ export async function replaceBinary(dest: string, url: string, sha256: string): 
   if (!res.ok) {
     throw new UserError(`vx upgrade: download failed (${res.status}) — ${url}`)
   }
-  const bytes = new Uint8Array(await res.arrayBuffer())
+  const bytes = new Uint8Array(
+    await readOrRefuse(() => res.arrayBuffer(), url, 'download the release asset'),
+  )
   if (bytes.byteLength === 0) {
     throw new UserError(`vx upgrade: empty download — ${url}`)
   }
