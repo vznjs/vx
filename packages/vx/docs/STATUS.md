@@ -752,6 +752,18 @@ test is telling the truth.
         bare-number bound), 3 (the run lock is keyed by the temp
         directory), and index rows whose artifact is gone still count
         toward the size bound.
+969.  DONE (2026-09-27, the cache-prune review's lead 1). A
+      `cacheRetention` of `{ olderThan: '0s' }`, `{ maxSize: '0' }` or
+      `{ maxSize: '10' }` loaded and emptied the cache at the end of every
+      run, the entries that run had just saved included, so nothing ever
+      hit; `vx cache prune` refused all three.
+      - Fix (`config-schema.ts`): the config refuses them too, by name; a
+        bare number needs a unit (`10B` still loads). `schema.md` lists
+        the three rows (pinned by `schema-doc-drift.test.ts`) and no
+        longer says a run's own entries are never due: `maxSize` is
+        least-recently-used first.
+      - Row: `cache-retention.test.ts` › refuses the bounds that evict
+        every entry after every run. Red without the fix.
 
 ## In flight
 

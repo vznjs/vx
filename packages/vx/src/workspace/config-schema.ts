@@ -57,7 +57,21 @@ function validateRetention(retention: unknown, configPath: string): void {
     throw new UserError(`${where}.olderThan must be a duration like '30d', '12h', '90m' or '45s'`)
   }
   if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
-    throw new UserError(`${where}.maxSize must be a size like '10G', '500MB' or '1048576'`)
+    throw new UserError(`${where}.maxSize must be a size like '10G', '500MB' or '64KB'`)
+  }
+  // The bounds `vx cache prune` refuses, for the same reason: each evicts
+  // every entry, and here it would do so at the end of every run, the
+  // entries that run just saved included, so nothing ever hits (item 969).
+  if (olderThan !== undefined && parseDuration(olderThan) === 0) {
+    throw new UserError(`${where}.olderThan of 0 evicts every entry after every run`)
+  }
+  if (maxSize !== undefined && parseSize(maxSize) === 0) {
+    throw new UserError(`${where}.maxSize of 0 evicts every entry after every run`)
+  }
+  if (maxSize !== undefined && /^\d+$/.test(maxSize)) {
+    throw new UserError(
+      `${where}.maxSize '${maxSize}' reads as ${maxSize} bytes — give a unit (e.g. '${maxSize}M', '${maxSize}G')`,
+    )
   }
 }
 
