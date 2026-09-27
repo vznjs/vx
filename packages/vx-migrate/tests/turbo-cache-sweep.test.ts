@@ -5,7 +5,7 @@ import { describe, expect, it } from 'bun:test'
 import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from '../src/index.js'
 
 const TOKEN = 't'
-const BASE = { apiUrl: 'http://turbo.invalid', token: TOKEN }
+const BASE = { apiUrl: 'http://turbo.invalid', token: TOKEN, retries: 0 }
 
 interface Call {
   method: string

@@ -180,6 +180,7 @@ Every option falls back to the tool's own environment variable, so a self-hosted
 | `signatureKey`    | `TURBO_REMOTE_CACHE_SIGNATURE_KEY` | HMAC-SHA256 key (≥ 32 bytes, used raw); a download whose tag does not verify is a miss                        |
 | `timeoutMs`       | —                                  | HEAD/GET/POST deadline (default 30 s)                                                                         |
 | `uploadTimeoutMs` | —                                  | PUT deadline (default 60 s)                                                                                   |
+| `retries`         | —                                  | resends of a request answered 429 / 5xx (not 501) or never connected (default 1, Turbo's); 0 turns them off   |
 
 The signature is Turbo's current scheme (`artifact-signature:v2`: prefix, hash, team id and body, each length-prefixed, under HMAC-SHA256, base64 in `x-artifact-tag`).
 
@@ -205,6 +206,7 @@ Every option falls back to the tool's own environment variable; with nothing con
 | `server`      | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; a `user:pass@` in it is refused |
 | `accessToken` | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token; omit for a server that runs open                |
 | `timeoutMs`   | —                                          | per-request deadline (default 30 s)                           |
+| `retries`     | —                                          | resends, as `turboCache()`'s (default 1)                      |
 
 The Nx spec has no existence probe, so `has` (the `--dry` prediction and the prefetch pass) is a `GET` whose body the following `get` reuses — one transfer, not two. The wire carries no producing-task duration, so a remote hit reports none.
 
@@ -212,6 +214,7 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction and the pre
 
 - A remote error degrades to a **miss** and a warning that names the request, the artifact and the server — `vx/turbo-cache: upload 32248a2a7c89e241 to https://cache.example.com/v8/artifacts failed: no answer within 60000 ms` — never the token. The run never fails because of the cache.
 - The same failure is said once per run: an unreachable server fails the probe, the download and the upload alike, and the run prints the first and, at its end, `vx/turbo-cache: 2 more requests failed the same way: Unable to connect. Is the computer able to access the url?` (core's `LayeredCache` does the counting, for every cache plugin).
+- A request answered `429` or `5xx` (not `501`), or one that never connected (a refused port, an unresolved host), is sent again after 2 s — a `429` after its `Retry-After`, capped at 10 s — as Turbo's client does. A spent deadline is not: it has already cost its wait.
 - A refused token (`401`/`403`) warns **once** and turns the layer off for the rest of the process — including the requests already in flight when the refusal lands, which degrade in silence rather than repeating it (a six-project run printed five identical lines before 2026-09-20).
 - Policy (`--cache=remote:r`, …) is enforced by core's `LayeredCache`, which the plugins wrap — a read-only token pairs naturally with `remote:r`.
 

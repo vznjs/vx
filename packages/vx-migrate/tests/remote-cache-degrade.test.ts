@@ -19,12 +19,13 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 const TOKEN = 'tok'
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
-type Mode = 'ok' | 'error' | 'hang' | 'corrupt' | 'unauthorized' | 'put413' | 'puthang'
+type Mode = 'ok' | 'error' | 'hang' | 'corrupt' | 'unauthorized' | 'put413' | 'puthang' | 'flaky'
 
 /** One server for both wires; `mode` is what the next request meets. */
 function hostileServer() {
   const store = new Map<string, Uint8Array>()
   const state: { mode: Mode } = { mode: 'ok' }
+  const failedOnce = new Set<string>()
   const hashOf = (pathname: string): string | undefined =>
     /^\/(?:v8\/artifacts|v1\/cache)\/([0-9a-z]+)$/.exec(pathname)?.[1]
   const server = Bun.serve({
@@ -78,6 +79,10 @@ function hostileServer() {
       const held = store.get(hash)
       if (held === undefined) return new Response('not found', { status: 404 })
       if (req.method === 'HEAD') return new Response(null, { status: 200 })
+      if (state.mode === 'flaky' && !failedOnce.has(hash)) {
+        failedOnce.add(hash)
+        return new Response('bad gateway', { status: 503 })
+      }
       if (state.mode === 'corrupt') {
         // A body that is not a vx artifact at all: the restore has to fail
         // INSIDE the cache and come back a miss, not tear down the task.
@@ -132,8 +137,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       srv = hostileServer()
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700 })`
-          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700 })`
+          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
+          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
       root = await fixture(decl, wire)
     })
     afterAll(async () => {
@@ -226,6 +231,40 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
   })
 }
 
+// Turbo's client resends a 429 / 5xx once (`retry.rs`); without that here
+// one gateway 503 read as a miss and the task ran again.
+for (const wire of ['turboCache', 'nxCache'] as const) {
+  describe(`a 503 heals on the resend (${wire})`, () => {
+    let srv: ReturnType<typeof hostileServer>
+    let root: string
+    beforeAll(async () => {
+      srv = hostileServer()
+      const decl =
+        wire === 'turboCache'
+          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)} })`
+          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)} })`
+      root = await fixture(decl, wire)
+    })
+    afterAll(async () => {
+      await srv.stop()
+      await rm(root, { recursive: true, force: true })
+    })
+
+    it('a download answered 503 once is a remote hit, not a rerun', async () => {
+      await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect(srv.store.size).toBe(1)
+      await coldAgain(root)
+      srv.state.mode = 'flaky'
+      try {
+        const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+        expect(r.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
+      } finally {
+        srv.state.mode = 'ok'
+      }
+    })
+  })
+}
+
 describe('a refused token costs ONE line on a whole workspace', () => {
   let srv: ReturnType<typeof hostileServer>
   let root: string
@@ -248,7 +287,7 @@ describe('a refused token costs ONE line on a whole workspace', () => {
       path.join(root, 'vx.workspace.mjs'),
       localWorkspaceSource(
         [
-          `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700 })`,
+          `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`,
         ],
         `import { turboCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
       ),
@@ -336,8 +375,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       srv = hostileServer()
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700 })`
-          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700 })`
+          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
+          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
       root = await fixture(decl, wire)
     })
     afterAll(async () => {
@@ -392,8 +431,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
     const unreachable = async (url: string): Promise<{ warnings: string[]; first: string }> => {
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700 })`
-          : `nxCache({ server: ${JSON.stringify(url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700 })`
+          ? `turboCache({ apiUrl: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
+          : `nxCache({ server: ${JSON.stringify(url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
       const root = await fixture(decl, wire)
       try {
         const r = await cliRun(root, prefix)

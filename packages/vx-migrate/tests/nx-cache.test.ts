@@ -72,10 +72,11 @@ describe('resolveNxCacheConfig', () => {
           NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: 't',
         },
       ),
-    ).toEqual({ server: 'https://c.example', accessToken: 't', timeoutMs: 30_000 })
+    ).toEqual({ server: 'https://c.example', accessToken: 't', timeoutMs: 30_000, retries: 1 })
     expect(resolveNxCacheConfig({ server: 'https://o' }, {})).toEqual({
       server: 'https://o',
       timeoutMs: 30_000,
+      retries: 1,
     })
   })
 
@@ -154,7 +155,10 @@ describe('NxRemoteCache against the spec server', () => {
         }),
       )
     }) as unknown as typeof fetch
-    const c = new NxRemoteCache({ server: 'http://nx.invalid', timeoutMs: 1_000 }, streamed)
+    const c = new NxRemoteCache(
+      { server: 'http://nx.invalid', timeoutMs: 1_000, retries: 0 },
+      streamed,
+    )
     expect(await c.has('aa11')).toBe(true)
     expect(await c.has('bb22')).toBe(true)
     expect(cancelled).toEqual(['aa11'])

@@ -170,3 +170,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   nx-examples' 42 task closures all match Nx's; a `turbo.json` field of
   the wrong type (`dependsOn: "^build"`) maps per character, but Turbo
   refuses that file itself, so no working repo carries one.
+- **G-12.** turboCache() and nxCache() resend a failed request once, as
+  Turbo's client does (`retry.rs`): a 429 or 5xx other than 501 after
+  2 s (a 429's `Retry-After`, capped at 10 s), a refused port or
+  unresolved host likewise. One gateway 503 read as a miss and the task
+  ran again. A spent deadline is not resent (Turbo resends reads): a
+  hung server would cost it twice. Option `retries` (default 1, 0 off,
+  a non-integer refused: NaN resent forever). Slow remote probed: 8
+  chained tasks against a server that never answers cost two deadlines,
+  not eight (the prefetch pass is concurrent). Rows:
+  `remote-cache-degrade` › a 503 heals on the resend (both wires, red
+  without the fix); `remote-retry.test.ts` (which answers, how long, how
+  often; the option).
