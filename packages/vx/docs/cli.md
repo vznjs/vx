@@ -250,6 +250,13 @@ plugin says per project, so `--affected` asks the plugin which projects
 the change touches — given the bytes at the base ref and in the working
 tree — and selects those; only a plugin that cannot tell widens.
 
+**A removed package selects its dependents.** A package the change
+deleted (its `package.json` was there at the base and is gone) is no
+project now, so its paths map to nothing; the projects that name it in
+any dependency field are selected instead, since their builds lost it.
+An edit to the root manifest's `workspaces` selects every project:
+which packages left the workspace is a discovery at the base.
+
 **A workspace config change selects everything.** An edit to
 `vx.workspace.*`, or to a file it imports by relative specifier, selects
 every project: the `config` and `project` stages its plugins install

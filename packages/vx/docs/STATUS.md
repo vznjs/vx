@@ -570,6 +570,22 @@ test is telling the truth.
       - Rows: `affected.test.ts` › deleting an imported orphan, and an
         extensionless import's target, selects the importer. Both red
         without the fix.
+959.  DONE (2026-09-27, the `--affected` review's lead 4). A deleted package
+      (`git rm -r pkgs/lib`), or one dropped from the root `workspaces`,
+      re-keyed and broke its dependents' builds while `--affected` said
+      nothing affected: its paths map to no project now, and the
+      dependents walk sees only today's graph. A committed root lockfile
+      usually masked it.
+      - Fix (`dependentsOfRemoved` in `affected.ts`): a `package.json` the
+        base had and the tree lacks is read at the base for its name, and
+        every project naming it in a dependency field is selected. A root
+        `workspaces` edit selects every project. Only deleted manifests
+        cost a `git show`.
+      - Rows: `affected.test.ts` › a deleted package selects its dependent
+        (an edited manifest its control), and a `workspaces` edit selects
+        all (another root edit its control). Both red without the fix.
+      - Left from the review: lead 1's second half, a file a plugin reads
+        at run time (a seam).
 
 ## In flight
 
