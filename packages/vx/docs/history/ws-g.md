@@ -242,3 +242,22 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   identity part (sources are fixed in a test; G-10). Equivalent: the
   `mkdir` (core makes the cache dir first), the rename's atomicity, the
   per-process memo and the file sort (cost only).
+- **G-18.** A mutation sweep of `vx-lockfile/src/npm.ts` (25 mutants):
+  22 caught. Held now: a node's path in its material — without it two
+  workspaces that link each other at the same version gave one set of
+  lines when a lockfile swapped which reached which `is-number`, item
+  1073's class on npm's side (1073 named npm safe by the path and had
+  no row for it). Row (`npm.test` › two workspaces that link each other
+  and swap versions both move): red without the path; the same lockfile
+  twice is the control. Equivalent: the `lockfileVersion` in the global
+  (v2 and v3 install one tree), the `continue` after a link (a link
+  entry carries no dependencies).
+  With it, `yarn.ts` (29 mutants): 18 caught, 11 equivalent (duplicate
+  edges or names, a peer range folded twice, the classic comment and
+  `inDeps` resets, the `catalog:` branch the unkeyed-descriptor fallback
+  already covers); no row needed. `bun.ts` (27): 21 caught, 6
+  equivalent (a node's path and id, the importer's dir: the workspace
+  package ids already part every line; the root-name and empty-path
+  guards). `pnpm.ts` (34): 30 caught, 4 equivalent (the trailing-null
+  filter, the lockfile version the rest already carries, the absolute
+  and own-key lookups the version fallback covers).
