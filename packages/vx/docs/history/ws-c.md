@@ -47,11 +47,17 @@ the load was whole, the check was skipped, and `vx run dev
 rest of the workspace is loaded only for names still unjudged. Row:
 `affected-sparse-tasks.test.ts` (red without the change).
 
-## Queued (from the stream's review, 2026-09-27)
+## C-4: tear the plugins down when a cache factory fails
 
-- A `cache` factory that throws or returns a malformed layer skips
-  plugin teardown (`prepare.ts`: the catch closes the local cache only),
-  against `plugin.md` and item 1029.
+The cache factory runs inside `prepareRun` before the span that tears
+down on a throw, and its catch closed the local cache alone: a `cache()`
+that threw or returned something off-contract left every plugin's
+teardown unrun, leaking what other factories opened, once per `vx watch`
+cycle (`plugin.md` and item 1029 promise it). Also de-claims two
+comments: frozen mode checks no config bytes on the run path (`vx lock
+--check` does), and a graph hook has no resources to adjust. Rows:
+`plugin-teardown.test.ts`, a throwing and an off-contract factory (red
+without the change).
 
 ## Leads for other streams
 
@@ -76,3 +82,12 @@ rest of the workspace is loaded only for names still unjudged. Row:
   load twice.
 - **G:** `vx-migrate/src/nx/index.ts` imports `type Gaps` and never uses
   it (a lint warning).
+- **B:** the SIGKILL leak in `keep-alive.test.ts` (the "backgrounded
+  server/child" rows, macOS CI and 4 of 40 local runs at 10-way load)
+  is a real window, not a flake: `spawnGuarded` lists a task's group
+  with the guard only after `spawn()` returns, the child runs first
+  under load, and a `kill -9` before that pipe write leaves the group
+  unlisted (the guard logged an empty list at EOF in every leaked run).
+  Proposed fix: the child lists itself before it runs anything (the
+  guard pipe passed as an extra fd; the task shell writes `+$$`, closes
+  the fd, then runs the command), and the guard dedupes ids.

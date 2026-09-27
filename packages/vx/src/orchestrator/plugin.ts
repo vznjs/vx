@@ -72,7 +72,7 @@ export interface VxPlugin {
 
   /**
    * The task graph, after `dependsOn` expansion and before scheduling. Add
-   * or drop edges (`node.deps`), mark tasks requested, adjust resources. A
+   * or drop edges (`node.deps`), mark tasks requested. A
    * dep naming a task that is not in the graph, or a cycle, is refused with
    * the plugin's name.
    */

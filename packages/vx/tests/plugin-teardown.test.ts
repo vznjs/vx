@@ -457,6 +457,21 @@ describe('the lifecycle is reached on a run that never started', () => {
     expect(seen()).toEqual(['a-setup', 'a-teardown', 'b-teardown'])
   })
 
+  // C-4: the cache factory runs inside prepareRun, before the span that
+  // tears down on a throw, and its catch closed the local cache alone: a
+  // client another plugin's factory had opened leaked, once per cycle
+  // under `vx watch`.
+  for (const [what, hook] of [
+    ['throws', `cache() { throw new Error('cache boom') },`],
+    ['returns something off-contract', `cache() { return 'not a layer' },`],
+  ] as const) {
+    it(`a cache factory that ${what} tears every plugin down`, async () => {
+      await withPlugins(hook)
+      expect(await settle(runT())).toContain("plugin 'org/b'")
+      expect(seen()).toEqual(['a-teardown', 'b-teardown'])
+    })
+  }
+
   it('an executor whose accepts() throws tears every plugin down', async () => {
     await withPlugins(
       `executor() { return { name: 'x', accepts() { throw new Error('accepts boom') }, execute() {} } },`,
