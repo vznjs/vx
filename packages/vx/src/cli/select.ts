@@ -413,9 +413,20 @@ function didYouMeanProject(
   projects: Iterable<{ name: string }>,
 ): string {
   const names = [...projects].map((p) => p.name)
+  // A scoped name typed without its scope (`vx-mcp` for `@vzn/vx-mcp`) is
+  // many edits from the whole name and none from the part after the `/`.
+  const byBare = new Map<string, string[]>()
+  for (const n of names) {
+    const bare = n.slice(n.indexOf('/') + 1)
+    if (bare !== n) byBare.set(bare, [...(byBare.get(bare) ?? []), n])
+  }
   for (const pattern of unmatched) {
-    const best = nearest(pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, ''), names)
+    const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+    const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`
+    const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())
+    const scoped = bare === undefined ? undefined : byBare.get(bare)
+    if (scoped?.length === 1) return `. Did you mean ${scoped[0]}?`
   }
   return ''
 }

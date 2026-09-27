@@ -145,6 +145,11 @@ the filters refine it rather than being overridden by it
 The full DSL lives in `src/workspace/filter.ts`; this is the user-
 facing summary.
 
+A filter that matches nothing refuses the run (`no projects matched
+filter(s): …`) with `Did you mean <name>?` when a project name is within
+two edits, or when exactly one scoped project's name after its `/` is
+(`--filter vx-mcp` hints `@vzn/vx-mcp`).
+
 | Form            | Meaning                                                                                                                                                                                                         |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<pattern>`     | Match by package name. `*` matches any characters, including `/`.                                                                                                                                               |
