@@ -206,6 +206,37 @@ describe('every input the npm digest must read', () => {
       })
     expect(movedDirs(link('packages/gone-1'), link('packages/gone-2'))).toEqual(['packages/a'])
   })
+  // Item 1073's class, npm's side: two workspaces that link each other,
+  // each on its own is-number. Swapping which one reaches 7.0.0 gives
+  // their nodes the same lines unless each folds its own path — both are
+  // version 1.0.0 with no resolved or integrity — and neither moved.
+  it('two workspaces that link each other and swap versions both move', () => {
+    const swap = (aNested: boolean) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { workspaces: ['packages/*'] },
+          'packages/a': { version: '1.0.0', dependencies: { b: '*', 'is-number': '*' } },
+          'packages/b': { version: '1.0.0', dependencies: { a: '*', 'is-number': '*' } },
+          'node_modules/a': { resolved: 'packages/a', link: true },
+          'node_modules/b': { resolved: 'packages/b', link: true },
+          'node_modules/is-number': { version: '6.0.0', resolved: 'r6', integrity: 'i6' },
+          [`packages/${aNested ? 'a' : 'b'}/node_modules/is-number`]: {
+            version: '7.0.0',
+            resolved: 'r7',
+            integrity: 'i7',
+          },
+        },
+      })
+    const one = importerDigests(parseLockfile(swap(true)))
+    const two = importerDigests(parseLockfile(swap(false)))
+    const again = importerDigests(parseLockfile(swap(true)))
+    expect({
+      a: one.get('packages/a') !== two.get('packages/a'),
+      b: one.get('packages/b') !== two.get('packages/b'),
+      control: one.get('packages/a') === again.get('packages/a'),
+    }).toEqual({ a: true, b: true, control: true })
+  })
 })
 
 describe('npm() declared', () => {
