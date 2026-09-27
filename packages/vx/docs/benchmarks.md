@@ -766,6 +766,17 @@ refine at `--concurrency 6` 1,057 ms median against 1,148 at 3, A/A
 `core.trustctime=false`) every input hashes instead of trusting git's
 OIDs, by design: refine's no-op read 448 ms there against 396.
 
+astro again on main 4b7c396a, after A-11 (nested-project boundaries by
+ancestor lookup; the same filtered no-op read 449 → 263 ms median
+against its parent, A/A 260), three interleaved reps:
+
+| astro `build` (32) | vx         | Turbo 2.10.2   |
+| ------------------ | ---------- | -------------- |
+| cold               | **48.0 s** | 57.9 s (1.21×) |
+| restore            | **478 ms** | 1.43 s (2.98×) |
+| no-op              | **249 ms** | 1.38 s (5.55×) |
+| second no-op       | **264 ms** | 1.35 s (5.13×) |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
