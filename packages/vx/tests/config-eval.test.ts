@@ -26,7 +26,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { configEvalWorkerCount, evaluateConfigFresh } from '../src/workspace/config-eval.js'
-import { loadProjectConfig } from '../src/workspace/project-loader.js'
+import { loadProjectConfig, loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 import type { ProjectConfig } from '../src/config.js'
 
 const BUDGET_ENV = 'VX_CONFIG_WORKER_TIMEOUT_MS'
@@ -426,6 +426,24 @@ describe('validation stays in the parent process', () => {
     // Control: a Promise of no object is refused on the repeat load as on the first.
     await writeFile(file, 'export default Promise.resolve(42)\n')
     await expect(loadProjectConfig(file)).rejects.toThrow(/did not export a default object/)
+  })
+
+  it('refuses a workspace Promise default of no object, as a project one is (D-6)', async () => {
+    // Checked only before the await: `null` crashed the validator with a
+    // TypeError stack, `42` loaded as a workspace with no config.
+    const file = path.join(root, 'vx.workspace.mjs')
+    for (const value of ['null', '42']) {
+      await writeFile(file, `export default Promise.resolve(${value})\n`)
+      const err = await loadWorkspaceConfig(root).then(
+        () => new Error('NO THROW'),
+        (e: unknown) => e as Error,
+      )
+      expect(err.name).toBe('UserError')
+      expect(err.message).toBe(`Workspace config at ${file} did not export a default object`)
+    }
+    // Control: a Promise of an object loads.
+    await writeFile(file, 'export default Promise.resolve({ concurrency: 2 })\n')
+    expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 2 })
   })
 
   it('only rejects a typo whose value JSON drops on the FIRST load', async () => {

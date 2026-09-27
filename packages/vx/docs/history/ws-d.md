@@ -69,3 +69,8 @@ run leaves out; the rest are refusals.
   later evaluation in the process (a `vx watch` cycle). Row:
   `tests/config-eval.test.ts` "reads a Promise default export the same on
   the first and the repeat load (D-5)".
+- **D-6** A workspace config's awaited default export is checked as a
+  project config's is: `Promise.resolve(null)` crashed the validator with
+  a TypeError stack, `Promise.resolve(42)` loaded as no config. Row:
+  `tests/config-eval.test.ts` "refuses a workspace Promise default of no
+  object, as a project one is (D-6)".
