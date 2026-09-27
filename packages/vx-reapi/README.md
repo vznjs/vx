@@ -140,8 +140,9 @@ exception is a glob whose FIRST segment is a wildcard (`*.js`): it has
 no REAPI spelling, so it is sent as `''` — whole-working-directory
 capture — and inputs and undeclared siblings come back too. Those
 cannot be told apart from real outputs, so a missing blob there only
-warns; prefer a literal first segment (`dist/*.js`) when you want the
-stricter check.
+warns, unless a declared glob names it: that is a hole in a declared
+output and fails the task under either shape. Inline output bytes are
+checked against their digest like fetched ones; a mismatch is fetched.
 
 A capture cut at a wildcard holds more than the outputs: `src/*.gen.js`
 is sent as `src`, and the worker returns the sources beside the

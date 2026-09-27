@@ -195,6 +195,7 @@ describe('materialiseOutputs: a declared output that cannot be fetched', () => {
         return out
       },
       readBlob: async (d: { hash: string }) => have.get(d.hash) ?? null,
+      digest: 'SHA256',
     }) as unknown as Parameters<typeof materialiseOutputs>[0]
 
   const req = (globs: string[], cwd: string): Parameters<typeof materialiseOutputs>[1] =>
@@ -305,12 +306,53 @@ describe('materialiseOutputs: a declared output that cannot be fetched', () => {
     }
   })
 
+  // F-8: under a whole-tree capture a missing file a declared glob MATCHES
+  // only warned, and save cached the short tree under the key.
+  it('a whole-tree capture refuses a missing file its glob declares', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
+    try {
+      const warns: string[] = []
+      const got = await materialiseOutputs(stub(new Map()), req(['*.txt'], dir), result, (m) =>
+        warns.push(m),
+      ).then(
+        () => 'resolved',
+        (e: Error) => e.message,
+      )
+      expect([got, warns]).toEqual([
+        'vx/reapi: pkg#build declared output out.txt is missing from the CAS (deadbeef) — re-run it (e.g. --force)',
+        [],
+      ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // F-8: inline bytes were written without a check against their digest.
+  it('inline contents that do not match their digest are fetched instead', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
+    try {
+      const good = new TextEncoder().encode('good\n')
+      const d = sha256(good)
+      const inlined = {
+        output_files: [{ path: 'out.txt', digest: d, contents: new TextEncoder().encode('bad\n') }],
+      }
+      await materialiseOutputs(
+        stub(new Map([[d.hash, good]])),
+        req(['out.txt'], dir),
+        inlined,
+        () => undefined,
+      )
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('good\n')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('CONTROL: whole-tree capture only warns — the file may be incidental', async () => {
     // `*.js` has a wildcard FIRST segment, so it maps to '' and the worker
     // returns the entire working directory: inputs and undeclared siblings
     // ride along. A blob missing for one of THOSE is not this task's hole,
-    // and refusing would break a build that is fine. Residual, deliberate:
-    // a genuinely declared output missing under this shape still only warns.
+    // and refusing would break a build that is fine.
     const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
     try {
       const warns: string[] = []
