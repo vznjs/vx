@@ -258,7 +258,14 @@ over (in order):
     or `core.autocrlf` can rewrite bytes between index and worktree
     (the blob would be the LF-normalized form while the task reads the
     CRLF file). The gate costs nothing in a repo with no attributes
-    and no `core.autocrlf` — see "Clean filters" below.
+    and no `core.autocrlf` — see "Clean filters" below. And when the
+    repository's config weakens the stat `git status` judges by —
+    `core.trustctime=false`, or `core.checkStat=minimal` (whole-second
+    mtime and size) — no index OID is trusted at all: a same-size
+    rewrite that keeps its mtime (`cp -p`, `tar -x`) reads clean to
+    git, and until 2026-09-27 (A-6) kept the old bytes' key. Every file
+    is then hashed through the memo below, which keys on ctime and
+    inode.
 
     Every pruned path, plus untracked files, falls back to an
     in-process `HASH("blob " + len + "\0" + content)` over the

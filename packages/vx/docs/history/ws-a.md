@@ -29,7 +29,7 @@
    remote hits are still ingested locally.
 9. A gitignored `.gitattributes` below a project escapes the clean-filter
    gate: the LF index blob of a CRLF file is trusted.
-10. `core.trustctime=false` / `core.checkStat=minimal` weaken `git status`,
+10. DONE (A-6). `core.trustctime=false` / `core.checkStat=minimal` weaken `git status`,
     and the index-OID shortcut inherits it (a same-size, mtime-restoring
     rewrite keeps the key).
 
@@ -86,3 +86,10 @@ The decompression gate read the first zstd frame's declared size, and `Bun.zstdD
 
 - Fix (`zstd.ts` `isOneFrame`): the one-call decode is taken only for exactly one whole frame (header, blocks walked by their own sizes, checksum, nothing after); anything else decodes as a stream under the running count. vx's own artifacts are single frames and keep the one call. `caching.md` says so.
 - Rows: `zstd-frames.test.ts` › two frames are refused by the running count and never reach `Bun.zstdDecompress` (bytes and a file), decode whole as a stream under the cap; control, one frame small or of many blocks takes the one call. Red without the fix.
+
+### A-6 (2026-09-27, lead 10)
+
+Under `core.trustctime=false` or `core.checkStat=minimal` git judges a file by mtime and size (whole seconds, with minimal), so a same-size rewrite that restores its mtime (`cp -p`, `tar -x`) reads clean, and its index OID keyed the old bytes: the next run was `up-to-date` with `src=BBBB dist=AAAA`. This container's global git config sets both.
+
+- Fix (`git-inputs.ts` `gitStatWeakened`, over the `git var -l` the enumeration already spawns): either setting drops every index OID, and files hash through the memo, which keys on ctime and inode. `caching.md` and `modules/git-inputs.md` say so. The core test tasks define `GIT_CONFIG_GLOBAL=/dev/null` (`vx.config.ts`): the suite's fixtures assume git's defaults, and a host's global config (this one's: both settings, and signed commits) is not the code under test.
+- Rows: `stale-hit.test.ts` › each setting with a same-size, mtime-kept rewrite is a miss (red without the gate); the OIDs are kept under a pinned default stat and dropped under a minimal one; the settings' spellings, the last value winning.

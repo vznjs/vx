@@ -8,13 +8,21 @@ import { defineProject } from '@vzn/vx'
 // on: an oversubscribed box finishes in the same wall time as eight, a
 // twelve-core one in two thirds of it.
 export const SHARD_COUNT = 12
+// The suite's git fixtures assume git's defaults. A machine's global config
+// can change what `git status` vouches for (`core.trustctime=false`,
+// `core.checkStat=minimal`, which vx then declines to trust, A-6) or sign
+// every commit a fixture makes; neither is the code under test.
+const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null' }
 const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
 const shardTask = (i: number) => ({
   description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,
   dependsOn: ['install'],
   exec: {
     command: `bun test $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
-    env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'] },
+    env: {
+      passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
+      define: GIT_HERMETIC,
+    },
     sandbox: {
       allow: {
         // The root README states counts the suite pins (the hook count,
@@ -149,6 +157,7 @@ export default defineProject({
             'VX_REQUIRE_NONROOT',
             'VX_SMALL_DISK',
           ],
+          define: GIT_HERMETIC,
         },
       },
       cache: {

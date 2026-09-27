@@ -84,6 +84,9 @@ export interface RepoFacts {
 export function repoFacts(dir: string): RepoFacts | null
 export function parseCheckAttrOutput(out: string): Set<string>
 export function autocrlfConverts(gitVars: string): boolean // over `git var -l`
+// `core.trustctime` off or `core.checkStat=minimal`: `git status` cannot see a
+// same-size, time-keeping rewrite, so the enumeration trusts no OID (A-6).
+export function gitStatWeakened(gitVars: string): boolean
 // The attributes files git reads outside the tree: from 2.42 git names them
 // (`GIT_ATTR_GLOBAL`, `GIT_ATTR_SYSTEM`); before, the lookup is mirrored.
 export function attributeFilesOutsideTree(
