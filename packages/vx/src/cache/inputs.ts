@@ -488,6 +488,19 @@ async function resolveRuntimeValues(
  */
 const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**']
 
+/**
+ * What a set of output globs may not reach: `OUTPUT_NEVER`, and every
+ * `node_modules` unless a glob names one. `**\/*.js` meant the build's
+ * files, and the clean before each run deleted every installed `.js`
+ * under `node_modules` with them (A-13); an install task declares
+ * `node_modules/**` and keeps it. Workspace outputs took none of this, not
+ * even `.git`.
+ */
+function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
+  const namesNodeModules = outputs.some((o) => normalizeGlob(o).split('/').includes('node_modules'))
+  return (namesNodeModules ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**']).map(globFor)
+}
+
 /** Resolve declared output globs (project-relative) to actual produced files. */
 export async function resolveOutputs(args: {
   projectDir: string
@@ -495,7 +508,7 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const excludeGlobs = OUTPUT_NEVER.map(globFor)
+  const excludeGlobs = outputExcludes(args.outputs)
   const scanned = [
     ...(await scanUnion(
       asTrees(args.outputs),
@@ -741,7 +754,9 @@ export async function resolveWorkspaceOutputs(args: {
   outputs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const scanned = [...(await scanUnion(asTrees(args.outputs), [], args.workspaceRoot))]
+  const scanned = [
+    ...(await scanUnion(asTrees(args.outputs), outputExcludes(args.outputs), args.workspaceRoot)),
+  ]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
