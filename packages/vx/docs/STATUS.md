@@ -423,6 +423,40 @@ failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
         red without the change; a workspace without `resolve` stays put,
         and the same lockfile twice moves nothing.
 
+1075. DONE (2026-09-27, Next 26, a stale hit). `nx()` decided its graph
+      snapshot was fresh from the mtimes of `nx.json`'s chain and the
+      manifests. Nx derives dependency edges from source imports, so
+      `import { b } from '@w/b'` added in `a` kept the old snapshot, and a
+      later edit to `b` replayed `a#test`. The snapshot is now keyed, in a
+      file beside it, on `HEAD`, `git status -z -uall`, the content of each
+      listed path under a project root or among the root files Nx reads,
+      and `nx.json`'s chain by content (a base can live in
+      `node_modules`). Key and file both change.
+      - A second edit to an already-dirty file moves the key; the status
+        text alone missed it (a measurement agent showed it with Nx
+        22.7.12's own export).
+      - A touch alone, or a report a task writes at the root, does not
+        re-export.
+      - The key is computed before the export, so an edit made while Nx
+        runs costs one more export rather than being lost.
+      - Outside a git worktree the mtimes still decide.
+      - Measured on a synthetic 1,000-project `@nx/js` workspace (7,005
+        files, 11 interleaved runs, load around 11 from a gate beside it):
+        the old stats took min 8.6 ms, median 10.3; the key takes min 43,
+        median 52. A first draft that also read every manifest took 166,
+        and it was cut because git already lists an edited manifest and
+        `HEAD` moves with a committed one.
+      - The export itself measured 1.26 s with the daemon off and 0.51 s
+        with it on, rising to 1.5 s and 0.9 s after an edit. The README
+        figures are corrected.
+      - Reusing core's own `git status` (`startGitEnumeration`) would take
+        the 35 ms back, but the `project` stage cannot see it yet, so that
+        is a follow-up.
+      - Rows: `nx.test.ts` › a source file under a project root, added or
+        edited again, re-exports; a touch alone, or a stray file at the
+        root, does not re-export. Both are red without the change. The
+        five rows that provoked a re-export with a touch now edit instead.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
@@ -804,20 +838,7 @@ next?".
     two stages, not a new kind. Item 932 took 23 ms of the load share
     back: a guard that stopped holding after the first round.
 
-26. **`nx()`'s graph snapshot misses edges an import adds** (the nx
-    review's lead 1, reproduced with Nx 22.7.12). Freshness stats
-    `nx.json`'s chain and the manifests, but Nx derives dependency edges
-    from source imports (`@nx/js`), and those edges choose the `^` twins a
-    task folds: `import { b } from '@w/b'` added in `a` left the snapshot
-    at `{a:[],b:[]}`, and a later edit to `b` hit `a#test` as up-to-date
-    (a stale hit; control: the snapshot deleted, the same edit re-ran it).
-    The fix is a re-export whenever a tracked or untracked file under a
-    project root is newer than the snapshot, and that puts an export into
-    every edit-then-run: 1.7 s daemon off at 1,000 projects, 1.3 s under
-    `vx watch` (README). Measure the daemon-on export and the walk's cost
-    (git's list, or the stats) before choosing; keying the snapshot on the
-    tree's git state is the other candidate. The README says a new
-    cross-package import needs an Nx command before the next run.
+26. DONE as item 1075 — `nx()` keys its graph snapshot on the worktree's git state; an added import re-exports.
 
 27. DONE as item 1070 — `nx()` keeps an output path as written; a bare literal keeps the directory short-circuit.
 
