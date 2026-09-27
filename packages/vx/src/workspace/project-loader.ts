@@ -381,11 +381,18 @@ export async function loadProjectConfigs(
       // malformed config reports the identical UserError whether it was
       // evaluated in-process or in a worker.
       validateProjectConfig(mod as ProjectConfig, configPath)
+      const json = JSON.stringify(mod)
       if (key !== null) {
-        evals.push([key, JSON.stringify(mod)])
+        evals.push([key, json])
         if (closure !== undefined) learnedClosures.push([configPath, closure])
       }
-      out.push(mod as ProjectConfig)
+      // A tree of its own, as a hit and the lock hand out. The module object
+      // shares what the config shares: one preset's task in two configs, one
+      // `exec` in two tasks. A `project` hook that edits in place then edited
+      // them all, so a cold run ran `echo P +plug +plug` where the warm run
+      // and `--frozen` ran `echo P +plug`, under another key (item 967). A
+      // config is JSON data (config-schema.ts), so the copy loses nothing.
+      out.push(JSON.parse(json) as ProjectConfig)
     }
   } finally {
     endRound()

@@ -25,6 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { loadProjectConfig, loadProjectConfigs } from '../src/workspace/project-loader.js'
 import { configEvalWorkerCount } from '../src/workspace/config-eval.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
@@ -404,6 +405,70 @@ describe('what the transpiler was told besides the bytes', () => {
       expect(build('dev again')).toEqual([0, 'MODE_dev', 'dev again'])
       await writeFile(path.join(pkg, 'bunfig.toml'), '[define]\nBUILD_MODE = "\\"prod\\""\n')
       expect(build('prod')).toEqual([0, 'MODE_prod', 'prod'])
+    },
+    TIMEOUT,
+  )
+})
+
+describe('a config the project stage edits in place', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-alias-'))
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'runs the command a warm run and --frozen run: a shared preset is edited once per task (item 967)',
+    async () => {
+      // A first load handed out the module object, which shares what the
+      // configs share (one preset task in two projects), so the hook's edit
+      // landed twice: the cold run ran `echo P +plug +plug` under its own key.
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+      )
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        `${PLUGIN_IMPORT}
+        export default { plugins: [${pluginSource(
+          'org/plug',
+          `{ project(config) {
+            for (const t of Object.values(config.tasks ?? {})) if (t.exec) t.exec.command += ' +plug'
+          } }`,
+        )}] }
+`,
+      )
+      await writeFile(
+        path.join(root, 'preset.mjs'),
+        "export const build = { exec: { command: 'echo P' } }\n",
+      )
+      for (const name of ['a', 'b']) {
+        await mkdir(path.join(root, 'packages', name), { recursive: true })
+        await writeFile(path.join(root, 'packages', name, 'package.json'), JSON.stringify({ name }))
+        await writeFile(
+          path.join(root, 'packages', name, 'vx.config.mjs'),
+          "import { build } from '../../preset.mjs'\nexport default { tasks: { build } }\n",
+        )
+      }
+      git(root, 'init', '-q')
+      const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      const run = () => {
+        const p = Bun.spawnSync({
+          cmd: ['bun', CLI, 'run', 'build', '--all', '--output-logs', 'full'],
+          cwd: root,
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        })
+        const out = p.stdout.toString() + p.stderr.toString()
+        return [p.exitCode, [...new Set(out.match(/^P[ +a-z]*$/gm) ?? [])]]
+      }
+      const cold = run()
+      const warm = run()
+      expect(cold).toEqual([0, ['P +plug']])
+      expect(warm).toEqual(cold)
     },
     TIMEOUT,
   )
