@@ -98,3 +98,10 @@ run leaves out; the rest are refusals.
   47.7 ms (min of 15 per arm, six interleaved rounds; A/A 54.7). The
   `Bun.file` manifest read stays: `load-reads.test.ts` counts reads
   through it.
+- **D-11** Row: a moved project root (`git mv packages/lib
+packages/core`) selects the dependent whose `file:../lib` spec named
+  it; the edge drops with the dependent's manifest unchanged, so only the
+  base graph sees it (red with D-3's comparison removed). Probes that
+  confirmed the rest of the backlog, no fix owed: `workspace:` / `link:`
+  / `catalog:` specs and glob negations (rows exist), and lazy `byDir` in
+  `buildPackageGraph` bought nothing (14.3 vs 14.0 ms, A/A 14.1).
