@@ -7,7 +7,7 @@
 // source's `TelemetryRecord` and `TELEMETRY_SCHEMA_VERSION`.
 
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { PLUGIN_HOOKS, TELEMETRY_SCHEMA_VERSION } from '../src/index.js'
 import { surfaceOf } from './helpers/api-surface.js'
@@ -49,6 +49,13 @@ function levelTable(text: string, file: string): Record<string, string[]> {
 }
 
 describe('versioning-1.0.md lists what the code freezes', () => {
+  it('every record the contract table names exists', () => {
+    const table = section('## The contract')
+    const records = [...table.matchAll(/`(tests\/contract\/[^`]+)`/g)].map((m) => m[1]!)
+    expect(records.length).toBeGreaterThan(1)
+    expect(records.filter((r) => !existsSync(path.join(ROOT, r)))).toEqual([])
+  })
+
   const config = section('### Config fields')
 
   it('every config level and its fields, as the validator accepts them', () => {
