@@ -482,6 +482,22 @@ test is telling the truth.
         evaluates live. `configImports` (watch's arms) uses the same scan.
       - Rows: `config-cache.test.ts` › the comment, the string-named and the
         unplaced-`import` rows, red without the fix.
+953.  DONE (2026-09-27, the `--affected` review's lead 1, first half). An
+      edit to `vx.workspace.*`, or to a file it imports, re-keyed every
+      task (its plugins' `config` and `project` stages shape every
+      resolved config) and `--affected` selected nothing, exit 0. The
+      fingerprint leaves the file out on purpose, and selection mapped
+      the root path to no project.
+      - Fix: such an edit selects every project (`workspaceConfigChanged`
+        in `affected.ts`, over `configImports`). Selection is not hashed;
+        no key moves.
+      - Row: `affected.test.ts` › the workspace config and its import each
+        select every project, an unrelated root file nothing (control). Red
+        without the fix.
+      - Open, the lead's second half: a file a plugin READS at run time
+        (`turbo()`'s `turbo.json`, `nx()`'s `nx.json`) re-keys tasks and
+        is not seen. It needs a seam, a plugin declaring the root files it
+        reads, as `fingerprint` claims do; `vx watch` wants the same list.
 
 ## In flight
 

@@ -248,6 +248,14 @@ plugin says per project, so `--affected` asks the plugin which projects
 the change touches — given the bytes at the base ref and in the working
 tree — and selects those; only a plugin that cannot tell widens.
 
+**A workspace config change selects everything.** An edit to
+`vx.workspace.*`, or to a file it imports by relative specifier, selects
+every project: the `config` and `project` stages its plugins install
+shape every resolved config, so the edit can re-key any task, and
+selection cannot tell which. It is not in the fingerprint (a key moves
+only when a stage's output does). A file a plugin reads at run time
+without importing it (`turbo()`'s `turbo.json`) is not yet seen.
+
 **A file your config IMPORTS selects that project.** vx hashes the
 resolved config, so a shared preset a `vx.config.*` imports is part of
 the cache key — and selection follows the same rule. Editing
