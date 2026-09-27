@@ -199,7 +199,6 @@ function restoreTierExclusions(nodes: Map<string, TaskNode>, workspaceRoot: stri
   if (prefixes.length === 0) return out
   const reaches = (dir: string): boolean =>
     dir === '' ||
-    dir === '.' ||
     prefixes.some((p) => p === dir || p.startsWith(`${dir}/`) || dir.startsWith(`${p}/`))
   const dependants = new Map<string, string[]>()
   for (const node of nodes.values()) {

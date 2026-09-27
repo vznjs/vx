@@ -922,6 +922,97 @@ describe('local cache short-circuit', () => {
     TIMEOUT,
   )
 
+  // The reach test's other terms, each held alone (a sweep left them
+  // unheld; A-22): a prefix equal to a project's directory, one above it,
+  // the root project that every prefix reaches, and dependants two hops down.
+  it(
+    "a workspace output whose literal prefix IS a project's directory keeps it OUT",
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['packages/solo/*.gen'] }`)
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.hitIds.has('solo#build')).toBe(true)
+      expect(c.restoreTier.has('solo#build')).toBe(false)
+      expect(c.restoreTier.has('wsw#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a workspace output whose prefix is ABOVE a project's directory keeps it OUT",
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['packages/*/g.gen'] }`)
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.hitIds.has('solo#build')).toBe(true)
+      expect([...c.restoreTier]).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the root project is reached by any workspace output',
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      await Bun.write(
+        path.join(fixture.root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "."\n  - "packages/*"\n',
+      )
+      await Bun.write(path.join(fixture.root, 'root.txt'), 'r')
+      await Bun.write(
+        path.join(fixture.root, 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'cp root.txt root.out' }, cache: { inputs: { files: ['root.txt'] }, outputs: { files: ['root.out'] } } } } }`,
+      )
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.hitIds.has('fixture-root#build')).toBe(true)
+      expect(c.restoreTier.has('fixture-root#build')).toBe(false)
+      // CONTROL: `solo`, which `shared/` does not reach, keeps the tier.
+      expect(c.restoreTier.has('solo#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the exclusion follows the edges down past the first dependant',
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['packages/solo/gen/g.txt'] }`)
+      for (const [name, dep] of [
+        ['mid', 'solo'],
+        ['top', 'mid'],
+      ] as const) {
+        await addProject(fixture.root, name, {
+          files: { 'src/c.txt': name },
+          deps: { [dep]: '*' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  dependsOn: ['^build'],
+                  exec: { command: 'cp src/c.txt out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+      }
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
+      const c = await classify(fixture, ['build'])
+      expect(c.hitIds.has('top#build')).toBe(true)
+      expect([...c.restoreTier].sort()).toEqual(['wsw#build'])
+    },
+    TIMEOUT,
+  )
+
   it(
     "the design note's cross-project overlap stays dep-gated on both sides",
     async () => {
