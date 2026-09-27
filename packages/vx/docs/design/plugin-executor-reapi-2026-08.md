@@ -478,6 +478,13 @@ so it is not the transient ~28 s stall of the still-open Bun #39796.
 > DOWNGRADES adaptively: a `DEADLINE_EXCEEDED` on a multi-message write
 > retries once at `SAFE_CHUNK_BYTES`, warned — the 128 KB default stays the
 > fast path, and the rare stall costs one deadline instead of the task.
+> The deadline has a second spelling (item 1017): a grpc-go server
+> (bazel-remote) ends the stream with RST_STREAM(CANCEL) when the call's
+> `grpc-timeout` runs out, and when that lands before the client's timer
+> grpc-js reports `CANCELLED: Call cancelled`. Against a grpc-go server that
+> stopped reading mid-write it did 5 times in 6, and CI failed a 1 MiB write
+> after one 30 s wait. A `CANCELLED` at or past the write's own deadline
+> takes the downgrade too; an earlier one is the server's and does not.
 
 Ruled out along the way, each by an executed probe rather than reasoning:
 **not** grpc-js (a hand-rolled gRPC framing over raw `node:http2` hangs
