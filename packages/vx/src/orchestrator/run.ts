@@ -58,6 +58,7 @@ import { prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import {
   forwardedSignal,
+  type StopSignal,
   forwardSignals,
   SIGNAL_SHUTDOWN_GRACE_MS,
   terminateChildren,
@@ -456,7 +457,7 @@ async function runOnBus(
   // handler exited before any outcome landed, and a Ctrl-C'd run then read
   // in `vx last` as FAILED with 0 tasks (item 854). An embedder's abort is
   // its own call and keeps its record.
-  let stoppedBySignal = false
+  let stoppedBy: StopSignal | undefined
   let leftRun = (): void => {}
   const runLeft = new Promise<void>((resolve) => {
     leftRun = resolve
@@ -468,7 +469,7 @@ async function runOnBus(
     liveChildren,
     persistentRegistry,
     stop: (signal) => {
-      stoppedBySignal = true
+      stoppedBy = signal
       stopRun.abort(signal)
     },
     done: runLeft,
@@ -903,7 +904,10 @@ async function runOnBus(
 
     // Optional artifacts. Errors are surfaced to the user but don't
     // change the run's exit code — the run already happened.
-    if (options.summarize !== undefined) {
+    // Written again after the keep-alive wait: a kept server's crash or a
+    // Ctrl-C there is the process's exit, and the first write said ok.
+    const summarize = async (runOk: boolean): Promise<void> => {
+      if (options.summarize === undefined) return
       try {
         const wrote = await writeRunSummary({
           target: options.summarize,
@@ -913,7 +917,8 @@ async function runOnBus(
           startedAtMs: endedAtMsAtStart,
           endedAtMs,
           totalMs,
-          ok,
+          ok: runOk,
+          ...(stoppedBy !== undefined && { exitCode: signalExitCode(stoppedBy) }),
           outcomes: list,
           flaky,
         })
@@ -923,6 +928,7 @@ async function runOnBus(
         log.status(`vx: failed to write summary: ${msg}`)
       }
     }
+    await summarize(ok)
     if (options.profile !== undefined) {
       try {
         const wrote = await writeRunProfile({
@@ -964,7 +970,7 @@ async function runOnBus(
       withTelemetry: telemetry !== undefined,
     })
     try {
-      if (!stoppedBySignal) cache.recordRunBundle(records)
+      if (stoppedBy === undefined) cache.recordRunBundle(records)
     } catch (err) {
       // History is observability: a full cache disk at the very end must
       // not turn a finished run's verdict into a stack and exit 1 (seen as
@@ -1105,6 +1111,7 @@ async function runOnBus(
         )
       }
       await terminateChildren(() => keepAlive.children)
+      await summarize(ok && first.code === 0)
       return { ok: ok && first.code === 0, outcomes: list }
     }
 
