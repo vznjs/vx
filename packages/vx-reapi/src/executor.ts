@@ -876,8 +876,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         if (stallTimer !== undefined) return
         stallTimer = setTimeout(() => stall.abort(), stallAfter)
       }
+      // The run's stop (Ctrl-C, an embedder's abort) cancels the operation
+      // stream as the stall does; unheard, vx waited on the remote for as
+      // long as the action ran.
+      const stop =
+        req.signal === undefined ? stall.signal : AbortSignal.any([stall.signal, req.signal])
       let op: Operation
       try {
+        if (req.signal?.aborted === true) throw new Error('aborted before Execute')
         op = await client.execute(
           actionDigest,
           {
@@ -888,9 +894,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               if (stage.toUpperCase() === 'EXECUTING') armStall()
             },
           },
-          stall.signal,
+          stop,
         )
       } catch (err) {
+        if (req.signal?.aborted === true) {
+          throw new UserError(
+            `vx/reapi: ${req.taskId}: the run stopped before its remote execution finished`,
+          )
+        }
         if (stall.signal.aborted) {
           throw new UserError(
             `vx/reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +

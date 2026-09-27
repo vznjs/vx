@@ -71,8 +71,8 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
 - C (resolved on main): leads 4 and 5 by item 1055 (the flush signal,
   wired into both sinks); the runtime-probe lead by C-2 (such a task is
   pinned local, and vx-reapi is never offered a pinned task).
-- C: `ExecuteRequest` carries no abort signal, so Ctrl-C does not cancel a
-  remote Execute; the operation runs on and its record is still written.
+- C (resolved on main by H-10): `ExecuteRequest` carries no abort signal,
+  so Ctrl-C does not cancel a remote Execute (wired in F-15).
 
 ## Merged
 
@@ -186,3 +186,8 @@ malformed one is a UserError naming `reapi({ endpoint })` or
 through. Rows red without the fix. Refuted this round: vx-github's
 "0 failed" check title needs a run red with nothing failed or aborted,
 which only an all-group abort produces.
+
+F-15. vx-reapi heard nothing of the run stopping: on Ctrl-C vx waited on the
+remote Execute as long as the action ran (forever on a stalled server).
+H-10's `ExecuteRequest.signal` now cancels the operation stream, and an
+action the stop precedes is not submitted. Row red without the fix.
