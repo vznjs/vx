@@ -19,6 +19,7 @@ import { pluginSource } from './helpers/plugin.js'
 import {
   initSandbox,
   probeSandbox,
+  releaseBridges,
   resetSandbox,
   type SandboxViolation,
   resolveSandboxConfig,
@@ -1895,6 +1896,46 @@ describe.skipIf(!available)('the sandbox temp directory', () => {
   )
 })
 
+describe.skipIf(!available)("a task's temp directory is its own", () => {
+  // SRT points every sandboxed task at one host directory, bound read-write
+  // and kept across runs: a file one task wrote in $TMPDIR was the next
+  // task's, and the next run's, undeclared input (item 965).
+  it(
+    'a temp file one task wrote is gone for the next, and so is its directory',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-tmp-own-' })
+      try {
+        const dir = await addProject(root, 'app', {
+          files: {},
+          config: `export default { tasks: {
+            w: { exec: { command: 'echo written > "$TMPDIR/x"; echo "$TMPDIR" > tmpdir.txt', sandbox: { allow: { write: ['tmpdir.txt'] } } } },
+            r: { exec: { command: 'cat "$TMPDIR/x" 2>/dev/null || echo ABSENT', sandbox: {} } },
+          } }`,
+        })
+        const out: string[] = []
+        const log = {
+          status() {},
+          taskStdout(_n: unknown, chunk: string) {
+            out.push(chunk)
+          },
+          taskStderr() {},
+          taskComplete() {},
+        } as never
+        expect((await run({ cwd: root, tasks: ['w'], log })).outcomes[0]?.status).toBe('success')
+        const used = (await readFile(path.join(dir, 'tmpdir.txt'), 'utf8')).trim()
+        expect(used).toContain('vx-task-')
+        expect(existsSync(used)).toBe(false)
+        out.length = 0
+        expect((await run({ cwd: root, tasks: ['r'], log })).outcomes[0]?.status).toBe('success')
+        expect(out.join('').trim()).toBe('ABSENT')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('resolveSandboxConfig', () => {
   it.skipIf(process.platform !== 'linux')(
     'says so when a WRITE grant mounts nothing, and names the directory to grant instead',
@@ -3492,7 +3533,11 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const a = await wrapSandboxedCommand(args('echo hi'))
     const b = await wrapSandboxedCommand(args('echo hi'))
     expect(a.tag).not.toBe(b.tag)
-    expect(a.taggedCommand).toBe(`: 'vx-${a.tag}'; echo hi`)
+    // Then the task's own TMPDIR (item 965), after the tag.
+    expect(a.taggedCommand.startsWith(`: 'vx-${a.tag}'; export TMPDIR=`)).toBe(true)
+    expect(a.taggedCommand).toMatch(new RegExp(`vx-task-${process.pid}-${a.tag}'?; echo hi$`))
+    releaseBridges(a.tag)
+    releaseBridges(b.tag)
   })
 
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
