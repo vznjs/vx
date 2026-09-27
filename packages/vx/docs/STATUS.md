@@ -521,6 +521,18 @@ test is telling the truth.
       - Row: `affected-base-notes.test.ts` › a `!` exclude removes a
         project from `--affected` on either side of it, the bare
         `--affected` its control. Red without the fix.
+956.  DONE (2026-09-27, the config-cache review's lead 5). A
+      `bunfig.toml` `[define]` the config reads (`BUILD_MODE`, a bare
+      identifier no deny word sees) was not in the eval key: flipping it
+      from `dev` to `prod` replayed the `dev` evaluation run after run.
+      A `preload`, `--define` or `BUN_OPTIONS` could do the same.
+      - Fix: the seed folds the transpile inputs: the cwd's and the global
+        `bunfig.toml` bytes, `process.execArgv` and `BUN_OPTIONS`, read
+        once per process (a running Bun does not reload them either). No
+        version bump: the seed moved, so every old row misses.
+      - Row: `config-staleness.test.ts` › flipping the define re-evaluates,
+        through the real CLI; red without the fix. The seed pin names the
+        new part's place.
 
 ## In flight
 

@@ -72,7 +72,12 @@ export async function configImports(configPath: string): Promise<string[]>
 
 `configEvalKey({ configPath, bytes, workspaceFingerprint })` folds, in
 order: `CONFIG_EVAL_VERSION` (3 since 2026-09-24, item 701: an evaluation cached before configs had to be JSON data may hold what JSON made of a `Map` or a hole, which the rule now refuses; 2 since 2026-09-03: the key folds each closure file's git blob id, not its bytes), `Bun.version`, the workspace fingerprint
-(lockfiles — covers package imports), then for the config and every file
+(lockfiles — covers package imports), the transpile inputs (the
+`bunfig.toml` Bun loaded at startup — the cwd's and the global one —
+and the process's flags and `BUN_OPTIONS`: a `[define]` is a bare
+identifier to the config that no deny word sees, and flipping one
+replayed the old evaluation, item 956; read once per process, as Bun
+reads them), then for the config and every file
 it transitively imports by **relative** specifier: the path and the
 bytes. Editing a shared preset the config imports moves the key even
 though the config's own bytes did not change.

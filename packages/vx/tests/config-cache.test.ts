@@ -21,7 +21,11 @@ import {
   type ConfigEvalStore,
 } from '../src/workspace/index.js'
 import { stripLiterals } from '../src/workspace/config-cache.js'
-import { CONFIG_EVAL_VERSION, PURE_CORE_EXPORTS } from '../src/workspace/config-cache.js'
+import {
+  CONFIG_EVAL_VERSION,
+  PURE_CORE_EXPORTS,
+  transpileInputs,
+} from '../src/workspace/config-cache.js'
 
 let root: string
 beforeEach(async () => {
@@ -241,7 +245,7 @@ describe('configEvalKey', () => {
     expect(fast).toBe(slow!.key)
   })
 
-  it('the key is seeded by the eval version, vx, Bun and the fingerprint, in that order (item 653)', async () => {
+  it('the key is seeded by the eval version, vx, Bun, the fingerprint and the transpile inputs, in that order (items 653, 956)', async () => {
     // A stored evaluation is served WITHOUT re-validation, so it must not
     // outlive the vx or the Bun that validated it. Neither can change inside
     // one process, so the seed is pinned by re-deriving the key here from
@@ -253,7 +257,11 @@ describe('configEvalKey', () => {
         version: string
       }
     ).version
-    const seed = xxh3(`vx-config-eval-v${CONFIG_EVAL_VERSION}\0${vxVersion}\0${Bun.version}\0fp\0`)
+    // The transpile inputs (bunfig.toml, Bun's flags) are proved to move the
+    // key end to end in `config-staleness.test.ts`; here only their place.
+    const seed = xxh3(
+      `vx-config-eval-v${CONFIG_EVAL_VERSION}\0${vxVersion}\0${Bun.version}\0fp\0${transpileInputs()}\0`,
+    )
     const expected = xxh3(`${cfg}\0${blobOidOf(bytes)}`, seed)
       .toString(16)
       .padStart(16, '0')
