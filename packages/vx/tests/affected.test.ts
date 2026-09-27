@@ -338,6 +338,48 @@ describe('affectedProjects', () => {
     expect(await all()).toEqual(['a', 'b'])
   })
 
+  it('a deleted package selects the projects that depend on it (item 959)', async () => {
+    // It is no project now: its paths map to nothing and the dependents walk
+    // sees today's graph, so `git rm -r` of a dependency selected nothing.
+    await mkdir(path.join(root, 'packages/lib'), { recursive: true })
+    await writeFile(path.join(root, 'packages/lib/package.json'), JSON.stringify({ name: 'lib' }))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib')
+    const withDeps: ProjectMeta[] = [
+      { ...projects[0]!, packageJson: { name: 'a', devDependencies: { lib: 'workspace:*' } } },
+      projects[1]!,
+    ]
+    const select = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withDeps }).then((s) =>
+        [...s].sort(),
+      )
+    // Control: an edited manifest is its own project's change only.
+    await writeFile(
+      path.join(root, 'packages/lib/package.json'),
+      JSON.stringify({ name: 'lib', version: '2' }),
+    )
+    expect(await select()).toEqual([])
+    await rm(path.join(root, 'packages/lib'), { recursive: true })
+    expect(await select()).toEqual(['a'])
+  })
+
+  it('a root `workspaces` edit selects every project (item 959)', async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'root manifest')
+    const select = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
+    // Control: a root manifest edit that leaves `workspaces` alone.
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ workspaces: ['packages/*'], scripts: { x: 'true' } }),
+    )
+    expect(await select()).toEqual([])
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ workspaces: ['packages/a'] }))
+    expect(await select()).toEqual(['a', 'b'])
+  })
+
   it('ignores changes outside any project directory', async () => {
     await writeFile(path.join(root, 'README.md'), 'top-level edit')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })

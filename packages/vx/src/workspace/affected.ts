@@ -21,7 +21,7 @@ import { configImportOwners } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
-import type { ProjectMeta } from './workspace.js'
+import type { PackageJson, ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -213,6 +213,14 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   const owned = projectsContaining(args.workspaceRoot, changed, args.projects)
   for (const name of claimedOwned) owned.add(name)
 
+  // A package the change REMOVED is no project now, so containment maps its
+  // paths to nothing, and the dependents walk sees only today's graph: a
+  // `git rm -r pkgs/lib`, or `lib` dropped from `workspaces`, re-keyed and
+  // broke `app#build` while `--affected` said nothing affected (item 959).
+  const dependents = await dependentsOfRemoved(args.workspaceRoot, base, changed, args.projects)
+  if (dependents === undefined) return new Set(args.projects.map((p) => p.name))
+  for (const name of dependents) owned.add(name)
+
   // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
   // Resolved-config hashing folds those values into the key, so the same
   // sentence above applies — input hashing sees it, so selection must. This
@@ -231,6 +239,65 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return owned
   for (const name of await args.workspaceGlobOwners(changed)) owned.add(name)
   return owned
+}
+
+/**
+ * The projects that depend on a package the change removed: a
+ * `<dir>/package.json` the base had and the tree does not, read at the base
+ * for its name. `undefined` (every project) when the root manifest's
+ * `workspaces` moved: which packages left is a discovery at the base, and
+ * selection cannot tell cheaply. Only DELETED manifests are read at the
+ * base, one `git show` each; an edited one stays a project and is owned.
+ */
+async function dependentsOfRemoved(
+  workspaceRoot: string,
+  base: string,
+  changed: readonly string[],
+  projects: readonly ProjectMeta[],
+): Promise<Set<string> | undefined> {
+  const out = new Set<string>()
+  const removed = new Set<string>()
+  for (const rel of changed) {
+    if (rel === 'package.json') {
+      const workspacesOf = (bytes: Uint8Array | null): string => {
+        if (bytes === null) return ''
+        try {
+          return JSON.stringify(
+            (JSON.parse(new TextDecoder().decode(bytes)) as PackageJson).workspaces ?? null,
+          )
+        } catch {
+          return 'unreadable'
+        }
+      }
+      const before = workspacesOf(await gitBytesAt(workspaceRoot, base, rel))
+      const after = workspacesOf(await bytesOrNull(path.join(workspaceRoot, rel)))
+      if (before !== after) return undefined
+      continue
+    }
+    if (path.posix.basename(rel) !== 'package.json') continue
+    if ((await bytesOrNull(path.join(workspaceRoot, rel))) !== null) continue
+    const bytes = await gitBytesAt(workspaceRoot, base, rel)
+    if (bytes === null) continue
+    try {
+      const name = (JSON.parse(new TextDecoder().decode(bytes)) as PackageJson).name
+      if (typeof name === 'string' && name !== '') removed.add(name)
+    } catch {
+      // A manifest that did not parse at the base named no package.
+    }
+  }
+  if (removed.size === 0) return out
+  for (const p of projects) {
+    const pkg = p.packageJson
+    for (const deps of [
+      pkg.dependencies,
+      pkg.devDependencies,
+      pkg.peerDependencies,
+      pkg.optionalDependencies,
+    ]) {
+      if (deps !== undefined && Object.keys(deps).some((d) => removed.has(d))) out.add(p.name)
+    }
+  }
+  return out
 }
 
 /**
