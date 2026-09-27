@@ -207,3 +207,10 @@ reached the resource, `OTEL_EXPORTER_OTLP_TIMEOUT` was not the timeout,
 and under `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` an export to the gRPC port
 failed with a transport error naming neither. The first two are read; the
 third's failure now says vx sends OTLP/HTTP only. Rows red without each.
+
+F-18. vx-reapi restored an output directory with one BatchReadBlobs per
+directory, in sequence: a `dist/` of 200 one-file directories took 6.8 s
+through a proxy adding 15 ms each way. Files are now gathered across the
+tree and fetched in 64 MiB windows: 0.32 s (min of 5, interleaved A/B
+against main; 885 → 256 ms with no added latency). Row counts one call
+for 40 directories, red (40) without the fix.

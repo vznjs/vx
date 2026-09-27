@@ -1511,6 +1511,9 @@ async function placeSymlink(
   }
 }
 
+/** Small blobs a tree restore holds in memory at once, fetched batched. */
+const TREE_FETCH_WINDOW_BYTES = 64 * 1024 * 1024
+
 /**
  * An `OutputDirectory` points at the digest of an encoded **`Tree` proto**
  * (root Directory + every descendant), NOT at a Directory to be walked with
@@ -1548,33 +1551,21 @@ async function materialiseTree(
   const byDigest = new Map<string, Directory>()
   tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
 
+  // Files are gathered from the whole tree before any is fetched: one
+  // BatchReadBlobs per DIRECTORY was a round trip each, so a `dist/` of 200
+  // directories restored in 200 sequential calls (F-18). Windows bound what
+  // is held. A symlink placed later in the walk lies under a directory not
+  // yet visited, so no file gathered earlier is written through one.
+  const files: { abs: string; f: Directory['files'][number] }[] = []
   const walk = async (dir: Directory, at: string, whole: boolean): Promise<void> => {
     const wanted = (abs: string): boolean => whole || declared!(abs)
-    const files = dir.files.filter((f) => wanted(fence.name(at, f.name)))
+    const here = dir.files.filter((f) => wanted(fence.name(at, f.name)))
     const symlinks = dir.symlinks.filter((sl) => wanted(fence.name(at, sl.name)))
-    if (whole || files.length + symlinks.length > 0) {
+    if (whole || here.length + symlinks.length > 0) {
       await fence.dir(at)
       await makeDir(at, created)
     }
-    const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
-    const batched = await client.batchReadBlobs(small.map((f) => f.digest))
-    for (const f of files) {
-      const bytes =
-        f.digest.size_bytes === 0
-          ? new Uint8Array()
-          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
-      if (bytes === null) {
-        missing(path.join(at, f.name), f.digest.hash, path.join(at, f.name))
-        continue
-      }
-      const abs = path.join(at, f.name)
-      await writeOutput(abs, bytes, created)
-      if (f.is_executable) await chmod(abs, 0o755)
-      // NodeProperties.unix_mode is authoritative when the server sent it.
-      const mode = f.node_properties?.unixMode
-      // Permission bits only: a server's setuid or setgid bit is not a build output's.
-      if (mode !== undefined) await chmod(abs, mode & 0o777)
-    }
+    for (const f of here) files.push({ abs: path.join(at, f.name), f })
     for (const sl of symlinks) {
       await fence.symlink(sl.target, path.join(at, sl.name), created)
     }
@@ -1591,6 +1582,38 @@ async function materialiseTree(
     }
   }
   await walk(tree.root, destDir, declared === null)
+
+  const isSmall = (f: { digest: Digest }): boolean =>
+    f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024
+  for (let i = 0; i < files.length;) {
+    let held = 0
+    let j = i
+    while (j < files.length && (j === i || held < TREE_FETCH_WINDOW_BYTES)) {
+      if (isSmall(files[j]!.f)) held += Number(files[j]!.f.digest.size_bytes)
+      j++
+    }
+    const window = files.slice(i, j)
+    const batched = await client.batchReadBlobs(
+      window.filter((w) => isSmall(w.f)).map((w) => w.f.digest),
+    )
+    for (const { abs, f } of window) {
+      const bytes =
+        f.digest.size_bytes === 0
+          ? new Uint8Array()
+          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
+      if (bytes === null) {
+        missing(abs, f.digest.hash, abs)
+        continue
+      }
+      await writeOutput(abs, bytes, created)
+      if (f.is_executable) await chmod(abs, 0o755)
+      // NodeProperties.unix_mode is authoritative when the server sent it.
+      const mode = f.node_properties?.unixMode
+      // Permission bits only: a server's setuid or setgid bit is not a build output's.
+      if (mode !== undefined) await chmod(abs, mode & 0o777)
+    }
+    i = j
+  }
 }
 
 const toPosix = (p: string): string => p.split(path.sep).join('/')

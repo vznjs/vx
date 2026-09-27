@@ -325,7 +325,9 @@ Protocol features in use, not just reachable:
   `Command.platform` for older servers.
 - **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes.
 - **Output directories** via the `Tree` blob an `OutputDirectory.tree_digest`
-  addresses, plus **output symlinks**.
+  addresses, plus **output symlinks**. A tree's small files are fetched
+  together across its directories (`BatchReadBlobs`, 64 MiB at a time),
+  not one call per directory.
 - **Upload minimality** — `FindMissingBlobs` first, then batched blobs while
   they fit the server's budget and ByteStream beyond it.
 
