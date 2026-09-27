@@ -81,8 +81,23 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   //     preliminary. A dependency this key folds needs no pass-through here:
   //     a keyed task with such a rewriter unfolded is unstable itself, and
   //     instability is inherited below.
+  //   - wideById: the subset of outputProjects whose writes are undeclared
+  //     (`undeclaredWriteReach`), so they may land anywhere in the project.
+  //     A declared-output producer reaches a same-project reader only where
+  //     its output globs can meet the reader's inputs (`outputsOf`, A-20).
   const projects = new ProjectIndex(args.nodes)
   const outputProjectsById = new Map<string, ProjectSet>()
+  const wideById = new Map<string, ProjectSet>()
+  // Every project's declared `outputs.files`, over all its tasks: a superset
+  // of what any one reader's upstream producers declare.
+  const outputsOf = new Map<string, string[]>()
+  for (const n of args.nodes.values()) {
+    const files = n.config.cache?.outputs.files ?? []
+    if (files.length === 0) continue
+    const list = outputsOf.get(n.projectName)
+    if (list === undefined) outputsOf.set(n.projectName, [...files])
+    else list.push(...files)
+  }
   const rewritersById = new Map<string, ProjectSet>()
   const unfoldedById = new Map<string, ProjectSet>()
   const wsRewriters = new Set<string>()
@@ -115,6 +130,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     // Fold every dep's accumulated producers + the dep's own declared
     // outputs into this node's transitive-upstream producer sets.
     const outputProjects = projects.empty()
+    let wide: ProjectSet | undefined
     let rewriters: ProjectSet | undefined
     let unfolded: ProjectSet | undefined
     let folds: ((dep: string) => boolean) | undefined
@@ -126,6 +142,8 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       if (!depNode) continue
       const upstreamOfDep = outputProjectsById.get(dep)
       if (upstreamOfDep !== undefined) outputProjects.addAll(upstreamOfDep)
+      const wideOfDep = wideById.get(dep)
+      if (wideOfDep !== undefined) (wide ??= projects.empty()).addAll(wideOfDep)
       if (wsOutputUpstreamById.get(dep) === true) wsOutputUpstream = true
       const depOut = depNode.config.cache?.outputs
       if ((depOut?.files?.length ?? 0) > 0) outputProjects.add(depNode.projectName)
@@ -135,8 +153,10 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       // bytes it wrote: its key taken up front was the pre-producer one, and
       // the fourth run of seeds A,B,B,A replayed B over A (turborepo#13788).
       const reach = undeclaredWriteReach(depNode, args.workspaceRoot)
-      if (reach === 'project') outputProjects.add(depNode.projectName)
-      else if (reach === 'workspace') wsOutputUpstream = true
+      if (reach === 'project') {
+        outputProjects.add(depNode.projectName)
+        ;(wide ??= projects.empty()).add(depNode.projectName)
+      } else if (reach === 'workspace') wsOutputUpstream = true
       const cached = depNode.config.cache !== undefined
       if (!cached && mayWriteFingerprint(depNode, args.workspaceRoot)) wsOutputUpstream = true
       if (!anyUnfolded) continue
@@ -172,6 +192,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       if (wsRewriterOfDep || rewritesWs) wsUnfoldedHere = true
     }
     outputProjectsById.set(id, outputProjects)
+    if (wide !== undefined) wideById.set(id, wide)
     wsOutputUpstreamById.set(id, wsOutputUpstream)
     if (rewriters !== undefined) rewritersById.set(id, rewriters)
     if (unfolded !== undefined) unfoldedById.set(id, unfolded)
@@ -207,6 +228,10 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         unfolded === undefined ? outputProjects : unfolded.or(outputProjects),
         wsOutputUpstream || wsUnfoldedHere,
         dirByProject,
+        {
+          wide: unfolded === undefined ? wide : wide === undefined ? unfolded : wide.or(unfolded),
+          outputsOf,
+        },
       )
     if (unstable) unstableById.add(id)
 
@@ -292,12 +317,30 @@ export function dependsOnSiblingOutputs(
   upstreamOutputProjects: ProjectNames,
   hasWsOutputUpstream: boolean,
   dirByProject?: ReadonlyMap<string, string>,
+  sameProject?: {
+    /** The producers whose writes may land anywhere in their project. */
+    wide: ProjectNames | undefined
+    /** Each project's declared `outputs.files`, over all its tasks. */
+    outputsOf: ReadonlyMap<string, readonly string[]>
+  },
 ): boolean {
   const cache = node.config.cache
   // A cache-disabled task has no key to prefetch anyway; treat as
   // unstable-irrelevant (caller filters on cacheEnabled).
   if (cache === undefined) return false
-  if (upstreamOutputProjects.has(node.projectName)) return true
+  if (upstreamOutputProjects.has(node.projectName)) {
+    // A same-project producer whose writes are all declared reaches this
+    // task's inputs only where the globs can meet: a `test` reading `src/**`
+    // after a `build` writing `dist/**` keys the same before and after it,
+    // and classing it unstable hashed every such key twice more at 5,000
+    // projects (A-20). Undeclared writes, and a rewriter this key does not
+    // fold, may land anywhere: those stay project-wide.
+    if (sameProject === undefined || sameProject.wide?.has(node.projectName) === true) return true
+    const inputs = cache.inputs?.files
+    const outputs = sameProject.outputsOf.get(node.projectName) ?? []
+    if (inputs === undefined || outputs.length === 0) return true
+    if (workspaceInputsReach(inputs, outputs.map(literalPrefix))) return true
+  }
   // A root-anchored output is boundary-IGNORING by design, so it can land
   // inside THIS task's own project dir — where an ordinary project-relative
   // input reads it. Neither other clause sees that: `upstreamOutputProjects`
@@ -341,15 +384,8 @@ export function workspaceInputsReach(
 ): boolean {
   for (const raw of workspaceFiles) {
     if (raw.startsWith('!')) continue
-    const entry = normalizeGlob(raw)
-    const segments = entry.split('/')
-    const literal: string[] = []
-    for (const seg of segments) {
-      if (!isLiteralPattern(seg)) break
-      literal.push(seg)
-    }
-    if (literal.length === 0) return true
-    const prefix = literal.join('/')
+    const prefix = literalPrefix(raw)
+    if (prefix === '') return true
     for (const dir of dirs) {
       if (dir === '' || dir === '.') return true
       if (prefix === dir || prefix.startsWith(`${dir}/`) || dir.startsWith(`${prefix}/`))
@@ -357,6 +393,16 @@ export function workspaceInputsReach(
     }
   }
   return false
+}
+
+/** A glob's leading literal segments, `''` when its first holds a wildcard. */
+function literalPrefix(glob: string): string {
+  const literal: string[] = []
+  for (const seg of normalizeGlob(glob).split('/')) {
+    if (!isLiteralPattern(seg)) break
+    literal.push(seg)
+  }
+  return literal.join('/')
 }
 
 /** What the stability gate reads of a set of project names. */
