@@ -113,6 +113,26 @@ describe('findWorkspaceRoot', () => {
       expect(await findWorkspaceRoot(deep)).toBe(dir)
     })
 
+    it('the nearest pnpm-workspace.yaml is the root, from any depth (item 990)', async () => {
+      // pnpm takes the nearest workspace file. From `apps/inner` itself the
+      // walk went past its own file to the outer workspace listing it,
+      // while from `apps/inner/pkgs/x` it stopped at the inner one.
+      await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "apps/*"\n')
+      await writeFile(path.join(dir, 'package.json'), '{"name":"outer"}')
+      const inner = path.join(dir, 'apps', 'inner')
+      const x = path.join(inner, 'pkgs', 'x')
+      await mkdir(x, { recursive: true })
+      await writeFile(path.join(inner, 'pnpm-workspace.yaml'), 'packages:\n  - "pkgs/*"\n')
+      await writeFile(path.join(inner, 'package.json'), '{"name":"inner"}')
+      await writeFile(path.join(x, 'package.json'), '{"name":"x"}')
+      expect([await findWorkspaceRoot(inner), await findWorkspaceRoot(x)]).toEqual([inner, inner])
+      // Control: an outer member without a workspace file of its own.
+      const web = path.join(dir, 'apps', 'web')
+      await mkdir(web, { recursive: true })
+      await writeFile(path.join(web, 'package.json'), '{"name":"web"}')
+      expect(await findWorkspaceRoot(web)).toBe(dir)
+    })
+
     it('resolves an explicitly listed nested member past its parent package', async () => {
       // This repo's own shape: `packages/cloud/ui` is a member listed by
       // literal path, nested inside `packages/cloud`, itself a member.

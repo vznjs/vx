@@ -123,7 +123,11 @@ manifest can be the claimed member, as only such a directory is listed,
 so "the root that claims me" and "the root that lists me as a project"
 cannot diverge. They did until item 989: `packages/*` matched a
 manifest-less `packages/tools`, and the standalone package below it ran
-in a workspace that does not list it.
+in a workspace that does not list it. A `pnpm-workspace.yaml` is a hard
+root, as pnpm has it: the walk stops at the nearest one, listed by an
+outer workspace or not. From `apps/inner` the walk went past its own file
+to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
+and two caches for one tree, until item 990.
 
 When nothing claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins. A bare
