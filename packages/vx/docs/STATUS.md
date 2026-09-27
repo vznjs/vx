@@ -942,7 +942,13 @@ next?".
     zombie awaiting its reaper) or still alive (a leak). vx releases every
     group before it exits, so its guard kills nothing there to blur the
     two.
-24. **strace's own ptrace error ended a sandboxed task (2026-09-26,
+24. DONE 2026-09-27 (fifth hit, CI on #1083, the same docs build after it
+    had finished): an attempt whose last stderr line is strace's own and
+    whose exit is non-zero is run once more, with a line saying why
+    (`runSandboxed`, `sandbox-tracer-retry.unsafe.test.ts`: a fake strace
+    first on PATH fails its first call; red without the retry, and a task
+    failing on its own is run once). The history below stands. —
+    **strace's own ptrace error ended a sandboxed task (2026-09-26,
     CI on #972).** `@vzn/vx#test.bun.shard-9` exited 1 on the Linux job
     with no failed row. Its output stopped before bun test's summary,
     and its last line was strace's own error:
