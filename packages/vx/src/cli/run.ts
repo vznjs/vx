@@ -585,7 +585,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     const plan = await planRun(opts)
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
       process.stderr.write(
-        `vx run: no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.\n`,
+        `vx run: no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.${plan.unresolvedHint ?? ''}\n`,
       )
       return 1
     }
