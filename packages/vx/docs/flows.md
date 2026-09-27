@@ -34,7 +34,7 @@ sequenceDiagram
     R-->>X: exitCode, cpuMs, peakRss (streams live via logger)
     alt exitCode == 0 and writes enabled
         X->>C: save({hash, outputs, stdout, inputComponents})<br/>(deferred to the save lane; dependents wait on it)
-        Note over C: pack tar.zst (stdout + outputs/*) →<br/>tmp file → atomic rename → one SQLite txn<br/>(entries + output_files + entry_inputs)<br/>(+ background remote PUT when layered)
+        Note over C: pack tar.zst (stdout + outputs/*) →<br/>tmp file → one SQLite txn<br/>(rename into place + entries + output_files + entry_inputs)<br/>(+ background remote PUT when layered)
         X->>I: markOutputsChanged(written rel paths)
         Note over I: the project's git snapshot notes the changed<br/>paths — a downstream task re-spawns git only<br/>when its input globs can actually match them
     else exitCode != 0
@@ -264,9 +264,9 @@ flowchart TD
 
 Owner: `cli/cache.ts` + `cache/cache.ts:prune`. Both bounds can
 combine; eviction is one SQL transaction (CASCADE clears
-`output_files`) plus parallel artifact unlinks. The same transaction
-drops phantom rows (no artifact on disk), and artifacts with no row are
-reaped after it.
+`output_files`) after parallel artifact unlinks. The same transaction
+drops phantom rows (no artifact on disk) unused for an hour, and
+artifacts with no row are reaped after it.
 
 ```mermaid
 flowchart TD
@@ -277,7 +277,7 @@ flowchart TD
     C --> D{--max-size?}
     D -->|yes| E[walk entries by accessed_at ASC,<br/>add victims until total ≤ cap]
     D -->|no| F
-    E --> F[single-transaction DELETE<br/>of victims + phantom rows,<br/>parallel rm of victim .tar.zst files]
+    E --> F[parallel rm of victim .tar.zst files,<br/>then single-transaction DELETE<br/>of victims + stale phantom rows]
     F --> O[reap orphan artifacts]
     O --> G[report freed bytes]
 ```
@@ -289,7 +289,7 @@ is read-only. (Prune's own rehearsal flag is `--dry-run`.)
 
 ## 9. `--dry` / `--graph` — the plan path
 
-Owner: `orchestrator/plan.ts` + `plan-format.ts`. Shares
+Owner: `orchestrator/plan.ts` + `cli/plan-format.ts`. Shares
 `prepareRun` with the real path, probes the cache for predicted
 hits with the byte-free `has`, spawns no task, and writes nothing —
 not even the `accessed_at` bump a real `get` makes. It does run
@@ -299,7 +299,7 @@ needs their answers.
 ```mermaid
 flowchart LR
     A[prepareRun<br/>discover → load → graph] --> B[per node:<br/>same key derivation<br/>as a real run]
-    B --> C[local probe: cache.has<br/>remote probe: HEAD existence check<br/>no download, no ingest, no accessed_at bump]
+    B --> C[local probe: cache.has<br/>remote probe: has existence check<br/>no download, no ingest, no accessed_at bump]
     C --> D{format}
     D -->|--dry| E[human table:<br/>task, hash, predicted hit/miss]
     D -->|--dry=json| F[machine JSON]

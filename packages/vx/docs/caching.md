@@ -155,8 +155,8 @@ over (in order):
     comes straight from the index — the run's up-front enumeration is
     three concurrent spawns, `git ls-files -s -v -z` (every tracked
     path, its OID and its cache-state flag),
-    `git status --porcelain -z -uall` (dirty tracked paths and the
-    untracked files) and `git var -l` (the clean-filter gate's
+    `git status --porcelain -z -uall --ignored=matching` (dirty tracked
+    paths, the untracked files and the ignored ones) and `git var -l` (the clean-filter gate's
     config) — so deriving these hashes
     costs zero file reads, zero per-file stats, zero SQLite lookups. A
     re-listing mid-run, or a nested repository's project, spawns
@@ -485,10 +485,10 @@ stray. Both directions are pinned in `tests/output-dirs.test.ts`.
 Hard invariants:
 
 - **Remote-only.** This entire path is gated on a `LayeredCache` being
-  configured. A local-only run never derives the upfront keys, never
-  prefetches, and is byte-for-byte identical (behavior and perf) to a
-  run without this feature. It never adds an upfront _local_ `get` /
-  `isOutputsCurrent` / stat pass.
+  configured. A local-only run never prefetches; its up-front keys and
+  local probes are the short-circuit's (§ Local restore tier). The
+  prefetch never adds an upfront _local_ `get` / `isOutputsCurrent` /
+  stat pass.
 - **Stable keys only.** A task whose `cache.inputs.files` could match
   an upstream's declared output has a _preliminary_ key until that
   upstream runs (e.g. a consumer that globs `**/*` over a sibling's
@@ -1162,7 +1162,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 -- src/cache/cache.ts schema (SCHEMA_VERSION = 'v28')
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at'
   value TEXT NOT NULL
 );
 
