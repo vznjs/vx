@@ -74,6 +74,12 @@
   goes in both); why-post verdict rows; exit code of a crashed server;
   `vx prune` was removed, not moved.
 
+- **J-11** `parity.md` and `upstream-ledger.md`: ~30 ledger notes cut
+  off mid-quote; four quotes the docs no longer say; one issue with two
+  contradicting verdicts; two covered rows citing tests that do not test
+  the claim; parity.md rejected `$TURBO_ROOT$` (it maps to
+  `workspaceFiles`).
+
 ## Leads for other streams
 
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a
@@ -102,3 +108,4 @@
 - **B** `orchestrator/sandbox-request.ts:99` comment cites sandbox-manager.js 0.0.75; installed is 0.0.76 (check at line 238).
 - **D** `config.ts` SandboxConfig comment says grant paths are prefixes, never globs; the schema accepts patterns (config-schema.ts:974-976) and the runtime expands them.
 - **J (test)** `site-samples.unsafe.test.ts` verdict pin expects 8 sentences; its regex misses `this task recorded no cache key` (metrics.ts:500-501), the 9th.
+- **J (test)** `upstream-ledger.unsafe.test.ts` accepts only covered / fixed-in-item-N / n/a; a documented limit vx shares (turborepo#12786) has no honest verdict. An `open (limit)` verdict needs a test change.
