@@ -120,6 +120,9 @@
   summed duration and whitespace-only command, capacity and plugin-verb
   refusals, async hook isolation, the `Aborted:`/`Not started:` sections
   and `aborted[]`, telemetry's counted `--` arguments.
+- **J-19** cli.md against every verb's `--help` and the parser: all
+  flags held; `vx upgrade`'s non-JSON release message and the stream of
+  the undeclared-task line were wrong.
 
 ## Leads for other streams
 
@@ -163,3 +166,8 @@ restart it to apply the edit`).
   passed 2/2 alone. A timing row under load.
 - **K** vx-migrate README, Turbo table: the `readyWhen` TODO appears only
   when a task depends on the persistent one.
+- **selection** `vx run nope --affected=HEAD~1` where the only affected
+  project has no vx config prints `No affected project declares
+task(s): nope.` and exits 0; cli.md says an undeclared name is
+  refused (it is, exit 1, once a configured project is affected).
+- **CLI** `vx init --help` shows `--mjs` in its usage but no row for it.
