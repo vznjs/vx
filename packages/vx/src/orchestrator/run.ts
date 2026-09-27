@@ -702,6 +702,7 @@ async function runOnBus(
         outputDirSnapshots,
         deferSave: saveLane.defer,
         deferredSaves,
+        stopSignal: stopRun.signal,
       }
     }
 

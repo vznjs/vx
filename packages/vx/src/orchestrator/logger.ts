@@ -596,6 +596,22 @@ export function defaultLogger(
           if (qi >= 0) slotQueue.splice(qi, 1)
         }
         refresh(true)
+        // What it printed while it stopped (a trap's cleanup) still reaches
+        // the terminal where a frame would have: a task that traps Ctrl-C
+        // and exits 0 is aborted since item 962, and its frame was dropped
+        // with the count.
+        const framed = view.mode === 'full' || (view.mode === 'focused' && isPrimary(node))
+        if (framed && !isGroupTask(node)) {
+          if (streamsLive(node)) {
+            if (streamMidLine) {
+              writer.write('\n')
+              streamMidLine = false
+            }
+            emitFrameClose(formatFrameClose(node, outcome, colors))
+          } else if (stdout.length > 0 || stderr.length > 0) {
+            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors, true))
+          }
+        }
         return
       }
       // Group tasks (no exec) do no work — no surface prints them.

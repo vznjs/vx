@@ -625,6 +625,36 @@ test is telling the truth.
         › `nx()`'s claim. All red without the fix. The e2e row's own
         commit is asserted: its first cut committed nothing under the
         gate's sandbox and read as "HEAD did not resolve".
+962.  DONE (2026-09-27, an exec review agent's lead 3 and a scheduler
+      review agent's leads 2 and 3, one cause). A task was `aborted` only
+      when its child died of SIGINT/SIGTERM, never because the run was
+      stopping.
+      - A task that traps the forwarded SIGINT and exits 0 (the reason vx
+        forwards SIGINT) was a success: its partial outputs were cached
+        under the healthy key, and the next run restored them.
+      - One that exits 1 on the trap was RETRIED after Ctrl-C: two more
+        attempts spawned, and vx left only at the handler's bound, with no
+        summary and no teardown.
+      - One SIGKILLed at the end of the grace read as a failure (the OOM
+        hint).
+      - Fix: `ExecuteArgs.stopSignal` carries the run's stop; an attempt
+        that ends while it is aborted is `aborted`, before the retry
+        decision. The child-signal rule stays (a `kill` vx never saw).
+      - An aborted task's frame now prints where a frame would have: the
+        trap's cleanup output was dropped with the count.
+      - Rows: `signal-handling.test.ts` › a task that traps SIGINT and
+        exits 0 is aborted, not cached; one with retries that exits 1 on
+        SIGINT is not attempted again. Both red without the fix. The
+        Ctrl-C output row now also expects the aborted section closing the
+        summary.
+      - Next from the exec review: 1 (a sandboxed task reads anything
+        outside the workspace, unkeyed), 2 (the sandbox's shared TMPDIR
+        persists across tasks and runs), 4 (a sandboxed task runs under
+        bash, an unsandboxed one under sh), 5 (schema.md says the root's
+        bin is not on PATH; it is). Not taken: 6, a task that SIGTERMs
+        itself is `aborted`, a deliberate reading (`aborted-outcome.test.ts`).
+      - Next from the scheduler review: 1 (a restore-tier hit releases its
+        exec-tier dependents before its own dependencies finish).
       - The review is done: its six leads are items 951, 953–955, 958,
         959 and 961.
 
