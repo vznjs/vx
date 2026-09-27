@@ -59,6 +59,15 @@ comments: frozen mode checks no config bytes on the run path (`vx lock
 `plugin-teardown.test.ts`, a throwing and an off-contract factory (red
 without the change).
 
+## C-5: open the index read-only when loading resolved projects
+
+`loadResolvedProjects`, what `vx show` and `vx mcp`'s `listTasks` read,
+opened the cache as a run does: it created `.vx/cache/` where none
+existed and reset an earlier schema's index, run history included. It
+opens it as `vx last` does now (`Cache.inspect`); an index it refuses
+serves nothing and the configs evaluate live. Row:
+`scoped-config-loading.test.ts` (red without the change).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

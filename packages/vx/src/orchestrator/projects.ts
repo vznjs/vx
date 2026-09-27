@@ -17,7 +17,8 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
-import { Cache, noteSchemaReset } from '../cache/index.js'
+import { Cache } from '../cache/index.js'
+import { UserError } from '../util/index.js'
 import {
   buildPackageGraph,
   computeWorkspaceFingerprint,
@@ -245,8 +246,15 @@ export async function loadResolvedProjects(
   const metas = await listProjects(await loadWorkspace(workspaceRoot, reads))
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warn)
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
-  const cache = new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
-  noteSchemaReset(cache, warn)
+  // Opened as `vx last` opens it: a reader makes no index where there is
+  // none and never resets an earlier schema's (C-5). One it cannot read
+  // serves nothing; the configs evaluate live.
+  let cache: Cache | undefined
+  try {
+    cache = Cache.inspect(cacheDir)
+  } catch (err) {
+    if (!(err instanceof UserError)) throw err
+  }
   try {
     const loaded = await loadProjects({
       workspaceRoot,
@@ -257,15 +265,18 @@ export async function loadResolvedProjects(
       seeds: opts.scope ?? 'all',
       closure: false,
       lock: null,
-      evalCache: {
-        store: cache,
-        workspaceRoot,
-        workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot, reads),
-      },
+      evalCache:
+        cache === undefined
+          ? undefined
+          : {
+              store: cache,
+              workspaceRoot,
+              workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot, reads),
+            },
       warn,
     })
     return loaded.projects
   } finally {
-    cache.close()
+    cache?.close()
   }
 }
