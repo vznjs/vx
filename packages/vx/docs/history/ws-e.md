@@ -11,6 +11,12 @@ What did not:
    body read) and a release document that is not JSON escaped
    `fetchOrRefuse` as a stack (E-1).
 2. `vx upgrade v1 v2`: the second positional was ignored without a word (E-2).
+3. `vx info --format json`: the reference's field list lacked
+   `bunSupported` and `sandbox` (E-3).
+4. `vx completions` offered flags each verb refuses (`watch` only the
+   four it rejects; `show --run --list`; `lock --frozen`; `run --check`)
+   and `vx run --chek` suggested the refused `--check` (E-4).
+5. A plugin verb resolving 256 exited 0, the OS keeping eight bits (E-5).
 
 ## Leads for other streams
 
@@ -33,3 +39,6 @@ What did not:
 - E-2 — `vx upgrade v1 v2`: a second tag is refused
   (`unexpected argument`) instead of dropped while the first installs;
   row in `tests/upgrade.test.ts` against a copy of the runtime.
+- E-3 — `vx info --format json`: the reference's field list is held to
+  the `InfoFacts` interface both ways by a drift row (J-9 had just named
+  the two missing fields, `bunSupported` and `sandbox`).
