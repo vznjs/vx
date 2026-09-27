@@ -139,6 +139,17 @@ the run hung with no output (or, with no handle open, died with no
 summary and no teardown). `resolveExecutors` now refuses such a value by
 plugin and executor name. Row: `plugin-capabilities.test.ts`.
 
+## C-13: keep a restore on the restore lane when its task is pooled
+
+`hasRoom` and `admit` asked the pool first, so a restore-tier hit placed
+on an executor with a `capacity` (every task, with a local-only cache)
+took the pool's arm: every restore ran at once, past the restore lane's
+cap and `--concurrency 1`, and the pool counted them over its capacity.
+The restore tier is now judged first, as `modules/scheduler.md` says
+("restore-tier nodes are always local"). Row: `scheduler.test.ts` (six
+restores at `--concurrency 1`: six at once without the change, one
+with).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

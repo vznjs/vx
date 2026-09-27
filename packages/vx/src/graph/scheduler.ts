@@ -428,23 +428,24 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const poolOf = options.poolOf
   const poolActive = new Map<string, number>()
   // A pooled task is admitted against ITS pool's capacity, a local one
-  // against `concurrency`; pooled tasks reserve no local resources.
+  // against `concurrency`; pooled tasks reserve no local resources. A
+  // restore is local disk work wherever its task was placed: on the pool's
+  // arm it bypassed the restore lane's cap.
   const hasRoom = (id: string): boolean => {
+    if (inRestoreTier(id)) return restoreRoom()
     const pool = poolOf?.(id)
-    if (pool === undefined) {
-      return inRestoreTier(id) ? restoreRoom() : execRoom()
-    }
+    if (pool === undefined) return execRoom()
     return (poolActive.get(pool.name) ?? 0) < pool.capacity
   }
   const admit = (id: string): (() => void) => {
+    if (inRestoreTier(id)) {
+      activeRestore++
+      return () => {
+        activeRestore--
+      }
+    }
     const pool = poolOf?.(id)
     if (pool === undefined) {
-      if (inRestoreTier(id)) {
-        activeRestore++
-        return () => {
-          activeRestore--
-        }
-      }
       active++
       return () => {
         active--
