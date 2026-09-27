@@ -593,6 +593,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 ...req,
                 cwd: req.workspaceRoot,
                 projectRel: toPosix(path.relative(req.workspaceRoot, req.cwd)),
+                // A blob the probe could not see (one inside a Tree, which
+                // `FindMissingBlobs` checks only by the Tree's digest) was
+                // replayed as a warning under a whole-tree capture: the task
+                // succeeded, a declared output missing, on every run.
+                replay: true,
               },
               prior,
               warn,
@@ -1205,7 +1210,15 @@ export function outputPathSets(
  * are anchored, which is not the project when the action ran at the input
  * root or a record replays; `projectRel` then says where the project is.
  */
-type MaterialiseRequest = ExecuteRequest & { readonly projectRel?: string }
+type MaterialiseRequest = ExecuteRequest & {
+  readonly projectRel?: string
+  /**
+   * A record replay: it is a cache read, so a blob it cannot fetch fails it
+   * (and the task executes) under any capture shape. Only a fresh result
+   * whose capture holds more than the outputs warns instead.
+   */
+  readonly replay?: boolean
+}
 
 /**
  * Bring the action's outputs back to disk. Core's contract is that after an
@@ -1234,7 +1247,7 @@ export async function materialiseOutputs(
     ...(req.outputs?.workspaceFiles ?? []),
   ].some((g) => globToOutputPath(g) === '')
   const missing = (what: string, hash: string): void => {
-    if (!wholeTreeCapture) {
+    if (!wholeTreeCapture || req.replay === true) {
       throw new UserError(
         `vx/reapi: ${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
       )

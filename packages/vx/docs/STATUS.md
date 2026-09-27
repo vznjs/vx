@@ -1099,6 +1099,19 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         glob writes only what the glob names (with the literal control).
         Red when every capture is written whole.
 
+1039. DONE (2026-09-27, the vx-reapi review's fourth lead). A record
+      replay missing a blob inside its Tree went green with a declared
+      output absent, on every run.
+      - `FindMissingBlobs` checks a Tree by its own digest, not what it
+        holds, and under a whole-tree capture (`*.txt`) `materialiseTree`
+        only warned about a blob it could not fetch. A replay is a cache
+        read: it now fails on a missing blob under any capture, so the
+        existing fallback executes. A fresh result under a whole-tree
+        capture still warns.
+      - Row: `executor-sweep.test.ts` › a replay missing a blob inside
+        its Tree executes, whatever the capture. Red with the replay's
+        strictness removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

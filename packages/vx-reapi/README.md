@@ -110,6 +110,11 @@ The replay itself is a cache read too: a transport failure reading the
 record, its stdout or any output warns and executes, after removing
 whatever the half-done replay created (core cleaned the outputs once,
 before the replay, and the real run's result must not inherit them).
+The probe sees a Tree by its own digest, not the blobs inside it, so
+one of those gone is caught by the replay: under any capture shape it
+fails the replay, and the task executes. (A fresh result under a
+whole-tree capture still only warns, since the capture holds more
+than the outputs.)
 
 An UPSTREAM's evicted blobs get the opposite answer, because there is
 nothing to fall through to. When a dependency's outputs live only in

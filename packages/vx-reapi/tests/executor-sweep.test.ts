@@ -163,6 +163,39 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     })
   })
 
+  // The probe checks a Tree by its own digest, not the blobs inside it, and
+  // under a whole-tree capture a missing output only warned: the replay
+  // succeeded with `b.txt` absent, on every run (item 1039).
+  it('a replay missing a blob inside its Tree executes, whatever the capture', async () => {
+    const treeBytes = encodeTree(
+      {
+        files: [
+          { name: 'a.txt', digest: put('A'), is_executable: false },
+          { name: 'b.txt', digest: sha256(bytes('evicted B')), is_executable: false },
+        ],
+        directories: [],
+        symlinks: [],
+      },
+      [],
+    )
+    fake.actions.set(execDigestFor('k-hole').hash, {
+      exit_code: 0,
+      output_directories: [{ path: 'pkg', tree_digest: fake.put(treeBytes) }],
+    })
+    await withExecutor(async (run, warns) => {
+      const before = executes()
+      const res = await run(
+        request({ cacheKey: 'k-hole', outputs: { files: ['*.txt'], workspaceFiles: [] } }),
+      )
+      expect([res.exitCode, executes() - before]).toEqual([0, 1])
+      expect(
+        warns.filter((w) =>
+          w.startsWith('vx/reapi: pkg#gen could not replay its execution record ('),
+        ),
+      ).toHaveLength(1)
+    })
+  })
+
   // INTERNAL, not UNAVAILABLE: a transient Read is retried since item 919.
   it('a replay whose stdout Read fails executes instead of failing the task', async () => {
     fake.actions.set(execDigestFor('k-stdout').hash, {
