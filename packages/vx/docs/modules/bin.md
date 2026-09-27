@@ -46,10 +46,19 @@ compiled binary no second copy of core transpiled from `node_modules`
 `vx` is shipped two ways:
 
 1. **As a Bun-runnable script** — `bin: "src/bin.ts"` in `package.json`,
-   shebang `#!/usr/bin/env bun`. Bun runs the TypeScript directly.
-2. **As a standalone binary** — `bun build --compile --bytecode src/bin.ts
---outfile dist/vx-<target>`. The cross-target binaries are published
-   on each GitHub release.
+   shebang `#!/usr/bin/env -S bun --no-env-file`. Bun runs the
+   TypeScript directly.
+2. **As a standalone binary** — `bun build --compile
+--no-compile-autoload-dotenv --bytecode src/bin.ts --outfile
+dist/vx-<target>`. The cross-target binaries are published on each
+   GitHub release.
+
+Both switches keep Bun from loading `.env`, `.env.local` and
+`.env.<NODE_ENV>` from the working directory into vx's own environment,
+where every `passThrough` and essential variable and every `VX_*` switch
+is read: a task saw a value no shell had set (item 1089). Running the
+source as `bun src/bin.ts`, as this repository's own gate does, is not
+the shebang, and Bun loads a `.env` there.
 
 ## What this does NOT do
 

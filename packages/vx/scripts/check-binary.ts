@@ -43,6 +43,7 @@ run(
     'bun',
     'build',
     '--compile',
+    '--no-compile-autoload-dotenv',
     '--minify',
     '--bytecode',
     `--target=bun-${host}`,
@@ -107,3 +108,42 @@ if (errors !== wantErrors) {
   process.exit(1)
 }
 console.log(`${path.relative(root, out)} refuses a non-JSON config in its config worker`)
+
+// A compiled Bun binary loads `.env`, `.env.local` and `.env.<NODE_ENV>`
+// from its working directory into its own environment unless it was built
+// with --no-compile-autoload-dotenv, and a task's passThrough then saw a
+// value no shell had set (item 1089). A workspace with a `.env` that sets
+// the name a task passes through: the task must see it unset.
+const dotenv = mkdtempSync(path.join(os.tmpdir(), 'vx-check-dotenv-'))
+mkdirSync(path.join(dotenv, 'packages', 'a'), { recursive: true })
+writeFileSync(
+  path.join(dotenv, 'package.json'),
+  JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
+)
+writeFileSync(path.join(dotenv, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
+writeFileSync(
+  path.join(dotenv, 'packages', 'a', 'vx.config.mjs'),
+  `export default { tasks: { probe: { exec: { command: 'echo "probe=\${VX_DOTENV_PROBE-unset}"', env: { passThrough: ['VX_DOTENV_PROBE'] } } } } }\n`,
+)
+writeFileSync(path.join(dotenv, '.env'), 'VX_DOTENV_PROBE=from-dotenv\n')
+Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: dotenv })
+const env: Record<string, string> = {}
+for (const [k, v] of Object.entries(process.env)) {
+  if (k !== 'VX_DOTENV_PROBE' && v !== undefined) env[k] = v
+}
+const probe = Bun.spawnSync({
+  cmd: [out, 'run', 'a#probe'],
+  cwd: dotenv,
+  env,
+  stdout: 'pipe',
+  stderr: 'pipe',
+})
+rmSync(dotenv, { recursive: true, force: true })
+const probed = /^probe=(\S+)$/m.exec(text(probe.stdout) + text(probe.stderr))?.[1]
+if (probe.exitCode !== 0 || probed !== 'unset') {
+  process.stderr.write(
+    `binary loaded the workspace's .env: its task saw VX_DOTENV_PROBE=${probed} (exit ${probe.exitCode}), expected unset\n${text(probe.stdout)}${text(probe.stderr)}`,
+  )
+  process.exit(1)
+}
+console.log(`${path.relative(root, out)} leaves a workspace .env out of its environment`)
