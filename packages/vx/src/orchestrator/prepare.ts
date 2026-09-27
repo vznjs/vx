@@ -291,14 +291,20 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   const requested = expandRequested(options.tasks, candidateProjects, projects)
   let unresolvedTasks = unresolvedRequests(options.tasks, candidateProjects, projects)
-  if (
-    options.selectedByDiff === true &&
-    projects.size < projectsWithConfigs.length &&
-    unresolvedTasks.some((t) => !t.includes('#'))
-  ) {
-    unresolvedTasks = await declaredNowhere(unresolvedTasks, () =>
-      loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
-    )
+  if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
+    // A name a loaded project declares is no typo, whether or not the load
+    // was whole: an unaffected dependency loaded for the closure declared
+    // it, and the run said no project did (C-3). Only what is still
+    // unjudged pays for the rest of the workspace.
+    unresolvedTasks = undeclaredIn(unresolvedTasks, projects)
+    if (
+      projects.size < projectsWithConfigs.length &&
+      unresolvedTasks.some((t) => !t.includes('#'))
+    ) {
+      unresolvedTasks = await declaredNowhere(unresolvedTasks, () =>
+        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
+      )
+    }
   }
 
   // Cache seam precedence: an EXPLICITLY injected remote layer
@@ -527,8 +533,16 @@ async function declaredNowhere(
   } catch {
     return [...unresolved]
   }
+  return undeclaredIn(unresolved, all.projects)
+}
+
+/** The bare names in `unresolved` no project in `projects` declares; `a#b` forms pass through. */
+function undeclaredIn(
+  unresolved: readonly string[],
+  projects: LoadedProjects['projects'],
+): string[] {
   const declared = new Set<string>()
-  for (const p of all.projects.values()) {
+  for (const p of projects.values()) {
     for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
   }
   return unresolved.filter((t) => t.includes('#') || !declared.has(t))

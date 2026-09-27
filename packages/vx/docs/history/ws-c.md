@@ -36,13 +36,19 @@ depend on this machine's runtime. Core-side for every executor, so the
 `vx-reapi` plugin needs no change. Row: `placement.test.ts` (red without
 the change).
 
+## C-3: judge an `--affected` task name by every loaded project
+
+Under a diff-chosen scope a bare name only unaffected projects declare is
+not a typo (item 1024). The guard asked the whole workspace only when
+the load was partial: `b` depending on `a` loaded `a` for the closure,
+the load was whole, the check was skipped, and `vx run dev
+--affected` said "No projects declare task(s): dev" and exited 1 though
+`a` declares it. Names a loaded project declares now drop first; the
+rest of the workspace is loaded only for names still unjudged. Row:
+`affected-sparse-tasks.test.ts` (red without the change).
+
 ## Queued (from the stream's review, 2026-09-27)
 
-- `--affected` refuses a task that an unaffected dependency declares:
-  `b` depends on `a`, only `a` declares `dev`, only `b` changed →
-  `No projects declare task(s): dev.` exit 1; the guard
-  `projects.size < projectsWithConfigs.length` in `prepare.ts` skips the
-  full-workspace check once the closure load brought `a` in.
 - A `cache` factory that throws or returns a malformed layer skips
   plugin teardown (`prepare.ts`: the catch closes the local cache only),
   against `plugin.md` and item 1029.
@@ -64,8 +70,8 @@ the change).
   ancestor prefix, root project, every dependant, transitive dependants)
   hold no row.
 - **B:** `sandbox-usage.unsafe.test.ts` › "is not reported, since what
-  bwrap's namespace used never reaches the wait" failed a gate on a
-  timing floor (`>= 300`, got 246 ms), green alone.
+  bwrap's namespace used never reaches the wait" failed two of two full
+  gates on a timing floor (`>= 300`, got 246 ms), green alone.
 - **F:** `wedged.test.ts` RST_STREAM rows raced (`sent: 0`) under gate
   load twice.
 - **G:** `vx-migrate/src/nx/index.ts` imports `type Gaps` and never uses
