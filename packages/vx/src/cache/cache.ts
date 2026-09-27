@@ -1655,13 +1655,17 @@ export class Cache implements CacheLayer {
    * orphan sweep alone when an hour has passed since the last one. A run
    * with nothing due pays the accessed-at flush it owed at close anyway, one
    * scan of the index and one read of the sweep's clock — never the
-   * sweep's readdir. Null when nothing was due or this handle does not write.
+   * sweep's readdir. Null when nothing was due or the directory is not this
+   * handle's to write. The local WRITE axis does not gate it: under
+   * `--cache=local:r,remote:rw` a save writes nothing here, but every remote
+   * hit is still ingested (`ingest`, ungated by design), and gated on that
+   * axis the retention never ran while the store grew hit by hit (A-7).
    */
   async evictIfDue(
     policy: { maxAgeMs?: number; maxBytes?: number },
     now: number = Date.now(),
   ): Promise<PruneResult | null> {
-    if (!this.write) return null
+    if (this.writeBlocked !== null || this.inspecting) return null
     // First: an entry this run restored still carries its old `accessed_at`
     // until the deferred bump lands, and would read as due for eviction.
     this.flushAccessed()

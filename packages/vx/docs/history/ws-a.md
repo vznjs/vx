@@ -25,7 +25,7 @@
    mtime before 1970 is never cached ("corrupt artifact").
 7. A `cache.db` corrupt past its first pages fails every task as an
    internal error, and `vx cache prune` prints a stack.
-8. `cacheRetention` never runs under a local-read-only policy while
+8. DONE (A-7). `cacheRetention` never runs under a local-read-only policy while
    remote hits are still ingested locally.
 9. A gitignored `.gitattributes` below a project escapes the clean-filter
    gate: the LF index blob of a CRLF file is trusted.
@@ -93,3 +93,10 @@ Under `core.trustctime=false` or `core.checkStat=minimal` git judges a file by m
 
 - Fix (`git-inputs.ts` `gitStatWeakened`, over the `git var -l` the enumeration already spawns): either setting drops every index OID, and files hash through the memo, which keys on ctime and inode. `caching.md` and `modules/git-inputs.md` say so. The core test tasks define `GIT_CONFIG_GLOBAL=/dev/null` (`vx.config.ts`): the suite's fixtures assume git's defaults, and a host's global config (this one's: both settings, and signed commits) is not the code under test.
 - Rows: `stale-hit.test.ts` › each setting with a same-size, mtime-kept rewrite is a miss (red without the gate); the OIDs are kept under a pinned default stat and dropped under a minimal one; the settings' spellings, the last value winning.
+
+### A-7 (2026-09-27, lead 8)
+
+`evictIfDue` returned early on a handle with the local WRITE axis off, while `ingest` is not gated on it: under `--cache=local:r,remote:rw` every remote hit still lands in the local store, and the workspace's `cacheRetention` never ran, so that store grew hit by hit past its `maxSize`. `schema.md` says retention applies to every run that writes the local cache, and `policy.ts` that prune is never affected by the policy; the code said otherwise.
+
+- Fix (`cache.ts`): retention is gated on the directory being this handle's to write (`writeBlocked`) and on the handle not being a reading verb's (`inspect`), not on the write axis.
+- Rows: `cache-retention.test.ts` › applies under a local-read-only policy, whose run still ingests remote hits (red without the fix); the old row "a handle that does not write evicts nothing" pinned the defect and now holds the real line: a reading verb's handle evicts nothing with an entry due (red with the `inspect` guard removed).

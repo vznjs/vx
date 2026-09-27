@@ -64,6 +64,27 @@ describe('Cache.evictIfDue', () => {
     ).map((r) => r.hash)
   }
 
+  it('applies under a local-read-only policy, whose run still ingests remote hits (A-7)', async () => {
+    // What `--cache=local:r,remote:rw` leaves here: a save writes nothing,
+    // and every remote hit lands through `ingest`.
+    const producer = new Cache(path.join(root, 'remote'))
+    const readOnly = new Cache(cacheDir, { read: true, write: false })
+    try {
+      await seed(producer, ['aa'])
+      await readOnly.ingest('aa', Bun.file(producer.outputsPath('aa')), {
+        taskId: 'p#aa',
+        command: 'echo aa',
+        durationMs: 1,
+      })
+      expect(hashes(readOnly)).toEqual(['aa'])
+      expect((await readOnly.evictIfDue({ maxBytes: 1 }))?.evicted).toBe(1)
+      expect(hashes(readOnly)).toEqual([])
+    } finally {
+      readOnly.close()
+      producer.close()
+    }
+  })
+
   it('evicts an entry unused for longer than maxAge, and only that one', async () => {
     const cache = new Cache(cacheDir)
     try {
@@ -199,12 +220,18 @@ describe('Cache.evictIfDue', () => {
     }
   })
 
-  it('a handle that does not write evicts nothing', async () => {
+  it("a reading verb's handle evicts nothing, with an entry due", async () => {
     const writer = new Cache(cacheDir)
     await seed(writer, ['aa'])
     writer.close()
     age('aa', 1)
-    const reader = new Cache(cacheDir, { read: true, write: false })
+    const reader = new Cache(
+      cacheDir,
+      { read: true, write: false },
+      undefined,
+      undefined,
+      'inspect',
+    )
     try {
       expect(await reader.evictIfDue({ maxAgeMs: DAY })).toBeNull()
       expect(hashes(reader)).toEqual(['aa'])
