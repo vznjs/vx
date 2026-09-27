@@ -33,6 +33,7 @@ import {
   drainOrAbort,
   POST_EXIT_CUT_LINE,
   shellQuote,
+  withForwardArgs,
   signalExitCode,
   spawnFailureText,
   streamToString,
@@ -746,10 +747,7 @@ export async function wrapSandboxedCommand(
   forwardsSignals: boolean
 }> {
   const { SandboxManager } = await loadSrt()
-  const userCommand =
-    args.forwardArgs && args.forwardArgs.length > 0
-      ? args.command + ' ' + args.forwardArgs.map(shellQuote).join(' ')
-      : args.command
+  const userCommand = withForwardArgs(args.command, args.forwardArgs)
 
   const tag = xxh3hex(`${args.cwd}|${userCommand}|${process.hrtime.bigint()}`).slice(0, 16)
   const tmp = taskTmpdir(tag)

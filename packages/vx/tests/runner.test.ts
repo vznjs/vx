@@ -14,6 +14,7 @@ import {
   runPersistent,
   shellQuote,
   signalExitCode,
+  withForwardArgs,
   RSS_FLOOR_SLACK_BYTES,
 } from '../src/exec/runner.js'
 
@@ -631,6 +632,30 @@ line`, // embedded newline
     } finally {
       await (await import('node:fs/promises')).rm(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// The args after `--` go before a comment still open at the command's end,
+// and nowhere else moves (item 1060): each row runs the joined line through
+// sh, the way the runner does, and reads what the command printed.
+describe('withForwardArgs', () => {
+  const shOut = (command: string): string =>
+    Bun.spawnSync(['sh', '-c', command], { stdout: 'pipe', stderr: 'ignore' }).stdout.toString()
+  it.each([
+    ['a trailing comment', 'echo args: # print them', 'args: --fix a b\n'],
+    ['a comment on its own last line', 'echo args:\n# print them', 'args: --fix a b\n'],
+    ['control: a comment on an earlier line', 'echo one # c\necho two', 'one\ntwo --fix a b\n'],
+    ['control: a quoted #', `echo '#' "# x"`, '# # x --fix a b\n'],
+    ['control: # inside a word', 'echo a#b', 'a#b --fix a b\n'],
+    ['control: $# and an escaped #', 'echo $# \\#', '0 # --fix a b\n'],
+    ['control: # after an escaped space', 'echo a\\ #b', 'a #b --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
+  it('leaves the command alone with no args', () => {
+    expect(withForwardArgs('echo hi # c', [])).toBe('echo hi # c')
+    expect(withForwardArgs('echo hi # c', undefined)).toBe('echo hi # c')
   })
 })
 

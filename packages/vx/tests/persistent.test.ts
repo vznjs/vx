@@ -488,9 +488,8 @@ describe('exec.persistent (e2e)', () => {
     TIMEOUT,
   )
 
-  // forwardArgs are appended to a persistent command ONLY when there's no
-  // readyWhen (a ready-on-spawn task); a readyWhen task is left untouched so
-  // the regex matcher sees the unmodified output. We observe the args the
+  // forwardArgs are appended to a persistent command with or without a
+  // readyWhen (a readyWhen server once got none, item 1060). We observe the args the
   // persistent `dev` process actually received by having it write them to a
   // file (`echo GOTARGS: > got.txt` — the appended words land on echo), then a
   // downstream `smoke` task reads it back. `smoke` keeps the graph alive so
@@ -501,7 +500,7 @@ describe('exec.persistent (e2e)', () => {
     "sh -c 'for i in $(seq 1 250); do if [ -f got.txt ]; then cat got.txt; exit 0; fi; sleep 0.02; done' sh"
 
   const argsConfig = (ready: boolean): string => {
-    const devCommand = ready ? 'echo GOTARGS: > got.txt; echo READY' : 'echo GOTARGS: > got.txt'
+    const devCommand = ready ? 'echo READY; echo GOTARGS: > got.txt' : 'echo GOTARGS: > got.txt'
     const persistent = ready ? `{ readyWhen: 'READY' }` : `{}`
     return `export default {
       tasks: {
@@ -559,7 +558,7 @@ describe('exec.persistent (e2e)', () => {
   )
 
   it(
-    'leaves a persistent command with a readyWhen untouched (no forwardArgs appended)',
+    'appends forwardArgs to a persistent command WITH a readyWhen',
     async () => {
       await addProject(fixture.root, 'app', { config: argsConfig(true) })
       const r = await run({
@@ -570,10 +569,9 @@ describe('exec.persistent (e2e)', () => {
         log: silentLogger(fixture),
       })
       expect(r.ok).toBe(true)
-      const all = fixture.log.join('\n')
-      // dev's command was untouched → it saw no forwarded args.
-      expect(all).toContain('GOTARGS:')
-      expect(all).not.toContain('--port')
+      // `vx run dev -- --port 4000` on a Vite server with
+      // `readyWhen: 'Local:'` dropped the port before item 1060.
+      expect(fixture.log.join('\n')).toContain('GOTARGS: --port 3000')
     },
     TIMEOUT,
   )

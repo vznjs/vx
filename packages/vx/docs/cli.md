@@ -333,6 +333,10 @@ vx run test -- --watch              # underlying test runner sees "--watch"
 vx run build -- --sourcemap         # build command gets "--sourcemap"
 ```
 
+They are appended to the command's end, or before a `#` comment still
+open there (`echo args: # show` gets them), and a persistent task gets
+them too, with or without a `readyWhen`.
+
 Forwarded args are folded into the cache key — different args produce
 different cache entries. They scope to user-requested tasks only;
 dependsOn-pulled deps don't see them (so upstream cache identity

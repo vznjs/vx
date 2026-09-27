@@ -16,7 +16,7 @@ import {
   type MigrationPlan,
 } from '../src/workspace/index.js'
 import { UserError } from '../src/util/index.js'
-import { shellQuote } from '../src/exec/index.js'
+import { withForwardArgs } from '../src/exec/index.js'
 
 let root: string
 let stdout: string
@@ -203,7 +203,7 @@ describe('applyMigration', () => {
 // command with the forwarded args appended, quoted (runner.ts).
 describe('foldScriptHooks runs the hooks as npm does', () => {
   const run = async (command: string, args: string[] = []) => {
-    const full = args.length > 0 ? `${command} ${args.map(shellQuote).join(' ')}` : command
+    const full = withForwardArgs(command, args)
     const p = Bun.spawn(['sh', '-c', full], { stdout: 'pipe', stderr: 'ignore' })
     const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
     return { code, out: out.trim().split('\n') }

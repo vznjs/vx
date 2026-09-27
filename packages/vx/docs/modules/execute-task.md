@@ -46,9 +46,9 @@ anything beneath it changes.
 
 1. Build isolated env (same as normal — see [`env.md`](./env.md)).
 2. Construct `PersistentOptions` for `runPersistent`. The
-   `forwardArgs` are appended in-line when `readyWhen` is undefined
-   AND `forwardArgs.length > 0` (otherwise the regex matching is on
-   the unmodified command).
+   `forwardArgs` are appended in-line (`withForwardArgs`, as a one-shot
+   task's are), with or without a `readyWhen`: a readyWhen server once
+   got none, and `vx run dev -- --port 4000` dropped the port.
 3. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
 4. `await spawn.ready`. On reject (child exited before ready) →
