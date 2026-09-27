@@ -888,11 +888,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   const streak = { abs: '', n: 0 }
   const noticed = new Set<string>()
   let lastCycle: { start: number; end: number } | undefined
-  const writtenDuringLastCycle = (abs: string): boolean => {
-    if (lastCycle === undefined) return false
+  const writtenDuringLastCycle = (abs: string, openWhileHeld = false): boolean => {
+    // A server the last cycle left running is still that cycle's: its
+    // writes land after the cycle ended, and with a closed window a dev
+    // server that rewrites a log in its project restarted itself forever
+    // with no word of it, 12 restarts in 8 s (item 948). The initial run's
+    // server is one too, from the arm on.
+    const open = openWhileHeld && held !== undefined
+    if (lastCycle === undefined && !open) return false
     try {
       const m = fs.statSync(abs).mtimeMs
-      return m >= lastCycle.start && m <= lastCycle.end
+      const start = lastCycle?.start ?? armedAt
+      return m >= start && (open || m <= lastCycle!.end)
     } catch {
       return false
     }
@@ -923,7 +930,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       }
     }
     pendingPaths.clear()
-    if (firstAbs === undefined || !writtenDuringLastCycle(firstAbs)) {
+    const byServer = firstAbs !== undefined && held !== undefined
+    if (firstAbs === undefined || !writtenDuringLastCycle(firstAbs, true)) {
       streak.n = 0
       return first
     }
@@ -932,7 +940,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     if (streak.n >= 3 && !noticed.has(firstAbs)) {
       noticed.add(firstAbs)
       process.stdout.write(
-        `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in cache.outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
+        byServer
+          ? `vx watch: ${first} has started 3 cycles in a row, written while a server the cycle before started was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write restarts the server.\n`
+          : `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in cache.outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
       )
     }
     return first

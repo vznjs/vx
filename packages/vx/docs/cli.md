@@ -1084,7 +1084,11 @@ run...` precedes it.
    still does in a project with a task that has a command and no cache,
    which reads what it likes, item 947) — or declared an
    output, or the loop re-runs on it; after three such cycles in a row
-   watch names the path and the remedy, once, and keeps going. When any project's config declares
+   watch names the path and the remedy, once, and keeps going. A dev
+   server the last cycle left running counts as that cycle for as long
+   as it runs, so a log it rewrites in its project is named too, with
+   `.gitignore` as the remedy (a persistent task declares no outputs;
+   item 948). When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
