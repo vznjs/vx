@@ -17,7 +17,7 @@
 4. The run-end directory snapshot vouches for a stray a dependant wrote
    into an output directory after the save or restore; later hits skip the
    walk and the stray survives under a green run.
-5. A zstd artifact of several frames passes the first-frame size check and
+5. DONE (A-5). A zstd artifact of several frames passes the first-frame size check and
    is decoded whole before the ceiling applies (2 GiB of memory from a
    32 KB remote body); the comment calls that check unreachable.
 6. DONE (A-4). An output of mode 000 or mtime 0 (`SOURCE_DATE_EPOCH=0`) restores with
@@ -79,3 +79,10 @@ The restore skipped a sidecar mode of 0 and an mtime of 0 or less: a mode-000 ou
 
 - Fix (`archive.ts`): the sidecar's stat is applied whole (a bare tar's header mtime of 0 stays unknown); the header clamps a negative mtime to 0; the restore stamps with a `Date`, since Bun's `utimesSync` reads a negative number of seconds as now (probed on 1.4.2). `caching.md` says so.
 - Rows: `archive-extract-meta.test.ts` › the sidecar at its edges: mode 000, mtime 0, mtime 1960, and an ordinary control. The first three red without the fix.
+
+### A-5 (2026-09-27, lead 5)
+
+The decompression gate read the first zstd frame's declared size, and `Bun.zstdDecompress` decodes every frame there is: a 100-byte frame with a large one appended passed the ceiling and expanded whole in memory before the result's length was checked (2,089 MiB peak from a 32 KB body under a 64 MiB cap). An ingest from a remote and a restore both take that path for artifacts of 4 MiB or less; the check that fired was the one its comment called unreachable.
+
+- Fix (`zstd.ts` `isOneFrame`): the one-call decode is taken only for exactly one whole frame (header, blocks walked by their own sizes, checksum, nothing after); anything else decodes as a stream under the running count. vx's own artifacts are single frames and keep the one call. `caching.md` says so.
+- Rows: `zstd-frames.test.ts` › two frames are refused by the running count and never reach `Bun.zstdDecompress` (bytes and a file), decode whole as a stream under the cap; control, one frame small or of many blocks takes the one call. Red without the fix.

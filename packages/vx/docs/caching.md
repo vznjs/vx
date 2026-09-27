@@ -1012,7 +1012,11 @@ output length for the one-call decode, a running count for the stream.
 A frame that declares no content size (what a streaming compressor
 writes — vx's own saves above 4 MiB) is always decoded as a stream, so
 a sizeless bomb has nowhere to expand and vx's artifacts ingest
-anywhere. A save meets the same ceiling first: the pack plans the tar
+anywhere. So is a body that is not exactly one frame: the declaration is
+the first frame's alone, while the one-call decoder decodes every frame,
+so until 2026-09-27 (A-5) a 100-byte frame with a large one appended
+expanded whole in memory (2 GiB from a 32 KB body) before its length was
+checked. The frame's blocks are walked by their own sizes to tell. A save meets the same ceiling first: the pack plans the tar
 from one stat per output, and a tar past 2 GiB is refused before a byte
 is compressed — the run stays green, one status line names the task
 (`[vx] cache save failed: <task> is not cached: its outputs pack to …,
