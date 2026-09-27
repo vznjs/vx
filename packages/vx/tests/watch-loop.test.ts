@@ -78,17 +78,16 @@ describe('vx watch loop (e2e)', () => {
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('polled\n')
   }, 40_000)
 
-  it('a first sighting is a change only when its mtime falls after the arm', async () => {
-    // The loop has never judged either path, so each is a FIRST sighting,
-    // and the mtime is all it has to say which side of the arm the change
-    // belongs to. macOS hands a fresh FSEvents stream what landed just
-    // before it started (CI, 2026-09-11: `app dist; re-running...` with no
-    // edit made), and a first sighting used to pass unconditionally — the
-    // initial run's own writes re-ran it. `modifiedBefore` is pinned as a
-    // function in `watch-rules.test.ts`; this is the loop asking it.
-    // The two halves are the SAME operation on two files, so the only
-    // variable is the timestamp. Neither file is an input, so a cycle here
-    // is a hit — the cycle COUNT is the claim, not the execution count.
+  it('a first sighting is a change when it moved after the arm, whatever its mtime says', async () => {
+    // The loop has never judged either path, so each is a FIRST sighting.
+    // `fresh` is stamped after the arm. `restored` is a file moved in over
+    // `stale.txt` with an mtime an hour old, as `mv`, `cp -p`, `rsync -a`
+    // or `tar x` leave it: read by mtime alone it was "before the arm" and
+    // never ran (item 945); its ctime is the move. The initial run's own
+    // writes, which macOS delivers after the arm (CI, 2026-09-11), carry
+    // both clocks from before it and still stay quiet: `modifiedBefore` is
+    // pinned in `watch-rules.test.ts`. Neither file is an input, so a cycle
+    // here is a hit: the cycle COUNT is the claim.
     const stale = path.join(f.dir, 'stale.txt')
     const fresh = path.join(f.dir, 'fresh.txt')
     await writeFile(stale, 'x\n')
@@ -99,17 +98,18 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await initialOnly(w, f.log)
 
-    const before = new Date(Date.now() - 3_600_000)
-    await utimes(stale, before, before)
-    await Bun.sleep(SETTLE_MS)
-    expect(w.cycles()).toBe(0)
+    const restored = path.join(f.root, 'restored.txt')
+    await writeFile(restored, 'y\n')
+    const old = new Date(Date.now() - 3_600_000)
+    await utimes(restored, old, old)
+    await rename(restored, stale)
+    await until(() => w.cycles() === 1, 'the cycle for the file moved in with an old mtime')
 
     const after = new Date()
     await utimes(fresh, after, after)
-    await until(() => w.cycles() === 1, 'the cycle for the path stamped after the arm')
+    await until(() => w.cycles() === 2, 'the cycle for the path stamped after the arm')
     await Bun.sleep(SETTLE_MS)
-    expect(w.cycles()).toBe(1)
-    expect(await executions(f.log)).toBe(1)
+    expect(w.cycles()).toBe(2)
   }, 40_000)
 
   it('an edit to vx.workspace.mjs is one cycle that runs under the new workspace config', async () => {

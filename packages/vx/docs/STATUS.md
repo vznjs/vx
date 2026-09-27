@@ -328,6 +328,35 @@ test is telling the truth.
         each a remote hit recorded as 0 ms, and 1.7 as 2. Red without the
         fix; removing each bound or the rounding reddens it.
       - The review is done: leads 1–4 are items 942–944.
+945.  DONE (2026-09-27, a `vx watch` review agent's lead 1). `vx watch`
+      judged a path it had never seen by its mtime alone. `mv`, `cp -p`,
+      `rsync -a` and `tar x` carry a file's old mtime onto the new one,
+      so a backup restored over an input counted as the initial run's and
+      no cycle ran. The output stayed stale while the watcher looked
+      current. Moving an old-dated package into `packages/` was worse:
+      the member watcher's event read as "same", so no rearm ran and
+      later edits inside it were missed too.
+      - `modifiedBefore` compares the later of mtime and ctime. No
+        process can set a ctime, and a rename or a write moves it. The
+        initial run's own writes, which macOS delivers after the arm,
+        carry both clocks from before it and stay quiet.
+      - `cli.md` and the module page say so.
+      - Rows: `watch-rules.test.ts` checks that a file with a backdated
+        mtime and a new ctime is not "before" the arm, with the mtime
+        alone as control. The loop row in `watch-loop.test.ts` moves an
+        hour-old file over a watched path and gets one cycle. Both are red
+        without the fix. The loop row's old "stale" half faked an old file
+        with `utimes`, which moves the ctime too; no Linux operation fires
+        an event and leaves both clocks old, so that half is the function
+        row's now.
+      - Next from the same review:
+        - 946: another task's declared outputs hide the watched task's
+          inputs.
+        - 947: a task with no cache never re-runs on a git-ignored file.
+        - 948: a held server's own writes restart it forever, with no
+          notice.
+        - 949: a config's imports outside its project, and the workspace
+          config's imports, are neither watched nor re-read.
 
 ## In flight
 
