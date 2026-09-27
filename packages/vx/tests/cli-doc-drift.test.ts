@@ -118,6 +118,47 @@ describe('docs/cli.md — the `vx info` sample quotes the current versions', () 
   })
 })
 
+// The `--format json` bullet is the one list of what a script can read from
+// `vx info`, and it had lost two fields by 2026-09-27: `bunSupported` and
+// `sandbox` were printed and named nowhere. Both sides are read from their
+// source: the `InfoFacts` interface in doctor.ts (what the object carries),
+// and the bullet's backticked names.
+describe('docs/cli.md — the `vx info --format json` list is the InfoFacts object', () => {
+  it('names every top-level field, and nothing the object does not carry', async () => {
+    // An interface's body, doc comments dropped: `FlakyTask` is the
+    // element type `flakyTasks` names, declared in failure-mode.ts.
+    const body = async (file: string, name: string): Promise<string> => {
+      const src = await Bun.file(
+        new URL(`../src/orchestrator/${file}`, import.meta.url).pathname,
+      ).text()
+      const open = src.indexOf(`export interface ${name} {`)
+      expect(open).toBeGreaterThan(-1)
+      return src.slice(open, src.indexOf('\n}\n', open)).replace(/\/\*\*[\s\S]*?\*\//g, '')
+    }
+    const code = await body('doctor.ts', 'InfoFacts')
+    const nested = code + (await body('failure-mode.ts', 'FlakyTask'))
+    const topLevel = new Set(Array.from(code.matchAll(/^ {2}(\w+)\??:/gm), (m) => m[1] as string))
+    // Nested keys and literal members are what the bullet's parentheses
+    // describe (`workers.source` one of `workspace` / `cgroup` / `cores`).
+    const anyKey = new Set(Array.from(nested.matchAll(/(\w+)\??:/g), (m) => m[1] as string))
+    const literals = new Set(Array.from(code.matchAll(/'(\w+)'/g), (m) => m[1] as string))
+    expect(topLevel.has('vx') && topLevel.has('sandbox')).toBe(true)
+
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    const start = doc.indexOf('- `--format json` prints the same facts')
+    expect(start).toBeGreaterThan(-1)
+    const bullet = doc.slice(start, doc.indexOf('\n- ', start + 1))
+    const named = new Set(Array.from(bullet.matchAll(/`(\w+)`/g), (m) => m[1] as string))
+    for (const shape of bullet.matchAll(/`[[{][^`]*`/g)) {
+      for (const k of shape[0].matchAll(/\w+/g)) named.add(k[0])
+    }
+
+    const undocumented = [...topLevel].filter((k) => !named.has(k)).sort()
+    const unknown = [...named].filter((k) => !anyKey.has(k) && !literals.has(k)).sort()
+    expect({ undocumented, unknown }).toEqual({ undocumented: [], unknown: [] })
+  })
+})
+
 // The broad-run sample is the one picture of a run the reference gives, and
 // it had drifted three ways from the renderer by 2026-09-16: the rule's
 // label sat at the right end (the renderer leads with it), the time line
