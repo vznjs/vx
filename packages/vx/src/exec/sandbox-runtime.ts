@@ -691,16 +691,27 @@ export async function wrapSandboxedCommand(
  * shared group, as before, and `forwards` says the channel is not there.
  */
 function ownGroupCommand(tag: string, userCommand: string): { command: string; forwards: boolean } {
-  let setsid: string
-  let bash: string
+  // `sh`, as an unsandboxed task runs (`runner.ts`): the command ran under
+  // bash here, so `[[ … ]]`, brace expansion and `echo 'a\tb'` read one
+  // way sandboxed and another unsandboxed or on a remote executor, where
+  // `/bin/sh` is dash (item 964).
+  let sh: string
   try {
-    setsid = executablePath('setsid')
-    bash = executablePath('bash')
+    sh = executablePath('sh')
   } catch {
     return { command: `: 'vx-${tag}'; ${userCommand}`, forwards: false }
   }
+  let setsid: string
+  try {
+    setsid = executablePath('setsid')
+  } catch {
+    return {
+      command: `: 'vx-${tag}'; exec ${shellQuote(sh)} -c ${shellQuote(userCommand)}`,
+      forwards: false,
+    }
+  }
   const watch = `{ IFS= read -r s && kill -s "$s" -- "-$$"; } 2>/dev/null <&3 3<&- &`
-  const run = `exec ${shellQuote(setsid)} ${shellQuote(bash)} -c ${shellQuote(userCommand)} 3<&-`
+  const run = `exec ${shellQuote(setsid)} ${shellQuote(sh)} -c ${shellQuote(userCommand)} 3<&-`
   return { command: `: 'vx-${tag}'; ${watch} ${run}`, forwards: true }
 }
 

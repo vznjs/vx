@@ -674,6 +674,17 @@ test is telling the truth.
         interleaved, n=21, one pre-warmed copy per arm: item 962's head
         min 363.0 ms (median 385.3), this head 361.6 (396.1), A/A 366.0
         (379.5). A tie; the medians spread 17 ms between identical arms.
+964.  DONE (2026-09-27, the exec review's lead 4). Adding `exec.sandbox`
+      switched a task's shell from `sh` to `bash`: the Linux wrapper ran
+      `setsid bash -c <command>`. `echo x{1,2}` printed `x1 x2` sandboxed
+      and `x{1,2}` unsandboxed on a dash box, `[[ … ]]` worked only
+      sandboxed, and `echo 'a\tb'` differed, so a command green in the
+      sandbox could fail unsandboxed or on a remote executor.
+      - Fix (`ownGroupCommand`): `setsid sh -c`; with no `setsid`, the
+        command is `exec sh -c` too, not the runtime's own shell.
+      - Row: `sandbox-runtime.unsafe.test.ts` › a sandboxed task runs under
+        the shell an unsandboxed one does (the same probe's output both
+        ways, which holds where sh is bash too). Red without the fix.
       - The review is done: its six leads are items 951, 953–955, 958,
         959 and 961.
 
