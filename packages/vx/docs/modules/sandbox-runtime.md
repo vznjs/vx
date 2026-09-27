@@ -352,7 +352,9 @@ cached root task replayed a nested file's old bytes; a file grant there
 workspace writable, `.git` included (item 1010). The request now carries
 the node's nested project directories, and with the root's `.git` and
 `.vx` they are walls: on Linux a read grant containing one is punched
-around it (`punchWalls`, the write-path punch with the wall dropped), and
+around it (`punchWalls`, the write-path punch with the wall dropped), on
+macOS each wall is a read deny, which SRT emits after a literal grant
+holding it so that the deny wins (B-4), and
 a write grant whose bind, widened or not, would hold one is refused,
 naming the wall. A grant that names a wall or a path inside it is the
 user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
