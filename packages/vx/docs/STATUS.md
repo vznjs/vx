@@ -366,6 +366,18 @@ test is telling the truth.
       - Row: `cli.test.ts` › rejects --report / --report-file with --dry or
         --graph, exact messages, a real run as the control. Red without
         the fix.
+993.  DONE (2026-09-27, the run-flags review's leads 3 and 4, its last).
+      The run's output paths disagreed: `--graph=<dir>` (or an unreachable
+      path) printed a raw EISDIR/ENOENT stack, where `--summarize` and
+      `--profile` say one line; and `--report-file=nr/r.md` failed on the
+      missing directory that the other three create.
+      - Fix (`cli/run.ts`): the graph is written to the path resolved
+        against the cwd; a failure is one line naming the path and why,
+        and exit 1 (the graph is the command's product). The report's
+        directory is made before the append. `cli.md`'s flag rows say so.
+      - Rows: new `run-output-paths.test.ts`, through the CLI: all four
+        paths under missing directories are written, and a directory given
+        to `--graph` is one line and exit 1. Both red without the fix.
 
 ## In flight
 
