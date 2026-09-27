@@ -6,7 +6,7 @@
 // index + unstaged — so it captures everything you touched and nothing
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
-import { statSync } from 'node:fs'
+import { realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   asTrees,
@@ -18,6 +18,8 @@ import {
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners } from './config-imports.js'
+import { configImports } from './config-cache.js'
+import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 import type { ProjectMeta } from './workspace.js'
 
@@ -187,6 +189,9 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // says per project, so selection asks the plugin the same question, with
   // the bytes at the base ref and in the working tree. Its answer is
   // unioned with the path-owned projects below; only "cannot tell" widens.
+  if (await workspaceConfigChanged(args.workspaceRoot, changed)) {
+    return new Set(args.projects.map((p) => p.name))
+  }
   const fingerprintChanged = changed.filter((p) => FINGERPRINT_SET.has(p))
   const claimedOwned = new Set<string>()
   if (fingerprintChanged.length > 0) {
@@ -226,6 +231,38 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   if (orphans.length === 0 || args.workspaceGlobOwners === undefined) return owned
   for (const name of await args.workspaceGlobOwners(orphans)) owned.add(name)
   return owned
+}
+
+/**
+ * Whether `changed` holds the workspace config or a file it imports by
+ * relative specifier. Its plugins' `config` and `project` stages shape
+ * every project's resolved config, so such an edit can re-key any task,
+ * and selection cannot tell which: an edit that changed every key
+ * selected nothing (item 953). The fingerprint leaves the file out (its
+ * placement plugins must not split a cache between machines); a stage it
+ * installs re-keys through the resolved configs instead. Selection is not
+ * hashed, so widening here changes no key.
+ */
+async function workspaceConfigChanged(
+  workspaceRoot: string,
+  changed: readonly string[],
+): Promise<boolean> {
+  if (changed.length === 0) return false
+  const set = new Set(changed)
+  if (WORKSPACE_CONFIG_FILENAMES.some((n) => set.has(n))) return true
+  const config = WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(workspaceRoot, n)).find((f) => {
+    try {
+      return statSync(f).isFile()
+    } catch {
+      return false
+    }
+  })
+  if (config === undefined) return false
+  const root = realpathSync(workspaceRoot)
+  for (const file of await configImports(config)) {
+    if (set.has(path.relative(root, file).split(path.sep).join('/'))) return true
+  }
+  return false
 }
 
 /**

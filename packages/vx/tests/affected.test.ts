@@ -313,6 +313,31 @@ describe('affectedProjects', () => {
     ).toEqual(['c', 'd'])
   })
 
+  it('a workspace config edit, or one to a file it imports, selects every project (item 953)', async () => {
+    // Its plugins' `project` and `config` stages shape every resolved config,
+    // so the edit can re-key any task; it selected nothing (item 953).
+    await mkdir(path.join(root, 'tools'), { recursive: true })
+    await writeFile(path.join(root, 'tools/gen.mjs'), "export const cmd = 'echo v1'\n")
+    await writeFile(path.join(root, 'tools/unrelated.mjs'), 'export {}\n')
+    await writeFile(
+      path.join(root, 'vx.workspace.mjs'),
+      "import { cmd } from './tools/gen.mjs'\nexport default { plugins: [] }\n",
+    )
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'workspace config')
+    const all = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
+    // Control: a root file the workspace config does not import selects nothing.
+    await writeFile(path.join(root, 'tools/unrelated.mjs'), 'export const x = 1\n')
+    expect(await all()).toEqual([])
+    await git(root, 'checkout', '--', 'tools/unrelated.mjs')
+    await writeFile(path.join(root, 'tools/gen.mjs'), "export const cmd = 'echo v2'\n")
+    expect(await all()).toEqual(['a', 'b'])
+    await git(root, 'checkout', '--', 'tools/gen.mjs')
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+    expect(await all()).toEqual(['a', 'b'])
+  })
+
   it('ignores changes outside any project directory', async () => {
     await writeFile(path.join(root, 'README.md'), 'top-level edit')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
