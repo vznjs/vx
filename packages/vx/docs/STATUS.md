@@ -667,6 +667,9 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         ten-second release; with the fix it passes, and the file's other
         three rows are unchanged.
 
+1048. SUPERSEDED (2026-09-27) by A-3 (`docs/history/ws-a.md`), which
+      landed first: a saved artifact is renamed into place inside its index transaction.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
