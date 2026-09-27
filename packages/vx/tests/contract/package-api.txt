@@ -158,14 +158,6 @@ export class UserError extends Error {
 }
 == const LOG_WIRE_VERSION (src/orchestrator/task-log-buffer.ts)
 export const LOG_WIRE_VERSION = 1
-== const PERSISTENT_TASK_NAMES (src/workspace/migration.ts)
-export const PERSISTENT_TASK_NAMES: ReadonlySet<string> = new Set([
-  'dev',
-  'start',
-  'serve',
-  'watch',
-  'preview',
-])
 == const PERSISTENT_TODO (src/workspace/migration.ts)
 export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +
@@ -186,8 +178,6 @@ export const PLUGIN_HOOKS = [
   'commands',
   'teardown',
 ] as const
-== const TASK_STATUSES (src/orchestrator/telemetry.ts)
-export const TASK_STATUSES: readonly TaskStatus[] = Object.keys(PASSES) as TaskStatus[]
 == const TELEMETRY_SCHEMA_VERSION (src/orchestrator/telemetry.ts)
 export const TELEMETRY_SCHEMA_VERSION = 3
 == const VERSION (src/version.ts)
@@ -217,8 +207,6 @@ export function defineProject<const T extends ProjectConfig>(
 ): T
 == function defineWorkspace (src/config.ts)
 export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
-== function deriveCacheSource (src/orchestrator/telemetry.ts)
-export function deriveCacheSource(status: TaskStatus): CacheSource
 == function escapeMarkdownCell (src/orchestrator/run-report.ts)
 export function escapeMarkdownCell(value: string): string
 == function exitSignal (src/exec/runner.ts)
@@ -264,8 +252,6 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 export function machineMemoryBytes(probe: CgroupProbe = {}): number
 == function machineParallelism (src/util/cgroup.ts)
 export function machineParallelism(probe: CgroupProbe = {}): number
-== function nearMatches (src/util/edit-distance.ts)
-export function nearMatches(name: string, candidates: Iterable<string>, limit = 3): string[]
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
 == function outputsOverlap (src/graph/task-graph.ts)
@@ -1463,8 +1449,6 @@ export interface WorkspaceIdentity {
 }
 == runtime values
 LOG_WIRE_VERSION = 1
-PERSISTENT_TASK_NAMES = ["dev","start","serve","watch","preview"]
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
 PLUGIN_HOOKS = ["config","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","setup","commands","teardown"]
-TASK_STATUSES = ["success","cache-hit","cache-hit-remote","failed","skipped","aborted"]
 TELEMETRY_SCHEMA_VERSION = 3

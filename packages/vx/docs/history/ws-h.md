@@ -116,6 +116,14 @@ and `cache` on a group task is refused. A rule that needs three fields
 alone (`cache.inputs.env`) is refused by its own block and flooded the
 first cut with 80 rows of noise.
 
+## H-9: drop four façade exports nothing outside core used
+
+Before 1.0 freezes them: `nearMatches`, `PERSISTENT_TASK_NAMES`,
+`TASK_STATUSES` and `deriveCacheSource` had no user in any plugin, the site
+or a user doc (only core's own module pages). Breaking for a 0.x importer;
+each stays exported inside core. `LOG_WIRE_VERSION` stays: the exported
+`TaskLogBundle` type names it.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.

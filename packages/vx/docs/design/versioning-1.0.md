@@ -111,7 +111,7 @@ change is a reviewed diff of that file and never a side effect.
   type a plugin meets in a signature is held too): a type in full, a
   function to its signature, a class to its public members, comments
   dropped. With the runtime values of the exported constants
-  (`PLUGIN_HOOKS`, `TASK_STATUSES`, `TELEMETRY_SCHEMA_VERSION`, …) it is
+  (`PLUGIN_HOOKS`, `TELEMETRY_SCHEMA_VERSION`, …) it is
   compared with `tests/contract/package-api.txt`. A second row holds
   `VxPlugin`'s members to `PLUGIN_HOOKS`. The façade snapshot in
   `package-boundaries.unsafe.test.ts` still pins the export names;
