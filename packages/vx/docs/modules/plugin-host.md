@@ -41,6 +41,9 @@ it), so a workspace that declares nothing runs and caches here.
 - `resolveExecutors(plugins, ctx)` → `TaskExecutor[]` (ordered, the
   local executor last; the first to accept a task runs it; a throwing
   factory aborts).
+- `executorLabel(executor)` — how a message names a resolved executor:
+  `plugin '<name>' (executor '<name>')`, or `executor '<name>'` for the
+  local floor. A throwing `accepts` or `demand` is named by it.
 - `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
   more chained in order — `ChainedCache`; a layer wrapping the local
   handle subsumes the bare local layer; none declared leaves the local

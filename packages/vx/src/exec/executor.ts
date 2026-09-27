@@ -254,15 +254,26 @@ export function assertExecuteResult(
  * Place one task: the first executor, in declaration order, that may take
  * it — a `remote` executor is skipped for a `pinnedLocal` task, then
  * `accepts()` decides. Decided once per task before scheduling. The local
- * executor accepts everything, so with it declared this cannot throw.
+ * executor accepts everything, so with it declared the only throw is an
+ * `accepts()` that threw: refused as `label` names that executor, where it
+ * surfaced as a bare stack naming no plugin (item 1022).
  */
 export function selectExecutor(
   executors: readonly TaskExecutor[],
   task: TaskPlacement,
+  label: (executor: TaskExecutor) => string = (e) => `executor '${e.name}'`,
 ): TaskExecutor {
   for (const executor of executors) {
     if (task.pinnedLocal && executor.remote === true) continue
-    if (executor.accepts === undefined || executor.accepts(task)) return executor
+    if (executor.accepts === undefined) return executor
+    let taken: boolean
+    try {
+      taken = executor.accepts(task)
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err)
+      throw new UserError(`${label(executor)} failed in accepts for ${task.taskId}: ${m}`)
+    }
+    if (taken) return executor
   }
   throw new Error(
     `no executor accepted ${task.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Core's local executor accepts every task, so this means it is missing from the list.`,

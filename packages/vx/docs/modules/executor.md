@@ -63,12 +63,17 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor-reported placement label (a REAPI worker id); absent = this
   host. Rides `TaskOutcome.where` into telemetry only (OTel:
   `vx.task.where`), never the analytics store.
-- `selectExecutor(executors, task)` — first executor, in order, that may
-  take the task: a `remote` executor is skipped outright for a
-  `pinnedLocal` task, then `accepts` decides. The local executor is the
-  tail of the list and accepts everything, so the throw for "every
-  executor declined" is unreachable from `run()`; it stays for a caller
-  that builds its own list.
+- `selectExecutor(executors, task, label?)` — first executor, in order,
+  that may take the task: a `remote` executor is skipped outright for a
+  `pinnedLocal` task, then `accepts` decides. An `accepts` that throws
+  is a `UserError` naming the executor as `label` does (the run passes
+  `executorLabel`, which names its plugin too; item 1022). The local
+  executor is the tail of the list and accepts everything, so the
+  throw for "every executor declined" is unreachable from `run()`; it
+  stays for a caller that builds its own list.
+- An executor's `demand` is a hint: one that throws is warned once,
+  naming the plugin, and that executor is asked no more that run (item
+  1022).
 
 ## Rules
 

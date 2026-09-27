@@ -10,7 +10,7 @@ import { selectExecutor, type TaskExecutor } from '../exec/index.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { Logger } from './logger.js'
-import { resolveExecutors } from './plugin-host.js'
+import { executorLabel, resolveExecutors } from './plugin-host.js'
 import type { prepareRun } from './prepare.js'
 
 /**
@@ -100,14 +100,18 @@ export function placeTasks(
   }
   for (const node of nodes.values()) {
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
-    const executor = selectExecutor(executors, {
-      taskId: node.id,
-      projectName: node.projectName,
-      projectDir: node.projectDir,
-      command: node.config.exec!.command,
-      pinnedLocal: pinned.has(node.id),
-      cacheable: node.config.cache !== undefined,
-    })
+    const executor = selectExecutor(
+      executors,
+      {
+        taskId: node.id,
+        projectName: node.projectName,
+        projectDir: node.projectDir,
+        command: node.config.exec!.command,
+        pinnedLocal: pinned.has(node.id),
+        cacheable: node.config.cache !== undefined,
+      },
+      executorLabel,
+    )
     placements.executors.set(node.id, executor)
     if (node.config.exec?.remote === 'only') {
       // A pinned 'only' task (it transitively depends on a persistent one)
