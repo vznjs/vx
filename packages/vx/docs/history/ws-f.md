@@ -191,3 +191,12 @@ F-15. vx-reapi heard nothing of the run stopping: on Ctrl-C vx waited on the
 remote Execute as long as the action ran (forever on a stalled server).
 H-10's `ExecuteRequest.signal` now cancels the operation stream, and an
 action the stop precedes is not submitted. Row red without the fix.
+
+F-16. vx-otel's `vx.run` span was always status UNSET with no
+`cicd.pipeline.result`, so a red run read as a clean one to a backend; it
+now carries the result (a run stopped with nothing failed is
+`cancellation`) and ERROR when red. Row red without the fix. From a
+mutation sweep of `otlp.ts` and `plugin.ts` (238 mutants, 34 survived):
+rows now hold header `=` padding, `OTEL_SDK_DISABLED` case, and per-signal
+header and option-over-env precedence. Not taken: `OTEL_EXPORTER_OTLP_PROTOCOL`,
+`_TIMEOUT` and `OTEL_RESOURCE_ATTRIBUTES` are not read (JSON only).

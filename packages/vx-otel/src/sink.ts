@@ -20,7 +20,7 @@ import {
   type OtlpSpan,
   runSpanAttributes,
   SPAN_KIND_INTERNAL,
-  STATUS_UNSET,
+  runStatusCode,
   taskSpanAttributes,
   taskStatusCode,
 } from './otlp.js'
@@ -257,7 +257,7 @@ export class OtelSink implements TelemetrySink {
         startTimeUnixNano: start,
         endTimeUnixNano: end,
         attributes: runSpanAttributes(this.run, this.summary),
-        status: { code: STATUS_UNSET },
+        status: { code: runStatusCode(this.summary) },
       })
     }
     const vxVersion = this.run?.vxVersion ?? '0.0.0'

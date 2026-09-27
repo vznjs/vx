@@ -1387,3 +1387,94 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
     })
   })
 })
+
+// F-16: the root span was always UNSET with no `cicd.pipeline.result`, so a
+// red run read as a clean one to a backend.
+describe('the run span says how the run ended', () => {
+  const task = (status: TaskTelemetry['status']): TaskTelemetry => ({
+    taskId: 'a#build',
+    project: 'a',
+    task: 'build',
+    status,
+    cacheSource: 'miss',
+    exitCode: status === 'failed' ? 1 : 0,
+    durationMs: 40,
+  })
+  const ended = async (exitOk: boolean, abortedCount: number, tasks: TaskTelemetry[]) => {
+    const { cfg, calls } = mkConfig({ metricsEnabled: false, logsEnabled: false })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 1, ts: 1000 } as TelemetryRecord)
+    sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
+    sink.onRunSummary({ ...summaryFor(RUN, tasks), exitOk, abortedCount })
+    await sink.flush()
+    const spans = (
+      calls[0]!.body as {
+        resourceSpans: {
+          scopeSpans: {
+            spans: {
+              name: string
+              kind: number
+              status: { code: number }
+              attributes: { key: string; value: { stringValue?: string } }[]
+            }[]
+          }[]
+        }[]
+      }
+    ).resourceSpans[0]!.scopeSpans[0]!.spans
+    const root = spans.find((s) => s.name === 'vx.run')!
+    const result = root.attributes.find((a) => a.key === 'cicd.pipeline.result')?.value.stringValue
+    return [root.status.code, result, root.kind]
+  }
+
+  it('green, failed, stopped, and red with nothing failed', async () => {
+    expect([
+      await ended(true, 0, [task('success')]),
+      await ended(false, 0, [task('failed')]),
+      await ended(false, 1, [task('aborted')]),
+      await ended(false, 0, []),
+    ]).toEqual([
+      [0, 'success', 1],
+      [2, 'failure', 1],
+      [2, 'cancellation', 1],
+      [2, 'failure', 1],
+    ])
+  })
+})
+
+// Rows the vx-otel mutation sweep found missing (F-16).
+describe('config the sweep left unpinned', () => {
+  it('a header value keeps an `=` past the first (base64 padding)', () => {
+    expect(parseOtlpHeaders('authorization=Basic%20dXNlcjpwYXNz==,x=a=b')).toEqual({
+      authorization: 'Basic dXNlcjpwYXNz==',
+      x: 'a=b',
+    })
+  })
+
+  it('OTEL_SDK_DISABLED is read case- and space-insensitively', () => {
+    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+    expect(
+      ['TRUE', ' true ', 'false'].map((v) =>
+        resolveOtelConfig({}, { ...base, OTEL_SDK_DISABLED: v }) === undefined ? 'off' : 'on',
+      ),
+    ).toEqual(['off', 'off', 'on'])
+  })
+
+  it('each signal reads its own headers variable; options top env for endpoint and name', () => {
+    const c = resolveOtelConfig(
+      { logsEndpoint: 'http://opt/logs', serviceName: 'svc-opt' },
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://env/logs',
+        OTEL_SERVICE_NAME: 'svc-env',
+        OTEL_EXPORTER_OTLP_TRACES_HEADERS: 't=1',
+        OTEL_EXPORTER_OTLP_METRICS_HEADERS: 'm=1',
+        OTEL_EXPORTER_OTLP_LOGS_HEADERS: 'l=1',
+      },
+    )!
+    expect([c.logsUrl, c.serviceName, c.signalHeaders]).toEqual([
+      'http://opt/logs',
+      'svc-opt',
+      { traces: { t: '1' }, metrics: { m: '1' }, logs: { l: '1' } },
+    ])
+  })
+})
