@@ -64,7 +64,8 @@ readers that reach it here.
   the same check on both paths.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
-  alike (D-5).
+  alike (D-5). The awaited value is checked again, a workspace
+  config's too (D-6).
 - Validation runs on whichever object the two paths produced, so a
   malformed config reports the identical `UserError` either way.
 - A value JSON cannot carry (a function, `NaN`, a `Map`, …) is refused

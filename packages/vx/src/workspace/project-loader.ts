@@ -431,6 +431,11 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     const bytes = await readOnce(undefined, configPath)
     if (bytes === null) continue
     const mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    // Checked again once awaited, as a project config is: a Promise default
+    // passed the first check, and `Promise.resolve(null)` crashed the
+    // validator with a stack while `Promise.resolve(42)` loaded as no
+    // config at all (D-6).
+    assertDefaultObject(mod, 'Workspace', configPath)
     validateWorkspace(mod, configPath)
     return mod
   }
