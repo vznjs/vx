@@ -27,6 +27,26 @@ interface WhyArgs {
   error?: string
 }
 
+/**
+ * What to do about a changed key component, by the kind `cache/key-fold.ts`
+ * captures. Held to that file's kinds in both directions by
+ * `tests/why.test.ts`.
+ */
+export const WHAT_TO_DO: Readonly<Record<string, string>> = {
+  file: 'an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files',
+  env: "the variable's value moved; one the task does not read belongs out of cache.inputs.env",
+  runtime: 'the command printed something else; drop timestamps and paths from its output',
+  'ws-runtime':
+    'the workspace command printed something else; drop timestamps and paths from its output',
+  forward: 'the arguments after -- differ; the same arguments share one entry',
+  package: "the project's package.json changed (a dependency, version or script)",
+  workspace:
+    'a lockfile or root manifest changed, which re-keys every task; a lockfile plugin keys each project on its own dependencies',
+  config: "the task's evaluated config changed (its vx.config or a file that imports)",
+  upstream: "a dependency's key moved; `vx why <that task>` says why",
+  plugin: "a key plugin's material changed; that plugin decides what it folds",
+}
+
 export function parseWhyArgs(args: readonly string[]): WhyArgs {
   const out: WhyArgs = { format: 'pretty' }
   for (let i = 0; i < args.length; i++) {
@@ -203,6 +223,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
               ? `- ${e.before}`
               : `${e.before} → ${e.after}`
         lines.push(`    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${e.name}  ${beforeAfter}`)
+      }
+      const kinds = [...new Set(diff.entries.map((e) => e.kind))].filter((k) => k in WHAT_TO_DO)
+      if (kinds.length > 0) {
+        lines.push('', '  what to do:')
+        for (const k of kinds) lines.push(`    ${k.padEnd(kindW)}  ${WHAT_TO_DO[k]}`)
       }
     } else if (why.hashChanged === true) {
       lines.push(`  detail     ${diff.note}`)
