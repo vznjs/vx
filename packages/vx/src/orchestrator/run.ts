@@ -730,13 +730,13 @@ async function runOnBus(
         `[vx] --exclude-dependencies: ${excluded.unsaved} cached task(s) build on a skipped dependency; what they build is not saved`,
       )
     }
-    const isTainted = taintTracker(options.continueMode === 'always', excluded.seeds)
+    const taint = taintTracker(options.continueMode === 'always', excluded.seeds, nodes)
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
-      const taint = isTainted(node, upstream)
+      const tainted = taint.judge(node, upstream)
       return {
         node,
         upstream,
@@ -760,7 +760,7 @@ async function runOnBus(
         gitFilesCache,
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),
-        ...(taint ? { taintedUpstream: true } : {}),
+        ...(tainted ? { taintedUpstream: true } : {}),
         ...(dependedOn.has(node.id) ? {} : { noDependants: true as const }),
         fingerprintWatch,
         ...(sandboxArmer !== null ? { armSandbox: () => sandboxArmer.arm() } : {}),
@@ -801,6 +801,7 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
+        taint.settled(o)
         log.taskComplete(o.node, o)
         narrowDemand(o.node.id)
       },

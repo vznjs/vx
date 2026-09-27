@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { gitInitCommit } from './helpers/workspace.js'
+import { gitIn, gitInitCommit } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -104,5 +104,92 @@ describe('--continue=always never caches a task built behind a failure', () => {
       'cache-hit',
       'cache-hit',
     ])
+  })
+})
+
+// C-1: the taint crossed a failure only when the task between it and the
+// dependent executed. A confirmed local hit runs on the restore tier, ahead
+// of its deps, so it was judged against holes and passed nothing on:
+// `ship` saved the failed `gen`'s partial output on its healthy key, and the
+// next healthy run restored PARTIAL. The same graph with `pack` executing
+// (its input edited) never saved `ship`.
+describe('--continue=always carries the taint through a restore-tier hit', () => {
+  it('a dependent of a hit whose dep failed is not saved, so a healthy run rebuilds it', async () => {
+    const dir = path.join(root, 'packages', 'p')
+    // `gen` has no cache, so its key folds its project's tree: it lives
+    // apart from what `pack` and `ship` write, and its flag and its output
+    // sit outside the workspace, so failing moves no key: `pack` stays a
+    // local hit and the healthy run asks for the same `ship` key.
+    const genDir = path.join(root, 'packages', 'g')
+    const flag = `${root}.flag`
+    const gen = `${root}.gen.txt`
+    await mkdir(genDir)
+    await writeFile(path.join(genDir, 'package.json'), '{"name":"g"}')
+    await writeFile(
+      path.join(genDir, 'vx.config.mjs'),
+      `export default {
+  tasks: {
+    // Slow to fail: the hit below restores while gen is still running.
+    gen: { exec: { command: 'if [ -f ${flag} ]; then sleep 0.3; echo PARTIAL > ${gen}; exit 1; fi; echo GOOD > ${gen}' } },
+  },
+}
+`,
+    )
+    await writeFile(path.join(dir, 'src', 'p.txt'), 'p\n')
+    await writeFile(path.join(dir, 'src', 's.txt'), 's1\n')
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default {
+  tasks: {
+    pack: {
+      dependsOn: ['g#gen'],
+      exec: { command: 'echo packed > pack.txt' },
+      cache: { inputs: { files: ['src/p.txt'] }, outputs: { files: ['pack.txt'] } },
+    },
+    ship: {
+      dependsOn: ['pack'],
+      exec: { command: 'cat ${gen} > ship.txt' },
+      cache: { inputs: { files: ['src/s.txt'] }, outputs: { files: ['ship.txt'] } },
+    },
+  },
+}
+`,
+    )
+    // Committed: a key over untracked files is not stable, and only a
+    // stable hit runs on the restore tier.
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'restore-tier fixture')
+    const runShip = (continueMode?: 'always') =>
+      run({
+        cwd: root,
+        tasks: ['ship'],
+        projects: ['p'],
+        ...(continueMode !== undefined ? { continueMode } : {}),
+        log: silent,
+        handleSignals: false,
+      })
+    try {
+      expect((await runShip()).ok).toBe(true)
+      expect(statusOf(await runShip(), 'p#pack')).toBe('cache-hit')
+
+      await writeFile(path.join(dir, 'src', 's.txt'), 's2\n')
+      await writeFile(flag, '')
+      const failing = await runShip('always')
+      expect(['g#gen', 'p#pack', 'p#ship'].map((id) => statusOf(failing, id))).toEqual([
+        'failed',
+        'cache-hit',
+        'success',
+      ])
+
+      await unlink(flag)
+      await rm(path.join(dir, 'ship.txt'))
+      const healthy = await runShip()
+      expect(statusOf(healthy, 'p#ship')).toBe('success')
+      expect(await Bun.file(path.join(dir, 'ship.txt')).text()).toBe('GOOD\n')
+    } finally {
+      await rm(flag, { force: true })
+      await rm(gen, { force: true })
+    }
   })
 })

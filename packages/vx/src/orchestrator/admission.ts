@@ -25,32 +25,87 @@ import { executeTask, type ExecuteArgs } from './execute-task.js'
 import type { ShortCircuit } from './local-shortcircuit.js'
 import { computeTaskHash, type ComputeHashArgs } from './task-hash.js'
 
+/** What `taintTracker` answers per dispatch, and what it learns per finish. */
+export interface TaintTracker {
+  /** Whether `node`, dispatched with these `upstream` outcomes, builds on bytes nothing vouches for. */
+  judge: (node: TaskNode, upstream: TaskOutcome[]) => boolean
+  /** Every settled outcome, the scheduler's `onFinish`. */
+  settled: (outcome: TaskOutcome) => void
+}
+
+const UNTAINTED: TaintTracker = { judge: () => false, settled: () => {} }
+
 /**
  * Records which tasks ran behind a failure, or on the key of a dependency
  * that did not run (`seeds`), and answers, per task, whether this one does.
  * Disabled (always `false`, nothing recorded) unless the run's
  * `continueMode` is `'always'` or there is a seed.
+ *
+ * A task's taint is read from its deps' SETTLED outcomes, not from what it
+ * saw at dispatch: a restore-tier hit dispatches before its deps settle,
+ * so it saw holes where the failure would be, and a dependent that asked
+ * "was that hit tainted?" heard no. Under `--continue=always` the
+ * dependent then saved the partial tree on its healthy key, and the next
+ * healthy run replayed it (C-1). A dependent is released only once the
+ * hit's own deps have settled too (scheduler.ts, item 963), so by the time
+ * anyone asks, the answer is complete.
  */
 export function taintTracker(
   continueAlways: boolean,
   seeds: ReadonlySet<string>,
-): (node: TaskNode, upstream: TaskOutcome[]) => boolean {
-  if (!continueAlways && seeds.size === 0) return () => false
-  const tainted = new Set<string>()
-  return (node, upstream) => {
-    const taint =
-      seeds.has(node.id) ||
-      upstream.some(
-        // A restore-tier task may run before its deps and see holes here;
-        // it never saves anyway (a hit restores), so a hole is not taint.
-        (u) =>
-          u !== undefined &&
-          (tainted.has(u.node.id) ||
-            (continueAlways &&
-              (u.status === 'failed' || u.status === 'aborted' || u.status === 'skipped'))),
-      )
-    if (taint) tainted.add(node.id)
-    return taint
+  nodes: ReadonlyMap<string, TaskNode>,
+): TaintTracker {
+  if (!continueAlways && seeds.size === 0) return UNTAINTED
+  const outcomes = new Map<string, TaskOutcome>()
+  const memo = new Map<string, boolean>()
+  const failed = (u: TaskOutcome): boolean =>
+    continueAlways && (u.status === 'failed' || u.status === 'aborted' || u.status === 'skipped')
+  const through = (u: TaskOutcome | undefined): boolean =>
+    u !== undefined && (failed(u) || taintOf(u.node.id))
+  // Post-order over the settled deps with an explicit stack: a chain of
+  // restore-tier hits is judged in one ask, and a recursion would take a
+  // frame per hop. Memoized once every dep has settled; until then the
+  // answer may still grow.
+  const taintOf = (root: string): boolean => {
+    const known = memo.get(root)
+    if (known !== undefined) return known
+    const local = new Map<string, boolean>()
+    const valueOf = (id: string): boolean | undefined => memo.get(id) ?? local.get(id)
+    const stack = [root]
+    while (stack.length > 0) {
+      const id = stack[stack.length - 1]!
+      if (valueOf(id) !== undefined) {
+        stack.pop()
+        continue
+      }
+      const deps = seeds.has(id) ? [] : (nodes.get(id)?.deps ?? [])
+      const next = deps.find((d) => {
+        const u = outcomes.get(d)
+        return u !== undefined && !failed(u) && valueOf(d) === undefined
+      })
+      if (next !== undefined) {
+        stack.push(next)
+        continue
+      }
+      stack.pop()
+      const taint =
+        seeds.has(id) ||
+        deps.some((d) => {
+          const u = outcomes.get(d)
+          return u !== undefined && (failed(u) || valueOf(d) === true)
+        })
+      local.set(id, taint)
+      if (taint || deps.every((d) => outcomes.has(d))) memo.set(id, taint)
+    }
+    return valueOf(root)!
+  }
+  return {
+    // A restore-tier task may run before its deps and see holes here; it
+    // never saves anyway (a hit restores), so a hole is not taint.
+    judge: (node, upstream) => seeds.has(node.id) || upstream.some(through),
+    settled: (outcome) => {
+      outcomes.set(outcome.node.id, outcome)
+    },
   }
 }
 

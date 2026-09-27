@@ -749,6 +749,52 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(order.indexOf('start-p#deploy')).toBeGreaterThan(order.indexOf('end-q#check'))
   })
 
+  // The item-963 block reaches past one hop (C-1's sweep: each held by no
+  // row, and each let `deploy` run green beside a failed transitive dep):
+  // through a skipped exec task, through a second hit, and from a dep a
+  // signal the run did not send left `aborted`.
+  for (const [shape, edges, tier, statusOf] of [
+    [
+      'a skipped task between the failure and the hit',
+      [['q#check'], ['q#mid', 'q#check'], ['p#build', 'q#mid'], ['p#deploy', 'p#build']],
+      ['p#build'],
+      (id: string) => (id === 'q#check' ? 'failed' : id === 'p#build' ? 'cache-hit' : 'success'),
+    ],
+    [
+      'two hits in a row after the failure',
+      [['q#check'], ['p#b1', 'q#check'], ['p#b2', 'p#b1'], ['p#deploy', 'p#b2']],
+      ['p#b1', 'p#b2'],
+      (id: string) =>
+        id === 'q#check' ? 'failed' : id.startsWith('p#b') ? 'cache-hit' : 'success',
+    ],
+    [
+      'an aborted dep of the hit',
+      [['q#check'], ['p#build', 'q#check'], ['p#deploy', 'p#build']],
+      ['p#build'],
+      (id: string) => (id === 'q#check' ? 'aborted' : id === 'p#build' ? 'cache-hit' : 'success'),
+    ],
+  ] as const) {
+    it(`the block passes a restore-tier hit down: ${shape}`, async () => {
+      const ran: string[] = []
+      const out = await runGraph({
+        nodes: nodes(...edges.map(([id, ...deps]) => node(id!, [...deps]))),
+        concurrency: 4,
+        restoreTier: new Set(tier),
+        execute: async (n) => {
+          ran.push(n.id)
+          if (n.id === 'q#check') await new Promise((r) => setTimeout(r, 30))
+          const status = statusOf(n.id) as TaskOutcome['status']
+          return { node: n, status, exitCode: status === 'failed' ? 1 : 0, durationMs: 0 }
+        },
+      })
+      expect({
+        status: out.get('p#deploy')?.status,
+        blockedBy: out.get('p#deploy')?.blockedBy,
+        ran: ran.includes('p#deploy'),
+      }).toEqual({ status: 'skipped', blockedBy: 'q#check', ran: false })
+    })
+  }
+
   it("a failed dep of a restore-tier task skips the task's dependents, naming the root (item 963)", async () => {
     // The hit stays a hit (its key is its deps' inputs, not their outcome);
     // deploy ran green after check failed.
