@@ -1146,8 +1146,11 @@ export class Cache implements CacheLayer {
       }
       // What is on disk, not what is in the archive: a directory standing
       // where the entry holds a file, or a file where it needs a directory.
-      // The clean removes everything the output globs cover, so this is a
-      // stray they do not — name it as such, not as a corrupt artifact. A
+      // The clean removes the FILES the output globs select and the
+      // directories that removal emptied, so this is a path it left: one
+      // the globs do not cover, or an empty directory where a file goes,
+      // which `dist/**` covers and the clean does not take (item 1094).
+      // Named as such, not as a corrupt artifact. A
       // link on the way never lands here: the extractor writes through one
       // that stays in the project, dangling or not, and names one that
       // leaves it or loops (item 748).
@@ -1155,7 +1158,7 @@ export class Cache implements CacheLayer {
       if (code === 'EISDIR' || code === 'ENOTDIR' || code === 'EEXIST' || code === 'ENOTEMPTY') {
         throw new UserError(
           `restore of ${hash} into ${projectDir} was blocked by what is on disk (${code}: ${(err as Error).message}). ` +
-            `Declared outputs are wiped before a restore, so this is a path the output globs do not cover — remove it and re-run.`,
+            `The clean before a restore removes the files the output globs select, not a directory standing where the entry holds a file, nor a path the globs do not cover — remove it and re-run.`,
         )
       }
       // A legal name under a destination deep enough that the two together
