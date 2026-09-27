@@ -516,6 +516,44 @@ describe('warm hits through run() with the short-circuit', () => {
     expect(existsSync(path.join(dist(), 'sub/stray.js'))).toBe(false)
   })
 
+  // A sweep of miss-save.ts (A-24): the snapshot's count check and the push
+  // itself held no row. Removing the count let a walk that saw FEWER files
+  // than the entry's rows vouch for the tree, so the next hit skipped the
+  // restore and the deleted file stayed gone.
+  const buildThen = (post: string) =>
+    writeFile(
+      path.join(root, 'packages/a/vx.config.mjs'),
+      `export default { tasks: {
+        build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+        post: { dependsOn: ['build'], exec: { command: '${post}sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } },
+      } }\n`,
+    )
+  const recordedForBuild = () => {
+    const c = db()
+    const hash = (
+      c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as { hash: string }
+    ).hash
+    const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
+    c.close()
+    return recorded
+  }
+
+  it('a run records the saved tree at run end', async () => {
+    await buildThen('')
+    expect((await run({ cwd: root, tasks: ['post'], log, handleSignals: false })).ok).toBe(true)
+    expect(recordedForBuild()).toEqual(['dist', 'dist/sub'])
+  })
+
+  it('an entry file removed before run end is not vouched for; the next hit restores it', async () => {
+    await buildThen('rm dist/sub/in.js && ')
+    expect((await run({ cwd: root, tasks: ['post'], log, handleSignals: false })).ok).toBe(true)
+    expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(false)
+    expect(recordedForBuild()).toEqual([])
+    const again = await runBuild()
+    expect(again.outcomes.find((o) => o.node.id === 'a#build')!.status).toBe('cache-hit')
+    expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(true)
+  })
+
   // Next 27: nx() maps an extensionless output to `<dir>/**`, which saves
   // nothing under a FILE; the bare path saves either, and now keeps the
   // directory stats a `<dir>/**` glob gets.
