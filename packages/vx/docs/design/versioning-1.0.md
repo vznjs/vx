@@ -208,6 +208,29 @@ Plugin authors code against the contract above and nothing else.
   native build, and a Windows-only bug is out of scope unless it also
   reproduces under WSL.
 
+## Releasing 1.0
+
+In order; each step says how it is checked.
+
+1. **Milestone 3 is done and the soak is clean.** 3.1–3.4 are merged
+   (`roadmap-1.0.md`); the soak (3.5) is the owner's call.
+2. **The contract records are current.** The gate runs every
+   `tests/contract-*.test.ts`; each compares the code with its record
+   under `tests/contract/`, so a green gate means no surface moved
+   unrecorded. This page's § What 1.0 freezes is held to the same
+   records by `contract-versioning-doc.test.ts`, which also checks that
+   every record the contract table names exists.
+3. **Every change since the last release is in the notes.**
+   `git diff --stat <last-tag> -- packages/vx/tests/contract/` lists the
+   records that moved; each move is a line under "Breaking" (a removal
+   or change) or "Added".
+4. **Every plugin is on npm at the core's version.** The release's
+   `npm.yml` run is green through all twelve packages.
+5. **The README says 1.0.** Its status section drops "Pre-alpha" and
+   points here.
+6. **Tag `v1.0.0`.** `release.yml` builds and signs the binaries and
+   `npm.yml` publishes.
+
 ## When this takes effect
 
 The owner tags 1.0 once roadmap milestone 3 is done and the soak (3.5)
