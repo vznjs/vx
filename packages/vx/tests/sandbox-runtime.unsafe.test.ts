@@ -45,6 +45,8 @@ import { isAlive, waitForDead } from './helpers/alive.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import * as violations from '../src/exec/sandbox-violations.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
+import { sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
+import type { TaskNode } from '../src/graph/index.js'
 
 const TIMEOUT = 60_000
 
@@ -1180,6 +1182,64 @@ describe.skipIf(!available)('a cache declaration grants the sandbox nothing', ()
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
       expectOk(r, fixture)
       expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe('hi')
+    },
+    TIMEOUT,
+  )
+})
+
+// B-4: item 1010 walled a root project off from its nested projects,
+// `.git` and `.vx` on Linux only (the punch is a mount layout), so under
+// seatbelt a root task's `read: ['.']` still read a nested project whose
+// files its key excludes. Driven through the request core builds, on both
+// platforms: a wall is unreadable, the root's own file is not.
+describe.skipIf(!available)("a root project's read grant stops at the walls", () => {
+  let root = ''
+  beforeEach(async () => {
+    root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-walls-')))
+    await mkdir(path.join(root, 'packages', 'b'), { recursive: true })
+    await mkdir(path.join(root, '.git'))
+    await mkdir(path.join(root, 'src'))
+    await writeFile(path.join(root, 'packages', 'b', 'x.txt'), 'nested')
+    await writeFile(path.join(root, '.git', 'HEAD'), 'ref')
+    await writeFile(path.join(root, 'src', 'y.txt'), 'own')
+    await initSandbox()
+  })
+  afterEach(async () => {
+    await resetSandbox()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a nested project and .git are unreadable, the root’s own file is not',
+    async () => {
+      const node = {
+        id: 'root#build',
+        projectName: 'root',
+        projectDir: root,
+        taskName: 'build',
+        config: { exec: { command: 'true' } },
+      } as unknown as TaskNode
+      const { sandbox } = await sandboxRequestFor(
+        node,
+        { allow: { read: ['.'] } },
+        root,
+        undefined,
+        [path.join(root, 'packages', 'b')],
+      )
+      const cat = async (file: string) => {
+        const r = await runSandboxed({
+          command: `cat ${file}`,
+          cwd: root,
+          env: process.env,
+          ...sandbox,
+        })
+        return [file, r.exitCode === 0 ? r.stdout : 'refused']
+      }
+      expect(await Promise.all(['src/y.txt', 'packages/b/x.txt', '.git/HEAD'].map(cat))).toEqual([
+        ['src/y.txt', 'own'],
+        ['packages/b/x.txt', 'refused'],
+        ['.git/HEAD', 'refused'],
+      ])
     },
     TIMEOUT,
   )
