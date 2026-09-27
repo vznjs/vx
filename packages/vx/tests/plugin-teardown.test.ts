@@ -512,6 +512,34 @@ describe('the lifecycle is reached on a run that never started', () => {
     expect(seen()).toEqual(['a-teardown', 'b-teardown'])
   })
 
+  it('a stage that throws inside prepareRun tears every plugin down (item 1029)', async () => {
+    // The factories ran and the cache was open; the throw left both.
+    await withPlugins(
+      `graph() { throw new Error('graph boom') },
+       cache(ctx) {
+         return new Proxy(ctx.localCache, {
+           get(target, prop) {
+             if (prop === 'close') return () => { globalThis.__vxAbort.push('close'); target.close() }
+             const value = Reflect.get(target, prop, target)
+             return typeof value === 'function' ? value.bind(target) : value
+           },
+         })
+       },`,
+    )
+    expect(await settle(runT())).toContain('graph boom')
+    expect(
+      await settle(planRun({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })),
+    ).toContain('graph boom')
+    expect(seen()).toEqual([
+      'a-teardown',
+      'b-teardown',
+      'close',
+      'a-teardown',
+      'b-teardown',
+      'close',
+    ])
+  })
+
   it('a plan tears every plugin down', async () => {
     await withPlugins('')
     await planRun({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })
