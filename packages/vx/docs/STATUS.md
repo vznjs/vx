@@ -203,6 +203,17 @@ test is telling the truth.
       - Next: `--exclude-dependencies` dropping an edge to a task in the
         same run, the `graph` stage skipping the builder's checks, and the
         config key order (a false miss).
+980.  DONE (2026-09-27, the graph review's lead 2). Under
+      `--exclude-dependencies`, `vx run build --all` dropped `a#build`'s
+      `^build` edge though `b#build` ran in the same run: the two ran
+      unordered, and `a` read `b`'s output mid-rewrite (a failure) or the
+      run before's (green, on stale bytes).
+      - Fix (`task-graph.ts`): an edge to a task that stays scheduled is
+        kept; only edges to tasks that leave the schedule are dropped and
+        keyed as before. `cli.md` says so.
+      - Row: `task-graph.test.ts` › excludeDependencies keeps an edge to a
+        task the run schedules anyway, under `'all'` and a name list. Red
+        without the fix.
 
 ## In flight
 
