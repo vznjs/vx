@@ -648,6 +648,21 @@ test is telling the truth.
         `invocations` and a `SCHEMA_VERSION` bump that drops every index;
         a shared cache is a choice the user makes, so the note is the fix.
 
+1013. DONE (2026-09-27, a lockfile review agent's lead 1). `reachDigests`
+      folded a dependency cycle from its members' material and its child
+      components, never its edges, and every member shares the cycle's
+      digest. With `x`, `y@1.0.0`, `y@1.1.0` and `z` in one cycle, an
+      importer moved from `y@1.0.0` to `y@1.1.0` (the lockfile side of
+      `pnpm update y`) kept `a#build`'s key and `--affected` said
+      "nothing affected"; two members swapping targets did the same.
+      - Fix (`lockfile-claim.ts`): a member folds as its material and the
+        sorted materials its edges land on (a self-loop reaches nothing new
+        and is left out). `@vzn/vx-lockfile`'s `DIGEST_VERSION` 4 → 5 retires
+        the memos. `modules/lockfile-claim.md` says so.
+      - Row: `lockfile-claim.test.ts` › moves when an edge is retargeted
+        inside a cycle (the importer's edge and a swap), with a reordering
+        as the control. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

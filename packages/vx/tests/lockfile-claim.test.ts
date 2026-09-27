@@ -247,6 +247,29 @@ describe('reachDigests', () => {
     expect(b[0]).toBe(a[2])
   })
 
+  // Every member of a cycle shares one digest, which folded only the
+  // members' material: an importer moved from `y@1.0.0` to `y@1.1.0`, both
+  // in one cycle, kept its key, and so did two members swapping their
+  // targets — a stale hit under a `pnpm update` (item 1013).
+  it('moves when an edge is retargeted inside a cycle', () => {
+    // 0 importer; 1 x, 2 y1, 3 y2, 4 z — one cycle: x→y1,z; z→y2,x; y1→x; y2→x.
+    const cyc = (importer: number, x: number, z: number) =>
+      reachDigests({
+        material: ['imp', 'x', 'y1', 'y2', 'z'],
+        edges: [[importer], [x, 4], [1], [1], [z, 1]],
+      })
+    const before = cyc(2, 2, 3)
+    expect(cyc(3, 2, 3)[0]).not.toBe(before[0])
+    expect(cyc(2, 3, 2)[1]).not.toBe(before[1])
+    // CONTROL: the same edges in another order.
+    expect(
+      reachDigests({
+        material: ['imp', 'x', 'y1', 'y2', 'z'],
+        edges: [[2], [4, 2], [1], [1], [1, 3]],
+      })[0],
+    ).toBe(before[0])
+  })
+
   it('a member of a cycle shares its component digest', () => {
     const d = reachDigests(graph(['a', 'b', 'c', 'd']))
     expect(d[1]).toBe(d[2])

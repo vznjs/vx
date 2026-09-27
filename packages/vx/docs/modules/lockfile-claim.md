@@ -78,8 +78,12 @@ Both are on the `@vzn/vx` façade.
 `reachDigests` is the digest the parsers share: one hash per node over
 everything the node reaches, Merkle-style, with the strongly connected
 component as the unit (lockfiles carry cycles) — iterative Tarjan,
-children first, each component folding its members' material and its
-child components' digests, both sorted. O(nodes + edges): 1000 importers
+children first, each component folding its members and its child
+components' digests, both sorted. A member folds as its material AND the
+materials its edges land on (a self-loop aside): every member shares the
+component's digest, so a retarget between two members — an importer moved
+from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013. `DIGEST_VERSION` 5 retires the memos that folded the old way.
+O(nodes + edges): 1000 importers
 over 3000 packages digest in ~20 ms where one traversal per importer
 took 400.
 
