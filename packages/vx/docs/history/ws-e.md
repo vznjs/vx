@@ -180,3 +180,14 @@ task picked`; neither prints a stack. Row in
   (`plugin '<name>' failed in command '<verb>': …`), as the other
   stages name a crash; a verb's own `UserError` keeps its one line.
   Row in `tests/plugin-commands.test.ts`.
+- E-26 — Item 948's row went red on CI twice (PRs 1125, 1203; ~1.8 s,
+  so after its wait). The error body never reached the log (the gate
+  prints a failed shard's last lines), and 60+ local runs stayed green:
+  sandboxed, as non-root, under load, all 12 shards at once, and on the
+  tree before B-9. Refuted: an `afterEach` ESRCH (the servers are gone
+  before it runs, even with a 1.5 s window forced), a split read of the
+  notice (Bun drains the pipe whole), the server-less wording (`held` is
+  unset only inside a running cycle). Cause unproven. The row no longer
+  SIGKILLs vx mid-storm in its teardown: it stops watch with SIGTERM,
+  asserts exit 0, and asserts no server survives (red when the stop
+  skips the held server).
