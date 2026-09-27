@@ -103,6 +103,13 @@ export interface ExecuteArgs {
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
   /**
+   * The run's stop (a process signal or the embedder's abort). An attempt
+   * that ends while it is aborted is `aborted`, whatever its exit: a task
+   * that traps the forwarded SIGINT and exits 0 did not finish on its own
+   * terms (item 962).
+   */
+  stopSignal?: AbortSignal
+  /**
    * Registry the orchestrator owns. For each persistent task we
    * spawn, we stash the subprocess handle here so the orchestrator
    * can SIGTERM it once the rest of the graph finishes.
@@ -768,13 +775,19 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     result = a.result
     effectiveExitCode = a.exitCode
 
-    // A child killed by a shutdown signal (Ctrl-C / SIGTERM teardown)
-    // never finished on its own terms — revert it to aborted so it's
-    // neither cached, counted, shown, nor RETRIED (the run is tearing
-    // down). SIGKILL (OOM, forced) stays a real failure. A timeout also
-    // SIGTERMs, but `timedOut` marks it as our own deadline, not a
-    // shutdown — so it stays a real (retryable) failure.
-    if ((result.signal === 'SIGINT' || result.signal === 'SIGTERM') && !result.timedOut) {
+    // An attempt that ended in a shutdown never finished on its own terms —
+    // it is aborted, so it is neither cached, counted, shown, nor RETRIED.
+    // Two ways to know: the child died of SIGINT / SIGTERM (Ctrl-C, or a
+    // `kill` vx never saw; a timeout also SIGTERMs, but `timedOut` marks it
+    // as our own deadline, a real and retryable failure), or the RUN is
+    // stopping. The child alone was not enough: one that traps the
+    // forwarded SIGINT and exits 0 was cached as a success with its partial
+    // outputs, one that exits 1 was retried after Ctrl-C, and one SIGKILLed
+    // at the end of the grace read as an OOM failure (item 962).
+    const shutdown =
+      args.stopSignal?.aborted === true ||
+      ((result.signal === 'SIGINT' || result.signal === 'SIGTERM') && !result.timedOut)
+    if (shutdown) {
       return {
         node,
         status: 'aborted',

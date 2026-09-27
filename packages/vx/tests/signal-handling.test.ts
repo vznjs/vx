@@ -403,6 +403,72 @@ describe('signal handling during vx run (e2e)', () => {
     expect(await waitForDead(pid, 3_000)).toBe(true)
   }
 
+  // A task that traps the forwarded SIGINT and exits 0 has no signal of its
+  // own, so it read as a success: its partial outputs were cached under the
+  // key a healthy run derives, and the next run restored them (item 962).
+  // The run's stop decides, not the child's exit.
+  it(
+    'a task that traps SIGINT and exits 0 is aborted, not cached',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { t: {
+          cache: { inputs: { files: ['in.txt'] }, outputs: { files: ['out/**'] } },
+          exec: { command: "trap 'exit 0' INT; mkdir -p out; echo partial > out/x; if [ ! -f done.flag ]; then echo $$ > pid.txt; while :; do sleep 0.05; done; fi; echo full > out/x" },
+        } } }`,
+      )
+      await Bun.write(path.join(dir, 'in.txt'), 'in')
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+        cwd: fixture.root,
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      await rm(path.join(dir, 'out'), { recursive: true, force: true })
+      await Bun.write(path.join(dir, 'done.flag'), '')
+      const again = Bun.spawnSync([process.execPath, BIN, 'run', 't', '--all'], {
+        cwd: fixture.root,
+        env: { ...process.env, NO_COLOR: '1', CI: '' },
+      })
+      expect(again.exitCode).toBe(0)
+      expect((await Bun.file(path.join(dir, 'out', 'x')).text()).trim()).toBe('full')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task with retries that exits 1 on SIGINT is not attempted again',
+    async () => {
+      // It spawned two more attempts after the Ctrl-C, and vx left only when
+      // the handler's bound forced it, with no summary (item 962).
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { t: {
+          exec: { retries: 3, command: "trap 'exit 1' INT TERM; echo attempt >> attempts.txt; echo $$ > pid.txt; while :; do sleep 0.05; done" },
+        } } }`,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+        cwd: fixture.root,
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      await Bun.sleep(300)
+      expect((await Bun.file(path.join(dir, 'attempts.txt')).text()).trim().split('\n')).toEqual([
+        'attempt',
+      ])
+    },
+    TIMEOUT,
+  )
+
   // The foreground keep-alive names the server that ended the session and
   // its code. Once a stop let run() finish its own path (item 849), every
   // Ctrl-C of a dev server printed "exited with code 130" as if it had
@@ -476,7 +542,11 @@ describe('signal handling during vx run (e2e)', () => {
       const out = await new Response(proc.stdout).text()
       // On a line of its own: the frame's header echoes the command too.
       expect(out).toContain('\nEND-OF-BIG\n')
-      expect(out.trimEnd().split('\n').at(-1)).toMatch(/^ *time /)
+      // Then the whole summary: its time line, and the aborted section that
+      // closes it (the trap exited 0 on the stop; item 962).
+      const tail = out.slice(out.indexOf('\nEND-OF-BIG\n'))
+      expect(tail).toMatch(/\n *time /)
+      expect(out.trimEnd().split('\n').at(-1)).toBe('    ✗ app#big — exit 0, nothing cached')
     },
     TIMEOUT,
   )
