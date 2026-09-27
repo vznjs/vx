@@ -495,11 +495,15 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const excludeGlobs = [
-    ...OUTPUT_NEVER,
-    ...boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs),
-  ].map(globFor)
-  const scanned = [...(await scanUnion(asTrees(args.outputs), excludeGlobs, args.projectDir))]
+  const excludeGlobs = OUTPUT_NEVER.map(globFor)
+  const scanned = [
+    ...(await scanUnion(
+      asTrees(args.outputs),
+      excludeGlobs,
+      args.projectDir,
+      inNestedProject(args.projectDir, args.nestedProjectDirs),
+    )),
+  ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
   // DELETES whatever this returns, and `Bun.Glob.scan` happily walks `..` out
   // of its cwd — so the loader's `..`/absolute rejection alone was a single
@@ -891,13 +895,10 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
 
   if (positive.length === 0) return []
 
-  const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
-  const excludeGlobs = [
-    ...ALWAYS_IGNORE,
-    ...boundaryIgnores,
-    ...asTrees(args.ownOutputs),
-    ...asTrees(negative),
-  ].map(globFor)
+  const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
+  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(args.ownOutputs), ...asTrees(negative)].map(
+    globFor,
+  )
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
@@ -910,7 +911,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const positiveGlobs = asTrees(positive).map(globFor)
   // Everything below the snapshot that decides the result: the project, what
   // it declares, what it excludes as its own outputs, and the boundaries.
-  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${boundaryIgnores.join('\u0001')}`
+  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles !== undefined) {
@@ -962,7 +963,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
       }
     }
     if (!matched) continue
-    if (excludeGlobs.some((g) => g.match(rel))) continue
+    if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) continue
     candidates.push(path.resolve(args.projectDir, rel))
   }
   if (unmatchedLiterals.size > 0) {
@@ -1061,6 +1062,7 @@ async function scanUnion(
   positive: readonly string[],
   excludeGlobs: readonly Bun.Glob[],
   cwd: string,
+  nested: (rel: string) => boolean = () => false,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
@@ -1069,7 +1071,7 @@ async function scanUnion(
   for (const pattern of positive.flatMap(slashBraceExpansions)) {
     const glob = globFor(pattern)
     for (const rel of glob.scanSync({ cwd, onlyFiles: false, followSymlinks: false, dot: true })) {
-      if (excludeGlobs.some((g) => g.match(rel))) continue
+      if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) continue
       const abs = path.resolve(cwd, rel)
       const st = lstatSync(abs, { throwIfNoEntry: false })
       if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
@@ -1089,9 +1091,24 @@ function globFor(pattern: string): Bun.Glob {
   return g
 }
 
-function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): string[] {
-  return nestedDirs.map((d) => {
-    const rel = path.relative(projectDir, d).split(path.sep).join('/')
-    return `${rel}/**`
-  })
+/**
+ * Whether a project-relative path lies inside a nested project: its
+ * ancestor directories looked up in a set, O(depth). One `<nested>/**` glob
+ * per nested project matched every file against every one, O(files ×
+ * nested): 320 ms of astro's 834 ms warm no-op, 4,003 files against 330
+ * fixture projects (I's log, A-11). A glob also read `*`, `?` or `{` in a
+ * nested directory's NAME as syntax, so a project at `pkg*` took its
+ * sibling `pkg-b`'s files out of the key; a name is a name.
+ */
+function inNestedProject(projectDir: string, nestedDirs: string[]): (rel: string) => boolean {
+  if (nestedDirs.length === 0) return () => false
+  const dirs = new Set(
+    nestedDirs.map((d) => path.relative(projectDir, d).split(path.sep).join('/')),
+  )
+  return (rel) => {
+    for (let i = rel.indexOf('/'); i !== -1; i = rel.indexOf('/', i + 1)) {
+      if (dirs.has(rel.slice(0, i))) return true
+    }
+    return false
+  }
 }
