@@ -480,6 +480,37 @@ describe('warm hits through run() with the short-circuit', () => {
     expect(recordedDirs()).toEqual(['dist', 'dist/sub'])
   })
 
+  // Item 1087: the snapshot is taken at run end, and a task after the save
+  // wrote into the output tree before then. The walk recorded the tree
+  // with the stray as the entry's, and every later hit trusted it.
+  it('a stray written into the outputs before run end is not recorded as the entry', async () => {
+    await writeFile(
+      path.join(root, 'packages/a/vx.config.mjs'),
+      `export default { tasks: {
+        build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+        post: { dependsOn: ['build'], exec: { command: 'echo stray > dist/sub/stray.js && sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } },
+      } }\n`,
+    )
+    const hashOf = () => {
+      const c = db()
+      const hash = (
+        c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as {
+          hash: string
+        }
+      ).hash
+      const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)
+      c.close()
+      return recorded
+    }
+    expect((await run({ cwd: root, tasks: ['post'], log, handleSignals: false })).ok).toBe(true)
+    expect(existsSync(path.join(dist(), 'sub/stray.js'))).toBe(true)
+    expect(hashOf()).toEqual([])
+    const again = await runBuild()
+    expect(again.outcomes.find((o) => o.node.id === 'a#build')!.status).toBe('cache-hit')
+    expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(true)
+    expect(existsSync(path.join(dist(), 'sub/stray.js'))).toBe(false)
+  })
+
   // Next 27: nx() maps an extensionless output to `<dir>/**`, which saves
   // nothing under a FILE; the bare path saves either, and now keeps the
   // directory stats a `<dir>/**` glob gets.

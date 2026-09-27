@@ -577,6 +577,27 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
       --affected review; its four other findings were items 1079, 1084
       and 1085.
 
+1087. DONE (2026-09-27, restore review #2; a stale output tree under a
+      green run). The directory snapshot behind a hit's skip-restore is
+      taken at run end, when the directories are old enough, but the
+      tree it describes was the tree at save or restore time. `post`
+      (after `build`, uncached) wrote `dist/stray.txt`; the run-end walk
+      recorded `dist`'s mtime with the stray in it, and every later
+      `vx run build` was `up-to-date` with the stray kept. The walk now
+      collects the files it passes, and `recordOutputDirs` takes a
+      `holds` predicate. The run asks it with the entry's rows, read in
+      one batch: a set match, rows-present for an additive task, and a
+      dependant's additions allowed for an upstream, the hit path's own
+      rule. A tree it refuses records nothing, and the next hit walks and
+      restores. Cost on the 1,000-project bench after a full `rm -rf` of
+      every `dist` (5 interleaved, min): the `output dir snapshots` stage
+      went 17.2 → 27.4 ms. Reading the rows per snapshot cost 110 ms,
+      because each read flushed the pending snapshots in its own
+      transaction. Warm no-op runs take no snapshot. caching.md says so.
+      - Row: `output-dirs.test.ts` › "a stray written into the outputs
+        before run end is not recorded as the entry", red without the
+        change. The run-end restore row still records.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

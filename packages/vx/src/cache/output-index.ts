@@ -165,18 +165,23 @@ export class OutputIndex {
   }
 
   /**
-   * Snapshot every directory under each of `prefixes` for `hash`. Called
-   * after a save and after a restore, when the tree is known to equal the
-   * entry's set. Symlinked directories are not descended (the output walk
-   * refuses them too). Over `OUTPUT_DIRS_CAP` directories, or on any
-   * error, the rows are cleared and the next hit keeps the walk.
+   * Snapshot every directory under each of `prefixes` for `hash`, for a
+   * tree that equals the entry's set. The run takes it at run end, when
+   * the directories are past the racy window, and by then another task or
+   * process may have written into them: `holds` is asked with the files
+   * the walk saw, and a tree it refuses records nothing (item 1087).
+   * Symlinked directories are not descended (the output walk refuses them
+   * too). Over `OUTPUT_DIRS_CAP` directories, or on any error, the rows
+   * are cleared and the next hit keeps the walk.
    */
   async recordOutputDirs(
     hash: string,
     projectDir: string,
     prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
   ): Promise<void> {
     const rows: Array<[string, number]> = []
+    const files: string[] = []
     const walk = async (rel: string, isPrefix = false): Promise<boolean> => {
       const abs = path.join(projectDir, rel)
       let st
@@ -206,6 +211,8 @@ export class OutputIndex {
       for (const e of entries) {
         if (e.isDirectory() && !e.isSymbolicLink()) {
           if (!(await walk(`${rel}/${e.name}`))) return false
+        } else {
+          files.push(`${rel}/${e.name}`)
         }
       }
       return true
@@ -221,6 +228,7 @@ export class OutputIndex {
     // parent trusted while an addition inside it bumps only the dropped one.
     const now = Date.now()
     if (rows.some(([, mtime]) => mtime > now - racyWindowMs(mtime, OUTPUT_DIRS_RACY_MS))) ok = false
+    if (ok && holds !== undefined && !holds(files)) ok = false
     this.pendingDirs.set(hash, ok ? rows : null)
   }
 
