@@ -245,10 +245,15 @@ export async function mapTurboWorkspace(
   metas: readonly ProjectMeta[],
   opts: MapTurboOptions,
 ): Promise<TurboMapping> {
-  const rootCfg = await readTurboJson(
-    (await turboConfigFile(root)) ?? path.join(root, 'turbo.json'),
-    root,
-  )
+  // A workspace with no Turbo config answered with a bare ENOENT and a stack
+  // (item 1043): turbo() declared in the wrong repo, or its file removed.
+  const rootFile = await turboConfigFile(root)
+  if (rootFile === null) {
+    throw new UserError(
+      `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from vx.workspace.ts`,
+    )
+  }
+  const rootCfg = await readTurboJson(rootFile, root)
   const rootTasks = tasksOf(rootCfg)
 
   // Turbo 1 lists an env var as `$NAME` among `globalDependencies` (and a

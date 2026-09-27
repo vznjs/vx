@@ -611,6 +611,15 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Row: `schema-reset-notice.test.ts` › each reading verb's refusal
         now pins the sentence; four red under the old wording.
 
+1043. DONE (2026-09-27, the CLI-verb review's low leads). `turbo()` in a
+      workspace with no `turbo.json` or `turbo.jsonc` at its root failed
+      the run with a bare ENOENT and a stack. It is now a `UserError`
+      that names the lookup and the remedy (add the config, or remove
+      `turbo()`); the vx-migrate README says so.
+      - Row: `turbo-map-sweep.test.ts` › a workspace with no Turbo config
+        is refused as a user error that names the remedy. Red without
+        the check.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
