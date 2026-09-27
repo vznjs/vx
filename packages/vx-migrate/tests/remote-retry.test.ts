@@ -22,6 +22,8 @@ async function drive(
     return a
   }
   const last = await withRetry(send, retries, async (ms) => {
+    // An unbounded loop fails the row instead of hanging the suite.
+    if (waits.length > 10) throw new Error('resent past any bound')
     waits.push(ms)
   }).then(
     (r) => r.status,
@@ -48,18 +50,33 @@ describe('withRetry', () => {
     ])
   })
 
-  it('a 429 waits its Retry-After, capped at 10 s; 2 s without one', async () => {
+  it('a 429 waits its Retry-After, capped at 10 s; 2 s without one or with one unread', async () => {
     const date = new Date(Date.now() + 60_000).toUTCString()
+    const past = new Date(Date.now() - 60_000).toUTCString()
     const waits = await Promise.all(
       [
         { 'retry-after': '3' },
         { 'retry-after': '0' },
         { 'retry-after': '60' },
         { 'retry-after': date },
+        { 'retry-after': past },
+        { 'retry-after': 'soon' },
         {},
       ].map(async (h) => (await drive([status(429, h), status(200)])).waits),
     )
-    expect(waits).toEqual([[3000], [0], [10_000], [10_000], [2000]])
+    expect(waits).toEqual([[3000], [0], [10_000], [10_000], [0], [2000], [2000]])
+  })
+
+  it('the answer that is resent has its body cancelled, so it holds no connection', async () => {
+    let cancelled = 0
+    const body = () =>
+      new ReadableStream({
+        cancel() {
+          cancelled++
+        },
+      })
+    await drive([new Response(body(), { status: 503 }), status(200)])
+    expect(cancelled).toBe(1)
   })
 
   it('the resend is what the caller gets', async () => {
