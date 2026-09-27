@@ -215,4 +215,8 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `global`). Loose mode hands every task the whole environment; vx's is
   isolated, so a task reading an undeclared variable ran without it and
   nothing said so. Row (`turbo-map-sweep` › envMode "loose"): red
-  without the fix; strict and absent are the controls.
+  without the fix; strict and absent are the controls. With it, a
+  mutation sweep of G-12's `remote-retry.ts` (17 mutants): 3 survived
+  (the resent answer's body not cancelled, a past `Retry-After` date's
+  clamp, an unreadable one's fallback) and 2 hung (the retry bound
+  removed); `remote-retry.test.ts` now catches all 17.
