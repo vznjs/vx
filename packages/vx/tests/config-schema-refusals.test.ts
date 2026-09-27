@@ -183,6 +183,34 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     }
   })
 
+  // `outputs: ['**']` loaded, and the clean before the run deleted the
+  // project's source, package.json and vx.config while the run reported
+  // success; the message for '.' had suggested `**` (item 1002).
+  it("an output glob that takes the project's manifest or config is refused", () => {
+    const out = (g: string) =>
+      taskRefusal({
+        exec: { command: 'x' },
+        cache: { inputs: { files: [] }, outputs: { files: [g] } },
+      })
+    const why = (g: string, own: string) =>
+      `${CFG}: tasks.t.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
+      `task's outputs before it runs and restores them on a hit, so the project would lose ` +
+      `its manifest and config. Name the directory the task writes, such as "dist/**".`
+    expect(out('**')).toBe(why('**', 'package.json'))
+    expect(out('*.json')).toBe(why('*.json', 'package.json'))
+    expect(out('vx.config.*')).toBe(why('vx.config.*', 'vx.config.ts'))
+    expect(out('*.ts')).toBe(why('*.ts', 'vx.config.ts'))
+    expect(out('.')).toBe(
+      `${CFG}: tasks.t.cache.outputs.files: "." names the project directory itself and selects nothing — ` +
+        `name the directory the task writes, such as "dist/**"`,
+    )
+    // Controls: a directory's tree, and a file beside the manifest.
+    // `*.js` is another config's spelling: this project's is vx.config.ts.
+    for (const g of ['dist/**', '**/*.d.ts', 'out.json', 'src/**/*.js', '**/*.js']) {
+      expect(out(g)).toBeNull()
+    }
+  })
+
   it('a null cache is refused by name, not by a TypeError from the field scan', () => {
     // A non-null non-object is refused further down (`cache.inputs is
     // required`); null alone reaches `Object.keys` and throws a raw TypeError.

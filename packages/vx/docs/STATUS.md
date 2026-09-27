@@ -478,7 +478,7 @@ test is telling the truth.
         the CLI cannot name is refused, seven exact messages and five
         controls. Red without the fix.
 
-1001. DONE (2026-09-27, the config-validation review's last lead).
+1001. DONE (2026-09-27, the config-validation review's lead 6).
       `schema.md` says an `exec.remote: 'only'` task must declare
       `cache`, and nothing held it: one without loaded, and with no remote
       executor the run printed "nothing ran" and succeeded, while the
@@ -488,6 +488,24 @@ test is telling the truth.
       - Row: `config-schema-refusals.test.ts` › an uncached remote 'only'
         task is refused; the accepted-spellings control gives `'only'` its
         cache. Red without the fix.
+
+1002. DONE (2026-09-27, the config-validation review's lead 4, its last).
+      `outputs: { files: ['**'] }` loaded, and the clean before the run
+      deleted the project's source, `package.json` and `vx.config.mjs`
+      while the run warned about the manifest and reported success. The
+      refusal for `'.'` had told the user to write `**`.
+      - Fix (`config-schema.ts`): an output glob that matches the
+        project's `package.json` or its own config file (the basename of
+        the path being validated, so `**/*.js` beside a `vx.config.ts`
+        stays legal) is refused, and the `'.'` message names `dist/**`
+        instead. `schema.md`'s table has the row. Outputs that overlap
+        the declared inputs are not refused and need not be: a task's
+        declared outputs are excluded from its inputs (`src/gen/**`
+        beside `src/**` is codegen, and stays correct).
+      - Rows: `config-schema-refusals.test.ts` › an output glob that
+        takes the project's manifest or config is refused, with five
+        controls; `schema-doc-drift.test.ts` pins the table row. Red
+        without the fix.
 
 ## In flight
 
