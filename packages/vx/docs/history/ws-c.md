@@ -108,6 +108,20 @@ stopping signal's code and is written again when the kept server ends.
 Rows: `keep-alive.test.ts` (a server exiting 1, a Ctrl-C after the
 summary).
 
+## C-10: say a refusal every task meets once
+
+A corrupt cache index (A-8) reaches every task's lookup as one
+`UserError`, and the scheduler printed it per task: 40 times for 40
+tasks. A repeat of a refusal's text now says `as <id> above`. Row:
+`scheduler.test.ts` (red without the change).
+
+A's lead 4 (the run-end snapshot vouching for a stray) did not
+reproduce: a stray a dependant writes into an upstream's output
+directory is cleaned by the next hit. It does survive when a dependant's
+additive glob covers the path, and survives a forced walk too, so the
+cause is the additive rule (`caching.md` § Additive outputs), not the
+snapshot.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

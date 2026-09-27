@@ -1843,4 +1843,30 @@ describe('runGraph — lanes, settles and refusals the sweep found unheld', () =
       write.mockRestore()
     }
   })
+  it('a refusal every task meets is said once, and each repeat names the first', async () => {
+    // A corrupt cache index reaches every lookup as one UserError: a
+    // 40-task run printed its line 40 times (A-8's lead).
+    const refusal = Object.assign(new Error('the cache index /c is unreadable'), {
+      name: 'UserError',
+    })
+    const write = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      const out = await runGraph({
+        nodes: nodes(node('a#x'), node('b#x'), node('c#x')),
+        concurrency: 1,
+        execute: async (n) => {
+          if (n.id === 'c#x') throw new Error('other')
+          throw refusal
+        },
+      })
+      expect([...out.values()].map((o) => o.status)).toEqual(['failed', 'failed', 'failed'])
+      expect(write.mock.calls.map((c) => String(c[0])).join('')).toBe(
+        '[vx] a#x: the cache index /c is unreadable\n' +
+          '[vx] b#x: as a#x above\n' +
+          '[vx] internal error in c#x: other\n',
+      )
+    } finally {
+      write.mockRestore()
+    }
+  })
 })
