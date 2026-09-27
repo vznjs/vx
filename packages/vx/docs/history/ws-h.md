@@ -85,6 +85,19 @@ key paths the wire has, with its types. Differential: `p50Ms` renamed in
 `formatPlanJson` fails the record row; a key added to the doc's sample
 fails the doc row.
 
+## H-6: pin what each task glob selects, runtime included
+
+Task-glob semantics are contract, and the answer is `Bun.Glob`'s as much
+as vx's: a Bun upgrade that read `[`, a brace or a dotfile differently
+would change what a key covers, with no vx line changed.
+`tests/contract-task-globs.test.ts` builds one project tree (dotfiles, a
+gitignored file, `node_modules`, `[id]`, `(group)`, `{b}`, a space) in a
+git work tree under a canonical root, resolves 32 input lists and 8 output
+lists through `resolveInputs` / `resolveOutputs`, and compares every
+selection or refusal with `tests/contract/task-globs.json`. Differential:
+`ALWAYS_IGNORE` losing `node_modules` and `OUTPUT_NEVER` gaining
+`.github` each fail it.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
@@ -96,3 +109,16 @@ fails the doc row.
   RST_STREAM(CANCEL) "… is not retried" once, in 3 of 5 gates on
   2026-09-27 (Bun 1.4.2, 4 workers), while the task passes run alone.
   Load-dependent; CI has been green.
+
+- **A:** `cache.inputs.files: ['src/{b}.ts']` selects NOTHING when the
+  file is literally named `{b}.ts` (`Bun.Glob` reads a one-alternative
+  brace), and nothing refuses it: `assertNoInvisibleLiteralInputs`, which
+  refuses a literal git does not list, treats `{` as a wildcard. A stale
+  key for that file; refuse a brace with one alternative, or read it
+  literally (recorded in `task-globs.json`).
+- **A (low):** an output glob like `**/*.js` selects
+  `node_modules/**/*.js` (`OUTPUT_NEVER` is only `.git` and `.vx`, by
+  design: `node_modules/**` is an install task's output), so the clean
+  before a run deletes installed files a broad glob did not mean to name.
+  Consider refusing an output glob that reaches `node_modules` without
+  naming it.
