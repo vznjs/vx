@@ -294,6 +294,33 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     )
   }
 
+  // Nx reads `^{projectRoot}/x` and `{ fileset, dependencies: true }` as
+  // each dependency's fileset (nx-examples' inferred `typecheck` carries
+  // both). The first was looked up as a named input (a todo, nothing
+  // keyed), the second expanded as the project's OWN fileset: a
+  // dependency's edit re-keyed no dependant.
+  it.each([
+    ['^{projectRoot}/tsconfig.lib.json', '{projectRoot}/tsconfig.lib.json', ['tsconfig.lib.json']],
+    [
+      { fileset: '{projectRoot}/**/*.d.ts', dependencies: true },
+      '{projectRoot}/**/*.d.ts',
+      ['**/*.d.ts'],
+    ],
+  ])('a dependency fileset %j keys on each dependency’s files', async (input, fileset, files) => {
+    const t = await graph([input])
+    const id = `nx-input:fileset-${Bun.hash.xxHash3(fileset).toString(16).padStart(16, '0')}`
+    expect(shape(t.get('app#test'))).toEqual({
+      dependsOn: [`lib#${id}`],
+      inputs: { files: [] },
+      todos: [],
+    })
+    expect(shape(t.get(`lib#${id}`))).toEqual(twin([`base#${id}`], { files }))
+    expect(shape(t.get(`base#${id}`))).toEqual(twin(undefined, { files }))
+    expect(t.get(`lib#${id}`)?.task?.['description']).toBe(
+      `Nx fileset ${fileset} of this project and what it reaches`,
+    )
+  })
+
   it('`^production` with no dependsOn is the direct dependencies’ twins, chained', async () => {
     const t = await graph(['default', '^production'])
     expect([...t.keys()]).toEqual([
