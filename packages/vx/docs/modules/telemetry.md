@@ -18,12 +18,16 @@ is pre-folded, bigint wallclock spans are decimal strings.
   shutdown signal or an embedder's abort killed; they are not in the
   task list, which holds real runs only, so without it a stopped run
   read as a failure with nothing failed.
-- `deriveCacheSource(status)` — `'local' | 'remote' | 'miss' | null`.
+- `deriveCacheSource(status)` — the `CacheSource`: `'local'` / `'remote'`
+  for the two hits, `'miss'` for `success` / `failed`, `'none'` for
+  `skipped` / `aborted`; never null.
 - `taskTelemetryOf(outcome)` — the one projection of a `TaskOutcome` into
   `TaskTelemetry`, used by the streaming `task.end` record and the
   summary's `tasks[]` alike, so the two cannot drift (item 660).
-- `createTelemetrySource(bus, sinks, ctx)` — projects the bus once and
-  fans out to sinks.
+- `createTelemetrySource({ sinks, run, warn?, owners? })` → a
+  `TelemetrySource` — projects the bus once and fans out to sinks. `run`
+  is the `RunContextRecord` stamped on `run.start`; `owners` names a
+  nameless sink by its plugin.
 - `TelemetrySink` — what a `telemetry` plugin returns: an optional
   `name`, a `wants` list of record kinds (the source checks it BEFORE
   projecting, so a sink pays nothing for kinds it declines), and

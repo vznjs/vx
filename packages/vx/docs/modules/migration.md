@@ -12,7 +12,7 @@ does the rest — so a config written by `vx init` (package.json scripts,
 the Turbo and Nx mappers lived in `src/cli/`; core now reads no other
 runner's format.
 
-## Public surface (all exported from `@vzn/vx`)
+## Public surface (exported from `@vzn/vx` but for `migrate-scripts.ts`)
 
 ```ts
 export interface MigrationPlan {
@@ -62,7 +62,8 @@ export function foldScriptHooks(
   post: string | undefined,
 ): string
 
-// migrate-scripts.ts — the package.json-scripts mapper `vx init` runs through the seam
+// migrate-scripts.ts — the package.json-scripts mapper `vx init` runs through the seam;
+// core-internal, not on `@vzn/vx`
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan
 export function delegatedScript(command: string): string | null
 ```

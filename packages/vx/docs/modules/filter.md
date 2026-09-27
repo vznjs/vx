@@ -58,7 +58,8 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 1. **Parse** each filter string into a `ParsedFilter`.
 2. **Base set**: if any include filter is present, start empty; else
    (all-exclude), start with every project name.
-3. **Apply in argv order**:
+3. **Expand each filter in argv order** (so `onNoMatch` names them as
+   typed):
    - Compute matched names (glob match on `name`, path-prefix or
      path-glob on `dir`, or the pre-resolved git-affected set); a
      filter that matched nothing is reported through `onNoMatch`, and one
@@ -66,7 +67,10 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
      (item 1030).
    - Expand per flags (add transitive deps / dependents; or restrict
      to deps-only).
-   - Add to the selection (include) or remove from it (negate).
+   - Add an include's set to the selection; hold a negation's.
+4. **Remove every held exclude** — all includes land before any
+   exclude, regardless of argv order, as pnpm does: `--filter '!b'
+--filter 'a...'` no longer adds `b` back (item 979).
 
 ## Separation of concerns
 

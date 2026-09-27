@@ -4,17 +4,20 @@
 
 The shebang script invoked when the user runs `vx`. Forwards
 `process.argv` to `cli.run`, prints errors with the right level of
-detail, and exits with the right code.
+detail, and sets the right exit code.
 
 ## Behavior
 
 `main()` forwards `process.argv.slice(2)` to the dispatcher (`cli/index.ts`'s
-`run`) and, on a code, ends stdout and exits in its callback:
+`run`) and sets `process.exitCode` to the code it returns, then lets
+the event loop drain — nothing calls `process.exit` or `stdout.end`.
 Bun drops what a pipe has not yet taken when `process.exit` follows a
 large write (300 KB written then exit delivered 64 KiB; `vx history
 --format json` on a 300-project workspace was cut mid-string,
-2026-09-15), and `end`'s callback fires once the pipe holds it all. A
-thrown error is printed and the exit is 1: a `UserError` (`isUserError`,
+2026-09-15), and on 1.3.11 `stdout.end`'s callback fired early too
+(2 MiB written, 214 KB delivered, 2026-09-20); draining does not depend
+on when a runtime calls a pipe flushed. A thrown error is printed and
+`exitCode` is 1: a `UserError` (`isUserError`,
 so a plugin's own class of that name counts) as its message alone,
 prefixed `vx:` unless the message already names the verb (`vx why: …`);
 a file-system refusal (`isFsRefusal`) as its message plus the hint that
@@ -24,8 +27,10 @@ of that: a reader that leaves (`vx run build | head -1`) turns every
 later write into EPIPE, and an unheard `error` event killed a green
 run with a stack and exit 1 (2026-09-16); with the listener the run
 finishes, saves, releases its lock and exits with its own verdict.
-The wrapper is an explicit `async main()` because `bun build --compile`
-refuses top-level await.
+A loop that drains before the verb settles (a plugin hook whose promise
+never resolves) is a failure: a `beforeExit` listener says so on stderr
+and sets exit 1 (item 921). The wrapper is an explicit `async main()`
+because `bun build --compile` refuses top-level await.
 
 Before any verb runs, bin.ts registers the **core alias**
 (`cli/core-alias.ts`): a Bun virtual module for the exact specifier
@@ -48,10 +53,10 @@ compiled binary no second copy of core transpiled from `node_modules`
 
 ## What this does NOT do
 
-- **Doesn't parse argv.** That's `cli.ts` (dispatcher) and
+- **Doesn't parse argv.** That's `cli/index.ts` (dispatcher) and
   `cli/<sub>.ts` (per-subcommand parsers).
 - **Doesn't import the orchestrator directly.** The CLI does. This
-  keeps `bin.ts` tiny and lets tests import `cli.ts` without going
+  keeps `bin.ts` tiny and lets tests import `cli/index.ts` without going
   through a process boundary.
 
 ## Tests

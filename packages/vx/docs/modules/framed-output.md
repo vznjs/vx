@@ -17,6 +17,8 @@ where the eye lands. See `docs/modules/summary.md`.
 export interface TaskBlockBody {
   stdout?: string // rendered under `├─ STDOUT ──…`
   stderr?: string // rendered under `├─ STDERR ──…`
+  droppedStdout?: number // chars a bounded (persistent) capture dropped from the head
+  droppedStderr?: number
 }
 
 export function formatTaskBlock(
@@ -24,6 +26,7 @@ export function formatTaskBlock(
   outcome: TaskOutcome,
   body: TaskBlockBody,
   colors?: ColorSupport,
+  forceCommand?: boolean, // `$ cmd` even on a hit: a focused requested task's frame
 ): string
 
 // ` ⇢ <time> success local <id>` — quiet cache hit
@@ -118,8 +121,8 @@ tail limit.
 ## Outcome vocabulary + colors
 
 One vocabulary across every surface (one-liners, frames, summary,
-verbose table): `executed` / `restored-local` / `restored-remote` /
-`up-to-date` / `failed` / `skipped`.
+verbose table): `success` / `restored-local` / `restored-remote` /
+`up-to-date` / `failed` / `skipped` (`outcomeWord`, `events.ts`).
 
 | Status                            | Header                                                                                                                                                                                                                                       | Footer tag            |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |

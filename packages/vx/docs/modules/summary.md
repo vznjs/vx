@@ -23,7 +23,7 @@ export interface SummaryStats {
   restoredRemote: number
   miss: number
   noCache?: number // a task with no `cache` block never consulted the cache
-  left?: number // tasks that never started (an aborted run)
+  left?: number // still to run: the live section's gray remainder; 0 in the final summary
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
   held?: { count: number; sumMs: number } // what an `admit` policy held, summed
 }
@@ -109,9 +109,6 @@ Colors:
 - `successful` is green.
 - `failed` is bold red (only shown when N > 0).
 - `skipped` is yellow (only shown when N > 0).
-- `⚡ instant` motif appended to the time line when every task in
-  the run came from cache (local or remote). Mirrors Turbo's
-  `>>> FULL TURBO`.
 
 Duration:
 

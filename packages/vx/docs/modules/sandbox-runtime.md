@@ -83,7 +83,7 @@ that link re-granted the whole project past its `allow.read`.
 
 `localBinding`, `unixSockets`, `machLookup` and `systemInfo` do not reach
 SRT as config, and neither does a `network` domain list. The first three exist as fields, but `sandbox-manager.js`
-(0.0.75) reads them off the config given to `initialize()` and never off
+(0.0.75, still 0.0.76) reads them off the config given to `initialize()` and never off
 the per-call one, so a per-task grant is silently dropped; `systemInfo`
 has no field at any level. vx is per-task by definition, so it appends
 the corresponding SBPL rules to the END of the seatbelt profile SRT
@@ -94,7 +94,7 @@ grants still go through SRT's config, where they also work on Linux.
 
 The `network` case has no such workaround: SRT runs ONE filtering proxy
 per run and checks every request against `config.network.allowedDomains`
-from `initialize()` (`sandbox-manager.js:228`). `run()` therefore arms it
+from `initialize()` (`sandbox-manager.js:238` in 0.0.76). `run()` therefore arms it
 with the union of every domain any sandboxed task declared. Per-task
 enforcement survives where it counts — a task that declared no domains is
 never handed the proxy's port, so it reaches nothing at all.
@@ -107,8 +107,11 @@ export interface SandboxAvailability {
   reason: string // empty when available
 }
 
-export function probeSandbox(): Promise<SandboxAvailability>
-export function initSandbox(): Promise<void>
+export function probeSandbox(opts?: { weakerNested?: boolean }): Promise<SandboxAvailability>
+export function initSandbox(opts?: {
+  allowedDomains?: readonly string[] // the run's union
+  allowAllUnixSockets?: boolean
+}): Promise<void>
 export function resetSandbox(): Promise<void>
 
 export interface ResolvedSandboxConfig {
@@ -206,8 +209,9 @@ export function punchWalls(readPath: string, walls: readonly string[]): string[]
    macOS and "Failed to create bridge sockets after 5 attempts" on
    Linux, neither naming the directory; the verdict now gives the path,
    its length, the limit and "point TMPDIR at a shorter path".
-2. **`initSandbox`** is called once per `vx run` IF at least one task
-   in the graph declares `sandbox`. It calls `SandboxManager.initialize`
+2. **`initSandbox`** is called at most once per `vx run`, lazily: the
+   first sandboxed execution arms the run's `prepareSandbox` armer
+   (sandbox-request.md), which probes and then inits. It calls `SandboxManager.initialize`
    with a deny-all baseline (network blocked, no filesystem allows);
    per-task wrapping overrides those defaults.
 3. **`runSandboxed`** is called once per sandboxed task:
@@ -432,13 +436,16 @@ machine goes through that proxy, which reports it WITH host and port.
 
 ## Integration points
 
-- `src/orchestrator/run.ts` calls `probeSandbox` + `initSandbox` at the
-  top of `run()` IFF any node in the graph has `node.config.exec.sandbox`.
-  `resetSandbox` runs at the end.
-- `src/orchestrator/execute-task.ts:executeCachedTask` calls
-  `runSandboxed` instead of `runCommand` when `cfg.exec.sandbox` is set.
-  On violations: forces exit 1, appends violation lines to stderr,
-  surfaces the count on `TaskOutcome.sandboxViolations`.
+- `src/orchestrator/run.ts` calls `prepareSandbox(nodes)`
+  (`sandbox-request.ts`): null when no node declares `exec.sandbox`,
+  else an armer whose `arm()` runs `probeSandbox` + `initSandbox` once,
+  on the first sandboxed execution (`execute-task.ts` awaits it before
+  the request). `resetSandbox` runs at the end if it was armed.
+- Execution goes through the placed `TaskExecutor`; the local floor
+  (`exec/local-executor.ts`) calls `runSandboxed` instead of
+  `runCommand` when the request carries `sandbox`. On violations
+  `execute-task.ts` forces exit 1, appends violation lines to stderr,
+  and surfaces the count on `TaskOutcome.sandboxViolations`.
 
 ## Why fail-on-violation?
 

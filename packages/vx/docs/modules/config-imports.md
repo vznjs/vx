@@ -16,7 +16,8 @@ DECLARED. A config import is neither.
 ## Public surface
 
 ```ts
-/** Absolute resolved targets of the RELATIVE specifiers in `source`. */
+/** The bare specifiers in `source` no `node_modules/<package>` above `fromDir` provides
+ *  (what Bun would auto-install); builtins and `@vzn/vx` never count. */
 export function unprovidedBareImports(
   source: string,
   fromDir: string,
@@ -112,8 +113,8 @@ A workspace whose configs have NO relative imports costs 80 ms at 1000
 configs — so the price is dominated by READING the config files, not by
 resolving imports, and the closure is close to free once the read is
 paid. For scale: full config EVALUATION, which selection deliberately
-avoids, is ~200 ms at that size. On this repo (5 projects) the channel
-costs 0.36 ms.
+avoids, is ~200 ms at that size. On this repo (5 projects when measured)
+the channel cost 0.36 ms.
 
 ## Where this stops
 
@@ -147,12 +148,14 @@ selects the importing project.
 
 ## Known over-selection
 
-Editing core `src/index.ts` now selects `@vzn/vx-docs`, because its
-config imports `defineProject` from there. The import edge is real; the
-key change is not, since `defineProject` is identity. vx cannot tell
-those apart without evaluating, and selection may over-select safely
-(it is never hashed) but must never under-select. A config importing
-its helpers by BARE specifier opts out of this channel.
+A config that imports a file by relative path is selected by every edit
+to that file, even when the imported value cannot change the key (an
+identity like `defineProject`). vx cannot tell those apart without
+evaluating, and selection may over-select safely (it is never hashed)
+but must never under-select. A config importing its helpers by BARE
+specifier opts out of this channel; every config in this repo imports
+`@vzn/vx` that way (`@vzn/vx-docs` once imported core's `src/index.ts`
+relatively and was selected by every edit to it).
 
 ## `unprovidedBareImports` (item 239)
 

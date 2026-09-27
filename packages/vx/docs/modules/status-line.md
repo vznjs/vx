@@ -38,8 +38,8 @@ syscall; coalesced, the warm run's wall went 184.0 → 167.8 ms (min of
 terminal logger asks for it (a caller reading a stream right after a
 write still sees it), and it settles in `runEnd`, before the summary
 prints below the held lines, and again in `run()`'s `finally` for a
-throw that never reached `runEnd`: nothing is held when `bin.ts` ends
-stdout. A TTY is never coalesced; its region redraws already serialise
+throw that never reached `runEnd`: nothing is held when the verb
+returns and `bin.ts` lets the loop drain. A TTY is never coalesced; its region redraws already serialise
 the writes.
 
 ## formatStatusRegion

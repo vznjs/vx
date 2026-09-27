@@ -13,20 +13,28 @@ sibling `src/cli/<name>.ts`.
 export async function run(argv: readonly string[]): Promise<number>
 
 // Re-exports for tests + programmatic embedders:
-export { detectFlow, parseRunArgs, type RunArgs } from './run.js'
+export {
+  detectFlow,
+  parseConcurrency,
+  parseRunArgs,
+  resolveRunOptions,
+  type RunArgs,
+} from './run.js'
 export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
-export { parseMigrateArgs, type MigrateArgs } from './migrate.js'
+export { parseInitArgs, type InitArgs } from './init.js'
 export { parseShowArgs, type ShowArgs } from './show.js'
-export { parseMcpArgs, type McpArgs } from './mcp.js'
-export { handleMcpRequest, listMcpTools, setMcpContext } from './mcp-rpc.js'
+export { parseWhyArgs } from './why.js'
+export { parseLastArgs } from './last.js'
 export { formatBytes } from './format.js'
+export { registerCoreAlias } from './core-alias.js'
 ```
 
-`run(argv)` returns the exit code. `bin.ts` ends stdout and exits with
-that code in the `end` callback: Bun drops what a pipe has not yet taken
-when `process.exit` follows a large write, and every JSON verb was
-exposed (2026-09-15). A verb never calls `process.exit` itself.
+`run(argv)` returns the exit code. `bin.ts` sets `process.exitCode` to
+it and lets the event loop drain — no `process.exit`, no `stdout.end`:
+Bun drops what a pipe has not yet taken when `process.exit` follows a
+large write (2026-09-15), and on 1.3.11 `stdout.end`'s callback fired
+early too (2026-09-20). A verb never calls `process.exit` itself.
 
 ## Subcommands
 
@@ -76,7 +84,8 @@ exactly as a reading verb or the plugin-verb lookup does.
 
 - No global flags (no `--debug`, no `--quiet`, no `--color`). Color
   is gated by env (`NO_COLOR` / `FORCE_COLOR` / TTY).
-- No tab completion.
+- No completion installed for you: `vx completions bash|zsh|fish`
+  prints the script; sourcing it is the user's.
 - No subcommand aliases beyond the help / version sugar and the
   deprecated `stats` → `info`.
 - No service commands — there is no daemon, server or worker verb in

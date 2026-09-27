@@ -47,8 +47,8 @@ The remaining subcommand parsers —
 `src/cli/{lock,show,info,last,why,init}.ts`
 — are user-facing commands documented in [`docs/cli.md`](../cli.md)
 rather than as module pages. `tests/doc-references.test.ts` holds this index
-to the tree: every `src/**/*.ts` is named here, itself or in a brace
-group.
+to the tree: every `src/**/*.ts` except the `index.ts` files is named
+here, itself or in a brace group.
 
 ## Orchestrator
 
@@ -75,7 +75,7 @@ group.
 | [`framed-output.md`](./framed-output.md)           | `src/orchestrator/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                                        |
 | [`failure-recap.md`](./failure-recap.md)           | `src/orchestrator/failure-recap.ts` — the bounded tail the run's last block repeats for each failed task.                              |
 | [`colors.md`](./colors.md)                         | `src/orchestrator/colors.ts` — ANSI gate + truecolor helpers.                                                                          |
-| [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — tail `Tasks / Cached / Time` block.                                                                    |
+| [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                             |
 | [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                                                                   |
 | [`placement.md`](./placement.md)                   | `src/orchestrator/placement.ts` — where each task runs: pins, executor order, `'only'`, pools, the `--dry` view.                       |
 | [`signals.md`](./signals.md)                       | `src/orchestrator/signals.ts` — SIGINT/SIGTERM/SIGHUP forwarded, as a group signal, to every child, then exit 128+signo.               |

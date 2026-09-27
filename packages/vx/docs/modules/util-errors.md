@@ -30,12 +30,13 @@ export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a
 ```
 
 `UserError` instances have `.name === 'UserError'`. `bin.ts` prints
-`err.message` for anything `isUserError` admits and re-throws the
-rest; a file-system refusal (`isFsRefusal`) or a temp-directory
-refusal (`isTmpdirRefusal`) reaching the user is printed the same way,
-with the hint that names the knob — `TMPDIR` for a temp directory —
-because a minimal image's sandboxed task once said only "EACCES …
-mkdtemp" (2026-09-16).
+`err.message` for anything `isUserError` admits; a file-system refusal
+(`isFsRefusal`) as its message plus `fsRefusalHint`; anything else with
+its stack. Every one sets exit code 1 — nothing is re-thrown.
+`isTmpdirRefusal` is not `bin.ts`'s: the sandbox runtime and the run
+lock ask it and add `TMPDIR_HINT` to their own message, because a
+minimal image's sandboxed task once said only "EACCES … mkdtemp"
+(2026-09-16).
 
 ## Convention
 

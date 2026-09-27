@@ -44,7 +44,7 @@ export function acquireRunLock(
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
-//   summarize?, profile?, tags?, command?, report?, log?, bus?,
+//   summarize?, profile?, tags?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
 //   holdPersistent? (return the requested persistent tasks still running)
 
@@ -73,23 +73,27 @@ export interface RunSummary {
    `RunOptions.remoteCache` wrap wins), bulk git populate, hash memo.
    **Caller owns `cache.close()`.**
 3. **Empty-case handling.** `no-tasks-declared` / `empty-graph` →
-   log, close cache, return NOT-ok.
+   log, close cache, return NOT-ok. `none-affected` (a diff-scoped run
+   whose names are declared only outside the scope) → log, close, return
+   ok.
 4. **Plugins.** When declared: `installPlugins` (setup hooks on the
    bus; a throw is a fail-fast UserError naming the plugin), then
-   run-context capture (one git spawn; dirty reuses the GitFilesCache
-   status) and `subscribeTelemetry` — which returns `undefined` when
+   run-context capture (HEAD read from `.git` directly, a git spawn only
+   as the fallback; dirty reuses the GitFilesCache status) and `subscribeTelemetry` — which returns `undefined` when
    zero sinks are contributed, so a plain run adds no subscriber and
    builds no records. The pipeline stages (`config`, `project`,
    `graph`, `key`, `schedule`) ran earlier, inside `prepareRun`.
 5. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
    `liveChildren` set + `persistentRegistry` map. SIGINT/SIGTERM/SIGHUP
    handlers installed here, removed in a `finally`.
-6. **Sandbox init** (lazy — only when some node declares `exec.sandbox`).
+6. **Sandbox prepare.** `prepareSandbox(nodes)` — null when no node
+   declares `exec.sandbox`; otherwise an armer whose probe + init run on
+   the first sandboxed execution (sandbox-request.md).
 7. **`markSurfacedDeps(nodes)`** — transparent-group display marking;
    the footer run context is built (there is no top-of-run header).
 8. **Cache acceleration.** LayeredCache → `startRemotePrefetch`
    (background, drained before close). Local-only + local reads on +
-   ≥1 dep edge (`shouldShortCircuit`) → `startLocalShortCircuit`,
+   a non-empty graph (`shouldShortCircuit`) → `startLocalShortCircuit`,
    producing `preProbed` (probe reuse) + `restoreTier`.
 9. **`runGraph({..., priorities, restoreTier})`.** Two-tier schedule;
    each ready node runs `executeTask` (with its pre-probe when
@@ -181,8 +185,9 @@ signal disposition for its whole lifetime.
 
 The orchestrator does NOT throw on task failure — the scheduler
 already converts thrown errors into `failed` outcomes. The `ok` field
-on the returned summary is `false` iff any outcome was `failed` or
-`skipped`. CLI maps this to exit code 1. Setup throws (`UserError`
+on the returned summary is `true` iff every outcome passes
+(`isPassStatus`: `failed`, `skipped` and `aborted` do not) and no
+persistent task crashed. CLI maps this to exit code 1. Setup throws (`UserError`
 from discovery/loader/graph/plugin-setup) are caught at
 `cli/run.ts:runCmd`.
 

@@ -16,6 +16,8 @@ export interface RunResult {
   durationMs: number
   stdout: string // retained text, or '' when `capture.stdout` is false
   stderr: string // retained text, or '' when `capture.stderr` is false
+  signal?: string // the signal that killed the child (Bun's signalCode)
+  timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS (bytes), only when it rose above vx's own RSS high-water mark
 }
@@ -34,13 +36,11 @@ export interface RunOptions {
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
   capture?: CaptureConfig // omitted → both retained
+  timeoutMs?: number // SIGTERM the child when it elapses; result flagged `timedOut`
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped registry; child added on spawn, removed on exit
 }
 
 export function runCommand(opts: RunOptions): Promise<RunResult>
-
-// POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
-export function signalExitCode(signal: NodeJS.Signals): number
 
 // `capture` is a runCommand concept — a persistent task returns no RunResult.
 export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'capture'> {
@@ -58,14 +58,17 @@ export interface PersistentSpawn {
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
 
 export function shellQuote(arg: string): string
+// POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
 export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
 export class PersistentReadyError extends Error // reason: 'timeout' | 'exited' | 'spawn'; exitCode?: the child's own
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
+  signal?: AbortSignal,
 ): Promise<string>
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
+  floorBytes?: number, // ownRssHighWater(): a peak at or under it is inherited, not reported
 ): { cpuMs?: number; peakRssBytes?: number }
 
 // The inverse of signalExitCode: 137 → 'SIGKILL', and undefined below
@@ -250,9 +253,9 @@ output on a fail-before-ready outcome.
   by default; pass `timeoutMs` (from `exec.timeout`) to SIGTERM the
   child after a deadline. A timed-out result is flagged `timedOut` so
   the orchestrator classifies it `failed` (not an `aborted` shutdown).
-- **Doesn't sandbox.** The child has full process privileges. A
-  bwrap sandbox was tried and reverted (Ubuntu 24 AppArmor breaks it
-  in CI; design-doc/sandbox.md was removed).
+- **Doesn't sandbox.** `runCommand` spawns with full process
+  privileges; a task's `exec.sandbox` runs through
+  `sandbox-runtime.ts` (`@anthropic-ai/sandbox-runtime`) instead.
 - **Doesn't install signal handlers.** Signal shutdown is the
   orchestrator's job: it owns the `liveChildren` set this module
   populates, forwards SIGINT/SIGTERM to everything in it, and exits
@@ -290,8 +293,6 @@ output on a fail-before-ready outcome.
   Inputs / outputs need volume mounts.
 - **Remote execution** — RPC to a build farm. Same contract; latency
   becomes the dominant cost.
-- **Per-step timeouts** — easy addition: add `timeoutMs?` to
-  `RunOptions`; schedule `child.kill()` then race against `exited`.
 - **Different shell** — replace `['sh', '-c', cmd]` with `['bash', '-c',
 cmd]` or a parsed argv. Cache keys would shift if the shell
   semantics differ (you'd want to fold the choice into the key).

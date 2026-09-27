@@ -41,7 +41,8 @@ There is no second list: the cut reads the text, as `documentedFlags`
 - `Planning (for run — skips execution)` — `--dry`, `--graph`.
 - `Artifacts (for run)` — `--summarize`, `--profile`, `--report`,
   `--report-file`, `--tag`.
-- `Extensions (plugins)` — the verbs the workspace's plugins add.
+- `Extensions (plugins)` — what plugins are for (remote cache,
+  distributed execution, telemetry) and the plugin guide's URL.
 - `Argument forwarding (for run)` — explanation of `--`.
 - `Watch mode` — `vx watch`.
 - `Cache management` — `vx cache prune` examples.
@@ -49,6 +50,10 @@ There is no second list: the cut reads the text, as `documentedFlags`
 - `Migration` — `vx init` and the pointer to `bunx @vzn/vx-migrate`.
 - `Shell completions` — `vx completions bash|zsh|fish`.
 - `Config lock` — `vx lock`.
+
+A trailing `Plugin commands:` section follows, only when the
+workspace's plugins add a verb: each verb, its description and its
+plugin.
 
 ## Updating
 

@@ -179,9 +179,10 @@ Resolves the cache directory:
   Relative paths resolve against `root`; absolute paths pass through.
 - Default: `<root>/.vx/cache`.
 
-Used by `orchestrator.run` and `planRun`. `vx cache prune` currently
-uses the default path directly — workspace-config cacheDir override
-isn't yet wired through the prune path.
+Used by `prepareRun` (so `run` and `planRun`), the doctor, and every
+reading verb through `cli/workspace-config.ts` — `vx cache prune`
+included (`cliCacheDir`: `--cache-dir`, else this over the config with
+the plugin `config` stage applied).
 
 ## What this does NOT do
 
@@ -191,7 +192,7 @@ isn't yet wired through the prune path.
 - **Doesn't compute the package graph.** That's
   [`package-graph.md`](./package-graph.md).
 - **Doesn't filter projects.** `--filter` / `--affected` happen in
-  `cli/run.ts`.
+  `cli/select.ts` (`resolveFilters`).
 - **Doesn't enforce project boundaries.** `inputs.ts` does, using
   the nested-dirs precomputation.
 

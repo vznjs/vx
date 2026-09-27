@@ -20,7 +20,10 @@ the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 `workers` (`{ count, source, cores, cpuQuota }`), `memory`
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
 `cacheVersion`, `schemaVersion`, `cacheEntries`, `cacheBytes`,
-`orphans`, `runs24h`, `hits24h`, `flakyTasks`, `lockfile`. See
+`orphans`, `runs24h`, `hits24h`, `flakyTasks`, `lockfile`, `sandbox`
+(`{ available, reason, declared }`: whether this host can run an
+`exec.sandbox`, the probe's reason, and how many loaded tasks declare
+one). See
 `docs/cli.md` § `vx info` for what each row means.
 
 ## Rules
