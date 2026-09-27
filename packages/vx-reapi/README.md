@@ -185,6 +185,13 @@ a body past its digest's size is refused at the byte that passes it, a
 zstd reply is decoded no further than that size, and a batch entry for a
 digest not asked for is dropped.
 
+A verified blob still lands where the server's ActionResult says, so its
+paths are held to the workspace: an output path or Tree name that climbs
+out (`..`, absolute), a link whose target leaves the workspace, and a
+directory that resolves out through a link are refused before anything
+is written; a link standing at an output file is replaced, never written
+through; a Tree file's setuid and setgid bits are dropped.
+
 ## Artifacts stream
 
 The cache layer never holds an artifact whole. `put` digests the file-backed

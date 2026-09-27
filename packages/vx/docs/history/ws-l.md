@@ -7,6 +7,8 @@
    links resolved, rename over a planted link) and zstd bombs (declared
    size, multi-frame, running count) were already held. Found: an
    extended header is read whole with no bound (L-1).
+2. Remote inputs. Core's ingest holds (names, links, bombs, key check).
+   vx-reapi's materialise wrote a server's ActionResult anywhere (L-2).
 
 ## Items
 
@@ -17,6 +19,16 @@
   past 1 MiB before its body is read; a pax `size` that is not a whole
   number (`0.5` moved the reader to a fractional offset) is refused too.
   Rows in `tar-stream.test.ts`, red without the fix.
+- L-2. `fix(vx-reapi)`: materialise joined a server's ActionResult paths
+  and Tree names as given, so a hostile or broken server (a fresh result
+  or a replayed record) wrote outside the workspace: `../..` or absolute
+  paths, a Tree name `..`, a link it placed followed by a directory
+  written through it, a file written through a link standing at its
+  path, and setuid bits kept. Every path is now fenced to the workspace
+  root (lexical, then the deepest existing ancestor's real path), a link
+  whose target leaves the workspace is refused, an output file is
+  written `O_NOFOLLOW` (a link there is replaced), and a mode keeps its
+  permission bits only. Rows in `materialise-fence.test.ts`.
 - L-3. `fix(vx-reapi)`: a CAS read was checked against its digest's size
   only once whole: a zstd batch entry or ByteStream reply was expanded to
   its frame's end (256 MiB from ~8 KB), and a body that never ends was
