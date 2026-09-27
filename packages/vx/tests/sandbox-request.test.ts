@@ -324,6 +324,44 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
     }
   })
 
+  // A glob is expanded to its hits on Linux (`expandGrants`), and a hit
+  // that IS a wall looked like a grant naming it on purpose: `read: ['*']`
+  // bound `.git` and `.vx`, `packages/*` bound project b, and a write glob
+  // was refused for a wall it never named (B-1).
+  it.skipIf(process.platform !== 'linux')(
+    'a glob hit on a wall, or inside one, is not a grant of it',
+    async () => {
+      await walled()
+      await writeFile(path.join(root, 'packages/b/src/x.ts'), '')
+      await writeFile(path.join(root, 'src/y.ts'), '')
+      const read = async (grant: string) =>
+        [
+          ...(
+            await sandboxRequestFor(
+              rootNode(),
+              { allow: { read: [grant] } },
+              root,
+              undefined,
+              nested(),
+            )
+          ).sandbox.config.allowRead,
+        ].sort()
+      expect(await read('*')).toEqual(
+        ['package.json', 'packages/c', 'src'].map((n) => path.join(root, n)),
+      )
+      expect(await read('packages/*')).toEqual([path.join(root, 'packages/c')])
+      expect(await read('**/*.ts')).toEqual([path.join(root, 'src/y.ts')])
+      const write = await sandboxRequestFor(
+        rootNode(),
+        { allow: { write: ['.*'] } },
+        root,
+        undefined,
+        nested(),
+      )
+      expect(write.sandbox.config.allowWrite).toEqual([])
+    },
+  )
+
   it('CONTROL: a leaf project, and a grant naming a wall on purpose, stay whole', async () => {
     await walled()
     const leaf = await sandboxRequestFor(

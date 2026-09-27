@@ -347,7 +347,11 @@ around it (`punchWalls`, the write-path punch with the wall dropped), and
 a write grant whose bind, widened or not, would hold one is refused,
 naming the wall. A grant that names a wall or a path inside it is the
 user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
-`~`). A custom `cacheDir` inside a project is not a wall.
+`~`). A glob's hit that is a wall or lies inside one was matched, not
+named, and is dropped before the bind (`resolveSandboxConfig` takes the
+walls): `read: ['*']` in a root project binds neither `.git` nor `.vx`,
+`packages/*` no nested project, and `write: ['.*']` is refused for no wall
+(B-1). A custom `cacheDir` inside a project is not a wall.
 
 ## A write grant that names a file
 

@@ -613,6 +613,8 @@ function throughLinks(p: string, hops = 0): string {
 export function resolveSandboxConfig(
   cfg: SandboxConfig,
   projectDir: string,
+  /** Canonical directories a glob's hits stop at (sandbox-request.ts `wallOff`). */
+  walls: readonly string[] = [],
 ): ResolvedSandboxConfig {
   const resolve = (p: string): string => {
     if (p.startsWith('~')) return toRealPath(path.join(os.homedir(), p.slice(1)))
@@ -621,7 +623,7 @@ export function resolveSandboxConfig(
   }
   const a = cfg.allow ?? {}
   const r: ResolvedSandboxConfig = {
-    allowRead: expandGrants((a.read ?? []).map(resolve), 'read'),
+    allowRead: expandGrants((a.read ?? []).map(resolve), 'read', walls),
     allowWrite: expandGrants(
       (a.write ?? []).map((p) => {
         const real = resolve(p)
@@ -629,6 +631,7 @@ export function resolveSandboxConfig(
         return real
       }),
       'write',
+      walls,
     ),
   }
   if (a.network !== undefined) r.network = a.network
@@ -1391,7 +1394,11 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  * NOT `isLiteralPattern`: its docblock says why the brace is not a wildcard
  * to a grant.
  */
-function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[] {
+function expandGrants(
+  paths: readonly string[],
+  kind: 'read' | 'write',
+  walls: readonly string[],
+): string[] {
   // A pattern covering a directory WHOLE is that directory. `<d>/**/*` and
   // `<d>/**` match everything UNDER `<d>` and never `<d>` itself, so a task
   // granted `read: ['**/*']` still could not list its own cwd — the exact
@@ -1425,6 +1432,11 @@ function expandGrants(paths: readonly string[], kind: 'read' | 'write'): string[
       const abs = path.join(base, hit)
       const real = toRealPath(abs)
       if (real !== home && !real.startsWith(home + path.sep)) continue
+      // A hit that IS a wall, or lies inside one, was matched, not named:
+      // `read: ['*']` in a root project bound `.git` and `.vx`, and
+      // `packages/*` a nested project its key excludes (B-1). A grant that
+      // names a wall literally never reaches this loop and stays.
+      if (walls.some((w) => real === w || real.startsWith(w + path.sep))) continue
       out.push(abs)
       hits++
     }
