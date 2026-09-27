@@ -524,6 +524,7 @@ export interface ExecuteRequest {
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void
   readonly onStderr: (chunk: string) => void
+  readonly signal?: AbortSignal
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   readonly sandbox?: ExecuteSandbox
 }

@@ -139,6 +139,13 @@ export interface ExecuteRequest {
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void
   readonly onStderr: (chunk: string) => void
+  /**
+   * Aborted when the run stops: Ctrl-C, SIGTERM, SIGHUP or an embedder's
+   * `RunOptions.signal`. An executor ends its work and returns; core waits
+   * for `execute` before its teardown, and a child an executor spawned is
+   * not one core can reach (item H-10).
+   */
+  readonly signal?: AbortSignal
   /** See `RunOptions.liveChildren`: the run's SIGINT/SIGTERM registry. */
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   readonly sandbox?: ExecuteSandbox

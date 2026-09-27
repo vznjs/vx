@@ -124,6 +124,19 @@ or a user doc (only core's own module pages). Breaking for a 0.x importer;
 each stays exported inside core. `LOG_WIRE_VERSION` stays: the exported
 `TaskLogBundle` type names it.
 
+## H-10: a plugin executor hears the run stop (`ExecuteRequest.signal`)
+
+The plugin-author walk wrote an executor from the guide and types alone
+and found no way to stop it: on Ctrl-C vx exited 130 and the executor's
+child ran on (reparented to init), and an embedder's abort waited for it.
+`req.liveChildren` did not help: `killTree` signals a process group, and a
+plugin's child leads none. Core already had the run's stop signal; it now
+rides the request as `signal`. The guide gains "Where a task runs", a
+runnable executor that stops its process group on the signal (type-checked
+by `plugins-guide-snippets.test.ts`, and run under Ctrl-C in a scratch
+workspace: no child left). Row: `plugin-executor-abort.test.ts`, green with
+the forward, a 20 s timeout without it.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
