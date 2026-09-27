@@ -670,6 +670,9 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
 1048. SUPERSEDED (2026-09-27) by A-3 (`docs/history/ws-a.md`), which
       landed first: a saved artifact is renamed into place inside its index transaction.
 
+1049. SUPERSEDED (2026-09-27) by A-4 (`docs/history/ws-a.md`), which
+      landed first: an output's mode 000 and an mtime at or before 1970 round-trip.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
