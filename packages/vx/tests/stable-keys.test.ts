@@ -41,6 +41,45 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
     expect(dependsOnSiblingOutputs(node('B', { files: ['**'] }), new Set(['B']), false)).toBe(true)
   })
 
+  describe('a same-project producer whose writes are all declared (A-20)', () => {
+    const declared = (outputs: string[], wide: string[] = []) => ({
+      wide: new Set(wide),
+      outputsOf: new Map([['B', outputs]]),
+    })
+    const gate = (inputs: string[] | undefined, same: ReturnType<typeof declared>) =>
+      dependsOnSiblingOutputs(
+        {
+          projectName: 'B',
+          config: {
+            cache: {
+              inputs: inputs === undefined ? {} : { files: inputs },
+              outputs: { files: [] },
+            },
+          },
+        } as unknown as TaskNode,
+        new Set(['B']),
+        false,
+        undefined,
+        same,
+      )
+
+    it('reaches a reader only where the globs meet', () => {
+      expect(gate(['src/**'], declared(['dist/**']))).toBe(false)
+      expect(gate(['src/**', 'package.json'], declared(['dist', 'build/**']))).toBe(false)
+      expect(gate(['dist/**'], declared(['dist/**']))).toBe(true)
+      expect(gate(['src/**'], declared(['src/gen/**']))).toBe(true)
+      expect(gate(['src/gen/a.ts'], declared(['src/**']))).toBe(true)
+      expect(gate(['**/*.ts'], declared(['dist/**']))).toBe(true)
+      expect(gate(['src/**'], declared(['**/*.js']))).toBe(true)
+    })
+
+    it('stays project-wide for undeclared writes, default inputs, or no declared outputs', () => {
+      expect(gate(['src/**'], declared(['dist/**'], ['B']))).toBe(true)
+      expect(gate(undefined, declared(['dist/**']))).toBe(true)
+      expect(gate(['src/**'], declared([]))).toBe(true)
+    })
+  })
+
   it('a project-relative reader whose only upstream producer is ANOTHER project → STABLE', () => {
     // Project boundaries are hard: pkg-A's outputs.files land in pkg-A's dir,
     // which pkg-B's project-relative `**` cannot read. Must NOT over-mark — this

@@ -19,7 +19,9 @@ can never drift on the stability gate.
   — the conservative gate, fed the TRANSITIVE-upstream output producers
   `deriveStableKeys` accumulates in topo order. The key is preliminary
   (→ unstable) when a same-project upstream declares `outputs.files`
-  (project-relative inputs read this project's dir), or the task reads
+  its input globs can meet (literal prefixes, ancestor or equal; A-20:
+  a `test` reading `src/**` after a `build` writing `dist/**` is stable),
+  when a same-project upstream may write undeclared (every input), or the task reads
   `cache.inputs.workspaceFiles` (boundary-free) and ANY upstream declares
   outputs — `outputs.files` in any project OR `outputs.workspaceFiles`.
   Transitive because a producer reached through a no-output intermediate

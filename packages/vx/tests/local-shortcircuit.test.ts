@@ -751,6 +751,44 @@ describe('local cache short-circuit', () => {
   )
 
   it(
+    "a same-project reader whose globs miss the producer's outputs is classified (A-20)",
+    async () => {
+      // `build` writes `dist/**`; `test` reads `src/**` and keys the same
+      // before and after it, so it restores with the tier. `e2e` reads what
+      // `build` wrote and stays out.
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+              test: {
+                dependsOn: ['build'],
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              },
+              e2e: {
+                dependsOn: ['build'],
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['dist/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      const tasks = ['build', 'test', 'e2e']
+      expect((await run({ cwd: fixture.root, tasks, log: silentLogger(fixture) })).ok).toBe(true)
+      const c = await classify(fixture, tasks)
+      expect([...c.restoreTier].sort()).toEqual(['app#build', 'app#test'])
+      expect([...c.preProbedIds].sort()).toEqual(['app#build', 'app#test'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the per-task pool keeps a stable MISS out of the tier',
     async () => {
       await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
