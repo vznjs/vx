@@ -427,6 +427,9 @@ export async function resolveRunOptions(
   // changed-only `[<base>]` (item 287). `--filter '[<base>]'` stays the
   // "only what I touched" form. Merging it into the filter list means the
   // same code path handles plain filter use, --affected alone, and the combo.
+  // It goes FIRST: filters apply in argv order, and appended last it came
+  // after every `!` exclude, so `--affected --filter '!app'` still ran app
+  // (item 955). An include's place does not change a union.
   const filterStrings = [...parsed.filters]
   if (parsed.affected !== undefined) {
     const root = await findWorkspaceRoot(cwd)
@@ -439,7 +442,7 @@ export async function resolveRunOptions(
         return { error: err.message }
       }
     }
-    filterStrings.push(`...[${base}]`)
+    filterStrings.unshift(`...[${base}]`)
   }
 
   // Project scope applies to bare task names only. Anchored entries
