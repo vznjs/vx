@@ -11,12 +11,23 @@
 // never silently drop the only proof that remote execution works.
 
 import { describe, expect, it } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { ExecuteRequest } from '@vzn/vx'
 import { ReapiClient } from '../src/wire.js'
 import { reapiExecutor } from '../src/executor.js'
+
+/**
+ * The git blob OID a key folds for `text`. The executor holds the tree it
+ * reads to these (item 1037): a fixture digest the bytes do not carry is a
+ * tree that moved after its key, and no record is written under it.
+ */
+function blobOid(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  return createHash('sha1').update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex')
+}
 
 const ENDPOINT = Bun.env['VX_REAPI_EXEC_ENDPOINT']
 if (Bun.env['VX_REQUIRE_REAPI_EXEC'] === '1' && (ENDPOINT === undefined || ENDPOINT === '')) {
@@ -55,7 +66,7 @@ describe.if(run)('remote execution against a live scheduler + worker', () => {
         runtime: [],
         workspaceRuntime: [],
         upstream: [],
-        packageJsonDigest: 'x',
+        packageJsonDigest: '',
         configDigest: 'y',
         workspaceFingerprint: 'z',
       },
@@ -175,7 +186,7 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: 'p',
+            packageJsonDigest: '',
             configDigest: 'c',
             workspaceFingerprint: 'w',
           },
@@ -205,12 +216,12 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
           cacheKey: `build-${nonce2}`,
           onStdout: (c: string) => (stdout += c),
           inputs: {
-            files: [{ path: 'pkg/src/app.js', digest: 'oid' }],
+            files: [{ path: 'pkg/src/app.js', digest: blobOid('require("liba")\n') }],
             env: [],
             runtime: [],
             workspaceRuntime: [],
             upstream: [{ taskId: 'pkg#install', hash: keyA, outputs: [] }],
-            packageJsonDigest: 'p',
+            packageJsonDigest: '',
             configDigest: 'c',
             workspaceFingerprint: 'w',
           },
@@ -242,7 +253,7 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: 'p',
+            packageJsonDigest: '',
             configDigest: 'c',
             workspaceFingerprint: 'w',
           },
@@ -280,7 +291,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
         runtime: [],
         workspaceRuntime: [],
         upstream: [],
-        packageJsonDigest: 'p',
+        packageJsonDigest: '',
         configDigest: 'c',
         workspaceFingerprint: 'w',
       },
@@ -356,7 +367,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [{ taskId: 'pkg#up', hash: key, outputs: ['pkg/gen/data.txt'] }],
-            packageJsonDigest: 'p',
+            packageJsonDigest: '',
             configDigest: 'c',
             workspaceFingerprint: 'w',
           },
@@ -388,7 +399,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       runtime: [],
       workspaceRuntime: [],
       upstream: [{ taskId: 'pkg#up', hash, outputs: [] }],
-      packageJsonDigest: 'p',
+      packageJsonDigest: '',
       configDigest: 'c',
       workspaceFingerprint: 'w',
     })
@@ -489,7 +500,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: 'p',
+            packageJsonDigest: '',
             configDigest: 'c',
             workspaceFingerprint: 'w',
           },
@@ -563,7 +574,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: 'x',
+            packageJsonDigest: '',
             configDigest: 'y',
             workspaceFingerprint: 'z',
           },
@@ -602,7 +613,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
           runtime: [],
           workspaceRuntime: [],
           upstream: [],
-          packageJsonDigest: 'x',
+          packageJsonDigest: '',
           configDigest: 'y',
           workspaceFingerprint: 'z',
         },
@@ -648,7 +659,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: 'x',
+            packageJsonDigest: '',
             configDigest: 'y',
             workspaceFingerprint: 'z',
           },
@@ -721,7 +732,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: 'p',
+            packageJsonDigest: '',
             configDigest: 'c',
             workspaceFingerprint: 'w',
           },
@@ -761,12 +772,12 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
           cacheKey: `sc-key-${n3}`,
           outputs: { files: ['out.txt'], workspaceFiles: [] },
           inputs: {
-            files: [{ path: 'pkg/src/in.txt', digest: 'x' }],
+            files: [{ path: 'pkg/src/in.txt', digest: blobOid(`sc-${n3}\n`) }],
             env: [],
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: 'p',
+            packageJsonDigest: '',
             configDigest: 'c',
             workspaceFingerprint: 'w',
           },

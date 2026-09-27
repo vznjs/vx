@@ -757,8 +757,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         }
       }
 
-      const inputPaths = [...req.inputs.files.map((f) => f.path), ...localUpstreamPaths]
+      // The key folds the project's package.json whether or not a glob
+      // lists it, so the worker sees it too: a `"type": "module"` changes
+      // what a bundler emits, and a tree without it ran as another task.
+      const expected = new Map(req.inputs.files.map((f) => [f.path, f.digest]))
+      const packageJson = projectRel === '' ? 'package.json' : `${projectRel}/package.json`
+      if (req.inputs.packageJsonDigest !== '' && !expected.has(packageJson)) {
+        expected.set(packageJson, req.inputs.packageJsonDigest)
+      }
+      const inputPaths = [...expected.keys(), ...localUpstreamPaths]
       const tree = await buildInputTree({
+        expected,
         workspaceRoot: req.workspaceRoot,
         paths: inputPaths,
         digests,
@@ -775,6 +784,15 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         treeGrafts,
         symlinkGrafts,
       })
+      // The tree is read after the key was taken. Bytes that moved in
+      // between (an edit mid-run, `vx watch`) run as this action but must
+      // not be recorded under the key: restored to the keyed state, the
+      // next run anywhere replayed the edited outputs (item 1037).
+      if (tree.moved.length > 0) {
+        warn(
+          `vx/reapi: ${req.taskId}: \`${tree.moved[0]}\` changed after its key was taken — the execution is not recorded under it`,
+        )
+      }
       for (const shadowedPath of tree.shadowed) {
         warn(
           `vx/reapi: ${req.taskId} declares input files under ${shadowedPath}, which an upstream graft replaces — those files are NOT in the input tree`,
@@ -918,7 +936,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // so a dependent in ANY project can graft them at the right place.
       // Written for every successful remote execution, not just remote-only
       // tasks: it is what lets a 50-task chain flow worker→CAS→worker.
-      if (req.cacheKey !== undefined && (result.exit_code ?? 0) === 0) {
+      if (req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0) {
         const rebase = (rel: string): string =>
           workingDirectory === '' ? rel : `${workingDirectory}/${rel}`
         // Stdout rides the record as a blob so a short-circuited repeat run

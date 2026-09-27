@@ -34,6 +34,19 @@ export interface InputTree {
    * should surface these.
    */
   shadowed: string[]
+  /**
+   * Paths whose bytes as read no longer carry the digest `expected` gave
+   * them: the key describes one state of the tree and this is another.
+   */
+  moved: string[]
+}
+
+/** `git hash-object` of `bytes` in the object format `oid` is written in. */
+function carriesOid(bytes: Uint8Array, oid: string): boolean {
+  // A key digest may carry a mode (`100755:<oid>`); the bytes answer for the oid.
+  const bare = oid.slice(oid.lastIndexOf(':') + 1)
+  const hash = createHash(bare.length === 64 ? 'sha256' : 'sha1')
+  return hash.update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex') === bare
 }
 
 export function sha256(data: Uint8Array): Digest {
@@ -164,6 +177,11 @@ export async function buildInputTree(args: {
   symlinkGrafts?: readonly { path: string; target: string }[]
   /** Directories grafted from upstream output Trees, re-canonicalised. */
   treeGrafts?: readonly TreeGraft[]
+  /**
+   * The git blob OID the cache key folded for a path (for a symlink, of its
+   * target). A file read with other bytes is reported in `moved`.
+   */
+  expected?: ReadonlyMap<string, string>
 }): Promise<InputTree> {
   const digests = args.digests ?? new DigestCache()
   const read =
@@ -171,6 +189,7 @@ export async function buildInputTree(args: {
   const root = emptyDir()
   const blobs: Blob[] = []
   const seen = new Set<string>()
+  const moved: string[] = []
   let fileCount = 0
 
   // Insertion order is NOT what makes the tree deterministic — `encodeDirectory`
@@ -183,9 +202,21 @@ export async function buildInputTree(args: {
     // Following it would upload the target's bytes under the link's path —
     // a tree that lies about its own shape, and a worker that materialises a
     // copy where the task expects a link.
-    const st = await lstat(abs)
+    let st: Awaited<ReturnType<typeof lstat>>
+    try {
+      st = await lstat(abs)
+    } catch (err) {
+      // Gone since the key saw it: the key describes a file this tree lacks.
+      if (args.expected?.has(rel) === true && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+        moved.push(rel)
+        continue
+      }
+      throw err
+    }
     if (st.isSymbolicLink()) {
       const target = await readlink(abs)
+      const want = args.expected?.get(rel)
+      if (want !== undefined && !carriesOid(new TextEncoder().encode(target), want)) moved.push(rel)
       const parts = rel.split('/')
       let node = root
       for (const seg of parts.slice(0, -1)) {
@@ -201,6 +232,8 @@ export async function buildInputTree(args: {
     }
     if (!st.isFile()) continue
     const data = await read(abs)
+    const want = args.expected?.get(rel)
+    if (want !== undefined && !carriesOid(data, want)) moved.push(rel)
     const digest = await digests.digestOf(abs, data)
     if (!seen.has(digest.hash)) {
       seen.add(digest.hash)
@@ -277,7 +310,7 @@ export async function buildInputTree(args: {
   }
 
   const rootDigest = serialise(root, blobs, seen)
-  return { root: rootDigest, blobs, fileCount, shadowed }
+  return { root: rootDigest, blobs, fileCount, shadowed, moved }
 }
 
 /**

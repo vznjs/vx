@@ -36,6 +36,11 @@ const bytes = (s: string) => new TextEncoder().encode(s)
 const put = (s: string) => fake.put(bytes(s))
 const D = (d: { hash: string; size_bytes: number }) => ({ hash: d.hash, sizeBytes: d.size_bytes })
 
+/** The git blob id of `in.txt`'s bytes, as the key folded it: a digest the
+ *  tree's read cannot match withholds the record. */
+const IN_OID = '4935e88d323e7973308dd73cccf2837fc3c7de22'
+const PKG_OID = '089153bcb5adf57dc25f206a9dad3114c9cff80d'
+
 const request = (over: Record<string, unknown> = {}): ExecuteRequest =>
   ({
     taskId: 'pkg#gen',
@@ -50,12 +55,12 @@ const request = (over: Record<string, unknown> = {}): ExecuteRequest =>
     onStderr: () => undefined,
     outputs: { files: ['out.txt'], workspaceFiles: [] },
     inputs: {
-      files: [{ path: 'pkg/src/in.txt', digest: 'unused' }],
+      files: [{ path: 'pkg/src/in.txt', digest: IN_OID }],
       env: [],
       runtime: [],
       workspaceRuntime: [],
       upstream: [],
-      packageJsonDigest: 'x',
+      packageJsonDigest: '',
       configDigest: 'y',
       workspaceFingerprint: 'z',
     },
@@ -368,6 +373,53 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     }
     expect(record.output_files.map((f) => f.path)).toEqual(['pkg/out.txt'])
     expect(record.stdout_digest.hash).toBe(sha256(bytes('said')).hash)
+  })
+
+  // The tree is read after the key was taken. An input edited in between
+  // ran as this action and its outputs were recorded under the old key:
+  // restored, the next run on any machine replayed the edited outputs
+  // (item 1037).
+  it('an input whose bytes moved since the key was taken runs, but is not recorded under it', async () => {
+    const out = put('made')
+    fake.onExecute = () => ({
+      response: { result: { exit_code: 0, output_files: [{ path: 'out.txt', digest: D(out) }] } },
+    })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'EDITED\n')
+    await withExecutor(async (run, warns) => {
+      expect((await run(request({ cacheKey: 'k-moved' }))).exitCode).toBe(0)
+      expect(warns).toEqual([
+        'vx/reapi: pkg#gen: `pkg/src/in.txt` changed after its key was taken — the execution is not recorded under it',
+      ])
+    })
+    expect(fake.actions.has(execDigestFor('k-moved').hash)).toBe(false)
+    // Gone since the key saw it is the same: the key describes a file the
+    // tree lacks.
+    await rm(path.join(root, 'pkg', 'src', 'in.txt'))
+    await withExecutor((run) => run(request({ cacheKey: 'k-vanished' })))
+    expect(fake.actions.has(execDigestFor('k-vanished').hash)).toBe(false)
+    // CONTROL: the keyed bytes back, the record is written.
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'in\n')
+    await withExecutor((run) => run(request({ cacheKey: 'k-keyed' })))
+    expect(fake.actions.has(execDigestFor('k-keyed').hash)).toBe(true)
+  })
+
+  // The key folds the project's package.json whether a glob lists it or
+  // not; the worker ran without it, so `"type": "module"` or a bin lookup
+  // saw another task than the one keyed (item 1037).
+  it("the project's package.json is in the input root, held to the key's digest", async () => {
+    await writeFile(path.join(root, 'pkg', 'package.json'), '{"type":"module"}\n')
+    fake.onExecute = () => ({ response: { result: { exit_code: 0 } } })
+    const base = request()
+    const withPkg = (digest: string, cacheKey: string) =>
+      request({ cacheKey, inputs: { ...base.inputs!, packageJsonDigest: digest } })
+    await withExecutor((run) => run(withPkg(PKG_OID, 'k-pkg')))
+    expect(inputRoot().get('pkg/package.json')).toEqual(
+      expect.objectContaining({ name: 'package.json' }),
+    )
+    expect(fake.actions.has(execDigestFor('k-pkg').hash)).toBe(true)
+    // A package.json edited since the key: run, not recorded.
+    await withExecutor((run) => run(withPkg(IN_OID, 'k-pkg-moved')))
+    expect(fake.actions.has(execDigestFor('k-pkg-moved').hash)).toBe(false)
   })
 })
 

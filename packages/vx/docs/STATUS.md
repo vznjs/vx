@@ -1059,6 +1059,30 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Left: `vx mcp` re-imports `vx.workspace.ts` in-process and serves
         a local plugin's old imports (the review's fifth lead).
 
+1037. DONE (2026-09-27, the vx-reapi review's first and third leads).
+      Remote execution recorded a result under a key its inputs no longer
+      matched, and ran without the one file the key always folds.
+      - The input tree is read after the key was taken, and the record
+        was written under the key regardless. A file edited in between
+        ran, core withheld its own save, and the record did not: with
+        the file restored, the next run on any machine replayed the
+        edited outputs. `buildInputTree` now holds each file to the git
+        blob id the key folded (sha1 or sha256 by its length; a
+        symlink's target), and a file moved or gone withholds the record
+        with a warning.
+      - The project's `package.json` is in every key but was never in the
+        input root: a worker ran `"type": "module"` code as CommonJS. It
+        now ships, held to `packageJsonDigest` like any input.
+      - Rows: `executor-sweep.test.ts` › an input whose bytes moved since
+        the key was taken runs, but is not recorded under it (edited,
+        removed, and restored as the control); the project's
+        package.json is in the input root. Each red with its fix removed.
+        The sweep fixtures now carry the real digest of their input.
+      - Left from the review: materialising a coarse output directory
+        writes non-output entries over sources; an evicted blob replays
+        green; a failed Tree read while recording fails a success; a
+        whole-tree capture records `pkg/`.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

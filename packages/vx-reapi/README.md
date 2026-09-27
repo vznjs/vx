@@ -92,6 +92,14 @@ a record skips the Merkle build, the upload pass and `Execute`
 entirely: the outputs are already in the CAS, and stdout replays from
 the record. `--force` bypasses it.
 
+The input tree is read after the key was taken, so each file's bytes are
+held to the git blob id the key folded for it. A file edited or removed
+in between (an edit mid-run under `vx watch`) still runs, but the
+execution is not recorded under a key that no longer describes it; the
+record once replayed the edited outputs on every machine after the file
+was restored. The project's own `package.json`, which the key folds
+whether or not a glob lists it, is always in the input root.
+
 This matters most under `--download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
 and the record is what makes the second run cheap. Records are checked
@@ -295,7 +303,8 @@ A cache-only server (bazel-remote advertises `exec_enabled: false`) makes the
 plugin **decline the executor with a warning** rather than submit work that
 will never be answered. Only cacheable tasks are eligible — a task with no
 `cache` block has no described inputs, so a worker would run it against an
-empty input root.
+empty input root. A cacheable task's root holds its declared input files
+and its project's `package.json`.
 
 Verified end-to-end against a live NativeLink scheduler + worker: input tree
 uploaded, QUEUED → EXECUTING → COMPLETED streamed, stdout returned inline,
