@@ -6,7 +6,7 @@ import type { RunSummaryRecord } from '@vzn/vx'
 
 export type FetchFn = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string },
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>
 
 export interface CheckRunEnv {
@@ -98,14 +98,16 @@ export function buildCheckRunPayload(args: {
 
 /**
  * POST the check run. Failures are REPORTED via `warn`, never thrown —
- * observability must never break a run, and the flush deadline already
- * bounds a slow API.
+ * observability must never break a run. `signal` is core's flush deadline:
+ * the deadline alone abandoned the request, and a hanging API kept the
+ * process alive with no end (item 1055).
  */
 export async function postCheckRun(args: {
   env: CheckRunEnv
   payload: Record<string, unknown>
   fetchFn: FetchFn
   warn: (m: string) => void
+  signal?: AbortSignal
 }): Promise<void> {
   const url = `${args.env.apiUrl}/repos/${args.env.repository}/check-runs`
   try {
@@ -119,6 +121,7 @@ export async function postCheckRun(args: {
         'user-agent': 'vzn-vx-github',
       },
       body: JSON.stringify(args.payload),
+      ...(args.signal === undefined ? {} : { signal: args.signal }),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')

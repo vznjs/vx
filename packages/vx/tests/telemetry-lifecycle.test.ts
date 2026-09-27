@@ -88,6 +88,23 @@ describe('telemetry flush is time-bounded', () => {
     expect(warnings.join('\n')).toContain('telemetry flush timed out')
   }, 15_000)
 
+  // Abandoned is not ended: a request still in flight kept the event loop,
+  // and `vx run`, alive after the run returned (item 1055). The sink is
+  // told when its time is up, so it can end its own I/O.
+  it('the signal a flush receives aborts at the deadline', async () => {
+    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '100'
+    let seen: AbortSignal | undefined
+    const listening: TelemetrySink = {
+      flush: (signal) => {
+        seen = signal
+        return new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
+      },
+    }
+    const source = createTelemetrySource({ sinks: [listening], run: RUN, warn: () => {} })
+    await source.flush()
+    expect(seen?.aborted).toBe(true)
+  }, 15_000)
+
   it('a healthy sink still completes its flush, and no timeout is reported', async () => {
     process.env['VX_TEARDOWN_TIMEOUT_MS'] = '2000'
     const warnings: string[] = []

@@ -318,8 +318,14 @@ export interface TelemetrySink {
    * Losing a slow sink's telemetry is strictly better than the alternative:
    * `run()` never returns, so the cache never closes and `vx` exits 0 on a
    * failed run.
+   *
+   * `signal` aborts at that deadline. Abandoning a flush does not end its
+   * I/O: a request still in flight keeps the event loop, and so the
+   * process, alive after the run has returned — a hanging GitHub API held
+   * `vx run` open until the CI job's own timeout (item 1055). A sink passes
+   * the signal to its `fetch` (or closes its socket on it).
    */
-  flush?(): Promise<void>
+  flush?(signal: AbortSignal): Promise<void>
 }
 
 /** Read-only context a sink is created with. No mutable run handle — the
@@ -496,12 +502,13 @@ export function createTelemetrySource(args: {
       // pending — Bun exits 0 and a FAILED run reports green, with the cache's
       // accessed_at bumps and every later plugin's teardown lost with it.
       // Sinks race concurrently, so each still gets the whole budget.
+      const deadline = new AbortController()
       const settled = await settleWithin(
         Promise.all(
           sinks.map(async (sink) => {
             if (disabled.has(sink) || sink.flush === undefined) return
             try {
-              await sink.flush()
+              await sink.flush(deadline.signal)
             } catch (err) {
               // A flush failure can never break the run — but it still costs
               // this sink its export, so say so rather than dropping it.
@@ -513,7 +520,10 @@ export function createTelemetrySource(args: {
         ),
         ms,
       )
-      if (!settled) warn?.(`[vx] telemetry flush timed out after ${ms}ms; buffered records lost`)
+      if (!settled) {
+        deadline.abort(new Error(`telemetry flush deadline (${ms}ms)`))
+        warn?.(`[vx] telemetry flush timed out after ${ms}ms; buffered records lost`)
+      }
     },
   }
 }

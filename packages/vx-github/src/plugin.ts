@@ -58,7 +58,7 @@ export class GithubSummarySink implements TelemetrySink {
     this.summary = summary
   }
 
-  async flush(): Promise<void> {
+  async flush(signal?: AbortSignal): Promise<void> {
     if (this.summary === undefined) return
     const markdown = renderJobSummary(this.summary, this.title)
     // The two artifacts are INDEPENDENT, and the plugin already says so in
@@ -87,6 +87,7 @@ export class GithubSummarySink implements TelemetrySink {
         }),
         fetchFn: this.check.fetchFn,
         warn: this.warn,
+        ...(signal === undefined ? {} : { signal }),
       })
     }
   }
