@@ -70,16 +70,24 @@ each fail their row. The contract table's "Defined by" column named
 `src/config.ts` for the plugin API, where `VxPlugin` is not; it now names
 the files and each surface's record.
 
+## H-5: pin the `--dry=json` and `--summarize` wire shapes
+
+Both machine-readable run outputs are contract surfaces, and both are
+wire objects built field by field (`formatPlanJson`, `writeRunSummary`),
+so H-2's type pin does not hold them: a key renamed there passed every
+test. `tests/contract-cli-wire.test.ts` renders each from a fixture typed
+`Required<PlannedTask>`, `Required<RunPlan>`, `Required<TaskOutcome>` (a new
+source field must be given a value before the file compiles; writing it
+found `sandboxViolationLines`, which a grep of the interface had missed),
+flattens the JSON to key paths with the types seen at each, and compares
+with `tests/contract/cli-wire.json`. `cli.md`'s two samples may show only
+key paths the wire has, with its types. Differential: `p50Ms` renamed in
+`formatPlanJson` fails the record row; a key added to the doc's sample
+fails the doc row.
+
 ## Leads for other streams
 
-- **D / B:** `exec.sandbox.ignore.localBinding` accepts ANY value (the
-  probe table records `null`, `-1`, `{}` and every other probe as `ok`):
-  the ignore loop in `validateSandbox` checks neither it nor the booleans'
-  type, and `sandbox-runtime.ts` (`r.ignore`) forwards only `read`,
-  `write`, `systemInfo` and `network`, so `ignore.localBinding`,
-  `ignore.unixSockets` and `ignore.machLookup` load and are silently
-  dropped. Refuse them at load (`localBinding` is a flag like `pty`), or
-  forward the two name lists.
+- **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
 - **D:** `dependsOn` accepts `['']` and `['!x']` at load; whether the graph
   refuses each with the task named is unchecked.
 - **F:** `@vzn/vx-reapi#test`'s "a call a proxy cuts in transit" rows

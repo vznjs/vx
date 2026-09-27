@@ -110,6 +110,15 @@ change is a reviewed diff of that file and never a side effect.
   `VxPlugin`'s members to `PLUGIN_HOOKS`. The façade snapshot in
   `package-boundaries.unsafe.test.ts` still pins the export names;
   this pins their shapes. Regenerate the same way.
+- **The machine-readable run outputs.** `--dry=json` and the
+  `--summarize` file are wire objects built field by field
+  (`formatPlanJson`, `writeRunSummary`), not a serialized type, so the
+  type pin does not hold them. `tests/contract-cli-wire.test.ts`
+  renders each from a fixture that sets every field of its source type
+  (`Required<…>`, so a new field must be given a value before the file
+  compiles) and compares every key path and the JSON types at it with
+  `tests/contract/cli-wire.json`. The samples `cli.md` prints may show
+  only keys the wire has, with its types.
 
 ## Not the contract
 
