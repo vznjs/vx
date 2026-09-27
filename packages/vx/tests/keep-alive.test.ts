@@ -181,6 +181,9 @@ describe('a persistent server that dies before the run stops it', () => {
       code,
       said: lines.filter((l) => l.startsWith('vx: ')),
       pinned: lines.filter((l) => l.trim().startsWith('▸')),
+      // The footer's task tally: it counted a crashed server a success
+      // over a red exit (item 1071).
+      tally: lines.find((l) => l.endsWith(' total') && /success|failed/.test(l))?.trim(),
     }
   }
 
@@ -190,6 +193,7 @@ describe('a persistent server that dies before the run stops it', () => {
       code: 1,
       said: ['vx: app#srv exited with code 3 before the run stopped it'],
       pinned: [],
+      tally: '1 failed · 1 success · 2 total',
     })
   }, 20_000)
 
@@ -197,10 +201,11 @@ describe('a persistent server that dies before the run stops it', () => {
     // The stopped server's own exit is the SIGTERM's (143): read after the
     // stop, it would fail every run that used a server.
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 0'))
-    expect(await run(root, ['e2e'])).toEqual({ code: 0, said: [], pinned: [] })
+    const green = { code: 0, said: [], pinned: [], tally: '2 success · 2 total' }
+    expect(await run(root, ['e2e'])).toEqual(green)
     await rm(path.join(root, 'packages', 'app', 'gone'), { force: true })
     await addProject(root, 'app', crashing('touch gone; echo READY; exec sleep 30'))
-    expect(await run(root, ['e2e'])).toEqual({ code: 0, said: [], pinned: [] })
+    expect(await run(root, ['e2e'])).toEqual(green)
   }, 20_000)
 
   // Item 1061: a Ctrl-C tears the servers down before the graph ends, so
@@ -262,6 +267,7 @@ describe('a persistent server that dies before the run stops it', () => {
       code: 1,
       said: ['vx: app#srv exited with code 3'],
       pinned: [],
+      tally: '1 failed · 1 success · 2 total',
     })
   }, 20_000)
 })

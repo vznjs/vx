@@ -7,7 +7,12 @@ import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/in
 import path from 'node:path'
 import { type CacheLayer, type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
 import { VERSION } from '../version.js'
-import { resetSandbox, VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from '../exec/index.js'
+import {
+  resetSandbox,
+  signalExitCode,
+  VX_RUN_TASK_ENV,
+  VX_RUN_WORKSPACE_ENV,
+} from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { TaskExecutor } from '../exec/index.js'
@@ -827,8 +832,26 @@ async function runOnBus(
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
 
+    // A server that died on its own before the stop failed, whatever its
+    // outcome said when it became ready: the footer counted it a success
+    // over the run's red exit (item 1071). A kept one that has already
+    // died is the same; the keep-alive wait below names it. Its code is its
+    // own, or the shell's report of the signal that took it.
+    const failServer = (id: string, code: number | string): void => {
+      const o = outcomes.get(id)
+      if (o === undefined) return
+      const exitCode = typeof code === 'number' ? code : signalExitCode(code)
+      outcomes.set(id, { ...o, status: 'failed', exitCode })
+    }
+    for (const c of crashedPersistent) failServer(c.id, c.code)
+    keepAlive.nodes.forEach((n, i) => {
+      const child = keepAlive.children[i]!
+      if (!hasEnded(child) || child.exitCode === 0) return
+      if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
+      failServer(n.id, child.exitCode ?? child.signalCode ?? 'unknown')
+    })
     const list = [...outcomes.values()]
-    const ok = list.every((o) => isPassStatus(o.status)) && crashedPersistent.length === 0
+    const ok = list.every((o) => isPassStatus(o.status))
 
     // The summary + artifact writers + recordRun pass all exclude group
     // tasks via the shared tallyOutcomes helper. We pass the full
@@ -847,8 +870,8 @@ async function runOnBus(
     // A task killed by a shutdown signal is in no bucket above, yet it makes
     // `ok` false — name it, or the red exit is undiagnosable.
     for (const line of formatAbortedSection(list)) log.status(line)
-    // Likewise a dependency-only server that died before the end of the
-    // graph stopped it: its outcome says `success` (it became ready).
+    // And a dependency-only server that died before the end of the graph
+    // stopped it: the footer counts it failed, this says why.
     for (const c of crashedPersistent)
       log.status(`vx: ${c.id} exited with code ${c.code} before the run stopped it`)
     // The footer's "N skipped" names no task; this names each under the
