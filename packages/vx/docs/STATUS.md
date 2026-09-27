@@ -328,7 +328,20 @@ test is telling the truth.
         against 1).
       - Left: a config's `Bun.write(Bun.stdout, …)` still reaches
         `vx mcp`'s JSON-RPC stream (`console.*` and
-        `process.stdout.write` are redirected, item 922).
+        `process.stdout.write` are redirected, item 922); 1069.
+
+1069. DONE (2026-09-27, the MCP and schedule-history review's lead 6,
+      second half). A config evaluated while a `vx mcp` tool loaded the
+      workspace could still write into the JSON-RPC stream through Bun's
+      own stdout: `Bun.write(Bun.stdout, …)` and `Bun.stdout.writer()`
+      bypass both `process.stdout.write` and the console, which item 922
+      redirected, and a strict client drops the connection on a line that
+      is not JSON-RPC. While it serves, both go to stderr as well, and
+      both are restored after. A process a config spawns with fd 1
+      inherited still writes there; the README says so.
+      - Row: `server.test.ts` › keeps stdout JSON-RPC while a config or a
+        plugin stage prints, extended with both (red without the change:
+        the reply line could not be parsed).
 
 ## In flight
 
