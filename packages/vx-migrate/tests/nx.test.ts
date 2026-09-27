@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
 import { fakeNx, fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { nx } from '../src/index.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 30_000
@@ -683,6 +684,17 @@ describe('nx()', () => {
 })
 
 // Item 816's sweep of nx/index.ts: each row fails with one line undone.
+describe('nx.json is a claimed root file (item 961)', () => {
+  it('nx() claims nx.json at the root and cannot tell which tasks an edit moved', () => {
+    const claim = nx().fingerprint!
+    expect([...claim.files]).toEqual(['nx.json'])
+    expect(claim.affected({ file: 'nx.json', before: null, after: null }, {} as never)).toBe(
+      undefined,
+    )
+    expect(nx({ root: '/elsewhere' }).fingerprint).toBeUndefined()
+  })
+})
+
 describe('nx(): what the sweep found unheld', () => {
   const graphWith = (edit: (g: typeof GRAPH) => void) => {
     const g = structuredClone(GRAPH)

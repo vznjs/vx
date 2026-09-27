@@ -194,8 +194,20 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   }
   const fingerprintChanged = changed.filter((p) => FINGERPRINT_SET.has(p))
   const claimedOwned = new Set<string>()
+  // A claim may also name a root file core does not fold (`turbo.json`,
+  // read by `turbo()`'s stages): it re-keys tasks through their resolved
+  // configs and belongs to no project (item 961). Only a changed ROOT name
+  // can be one, so a diff inside the projects never loads the claims.
+  const rootNamesChanged = changed.filter((p) => !p.includes('/') && !FINGERPRINT_SET.has(p))
+  let claims: FingerprintClaims | undefined
+  if (
+    (fingerprintChanged.length > 0 || rootNamesChanged.length > 0) &&
+    args.fingerprintClaims !== undefined
+  ) {
+    claims = await args.fingerprintClaims()
+    for (const file of rootNamesChanged) if (claims.files.has(file)) fingerprintChanged.push(file)
+  }
   if (fingerprintChanged.length > 0) {
-    const claims = args.fingerprintClaims === undefined ? undefined : await args.fingerprintClaims()
     for (const file of fingerprintChanged) {
       if (claims === undefined || !claims.files.has(file)) {
         return new Set(args.projects.map((p) => p.name))

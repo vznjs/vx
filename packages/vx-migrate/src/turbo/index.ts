@@ -31,8 +31,12 @@ export interface TurboPluginOptions {
  * per run (`adoption-plugin.ts` says why).
  */
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
-  return adoptionPlugin(import.meta, (ctx) =>
-    mapAll(options.root ?? ctx.workspaceRoot, ctx.projects),
+  return adoptionPlugin(
+    import.meta,
+    (ctx) => mapAll(options.root ?? ctx.workspaceRoot, ctx.projects),
+    // At the workspace root only: a claim is a root name (a `root` elsewhere
+    // is not claimed; its edits select as any unowned file does).
+    options.root === undefined ? ['turbo.json', 'turbo.jsonc'] : [],
   )
 }
 

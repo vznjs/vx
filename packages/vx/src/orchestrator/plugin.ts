@@ -103,8 +103,14 @@ export interface VxPlugin {
    * fingerprint every key sees (the config-evaluation cache still keys on
    * it — a config may import a dependency), and `--affected` asks
    * `affected` which projects a change to it touches instead of selecting
-   * every project. A file has one claimant; a name core does not fold is
-   * refused, since there is nothing to take out.
+   * every project. A file has one claimant.
+   *
+   * A root file core does NOT fold is claimed the same way when the
+   * plugin's stages read it: `turbo()` shapes every task from
+   * `turbo.json`, so an edit to it re-keys tasks through their resolved
+   * configs while no project owns the path. Nothing is taken out;
+   * `--affected` asks `affected` (undefined: every project) and `vx watch`
+   * re-runs on an edit (item 961). A claim is a bare name at the root.
    */
   readonly fingerprint?: FingerprintClaim
 
@@ -256,7 +262,7 @@ export interface KeyHookContext extends BaseContext {}
 
 /** A plugin's claim on workspace fingerprint files — see `VxPlugin.fingerprint`. */
 export interface FingerprintClaim {
-  /** Root-relative names from `WORKSPACE_FINGERPRINT_FILES`, e.g. `['pnpm-lock.yaml']`. */
+  /** Bare names at the workspace root: a lockfile core folds (`pnpm-lock.yaml`) or a file the plugin reads (`turbo.json`). */
   readonly files: readonly string[]
   /**
    * The projects (package names) a change to a claimed file affects. Called

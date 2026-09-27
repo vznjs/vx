@@ -256,6 +256,15 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     expect({ rel, kept: matters(rel.split('/').join(path.sep)) }).toEqual({ rel, kept })
   })
 
+  it('a root file a plugin claims is an event, and only at the root (item 961)', () => {
+    // `turbo()` claims turbo.json: its stages read it, so an edit re-keys
+    // tasks, and the loop dropped it as a stray root file.
+    const claimed = makeRootEventFilter(root, [], [], new Set(['turbo.json']))
+    const unclaimed = makeRootEventFilter(root, [], [])
+    expect([claimed('turbo.json'), unclaimed('turbo.json')]).toEqual([true, false])
+    expect(claimed(path.join('nested', 'turbo.json'))).toBe(false)
+  })
+
   it('a route directory in a workspaceFiles glob is the directory, not a class (item 667)', () => {
     const route = makeRootEventFilter(root, [], ['app/[id]/**'])
     expect([route('app/[id]/page.js'), route('app/i/page.js')]).toEqual([true, false])

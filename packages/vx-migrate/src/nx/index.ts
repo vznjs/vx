@@ -50,8 +50,11 @@ export interface NxPluginOptions {
 
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
-  return adoptionPlugin(import.meta, (ctx) =>
-    mapAll(options.root ?? ctx.workspaceRoot, ctx.cacheDir, ctx.projects, options),
+  return adoptionPlugin(
+    import.meta,
+    (ctx) => mapAll(options.root ?? ctx.workspaceRoot, ctx.cacheDir, ctx.projects, options),
+    // At the workspace root only, as `turbo()` claims its file.
+    options.root === undefined ? ['nx.json'] : [],
   )
 }
 

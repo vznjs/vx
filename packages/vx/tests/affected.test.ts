@@ -771,6 +771,49 @@ describe('affectedProjects', () => {
         expect(loaded.count).toBe(0)
       })
 
+      it('a claimed root file core does not fold is asked about too (item 961)', async () => {
+        // `turbo()` shapes every task from turbo.json; an edit re-keys them
+        // through their resolved configs while no project owns the path, and
+        // `--affected` selected nothing.
+        await writeFile(path.join(root, 'turbo.json'), '{"tasks":{}}')
+        await writeFile(path.join(root, 'README.md'), 'v1')
+        await git(root, 'add', '.')
+        await git(root, 'commit', '-q', '-m', 'turbo.json')
+        const readsTurbo = (answer: readonly string[] | undefined) => async () => ({
+          files: new Set(['turbo.json']),
+          affected: async (c: Change) => {
+            asked.push(c)
+            return answer === undefined ? undefined : new Set(answer)
+          },
+        })
+        // Control: an unclaimed root file still selects nothing.
+        await writeFile(path.join(root, 'README.md'), 'v2')
+        const readme = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: readsTurbo(undefined),
+        })
+        expect([...readme]).toEqual([])
+        expect(asked).toHaveLength(0)
+        await writeFile(path.join(root, 'turbo.json'), '{"tasks":{"build":{}}}')
+        const all = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: readsTurbo(undefined),
+        })
+        expect([...all].sort()).toEqual(['a', 'b'])
+        expect(asked.map((c) => c.file)).toEqual(['turbo.json'])
+        const one = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: readsTurbo(['b']),
+        })
+        expect([...one]).toEqual(['b'])
+      })
+
       // Every row above hands `affectedProjects` a shim whose `affected`
       // returns a Set directly, so not one of them reaches the host that
       // stands between a REAL plugin's answer and this selection:

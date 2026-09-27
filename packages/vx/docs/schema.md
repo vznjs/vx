@@ -1178,7 +1178,9 @@ interface WorkspaceConfig {
   re-validated by core and hashed into the key like a hand edit),
   `graph` (edit the task graph's edges), `key` (per-task
   `{ name: value }` material folded into the cache key), `fingerprint`
-  (claim a lockfile and key it per project), `schedule` (task id →
+  (claim a lockfile and key it per project, or a root file the plugin's
+  stages read, such as `turbo.json`, so `--affected` asks the plugin
+  about it and `vx watch` re-runs on it), `schedule` (task id →
   priority, merged over the scheduler's baseline), `admit` (may this
   ready task start now beside what runs here), `executor` (return a
   `TaskExecutor` — where one task's command runs — or decline), `cache`
@@ -1518,5 +1520,5 @@ Workspace-config errors:
 | `plugin '<name>' declares command '<verb>', a core verb — core verbs cannot be shadowed`                                                            | A plugin verb the dispatcher matches first; it could never run.                                                   |
 | `plugins '<a>' and '<b>' both declare command '<verb>' — a verb has one owner`                                                                      | Two plugins on one verb; the first would win and hide the second.                                                 |
 | `plugins[<i>].fingerprint must be { files: [name, …], affected: function }`                                                                         | A fingerprint claim without its file list or its `affected` answer.                                               |
-| `plugin '<name>' claims fingerprint file "<file>", which core does not fold`                                                                        | A claim on a file the workspace fingerprint never folds — there is nothing to take out.                           |
+| `plugin '<name>' claims fingerprint file "<file>", which is not a file name at the workspace root`                                                  | A claim names a path, or no name: a claim is a bare file at the root (`vx watch`'s root arm is not recursive).    |
 | `plugins '<a>' and '<b>' both claim fingerprint file '<file>' — a file has one claimant`                                                            | Two plugins keying the same lockfile; the key would fold both and `--affected` could ask only one.                |
