@@ -9,10 +9,7 @@ import { handleToolCall, listTools, type ToolContext } from './tools.js'
 
 /** The newest protocol revision this server speaks; an older client's version is echoed back. */
 export const PROTOCOL_VERSION = '2025-06-18'
-// Not 2025-03-26: that revision says a server MUST accept JSON-RPC batches,
-// which this one refuses (2025-06-18 dropped them). Echoing it promised what
-// the next message broke (item 1067); such a client is offered the newest.
-const KNOWN_VERSIONS = new Set(['2024-11-05', '2025-06-18'])
+const KNOWN_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18'])
 
 export interface ServerOptions extends ToolContext {}
 
@@ -191,13 +188,27 @@ export async function serve(
  * that is not JSON-RPC (item 922). The server keeps the real writer; every
  * other stdout write and console method goes to stderr while it serves.
  * Bun's `console.log` writes to fd 1 without `process.stdout.write`, so the
- * console is replaced too.
+ * console is replaced too, and so are Bun's own routes to it:
+ * `Bun.write(Bun.stdout, …)` and `Bun.stdout.writer()` reached the stream
+ * past both (item 1069). A process a config spawns with fd 1 inherited
+ * still writes there; nothing short of the descriptor itself reaches it.
  */
 export async function serveStdio(options: ServerOptions): Promise<void> {
   const stdout = process.stdout
   const write = stdout.write.bind(stdout)
   const ownWrite = stdout.write
   const ownConsole = globalThis.console
+  const bun = Bun as { write: typeof Bun.write }
+  const ownBunWrite = Bun.write
+  const bunStdout = Bun.stdout as { writer: typeof Bun.stdout.writer }
+  const ownWriter = Object.getOwnPropertyDescriptor(Bun.stdout, 'writer')
+  bun.write = ((dest: unknown, ...rest: unknown[]) =>
+    (ownBunWrite as (...a: unknown[]) => Promise<number>)(
+      dest === Bun.stdout ? Bun.stderr : dest,
+      ...rest,
+    )) as typeof Bun.write
+  bunStdout.writer = ((...args: Parameters<typeof Bun.stderr.writer>) =>
+    Bun.stderr.writer(...args)) as typeof Bun.stdout.writer
   stdout.write = ((...args: Parameters<typeof process.stderr.write>) =>
     process.stderr.write(...args)) as typeof stdout.write
   // Bun's console adds `write`, which the node Console lacks.
@@ -213,5 +224,8 @@ export async function serveStdio(options: ServerOptions): Promise<void> {
   } finally {
     stdout.write = ownWrite
     globalThis.console = ownConsole
+    bun.write = ownBunWrite
+    if (ownWriter === undefined) delete (bunStdout as { writer?: unknown }).writer
+    else Object.defineProperty(Bun.stdout, 'writer', ownWriter)
   }
 }

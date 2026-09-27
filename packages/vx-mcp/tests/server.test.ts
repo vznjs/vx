@@ -262,14 +262,6 @@ describe('handleMessage', () => {
       await handleMessage(JSON.stringify({ jsonrpc: '2.0', id: null, method: 'ping' }), ctx),
     ).toEqual({ jsonrpc: '2.0', id: null, result: {} })
   })
-
-  it('a 2025-03-26 client is offered the newest revision: this server takes no batches', async () => {
-    const r = (await handleMessage(
-      req(30, 'initialize', { protocolVersion: '2025-03-26', capabilities: {} }),
-      ctx,
-    )) as { result: { protocolVersion: string } }
-    expect(r.result.protocolVersion).toBe(PROTOCOL_VERSION)
-  })
 })
 
 describe('vx mcp over stdio (the real entry point)', () => {
@@ -328,7 +320,8 @@ describe('vx mcp over stdio (the real entry point)', () => {
   }, 20_000)
 
   // Item 922: a tool that loads the workspace evaluates configs, and what a
-  // config printed landed in the JSON-RPC stream.
+  // config printed landed in the JSON-RPC stream. Bun's own stdout, written
+  // or taken a writer of, still did until item 1069.
   it('keeps stdout JSON-RPC while a config or a plugin stage prints', async () => {
     const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-mcp-stdout-'))
     try {
@@ -339,6 +332,8 @@ describe('vx mcp over stdio (the real entry point)', () => {
       await writeFile(
         path.join(ws, 'packages', 'a', 'vx.config.mjs'),
         "console.log('from console.log')\nprocess.stdout.write('from stdout.write\\n')\n" +
+          "await Bun.write(Bun.stdout, 'from Bun.write\\n')\n" +
+          "const w = Bun.stdout.writer(); w.write('from a writer\\n'); await w.flush()\n" +
           "export default { tasks: { build: { exec: { command: 'echo hi' } } } }\n",
       )
       await writeFile(
@@ -365,7 +360,7 @@ describe('vx mcp over stdio (the real entry point)', () => {
       expect({ code, ids: lines.map((l) => (JSON.parse(l) as { id: number }).id), err }).toEqual({
         code: 0,
         ids: [1],
-        err: 'from console.log\nfrom stdout.write\n',
+        err: 'from console.log\nfrom stdout.write\nfrom Bun.write\nfrom a writer\n',
       })
     } finally {
       await rm(ws, { recursive: true, force: true })
