@@ -122,3 +122,9 @@ the run, so a same-size rewrite within the mtime's resolution (a restore,
 `cp -p`, a fast edit) shipped the OLD blob under a key naming the new
 bytes, and recorded it there. The memo saved one sha256 over bytes read
 anyway; removed (`DigestCache` export with it). Row red without the fix.
+
+F-8. vx-reapi held remote outputs to what was declared and addressed:
+under a whole-tree capture (`*.txt`) a declared output missing from the
+CAS only warned and `save` cached the short tree; now it fails the task.
+Inline output bytes were written unchecked; now held to their digest, a
+mismatch fetched. Rows red without each fix.

@@ -17,6 +17,7 @@ import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from 
 import {
   buildInputTree,
   decodeTreeWithBytes,
+  digestWith,
   encodeAction,
   encodeCommand,
   encodeTree,
@@ -1259,8 +1260,11 @@ export async function materialiseOutputs(
     ...(req.outputs?.files ?? []),
     ...(req.outputs?.workspaceFiles ?? []),
   ].some((g) => globToOutputPath(g) === '')
-  const missing = (what: string, hash: string): void => {
-    if (!wholeTreeCapture || req.replay === true) {
+  // `abs` names a file a declared glob matches: missing, it is a hole in a
+  // declared output under either capture, and warning let `save` cache the
+  // short tree under the key (F-8).
+  const missing = (what: string, hash: string, abs?: string): void => {
+    if (!wholeTreeCapture || req.replay === true || (abs !== undefined && isDeclared(abs))) {
       throw new UserError(
         `vx/reapi: ${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
       )
@@ -1295,14 +1299,20 @@ export async function materialiseOutputs(
     // proto-loader (the execution-record replay) carries `contents` as an
     // EMPTY Buffer on every file, and taking that as inline wrote each
     // replayed output empty (item 827). An empty file is the next branch.
-    const bytes =
-      f.contents !== undefined && f.contents.length > 0
-        ? f.contents // inlined by the server (`inline_output_files`): zero fetches
-        : Number(f.digest.size_bytes) === 0
-          ? new Uint8Array()
-          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
+    // Inline bytes are held to the digest they ride with, as fetched ones
+    // are in wire.ts: a server's wrong inline copy was written as the output
+    // and cached under the key (F-8). A mismatch fetches the blob instead.
+    const inline =
+      f.contents !== undefined &&
+      f.contents.length > 0 &&
+      digestWith(client.digest, f.contents).hash === f.digest.hash
+    const bytes = inline
+      ? f.contents! // inlined by the server (`inline_output_files`): zero fetches
+      : Number(f.digest.size_bytes) === 0
+        ? new Uint8Array()
+        : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
     if (bytes === null) {
-      missing(f.path, f.digest.hash)
+      missing(f.path, f.digest.hash, abs)
       continue
     }
     await writeOutput(abs, bytes, created)
@@ -1380,7 +1390,7 @@ async function materialiseTree(
   treeDigest: Digest,
   // Same policy as the file path: under a literal capture an unmaterialisable
   // entry is a hole in a DECLARED output directory, so it fails the task.
-  missing: (what: string, hash: string) => void,
+  missing: (what: string, hash: string, abs?: string) => void,
   created: string[] | undefined,
   // Null writes the whole Tree; otherwise only an entry it names, or one
   // under a directory it names, is written.
@@ -1417,7 +1427,7 @@ async function materialiseTree(
           ? new Uint8Array()
           : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
       if (bytes === null) {
-        missing(path.join(at, f.name), f.digest.hash)
+        missing(path.join(at, f.name), f.digest.hash, path.join(at, f.name))
         continue
       }
       const abs = path.join(at, f.name)
