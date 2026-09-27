@@ -101,8 +101,9 @@ both tables show everything.
   the remote ones among them, are not published yet
   ([Roadmap to 1.0](https://github.com/vznjs/vx/blob/main/packages/vx/docs/design/roadmap-1.0.md)).
 - **Explicit inputs are work.** Every cached task lists its inputs, and
-  keeping the lists right is on you. The sandbox catches what they miss,
-  but only on the tasks that opt in
+  keeping the lists right is on you. The sandbox checks reads against its
+  own `allow.read`, not the inputs, so it catches what they miss only on
+  the tasks that opt in and whose `allow.read` mirrors their inputs
   ([Caching](../guides/configure/#caching)).
 - **A small ecosystem.** The plugins that exist are the first-party ones
   ([Writing a vx plugin](../guides/plugins/)).

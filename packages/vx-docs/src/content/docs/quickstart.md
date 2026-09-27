@@ -6,7 +6,9 @@ description: Install vx, describe one task, and run it from the cache the second
 Run your first cached task in five minutes.
 
 You need a git repository on Linux or macOS (on Windows, use WSL). vx is
-one binary: no Node or Bun to install.
+one prebuilt binary. The release binary alone needs neither Node nor Bun;
+installed from npm, the `vx` command is a small Node script that runs
+that binary.
 
 ## Install
 
@@ -43,14 +45,17 @@ export default defineProject({
 
 ```bash
 vx run build --all        # every package, in dependency order
-vx run build              # ⇢ success local — a cache hit
+vx run build              # ⇢ success local — a hit that restored dist/
 vx run test --affected    # what changed, and its dependents
 vx run build --all --dry  # the plan; runs nothing
 vx run build --graph      # the task graph as Graphviz DOT
 ```
 
 The first run stores the result. The second finds nothing changed and
-restores it.
+`dist/` still as stored, so it restores nothing: the task's frame closes
+`up-to-date` (`► success fresh` in the `--output-logs full` row). Delete
+`dist/` and the next run restores it from the cache: `restored-local`, the
+`⇢ success local` row.
 
 ## An existing repo
 

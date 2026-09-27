@@ -73,8 +73,10 @@ included, so editing a description costs one re-run.
 
 A task with a `cache` block runs once per set of inputs. List every file
 the command reads, and what it writes (`[]` for test or lint). Unsure the
-list is complete? Add [`exec.sandbox`](../sandboxing/): an undeclared read
-fails the task.
+list is complete? Add [`exec.sandbox`](../sandboxing/) with `allow.read`
+listing the same files: a workspace read outside it fails the task. The
+sandbox checks `allow.read`, never `cache.inputs`, so it catches a missing
+input only while the two lists match.
 
 ```ts
 // packages/app/vx.config.ts
@@ -105,7 +107,9 @@ export default defineProject({
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
 Declared outputs are wiped before every run and every restore, so `dist/`
-ends as the cache stored it. A failed task is never saved. `--force` runs
+ends as the cache stored it; a hit that finds them already as stored skips
+both. A task that adds files beside an upstream task's outputs wipes only
+the files it recorded. A failed task is never saved. `--force` runs
 and refreshes the cache; `--no-cache` ignores it.
 
 A fully cached 3,270-task run: vx 510ms, Turborepo 760ms, Nx 3.59s
@@ -148,14 +152,16 @@ A task sees only the variables you pass it:
 | List                   | The command sees it | The key sees it | Use it for                                          |
 | ---------------------- | ------------------- | --------------- | --------------------------------------------------- |
 | `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`CI`, `GH_TOKEN`); stays on this machine |
-| `cache.inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
+| `cache.inputs.env`     | no, except on a `@vzn/vx-reapi` worker | yes | with `passThrough`: a variable that changes the output |
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
 
 The child always gets a small essential allowlist so normal CLI tools
 work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
 `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
-`NO_COLOR`, `CI`, `NODE_OPTIONS`, plus the Windows essentials. The
-package's `node_modules/.bin` is first on `PATH`. What vx itself reads:
+`NO_COLOR`, `CI`, `NODE_OPTIONS`, plus the Windows essentials. vx sets
+`VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK` (the
+`project#task` running) on every task. The package's `node_modules/.bin`
+is first on `PATH`. What vx itself reads:
 [the CLI reference](../../cli/#environment-variables-vx-reads).
 
 ## Dev tasks
@@ -214,7 +220,7 @@ export default defineWorkspace({
 | `concurrency`    | tasks at once; `--concurrency <n>` overrides it for one run           |
 | `cacheDir`       | where the local cache lives; add it to `.gitignore`                   |
 | `timeout`        | a default task timeout in ms; default none                            |
-| `cacheRetention` | evict after every run: `olderThan` unused, then least recently used past `maxSize`; default none |
+| `cacheRetention` | evict at the end of every run that writes the cache: `olderThan` unused, then least recently used past `maxSize`; default none |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. It is never in a

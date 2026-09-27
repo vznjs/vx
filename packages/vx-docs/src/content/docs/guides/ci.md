@@ -21,7 +21,7 @@ vx run test --affected                 # changed since the base branch, and depe
 vx run test --affected=origin/main     # changed since that ref
 vx run app#build api#test              # exact tasks, from anywhere
 vx run lint test build --all           # several tasks, one graph
-vx run test -- --bail                  # the child runs: bun test "--bail"; the key sees it
+vx run test -- --bail                  # the child runs: bun test --bail; the key sees it
 vx run build --all --dry               # the plan, nothing runs
 vx run build --graph=g.dot             # the task graph as Graphviz DOT
 vx watch test                          # re-run whenever its files change
@@ -46,7 +46,7 @@ would run:
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
 | `--summarize`       | write a JSON summary of the run                             |
-| `--frozen`          | run the graph in `vx-lock.json` ([below](#a-frozen-graph))  |
+| `--frozen`          | load the configs from `vx-lock.json` ([below](#a-frozen-graph)) |
 
 Every flag: [the CLI reference](../../cli/).
 
@@ -75,6 +75,8 @@ jobs:
           --affected=${{ github.event_name == 'pull_request'
             && format('origin/{0}', github.base_ref)
             || github.event.before }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # the PR check; without it, no check
 ```
 
 ```ts
@@ -85,8 +87,11 @@ import { github } from '@vzn/vx-github'
 export default defineWorkspace({ plugins: [github()] })
 ```
 
-`github()` writes a job summary, failures first, and a PR check; outside
-GitHub Actions it declines. A test renders this sample:
+`github()` writes a job summary, failures first, and a PR check. The
+check needs `GITHUB_TOKEN` in the vx step's `env`, as above (the runner
+sets `GITHUB_REPOSITORY` and `GITHUB_SHA`); without it the check is
+skipped and the summary still writes. Outside GitHub Actions it declines.
+A test renders this sample:
 
 > ## ❌ vx run
 >
@@ -115,10 +120,13 @@ A failure on inputs that passed before is named under the run's footer:
 
 ### A frozen graph
 
-`vx lock` writes the resolved graph to `vx-lock.json`; commit it.
-`vx lock --check` fails on drift; `vx run ci --frozen` runs exactly the
-locked graph. It buys determinism, not speed: on the 1,000-project bench
-a plain run's median of 177 ms against frozen's 165 is a tie.
+`vx lock` writes each project's resolved config, with a hash of its
+config file, to `vx-lock.json`; commit it. `vx run ci --frozen` loads the
+configs from the lock instead of evaluating them, and builds the graph
+from them as usual. A frozen run trusts the lock and checks nothing:
+`vx lock --check` fails on drift, so run it in CI too. It buys
+determinism, not speed: on the 1,000-project bench a plain run's median
+of 177 ms against frozen's 165 is a tie.
 
 ### Common problems
 
@@ -182,9 +190,10 @@ export default defineWorkspace({
 })
 ```
 
-`--dry` says where each task runs (`@vx/reapi` or `@local`). A task with
-no `cache` block, `exec.remote: false`, sandboxed and persistent tasks,
-and what depends on them stay here. Workers have no `node_modules`: make
+`--dry` says where each task runs (`@vx/reapi` or `@local`).
+`exec.remote: false`, sandboxed and persistent tasks, and what depends on
+them, stay here. A task with no `cache` block stays here too, because the
+executor declines it, but what depends on it can still go remote. Workers have no `node_modules`: make
 the install a `remote: 'only'` task the others depend on. The image needs
 `/bin/sh` and your toolchain.
 
