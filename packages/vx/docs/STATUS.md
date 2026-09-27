@@ -498,6 +498,20 @@ test is telling the truth.
         (`turbo()`'s `turbo.json`, `nx()`'s `nx.json`) re-keys tasks and
         is not seen. It needs a seam, a plugin declaring the root files it
         reads, as `fingerprint` claims do; `vx watch` wants the same list.
+954.  DONE (2026-09-27, the `--affected` review's lead 3). A
+      `workspaceFiles` glob naming a file inside ANOTHER project
+      (`schema.md` allows it) re-keyed the declarer when the file changed,
+      and `--affected` ran the owner alone: the glob owners were asked
+      only about paths no project owns.
+      - Fix: they are asked about every changed path, once something
+        changed. The `--affected` sugar's graph walk has staged every
+        config already, so it costs nothing there; a bare `[ref]` filter
+        pays that one staged load. `projectsContaining` lost its orphan
+        list, now unread.
+      - Rows: `affected.test.ts` › an in-project path is asked too;
+        `affected-workspace-files.test.ts` › a glob into another project
+        selects its declarer through the real CLI. Both red without the
+        fix; the nothing-changed row keeps the cost gate.
 
 ## In flight
 

@@ -143,6 +143,41 @@ describe('--affected sees a workspaceFiles change', () => {
   )
 
   it(
+    'a glob naming a file inside ANOTHER project selects its declarer (item 954)',
+    async () => {
+      // `schema.md` allows it; the path is app's, so selection never asked
+      // who else reads it, and a bare `[ref]` filter ran app alone.
+      await write(path.join(root, 'pkgs/app/data.json'), '{"v":1}')
+      await write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
+      await write(
+        path.join(root, 'pkgs/tool/vx.config.mjs'),
+        [
+          'export default {',
+          '  tasks: {',
+          '    build: {',
+          '      exec: { command: "true" },',
+          '      cache: { inputs: { files: [], workspaceFiles: ["pkgs/app/data.json"] }, outputs: { files: [] } },',
+          '    },',
+          '  },',
+          '}',
+          '',
+        ].join('\n'),
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'tool reads app data')
+      await write(path.join(root, 'pkgs/app/data.json'), '{"v":2}')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'bump data')
+
+      const scoped = vx(root, 'run', 'build', '--filter', '[HEAD~1]', '--dry')
+      expect(scoped.exitCode).toBe(0)
+      expect(scoped.stdout).toContain('app#build')
+      expect(scoped.stdout).toContain('tool#build')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a shared file NO glob reaches still selects nothing',
     async () => {
       // The control. Widening must be driven by a glob that actually matches,

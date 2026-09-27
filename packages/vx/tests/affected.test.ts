@@ -1085,12 +1085,12 @@ describe('defaultAffectedBase', () => {
 // --------------------------------------------------------------------------
 //
 // A workspace-root-anchored `cache.inputs.workspaceFiles` glob reaches files
-// that belong to NO project, so mapping changed paths to project dirs cannot
-// see them: the path resolves to nothing and `--affected` selects nothing for
-// a change that re-keyed the task. Answering needs the resolved configs, which
-// selection runs before loading — so the resolver is a callback, invoked ONLY
-// for paths that belong to no project. These pin that gate, because "the
-// common case pays nothing" is a claim a test should hold, not a comment.
+// outside the declaring project, so mapping changed paths to project dirs
+// cannot see them: `--affected` selected nothing for a change that re-keyed
+// the task. Answering needs the resolved configs, which selection runs
+// before loading — so the resolver is a callback, asked about every changed
+// path once something changed (a glob may name a file inside ANOTHER
+// project, item 954), and never when nothing did.
 
 describe('workspaceGlobsMatch', () => {
   it('matches a positive glob', () => {
@@ -1179,11 +1179,7 @@ describe('affectedProjects workspaceFiles gate', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('does NOT consult configs when every change is inside a project', async () => {
-    // The cost gate. Scoped config loading exists because evaluating configs
-    // is the dominant fixed cost of a small run; the widening must not put it
-    // back on the common path.
-    await writeFile(path.join(root, 'packages/a/file.txt'), 'changed')
+  it('does NOT consult configs when nothing changed', async () => {
     let calls = 0
     const out = await affectedProjects({
       workspaceRoot: root,
@@ -1194,11 +1190,30 @@ describe('affectedProjects workspaceFiles gate', () => {
         return []
       },
     })
-    expect([...out]).toEqual(['a'])
+    expect([...out]).toEqual([])
     expect(calls).toBe(0)
   })
 
-  it('consults configs with EXACTLY the paths that belong to no project', async () => {
+  it('asks about an in-project path too: another project may name it (item 954)', async () => {
+    // `schema.md` allows a `workspaceFiles` glob into another project's
+    // directory. Asking only the paths no project owns left the declaring
+    // project out of a run its own key called stale.
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'changed')
+    const seen: string[][] = []
+    const out = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD',
+      projects,
+      workspaceGlobOwners: async (changed) => {
+        seen.push([...changed])
+        return ['tool']
+      },
+    })
+    expect(seen).toEqual([['packages/a/file.txt']])
+    expect([...out].sort()).toEqual(['a', 'tool'])
+  })
+
+  it('consults configs once, with EXACTLY the changed paths', async () => {
     await writeFile(path.join(root, 'packages/a/file.txt'), 'changed')
     await writeFile(path.join(root, 'shared/schema.txt'), 'v2')
     const seen: string[][] = []
@@ -1206,13 +1221,12 @@ describe('affectedProjects workspaceFiles gate', () => {
       workspaceRoot: root,
       since: 'HEAD',
       projects,
-      workspaceGlobOwners: async (orphans) => {
-        seen.push([...orphans])
+      workspaceGlobOwners: async (changed) => {
+        seen.push([...changed].sort())
         return []
       },
     })
-    // The in-project path is answered without asking; only the orphan is.
-    expect(seen).toEqual([['shared/schema.txt']])
+    expect(seen).toEqual([['packages/a/file.txt', 'shared/schema.txt']])
     expect([...out]).toEqual(['a'])
   })
 
