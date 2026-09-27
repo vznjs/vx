@@ -250,6 +250,29 @@ test is telling the truth.
       cost off the warm path but spreads the rule over three writers, for
       a miss that happens once per reordering. Not taken; reopen with a
       design that keeps the warm path at one stringify.
+984.  DONE (2026-09-27, a workspace-discovery review agent's lead 2). A
+      `pnpm-workspace.yaml` with no `packages:` (pnpm 10 keeps
+      `onlyBuiltDependencies` and catalogs there for a single-package repo
+      too) read as an empty package list: `vx show` printed nothing and
+      exited 0, and `vx run build` said "not inside a project". A list or
+      a scalar document read the same, silently.
+      - Fix (`workspace.ts`): with no `packages:` the root's
+        `package.json` decides, as it would without the file; a document
+        that is not a mapping is refused by name. `schema.md` lists the
+        refusal (pinned by `schema-doc-drift.test.ts`).
+      - Rows: `workspace.test.ts` › a pnpm-workspace.yaml with no packages
+        list defers to package.json, and one that is not a mapping is
+        refused. Both red without the fix.
+      - Next from the same review: manifests of the wrong shape (a `null`
+        `package.json`, a numeric `name`) crash with a stack or plan
+        `123#build`; a trailing slash makes a member glob recursive; `!**/test/**`
+        misses `packages/test`; the root search stops at a workspace
+        that does not list the cwd's package; nested pnpm workspaces
+        resolve by where you start; a symlinked member is found only
+        by `packages/*`. And from a flags review: `--dry` calls a
+        `--force` run no-cache, `--dry` drops `--report`, a bad
+        `--graph=<path>` prints a stack, `--report-file` does not make
+        its directory.
 
 ## In flight
 

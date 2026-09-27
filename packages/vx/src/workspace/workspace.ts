@@ -151,15 +151,25 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
 async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[] | null> {
   const yamlPath = path.join(dir, 'pnpm-workspace.yaml')
   const yaml = await readOnce(reads, yamlPath)
+  let yamlWithoutPackages = false
   if (yaml !== null) {
-    const parsed = (parseManifest(decoder.decode(yaml), yamlPath, Bun.YAML.parse) ?? {}) as {
-      packages?: unknown
+    const parsed = parseManifest(decoder.decode(yaml), yamlPath, Bun.YAML.parse)
+    if (parsed !== null && parsed !== undefined) {
+      if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new UserError(`${yamlPath}: must be a mapping (\`packages:\` and pnpm's settings)`)
+      }
+      const packages = (parsed as { packages?: unknown }).packages
+      if (packages !== undefined) return assertGlobList(packages, yamlPath, 'packages')
     }
-    return assertGlobList(parsed.packages ?? [], yamlPath, 'packages')
+    // No `packages:`: pnpm 10 keeps its settings and catalogs in this file
+    // for a single-package repo too. The root's package.json decides, as it
+    // would without the file; read as an empty list, the root found zero
+    // projects and every verb ran nothing and exited 0 (item 984).
+    yamlWithoutPackages = true
   }
   const pkgPath = path.join(dir, 'package.json')
   const pkgBytes = await readOnce(reads, pkgPath)
-  if (pkgBytes === null) return null
+  if (pkgBytes === null) return yamlWithoutPackages ? [] : null
   const pkg = parseManifest(decoder.decode(pkgBytes), pkgPath, JSON.parse) as PackageJson
   const ws = pkg.workspaces as unknown
   if (ws === undefined || ws === null) return ['.']
