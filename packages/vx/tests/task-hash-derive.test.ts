@@ -687,3 +687,32 @@ describe('the key FRAMES its list sections — moving a pair across a boundary m
     })
   }
 })
+
+// A sweep of key-fold.ts found these two folds held only by the golden digest
+// in key-fold.test.ts, which is re-recorded with every CACHE_VERSION bump: a
+// removal landing beside a bump would pass green (A-11). Each is pinned by
+// behaviour here.
+describe('computeTaskHash — the folds only a digest held', () => {
+  it('SENSITIVITY: a workspaceRuntime command OUTPUT moves the key, its command fixed', async () => {
+    const rt = node(
+      {},
+      {
+        cache: {
+          inputs: { files: [], workspaceRuntime: ['cat ws-rt.txt'] },
+          outputs: { files: [] },
+        },
+      },
+    )
+    await writeFile(path.join(root, 'ws-rt.txt'), 'one')
+    const one = await key({ node: rt })
+    expect(await key({ node: rt })).toBe(one)
+    await writeFile(path.join(root, 'ws-rt.txt'), 'two')
+    expect(await key({ node: rt })).not.toBe(one)
+  })
+
+  it('SENSITIVITY: a plugin key part VALUE moves the key, its name fixed', async () => {
+    const a = await key({ node: node({ keyParts: [['lock', 'a']] }) })
+    expect(await key({ node: node({ keyParts: [['lock', 'a']] }) })).toBe(a)
+    expect(await key({ node: node({ keyParts: [['lock', 'b']] }) })).not.toBe(a)
+  })
+})
