@@ -1,4 +1,4 @@
-import { appendFile } from 'node:fs/promises'
+import { appendFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { documentedFlags, seeHelp } from './help.js'
 import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
@@ -590,7 +590,17 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       if (parsed.graph === '') {
         process.stdout.write(out)
       } else {
-        await Bun.write(parsed.graph, out)
+        // The graph is the command's one product, so a path it cannot write
+        // is exit 1, said in one line as the other output paths say theirs:
+        // a directory or an unreachable path printed a raw stack (item 993).
+        const target = path.resolve(cwd, parsed.graph)
+        try {
+          await Bun.write(target, out)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          process.stderr.write(`vx run: failed to write graph to ${target}: ${message}\n`)
+          return 1
+        }
       }
     } else if (parsed.dry === 'json') {
       process.stdout.write(formatPlanJson(plan))
@@ -625,6 +635,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         // same job also write to. Truncating it would silently destroy their
         // content, and would make replacing the documented `>>` recipe a
         // behaviour change rather than a drop-in.
+        // Its directory made first, as `--summarize`, `--profile` and
+        // `--graph` make theirs: `nr/r.md` failed alone of the four (item 993).
+        await mkdir(path.dirname(target), { recursive: true })
         await appendFile(target, md)
       } catch (err) {
         // Same contract as --summarize / --profile: the run already
