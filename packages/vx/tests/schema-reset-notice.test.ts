@@ -147,6 +147,20 @@ describe('a schema reset says so once', () => {
     })
   }
 
+  // A prune that deletes opens the index to write it, so an earlier schema
+  // is reset there as a run resets it, and says so once as a run does. The
+  // notice is the one word the user gets that every entry just went; the
+  // sweep of cli/cache.ts (E-9) deleted it with the suite green.
+  it('a prune that deletes resets an earlier schema and says so', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeVersion('v0')
+    const { threw, stderr } = await verb(['cache', 'prune', '--older-than', '1d'])
+    expect(threw).toBeNull()
+    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/)
+    expect(stderr.split('\n').filter((l) => l.includes('cache index reset'))).toHaveLength(1)
+    expect(index().version).toBe(SCHEMA_VERSION)
+  })
+
   it('every opener, a run too, refuses a NEWER schema and leaves it untouched', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v999')
