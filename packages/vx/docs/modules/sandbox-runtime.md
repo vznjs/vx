@@ -304,6 +304,16 @@ express half its policy in link paths and half in real ones. Before this
 was applied to the orchestrator baselines, such a workspace made every
 sandboxed task die with `bwrap: Can't mount tmpfs on /newroot/<link>`.
 
+Canonicalizing a WRITE grant is also how a link moved it: `out.txt ->
+../b/src/x`, committed or planted by the task's own previous run, bound
+project b's directory writable, and vx, unsandboxed, created the empty
+placeholder at the link's target first (item 1003). A project-relative
+write grant whose path through its links (a dangling last one included)
+leaves the project is now refused before anything is created, a
+placeholder is made only where nothing is (an exclusive create after an
+`lstat`), and the sweep takes back only a regular file. A read grant may
+still resolve out through a link: `node_modules` links into the store.
+
 ## A write grant that names a file
 
 On Linux a grant is a bind mount, and a grant naming a FILE binds that

@@ -6,7 +6,17 @@
 // file survived every later clean (2026-09-16), so the sweep takes back
 // what the task never wrote, and the failure names the `dir/` spelling.
 
-import { mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -206,6 +216,50 @@ describe('a write grant is pre-created for the bind', () => {
     const slash = await requestFor(['dist/'])
     const plain = await requestFor(['dist'])
     expect(slash.sandbox.config.allowWrite).toEqual(plain.sandbox.config.allowWrite)
+  })
+})
+
+// A write grant was realpath'd, so a link at it bound its TARGET writable:
+// `out.txt -> ../b/src/planted.txt` let the task write into project b, vx
+// itself (unsandboxed) created the empty file there first, and a task
+// could plant the link on one run and escape on the next (item 1003).
+describe('a write grant that leaves the project through a link is refused', () => {
+  const lexists = async (p: string) => (await lstat(p).catch(() => undefined)) !== undefined
+  it('a dangling link, a directory link and a link on the way: refused, nothing created', async () => {
+    const sibling = path.join(root, 'b', 'src')
+    await mkdir(sibling, { recursive: true })
+    await symlink('../b/src/planted.txt', path.join(dir, 'out.txt'))
+    await symlink('../b/src', path.join(dir, 'shared'))
+    for (const grant of ['out.txt', 'shared/', 'shared/new.txt']) {
+      const target = grant === 'out.txt' ? 'planted.txt' : grant === 'shared/' ? '' : 'new.txt'
+      await expect(requestFor([grant])).rejects.toThrow(
+        `exec.sandbox.allow.write: "${grant}" resolves through a symlink to ${path.join(sibling, target)}, outside the project`,
+      )
+    }
+    expect(await lexists(path.join(sibling, 'planted.txt'))).toBe(false)
+    expect(await lexists(path.join(sibling, 'new.txt'))).toBe(false)
+  })
+
+  it('CONTROL: a link that stays inside the project is granted', async () => {
+    await mkdir(path.join(dir, 'real'))
+    await symlink('real', path.join(dir, 'alias'))
+    const r = await requestFor(['alias/'])
+    expect(r.sandbox.config.allowWrite).toEqual([path.join(dir, 'real')])
+  })
+
+  it("the sweep leaves a link the task put in a placeholder's place", async () => {
+    // The link's target is empty and carries the recorded mtime, so a
+    // sweep that followed the link would judge it untouched and remove it.
+    const r = await requestFor(['dist/vx'])
+    const placeholder = path.join(dir, 'dist/vx')
+    await rm(placeholder)
+    await writeFile(path.join(dir, 'empty'), '')
+    await symlink('../empty', placeholder)
+    const recorded = [
+      { ...r.placeholders[0]!, mtimeMs: (await stat(path.join(dir, 'empty'))).mtimeMs },
+    ]
+    expect(await sweepPlaceholders(recorded)).toEqual([])
+    expect(await lexists(placeholder)).toBe(true)
   })
 })
 

@@ -994,6 +994,8 @@ Spell a directory as a bare literal and the task's own `mkdir` meets
 "File exists"; the failure then says so, names the `dir/` spelling, and
 vx removes the empty file it made (it takes back any placeholder the
 task never wrote, so an unwritten one is never archived as an output).
+A grant that leaves the project through a symlink is refused: the grant
+binds the path it names, and vx follows no link out of the project.
 
 **A write grant is readable, and on Linux it reads WIDER than it looks.**
 A write path is readable too (`tsc --incremental` re-reads its own

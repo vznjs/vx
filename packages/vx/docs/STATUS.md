@@ -507,6 +507,26 @@ test is telling the truth.
         controls; `schema-doc-drift.test.ts` pins the table row. Red
         without the fix.
 
+1003. DONE (2026-09-27, a sandbox-grants review agent's lead 2). A write
+      grant was realpath'd, so a link at it moved the bind: with
+      `out.txt -> ../b/src/planted.txt` and `write: ['out.txt']`, vx
+      (unsandboxed) created the empty file in project b, bound b's
+      directory writable, and the task wrote and read there with exit 0.
+      A task could plant `dist/vx -> ../../b/src/x` on one run and escape
+      on the next, and the sweep removed a user's own link.
+      - Fix (`sandbox-runtime.ts`, `sandbox-request.ts`): a
+        project-relative write grant whose path through its links (a
+        dangling last one included) leaves the project is refused, and the
+        grants are resolved before any placeholder is made; a placeholder
+        is created only where `lstat` finds nothing, exclusively; the sweep
+        takes back only a regular file. `modules/sandbox-runtime.md` and
+        `schema.md` say so. The empty directories a placeholder's parents
+        leave behind stay (a small litter lead, not fixed here).
+      - Rows: `sandbox-request.test.ts` › a write grant that leaves the
+        project through a link is refused (dangling, directory and parent
+        links; nothing created at the targets), the sweep leaves a link,
+        and an in-project link as the control. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

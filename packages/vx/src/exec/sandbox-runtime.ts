@@ -25,7 +25,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { mkdirSync, rmSync, unlinkSync } from 'node:fs'
+import { mkdirSync, readlinkSync, realpathSync, rmSync, unlinkSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig } from '../config.js'
 import {
@@ -564,6 +564,47 @@ function canonicalBaselines(
 }
 
 /**
+ * A write grant that names a path in the project must BIND one there. The
+ * grant was realpath'd, so `out.txt -> ../b/src/x` (committed, or planted
+ * by the task's own previous run) bound project b's directory writable,
+ * and the task wrote into a sibling with exit 0 (item 1003). A read grant
+ * may resolve out through a link (`node_modules` into the store) and is
+ * not judged here; a grant spelled outside the project is the user's own.
+ */
+function assertWriteStaysHome(grant: string, real: string, projectDir: string): void {
+  if (grant.startsWith('~') || path.isAbsolute(grant)) return
+  const lexical = path.resolve(projectDir, grant)
+  const inside = (p: string, dir: string): boolean =>
+    p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)
+  if (!inside(lexical, projectDir)) return
+  const home = toRealPath(projectDir)
+  // `toRealPath` stops at a DANGLING link and keeps its own path, which is
+  // inside; the link's target is where a write through it would land.
+  const target = throughLinks(real)
+  if (inside(real, home) && inside(target, home)) return
+  throw new UserError(
+    `exec.sandbox.allow.write: "${grant}" resolves through a symlink to ${inside(real, home) ? target : real}, outside the ` +
+      `project — a write grant binds the path it names in the project, and vx does not follow a ` +
+      `link out of it. Remove the link, or grant the target by its own path.`,
+  )
+}
+
+/** Where `p` lands through every link on it, a dangling last one included. */
+function throughLinks(p: string, hops = 0): string {
+  if (hops > 40) return p
+  try {
+    return realpathSync(p)
+  } catch {
+    try {
+      return throughLinks(path.resolve(path.dirname(p), readlinkSync(p)), hops + 1)
+    } catch {
+      const parent = path.dirname(p)
+      return parent === p ? p : path.join(throughLinks(parent, hops + 1), path.basename(p))
+    }
+  }
+}
+
+/**
  * Convert a user-facing `SandboxConfig` (paths may be relative / tilde)
  * into a `ResolvedSandboxConfig` (all paths absolute + canonical) for a
  * given project. Relative paths resolve against `projectDir`; tilde
@@ -581,7 +622,14 @@ export function resolveSandboxConfig(
   const a = cfg.allow ?? {}
   const r: ResolvedSandboxConfig = {
     allowRead: expandGrants((a.read ?? []).map(resolve), 'read'),
-    allowWrite: expandGrants((a.write ?? []).map(resolve), 'write'),
+    allowWrite: expandGrants(
+      (a.write ?? []).map((p) => {
+        const real = resolve(p)
+        assertWriteStaysHome(p, real, projectDir)
+        return real
+      }),
+      'write',
+    ),
   }
   if (a.network !== undefined) r.network = a.network
   if (cfg.deny?.network !== undefined) r.denyNetwork = cfg.deny.network

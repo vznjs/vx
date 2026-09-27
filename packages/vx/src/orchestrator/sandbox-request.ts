@@ -3,7 +3,7 @@
 // (bwrap cannot bind a path that does not exist). Shared by the cached path
 // (through the executor) and the persistent path (spawned in execute-task).
 
-import { mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
+import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ExecConfig } from '../config.js'
@@ -174,7 +174,10 @@ export async function sandboxRequestFor(
   depDirs.push(...links.granted)
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
-  // Pre-create what the task said it will write.
+  // Pre-create what the task said it will write — after the grants are
+  // resolved, which refuses one that leaves the project through a link
+  // before anything is created along it (item 1003).
+  const config = resolveSandboxConfig(sandbox, node.projectDir)
   const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
   const request: NonNullable<ExecuteRequest['sandbox']> = {
     // Only what the task declared, plus node_modules. Write paths are
@@ -197,7 +200,7 @@ export async function sandboxRequestFor(
     // through its own `node_modules`, and that read is the stale hit the
     // withholding exists to stop, not the wall.
     reportLinked: links.withheld.map((w) => w.dir),
-    config: resolveSandboxConfig(sandbox, node.projectDir),
+    config,
   }
   return { sandbox: request, placeholders, withheld: links.withheld }
 }
@@ -391,11 +394,13 @@ async function prepareOutputsForBind(
       const abs = path.join(projectDir, g)
       // Whatever is already there is what the task meant — a grant on the
       // project dir itself is a directory, and touching it as a file is
-      // an EISDIR, not a missing bind.
-      if (await stat(abs).catch(() => undefined)) continue
+      // an EISDIR, not a missing bind. `lstat`, and an exclusive create: a
+      // dangling link at the grant made vx, unsandboxed, create the empty
+      // file at the link's target in another project (item 1003).
+      if (await lstat(abs).catch(() => undefined)) continue
       await mkdir(path.dirname(abs), { recursive: true })
-      await Bun.write(abs, '')
-      placeholders.push({ path: abs, mtimeMs: (await stat(abs)).mtimeMs })
+      await writeFile(abs, '', { flag: 'wx' })
+      placeholders.push({ path: abs, mtimeMs: (await lstat(abs)).mtimeMs })
     }
   }
   return placeholders
@@ -412,7 +417,9 @@ async function prepareOutputsForBind(
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]> {
   const untouched: string[] = []
   for (const p of placeholders) {
-    const st = await stat(p.path).catch(() => undefined)
+    // `lstat`: a link the task put in the placeholder's place is its
+    // output, never vx's litter to remove (item 1003).
+    const st = await lstat(p.path).catch(() => undefined)
     if (st === undefined || !st.isFile() || st.size !== 0 || st.mtimeMs !== p.mtimeMs) continue
     await rm(p.path, { force: true })
     untouched.push(p.path)
