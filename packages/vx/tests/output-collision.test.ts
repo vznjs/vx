@@ -303,16 +303,43 @@ describe('a literal entry is the file OR its whole tree', () => {
     expect(() => graph({ app: { a: task(['dist/a']), b: task(['dist/b']) } })).not.toThrow()
   })
 
-  it('the tree rule stops where the glob-vs-glob case starts, and that is a LIMIT', () => {
-    // `asTrees` turns the literal `dist` into the glob `dist/**`, so
-    // `dist` against `dist/sub/**` is glob vs glob — the case this file
-    // deliberately leaves undecided rather than risk refusing a working
-    // config. It really does overlap, and vx really will delete it; the
-    // narrow side has to be a LITERAL (or the identical glob) to be
-    // provable without a general intersection algorithm. Pinned so the
-    // hole is a decision and not an accident — this is the second row
-    // that widens when that algorithm arrives.
-    expect(() => graph({ app: { a: task(['dist']), b: task(['dist/sub/**']) } })).not.toThrow()
+  // Item 941: glob against glob was decided only for identical strings,
+  // so `dist/**` beside `dist/extra/**` was no overlap. Each task cleaned
+  // and restored the other's files, and a hit of the wide one put back its
+  // own stale copy of the narrow one's output under a green run. A whole
+  // subtree covers every glob whose literal prefix lies at or under it.
+  for (const [wide, narrow] of [
+    ['dist', 'dist/sub/**'],
+    ['dist/**', 'dist/extra/**'],
+    ['dist/**', 'dist/**/*.d.ts'],
+    ['dist/**', 'dist/*.js'],
+  ] as const) {
+    it(`refuses ${wide} against the glob ${narrow}, in either order`, () => {
+      expect(() => graph({ app: { a: task([wide]), b: task([narrow]) } })).toThrow(
+        /both declare the output/,
+      )
+      expect(() => graph({ app: { b: task([narrow]), a: task([wide]) } })).toThrow(
+        /both declare the output/,
+      )
+    })
+  }
+
+  it('CONTROL: a subtree does not cover a sibling glob, and a one-level glob covers no subtree', () => {
+    expect(() => graph({ app: { a: task(['dist/**']), b: task(['distant/**']) } })).not.toThrow()
+    expect(() => graph({ app: { a: task(['dist/a/**']), b: task(['dist/b/*.js']) } })).not.toThrow()
+    // `dist/*` is not a whole subtree: it cannot be shown to meet
+    // `dist/sub/**` without a general intersection, so it stays undecided.
+    expect(() => graph({ app: { a: task(['dist/*']), b: task(['dist/sub/**']) } })).not.toThrow()
+  })
+
+  it('CONTROL: a nested glob WITH an edge is the addition shape, not a refusal', () => {
+    const nodes = graphNodes({
+      app: {
+        build: task(['dist/**']),
+        extra: { ...task(['dist/extra/**']), dependsOn: ['build'] },
+      },
+    })
+    expect(nodes.get('app#extra')!.addsToOutputsOf).toEqual(['app#build'])
   })
 
   it('CONTROL: a literal FILE has no subtree to swallow with', () => {

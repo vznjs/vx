@@ -228,6 +228,39 @@ test is telling the truth.
         with its env prefix, with the control that a package running no
         task is not named. Red without the change.
       - The review is done: leads 1–8 are items 935–940.
+941.  DONE (2026-09-27, a local-cache review agent's lead 1). Two output
+      globs, one nested in the other (`dist/**` and `dist/extra/**`),
+      were not counted as an overlap. The check decided glob against glob
+      only for identical strings, and a row pinned the gap as a limit, so
+      the pair was neither refused nor made additive. The wide task
+      packed the narrow one's file into its own artifact. On a later hit
+      it cleaned `dist/**` and put back its old copy after the narrow task
+      had judged itself up-to-date, so `dist/extra/b.txt` flipped between
+      B1 and B2 on alternate runs, green each time. With an edge between
+      them, the pair was also never additive, so the wide task counted
+      the narrow one's file as a stray and re-restored on every warm run.
+      - A whole subtree `P/**` covers every glob whose literal prefix is P
+        or under it, and that is certain, not guessed. With no edge the
+        pair is refused; with one it is additive. Undecidable pairs
+        (`dist/*` beside `dist/sub/**`) still pass. The candidate index
+        finds the new pairs from the glob's side, and its 3,000-config
+        fuzz against all-pairs still agrees. The warm path is unmoved:
+        `build graph` 16.3 → 15.4 ms at min (N=11, interleaved, the
+        300-project workspace, before arm a `main` worktree). The index
+        work runs only for a project with two or more tasks that declare
+        outputs, which that workspace barely exercises.
+      - The review's fixtures through real vx: the no-edge pair is refused
+        at graph build. The pair with an edge is up-to-date on a warm run,
+        and its bytes are right through four input edits.
+      - The same review measured that a restore does not get a new inode:
+        ext4 reuses the one the clean freed. `caching.md` and
+        `output-index.ts` claimed otherwise; both now say ctime is the
+        guard and widen the residual to a recreated file. `schema.md`
+        names the nested case.
+      - Rows: `output-collision.test.ts` › four nested pairs refused in
+        either order, plus an edge making the pair additive. All are red
+        without the fix. The controls (a sibling subtree; a one-level
+        glob beside a subtree) pass both ways.
 
 ## In flight
 

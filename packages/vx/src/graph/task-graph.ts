@@ -1,5 +1,12 @@
 import type { ProjectConfig, TaskConfig } from '../config.js'
-import { asTrees, isLiteralPattern, taskGlob, UserError } from '../util/index.js'
+import {
+  asTrees,
+  isLiteralPattern,
+  staticPrefix,
+  taskGlob,
+  UserError,
+  wholeSubtreePrefixes,
+} from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import {
   DependencySpecError,
@@ -563,7 +570,10 @@ export function excludeDependencies(
  *
  *   both literal    — equal paths
  *   literal vs glob — ask the glob whether it matches the literal (exact)
- *   both globs      — only identical strings; anything else is undecided
+ *   both globs      — identical strings, or one a whole subtree `P/**`
+ *                     and the other's literal prefix P or under it: every
+ *                     path the second matches is under P, so the first
+ *                     covers it (item 941). Anything else is undecided
  *                     here and deliberately allowed through
  *
  * The rejected alternative was comparing each glob's static prefix. It is
@@ -607,10 +617,25 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
         if (taskGlob(b).match(a)) return true
       } else if (isLiteralPattern(b)) {
         if (taskGlob(a).match(b)) return true
-      } else if (a === b) return true
+      } else if (a === b || covers(a, b) || covers(b, a)) return true
     }
   }
   return false
+}
+
+/**
+ * Does the whole-subtree glob `tree` (`P/**`) match every path `glob` can?
+ * It does when `glob`'s literal prefix is P or a directory under it. Left
+ * undecided, `dist/**` beside `dist/extra/**` was no overlap: each task
+ * cleaned and restored the other's files, and a hit of the wide one put
+ * back its own stale copy of the narrow one's output under a green run
+ * (item 941).
+ */
+function covers(tree: string, glob: string): boolean {
+  const dir = wholeSubtreePrefixes([tree])?.[0]
+  if (dir === undefined) return false
+  const prefix = staticPrefix(glob)
+  return prefix === dir || prefix.startsWith(`${dir}/`)
 }
 
 /**
@@ -725,7 +750,9 @@ const GLOB_HEAD_END = /[*?{}\\!]/
  * (`dist/sub/**` → `dist/sub`; `*.js` → the root, so a wildcard in the
  * first segment meets every literal): a literal meets the globs filed at
  * each of its ancestors. The fuzz above found no glob matching the
- * directory its own head names.
+ * directory its own head names. A whole subtree meets the globs whose
+ * literal prefix lies at or under it, found the same way from the glob's
+ * side (item 941).
  */
 function overlapCandidates(
   tasks: readonly TaskNode[],
@@ -734,6 +761,11 @@ function overlapCandidates(
   const globs = new Map<string, number[]>()
   const globsUnder = new Map<string, number[]>()
   const literals: Array<[task: number, path: string]> = []
+  // `covers` (item 941): a whole subtree `P/**` meets every glob whose
+  // literal prefix is P or under it, so each glob looks up the subtrees
+  // filed at its prefix and at each of that prefix's ancestors.
+  const subtrees = new Map<string, number[]>()
+  const prefixes: Array<[task: number, prefix: string]> = []
   const file = (index: Map<string, number[]>, key: string, i: number): void => {
     const list = index.get(key)
     if (list === undefined) index.set(key, [i])
@@ -746,6 +778,9 @@ function overlapCandidates(
         continue
       }
       file(globs, tree, i)
+      const dir = wholeSubtreePrefixes([tree])?.[0]
+      if (dir !== undefined) file(subtrees, dir, i)
+      prefixes.push([i, staticPrefix(tree)])
       const head = tree.slice(0, tree.search(GLOB_HEAD_END))
       file(globsUnder, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
     }
@@ -758,6 +793,12 @@ function overlapCandidates(
   for (const list of globs.values()) {
     for (let x = 0; x < list.length; x++) {
       for (let y = x + 1; y < list.length; y++) pair(list[x]!, list[y]!)
+    }
+  }
+  for (const [i, prefix] of prefixes) {
+    for (const j of subtrees.get(prefix) ?? []) pair(i, j)
+    for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
+      for (const j of subtrees.get(prefix.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   for (const [i, path] of literals) {
