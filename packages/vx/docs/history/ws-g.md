@@ -269,3 +269,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (`schedule-history.test` › a history entry with no p50 does not enter
   the workspace median), red without the guard. Equivalent: `left <= 0`
   (an upstream outside the run has no node to release).
+- **G-20.** `vx-schedule-history` checks declared `reservations`. A
+  NaN axis (`memory: Number(process.env.X)`, X unset) held its task
+  alone and summed into what runs, so every reserving task beside it
+  waited: the run went serial and said nothing (G-4's class, the
+  declared side). Each axis that is no number above 0 now reserves
+  nothing, named in the one options warning; `0` is taken silently.
+  Row (`resource-estimates` › a declared reservation axis that is no
+  number above 0 reserves nothing): red without the fix.

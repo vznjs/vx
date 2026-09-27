@@ -60,7 +60,7 @@ plugins: [
 ]
 ```
 
-`window`, `memory` and `headroom` must each be a finite number above 0 (`window` a whole one). One that is not — `Number(process.env.X)` with `X` unset is NaN, and no reservation fits a NaN budget, so every task that reserved memory would wait for an idle machine — runs on its default, named in one warning per run and in `vx history`.
+`window`, `memory` and `headroom` must each be a finite number above 0 (`window` a whole one). One that is not — `Number(process.env.X)` with `X` unset is NaN, and no reservation fits a NaN budget, so every task that reserved memory would wait for an idle machine — runs on its default, named in one warning per run and in `vx history`. So does a declared `reservations` axis (`cpus`, `memory`): one that is not a number above 0 reserves nothing on that axis (a NaN held its task alone and every reserving task beside it waited); `0` is taken as nothing, silently.
 
 `vx history` (a verb this plugin adds) shows what it learned per task
 and the reservation it will pack, with the budgets it packs into:
