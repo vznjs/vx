@@ -845,7 +845,9 @@ strings (bigints serialized as strings) to preserve ns precision
 through JSON. `cpuMs` / `peakRssBytes` are what the task's own
 execution used and appear on executed rows only (`peakRssBytes` only
 when the task's peak rose above vx's own footprint — a lighter task's
-figure would be vx's, handed back by the kernel); a hit's `durationMs`
+figure would be vx's, handed back by the kernel; a Linux sandboxed task
+reports neither, since what bwrap's pid namespace used never reaches vx);
+a hit's `durationMs`
 is the restore it cost, and what the PRODUCING execution used rides the
 artifact and appears under its own keys, `storedCpuMs` /
 `storedPeakRssBytes` (the work the hit skipped, the split
