@@ -111,3 +111,10 @@ The open reads the index's header and `schema_meta` alone (item 1005), so a `cac
 - Fix (`cache.ts` `guard`): every public entry point that reads or writes the index (lookups, saves and ingests, prune, retention, stats, run records, config evaluations, the file-hash memo, the output rows) maps SQLite's corrupt and not-a-database codes to the open's own `UserError`, naming the file and the remedy; every other error passes through. `modules/cache.md` says so.
 - Folded: two comments that claimed what the code lacks (`entries` holds stdout; the miss capture is `describeTaskInputs` before the spawn). Coordinator's DROP-list question: `output_dirs` is cleared by the FK cascade, `config_closures` kept by design (item 488, pinned in `cache.test.ts`); no change.
 - Rows: `cache-unreadable.test.ts` › an index corrupt past the pages the open reads (the `entries` root page garbled after a checkpoint): get, getIngested, getMany, has, stats, prune, evictIfDue and save each refuse by name (red without the fix: the raw `SQLiteError`); control, the same index whole answers each.
+
+### A-9 (2026-09-27, the next failure class: a leaked process)
+
+A `cache.inputs.runtime` probe ran in vx's own process group with nothing listing it. A Ctrl-C during key derivation, while the probe still ran (`sleep 300` standing for a hung `git` or `node -e …`), ended vx and left the probe's shell and its child to init.
+
+- Fix (`inputs.ts` `runRuntimeCommand`): each probe is spawned `detached`, its own group; the probes still running when vx exits are SIGKILLed with their trees (a `process.on('exit')` hook, as `sandbox-runtime.ts` does for its temp files). A `kill -9` of vx still leaves one: the task groups' guard (`exec/kill-tree.ts`) is B's, and probes are not on it. `caching.md` says so.
+- Rows: `runtime-probe-exit.test.ts` › a probe running when vx exits on SIGINT is gone with its tree (the shell and its child, both proven alive first). Red without the fix.
