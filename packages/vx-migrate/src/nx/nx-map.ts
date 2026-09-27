@@ -26,7 +26,7 @@ import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
-import { mapNxDeps, type TaskNameFor } from './nx-deps.js'
+import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
 import {
   dotenvCandidates,
   type DotenvListing,
@@ -468,6 +468,14 @@ function buildTask(
     taskNameFor,
     (p, t) => Object.hasOwn(nodeMap[p]?.data?.targets ?? {}, t),
     todos,
+    (patterns) =>
+      matchNxProjects(
+        patterns,
+        Object.entries(nodeMap).map(([name, n]) => ({
+          name,
+          tags: ((n?.data as { tags?: unknown } | undefined)?.tags as string[] | undefined) ?? [],
+        })),
+      ),
   )
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`

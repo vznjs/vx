@@ -722,6 +722,25 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - The extensionless-output lead is Next 27: its fix costs nx()
         directory outputs a warm-hit short-circuit, which needs numbers.
 
+1053. DONE (2026-09-27, the nx() review's leads 7 and 8a). `dependsOn`
+      edges Nx takes were dropped: `{ target, projects: "b" }` (Nx reads a
+      lone string as `["b"]`) was "not representable", and a list's
+      entries were looked up as package names, so `tag:lib` and `lib-*`
+      dropped their edges. `projects` is now read as Nx's
+      `findMatchingProjects` reads it (`matchNxProjects`: names, `*`
+      patterns, `tag:` patterns, `!` exclusions, a list opening with one
+      starting from every node) over the graph's nodes and their tags; an
+      exact name that is no package still draws its todo. And `params:
+"ignore"`, Nx's default, drew a todo about forwarding; only
+      `forward` does now.
+      - Rows: `nx-helpers-sweep.test.ts` › a lone projects string is a
+        one-entry list, only params forward is a todo, and
+        `matchNxProjects`; `nx-map-sweep.test.ts` › a dependsOn projects
+        pattern reaches the nodes whose tags or names it matches. Each red
+        with its change reverted.
+      - Left from the review: `nxCache`'s kept body can be cancelled by a
+        concurrent probe (a refetch, not a wrong answer; unmeasured).
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

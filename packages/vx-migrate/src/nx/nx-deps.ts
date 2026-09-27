@@ -21,6 +21,34 @@ export type TaskNameFor = (project: string, target: string, configuration: strin
  */
 export type HasTarget = (project: string, target: string) => boolean
 
+/**
+ * The graph nodes a `projects` list names, as Nx's `findMatchingProjects`
+ * reads it: a name, a `*` pattern over names, `tag:<tag>` (a pattern too),
+ * and `!` before any of them to exclude. A list that opens with an
+ * exclusion starts from every node.
+ */
+export function matchNxProjects(
+  patterns: readonly string[],
+  nodes: ReadonlyArray<{ readonly name: string; readonly tags: readonly string[] }>,
+): string[] {
+  const glob = (p: string): RegExp =>
+    new RegExp(`^${p.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*')}$`)
+  const hits = (p: string): string[] => {
+    if (p.startsWith('tag:')) {
+      const re = glob(p.slice(4))
+      return nodes.filter((n) => n.tags.some((t) => re.test(t))).map((n) => n.name)
+    }
+    const re = glob(p)
+    return nodes.filter((n) => re.test(n.name)).map((n) => n.name)
+  }
+  const out = new Set<string>(patterns[0]?.startsWith('!') ? nodes.map((n) => n.name) : [])
+  for (const p of patterns) {
+    if (p.startsWith('!')) for (const n of hits(p.slice(1))) out.delete(n)
+    else for (const n of hits(p)) out.add(n)
+  }
+  return [...out]
+}
+
 export function mapNxDeps(
   entries: readonly unknown[],
   metaByNode: ReadonlyMap<string, ProjectMeta>,
@@ -28,6 +56,7 @@ export function mapNxDeps(
   taskNameFor: TaskNameFor,
   hasTarget: HasTarget,
   todos: string[],
+  matchProjects: (patterns: readonly string[]) => string[] = (ps) => [...ps],
 ): string[] {
   const deps: string[] = []
   for (const d of entries) {
@@ -89,26 +118,33 @@ export function mapNxDeps(
         todos.push(`dependsOn ${JSON.stringify(d)} has no target — dropped`)
         continue
       }
-      if (o.params !== undefined) {
+      // `ignore` is Nx's default; only `forward` asks for something vx lacks.
+      if (o.params === 'forward') {
         todos.push(
           `dependsOn ${JSON.stringify(t)}: params forwarding is not supported — forward args ` +
             'via `vx run … -- args` instead',
         )
       }
-      const projects = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
+      const raw = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
+      // Nx reads a lone string as a one-entry list (`projects: "b"`); it
+      // was not representable here, and the edge dropped (item 1053).
+      const projects =
+        typeof raw === 'string' && raw !== 'self' && raw !== 'dependencies' ? [raw] : raw
       if (projects === undefined || projects === 'self') {
         if (ownTarget(t)) deps.push(t)
       } else if (projects === 'dependencies') deps.push(`^${t}`)
-      else if (Array.isArray(projects)) {
+      else if (Array.isArray(projects) && projects.every((p) => typeof p === 'string')) {
+        // Patterns and tags (`lib-*`, `tag:lib`) name the graph's nodes;
+        // only an exact name that is no package is worth a line.
+        for (const node of matchProjects(projects)) {
+          const m = metaByNode.get(node)
+          if (m && hasTarget(node, t)) deps.push(`${m.name}#${t}`)
+        }
         for (const p of projects) {
-          const m = typeof p === 'string' ? metaByNode.get(p) : undefined
-          if (m) {
-            if (hasTarget(p as string, t)) deps.push(`${m.name}#${t}`)
-          } else {
-            todos.push(
-              `dependsOn project ${JSON.stringify(p)} is not a workspace package — edge dropped`,
-            )
-          }
+          if (/^!|^tag:|\*/.test(p) || metaByNode.has(p)) continue
+          todos.push(
+            `dependsOn project ${JSON.stringify(p)} is not a workspace package — edge dropped`,
+          )
         }
       } else todos.push(`dependsOn ${JSON.stringify(d)} not representable in vx`)
       continue

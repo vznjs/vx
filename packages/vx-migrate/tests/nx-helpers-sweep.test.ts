@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test'
 import type { ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs } from '../src/nx/nx-inputs.js'
 import { mapNxOutputs } from '../src/nx/nx-outputs.js'
-import { mapNxDeps } from '../src/nx/nx-deps.js'
+import { mapNxDeps, matchNxProjects } from '../src/nx/nx-deps.js'
 
 function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
   const into = emptyNxInputs()
@@ -124,6 +124,23 @@ describe('mapNxDeps', () => {
       todos,
     }
   }
+
+  // Nx reads `projects: "ui"` as `["ui"]`, and `params: "ignore"` is its
+  // default: the string form dropped the edge as unrepresentable, and every
+  // `params` drew a todo about forwarding (item 1053).
+  it('a lone projects string is a one-entry list; only params forward is a todo', () => {
+    expect(deps([{ target: 'build', projects: 'ui', params: 'ignore' }])).toEqual({
+      deps: ['@acme/ui#build'],
+      todos: [],
+    })
+    expect(deps([{ target: 'build', params: 'forward' }]).todos).toEqual([
+      'dependsOn "build": params forwarding is not supported — forward args via `vx run … -- args` instead',
+    ])
+    // CONTROL: a name that is no package still says so.
+    expect(deps([{ target: 'build', projects: ['nope'] }]).todos).toEqual([
+      'dependsOn project "nope" is not a workspace package — edge dropped',
+    ])
+  })
 
   it('a colon at the start is no project separator; an empty target after one is dropped', () => {
     expect(deps([':x', 'ui:'])).toEqual({
@@ -271,5 +288,23 @@ describe('Nx glob grammar in inputs', () => {
         'input "{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
       ],
     ])
+  })
+})
+
+describe('matchNxProjects', () => {
+  const nodes = [
+    { name: 'lib-a', tags: ['lib', 'scope:web'] },
+    { name: 'lib-b', tags: ['lib'] },
+    { name: 'app', tags: ['app'] },
+  ]
+  it('names, `*` patterns, tags and exclusions, as Nx reads a projects list', () => {
+    expect(matchNxProjects(['app'], nodes)).toEqual(['app'])
+    expect(matchNxProjects(['lib-*'], nodes)).toEqual(['lib-a', 'lib-b'])
+    expect(matchNxProjects(['tag:scope:*'], nodes)).toEqual(['lib-a'])
+    expect(matchNxProjects(['tag:lib', '!lib-b'], nodes)).toEqual(['lib-a'])
+    // A list that opens with an exclusion starts from every node.
+    expect(matchNxProjects(['!app'], nodes)).toEqual(['lib-a', 'lib-b'])
+    // A regex character in a name is a literal.
+    expect(matchNxProjects(['lib.a'], nodes)).toEqual([])
   })
 })
