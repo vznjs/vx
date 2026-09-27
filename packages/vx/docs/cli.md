@@ -1531,7 +1531,15 @@ generated until 2026-09-04), and a guessed `dist/**` would restore the
 wrong tree for every package that writes elsewhere. `test` / `typecheck` wait for
 `build` when the package has one (`lint` reads sources and gets no
 edge); `dev` / `start` / `serve` / `watch` /
-`preview` become persistent tasks with a TODO to add `readyWhen`.
+`preview` become persistent tasks with a TODO to add `readyWhen`. A
+script whose name no task may carry (`lint#fix`, `^up`; the schema's
+rule, item 1000) is left out with a TODO rather than written into a
+config every later command refuses, and a `__proto__` script is written
+as a computed key, since a literal `__proto__:` sets the prototype. An
+existing `vx.workspace.*` in any extension the loader reads (`.mts`
+included) is kept, and `--force` REPLACES a package's config of another
+extension (`replaced:` in the report) rather than writing a second one
+the loader would choose between by its order (item 1033).
 
 On a repo that already has `turbo.json` or an Nx workspace, `init`
 still maps scripts only and says so, naming the richer path:

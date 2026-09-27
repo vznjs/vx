@@ -5,10 +5,12 @@
 // tool wrote it. Core knows no source format here: a mapper returns a
 // `MigrationPlan` and this file does the rest.
 
+import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from './workspace.js'
+import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /**
  * Escape an arbitrary string into a single-quoted TS literal. Escapes
@@ -164,13 +166,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   }
   // A migrated workspace must declare its executor and cache — nothing is
   // applied by default. Emit the workspace file unless the repo already has
-  // one in any supported extension.
+  // one in any extension the loader reads: a hand-written `.mts` was missed,
+  // and the `.ts` written beside it won by load order (item 1033).
   const hasWorkspaceFile = (
-    await Promise.all(
-      ['vx.workspace.ts', 'vx.workspace.mjs', 'vx.workspace.js'].map((n) =>
-        Bun.file(path.join(root, n)).exists(),
-      ),
-    )
+    await Promise.all(WORKSPACE_CONFIG_FILENAMES.map((n) => Bun.file(path.join(root, n)).exists()))
   ).some(Boolean)
   if (!hasWorkspaceFile) {
     const abs = path.join(root, workspaceName)
@@ -201,12 +200,23 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     }
   }
 
+  // Under --force a project's config of another extension is REPLACED: the
+  // new one was written beside it, the loader read one of the two by its
+  // order, and the report said "written" for a file the run never loaded
+  // (item 1033).
+  const replaced: string[] = []
+  for (const p of plan.projects) {
+    if (p.tasks.length === 0) continue
+    const existing = metas.find((m) => m.dir === p.dir)?.configPath
+    if (existing && existing !== path.join(p.dir, configName)) replaced.push(existing)
+  }
   if (dry) {
     for (const f of files) {
       process.stdout.write(`── ${f.relPath} ──\n${f.contents}\n`)
     }
   } else {
     for (const f of files) await Bun.write(f.abs, f.contents)
+    for (const f of replaced) await unlink(f)
   }
 
   const todoList: string[] = []
@@ -258,6 +268,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     report.push(...plan.notes)
     report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
     for (const f of files) report.push(`  ${f.relPath}`)
+    if (replaced.length > 0) {
+      report.push(dry ? 'would replace (dry run):' : 'replaced:')
+      for (const f of replaced) report.push(`  ${relPosix(root, f)}`)
+    }
   }
   const firstTask =
     plan.projects.flatMap((p) => p.tasks.map((t) => t.name)).find((n) => n === 'build') ??
@@ -345,7 +359,14 @@ function renderConfigFile(
   for (const t of p.tasks) {
     for (const todo of t.todos) lines.push(`    // TODO(vx-migrate): ${todo}`)
     if (t.task === null) continue // skipped target — the TODO above explains
-    const key = IDENT.test(t.name) ? t.name : quoteTsLiteral(t.name)
+    // `__proto__: {…}` in a literal SETS the prototype, quoted or not, and
+    // the run refused the config (item 1033); a computed key is a property.
+    const key =
+      t.name === '__proto__'
+        ? `[${quoteTsLiteral(t.name)}]`
+        : IDENT.test(t.name)
+          ? t.name
+          : quoteTsLiteral(t.name)
     lines.push(`    ${key}: ${renderValue(t.task, '    ')},`)
   }
   lines.push('  },', format === 'ts' ? '} satisfies ProjectConfig' : '}', '')

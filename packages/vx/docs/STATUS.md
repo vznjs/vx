@@ -1001,6 +1001,24 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         names re-keys the task (e2e); `turbo-map-sweep.test.ts` › `.env`
         inputs (five shapes). Each piece red when removed.
 
+1033. DONE (2026-09-27, the CLI-verb review's leads 1 to 3). `vx init`
+      wrote workspaces the next command read differently from its
+      report. A hand-written `vx.workspace.mts` was not seen, and the
+      `vx.workspace.ts` written beside it won by load order, dropping the
+      user's plugins. `--force` over a `vx.config.mjs` wrote a
+      `vx.config.ts` beside it, and the loader ran the old one or the
+      new one by its order. Scripts named `lint#fix` or `^up` became
+      tasks item 1000's schema refuses, so every later command failed,
+      and a `__proto__` script set the tasks object's prototype.
+      - Fix (`migration.ts`, `migrate-scripts.ts`): the workspace check
+        reads `WORKSPACE_CONFIG_FILENAMES`; `--force` removes a config
+        of another extension it replaces and says `replaced:`; a
+        refused name is a skipped task with a TODO, by the schema's own
+        `taskNameProblem` (exported for this); `__proto__` is a computed
+        key. `@vzn/vx-migrate` shares all of it. `cli.md` says so.
+      - Rows: `init.test.ts` › vx init writes what the next run reads
+        (three rows, e2e). Each of the four pieces red when removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
