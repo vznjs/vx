@@ -126,3 +126,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   or cost-only: the textual prefilter, both early returns, the `skip`
   filter, the start of `ownerOf`, the workspace and `node_modules`
   bounds.
+- **D-14** Mutation sweep of `package-graph.ts` (43 mutants). One
+  behaviour survivor: `workspace:~` had no row, and without its fast
+  path it reads as an alias named `~` and the edge drops. Row: the
+  "`*`, `workspace:^` and `workspace:~` take any version…" case in
+  `tests/package-graph.test.ts`. Equivalent or cost-only: the
+  `workspace:*` fast path, both memos, the bitset path (the DFS
+  fallback answers the same), the peer and dependents sorts, a
+  `path.resolve` over already-resolved dirs, a non-string spec. A
+  mutant that drops the DFS `seen` check hangs on a cycle (caught by
+  the run never ending).
