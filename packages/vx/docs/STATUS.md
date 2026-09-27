@@ -738,6 +738,20 @@ test is telling the truth.
         not atomic).
       - The review is done: its six leads are items 951, 953–955, 958,
         959 and 961.
+968.  DONE (2026-09-27, a cache-prune review agent's lead 2). The orphan
+      sweep unlinked every row-less `*.tar.zst` an hour old in `cacheDir`,
+      and `cacheDir` is the user's to point anywhere: a `release.tar.zst`
+      beside the index went with a run's `cacheRetention`, under a green
+      run.
+      - Fix (`cache.ts`): the sweep takes only `<16 hex>.tar.zst` and the
+        temp `tempPath` makes of one. `cli.md` says so.
+      - Row: `cache.test.ts` › the orphan sweep leaves a `*.tar.zst` vx
+        did not name. Red without the fix. Fixtures that planted `h-*`
+        orphans now use key-shaped names.
+      - Next from the same review: 1 (`cacheRetention` takes a zero or
+        bare-number bound), 3 (the run lock is keyed by the temp
+        directory), and index rows whose artifact is gone still count
+        toward the size bound.
 
 ## In flight
 
