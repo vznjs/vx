@@ -93,6 +93,26 @@ describe('findWorkspaceRoot', () => {
       expect(await findWorkspaceRoot(abs)).toBe(dir)
     })
 
+    it('a package under a matched directory with no manifest is not claimed (item 989)', async () => {
+      // `packages/*` matches `packages/tools`, which holds no package.json;
+      // the standalone package below it is no member, so its own directory
+      // is the root, as npm has it. The claim counted the matched directory
+      // and the standalone package ran in a workspace that does not list it.
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: ['packages/*'] }),
+      )
+      const standalone = path.join(dir, 'packages', 'tools', 'standalone')
+      await mkdir(standalone, { recursive: true })
+      await writeFile(path.join(standalone, 'package.json'), '{"name":"standalone"}')
+      expect(await findWorkspaceRoot(standalone)).toBe(standalone)
+      // Control: a member's own subdirectory, manifest-less, still resolves up.
+      const deep = path.join(dir, 'packages', 'a', 'src')
+      await mkdir(deep, { recursive: true })
+      await writeFile(path.join(dir, 'packages', 'a', 'package.json'), '{"name":"a"}')
+      expect(await findWorkspaceRoot(deep)).toBe(dir)
+    })
+
     it('resolves an explicitly listed nested member past its parent package', async () => {
       // This repo's own shape: `packages/cloud/ui` is a member listed by
       // literal path, nested inside `packages/cloud`, itself a member.

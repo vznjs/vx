@@ -315,6 +315,19 @@ test is telling the truth.
       - Row: `workspace.test.ts` › refuses a package.json of the wrong
         shape by name: five bodies, root and member, the exact messages.
         Red without the fix.
+989.  DONE (2026-09-27, the discovery review's lead 5). From
+      `packages/tools/standalone` (a package under a directory with no
+      manifest), the root search stopped at the workspace whose
+      `packages/*` matched `packages/tools`, though that workspace does
+      not list the standalone package: `vx show` listed the others and
+      `vx run build` said "not inside a project".
+      - Fix (`workspace.ts`): only a directory the walk found a manifest in
+        can be the claimed member, as only such a directory is listed. The
+        standalone package is its own root, as npm has it.
+        `modules/workspace.md` says the two roots now cannot diverge.
+      - Row: `workspace.test.ts` › a package under a matched directory with
+        no manifest is not claimed, with a member's manifest-less
+        subdirectory as the control. Red without the fix.
 
 ## In flight
 

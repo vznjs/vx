@@ -118,8 +118,12 @@ Every member has its own `package.json`, so first-match-wins would make
 a run from inside a package treat that package as the whole workspace:
 `^task` edges vanish, upstream hashes drop out of the cache key (stale
 hits), and a second cache dir appears under the member. Claiming reads
-the same globs `loadWorkspace` applies, so "the root that claims me"
-and "the root that lists me as a project" cannot diverge.
+the same globs `loadWorkspace` applies, and only a directory holding a
+manifest can be the claimed member, as only such a directory is listed,
+so "the root that claims me" and "the root that lists me as a project"
+cannot diverge. They did until item 989: `packages/*` matched a
+manifest-less `packages/tools`, and the standalone package below it ran
+in a workspace that does not list it.
 
 When nothing claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins. A bare
