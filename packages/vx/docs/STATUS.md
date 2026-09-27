@@ -552,6 +552,11 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         prune reaping the same count and bytes. It is red without the
         change. The item-896 refusal rows keep `last`, `why` and `info`.
 
+1084. SUPERSEDED (2026-09-27) by D-3 (`docs/history/ws-d.md`), which
+      landed first: a dependent whose edge a manifest edit dropped is
+      selected. This item keeps two rows D-3 lacks: a deleted dependency
+      named by an npm alias, and one named by a `file:` path.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
