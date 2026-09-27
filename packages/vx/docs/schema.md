@@ -934,7 +934,7 @@ unsandboxed.** Full walkthrough in the
 interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
   deny?: { network?: string[] } // domains refused before `allow.network`
-  ignore?: SandboxGrants // violations to leave out of the report
+  ignore?: SandboxGrants // violations to leave out of the report (four of its names act; see below)
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
 }
@@ -953,9 +953,14 @@ interface SandboxGrants {
 ```
 
 One shape describes what a task may do; vx translates it into a seatbelt
-profile on macOS and bwrap mounts plus seccomp on Linux. The same block
-is the vocabulary for `ignore`, so a noisy probe is silenced with the
-grant that would have permitted it:
+profile on macOS and bwrap mounts plus seccomp on Linux. `ignore` takes
+the same names, but vx sorts each report line into a read, a write, a
+system-info probe or a network reach, so only the patterns under
+`ignore.read`, `ignore.write`, `ignore.systemInfo` and `ignore.network`
+leave anything out of the report. `unixSockets`, `machLookup` and
+`localBinding` load under `ignore` and match nothing, and `pty` and
+`gitConfig` are refused there (a flag, not something to ignore). A noisy
+probe is silenced with the grant that would have permitted it:
 
 ```ts
 exec: {

@@ -70,6 +70,20 @@ each fail their row. The contract table's "Defined by" column named
 `src/config.ts` for the plugin API, where `VxPlugin` is not; it now names
 the files and each surface's record.
 
+## H-7: say which `sandbox.ignore` fields act, held to the resolver
+
+`schema.md` called the grant block "the vocabulary for `ignore`, so a noisy
+probe is silenced with the grant that would have permitted it". The H-1
+probe table showed `ignore.localBinding` accepting anything; reading the
+path, `resolveSandboxConfig` keeps only `read`, `write`, `systemInfo` and
+`network` under `ignore` (a report line is sorted into one of those four),
+so `ignore.unixSockets`, `machLookup` and `localBinding` load and match
+nothing. The page names the four that act and the three that do not;
+`tests/schema-ignore-vocabulary.test.ts` holds both lists to the resolver
+(fed every name the validator accepts, from the H-1 record) and to that
+accepted set. Differential: the old paragraph fails both rows; a resolver
+that forwards `machLookup` fails both. The refusal itself stays a lead for D.
+
 ## Leads for other streams
 
 - **D / B:** `exec.sandbox.ignore.localBinding` accepts ANY value (the
@@ -88,3 +102,7 @@ the files and each surface's record.
   RST_STREAM(CANCEL) "… is not retried" once, in 3 of 5 gates on
   2026-09-27 (Bun 1.4.2, 4 workers), while the task passes run alone.
   Load-dependent; CI has been green.
+
+- **J:** the site's sandboxing guide and `src/config.ts`'s `SandboxConfig.ignore`
+  comment ("in the same shape as `allow`") make the same whole-vocabulary
+  claim `schema.md` made before H-7; only four names act.
