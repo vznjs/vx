@@ -798,7 +798,8 @@ withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
 Any exec task counts, cached or not: a task with no `cache` declares no
 `inputs.files`, so its key folds every file of its project. A persistent
-task is folded by no one on the live path, so nothing beneath it counts.
+task counts the same way: its key folds its whole project, so a cached
+e2e behind a dev server re-runs when the server's sources change.
 The coverage is per package, not per file: an edge to `ui#source`
 (inputs `src/**`) also admits a read of `ui/README.md`, whose edit moves
 no key — the same limit a grant wider than a task's own inputs already

@@ -11,10 +11,10 @@ can never drift on the stability gate.
 
 - `deriveStableKeys(args)` — topo walk deriving every task's key the
   same way execute-task does; returns stable+cacheable non-group tasks
-  with their keys. A persistent task gets no key, as on the live path,
-  so its dependents fold nothing of it on either path (item 727:
-  recording one gave them a second key a `--force` run never saved
-  under; `keyed-projects.test.ts` R4 compares the two paths' keys).
+  with their keys. A persistent task is keyed as on the live path (the
+  two paths must agree, item 727: a key only one path had gave its
+  dependents a second key a `--force` run never saved under;
+  `keyed-projects.test.ts` R4 compares them).
 - `dependsOnSiblingOutputs(node, upstreamOutputProjects, hasWsOutputUpstream)`
   — the conservative gate, fed the TRANSITIVE-upstream output producers
   `deriveStableKeys` accumulates in topo order. The key is preliminary

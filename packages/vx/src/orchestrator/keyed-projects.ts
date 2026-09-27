@@ -18,10 +18,7 @@ import { selectFoldedDeps, type FoldCandidate } from './upstream.js'
  *     selects them (absent, or no `cache` at all, means all);
  *   - a group folds every dependency (`computeGroupHash`) and folds no
  *     files of its own;
- *   - a persistent task has no hash on the live path, so it is folded by
- *     no one and its own dependencies reach no key through it. (The local
- *     classify pass does give it one — stable-keys.ts — so a key there can
- *     move with more than this set names; never with less.)
+ *   - a persistent task is keyed as a task with no `cache` (A-17).
  *
  * Every exec task reached contributes its project, cached or not: a key
  * folds the task's own project files, and a task with no `cache` declares
@@ -71,7 +68,6 @@ function folded(node: TaskNode, nodes: ReadonlyMap<string, TaskNode>): FoldCandi
   const candidates: FoldCandidate[] = []
   for (const id of node.deps) {
     const dep = nodes.get(id)!
-    if (dep.config.exec?.persistent !== undefined) continue
     candidates.push({ node: dep, unit: foldUnit(dep) })
   }
   if (isGroupTask(node)) return candidates

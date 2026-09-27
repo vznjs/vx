@@ -54,8 +54,6 @@ export async function keyExcludedDependencies(args: KeyExcludedArgs): Promise<vo
   const derive = async (node: TaskNode): Promise<string | undefined> => {
     const upstream = await outcomes(fullDeps(node))
     if (isGroupTask(node)) return computeGroupHash(upstream)
-    // A persistent task has no key on the live path, so none here either.
-    if (node.config.exec?.persistent !== undefined) return undefined
     return computeTaskHash({
       node,
       upstream,

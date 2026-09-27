@@ -47,7 +47,7 @@ export function keyedDeps(node: TaskNode): readonly string[] {
  * folded into the cache key (the fold sorts by hash, so ordering here
  * doesn't affect derivation); the task id rides along so Tier-3's
  * `entry_inputs` rows can NAME which upstream a hash came from. An
- * upstream with no hash (a persistent task) folds nothing.
+ * upstream with no hash folds nothing.
  */
 export function filterUpstreamHashes(
   upstream: TaskOutcome[],

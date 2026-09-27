@@ -120,13 +120,13 @@ describe('the walk (R3)', () => {
     expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/mid', '/ws/ui'])
   })
 
-  it('a persistent task has no hash: nothing beneath it reaches the key', () => {
+  it('a persistent task is keyed as an uncached one: it and what is beneath it count', () => {
     const nodes = graph({
       'app#test': [CACHED, ['ui#dev']],
-      'ui#dev': [PERSISTENT, ['ui#source']],
-      'ui#source': [CACHED, []],
+      'ui#dev': [PERSISTENT, ['mid#source']],
+      'mid#source': [CACHED, []],
     })
-    expect(keyedOf(nodes, 'app#test')).toEqual([])
+    expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/mid', '/ws/ui'])
   })
 
   it('two groups over the same members share one hash: excluding one excludes both', () => {
@@ -266,7 +266,7 @@ describe('K(T) is what moves the key (R4)', () => {
     },
     { title: 'a hop that folds nothing', dependsOn: ['@x/mid#bundle'], keyed: ['@x/mid'] },
     { title: 'a route through a third project', dependsOn: ['@x/mid#relay'], keyed: ['@x/ui'] },
-    { title: 'a persistent task in between', dependsOn: ['@x/ui#dev'], keyed: [] },
+    { title: 'a persistent task in between', dependsOn: ['@x/ui#dev'], keyed: ['@x/ui'] },
     {
       title: 'two groups over the same members, one excluded',
       dependsOn: ['@x/ui#pack', '@x/ui#pack2'],

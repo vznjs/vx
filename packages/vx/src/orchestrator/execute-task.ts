@@ -260,6 +260,23 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  // Keyed like an uncached task (its whole project), so a cached dependant
+  // behind a dev server re-runs when the server's sources change; with no
+  // key the dependant folded nothing of it and replayed a stale e2e (A-17).
+  const hash =
+    args.noDependants === true
+      ? undefined
+      : await computeTaskHash({
+          node,
+          upstream: args.upstream,
+          workspaceRoot: args.workspaceRoot,
+          workspaceFingerprint: args.workspaceFingerprint,
+          cache: args.cache,
+          forwardArgs: args.forwardArgs,
+          nestedProjectDirs: args.nestedProjectDirs,
+          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        })
 
   // The args after `--` reach a server as they reach any task. A readyWhen
   // server once got none — "so the matcher sees the unmodified output",
@@ -383,6 +400,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     status: 'success',
     exitCode: 0,
     durationMs: spawn.readyMs(),
+    ...(hash !== undefined ? { hash } : {}),
     wallclockStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }
