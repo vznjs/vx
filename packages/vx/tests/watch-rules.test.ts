@@ -176,6 +176,16 @@ describe('the ignore filter follows the RESOLVED cache dir, not the .vx literal'
     expect(ignore(proj, path.join('build', 'vxcache', 'x'))).toBe(false)
     expect(ignore(root, path.join('build', 'vxcache', 'x'))).toBe(true)
   })
+
+  it('ignores an event naming the relocated cache directory itself', () => {
+    // A watcher names a directory it sees created, and the first save
+    // creates the cache's: only paths UNDER it were held ignored, so the
+    // `abs === cacheAbs` arm could go with the suite green (E-12's sweep).
+    const ignore = makeWatchIgnore(path.join(root, 'build', 'vxcache'))
+    expect(ignore(root, path.join('build', 'vxcache'))).toBe(true)
+    // CONTROL: its parent is not the cache.
+    expect(ignore(root, 'build')).toBe(false)
+  })
 })
 
 describe('the sweep sees what a run sees', () => {
@@ -254,6 +264,9 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['nested/vx.workspace.ts', false],
     ['package.json', true], // its `workspaces` list is the package globs (item 1018)
     ['nested/package.json', false],
+    // A sibling whose name EXTENDS a project's is no project: a prefix test
+    // without the separator made its edits cycles (E-12's sweep).
+    ['packages/app-e2e/spec.ts', false],
   ])('%s → %s', (rel, kept) => {
     expect({ rel, kept: matters(rel.split('/').join(path.sep)) }).toEqual({ rel, kept })
   })

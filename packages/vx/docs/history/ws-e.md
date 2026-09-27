@@ -79,3 +79,18 @@ task picked`; neither prints a stack. Row in
   mutants, 26 caught, 3 equivalent under the current text, 1 unheld —
   the gate that keeps `vx <plugin-verb> --help` for the plugin. Row in
   `tests/plugin-commands.test.ts`.
+- E-11 — Sweep of `cli/select.ts` (never swept): 24 mutants, 12 caught,
+  2 equivalent, 10 held now — among them a directory sharing a member's
+  name as a string prefix placed in the member, a typo beside an empty
+  diff exiting 0 as "nothing affected", a self or negated `dependsOn`
+  drawn as a graph edge, and `--affected`'s `workspaceFiles` owners
+  lost when the staged load fails. Rows in `tests/select.test.ts` (new)
+  and `tests/cli-picker.test.ts`.
+- E-12 — Sweep of `cli/watch.ts`'s rules (the ignore predicate, the
+  root-event filter, the member set, the change judgement): 22 mutants,
+  15 caught, 5 equivalent (a `!`-prefixed container only a `!` path
+  could match; a literal's trailing slash the ancestor rule covers; an
+  absolute-root prefix no output can have; two `git check-ignore`
+  readings of an empty answer), 2 held now: an event naming a relocated
+  cache directory itself, and a project-directory test without its path
+  separator (the E-11 class again). Rows in `tests/watch-rules.test.ts`.
