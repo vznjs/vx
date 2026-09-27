@@ -61,7 +61,7 @@ export default defineProject({
     test: {
       description: 'bun test',
       exec: {
-        command: 'bun test',
+        command: 'bun test --only-failures',
         sandbox: {
           allow: {
             read: ['**/*'],

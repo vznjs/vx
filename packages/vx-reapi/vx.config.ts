@@ -43,7 +43,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'for f in tests/*.test.ts; do echo "== $f"; bun test "$f" --timeout 90000 || exit 1; done',
+          'for f in tests/*.test.ts; do echo "== $f"; bun test --only-failures "$f" --timeout 90000 || exit 1; done',
         env: {
           passThrough: [
             'VX_REAPI_TEST_ENDPOINT',
