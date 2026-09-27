@@ -189,6 +189,46 @@ function schemaOrdinal(version: string): number {
 }
 
 /**
+ * Artifacts `indexed` does not hold, and temps, past the in-flight grace
+ * window: one readdir, one stat per candidate. `indexed` is asked only
+ * once the readdir succeeded: with the directory gone, macOS answers a
+ * read of the index SQLITE_IOERR_VNODE, and an unreadable directory
+ * reports nothing.
+ */
+async function scanOrphanFiles(
+  cacheDir: string,
+  indexedHashes: () => ReadonlySet<string>,
+): Promise<Array<{ file: string; size: number }>> {
+  let names: string[]
+  try {
+    names = await readdir(cacheDir)
+  } catch {
+    return []
+  }
+  const indexed = indexedHashes()
+  const cutoff = Date.now() - ORPHAN_GRACE_MS
+  const candidates: string[] = []
+  for (const name of names) {
+    const m = VX_ARTIFACT_NAME.exec(name)
+    if (m === null) continue
+    if (m[2] !== undefined || !indexed.has(m[1]!)) candidates.push(name)
+  }
+  const found: Array<{ file: string; size: number }> = []
+  await Promise.all(
+    candidates.map(async (name) => {
+      const file = path.join(cacheDir, name)
+      try {
+        const st = await stat(file)
+        if (st.isFile() && st.mtimeMs <= cutoff) found.push({ file, size: st.size })
+      } catch {
+        // Gone between readdir and stat: not an orphan any more.
+      }
+    }),
+  )
+  return found
+}
+
+/**
  * SQL predicate selecting `runs` rows that record an EXECUTION.
  *
  * Every non-group, non-aborted outcome of a run gets a row, so the header's
@@ -398,6 +438,41 @@ export class Cache implements CacheLayer {
   /** A reading verb's open: it never resets the index (the constructor's `mode`). */
   static inspect(cacheDir: string): Cache {
     return new Cache(cacheDir, undefined, undefined, undefined, 'inspect')
+  }
+
+  /**
+   * What a real prune reaps from an index of an EARLIER schema, which it
+   * resets first, leaving every aged artifact row-less: a dry run that
+   * refused it could not preview the biggest prune there is, the one
+   * after an upgrade (item 1083). Reads the recorded version alone and
+   * touches nothing. Null for an absent, current, newer or unreadable
+   * index; `Cache.inspect` answers those.
+   */
+  static async orphansBeforeReset(
+    cacheDir: string,
+  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null> {
+    const dbFile = path.join(cacheDir, 'cache.db')
+    if (!existsSync(dbFile)) return null
+    let found: string | undefined
+    try {
+      const db = new Database(dbFile, { readonly: true })
+      try {
+        found = (
+          db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
+            value: string
+          } | null
+        )?.value
+      } finally {
+        db.close()
+      }
+    } catch {
+      return null
+    }
+    if (found === undefined || schemaOrdinal(found) >= schemaOrdinal(SCHEMA_VERSION)) return null
+    const aged = await scanOrphanFiles(cacheDir, () => new Set())
+    let orphanBytes = 0
+    for (const o of aged) orphanBytes += o.size
+    return { found, orphans: aged.length, orphanBytes }
   }
 
   constructor(
@@ -1784,37 +1859,15 @@ export class Cache implements CacheLayer {
 
   /** Row-less artifacts and temps past the in-flight grace window: one readdir, one stat per candidate. */
   private async scanOrphans(): Promise<Array<{ file: string; size: number }>> {
-    let names: string[]
-    try {
-      names = await readdir(this.cacheDir)
-    } catch {
-      return []
-    }
-    const indexed = new Set(
-      (this.db.prepare('SELECT hash FROM entries').all() as Array<{ hash: string }>).map(
-        (r) => r.hash,
-      ),
+    return scanOrphanFiles(
+      this.cacheDir,
+      () =>
+        new Set(
+          (this.db.prepare('SELECT hash FROM entries').all() as Array<{ hash: string }>).map(
+            (r) => r.hash,
+          ),
+        ),
     )
-    const cutoff = Date.now() - ORPHAN_GRACE_MS
-    const candidates: string[] = []
-    for (const name of names) {
-      const m = VX_ARTIFACT_NAME.exec(name)
-      if (m === null) continue
-      if (m[2] !== undefined || !indexed.has(m[1]!)) candidates.push(name)
-    }
-    const found: Array<{ file: string; size: number }> = []
-    await Promise.all(
-      candidates.map(async (name) => {
-        const file = path.join(this.cacheDir, name)
-        try {
-          const st = await stat(file)
-          if (st.isFile() && st.mtimeMs <= cutoff) found.push({ file, size: st.size })
-        } catch {
-          // Gone between readdir and stat: not an orphan any more.
-        }
-      }),
-    )
-    return found
   }
 
   close(): void {

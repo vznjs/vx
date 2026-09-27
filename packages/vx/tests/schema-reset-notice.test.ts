@@ -3,7 +3,7 @@
 // all-miss run that looks like a bug; so the opener that did the drop
 // says so once, on the run's status line and on a verb's stderr.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -11,6 +11,7 @@ import { Database } from 'bun:sqlite'
 import { run } from '../src/index.js'
 import { run as cli } from '../src/cli/index.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { formatBytes } from '../src/util/index.js'
 
 let root: string
 const origCwd = process.cwd()
@@ -58,16 +59,22 @@ function index(): { version: string; entries: number; runs: number } {
 }
 
 /** Runs a verb with stderr captured; resolves to what it threw (or null) and what it wrote. */
-async function verb(args: string[]): Promise<{ threw: string | null; stderr: string }> {
+async function verb(
+  args: string[],
+): Promise<{ threw: string | null; stderr: string; stdout: string }> {
   process.chdir(root)
   let stderr = ''
+  let stdout = ''
   const origErr = process.stderr.write.bind(process.stderr)
   const origOut = process.stdout.write.bind(process.stdout)
   process.stderr.write = ((chunk: string | Uint8Array) => {
     stderr += String(chunk)
     return true
   }) as typeof process.stderr.write
-  process.stdout.write = (() => true) as typeof process.stdout.write
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    stdout += String(chunk)
+    return true
+  }) as typeof process.stdout.write
   let threw: string | null = null
   try {
     await cli(args)
@@ -77,7 +84,7 @@ async function verb(args: string[]): Promise<{ threw: string | null; stderr: str
     process.stderr.write = origErr
     process.stdout.write = origOut
   }
-  return { threw, stderr }
+  return { threw, stderr, stdout }
 }
 
 function pokeVersion(value: string): void {
@@ -122,13 +129,8 @@ describe('a schema reset says so once', () => {
   // Item 896: a reading verb never resets the index. `vx last`, `vx why`,
   // `vx info` and a dry prune dropped every table of an earlier schema, and
   // of a NEWER one too, announcing "vx upgraded" after a downgrade.
-  for (const args of [
-    ['last'],
-    ['why', 'app#build'],
-    ['info'],
-    ['cache', 'prune', '--older-than', '1d', '--dry-run'],
-  ]) {
-    it(`\`vx ${args[0]}${args[0] === 'cache' ? ' prune --dry-run' : ''}\` refuses an earlier schema and leaves it untouched`, async () => {
+  for (const args of [['last'], ['why', 'app#build'], ['info']]) {
+    it(`\`vx ${args[0]}\` refuses an earlier schema and leaves it untouched`, async () => {
       expect(await runOnce()).toEqual([])
       pokeVersion('v0')
       const before = index()
@@ -159,6 +161,35 @@ describe('a schema reset says so once', () => {
     expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/)
     expect(stderr.split('\n').filter((l) => l.includes('cache index reset'))).toHaveLength(1)
     expect(index().version).toBe(SCHEMA_VERSION)
+  })
+
+  // Item 1083: the dry prune refused an earlier schema, so it could not
+  // preview the prune after an upgrade, which resets the index and reaps
+  // every aged artifact as row-less. It now names what that prune reaps,
+  // and still writes nothing.
+  it('`vx cache prune --dry-run` on an earlier schema names what the real prune reaps', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeVersion('v0')
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const artifacts = Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
+    expect(artifacts).toHaveLength(1)
+    const aged = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    await utimes(path.join(cacheDir, artifacts[0]!), aged, aged)
+    const bytes = Bun.file(path.join(cacheDir, artifacts[0]!)).size
+    const before = index()
+    const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
+    expect({ ...dry, after: index() }).toEqual({
+      threw: null,
+      stderr:
+        "[vx] the cache index is schema v0 from an earlier vx: the prune resets it first, and every artifact past the hour's grace is then an orphan\n",
+      stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(bytes)})\n`,
+      after: before,
+    })
+    const wet = await verb(['cache', 'prune', '--older-than', '30d'])
+    expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
+      threw: null,
+      stdout: `Pruned 0 entries (0 B freed), reaped 1 orphaned artifact (${formatBytes(bytes)})\n`,
+    })
   })
 
   it('every opener, a run too, refuses a NEWER schema and leaves it untouched', async () => {
