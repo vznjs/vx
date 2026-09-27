@@ -13,6 +13,7 @@ import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun, run } from '../src/orchestrator/index.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
 import { shouldShortCircuit } from '../src/orchestrator/run.js'
+import { createHashCache } from '../src/orchestrator/task-hash.js'
 
 interface Fixture {
   root: string
@@ -49,11 +50,15 @@ async function makeWorkspace(): Promise<Fixture> {
   return { root, log: [], err: [] }
 }
 
+interface Classified {
+  restoreTier: Set<string>
+  preProbedIds: Set<string>
+  /** Probed tasks whose probe hit: a row about the tier's exclusions needs its task a hit. */
+  hitIds: Set<string>
+}
+
 /** Classify the graph the same way run() does: prepare, then probe. */
-async function classify(
-  fixture: Fixture,
-  tasks: string[],
-): Promise<{ restoreTier: Set<string>; preProbedIds: Set<string> }> {
+async function classify(fixture: Fixture, tasks: string[]): Promise<Classified> {
   return classifyWith(fixture, tasks, (cache) => cache)
 }
 
@@ -62,7 +67,7 @@ async function classifyWith(
   fixture: Fixture,
   tasks: string[],
   shape: (cache: CacheLayer) => CacheLayer,
-): Promise<{ restoreTier: Set<string>; preProbedIds: Set<string> }> {
+): Promise<Classified> {
   const prepared = await prepareRun(
     { cwd: fixture.root, tasks, log: silentLogger(fixture) },
     silentLogger(fixture),
@@ -78,7 +83,11 @@ async function classifyWith(
       hashCache: prepared.hashCache,
       concurrency: 4,
     })
-    return { restoreTier: sc.restoreTier, preProbedIds: new Set(sc.preProbed.keys()) }
+    return {
+      restoreTier: sc.restoreTier,
+      preProbedIds: new Set(sc.preProbed.keys()),
+      hitIds: new Set([...sc.preProbed].filter(([, p]) => p.hit !== null).map(([id]) => id)),
+    }
   } finally {
     prepared.cache.close()
   }
@@ -686,8 +695,15 @@ describe('local cache short-circuit', () => {
       })
       const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(cold.ok).toBe(true)
+      // The cold run's rdr read g.txt before the writer rewrote it, so its
+      // save was withheld; the second run saves it, and only a HIT can be
+      // kept out of the tier (a miss never enters it).
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
       const c = await classify(fixture, ['build'])
       expect(c.preProbedIds.has('rdr#build')).toBe(true)
+      expect(c.hitIds.has('rdr#build')).toBe(true)
       expect(c.restoreTier.has('rdr#build')).toBe(false)
       expect(c.restoreTier.has('solo#build')).toBe(true)
     },
@@ -730,6 +746,85 @@ describe('local cache short-circuit', () => {
       // The pool classified what the batch could not.
       expect(c.preProbedIds.has('solo#build')).toBe(true)
       expect(c.restoreTier.has('solo#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the per-task pool keeps a stable MISS out of the tier',
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
+      await Bun.write(path.join(fixture.root, 'packages', 'solo', 'src', 'a.txt'), 'a2')
+      const c = await classifyWith(fixture, ['build'], (cache) =>
+        Object.create(cache, { getMany: { value: undefined } }),
+      )
+      expect(c.preProbedIds.has('solo#build')).toBe(true)
+      expect(c.hitIds.has('solo#build')).toBe(false)
+      expect(c.restoreTier.has('solo#build')).toBe(false)
+      // CONTROL: the untouched writer is a hit and keeps the tier.
+      expect(c.restoreTier.has('wsw#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'one throwing per-task probe leaves only its own task unprobed',
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
+      const c = await classifyWith(fixture, ['build'], (cache) =>
+        Object.create(cache, {
+          getMany: { value: undefined },
+          get: {
+            value: (hash: string, meta: { taskId: string; command: string }) =>
+              meta.taskId === 'solo#build'
+                ? Promise.reject(new Error('probe exploded'))
+                : cache.get(hash, meta),
+          },
+        }),
+      )
+      expect([...c.preProbedIds].sort()).toEqual(['wsw#build'])
+      expect([...c.restoreTier].sort()).toEqual(['wsw#build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a key derivation that throws degrades to no short-circuit',
+    async () => {
+      await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
+      expect(
+        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
+      ).toBe(true)
+      const prepared = await prepareRun(
+        { cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) },
+        silentLogger(fixture),
+      )
+      try {
+        const exploding = new Proxy(prepared.gitFilesCache, {
+          get() {
+            throw new Error('git snapshot exploded')
+          },
+        })
+        const sc = await startLocalShortCircuit({
+          nodes: prepared.nodes,
+          cache: prepared.cache,
+          workspaceRoot: prepared.workspaceRoot,
+          workspaceFingerprint: prepared.workspaceFingerprint,
+          nestedDirsByProject: prepared.nestedDirsByProject,
+          gitFilesCache: exploding,
+          hashCache: createHashCache(),
+          concurrency: 4,
+        })
+        expect([sc.preProbed.size, sc.restoreTier.size]).toEqual([0, 0])
+      } finally {
+        prepared.cache.close()
+      }
     },
     TIMEOUT,
   )
