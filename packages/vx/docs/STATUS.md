@@ -640,6 +640,21 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         cache TODO on the task that works (direct, a chain, and a
         commanded `build` as the control). Red without the move.
 
+1046. DONE (2026-09-27, the config-cache review's fifth lead). `vx mcp`
+      reloads `vx.workspace.ts` on every call, and a repeat load busts
+      only the config's own URL: Bun answered its imports from the
+      module registry, so an edited local plugin kept its first version
+      and `listTasks` served the old tasks with no word. Bun cannot
+      evaluate an imported module again in one process, so a repeat load
+      now walks the config's relative imports and refuses, naming the
+      file, once one changed since the first successful load; `vx watch`
+      already says to restart when it sees such an edit. A process that
+      loads once pays nothing. `modules/project-loader.md` says so, and
+      no longer claims nothing there feeds a key (a plugin's hooks do).
+      - Row: `project-loader.test.ts` › a repeat load refuses once a file
+        the config imports changed, naming it (with an unchanged reload
+        and a config-only edit as controls). Red without the check.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
