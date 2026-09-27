@@ -271,6 +271,27 @@ dead, and the sweep removed the outer task's `TMPDIR` mid-run. The shared
 directory itself stays writable (SRT's policy grants it): a command that
 names it outright still reaches it.
 
+## The environment SRT sets
+
+With the network restricted, SRT sets its own values over the ones vx
+built for the task: `SANDBOX_RUNTIME`, `TMPDIR` (above), the proxy
+variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `GRPC_PROXY`,
+`NO_PROXY` and their lowercase forms), `GIT_SSH_COMMAND`,
+`GIT_CONFIG_PARAMETERS`, and the CA-bundle variables when it has a CA
+(`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and the others in its
+`CA_TRUST_VARS`). A task's `define` or `passThrough` of one of these
+names does not reach a sandboxed task: the sandbox's network goes through
+SRT's proxy and nowhere else.
+
+`JAVA_TOOL_OPTIONS` is the exception vx repairs. SRT composes its proxy
+agent's flag with the value in VX'S environment, so a host value that no
+layer passes reached the task out of its key, and a changed host value
+replayed the old output; a task's own value never arrived (item 995).
+The command's prefix now cuts the host's value out of what SRT set and
+appends the task's own, so the task sees the agent flag plus exactly what
+its layers gave it. Where SRT left the variable alone it already holds
+the task's value and the prefix changes nothing.
+
 ## Path canonicalization
 
 Every path the policy is expressed in is canonicalized (`realpath`, with
