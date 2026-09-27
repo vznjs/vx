@@ -211,6 +211,63 @@ describe('tarEntries', () => {
     }
   })
 
+  it('refuses an extended header past 1 MiB before reading its body (L-1)', async () => {
+    // Read whole, an extended header's size is a claim on memory: a 1 GiB
+    // pax header cost 2 GiB of RSS from a ~32 KB artifact. The source
+    // errs past 2 MiB pulled, so a reader that buffers the body names
+    // that instead of the refusal.
+    for (const type of ['x', 'L', 'g']) {
+      let pulled = 0
+      const zeros = new Uint8Array(64 * 1024)
+      const src = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(header({ name: 'PaxHeaders/x', size: 1024 * 1024 * 1024, type }))
+        },
+        pull(c) {
+          pulled += zeros.byteLength
+          if (pulled > 2 * 1024 * 1024) c.error(new Error('read the body'))
+          else c.enqueue(zeros)
+        },
+      })
+      const read = async (): Promise<void> => {
+        for await (const e of tarEntries(src)) for await (const _ of e.body);
+      }
+      await expect(read()).rejects.toThrow(
+        'extended header of 1073741824 bytes, past 1048576 (a hostile archive?)',
+      )
+    }
+    // Control: a header of exactly the bound is read.
+    const path = paxRecord('path', 'outputs/p')
+    const rest = 1024 * 1024 - path.length
+    const fill = 'c'.repeat(rest - String(rest).length - ' comment=\n'.length)
+    const exact = enc.encode(path + `${rest} comment=${fill}\n`)
+    expect(exact.byteLength).toBe(1024 * 1024)
+    const ok = await collect(
+      concat(
+        header({ name: 'PaxHeaders/x', size: exact.byteLength, type: 'x' }),
+        padTo512(exact),
+        header({ name: 'outputs/q', size: 1, type: '0' }),
+        padTo512(enc.encode('z')),
+        EOF_BLOCKS,
+      ),
+    )
+    expect(ok.map((e) => e.name)).toEqual(['outputs/p'])
+  })
+
+  it('refuses a pax size that is not a whole number of bytes (L-1)', async () => {
+    for (const size of ['0.5', '-1', '1e3', '', '0x10']) {
+      const pax = enc.encode(paxRecord('size', size))
+      const tar = concat(
+        header({ name: 'PaxHeaders/x', size: pax.byteLength, type: 'x' }),
+        padTo512(pax),
+        header({ name: 'outputs/q', size: 1, type: '0' }),
+        padTo512(enc.encode('z')),
+        EOF_BLOCKS,
+      )
+      await expect(collect(tar)).rejects.toThrow(`bad pax size: ${JSON.stringify(size)}`)
+    }
+  })
+
   it('reads an all-NUL numeric field as zero rather than refusing it', async () => {
     // Producers older than ustar leave an unset numeric field NUL-filled,
     // not zero-padded. `octal` answers 0 for an empty field BEFORE the

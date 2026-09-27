@@ -1027,7 +1027,10 @@ memory and compressed in one call — tiny saves unchanged within
 noise). Ingest lists entries through the reader without materialising
 a byte, and **restore streams it**: the zstd
 frame is decoded and the tar read as it arrives — ustar name/prefix,
-pax `path`/`size`, GNU long names, header checksums, truncation — and
+pax `path`/`size`, GNU long names, header checksums, truncation; an
+extended header (read whole) past 1 MiB or a pax `size` that is not a
+whole number is refused as corrupt, since a 1 GiB pax header costs 2 GiB
+of memory from a ~32 KB artifact — and
 every regular entry is written beside its target as a short `.vx-tmp-*` sibling (never a suffix on the target's name, which pushed a legal 242–255-byte name past NAME_MAX) and
 renamed into place only after the whole archive has ended cleanly and
 the index's recorded outputs are all present. vx itself holds one
