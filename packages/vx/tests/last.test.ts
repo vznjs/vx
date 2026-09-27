@@ -341,8 +341,10 @@ describe('formatTaskRows', () => {
   it.each([
     [999, '999ms'],
     [1000, '1.00s'], // AT the cut, not around it (item 503)
-    [59_999, '60.00s'],
+    [59_994, '59.99s'],
+    [59_999, '1m 0s'], // rounds to a minute: not `60.00s` (item 1034)
     [60_000, '1m 0s'],
+    [119_600, '2m 0s'], // not `1m 60s` (item 1034)
   ])('formats %dms as %s', (ms, want) => {
     expect(formatTaskRows([row('t', { durationMs: ms })])[1]).toContain(want)
   })

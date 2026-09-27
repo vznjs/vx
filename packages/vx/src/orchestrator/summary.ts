@@ -8,6 +8,7 @@ import type { FlakyFinding } from './failure-mode.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
 import { isGroupTask } from '../graph/index.js'
+import { formatElapsed } from '../util/index.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -421,6 +422,5 @@ export function formatFlakySection(findings: readonly FlakyFinding[]): string[] 
 }
 
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  return `${(ms / 1000).toFixed(2)}s`
+  return formatElapsed(ms)
 }

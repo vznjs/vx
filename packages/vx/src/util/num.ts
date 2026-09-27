@@ -35,3 +35,17 @@ export function parseDecimalInt(input: string): number | null {
   const n = Number(input)
   return Number.isSafeInteger(n) ? n : null
 }
+
+/**
+ * `ms` as vx prints a duration: whole milliseconds below a second, seconds
+ * to two places, and with `minutes` whole minutes and seconds from a
+ * minute on. Rounded to the unit shown BEFORE the unit is chosen: 999.6 ms
+ * printed `1000ms`, 59,996 ms `60.00s` and 119,600 ms `1m 60s` (item 1034).
+ */
+export function formatElapsed(ms: number, minutes = false): string {
+  if (Math.round(ms) < 1000) return `${Math.round(ms)}ms`
+  const hundredths = Math.round(ms / 10)
+  if (!minutes || hundredths < 6000) return `${(hundredths / 100).toFixed(2)}s`
+  const s = Math.round(ms / 1000)
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
