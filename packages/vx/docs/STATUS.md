@@ -471,6 +471,9 @@ failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
         bit still re-keys the task. It is red without the change; the
         chmod back to 644 is the control, and it hits the first entry.
 
+1077. SUPERSEDED (2026-09-27) by A-1 (`docs/history/ws-a.md`), which
+      landed first: the files of a nested repository inside a project are listed as that project's inputs.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
