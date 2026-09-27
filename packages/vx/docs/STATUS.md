@@ -897,6 +897,21 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Row: `cli.test.ts` › cwd inside a member reached through a link
         resolves to that member. Red with the fallback removed.
 
+1026. DONE (2026-09-27, the graph review's lead 4). An
+      `--exclude-dependencies=<name>` no project declares dropped
+      nothing, silently: `=biuld` planned and ran the whole chain, exit
+      0, though every other name the user types must resolve.
+      - Fix (`prepare.ts`): each listed name must be declared by some
+        project, judged against the whole workspace (the rest loaded
+        only when a name is missing from the scope's configs); otherwise
+        a `UserError` with the nearest name, after the graph, so a config
+        error (a `^name` nobody declares) is named first. `cli.md` says
+        so.
+      - Row: `cli.test.ts` › an --exclude-dependencies name no project
+        declares is refused, with a known name and one only an
+        out-of-scope project declares as controls. Red with the refusal
+        removed, and with the workspace fallback removed.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
