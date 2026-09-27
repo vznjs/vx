@@ -9,6 +9,7 @@ import {
   getInvocation,
   getRun,
   listInvocations,
+  latestRunId,
   listRuns,
   whyDidThisRerunQuery,
 } from '../src/orchestrator/index.js'
@@ -102,7 +103,7 @@ function withCache(fn: (cache: Cache) => void) {
 }
 
 describe('listRuns', () => {
-  it('orders by started_at DESC and applies limit', () => {
+  it('orders newest recorded first and applies limit', () => {
     withCache((cache) => {
       cache.recordRuns([
         mkRun({ hash: 'h1', project: 'pkg', task: 'build', startedAt: 1000 }),
@@ -838,6 +839,39 @@ describe('explainCacheKeyQuery', () => {
       expect(explained.taskId).toBe('pkg#build')
       expect(explained.project).toBe('pkg')
       expect(explained.task).toBe('build')
+    })
+  })
+})
+
+// History order was the wall clock's: after the clock stepped back an
+// hour, `vx why` called the OLDER run "this run" and the newest "previous",
+// diffing the edit backwards, and `vx last` showed the older run (item
+// 1008). The order is the order of recording.
+describe('the newest recorded run is the latest, whatever the clock said', () => {
+  it('latest, previous, the diff and both lists follow recording order', () => {
+    withCache((cache) => {
+      cache.recordRunBundle({
+        runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 5000 })],
+        invocation: mkInvocation({ runId: 'r-1', startedAt: 5000 }),
+      })
+      // The clock stepped back before the second run.
+      cache.recordRunBundle({
+        runs: [mkRun({ hash: 'h2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 1000 })],
+        invocation: mkInvocation({ runId: 'r-2', startedAt: 1000 }),
+      })
+      seedEntryInputs(cache, 'h1', [{ kind: 'file', name: 'x.txt', hash: 'one' }])
+      seedEntryInputs(cache, 'h2', [{ kind: 'file', name: 'x.txt', hash: 'two' }])
+      const db = cache.dbHandle()
+      expect(latestRunId(db, 'pkg#test')).toBe('r-2')
+      const why = whyDidThisRerunQuery(db, 'r-2', 'pkg#test')
+      expect([why.thisRun!.hash, why.previousRun!.hash]).toEqual(['h2', 'h1'])
+      const diff = cacheKeyDiff(db, 'r-2', 'pkg#test')
+      expect(diff.previousRunId).toBe('r-1')
+      expect(diff.entries.map((e) => [e.name, e.before, e.after])).toEqual([
+        ['x.txt', 'one', 'two'],
+      ])
+      expect(listRuns(db, { limit: 1 })[0]!.runId).toBe('r-2')
+      expect(listInvocations(db, { limit: 1 })[0]!.runId).toBe('r-2')
     })
   })
 })

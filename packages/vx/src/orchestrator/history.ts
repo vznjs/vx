@@ -93,7 +93,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     const floorRow = this.db
       .query(
         `SELECT MIN(id) AS id FROM runs WHERE run_id =
-           (SELECT run_id FROM invocations ORDER BY started_at DESC LIMIT 1 OFFSET ?)`,
+           (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT 1 OFFSET ?)`,
       )
       .get(this.recent - 1) as { id: number | null }
     // Fewer invocations than the window (or none): the whole table is the window.
