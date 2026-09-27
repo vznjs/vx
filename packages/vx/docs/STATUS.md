@@ -621,6 +621,25 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         root-anchored output beside the tree) passes both ways. The
         reviewer's fixture now refuses at plan.
 
+1089. DONE (2026-09-27, env review #2). Bun loads `.env`, `.env.local`
+      and `.env.<NODE_ENV>` from the working directory into its process,
+      and vx reads its environment there: every `passThrough` and
+      essential variable, `cache.inputs.env`, and every `VX_*` switch. A
+      task saw `FOO=[fromdotenv]` that no shell had set, decided by the
+      directory vx was started from, and env.md, comparison.md and
+      schema.md said the opposite. `bin.ts`'s shebang is now `#!/usr/bin/env
+-S bun --no-env-file`, which covers `vx`, `bunx` and
+      `node_modules/.bin/vx` (probed each way: with plain `bun` all three
+      loaded it). The four release compiles, `check-binary.ts`'s and CI's
+      darwin launch check carry `--no-compile-autoload-dotenv`. Running
+      the source as `bun src/bin.ts` still loads one; bin.md says so.
+      - Rows: `dotenv-isolation.test.ts` runs the file itself with a
+        `.env` in the workspace: unset without a shell value, and passed
+        through with one. It is red with the old shebang.
+        `check-binary.ts` (every gate) now also runs the compiled binary
+        over a workspace `.env`; without the flag it fails with
+        `VX_DOTENV_PROBE=from-dotenv`.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

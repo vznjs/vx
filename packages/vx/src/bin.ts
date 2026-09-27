@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S bun --no-env-file
 import { registerCoreAlias, run } from './cli/index.js'
 import { fsRefusalHint, isFsRefusal, isUserError } from './util/index.js'
 
