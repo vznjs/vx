@@ -223,6 +223,17 @@ upgrade` on the latest version re-downloaded and replaced the
         attempt's": two 300 ms attempts, at least 580. It is red without
         the change (341).
 
+1102. DONE (2026-09-27, the scheduler review's labels). A
+      dependency-only server killed by a signal before the run stopped
+      it printed `vx: a#dev exited with code SIGTERM before the run
+stopped it`: the raw `code`, a signal name. A kept-alive server
+      killed the same way printed `code 143`. The first now prints the
+      signal's exit code too. schema.md still said a server that crashed
+      after ready keeps `success`; since item 1071 it is `failed`, and it
+      says so.
+      - Row: `keep-alive.test.ts` › "a dependency-only server killed by a
+        signal is named by its exit code", red without the change.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
