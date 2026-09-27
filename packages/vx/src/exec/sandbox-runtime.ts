@@ -1475,7 +1475,7 @@ function expandGrants(
     const head = p.slice(0, p.search(MOUNT_WILDCARDS))
     const home = toRealPath(head.endsWith('/') ? head.slice(0, -1) : path.dirname(head))
     let hits = 0
-    for (const hit of new Bun.Glob(pattern).scanSync({ cwd: base, onlyFiles: false, dot: true })) {
+    for (const hit of scanOrNothing(pattern, base)) {
       const abs = path.join(base, hit)
       const real = toRealPath(abs)
       if (real !== home && !real.startsWith(home + path.sep)) continue
@@ -1490,6 +1490,24 @@ function expandGrants(
     if (hits === 0 && kind === 'write') writeGrantMatchedNothing(p)
   }
   return out
+}
+
+/**
+ * A glob's hits under `base`, or none when `base` does not exist yet:
+ * `Bun.Glob` throws ENOENT there, and a cache not yet populated on a fresh
+ * runner (`~/.cache/x/y/*`) failed its task with the raw errno and no word
+ * of the grant (B-6). A missing base matches nothing, as an empty one does.
+ */
+function scanOrNothing(pattern: string, base: string): Iterable<string> {
+  const glob = new Bun.Glob(pattern)
+  try {
+    // Materialised here: the throw comes from the first step, not the call.
+    return [...glob.scanSync({ cwd: base, onlyFiles: false, dot: true })]
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return []
+    throw err
+  }
 }
 
 /** Grants already reported — once per process, not per spawn. */

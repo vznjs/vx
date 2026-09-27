@@ -136,3 +136,16 @@ Sweep, 2026-09-27: `sandbox-violations.ts`, 30 mutants, 29 caught. The
 survivor (dropping the empty-trace early return) is equivalent:
 `deniedCalls('')` is `[]`. B-5 also names SRT 0.0.76 beside 0.0.75 in
 three citations, each rechecked in 0.0.76.
+
+B-6. A glob grant under a missing directory matches nothing (found
+probing grants outside the project). On Linux `expandGrants` scans from
+the directory above the first wildcard, and `Bun.Glob` throws ENOENT when
+it is missing: `read: ['~/.x/y/*']` on a runner that never populated
+`~/.x` failed the task with the raw errno and no word of the grant, and a
+write glob there never reached its "matches nothing yet" warning.
+
+- Fix (`sandbox-runtime.ts` `scanOrNothing`): ENOENT and ENOTDIR from the
+  scan are no hits; anything else still throws. `schema.md` § Globs.
+- Row: `sandbox-runtime.unsafe.test.ts` › a glob under a directory that
+  does not exist matches nothing, and a write one says so. Red without
+  the fix.

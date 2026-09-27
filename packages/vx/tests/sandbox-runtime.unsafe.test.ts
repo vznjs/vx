@@ -2098,6 +2098,34 @@ describe.skipIf(!available)("a task's temp directory is its own", () => {
 })
 
 describe('resolveSandboxConfig', () => {
+  // B-6: a glob's scan starts one directory above its first wildcard, and
+  // `Bun.Glob` throws ENOENT when that directory is missing — a cache not
+  // yet populated on a fresh runner (`~/.cache/x/y/*`). The task failed
+  // with the raw errno and no word of the grant; a missing base matches
+  // nothing, as an empty one does.
+  it.skipIf(process.platform !== 'linux')(
+    'a glob under a directory that does not exist matches nothing, and a write one says so',
+    async () => {
+      const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-no-base-')))
+      const said: string[] = []
+      const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+        said.push(String(chunk))
+        return true
+      })
+      try {
+        const read = resolveSandboxConfig({ allow: { read: [`${root}/none/deeper/*`] } }, root)
+        const write = resolveSandboxConfig({ allow: { write: ['gone/away/*.txt'] } }, root)
+        expect([read.allowRead, write.allowWrite]).toEqual([[], []])
+        expect(said.join('')).toContain(
+          `the write grant ${root}/gone/away/*.txt matches nothing yet`,
+        )
+      } finally {
+        spy.mockRestore()
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it.skipIf(process.platform !== 'linux')(
     'says so when a WRITE grant mounts nothing, and names the directory to grant instead',
     async () => {
