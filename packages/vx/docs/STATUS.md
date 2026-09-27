@@ -129,6 +129,11 @@ mkdir dist/out.js`) failed with "a path the output globs do not
       - Row: `artifact-roundtrip.test.ts` › "names a STRAY on disk as
         such" pins the new sentence, red without the change.
 
+1095. SUPERSEDED (2026-09-27) by E-1 (`docs/history/ws-e.md`), which
+      landed first: a cut `vx upgrade` transfer, or a release document
+      that is not JSON, is one line naming the host, with nothing
+      replaced.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
