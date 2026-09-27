@@ -227,6 +227,14 @@ Now 30 (min of 40, A/B interleaved against `origin/main`, A/A within
   closes. A tracer that dies no longer ends the task, so the retry keys
   on strace's own stderr line whatever the exit: the trace stopped
   short. `modules/sandbox-runtime.md`, `modules/kill-tree.md`.
+- Main run 36354815851 (E-25): `@vzn/vx-docs#build` ended on strace's
+  `PTRACE_LISTEN` error, exit 1, and the old retry printed no line, so
+  it never fired. Under B-11 such a failure leaves the build's own exit,
+  and the retry keys on the line. Why the old key missed it is not
+  proven.
+- Limit (documented): the tracer shares the task's pid namespace and uid,
+  so a task can end it or reach its log; the report is the task's to
+  spoil, enforcement (bwrap's mounts) is not.
 - Rows: `sandbox-runtime.unsafe.test.ts` › returns promptly when a
   backgrounded grandchild holds the pipe open; accepts every capability
   the schema defines (network mode: ENOSYS); SIGINT to vx reaches a
