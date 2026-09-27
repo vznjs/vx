@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
+import { guardLine } from '../src/exec/kill-tree.js'
 
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
 
@@ -72,3 +73,74 @@ it('CONTROL: a held group whose release never came is the guard’s', async () =
     `),
   ).toBe(false)
 }, 20_000)
+
+// Sweep of kill-tree.ts (B-10): a hold's end wrote the release whether or
+// not the runner had released, and the suite stayed green. A group the
+// runner still runs must stay listed when a teardown lets it go.
+it('a hold that ends before the runner releases leaves the group listed', async () => {
+  expect(
+    await outlivesHolder(`
+      const letGo = holdGroups([child])
+      letGo()
+    `),
+  ).toBe(false)
+}, 20_000)
+
+// B-10: a guard that has died (killed, OOM) is handed to no later spawn.
+// Handed, its broken pipe made bash (macOS's sh) flush the failed guard line
+// into the task's stdout: `+14248` before `ran` on the macOS job. The script
+// holds the guard's own subprocess by wrapping Bun.spawn, so no pid lookup
+// is involved (a sandbox's pid namespace hides the one ps shows).
+it('a task spawned after the guard died still runs, and is handed no guard', async () => {
+  const script = `
+    const spawn = Bun.spawn
+    let guard
+    Bun.spawn = (cmd, opts) => {
+      const child = spawn(cmd, opts)
+      if (opts?.argv0 === 'vx-group-guard') guard = child
+      return child
+    }
+    const { guardLine, spawnGuarded } = await import(${JSON.stringify(KILL_TREE)})
+    const run = (cmd) =>
+      spawnGuarded((g) =>
+        Bun.spawn(['sh', '-c', (g === undefined ? '' : guardLine(3)) + cmd], {
+          stdio: ['ignore', 'pipe', 'ignore', ...(g === undefined ? [] : [g])],
+          detached: true,
+        }),
+      )
+    await run('true').exited
+    guard.kill('SIGKILL')
+    await guard.exited
+    let handed = false
+    const task = spawnGuarded((g) => {
+      handed = g !== undefined
+      return Bun.spawn(['sh', '-c', (g === undefined ? '' : guardLine(3)) + 'echo ran'], {
+        stdio: ['ignore', 'pipe', 'ignore', ...(g === undefined ? [] : [g])],
+        detached: true,
+      })
+    })
+    console.log(JSON.stringify([handed, await task.exited, await new Response(task.stdout).text()]))
+  `
+  const proc = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' })
+  const [out, err] = [
+    await new Response(proc.stdout).text(),
+    await new Response(proc.stderr).text(),
+  ]
+  expect([await proc.exited, err]).toEqual([0, ''])
+  expect(JSON.parse(out)).toEqual([false, 0, 'ran\n'])
+}, 20_000)
+
+// Sweep of kill-tree.ts (B-10): the guard line's `trap '' PIPE`. A guard
+// that dies between the hand-over and the child's write leaves a broken
+// pipe, and without the trap the task's shell died of SIGPIPE before
+// running anything. The output is not compared: bash (macOS's sh) may
+// still flush the failed line into stdout in that window.
+it('the guard line runs its task when the guard’s pipe is broken', async () => {
+  const reader = Bun.spawn(['true'], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] })
+  await reader.exited
+  const task = Bun.spawn(['sh', '-c', `${guardLine(3)}echo ran`], {
+    stdio: ['ignore', 'pipe', 'ignore', reader.stdio[3] as number],
+  })
+  const out = await new Response(task.stdout).text()
+  expect([await task.exited, out.endsWith('ran\n')]).toEqual([0, true])
+})

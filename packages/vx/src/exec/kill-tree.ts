@@ -87,7 +87,21 @@ function startGuard(): void {
       detached: true,
     })
     guard.unref()
-    guardFd = guard.stdio[3] as number
+    const fd = guard.stdio[3] as number
+    guardFd = fd
+    // A guard that has died (killed, the OOM killer) is handed to no later
+    // spawn: its pipe is broken, and a shell whose printf buffers (bash as
+    // macOS's sh) flushed the failed `+<pgid>` line into the task's own
+    // stdout, cached replay included (B-10).
+    void guard.exited.then(() => {
+      if (guardFd !== fd) return
+      guardFd = null
+      try {
+        closeSync(fd)
+      } catch {
+        // already closed
+      }
+    })
   } catch {
     // The limit as it was: nothing takes the groups down.
   }

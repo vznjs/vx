@@ -11,6 +11,7 @@ import { afterAll, afterEach, describe, expect, it } from 'bun:test'
 import {
   closeSignalChannel,
   killTree,
+  markGroupIfGone,
   signalThrough,
   untilGroupsGone,
   type Child,
@@ -88,6 +89,23 @@ describe('killTree', () => {
     killTree(child, 'SIGKILL')
     expect(calls).toEqual([])
     expect(child.signals).toEqual([])
+  })
+
+  // Sweep of kill-tree.ts (B-10): the `goneGroups` check could go with the
+  // suite green. A group empty at its leader's exit has freed its number,
+  // and a signal to `-pid` could reach whatever group holds it now.
+  it('a group that was empty when its leader exited is never signalled again', () => {
+    const gone = fakeChild(4_000_004)
+    stubKill(() => {
+      throw errno('ESRCH')
+    })
+    markGroupIfGone(gone)
+    stubKill(() => {})
+    killTree(gone, 'SIGKILL')
+    expect([calls, gone.signals]).toEqual([[], []])
+    // CONTROL: a group never found empty still is.
+    killTree(fakeChild(4_000_005), 'SIGKILL')
+    expect(calls).toEqual([[-4_000_005, 'SIGKILL']])
   })
 
   it('a group gone (ESRCH) is done; a group not ours (EPERM) falls back to the child', () => {
