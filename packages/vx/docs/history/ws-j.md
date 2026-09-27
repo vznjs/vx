@@ -62,6 +62,18 @@
   lock holds, sandbox vs `cache.inputs`, `VX_RUN_*` env, the
   quickstart's second-run output, the npm launcher.
 
+- **J-8** 38 `docs/modules/` pages: exports that do not exist
+  (`attributedHitsLast24h`, `CacheEntry.stderr`, `localExecutor` on the
+  façade), stale signatures, the pre-v14 cache layout, key fold order,
+  bin.ts exit path, argv-ordered filters, prune ignoring `cacheDir`.
+- **J-9** `cli.md`: the plugin-commands sample used a plain object the
+  loader refuses; two quoted errors do not exist; UUIDv7 run ids;
+  watch polling and `--report-file`; `GITHUB_STEP_SUMMARY`; completions.
+- **J-10** Blog: three posts said to move an output-changing var from
+  `passThrough` to `cache.inputs.env`, which drops it from the env (it
+  goes in both); why-post verdict rows; exit code of a crashed server;
+  `vx prune` was removed, not moved.
+
 ## Leads for other streams
 
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a
@@ -89,3 +101,4 @@
 - **F** `vx-reapi/tests/wedged.test.ts:372` "RST_STREAM(CANCEL) reads as CANCELLED and is not retried" failed once in a full gate (after F-1's INTERNAL retry), 3/3 green alone. A race under load, not a flake to ignore.
 - **B** `orchestrator/sandbox-request.ts:99` comment cites sandbox-manager.js 0.0.75; installed is 0.0.76 (check at line 238).
 - **D** `config.ts` SandboxConfig comment says grant paths are prefixes, never globs; the schema accepts patterns (config-schema.ts:974-976) and the runtime expands them.
+- **J (test)** `site-samples.unsafe.test.ts` verdict pin expects 8 sentences; its regex misses `this task recorded no cache key` (metrics.ts:500-501), the 9th.

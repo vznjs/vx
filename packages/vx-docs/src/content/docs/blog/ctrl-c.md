@@ -32,8 +32,8 @@ vx has one teardown, and every way a run can end goes through it.
    the process exit.
 
 The exit code says what happened: 130 after `SIGINT`, 143 after
-`SIGTERM`, 129 after `SIGHUP`, the child's own code when a foreground
-persistent task ended the run. A second Ctrl-C during the grace skips the rest of it and
+`SIGTERM`, 129 after `SIGHUP`, 1 when a foreground persistent task
+ended the run with a non-zero code. A second Ctrl-C during the grace skips the rest of it and
 escalates immediately, for the case where you already know the child
 will not listen.
 
@@ -55,8 +55,8 @@ same function called from every exit path:
   matched is `SIGTERM`ed, then `SIGKILL`ed after the grace if it
   ignores that.
 - **A foreground persistent task exiting.** `vx run dev` with three
-  servers up: when one exits, the other two are torn down and its exit
-  code is yours.
+  servers up: when one exits, the other two are torn down, and `vx`
+  exits 1 if that one failed.
 - **The normal end of a run.** Persistent tasks that gated other work
   are torn down when the graph completes.
 - **`vx watch`.** A Ctrl-C mid-cycle tears the cycle's children down

@@ -9,8 +9,9 @@ tags:
 excerpt: "A vx task is one shell command. Not a JavaScript function, not an executor with an options object, not a list of steps. The constraint is what makes remote execution, sandboxing, replay and migration all fall out for free."
 ---
 
-`exec.command` is a string. It runs under `sh -c` with the package's
-`node_modules/.bin` on `PATH`, in the project's directory, with the
+`exec.command` is a string. It runs under `sh -c` with the project's
+and the workspace root's `node_modules/.bin` on `PATH`, in the
+project's directory, with the
 environment you declared. That is the entire execution model, and it
 is a constraint chosen on purpose.
 
@@ -57,13 +58,16 @@ capability in vx becomes a transformation of the same triple:
 
 A command's environment is part of what it does, so it is not
 inherited wholesale. Each task gets an isolated environment built from
-`exec.env`: values you set, variables you `passThrough` from the parent
-(present, but not in the key), and variables under `cache.inputs.env`
-(present, and in the key). `PATH` is prepended with the project's
-`node_modules/.bin` so `tsc` resolves without `npx`. A variable that
-changes the output and is not declared is the single most common
-under-declaration, and `vx why`'s "unchanged key, re-executed" verdict
-is how it shows up.
+`exec.env`: values you set (part of the config, so in the key) and
+variables you `passThrough` from the parent (not in the key).
+`cache.inputs.env` puts a variable in the key but does not pass it to
+the task, so a variable that changes the output and must reach the
+task goes in both. `PATH` is prepended
+with the project's `node_modules/.bin`, then the workspace root's, so
+`tsc` resolves without `npx`. A variable that changes the output and
+is missing from `cache.inputs.env` is the most common
+under-declaration, and it shows up as a stale hit: the key did not
+change, so vx replays the old output.
 
 Two variables are always set: the workspace vx is running and the task
 id, so a command that runs `vx` itself against the same workspace is

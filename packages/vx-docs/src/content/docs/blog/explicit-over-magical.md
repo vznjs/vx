@@ -74,9 +74,11 @@ The same principle sets most of the schema:
   nobody has to over-declare edges to be safe; and there is sparse
   `^task` bridging, so a package that lacks `build` does not need a
   filler task for its dependents' `^build` to walk through it.
-- Env reaches a task only through `exec.env`. A variable that changes
-  the output goes under `cache.inputs.env` and joins the key; one that
-  merely has to be present goes under `passThrough` and does not.
+- Env reaches a task only through `exec.env`. A variable that merely
+  has to be present goes under `passThrough` and stays out of the key.
+  One that changes the output goes under `passThrough` and
+  `cache.inputs.env`: the first passes it to the task, the second puts
+  it in the key.
 - The sandbox derives nothing from `cache`. What a task may *touch* and
   what *invalidates* it are two declarations, because when one was
   derived from the other, a path added for caching silently widened the

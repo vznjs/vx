@@ -43,8 +43,9 @@ absence of a path.
   sinks keep receiving records. The run's outcome is unaffected.
 - `onRecord` must return promptly, so the contract says buffer and do
   not await. `flush()` is the one awaited drain point, at the end of
-  the run, and it is bounded at three seconds per plugin so a wedged
-  collector cannot hold the process's exit hostage.
+  the run. All sinks flush at once under one shared bound, three
+  seconds by default (`VX_TEARDOWN_TIMEOUT_MS` overrides it), so a
+  wedged collector cannot hold the process's exit hostage.
 - A sink that lists what it `wants` costs the source nothing for the
   kinds it skips; the large `task.log` stream is off unless asked for.
 
