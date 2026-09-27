@@ -96,7 +96,8 @@ If no task name is given:
 
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
   across the workspace, prints `description` next to each, prompts
-  for a number, runs the chosen one.
+  for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
+  as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
 - **Not a TTY** — exits `1` with `missing task name (stdin is not a TTY)`.
 
 Exit codes:

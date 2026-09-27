@@ -115,6 +115,30 @@ describe('vx run interactive picker', () => {
     expect(printed).toContain('gamma#gen')
   })
 
+  // On a terminal, readline reads Ctrl-C and Ctrl-D raw and rejected the
+  // pending question with an AbortError, which reached the user as
+  // `vx: AbortError: Aborted with Ctrl+C` and a stack (through a pty,
+  // 2026-09-27). A TTY output puts readline in terminal mode, as a pty does.
+  it('Ctrl-C at the prompt is an interrupt and Ctrl-D picks nothing, neither a stack', async () => {
+    let stderr = ''
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const picked: unknown[] = []
+    for (const key of ['\x03', '\x04']) {
+      const input = new PassThrough()
+      const output = Object.assign(new PassThrough(), { isTTY: true })
+      output.on('data', () => undefined)
+      const picking = pickTask(root, { input, output })
+      await Bun.sleep(50)
+      input.write(key)
+      picked.push(await picking)
+    }
+    expect(picked).toEqual(['interrupted', null])
+    expect(stderr).toBe('vx run: no task picked\n')
+  })
+
   it('rejects an out-of-range selection with null', async () => {
     const input = new PassThrough()
     const output = new PassThrough()
