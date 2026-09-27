@@ -470,14 +470,54 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         const m = err instanceof Error ? err.message : String(err)
         process.stderr.write(`[vx] onFinish observer threw for ${id}: ${m}\n`)
       }
+      // A restore-tier task runs before its deps, but its DEPENDENTS keep
+      // the order `dependsOn` states: they are released once its own deps
+      // have settled too. Released at its own finish, an `e2e` ran beside
+      // the `db:migrate` two edges up whenever the middle task was a hit,
+      // and ran green after that dep failed (item 963).
+      if (inRestoreTier(id) && (pending.get(id) ?? 0) > 0) {
+        heldRelease.add(id)
+        return
+      }
+      release(id)
+    }
+
+    // A restore-tier task whose deps did not all succeed is still a
+    // `cache-hit` (its key is theirs, not their outcome), but it passes the
+    // block down: its dependents are skipped as a failed dep's would be.
+    // Its root: a failed or aborted dep, or the root a skipped or blocked
+    // one carries.
+    const blockedRestores = new Map<string, string | undefined>()
+    const heldRelease = new Set<string>()
+    const release = (id: string): void => {
+      if (inRestoreTier(id) && continueMode !== 'always') {
+        for (const dep of (nodes.get(id) as TaskNode).deps) {
+          const u = outcomes.get(dep)
+          if (u?.status === 'failed' || u?.status === 'aborted') {
+            blockedRestores.set(id, dep)
+            break
+          }
+          if (u?.status === 'skipped') {
+            blockedRestores.set(id, u.blockedBy)
+            break
+          }
+          if (blockedRestores.has(dep)) {
+            blockedRestores.set(id, blockedRestores.get(dep))
+            break
+          }
+        }
+      }
       const ds = dependents.get(id)
       if (!ds) return
       for (const d of ds) {
         const rem = (pending.get(d) ?? 0) - 1
         pending.set(d, rem)
+        if (rem !== 0) continue
         // Restore-tier dependents were already enqueued at startup (they
-        // don't wait on deps); only re-enqueue an exec-tier dependent.
-        if (rem === 0 && !inRestoreTier(d)) execReady.push(d)
+        // don't wait on deps); one that finished early releases its own
+        // dependents now. Only an exec-tier dependent is enqueued.
+        if (heldRelease.delete(d)) release(d)
+        else if (!inRestoreTier(d)) execReady.push(d)
       }
     }
 
@@ -507,7 +547,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // from them — under the key a healthy run derives, since the fold
         // takes the upstream's INPUT key — so the next run replays those
         // bytes as a green hit.
-        return u?.status === 'failed' || u?.status === 'skipped' || u?.status === 'aborted'
+        return (
+          u?.status === 'failed' ||
+          u?.status === 'skipped' ||
+          u?.status === 'aborted' ||
+          blockedRestores.has(d)
+        )
       })
     }
 
@@ -574,7 +619,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
           )
           const viaSkip = upstream.find((u) => u !== undefined && u.status === 'skipped')
-          const blockedBy = blocker?.node.id ?? viaSkip?.blockedBy
+          const viaRestore = node.deps.find((d) => blockedRestores.has(d))
+          const blockedBy =
+            blocker?.node.id ??
+            viaSkip?.blockedBy ??
+            (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
           finishOne(id, {
             node,
             status: aborted() ? 'aborted' : 'skipped',
