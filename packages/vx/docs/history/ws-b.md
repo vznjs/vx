@@ -149,3 +149,22 @@ write glob there never reached its "matches nothing yet" warning.
 - Row: `sandbox-runtime.unsafe.test.ts` › a glob under a directory that
   does not exist matches nothing, and a write one says so. Red without
   the fix.
+
+B-7. A refused write is reported however many writes follow it (found
+reviewing B-5). SRT's violation store is a 100-record ring the whole run
+shares, and on Linux its write observer reports every write any task
+makes: a refused write followed by 150 declared ones was evicted before
+the task's exit read it, and the task passed. macOS read the same ring.
+
+- Fix (`sandbox-runtime.ts` `collectRecords`): one subscription takes
+  each record as it arrives and keeps it for a command still running;
+  the task reads its own list at exit. `modules/sandbox-runtime.md`.
+- Rows: `sandbox-runtime.unsafe.test.ts` › an undeclared write … is
+  reported however many declared writes follow it (red without the
+  fix); `sandbox-request.test.ts` › a wall sharing a grant's name prefix
+  does not punch it, for the sweep survivor below.
+
+Sweep, 2026-09-27: `sandbox-binds.ts`, 28 mutants, 25 caught. The
+`punchWalls` separator survived (row above). Not reachable here: the
+non-Linux return of `bindableWrites`, and `punchWalls`'s unreadable
+directory fallback (root reads everything).

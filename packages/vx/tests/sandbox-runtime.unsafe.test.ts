@@ -1597,14 +1597,16 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await rm(fixture.root, { recursive: true, force: true })
     })
 
-    const project = (write: string[]) =>
+    // `then` runs after the refused write; 150 declared writes there pushed
+    // its record out of SRT's store, a 100-record ring the whole run shares.
+    const project = (write: string[], then = 'echo ok > dist/out.txt') =>
       addProject(fixture.root, 'app', {
         config: `
         export default {
           tasks: {
             gen: {
               exec: {
-                command: 'mkdir -p dist && { echo x > src/gen.txt; } 2>/dev/null; echo ok > dist/out.txt',
+                command: 'mkdir -p dist && { echo x > src/gen.txt; } 2>/dev/null; ${then}',
                 sandbox: { allow: { read: ['.'], write: ${JSON.stringify(write)} } },
               },
             },
@@ -1622,6 +1624,21 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect([r.outcomes[0]?.status, r.outcomes[0]?.exitCode]).toEqual(['failed', 1])
         expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
           `openat(${realpathSync(dir)}/src/gen.txt) = a write no grant covers  [${realpathSync(dir)}/src/gen.txt]`,
+        ])
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'is reported however many declared writes follow it',
+      async () => {
+        const dir = await project(['dist/'], 'for i in $(seq 150); do echo $i > dist/f$i.txt; done')
+        const r = await run({ cwd: fixture.root, tasks: ['gen'], log: collectingLogger(fixture) })
+        expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
+          'failed',
+          [
+            `openat(${realpathSync(dir)}/src/gen.txt) = a write no grant covers  [${realpathSync(dir)}/src/gen.txt]`,
+          ],
         ])
       },
       TIMEOUT,
