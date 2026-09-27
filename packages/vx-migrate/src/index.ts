@@ -17,6 +17,7 @@ import {
 } from '@vzn/vx'
 import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
 import { migrateTurbo } from './migrate-turbo.js'
+import { turboConfigFile } from './turbo/turbo-map.js'
 
 // The four plugins: the Turbo and Nx project stages (a repo runs
 // unchanged), and the two remote caches speaking Turbo's and Nx's wire.
@@ -66,7 +67,8 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const root = await findWorkspaceRoot(process.cwd())
   const metas = await listProjectMetas(await loadWorkspace(root))
 
-  const hasTurbo = await Bun.file(path.join(root, 'turbo.json')).exists()
+  const turboFile = await turboConfigFile(root)
+  const hasTurbo = turboFile !== null
   const hasGraph = await Bun.file(path.join(root, NX_GRAPH_REL)).exists()
   const hasNxJson = await Bun.file(path.join(root, 'nx.json')).exists()
 
@@ -102,7 +104,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       )
     }
   } else {
-    source = 'turbo.json'
+    source = path.basename(turboFile ?? 'turbo.json')
     plan = await migrateTurbo(root, metas, format)
   }
   return applyMigration({

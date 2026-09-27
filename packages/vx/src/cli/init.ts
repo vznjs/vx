@@ -48,9 +48,18 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
   // TODOs and none of the edges turbo.json already declared.
   const notes: string[] = []
-  if (await Bun.file(path.join(root, 'turbo.json')).exists()) {
+  // Turbo 2.5+ reads `turbo.jsonc` as well (item 938).
+  let turbo: string | undefined
+  for (const name of ['turbo.json', 'turbo.jsonc']) {
+    if (await Bun.file(path.join(root, name)).exists()) {
+      turbo = name
+      break
+    }
+  }
+  if (turbo !== undefined) {
     notes.push(
-      'turbo.json found and not read — `bunx @vzn/vx-migrate` maps it (dependsOn, inputs, ' +
+      `${turbo} found and not read — ` +
+        '`bunx @vzn/vx-migrate` maps it (dependsOn, inputs, ' +
         'outputs), or `plugins: [turbo()]` from @vzn/vx-migrate runs it with nothing written',
     )
   } else if (
