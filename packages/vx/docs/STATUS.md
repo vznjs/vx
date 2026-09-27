@@ -474,6 +474,21 @@ failed · 1 success`. A server a Ctrl-C stopped stays out of it (1061).
 1077. SUPERSEDED (2026-09-27) by A-1 (`docs/history/ws-a.md`), which
       landed first: the files of a nested repository inside a project are listed as that project's inputs.
 
+1078. DONE (2026-09-27, Next 23 (b), closed on its evidence).
+      `signal-handling.test.ts` › "at the moment vx exits on a signal every
+      task process is gone" went red in the gate for item 1075. The
+      evidence item 864 made it print was `child: 1937 (procfs is another
+pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
+      `sleep 30`, which starts with SIGINT ignored and dies only to the
+      group SIGKILL: it was dead at vx's exit and waiting for its reaper,
+      and the sandbox's `/proc`, belonging to another pid namespace, cannot
+      tell a zombie from a live process. This is the leading suspect Next
+      23 named, now shown. The row fails only on a process still alive
+      3 s after the exit, which is a leak; a zombie reaped inside the
+      window is not one. Next 23 (a), the macOS SIGINT row, stays open.
+      - The row's leak check is unchanged: a task process vx leaves
+        running is still alive at 3 s and still reddens it.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
@@ -799,7 +814,9 @@ next?".
     each process alive at the exit, whether it was gone within 3 s (a
     zombie awaiting its reaper) or still alive (a leak). vx releases every
     group before it exits, so its guard kills nothing there to blur the
-    two.
+    two. (b) CLOSED as item 1078 on that evidence: the one failure since
+    read `child: … (procfs is another pid namespace's), gone within
+21 ms` — a zombie, not a leak.
 24. DONE 2026-09-27 (fifth hit, CI on #1083, the same docs build after it
     had finished): an attempt whose last stderr line is strace's own and
     whose exit is non-zero is run once more, with a line saying why
