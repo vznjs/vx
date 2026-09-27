@@ -3,10 +3,12 @@
 // repo, `vx run one#task` must not pay 1090 config imports — and a
 // broken config in an unrelated package must not fail the run.
 
+import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { loadProjects, loadResolvedProjects, run } from '../src/orchestrator/index.js'
@@ -361,6 +363,34 @@ describe('scoped config loading', () => {
       // CONTROL: unscoped, every CONFIGURED project — and still not `bare`.
       const all = await loadResolvedProjects(root)
       expect([...all.keys()].sort()).toEqual(['app', 'lib'])
+    },
+    TIMEOUT,
+  )
+
+  // C-5: a reader (`vx show`, `vx mcp`'s listTasks) opened the index as a
+  // run does: where there was none it made `.vx/cache/`, and an earlier
+  // schema's index it reset, run history and all. It reads it as `vx last`
+  // does now, and evaluates live what it cannot read there.
+  it(
+    'a READER makes no index where there is none, and leaves an earlier schema as it was',
+    async () => {
+      await addProject('app', GOOD)
+      const cacheDir = path.join(root, '.vx', 'cache')
+      expect([...(await loadResolvedProjects(root)).keys()]).toEqual(['app'])
+      expect(existsSync(cacheDir)).toBe(false)
+
+      await mkdir(cacheDir, { recursive: true })
+      const db = new Database(path.join(cacheDir, 'cache.db'))
+      db.exec('CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+      db.exec("INSERT INTO schema_meta VALUES ('version', 'v1')")
+      db.exec('CREATE TABLE runs (id TEXT)')
+      db.close()
+      expect([...(await loadResolvedProjects(root)).keys()]).toEqual(['app'])
+      const after = new Database(path.join(cacheDir, 'cache.db'), { readonly: true })
+      const version = after.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get()
+      const runs = after.prepare("SELECT name FROM sqlite_master WHERE name = 'runs'").get()
+      after.close()
+      expect([version, runs]).toEqual([{ value: 'v1' }, { name: 'runs' }])
     },
     TIMEOUT,
   )
