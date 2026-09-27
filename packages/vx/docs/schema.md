@@ -934,7 +934,7 @@ unsandboxed.** Full walkthrough in the
 interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
   deny?: { network?: string[] } // domains refused before `allow.network`
-  ignore?: SandboxGrants // violations to leave out of the report
+  ignore?: SandboxIgnore // violations to leave out of the report
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
 }
@@ -953,9 +953,10 @@ interface SandboxGrants {
 ```
 
 One shape describes what a task may do; vx translates it into a seatbelt
-profile on macOS and bwrap mounts plus seccomp on Linux. The same block
-is the vocabulary for `ignore`, so a noisy probe is silenced with the
-grant that would have permitted it:
+profile on macOS and bwrap mounts plus seccomp on Linux. `ignore` takes
+patterns per class a denial is reported in — `read`, `write`,
+`systemInfo`, `network` — so a noisy probe is silenced with the grant
+that would have permitted it; any other name is refused:
 
 ```ts
 exec: {
@@ -1505,6 +1506,7 @@ lists the messages a user meets most:
 | `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.                                                                                                                                                                                       |
 | `exec must be an object with a command string`                                                                    | `exec` is malformed.                                                                                                                                                                                                           |
 | `exec.command must be a non-empty string`                                                                         | Forgot `command`, or empty string.                                                                                                                                                                                             |
+| `exec.command holds a NUL, which no command line can carry`                                                       | A `\0` in the command (a template slip); the spawn refused it as exit 127, "not on this task's PATH", with the NUL printed as a space.                                                                                         |
 | `exec.persistent must be an object (or omitted)`                                                                  | Wrong shape.                                                                                                                                                                                                                   |
 | `exec.persistent.readyWhen must be a string regex`                                                                | Non-string `readyWhen`.                                                                                                                                                                                                        |
 | `exec.persistent.readyWhen is not a valid regex (<error>)`                                                        | A `readyWhen` the runner could not compile (`(`); it failed the task as an internal error at run time.                                                                                                                         |
@@ -1514,8 +1516,8 @@ lists the messages a user meets most:
 | `dependsOn must be an array of strings`                                                                           | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs is required when cache is set`                                                                      | Forgot `inputs`.                                                                                                                                                                                                               |
 | `cache.inputs.files must be an array`                                                                             | Wrong shape.                                                                                                                                                                                                                   |
-| `cache.inputs.runtime must be an array of non-empty shell command strings`                                        | Non-string / empty entry.                                                                                                                                                                                                      |
-| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings`                               | Non-string / empty entry.                                                                                                                                                                                                      |
+| `cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`                            | Non-string / empty entry, or one holding a NUL.                                                                                                                                                                                |
+| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                   | Non-string / empty entry, or one holding a NUL.                                                                                                                                                                                |
 | `cache.inputs.tasks must be an array of non-empty strings`                                                        | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                  | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                     | Forgot `outputs`.                                                                                                                                                                                                              |

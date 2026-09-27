@@ -219,8 +219,11 @@ export interface SandboxConfig {
    * ignore: { write: ['*.bun-build'] }   // bun --compile stages a random
    *                                      // temp name in the cwd
    * ```
+   *
+   * A denial is classed read, write, systemInfo or network, so those four
+   * are what can be ignored.
    */
-  ignore?: SandboxGrants
+  ignore?: SandboxIgnore
   /**
    * Accept a weaker sandbox when vx itself already runs inside one
    * (a container, another sandbox). Without it, nesting fails fast rather
@@ -229,6 +232,14 @@ export interface SandboxConfig {
   weakerWhenNested?: boolean
   /** Accept weaker network isolation (host proxy) for lower overhead. */
   weakerNetworkIsolation?: boolean
+}
+
+/** The denials `sandbox.ignore` can leave out of the report: patterns per class. */
+export interface SandboxIgnore {
+  read?: string[]
+  write?: string[]
+  systemInfo?: string[]
+  network?: string[]
 }
 
 export interface SandboxGrants {

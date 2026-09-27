@@ -820,7 +820,7 @@ describe.each([
   })
   it('it names `deny` and `ignore` beside `allow`', () => {
     expect(src).toContain('deny?: SandboxDenials')
-    expect(src).toContain('ignore?: SandboxGrants')
+    expect(src).toContain('ignore?: SandboxIgnore')
     for (const field of ['`allow`', '`deny`', '`ignore`']) expect(page).toContain(field)
   })
 })

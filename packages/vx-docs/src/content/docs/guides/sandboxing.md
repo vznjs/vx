@@ -42,7 +42,7 @@ export default defineProject({
 
 ## What you can grant
 
-`allow` takes every key below. `deny` takes only `network`. `ignore` takes the rest as lists and refuses `pty` and `gitConfig`, which are flags.
+`allow` takes every key below. `deny` takes only `network`. `ignore` takes `read`, `write`, `systemInfo` and `network`, as patterns, and refuses the rest.
 
 | Key            | Grants                                                            |
 | -------------- | ----------------------------------------------------------------- |

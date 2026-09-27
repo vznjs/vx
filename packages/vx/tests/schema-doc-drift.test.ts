@@ -125,6 +125,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { exec: { command: '' } } } }),
   ],
   [
+    'exec.command holds a NUL, which no command line can carry',
+    () => validated({ tasks: { b: { exec: { command: 'echo a\0b' } } } }),
+  ],
+  [
     'exec.persistent must be an object (or omitted)',
     () => validated({ tasks: { b: { exec: { command: 'x', persistent: 'yes' } } } }),
   ],
@@ -174,7 +178,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
-    'cache.inputs.runtime must be an array of non-empty shell command strings',
+    'cache.inputs.runtime must be an array of non-empty shell command strings with no NUL',
     () =>
       validated({
         tasks: {
@@ -183,7 +187,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
-    'cache.inputs.workspaceRuntime must be an array of non-empty shell command strings',
+    'cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL',
     () =>
       validated({
         tasks: {

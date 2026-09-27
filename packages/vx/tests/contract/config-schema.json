@@ -290,17 +290,7 @@
         "write"
       ],
       "tasks.*.exec.sandbox.deny": ["network"],
-      "tasks.*.exec.sandbox.ignore": [
-        "gitConfig",
-        "localBinding",
-        "machLookup",
-        "network",
-        "pty",
-        "read",
-        "systemInfo",
-        "unixSockets",
-        "write"
-      ],
+      "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
       "tasks.*.cache": ["inputs", "outputs"],
       "tasks.*.cache.inputs": [
         "env",
@@ -1332,7 +1322,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t.exec.sandbox.ignore has unknown field \"x\" (allowed: gitConfig, localBinding, machLookup, network, pty, read, systemInfo, unixSockets, write)": [
+        "$CONFIG: tasks.t.exec.sandbox.ignore has unknown field \"x\" (allowed: network, read, systemInfo, write)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1469,120 +1459,6 @@
           "[\"vfs.disk-space\"]"
         ],
         "$CONFIG: tasks.t.exec.sandbox.ignore.systemInfo must be an array of non-empty strings": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.exec.sandbox.ignore.unixSockets": {
-        "ok": [
-          "<absent>",
-          "[]",
-          "[\"x\"]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "[\"/run/x.sock\"]"
-        ],
-        "$CONFIG: tasks.t.exec.sandbox.ignore.unixSockets must be an array of non-empty strings": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.exec.sandbox.ignore.localBinding": {
-        "ok": [
-          "<absent>",
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.exec.sandbox.ignore.machLookup": {
-        "ok": [
-          "<absent>",
-          "[]",
-          "[\"x\"]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "[\"com.apple.x\"]"
-        ],
-        "$CONFIG: tasks.t.exec.sandbox.ignore.machLookup must be an array of non-empty strings": [
           "null",
           "true",
           "false",
@@ -1987,7 +1863,7 @@
           "[\"A*\"]",
           "[\"node -v\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.runtime must be an array of non-empty shell command strings": [
+        "$CONFIG: tasks.c.cache.inputs.runtime must be an array of non-empty shell command strings with no NUL": [
           "null",
           "true",
           "false",
@@ -2026,7 +1902,7 @@
           "[\"A*\"]",
           "[\"bun -v\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.workspaceRuntime must be an array of non-empty shell command strings": [
+        "$CONFIG: tasks.c.cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL": [
           "null",
           "true",
           "false",
@@ -2182,78 +2058,6 @@
         ],
         "$CONFIG: tasks.c.cache.outputs.workspaceFiles: \".\" names the workspace root itself and selects nothing — use \"**\" for everything under it": [
           "[\".\"]"
-        ]
-      },
-      "tasks.*.exec.sandbox.ignore.gitConfig": {
-        "ok": ["<absent>"],
-        "$CONFIG: tasks.t.exec.sandbox.ignore.gitConfig is a flag, not something to ignore": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "<seed>"
-        ]
-      },
-      "tasks.*.exec.sandbox.ignore.pty": {
-        "ok": ["<absent>"],
-        "$CONFIG: tasks.t.exec.sandbox.ignore.pty is a flag, not something to ignore": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "<seed>"
         ]
       }
     },

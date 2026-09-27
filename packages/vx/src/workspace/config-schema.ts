@@ -285,6 +285,12 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (typeof command !== 'string' || command.length === 0) {
         throw new UserError(`${where}.exec.command must be a non-empty string`)
       }
+      // No argv can carry a NUL: the spawn refused it and the task failed
+      // as exit 127, "not on this task's PATH", with the NUL printed as a
+      // space (D-4), as an env name with one did before item 999.
+      if (command.includes('\0')) {
+        throw new UserError(`${where}.exec.command holds a NUL, which no command line can carry`)
+      }
       const timeout = (exec as { timeout?: unknown }).timeout
       if (timeout !== undefined) {
         if (typeof timeout !== 'number' || !Number.isInteger(timeout) || timeout <= 0) {
@@ -582,9 +588,12 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       for (const field of ['runtime', 'workspaceRuntime'] as const) {
         const list = (inputs as Record<string, unknown>)[field]
         if (list !== undefined) {
-          if (!Array.isArray(list) || list.some((s) => typeof s !== 'string' || s.length === 0)) {
+          if (
+            !Array.isArray(list) ||
+            list.some((s) => typeof s !== 'string' || s.length === 0 || s.includes('\0'))
+          ) {
             throw new UserError(
-              `${where}.cache.inputs.${field} must be an array of non-empty shell command strings`,
+              `${where}.cache.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
             )
           }
         }
@@ -974,6 +983,7 @@ const GRANT_FIELDS = new Set<string>([
   'unixSockets',
 ])
 const DENY_FIELDS = new Set(['network'])
+const IGNORE_FIELDS = new Set(['read', 'write', 'systemInfo', 'network'])
 
 function assertStringArray(v: unknown, where: string): void {
   if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || s.length === 0)) {
@@ -1061,17 +1071,16 @@ function validateSandbox(sandbox: unknown, where: string): void {
     if (typeof ignore !== 'object' || ignore === null || Array.isArray(ignore)) {
       throw new UserError(`${where}.sandbox.ignore must be an object`)
     }
-    assertKnownFields(ignore, GRANT_FIELDS, `${where}.sandbox.ignore`)
+    // Only these reach the report's filter (`matchesIgnore`): a denial is
+    // classed read, write, systemInfo or network, and nothing else. Every
+    // grant name loaded here once, so `ignore.machLookup` silenced nothing
+    // and said so nowhere (D-4).
+    assertKnownFields(ignore, IGNORE_FIELDS, `${where}.sandbox.ignore`)
     const g = ignore as Record<string, unknown>
     // Patterns, not prefixes — `ignore` is vx's own filter over lines it
     // already holds, so a glob costs nothing and works on every platform.
-    for (const f of [...GRANT_PATH_FIELDS, ...GRANT_NAME_FIELDS, 'network', 'unixSockets']) {
+    for (const f of IGNORE_FIELDS) {
       if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.ignore.${f}`)
-    }
-    for (const f of GRANT_BOOL_FIELDS) {
-      if (g[f] !== undefined) {
-        throw new UserError(`${where}.sandbox.ignore.${f} is a flag, not something to ignore`)
-      }
     }
   }
 }

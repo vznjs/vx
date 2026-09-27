@@ -668,7 +668,7 @@ describe('loadProjectConfig', () => {
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
-        /cache\.inputs\.runtime must be an array of non-empty shell command strings/,
+        /cache\.inputs\.runtime must be an array of non-empty shell command strings with no NUL/,
       )
     })
 
@@ -682,7 +682,7 @@ describe('loadProjectConfig', () => {
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
-        /cache\.inputs\.workspaceRuntime must be an array of non-empty shell command strings/,
+        /cache\.inputs\.workspaceRuntime must be an array of non-empty shell command strings with no NUL/,
       )
     })
   })
