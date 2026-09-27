@@ -379,6 +379,21 @@ test is telling the truth.
         paths under missing directories are written, and a directory given
         to `--graph` is one line and exit 1. Both red without the fix.
 
+994.  DONE (2026-09-27, the config-validation review's lead 1). With
+      `dependsOn: ['^build']` and `cache.inputs.tasks: ['build']`, a
+      change in the dependency's source missed its `build` and left the
+      dependent `up-to-date`: `build` selects only this project's task,
+      so the filter folded nothing. The load check that refuses an
+      unnamed exact entry compared only task halves.
+      - Fix (`config-schema.ts`): the check compares forms too. `build`
+        pairs with `build`, `^build` with `^build`, and a `pkg#task` on
+        either side pairs with any form (the schema cannot tell this
+        project from a dependency); two `pkg#task` entries must agree on
+        the project. `schema.md` says so.
+      - Row: `project-loader.test.ts` › rejects a filter whose form no
+        dependsOn entry of that form names, four refusals and eight
+        controls. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

@@ -780,8 +780,12 @@ task". Defaults:
 An **exact** entry (`'codegen'`, `'^build'`, `'lib#build'`) must be
 named by some `dependsOn` entry of the same task — exactly, or by that
 entry's own `*` pattern (`dependsOn: ['build.*']` names
-`tasks: ['build.bun']`). One that is not (`['buidl']`) is refused at
-load: it would match nothing at hash time and fold no upstream hash,
+`tasks: ['build.bun']`), and in a form that reaches the same task:
+`build` is this project's, `^build` only the dependencies', so
+`tasks: ['build']` against `dependsOn: ['^build']` names nothing. A
+`pkg#task` entry may be this project or a dependency, so it pairs with
+either form; two `pkg#task` entries must agree on the project. One that
+is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
 decoupling the task from its dependencies with no diagnostic — a stale
 hit waiting for the next upstream change. Patterns, wildcards and
 negations stay silent (a preset-spread pattern legitimately matches
@@ -1471,7 +1475,7 @@ and surfaces `UserError` (clean output, no stack):
 | `cache.inputs.runtime must be an array of non-empty shell command strings`                                        | Non-string / empty entry.                                                                                                                                                                                                      |
 | `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings`                               | Non-string / empty entry.                                                                                                                                                                                                      |
 | `cache.inputs.tasks must be an array of non-empty strings`                                                        | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
-| `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                  | An exact entry no `dependsOn` entry names (a typo).                                                                                                                                                                            |
+| `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                  | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                     | Forgot `outputs`.                                                                                                                                                                                                              |
 | `cache.outputs.files must be an array`                                                                            | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                            | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
