@@ -1127,10 +1127,35 @@ export class Cache implements CacheLayer {
    */
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     const tmpPath = this.tempPath(hash)
+    // The compressed bytes are bounded too, before the decode's ceiling ever
+    // sees them: a remote body that never ends (a hostile or broken server)
+    // was written to the temp until the disk was full (L-5). No artifact
+    // under the ceiling compresses past zstd's own bound on it.
+    const cap = this.artifactCeiling + (this.artifactCeiling >> 8) + 64 * 1024
+    const past = (): CorruptArtifactError =>
+      new CorruptArtifactError(
+        hash,
+        `remote body runs past ${cap} bytes (the artifact ceiling's bound)`,
+      )
     try {
-      // Split only for the typings: Bun.write's Response and Blob overloads
-      // do not accept their union.
-      await (body instanceof Response ? Bun.write(tmpPath, body) : Bun.write(tmpPath, body))
+      if (body instanceof Blob) {
+        if (body.size > cap) throw past()
+        await Bun.write(tmpPath, body)
+      } else if (Number(body.headers.get('content-length') ?? 0) > cap) {
+        throw past()
+      } else {
+        let n = 0
+        const counted = body.body?.pipeThrough(
+          new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+              n += chunk.byteLength
+              if (n > cap) controller.error(past())
+              else controller.enqueue(chunk)
+            },
+          }),
+        )
+        await Bun.write(tmpPath, new Response(counted ?? null))
+      }
     } catch (err) {
       await unlink(tmpPath).catch(() => undefined)
       throw err
