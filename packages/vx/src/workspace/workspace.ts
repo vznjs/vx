@@ -127,7 +127,11 @@ function splitPackageGlobs(globs: readonly string[]): { positive: string[]; nega
   // `!./packages/legacy` and `!packages//legacy` excluded nothing, silently
   // (2026-09-10): the same spellings the input globs normalize.
   for (const raw of globs) {
-    const g = normalizeBunGlob(raw)
+    // A member glob names directories, so a trailing slash says nothing:
+    // npm and pnpm read `packages/*/` as `packages/*`. `normalizeBunGlob`
+    // gives it a task glob's meaning, `/**`, and `packages/*/` found every
+    // example and fixture package at any depth below the members (item 985).
+    const g = normalizeBunGlob(raw.replace(/(.)\/+$/, '$1'))
     if (g.startsWith('!')) negative.push(g.slice(1).replace(/\/+$/, ''))
     else positive.push(g)
   }
