@@ -258,7 +258,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     projectMetas,
     packageGraph,
     lock,
-    evalCache: { store: localCache, workspaceFingerprint: fingerprints.all },
+    evalCache: { store: localCache, workspaceRoot, workspaceFingerprint: fingerprints.all },
     warn: (m: string) => log.status(m),
   }
   let loaded: LoadedProjects

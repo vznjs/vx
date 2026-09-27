@@ -1036,6 +1036,29 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       - Row: `cli.test.ts` › vx help <verb> prints that verb's help. Red
         without the dispatch change.
 
+1036. DONE (2026-09-27, the config-cache review). Three stale configs and
+      one open gate in the config evaluation cache.
+      - A member directory linked in from elsewhere was indexed by the
+        paths its evaluation found; retargeted to a config of the same
+        bytes with another preset, the warm path replayed the old
+        target's evaluation on every run. Such a closure is now never
+        indexed; a link above the workspace root still is.
+      - `IMPORT_RE`'s lazy body ran from `export type Mode = …` into the
+        next line's impure `@vzn/vx` import and passed it as a type
+        import (a regression of item 888 in semicolon-free files), and
+        an `export … from` after a `}` on its line was never scanned. A
+        statement's body now stops at the next `import` or `export`, and
+        no line start is required.
+      - `const { random } = Math` passed the deny-list: `random` is
+        denied as a word.
+      - Rows: `config-cache.test.ts` › a member directory reached through
+        a link is never indexed; an `export … from` that does not start
+        its line; the item 888 list; the deny-list's `random`. Each red
+        with its fix reverted, and the symlinked-root control red under
+        a strict link check.
+      - Left: `vx mcp` re-imports `vx.workspace.ts` in-process and serves
+        a local plugin's old imports (the review's fifth lead).
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

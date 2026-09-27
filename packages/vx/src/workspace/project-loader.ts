@@ -233,7 +233,7 @@ export interface LoadProjectConfigOptions {
    * Serve a provably-pure config from its cached evaluation (see
    * config-cache.ts) and store a fresh one for next time. Off for `fresh`.
    */
-  evalCache?: { store: ConfigEvalStore; workspaceFingerprint: string }
+  evalCache?: { store: ConfigEvalStore; workspaceRoot?: string; workspaceFingerprint: string }
 }
 
 /**
@@ -296,6 +296,7 @@ export async function loadProjectConfigs(
           : await configEvalKey({
               configPath,
               bytes,
+              workspaceRoot: evalCache.workspaceRoot,
               workspaceFingerprint: evalCache.workspaceFingerprint,
               ...slowKeyHash,
             })
@@ -352,6 +353,7 @@ export async function loadProjectConfigs(
         const keyed = await configEvalKey({
           configPath,
           bytes,
+          workspaceRoot: evalCache!.workspaceRoot,
           workspaceFingerprint: evalCache!.workspaceFingerprint,
           ...slowKeyHash,
         })

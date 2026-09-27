@@ -52,6 +52,7 @@ export interface ConfigEvalKeyArgs {
   hashBytes?: (bytes: Uint8Array, nearPath: string) => string // the identity from the bytes in hand; preferred over hashFile
   hashFile?: (file: string) => Promise<string> // absent too: the blob id is computed from the bytes in-process
   bytes: Uint8Array
+  workspaceRoot?: string | undefined // a link below it makes the closure unindexable; absent, any link does
   workspaceFingerprint: string
 }
 
@@ -101,7 +102,12 @@ closure is provably pure:
   (`import { 'a-b' as x }`) are seen; the regex it replaced ran on the
   raw source, and a preset imported after `/* … */` was neither keyed nor
   gated (item 952). An `import` token the scan cannot place — a property
-  named `import` is one — evaluates live rather than keying without it;
+  named `import` is one — evaluates live rather than keying without it.
+  A statement's body never runs past the next `import` or `export`, and
+  needs no line start: in a file without semicolons the scan once ran
+  from `export type Mode = …` on into the next line's
+  `import { machineParallelism } from '@vzn/vx'` and passed it as a type
+  import, and `} export * from './side.ts'` was never scanned (item 1036);
 - no relative import resolves into `node_modules` (a workspace symlink
   can move without the lockfile moving);
 - the closure has ≤ 32 files;
@@ -117,8 +123,9 @@ closure is provably pure:
   `getOwnPropertyNames`, `getOwnPropertyDescriptor`,
   `getOwnPropertyDescriptors`, `__proto__`, `prototype`,
   `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`,
-  `__lookupSetter__`; item 957), `import.meta`, `Math.random`, or a
-  dynamic `import(`;
+  `__lookupSetter__`; item 957), `random` (the word, not only
+  `Math.random`: one destructured from Math was cached as pure, item
+  1036), `import.meta`, or a dynamic `import(`;
 - no string literal holds `constructor`, `__proto__` or `prototype`: as
   a computed key (`fn['constructor']`) it is `Function`, and the literal
   was stripped before the words above were tested (item 957);
@@ -188,7 +195,8 @@ re-indexes it.
 Sound because closure membership can only change by editing a listed file
 (the config, or an import that gains or drops an import), which changes
 that file's identity and so the key — provided each import names its
-file outright. Three spellings do not, and a config with any of them is
+file outright and the config sits where its path says. Four spellings
+do not, and a config with any of them is
 served by the slow path and never indexed (`indexable: false`):
 
 - an **extensionless** import: a new file could change what it resolves
@@ -197,7 +205,14 @@ served by the slow path and never indexed (`indexable: false`):
   `./preset.js` with `preset.ts`, and a `preset.js` created later takes
   over (item 950);
 - a **symlink** on the way: retargeting `shared -> sharedA` moves every
-  import through it and edits no listed file (item 950).
+  import through it and edits no listed file (item 950);
+- a config whose directory is reached through a symlink below the
+  workspace root: a member `packages/app -> ../variants/a` retargeted to
+  `variants/b`, a config of the same bytes beside another preset, moved
+  no listed path, and the warm path replayed `a`'s evaluation (item
+  1036). A link above the root (macOS's `/var`) keeps the index: the
+  root is real-pathed once and the config's real directory compared
+  against it.
 
 An import is resolved from the importing file's REAL path, as Bun does:
 a config linked in from elsewhere imports its neighbours there, and the

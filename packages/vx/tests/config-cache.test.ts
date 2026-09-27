@@ -326,6 +326,21 @@ describe('configEvalKey', () => {
     expect(await keyedOf(cfg)).toBeNull()
   })
 
+  it('an `export … from` that does not start its line is in the closure (item 1036)', async () => {
+    await write('packages/p/tasks.mjs', 'export const tasks = {}\n')
+    const side = await write('packages/p/side.mjs', 'export const x = 1\n')
+    const cfg = await write(
+      'packages/p/vx.config.mjs',
+      "import { tasks } from './tasks.mjs'\nfunction noop() {} export * from './side.mjs'\nexport default { tasks }\n",
+    )
+    // Imports resolve to real paths (macOS's temp dir is a link).
+    expect((await keyedOf(cfg))?.closure).toEqual([
+      cfg,
+      await realpath(path.join(root, 'packages/p/tasks.mjs')),
+      await realpath(side),
+    ])
+  })
+
   it('an import with a string-named binding is in the closure (item 952)', async () => {
     const preset = await write(
       'packages/a/preset.mjs',
@@ -463,6 +478,7 @@ describe('the purity deny-list is the whole list', () => {
     ['toLocaleUpperCase', "const v = 'x'.toLocaleUpperCase()"],
     ['import.meta', 'const v = import.meta.dir'],
     ['Math.random', 'const v = Math.random()'],
+    ['random', 'const { random } = Math\nconst v = random()'],
     ['dynamic import', "const v = import('./x.js')"],
   ]
 
@@ -725,8 +741,49 @@ describe('loadProjectConfig with an eval cache', () => {
       "import { cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     const store = new MemoryStore()
-    await loadProjectConfigs([cfg], { evalCache: { store, workspaceFingerprint: 'fp' } })
+    await loadProjectConfigs([cfg], {
+      evalCache: { store, workspaceRoot: link, workspaceFingerprint: 'fp' },
+    })
     expect(store.closures.get(cfg)).toEqual([cfg, await realpath(path.join(link, 'preset.mjs'))])
+  })
+
+  // A member directory linked in from elsewhere was indexed by the paths
+  // its last evaluation found: retargeted to a config of the same bytes
+  // whose preset differs, it moved none of them, and the warm path
+  // replayed the old target's evaluation on every run (item 1036).
+  it('a member directory reached through a link is never indexed: retargeting it moves the imports (item 1036)', async () => {
+    const config =
+      "import { preset } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: preset } } } }\n"
+    for (const v of ['a', 'b']) {
+      await write(`variants/${v}/vx.config.mjs`, config)
+      await write(`variants/${v}/preset.mjs`, `export const preset = 'echo variant-${v}'\n`)
+    }
+    await mkdir(path.join(root, 'packages'))
+    const member = path.join(root, 'packages/app')
+    await symlink('../variants/a', member)
+    const cfg = path.join(member, 'vx.config.mjs')
+    const store = new MemoryStore()
+    const evalCache = { store, workspaceRoot: root, workspaceFingerprint: 'fp' }
+    const [first] = await loadProjectConfigs([cfg], { evalCache })
+    expect(first?.tasks?.build?.exec?.command).toBe('echo variant-a')
+    expect(store.closures.has(cfg)).toBe(false)
+    expect(store.rows.size).toBe(1)
+    await rm(member)
+    await symlink('../variants/b', member)
+    // The key must move: served from the first entry is the stale replay.
+    // (Which module the in-process import answers with is Bun's registry's
+    // business; a CLI run re-evaluates a repeat load in a worker, item 678.)
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(store.rows.size).toBe(2)
+    expect(store.puts).toBe(2)
+    // CONTROL: the same config beside its preset, no link, IS indexed.
+    const plain = await write('packages/plain/vx.config.mjs', config)
+    await write('packages/plain/preset.mjs', "export const preset = 'echo plain'\n")
+    await loadProjectConfigs([plain], { evalCache })
+    expect(store.closures.get(plain)).toEqual([
+      plain,
+      await realpath(path.join(root, 'packages/plain/preset.mjs')),
+    ])
   })
 
   it("a config linked in from elsewhere keys the imports beside its REAL path, not the link's (item 950)", async () => {
@@ -1056,6 +1113,9 @@ describe('which @vzn/vx imports a pure config may take (item 888)', () => {
       "import * as vx from '@vzn/vx'\nconst defineProject = vx.defineProject",
       "import vx, { defineProject } from '@vzn/vx'",
       "import { defineProject } from '@vzn/vx'\nexport * from '@vzn/vx'",
+      // A lazy match ran from the type export on into the next line's
+      // import and judged it by `type` (item 1036).
+      "export type Mode = 'a' | 'b'\nimport { defineProject, machineParallelism } from '@vzn/vx'",
     ]) {
       expect({ imp, keyed: (await keyOf(await cfg(imp))) !== null }).toEqual({ imp, keyed: false })
     }

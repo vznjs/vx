@@ -148,6 +148,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
         lock: null,
         evalCache: {
           store: cache,
+          workspaceRoot: root,
           workspaceFingerprint: await computeWorkspaceFingerprint(root, reads),
         },
         warn,
