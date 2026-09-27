@@ -720,13 +720,13 @@ would refuse on it)`.
 
 Status legend:
 
-| Symbol | Meaning                                                      |
-| ------ | ------------------------------------------------------------ |
-| `◉`    | cache hit (local) — entry already in `<cacheDir>/`           |
-| `↓`    | cache hit (remote) — entry would be fetched from the layer   |
-| `▶`    | cache miss — task would execute                              |
-| `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`) |
-| `○`    | group task (suppressed in human view; in DOT + JSON)         |
+| Symbol | Meaning                                                                                    |
+| ------ | ------------------------------------------------------------------------------------------ |
+| `◉`    | cache hit (local) — entry already in `<cacheDir>/`                                         |
+| `↓`    | cache hit (remote) — entry would be fetched from the layer                                 |
+| `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
+| `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
+| `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
 `--dry=json` emits the same data as a structured object:
 
