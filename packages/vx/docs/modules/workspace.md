@@ -26,7 +26,10 @@ literal bracket — unlike a task glob, where a bracket is literal (item
 `Bun.Glob` has no extglob and its scan widened the segment to a
 wildcard (x became a project, turborepo#3766), so `assertGlobList`
 refuses the entry by name, with the exact `!` rewrite when the group is
-a whole segment of plain names.
+a whole segment of plain names. A brace whose alternatives hold a
+slash (`packages/{a,nested/b}`) is scanned as its expansions:
+`Bun.Glob`'s scan found nothing for one, though its match reads it, so
+both packages vanished while the root still claimed them (D-2).
 
 Find the workspace root, enumerate its projects, and resolve the
 cache directory. Supports pnpm / npm / yarn / Bun workspaces, plus a
