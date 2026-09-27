@@ -53,6 +53,11 @@ that walks the graph stages) reads the lock the same way under
 --frozen`. `configHash` exists for `--check`'s file-changed report.
 - A missing entry (or a missing lock) under `--frozen` is a hard
   `UserError` — never a silent fallback to evaluation.
+- `writeLockfile` writes a temp file beside the lock and renames it over
+  the lock, so a reader sees the old lock or the new one, never a
+  truncated one. A write in place truncated first, and a `--frozen` run
+  or `vx watch --frozen` woken by the write could read the lock empty
+  (item 972).
 - `--check` refuses at least what `--frozen` refuses: a project with no
   entry, or an entry whose stored path is not the project's (a config
   renamed with its bytes unchanged), and it also names a locked project
