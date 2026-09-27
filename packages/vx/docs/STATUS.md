@@ -234,6 +234,18 @@ stopped it`: the raw `code`, a signal name. A kept-alive server
       - Row: `keep-alive.test.ts` › "a dependency-only server killed by a
         signal is named by its exit code", red without the change.
 
+1103. DONE (2026-09-27, scheduler review #3). cli.md says
+      `--concurrency 1` "serializes both" the exec and restore lanes, and
+      the scheduler said it "stays serial". But the restore lane had its
+      own counter set to 1, so an 80 MB restore ran from 22 to 346 ms
+      inside another task's execution (25 to 536). At concurrency 1 the
+      two lanes now share the one slot (`execRoom`, `restoreRoom`),
+      including the exec-queue scan gate. Above 1 they stay independent,
+      as the bench chose.
+      - Row: `scheduler.test.ts` › "at concurrency 1 an execution and a
+        restore never overlap" (peak in-flight 1), red without the
+        change. The control, concurrency 2, still overlaps.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

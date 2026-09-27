@@ -389,9 +389,15 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // the exec cap: on the 1,000-project bench with every task a restore,
   // 4 → 8 workers cut the run-graph stage 683–754 → 556–595 ms and 16 was
   // no better (2026-09-10). Exec-tier work keeps the CPU-shaped cap; the
-  // two lanes never wait on each other. `--concurrency 1` stays serial.
+  // two lanes never wait on each other. `--concurrency 1` stays serial:
+  // the two lanes share its one slot, where a lane each let an 80 MB
+  // restore run inside another task's execution (item 1103).
   let activeRestore = 0
-  const restoreConcurrency = concurrency === 1 ? 1 : 2 * concurrency
+  const restoreConcurrency = 2 * concurrency
+  const serial = concurrency === 1
+  const execRoom = (): boolean => (serial ? active + activeRestore < 1 : active < concurrency)
+  const restoreRoom = (): boolean =>
+    serial ? active + activeRestore < 1 : activeRestore < restoreConcurrency
   let resolved = false
 
   // Admission policy over the count limit (a plugin's `admit`). Inactive
@@ -416,7 +422,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const hasRoom = (id: string): boolean => {
     const pool = poolOf?.(id)
     if (pool === undefined) {
-      return inRestoreTier(id) ? activeRestore < restoreConcurrency : active < concurrency
+      return inRestoreTier(id) ? restoreRoom() : execRoom()
     }
     return (poolActive.get(pool.name) ?? 0) < pool.capacity
   }
@@ -579,7 +585,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // 6,000-task scale pin went 0.5 s → 28 s when the restore lane's
         // first cut let the scan run past a full exec lane, 2026-09-10).
         // This is the legacy O(1) gate, kept per lane.
-        const execAdmissible = poolOf !== undefined || admitActive || active < concurrency
+        const execAdmissible = poolOf !== undefined || admitActive || execRoom()
         if (execAdmissible) {
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
@@ -594,7 +600,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           }
         }
         // Restore-tier tasks are local disk work, on their own lane.
-        return activeRestore < restoreConcurrency ? restoreReady.pop() : undefined
+        return restoreRoom() ? restoreReady.pop() : undefined
       }
 
       for (;;) {
