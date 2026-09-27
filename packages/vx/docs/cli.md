@@ -1222,6 +1222,10 @@ to stay up across changes, use the dev tool's own watch (`vite`,
   once it has returned, so a CI cancellation never orphans a task.
 - `1` — parser error or missing scope.
 
+A cycle that throws — a `vx.config.*` that does not parse — prints
+`vx watch: cycle failed: <reason>` and watch keeps watching, the initial
+run included, so saving the fix re-runs (item 1017).
+
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
 the watch loop — a failed cycle just prints the framed FAILED block
 and waits for the next change. This matches `turbo watch` / `nx
