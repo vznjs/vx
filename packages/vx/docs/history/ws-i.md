@@ -115,6 +115,12 @@ I-9. Restore and CI's cache, sized.
   `index.ts`, `tsconfig.json`), so a restored cache would have skipped
   the core shards on each.
 
+I-10. A-11 re-benched on astro. Filtered no-op, 15 interleaved rounds,
+same plugin in every arm: 3e927f9c 449 ms median (min 382), 4b7c396a
+263 (227), A/A 260 (226). Full table on 4b7c396a (benchmarks.md):
+vx 48.0 s / 478 ms / 249 ms (cold / restore / no-op) against Turbo
+57.9 s / 1.43 s / 1.38 s.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
