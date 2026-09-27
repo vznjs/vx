@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, utimes, writeFile } from 'node:fs
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { isAlive } from './helpers/alive.js'
+import { isAlive, waitForDead } from './helpers/alive.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, gitIn, gitInit, makeWorkspace } from './helpers/workspace.js'
 import {
@@ -440,6 +440,15 @@ describe('vx watch with a persistent task (e2e)', () => {
       'the notice naming the server-written file',
     )
     expect(w.out()).toContain('a persistent task rewrites it. Add it to .gitignore')
+    // Stopped as a user stops it, mid-storm: a SIGKILL here raced the
+    // server a cycle was spawning, and the teardown's cleanup with it.
+    // The stop waits for the cycle in flight and every server it held.
+    w.proc.kill('SIGTERM')
+    expect(await w.proc.exited).toBe(0)
+    watch = undefined
+    const alive: number[] = []
+    for (const pid of await readPids()) if (!(await waitForDead(pid, 2000))) alive.push(pid)
+    expect(alive).toEqual([])
   }, 40_000)
 })
 
