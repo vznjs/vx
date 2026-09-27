@@ -355,6 +355,12 @@ export function armWatcher(
       markReady(true)
       return
     }
+    // Another arm's probe, seen by this recursive watcher under a nested
+    // directory (a nested project's, a member base inside a project): no
+    // key sees it, and passing it on ran a cycle, and restarted a dev
+    // server, with no edit made (item 1016). Only the watcher's own probe
+    // proves this stream live.
+    if (path.basename(filename) === WATCH_PROBE) return
     onEvent(filename)
   })
   const probe = path.join(dir, WATCH_PROBE)

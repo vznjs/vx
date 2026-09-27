@@ -702,6 +702,18 @@ test is telling the truth.
         rewrite is not saved, and a `movedInput` unit row with a
         before-the-command write as the control. Red without the fix.
 
+1016. DONE (2026-09-27, the watch review's lead 2). A recursive watcher
+      dropped only its own probe (`filename === WATCH_PROBE`); a nested
+      project's arm or a member base inside a project writes its probe
+      under this watcher, which saw `examples/ex/.vx-watch-probe` and ran a
+      cycle right after "watching", with no edit made. Under
+      `vx watch dev --filter a` the dev server restarted. The poller
+      already skipped the name at any depth.
+      - Fix (`watch.ts` `armWatcher`): an event whose basename is the probe
+        is dropped; only the watcher's own marks it ready. `cli.md` says so.
+      - Row: `watch-rules.test.ts` › armWatcher drops another arm's probe,
+        with an edit beside it delivered. Red without the fix.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
