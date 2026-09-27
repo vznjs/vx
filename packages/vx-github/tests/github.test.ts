@@ -898,3 +898,36 @@ describe('what the F-6 sweep found unheld', () => {
     ])
   })
 })
+
+// F-13: GitHub answers a rate limit with 403 as often as 429, and every
+// such run was told to check its workflow's `checks: write`.
+describe('a rate-limited check-run POST', () => {
+  it('names the rate limit, not the permission; a plain 403 still names the permission', async () => {
+    const { postCheckRun } = await import('../src/checks.js')
+    const warnFor = async (status: number, body: string): Promise<string[]> => {
+      const warns: string[] = []
+      await postCheckRun({
+        env: { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api.test' },
+        payload: {},
+        fetchFn: async () => ({ ok: false, status, text: async () => body }),
+        warn: (m) => void warns.push(m),
+      })
+      return warns
+    }
+    expect([
+      await warnFor(403, 'You have exceeded a secondary rate limit.'),
+      await warnFor(429, 'slow down'),
+      await warnFor(403, 'Resource not accessible by integration'),
+    ]).toEqual([
+      [
+        'vx-github: check-run POST failed (403) — rate-limited by GitHub; this run has no check: You have exceeded a secondary rate limit.',
+      ],
+      [
+        'vx-github: check-run POST failed (429) — rate-limited by GitHub; this run has no check: slow down',
+      ],
+      [
+        'vx-github: check-run POST failed (403) — does the workflow grant `permissions: checks: write`?: Resource not accessible by integration',
+      ],
+    ])
+  })
+})

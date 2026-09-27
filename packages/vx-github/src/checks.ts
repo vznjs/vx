@@ -125,9 +125,17 @@ export async function postCheckRun(args: {
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      args.warn(
-        `vx-github: check-run POST failed (${res.status})${res.status === 403 ? ' — does the workflow grant `permissions: checks: write`?' : ''}: ${body.slice(0, 200)}`,
-      )
+      // GitHub answers a rate limit (primary or secondary) with 403 as often
+      // as 429, and the permissions hint sent every such run to its workflow
+      // file. Not retried: its retry-after is seconds to minutes, past core's
+      // flush deadline (F-13).
+      const limited = res.status === 429 || /rate limit/i.test(body)
+      const hint = limited
+        ? ' — rate-limited by GitHub; this run has no check'
+        : res.status === 403
+          ? ' — does the workflow grant `permissions: checks: write`?'
+          : ''
+      args.warn(`vx-github: check-run POST failed (${res.status})${hint}: ${body.slice(0, 200)}`)
     }
   } catch (err) {
     args.warn(

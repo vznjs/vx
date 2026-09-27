@@ -68,7 +68,8 @@ permissions:
 Without the token the check is silently skipped (the job summary still
 writes); pass `checks: true` to warn instead, or `checks: false` to opt
 out entirely. A failed POST warns and never fails the run — a `403` says
-to check `permissions: checks: write` — and a slow API costs the run
+to check `permissions: checks: write`, a rate limit (`429`, or a `403`
+saying so) says so and is not retried — and a slow API costs the run
 nothing past core's end-of-run flush deadline. On `pull_request` events
 `GITHUB_SHA` is the merge commit; GitHub still surfaces the check on the
 PR.

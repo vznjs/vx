@@ -165,6 +165,18 @@ this phase: vx mcp against the official MCP SDK client (handshake, all six
 tools, errors, ping) is clean; STATUS Next 1 (a local NativeLink) is
 blocked here: ghcr blobs and the GitHub API are refused by egress policy.
 
+F-13. vx-github told every failed-with-403 check-run POST to check
+`permissions: checks: write`, but GitHub answers a rate limit with 403 as
+often as 429; a rate-limited run now says so (not retried: retry-after
+outlasts the flush deadline). Row red without the fix; a plain 403 keeps
+the permission hint.
+
+Measured, no cut: REAPI upload sequencing. Through a proxy adding 15 ms
+one-way, 400 x 64 KiB (7 batches) took 12.9 s and 10 x 5 MiB 25.5 s,
+about 2 MB/s: HTTP/2 flow control on one connection, which parallel
+streams share. Sequential calls cost at most one RTT each (17 calls,
+~0.5 s of 25), so a pool is not worth its complexity.
+
 F-14. vx-reapi took any endpoint string: `http://` failed the run with
 grpc's `Could not parse target name ""`, and a blank value or
 `host:notaport` degraded every request to a miss with a grpc message. The
