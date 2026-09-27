@@ -27,7 +27,12 @@ import {
 
 /** A POST function — injected in tests, defaults to fetch. Returns nothing;
  *  errors are the sink's to swallow. */
-export type PostFn = (url: string, body: string, headers: Record<string, string>) => Promise<void>
+export type PostFn = (
+  url: string,
+  body: string,
+  headers: Record<string, string>,
+  signal?: AbortSignal,
+) => Promise<void>
 
 export type OtelSignal = 'traces' | 'metrics' | 'logs'
 
@@ -54,9 +59,13 @@ export interface OtelSinkConfig {
 // fires, well after the POST resolved.
 const defaultPost =
   (timeoutMs: number): PostFn =>
-  async (url, body, headers) => {
+  async (url, body, headers, deadline) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
+    // Core's flush deadline ends the POST too: `timeoutMs` (15 s by
+    // default) alone held the process that long after the run (item 1055).
+    const onDeadline = (): void => controller.abort()
+    deadline?.addEventListener('abort', onDeadline, { once: true })
     try {
       const res = await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
       // A collector that REFUSES the export still ANSWERS: only one that
@@ -74,6 +83,7 @@ const defaultPost =
       if (rejected !== undefined) throw new Error(rejected)
     } finally {
       clearTimeout(timer)
+      deadline?.removeEventListener('abort', onDeadline)
     }
   }
 
@@ -213,13 +223,17 @@ export class OtelSink implements TelemetrySink {
     }
   }
 
+  /** Core's flush deadline, passed to every POST. */
+  private deadline: AbortSignal | undefined
+
   onRunSummary(summary: RunSummaryRecord): void {
     this.summary = summary
   }
 
-  async flush(): Promise<void> {
+  async flush(signal?: AbortSignal): Promise<void> {
     if (this.uploaded) return
     this.uploaded = true
+    this.deadline = signal
     // Finalize the root span now that the run is over (run.end set the end).
     if (this.run !== undefined && this.traceId) {
       // Prefer the summary's own start/end: they are the run's canonical
@@ -293,7 +307,7 @@ export class OtelSink implements TelemetrySink {
       ...this.cfg.signalHeaders[signal],
     }
     try {
-      await this.cfg.post(url, body, headers)
+      await this.cfg.post(url, body, headers, this.deadline)
     } catch (err) {
       // export is fully optional — a down collector never affects a run
       // Name the URL: three signals ship concurrently and each is caught

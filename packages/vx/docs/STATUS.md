@@ -747,6 +747,23 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
       gets `outputDirsCurrent`'s directory-mtime short-circuit. Next 27
       carries the numbers and the candidate that keeps it.
 
+1055. DONE (2026-09-27, the telemetry review's lead 1). A telemetry sink
+      hung past its flush deadline could hold `vx` open: core stops
+      waiting at the deadline (3 s) but a request still in flight keeps
+      the event loop alive, and `bin.ts` exits when the loop drains. A
+      hanging GitHub API kept `vx run` alive until the CI job's own
+      timeout (vx-github's POST had no timeout), and a hanging collector
+      held it for vx-otel's `timeoutMs`, 15 s by default.
+      - Seam: `TelemetrySink.flush(signal)` — core passes an
+        `AbortSignal` it aborts at the deadline. vx-github passes it to the
+        check-run POST, vx-otel to each export beside its own timer.
+        `modules/telemetry-host.md` and the sink blog post say so.
+      - Rows: `telemetry-lifecycle.test.ts` › the signal a flush receives
+        aborts at the deadline; `github.test.ts` › the check-run POST ends
+        when core's flush deadline aborts; `collector.test.ts` › the POST
+        ends when core's flush deadline aborts, not at timeoutMs (a real
+        hanging server). Each red without its change.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

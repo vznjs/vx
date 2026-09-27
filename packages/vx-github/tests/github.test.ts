@@ -489,6 +489,36 @@ describe('Checks API', () => {
     }
   })
 
+  // Core abandons a flush at its deadline, but a request still in flight
+  // kept `vx run` alive against a hanging API until the CI job's own
+  // timeout (item 1055). The POST carries core's deadline signal.
+  it('the check-run POST ends when core’s flush deadline aborts', async () => {
+    const warns: string[] = []
+    const prev = { ...process.env }
+    Object.assign(process.env, ENV)
+    try {
+      const sink = github({
+        summaryFile: '/tmp/sum.md',
+        append: async () => undefined,
+        fetchFn: (_url, init) =>
+          // As `fetch` does: an aborted signal rejects at once, a later
+          // abort when it lands; without one the request never answers.
+          new Promise((_resolve, reject) => {
+            if (init.signal?.aborted === true) reject(new Error('aborted'))
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+          }),
+      }).telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      const deadline = new AbortController()
+      const flushed = sink.flush!(deadline.signal)
+      deadline.abort()
+      await flushed
+      expect(warns.length).toBe(1)
+    } finally {
+      restoreEnv(prev)
+    }
+  })
+
   it('a failing POST warns and never throws — observability cannot break a run', async () => {
     const warns: string[] = []
     const prev = { ...process.env }

@@ -11,7 +11,7 @@ exists wires a `TelemetrySource` onto the run's event bus.
 ```ts
 export interface TelemetryHandle {
   emitSummary(summary: RunSummaryRecord): void // to every sink, crash-isolated
-  flush(): Promise<void> // every sink's flush, crash-isolated, time-bounded by the sink
+  flush(): Promise<void> // every sink's flush, crash-isolated, time-bounded; each sink's signal aborts at the deadline
   dispose(): void // remove the bus subscription; idempotent
 }
 

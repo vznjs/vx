@@ -229,6 +229,54 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
     ])
   })
 
+  // Core abandons a flush at its deadline, and a POST to a hanging
+  // collector held the process until `timeoutMs` (15 s by default) after
+  // the run (item 1055). Core's deadline signal ends it.
+  it('the POST ends when core’s flush deadline aborts, not at timeoutMs', async () => {
+    const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) })
+    try {
+      const sink = new OtelSink({
+        tracesUrl: `http://127.0.0.1:${hang.port}/v1/traces`,
+        metricsUrl: '',
+        logsUrl: '',
+        serviceName: 'vx',
+        headers: {},
+        metricsEnabled: false,
+        logsEnabled: false,
+        timeoutMs: 30_000,
+      })
+      sink.onRecord({
+        v: 1,
+        kind: 'run.start',
+        run: RUN,
+        total: 1,
+        ts: 1000,
+        startedAt: 1000,
+      } as never)
+      sink.onRecord({
+        v: 1,
+        kind: 'task.end',
+        runId: 'run-1',
+        ts: 1050,
+        taskId: 'a#b',
+        project: 'a',
+        task: 'b',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 1,
+      } as never)
+      const deadline = new AbortController()
+      const t0 = Date.now()
+      const flushed = sink.flush(deadline.signal)
+      setTimeout(() => deadline.abort(), 100)
+      await flushed
+      expect(Date.now() - t0).toBeLessThan(5_000)
+    } finally {
+      await hang.stop(true)
+    }
+  }, 20_000)
+
   it('the request timer is cleared once the export answers: it never keeps the process alive', async () => {
     // A timer left armed keeps a CLI process alive until it fires, long
     // after the POST resolved. The child exports against this server with
