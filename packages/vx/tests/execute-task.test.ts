@@ -16,7 +16,7 @@
 // a timeout, what a `preProbed` entry is allowed to skip, and how a hit is
 // classified.
 
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -454,8 +454,16 @@ describe('execute-task — what the outcome and the request carry', () => {
           signal: 'SIGTERM' as const,
         }),
       } as never
-      const t = await executeTask({ ...baseArgs(b, n, log), executor: term })
+      // An abort only while the RUN is stopping; a SIGTERM it did not send
+      // is a failure like the SIGKILL (item 1100).
+      const t = await executeTask({
+        ...baseArgs(b, n, log),
+        executor: term,
+        stopSignal: AbortSignal.abort(),
+      })
       expect(t.status).toBe('aborted')
+      const own = await executeTask({ ...baseArgs(b, n, log), executor: term })
+      expect(own.status).toBe('failed')
     } finally {
       await closeBench(b)
     }
@@ -679,6 +687,30 @@ describe('execute-task — output cleaning across retry attempts', () => {
   )
 })
 
+/**
+ * Run `t` in `project`, stopping the run (its `signal`) once the task has
+ * written `started` in `dir`: a stop the run itself makes, where the task's
+ * own death is an abort (item 1100).
+ */
+async function runStoppedOnce(dir: string, project: string) {
+  await rm(path.join(dir, 'started'), { force: true })
+  const stop = new AbortController()
+  const running = run({
+    cwd: fixture.root,
+    tasks: ['t'],
+    projects: [project],
+    log: capturingLogger({ root: fixture.root, out: [], err: [] }),
+    signal: stop.signal,
+  })
+  const deadline = Date.now() + 10_000
+  while (!existsSync(path.join(dir, 'started'))) {
+    if (Date.now() > deadline) throw new Error('the task never started')
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  stop.abort()
+  return running
+}
+
 describe('execute-task — retry loop control flow: abort vs timeout', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
@@ -696,21 +728,17 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
       // classifies `aborted` (not `failed`), which propagates to dependents
       // without being counted, shown, or cached.
       //
-      // The task SIGTERMs its own shell, which is what an external `kill`, a
-      // supervisor, or `docker stop` looks like from the runner's side.
+      // The RUN stops while the task is running (the embedder's abort, what
+      // a Ctrl-C does through the handlers). A task killed by a signal the
+      // run did not send is a failure, and IS retried (item 1100).
       const dir = await addProject(
         fixture.root,
         'ab',
         `export default { tasks: { t: {
-          exec: { command: 'echo x >> tries.txt; kill -TERM $$', retries: 3 },
+          exec: { command: 'echo x >> tries.txt; touch started; sleep 5', retries: 3 },
         } } }`,
       )
-      const r = await run({
-        cwd: fixture.root,
-        tasks: ['t'],
-        projects: ['ab'],
-        log: capturingLogger(fixture),
-      })
+      const r = await runStoppedOnce(dir, 'ab')
       const o = r.outcomes[0]!
       expect(o.status).toBe('aborted')
       expect(o.exitCode).toBe(143)
@@ -736,24 +764,14 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
         fixture.root,
         'abc',
         `export default { tasks: { t: {
-          exec: { command: 'echo x >> tries.txt; mkdir -p dist; echo partial > dist/p.txt; kill -TERM $$' },
+          exec: { command: 'echo x >> tries.txt; mkdir -p dist; echo partial > dist/p.txt; touch started; sleep 5' },
           cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
         } } }`,
       )
-      const first = await run({
-        cwd: fixture.root,
-        tasks: ['t'],
-        projects: ['abc'],
-        log: capturingLogger(fixture),
-      })
+      const first = await runStoppedOnce(dir, 'abc')
       expect(first.outcomes[0]!.status).toBe('aborted')
 
-      const second = await run({
-        cwd: fixture.root,
-        tasks: ['t'],
-        projects: ['abc'],
-        log: capturingLogger({ root: fixture.root, out: [], err: [] }),
-      })
+      const second = await runStoppedOnce(dir, 'abc')
       // Re-executed, NOT served from cache: two recorded attempts on disk.
       expect(second.outcomes[0]!.status).toBe('aborted')
       expect((await readFile(path.join(dir, 'tries.txt'), 'utf8')).trim().split('\n')).toHaveLength(

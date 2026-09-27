@@ -190,6 +190,27 @@ upgrade` on the latest version re-downloaded and replaced the
         spelling" (four blank spellings), red without the change. The
         control is `' true '`.
 
+1100. DONE (2026-09-27, scheduler review #1). A task whose child died of
+      SIGINT or SIGTERM was `aborted` even when the run was not stopping,
+      as with a `kill` from a supervisor or another shell. So it was not
+      retried (`retries: 2` ran it once), its output was hidden (no frame,
+      no recap), the footer left it out, and `--continue=never` never
+      tripped: fail-fast keys on `failed`. The child-signal half of item
+      962's test is gone; the run stopping is what makes an abort. A
+      terminal's Ctrl-C reaches the child and vx together, and the child's
+      exit can be seen before vx's handler runs, so a signal death yields
+      one event-loop turn for a pending handler before it is judged. The
+      signal suites passed 3 of 3 with the change, and the one row that
+      failed once under load passed 10 of 10 both with and without it.
+      execution.md says so.
+      - Rows: `aborted-outcome.test.ts` › "a task killed by a signal vx
+        did not send is a failure": three attempts, the output shown,
+        `failed (exit 143, 128 + SIGTERM)`, and `later` never runs under
+        `--continue=never`. It is red without the change. The row that
+        pins the Aborted section had a task that killed only itself; it
+        now stops the run itself (`kill -TERM $PPID`, after `fine`),
+        12 of 12 green.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
