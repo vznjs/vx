@@ -365,11 +365,21 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
   if (out.dry !== undefined && out.graph !== undefined) {
     return { ...out, error: '--dry and --graph are mutually exclusive' }
   }
-  if (out.dry !== undefined && (out.summarize !== undefined || out.profile !== undefined)) {
-    return { ...out, error: '--dry skips execution; --summarize / --profile need a real run' }
+  // Every flag that promises a file or a section about the run: the
+  // planning branch returns before any of them is written, and
+  // `--report-file="$GITHUB_STEP_SUMMARY" --dry` exited 0 having written
+  // nothing (item 992).
+  const needsRun =
+    out.summarize !== undefined ||
+    out.profile !== undefined ||
+    out.report !== undefined ||
+    out.reportFile !== undefined
+  const runOnly = '--summarize / --profile / --report / --report-file need a real run'
+  if (out.dry !== undefined && needsRun) {
+    return { ...out, error: `--dry skips execution; ${runOnly}` }
   }
-  if (out.graph !== undefined && (out.summarize !== undefined || out.profile !== undefined)) {
-    return { ...out, error: '--graph skips execution; --summarize / --profile need a real run' }
+  if (out.graph !== undefined && needsRun) {
+    return { ...out, error: `--graph skips execution; ${runOnly}` }
   }
   return out
 }

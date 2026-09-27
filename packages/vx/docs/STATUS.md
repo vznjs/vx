@@ -354,6 +354,18 @@ test is telling the truth.
         without the fix); the two `planRun` rows that pinned `no-cache`
         for `--force` now pin `miss`, and the invariant is "no axis at
         all", not "no read axis".
+992.  DONE (2026-09-27, the run-flags review's lead 2). `--dry` and
+      `--graph` refused `--summarize` and `--profile` but took `--report`
+      and `--report-file` and wrote nothing: the planning branch returns
+      before the report. `--report-file="$GITHUB_STEP_SUMMARY" --dry`
+      exited 0 with no summary.
+      - Fix (`cli/run.ts`): planning refuses all four, naming them.
+        `cli.md` and `execution.md` say so. `--verbosity` is accepted and
+        ignored there still: it promises no artifact, and planning prints
+        what it prints.
+      - Row: `cli.test.ts` › rejects --report / --report-file with --dry or
+        --graph, exact messages, a real run as the control. Red without
+        the fix.
 
 ## In flight
 
