@@ -41,6 +41,37 @@ synthetic packages (compiled, 11 interleaved cold reps, A/A beside):
   `getdents64`, +6 `statx`, +2 `readlink`, one temp write and a rename
   per artifact (`strace-vx.ts`, save against no-save).
 
+I-5. Re-bench of J-14, G-10 and A-6 (main 3e927f9c against 889a95c,
+each arm's own vx-migrate, compiled, 15 interleaved rounds, A/A on a
+third copy). astro (`turbo()`, filtered no-op, this box's git config):
+763 → 715 ms median (min 723 → 646), A/A 719 (678). refine (`nx()`,
+git defaults via `GIT_CONFIG_GLOBAL=/dev/null`): 375 → 396, A/A 410 —
+no gain, and `load configs` rose 74 → 113 ms (stage mins, 7 runs; the
+G lead below). Under this box's global git config
+(`core.checkstat=minimal`, `core.trustctime=false`) refine read
+365 → 448: A-6 rightly hashes every input there (`classify + probe`
+51 → 121 ms).
+
+I-6. The cold save, attributed. Process-tree CPU, 10 interleaved cold
+runs at 1,000 packages: 11,485 ms with local writes against 8,615
+without, ~2.9 ms per one-file save. By thread (`/proc` sampled): main
++1.2 s, Bun's pool +0.9 s, JIT +0.25 s. Main thread by function
+(profile diff, save against `--cache=local:r`): SQLite 478 ms, of it
+BEGIN/COMMIT 262; `Bun.Glob` `scanSync` in `resolveOutputs` 180;
+`renameSync` inside the index transaction 164; `writeFile` 88;
+`lstatSync` 79; `realpath` 53. Probed:
+
+- Dependents not waiting for their upstream's save (`settledOf` off,
+  saves drained before the run ends): 3,836 ms median against 4,026,
+  A/A 3,868. Refuted.
+- A commit window (saves within 4 ms share one transaction, a
+  savepoint each): pass 1 3,825 against 3,969, A/A 3,988; pass 2
+  (copies rotated) 4,075 against 4,287, A/A 4,029; CPU 11,309 against
+  11,548 median, min a tie. At most ~200 ms, not resolved on this box.
+  WAL writes fall only 18,959 → 16,467 `pwrite64`: ~16 pages a save
+  stay, because each save's rows land on random leaves of several
+  hash-keyed indexes.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
@@ -98,6 +129,17 @@ synthetic packages (compiled, 11 interleaved cold reps, A/A beside):
   synthetic packages `--filter '*'` main median 369 ms (min 341),
   patch 351 (305), A/A 375 (336); astro's filtered no-op main 819
   (752), patch 733 (682), A/A 774 (755); every run exit 0.
+- **A: a cold save writes ~16 SQLite pages (I-6).** The lever is rows
+  and indexes per save (4 `entry_inputs` rows, an `output_files`
+  SELECT + UPDATE for the inode stamp, `output_dirs`), not commit
+  count. Second: `renameSync` inside the transaction (164 ms of main
+  thread per 1,000 saves) and the sync `scanSync` in `resolveOutputs`
+  (180 ms) could move to the pool.
+- **G: nx()'s graph key (item 1075) spawns a whole-repo `git status
+-uall` every run.** refine, 11,521 tracked files: 80–99 ms alone.
+  Bound (the key returning null, mtime fallback), 15 rounds with git
+  defaults: main 417 ms median, bound 321, A/A 399. Reuse core's
+  enumeration or scope the status to the project roots.
 - **F: `wedged.test.ts` › "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL
   and is retried" failed once in a local gate (I-3): `sent` 3 where 4
   is expected, 2,199 ms, on c2f0fa79; green on the next gate at
