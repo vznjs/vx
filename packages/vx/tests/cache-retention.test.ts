@@ -231,6 +231,22 @@ describe('the cacheRetention field', () => {
     expect(refusal({ olderThan: '12H', maxSize: '500MB' })).toBeNull()
   })
 
+  it('refuses the bounds that evict every entry after every run (item 969)', () => {
+    // Each loaded and then emptied the cache at the end of every run, the
+    // entries that run had just saved included; `vx cache prune` already
+    // refused all three.
+    expect([
+      refusal({ olderThan: '0s' }),
+      refusal({ maxSize: '0G' }),
+      refusal({ maxSize: '10' }),
+    ]).toEqual([
+      `${WS}: \`cacheRetention\`.olderThan of 0 evicts every entry after every run`,
+      `${WS}: \`cacheRetention\`.maxSize of 0 evicts every entry after every run`,
+      `${WS}: \`cacheRetention\`.maxSize '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')`,
+    ])
+    expect(refusal({ maxSize: '10B' })).toBeNull()
+  })
+
   it('refuses each malformed shape by name', () => {
     expect([
       refusal('30d'),
@@ -245,7 +261,7 @@ describe('the cacheRetention field', () => {
       `${WS}: \`cacheRetention\` names neither \`olderThan\` nor \`maxSize\``,
       `${WS}: \`cacheRetention\`.olderThan must be a duration like '30d', '12h', '90m' or '45s'`,
       `${WS}: \`cacheRetention\`.olderThan must be a duration like '30d', '12h', '90m' or '45s'`,
-      `${WS}: \`cacheRetention\`.maxSize must be a size like '10G', '500MB' or '1048576'`,
+      `${WS}: \`cacheRetention\`.maxSize must be a size like '10G', '500MB' or '64KB'`,
     ])
     expect(refusal({ maxAge: '30d' })).toContain('unknown field')
   })

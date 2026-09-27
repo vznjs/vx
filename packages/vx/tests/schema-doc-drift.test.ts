@@ -375,8 +375,20 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig('{ cacheRetention: { olderThan: "30 days" } }'),
   ],
   [
-    "cacheRetention.maxSize must be a size like '10G', '500MB' or '1048576'",
+    "cacheRetention.maxSize must be a size like '10G', '500MB' or '64KB'",
     workspaceConfig('{ cacheRetention: { maxSize: "1.5G" } }'),
+  ],
+  [
+    'cacheRetention.olderThan of 0 evicts every entry after every run',
+    workspaceConfig('{ cacheRetention: { olderThan: "0d" } }'),
+  ],
+  [
+    'cacheRetention.maxSize of 0 evicts every entry after every run',
+    workspaceConfig('{ cacheRetention: { maxSize: "0G" } }'),
+  ],
+  [
+    "cacheRetention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>M', '<n>G')",
+    workspaceConfig('{ cacheRetention: { maxSize: "10" } }'),
   ],
   ['plugins must be an array of plugin objects', workspaceConfig('{ plugins: {} }')],
   ['plugins[<i>] must be an object', workspaceConfig('{ plugins: ["nope"] }')],

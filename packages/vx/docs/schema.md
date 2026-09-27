@@ -1155,12 +1155,14 @@ interface WorkspaceConfig {
   end of every run that writes the local cache: entries unused for
   `olderThan` (`30d`, `12h`, `90m`, `45s`) go first, then the
   least-recently-used until the cache is under `maxSize` (`10G`,
-  `500MB`, a byte count). Either or both. It runs after the run's saves
+  `500MB`, `64KB`; a bare number is refused as a typo, `10B` is not).
+  Either or both, and neither may be zero: each would evict what every
+  run just saved (item 969). It runs after the run's saves
   and uploads have landed, never on a run a signal or an abort stopped
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
   nothing to evict pays one scan of the index), and says what it
   evicted in one line (`vx: cache retention evicted 3 entries
-(1.2 GB)`); an entry the run just used is never due. The prune's
+(1.2 GB)`); under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
   orphan sweep (artifacts no index row counts, older than an hour —
   see `vx cache prune`) also runs on its own clock, at most once an
   hour, so their bytes go even when nothing the index holds is due
@@ -1515,7 +1517,10 @@ Workspace-config errors:
 | `cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }`                                                                                     | Not an object.                                                                                                    |
 | `cacheRetention names neither olderThan nor maxSize`                                                                                                | An empty policy would evict nothing and read as one.                                                              |
 | `cacheRetention.olderThan must be a duration like '30d', '12h', '90m' or '45s'`                                                                     | The `vx cache prune --older-than` spelling, or not a string.                                                      |
-| `cacheRetention.maxSize must be a size like '10G', '500MB' or '1048576'`                                                                            | The `vx cache prune --max-size` spelling (no fractions), or not a string.                                         |
+| `cacheRetention.maxSize must be a size like '10G', '500MB' or '64KB'`                                                                               | The `vx cache prune --max-size` spelling (no fractions), or not a string.                                         |
+| `cacheRetention.olderThan of 0 evicts every entry after every run`                                                                                  | Every run would evict what it just saved; `vx cache prune --older-than 0` is refused too.                         |
+| `cacheRetention.maxSize of 0 evicts every entry after every run`                                                                                    | The same, for the size bound.                                                                                     |
+| `cacheRetention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>M', '<n>G')`                                                               | A bare number is bytes; a cache capped at `10` bytes is a typo for `10G`. `10B` still loads.                      |
 | `plugins must be an array of plugin objects`                                                                                                        | Wrong shape.                                                                                                      |
 | `plugins[<i>] must be an object`                                                                                                                    | A non-object entry in `plugins`.                                                                                  |
 | `plugins[<i>] must come from definePlugin(import.meta, { … })`                                                                                      | A plain object where a plugin was expected: a plugin's name is its package name, and only `definePlugin` sets it. |
