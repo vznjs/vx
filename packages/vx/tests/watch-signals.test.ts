@@ -97,6 +97,41 @@ describe('vx watch under a signal (e2e)', () => {
     expect(out).toContain('vx watch: stopped')
   }, 20_000)
 
+  // A config that does not parse at start ended watch with exit 1, while
+  // the same break mid-watch was a failed cycle the fix re-ran (item 1017).
+  it('a config broken at start is a failed cycle: watch keeps watching, and the fix re-runs', async () => {
+    const dir = await addProject(root, 'app', `export default { tasks: {`)
+    const proc = Bun.spawn([process.execPath, BIN, 'watch', 'quick', '--all'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    let out = ''
+    let err = ''
+    const readers = [
+      (async () => {
+        for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+      })(),
+      (async () => {
+        for await (const chunk of proc.stderr) err += new TextDecoder().decode(chunk)
+      })(),
+    ]
+    await waitForText(async () => err, 'vx watch: cycle failed:', 10_000)
+    await waitForText(async () => out, 'watching', 10_000)
+    await Bun.write(
+      path.join(dir, 'vx.config.mjs'),
+      `export default { tasks: { quick: { exec: { command: 'echo fixed > fixed.txt' } } } }`,
+    )
+    await waitForText(
+      async () => ((await Bun.file(path.join(dir, 'fixed.txt')).exists()) ? 'yes' : ''),
+      'yes',
+      10_000,
+    )
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(0)
+    await Promise.all(readers)
+  }, 30_000)
+
   // The loop forwards the signal it received, as `vx run` does: a Ctrl-C
   // reaches the cycle's task and the dev server it holds between cycles
   // as SIGINT, so a SIGINT-only cleanup runs. The task records which

@@ -108,6 +108,39 @@ recorded here as it lands. Layer map measured first (imports between
 orchestrator ← cli, `config.ts` a leaf, no back edges — the boundaries
 test is telling the truth.
 
+A parallel session landed its own item 1017 (PR #1087, the vx-reapi
+chunk stall) while this loop's 1017–1050 were in review. It keeps its
+number in a list of its own, here, so every item number the code cites
+stays true:
+
+1017. DONE (2026-09-27, CI run 36316687362 on #1084, a diff that touches
+      no vx-reapi code). `reapi-e2e` › "stores and restores an artifact
+      larger than one chunk" failed after 30 014 ms with `CANCELLED: Call
+cancelled`; bazel-remote logged the 1 MiB write `context canceled`
+      exactly 30 s after it began. The chunk-stall downgrade keyed on
+      `DEADLINE_EXCEEDED` alone. grpc-go (v1.82.1,
+      `internal/transport/http2_server.go`) arms a timer at the call's
+      `grpc-timeout` and sends RST_STREAM(CANCEL), which grpc-js maps to
+      `CANCELLED: Call cancelled` when it lands before the client's own
+      timer. Probe, Bun 1.4.2 client, a grpc-go server that reads the first
+      message and stops (window never re-granted): 5 of 6 stalled 1 MiB
+      writes ended CANCELLED with an idle loop, 6 of 6 with the loop busy
+      at the deadline, and the downgrade ran on none of those it should
+      have. The hypothesis held.
+      - Fix (`wire.ts`): a `CANCELLED` at or past the attempt's own
+        deadline is the deadline and takes the downgrade. No slack: the
+        header carries `ceil(deadline - now)`, so the server's timer cannot
+        fire before the client's. An earlier `CANCELLED` is not retried.
+        README and design §14 say so.
+      - Rows: `wedged.test.ts` › the chunk stall's deadline spelled by the
+        server, against `tests/helpers/stalling-h2.ts` (raw HTTP/2, no
+        WINDOW_UPDATE, RST at a set delay, a separate process so the row
+        can block its loop until the RST is sent). The at-deadline row is
+        red without the fix; the early-CANCELLED control is red if any
+        CANCELLED downgrades; the single-message control stays.
+
+The loop itself:
+
 973.  DONE (2026-09-27, the `vx lock` review's lead 3; docs and comments
       only). The `lockfile.ts` header, the `lock.test.ts` header and the
       body of `design/config-lock-2026-06.md` still said every run with a
@@ -713,31 +746,13 @@ test is telling the truth.
       - Row: `watch-rules.test.ts` › armWatcher drops another arm's probe,
         with an edit beside it delivered. Red without the fix.
 
-1017. DONE (2026-09-27, CI run 36316687362 on #1084, a diff that touches
-      no vx-reapi code). `reapi-e2e` › "stores and restores an artifact
-      larger than one chunk" failed after 30 014 ms with `CANCELLED: Call
-cancelled`; bazel-remote logged the 1 MiB write `context canceled`
-      exactly 30 s after it began. The chunk-stall downgrade keyed on
-      `DEADLINE_EXCEEDED` alone. grpc-go (v1.82.1,
-      `internal/transport/http2_server.go`) arms a timer at the call's
-      `grpc-timeout` and sends RST_STREAM(CANCEL), which grpc-js maps to
-      `CANCELLED: Call cancelled` when it lands before the client's own
-      timer. Probe, Bun 1.4.2 client, a grpc-go server that reads the first
-      message and stops (window never re-granted): 5 of 6 stalled 1 MiB
-      writes ended CANCELLED with an idle loop, 6 of 6 with the loop busy
-      at the deadline, and the downgrade ran on none of those it should
-      have. The hypothesis held.
-      - Fix (`wire.ts`): a `CANCELLED` at or past the attempt's own
-        deadline is the deadline and takes the downgrade. No slack: the
-        header carries `ceil(deadline - now)`, so the server's timer cannot
-        fire before the client's. An earlier `CANCELLED` is not retried.
-        README and design §14 say so.
-      - Rows: `wedged.test.ts` › the chunk stall's deadline spelled by the
-        server, against `tests/helpers/stalling-h2.ts` (raw HTTP/2, no
-        WINDOW_UPDATE, RST at a set delay, a separate process so the row
-        can block its loop until the RST is sent). The at-deadline row is
-        red without the fix; the early-CANCELLED control is red if any
-        CANCELLED downgrades; the single-message control stays.
+1017. DONE (2026-09-27, the watch review's lead 3). A `vx.config.mjs`
+      that did not parse ended `vx watch` at start (a config error, exit 1), while the same break mid-watch printed "cycle failed"
+      and the fix re-ran: the initial run had no catch.
+      - Fix (`watch.ts`): the initial run's failure is a failed cycle like
+        any other; the sweep and the arm go on. `cli.md` says so.
+      - Row: `watch-signals.test.ts` › a config broken at start is a failed
+        cycle, and the fix re-runs (e2e). Red without the fix.
 
 1018. DONE (2026-09-27, the owner's "each time we merge we should have
       an auto release"). `.github/workflows/auto-release.yml` runs when CI

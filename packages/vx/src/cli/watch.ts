@@ -504,9 +504,20 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // closing it properly needs the workspaceWide decision made without loading
   // configs.
   process.stdout.write('vx watch: initial run...\n\n')
-  const initial = await runOrchestrator(opts)
+  // A run that throws (a config that does not parse) is a failed cycle, as
+  // it is once the loop runs: watch keeps watching, so the fix re-runs.
+  // Uncaught, it ended watch at start while the same break mid-watch did
+  // not (item 1017).
+  let held: HeldPersistent | undefined
+  try {
+    held = (await runOrchestrator(opts)).persistent
+  } catch (err) {
+    process.stderr.write(
+      `vx watch: cycle failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    )
+  }
   if (stop.signal.aborted) {
-    await initial.persistent?.stop(forwardedSignal(stop.signal.reason))
+    await held?.stop(forwardedSignal(stop.signal.reason))
     return 0
   }
 
@@ -519,7 +530,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const ws = await loadCliWorkspace(workspaceRoot)
   return await runWatchLoop({
     opts,
-    held: initial.persistent,
+    held,
     stop: stop.signal,
     workspaceRoot,
     projects: watched,
