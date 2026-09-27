@@ -1153,7 +1153,9 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
   const root = cdInto === '' ? `"$PWD${climb}"` : '"$PWD"'
   // Order matters: VX_ROOT is read BEFORE the cd, the project-local bin dir
   // AFTER it, so both are right whichever mode we are in.
-  const cd = cdInto === '' ? '' : `cd '${cdInto}' || exit 1; `
+  // Quoted as the forwarded args are: a project directory is a name like
+  // any other, and `it's` ended the quote and ran the rest as script (L-7).
+  const cd = cdInto === '' ? '' : `cd '${cdInto.replaceAll("'", `'\\''`)}' || exit 1; `
   return (
     `VX_ROOT=${root}; ${cd}` +
     `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
@@ -1394,8 +1396,11 @@ export async function materialiseOutputs(
  * `..`, a symlink `a -> ~` followed by a directory `a` holding
  * `.ssh/authorized_keys`, a file written through a link the result placed,
  * or a link out of the tree that the save then packed and uploaded. Each
- * is refused as the server's fault. A directory's check is memoized until
- * the next link is placed, since a link can change what it resolves to.
+ * is refused as the server's fault. A directory's check is memoized: it
+ * is created a real directory right after, and a link is never placed over
+ * a directory (`rm` without `recursive` refuses one). An absolute path
+ * needs no case of its own: the join lands it where it names, and the
+ * containment check judges that.
  */
 class Fence {
   private realRoot: string | undefined
@@ -1408,7 +1413,8 @@ class Fence {
 
   /** `rel` joined under `base`, refused when the join leaves the root. */
   lexical(base: string, rel: string): string {
-    if (rel.includes('\0') || path.isAbsolute(rel)) throw this.refuse(rel)
+    // A NUL reached the file system as a raw ERR_INVALID_ARG_VALUE.
+    if (rel.includes('\0')) throw this.refuse(rel)
     const abs = path.resolve(base, rel)
     if (abs !== this.root && !abs.startsWith(this.root + path.sep)) throw this.refuse(rel)
     return abs
@@ -1447,7 +1453,6 @@ class Fence {
     if (target.includes('\0') || (to !== this.root && !to.startsWith(this.root + path.sep))) {
       throw this.refuse(`${abs} -> ${target}`)
     }
-    this.checked.clear()
     await placeSymlink(target, abs, created)
   }
 

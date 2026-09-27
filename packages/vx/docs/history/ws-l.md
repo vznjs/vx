@@ -9,6 +9,20 @@
    extended header is read whole with no bound (L-1).
 2. Remote inputs. Core's ingest holds (names, links, bombs, key check).
    vx-reapi's materialise wrote a server's ActionResult anywhere (L-2).
+3. Sandbox. A task's socket grant lifted the block for the whole run
+   (L-6). The shared `/tmp/claude` is a proven cross-task read (lead for
+   B). Env is the isolated set; the default mode's `/proc` is its own.
+4. Spawns. Git refs pass `--end-of-options`; a workspace path full of
+   shell syntax ran sandboxed with no injection (probed). vx-reapi's
+   remote `cd` was unquoted (L-7). The config purity gate is not a
+   security boundary (a config is the user's code); its `Worker` gap is
+   a staleness lead for D.
+5. Secrets. No plaintext value reaches a log, report, event or the
+   index; the digests `vx why` prints were unkeyed (L-4). vx-reapi puts
+   env values in the uploaded Command on the execute path, by design.
+6. `vx upgrade`: SHA-256 verified before a byte is written, the rename
+   last; provenance is out of its reach and says so (item 1096). No bug.
+   `vx mcp`'s tools are read-only and take no paths. No bug.
 
 ## Items
 
@@ -50,6 +64,17 @@
   the host socket reached beside a granted task). The lift is now set for
   each task's own wrap, wraps taken one at a time, and only in a run
   where some task asks. Row in `sandbox-runtime.unsafe.test.ts`.
+- L-7. `fix(vx-reapi)`: a root-anchored remote command entered its
+  project with `cd '<dir>'` unescaped, so a directory named `it's …`
+  ended the quote and the rest ran as script on the worker (a syntax
+  error at best). Quoted as the forwarded args are. Row in
+  `executor-helpers-sweep.test.ts`, run by a real shell. A mutation pass
+  over L-2's fence found two guards no row held: its `isAbsolute` refusal
+  (the containment check already judges an absolute path) and the memo
+  clear after a link (a checked directory is created real, and a link is
+  never placed over one), both removed; its NUL refusal is kept, now held
+  by a row (a NUL reached the file system as a raw
+  `ERR_INVALID_ARG_VALUE`).
 
 ## Leads for other streams
 
