@@ -18,7 +18,18 @@
   showed no preview. `public/og.png` (1200×630, from `og.svg`); the
   landing gains og and `twitter:card` tags, every docs page the image
   through Starlight's `head`. `landing.test.ts` holds both and the size.
+- **K-4** `examples/basic`: a two-package starter (lib, app; build,
+  test, a `ci` group) the README links. `tests/examples.unsafe.test.ts`
+  copies it into a fresh repo and drives cold (3 miss), warm (cache
+  hits) and an edit to lib (all three re-run); red with app's `^build`
+  dropped.
 
 ## Leads for other streams
 
 - **I**: `update-site.ts` gained the chart (K-1); it is stream I's file.
+- **H/E** npm discoverability: `build-npm.ts` publishes `@vzn/vx` with
+  the description "An open, extensible monorepo task runner." (the site
+  and README say "A fast, correct task runner and build cache for
+  JavaScript monorepos") and `homepage` on the GitHub README, not the
+  docs site; the plugin `package.json` files carry no `keywords`, so
+  npm search cannot find them by `vx`, `monorepo` or their subject.
