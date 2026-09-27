@@ -161,3 +161,11 @@ On a full disk the cache's side writes threw: the file-hash memo, the output sta
 
 - Fix (`inputs.ts` `refuseOneAlternativeBrace`): such an entry in `files` or `workspaceFiles` is refused, naming both spellings. `schema.md` says so.
 - Rows: `one-alternative-brace.test.ts`, three red without the fix; control: the escaped form and a two-way brace.
+
+### A-16 (2026-09-27, coordinator lead)
+
+The `local-shortcircuit.ts` sweep left survivors; the code was right, but nothing held it.
+
+- Rows (`local-shortcircuit.test.ts`): the per-task pool keeps a stable miss out of the tier; one throwing probe leaves only its own task unprobed; a throwing key derivation degrades to no short-circuit. Each is red under its own mutation and no other.
+- The "workspaceFiles INPUTS" row was disarmed: the cold run withholds rdr's save (`shared/g.txt` changed after its key was taken), so its reader missed and a miss never enters the tier. A second run saves it; the row now asserts the hit, and removing the `workspaceInputsReach` term reddens it.
+- Left: the reach and propagation exclusions (equal and ancestor prefix, root project, transitive dependants) still hold no row each.
