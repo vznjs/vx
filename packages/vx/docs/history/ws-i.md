@@ -72,6 +72,32 @@ BEGIN/COMMIT 262; `Bun.Glob` `scanSync` in `resolveOutputs` 180;
   stay, because each save's rows land on random leaves of several
   hash-keyed indexes.
 
+I-7. Scale, CI and the day's A/B (main 4b7c396a, compiled, git defaults).
+
+- Day A/B against item 960 (fa419f76), 1,000 packages warm, 15
+  rounds: base 184 ms median (min 159), main 196 (166), A/A 186 (173).
+  A tie.
+- 5,000 packages warm, stage mins of 9 against 1,000: startup 5.6 /
+  5.7, discover 72 / 13, package graph 31 / 6.4, load configs 73 / 15,
+  git 39 / 8.4, classify + probe 164 / 42, run graph 130 / 35, record
+  history 28 / 9.0; total ~566 / ~145 ms (3.9× for 5×). No stage is
+  super-linear beyond noise. The profile's native top: the output proof
+  (`outputDirsCurrent` lstat 37 ms, `isOutputsCurrent` stat 20),
+  SQLite reads (entries, config closures and evals, ~33), history rows
+  (20), `hashFiles` lstat (15), an artifact `existsSync` per hit (9,
+  how a vanished artifact degrades to a miss). Each is a floor the
+  design names; none is a lever alone.
+- CI (run 36354970833): Linux `vx run ci` 3:30 and macOS core tests
+  3:31 end within 6 s of each other, so cutting one job alone buys
+  nothing. Local gate, same 53 tasks on 4 cores: 1,165 s of task time
+  over 289 s of wall, so the run is work-bound; shard spread 40–100 s
+  matters only at the tail. Every run is cold (52 of 53 miss): CI
+  keeps no vx cache between runs (item 687). A push that leaves core
+  untouched would skip the core shards (~800 s of work) with the cache
+  restored — the owner's call, since the gate would then trust its own
+  cache. The 1.6 min before jobs start on main is the concurrency
+  group queueing behind the previous main run.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
