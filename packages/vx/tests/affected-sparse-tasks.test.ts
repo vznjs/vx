@@ -106,3 +106,27 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     expect([r.exitCode, r.out.includes('No projects declare task(s): test.')]).toEqual([1, true])
   })
 })
+
+// C-3: the guard judged a bare name against the whole workspace only when
+// the load was partial. `docs` depending on `app` loaded `app` for the
+// closure, so the load was whole and the check was skipped: `app` declared
+// `test` all along, and the run still said "No projects declare task(s)".
+describe('--affected: a task only an unaffected dependency declares is not a typo', () => {
+  it('exits 0 and says no affected project declares it', async () => {
+    await writeFile(
+      path.join(root, 'pkgs', 'docs', 'package.json'),
+      JSON.stringify({ name: 'docs', dependencies: { app: 'workspace:*' } }),
+    )
+    git(root, 'commit', '-qam', 'docs depends on app')
+    await writeFile(path.join(root, 'pkgs', 'docs', 'in.txt'), 'z\n')
+    git(root, 'commit', '-qam', 'docs only')
+    const run = vx(root, 'run', 'test', '--affected=HEAD~1')
+    const both = vx(root, 'run', 'lint', 'test', '--affected=HEAD~1')
+    const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
+    expect({
+      run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
+      both: [both.exitCode, both.out.includes('docs#lint'), both.out.includes('app#test')],
+      typo: [typo.exitCode, typo.out.includes('No projects declare task(s): tset.')],
+    }).toEqual({ run: [0, true], both: [0, true, false], typo: [1, true] })
+  })
+})
