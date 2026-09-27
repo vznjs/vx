@@ -1243,6 +1243,43 @@ describe.skipIf(!available)("a root project's read grant stops at the walls", ()
     },
     TIMEOUT,
   )
+  // B-12: a GLOB's hit on a wall. Linux drops it before the bind (B-1);
+  // seatbelt matched the glob as a regex, and SRT re-emits a wall's deny
+  // only under a literal allow, so on darwin both walls read.
+  it(
+    'a glob grant stops at the walls too',
+    async () => {
+      const node = {
+        id: 'root#build',
+        projectName: 'root',
+        projectDir: root,
+        taskName: 'build',
+        config: { exec: { command: 'true' } },
+      } as unknown as TaskNode
+      const { sandbox } = await sandboxRequestFor(
+        node,
+        { allow: { read: ['**/*.txt', '.*/*'] } },
+        root,
+        undefined,
+        [path.join(root, 'packages', 'b')],
+      )
+      const cat = async (file: string) => {
+        const r = await runSandboxed({
+          command: `cat ${file}`,
+          cwd: root,
+          env: process.env,
+          ...sandbox,
+        })
+        return [file, r.exitCode === 0 ? r.stdout : 'refused']
+      }
+      expect(await Promise.all(['src/y.txt', 'packages/b/x.txt', '.git/HEAD'].map(cat))).toEqual([
+        ['src/y.txt', 'own'],
+        ['packages/b/x.txt', 'refused'],
+        ['.git/HEAD', 'refused'],
+      ])
+    },
+    TIMEOUT,
+  )
 })
 
 describe.skipIf(!available)('a sandboxed task that produced nothing says why', () => {
