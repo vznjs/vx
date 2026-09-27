@@ -163,7 +163,10 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         abs,
         size: st.size,
         mode: st.mode & 0o777,
-        mtime: Math.floor(st.mtimeMs / 1000),
+        // ustar's octal field holds no sign: an mtime before 1970 made the
+        // header unreadable and every save of it a "corrupt artifact". The
+        // sidecar above carries the real value.
+        mtime: Math.max(0, Math.floor(st.mtimeMs / 1000)),
       }
     }),
   )
@@ -333,9 +336,14 @@ export async function extractArtifactStream(
       )
     }
     verify?.(provided)
+    // The sidecar's stat is the truth, a mode of 000 and an mtime at or
+    // before the epoch included (`SOURCE_DATE_EPOCH=0`). Without one, a
+    // header mtime of 0 is a producer that wrote none: unknown.
     await x.commit((name) => {
       const m = meta[name]
-      return [m?.[0] ?? 0o644, m?.[1] ?? headerMtime.get(name) ?? 0]
+      if (m !== undefined) return [m[0], m[1]]
+      const header = headerMtime.get(name)
+      return [0o644, header !== undefined && header > 0 ? header : undefined]
     })
   } catch (err) {
     await x.abort()
@@ -623,16 +631,20 @@ class Extractor {
    * restores' round trips flowing. The chmod is skipped when the mode is
    * the one the temp file was created with — the common case.
    */
-  async commit(metaFor: (name: string) => [mode: number, mtimeMs: number]): Promise<void> {
+  async commit(
+    metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
+  ): Promise<void> {
     await this.drain()
     const first = this.staged[0]
     const createdMode = first === undefined ? -1 : statSync(first.tmp).mode & 0o777
     let n = 0
     for (const s of this.staged) {
       const [mode, mtimeMs] = metaFor(s.name)
-      if (mode !== 0 && (mode & 0o777) !== createdMode) chmodSync(s.tmp, mode & 0o777)
-      if (mtimeMs > 0) {
-        const t = mtimeMs / 1000
+      if ((mode & 0o777) !== createdMode) chmodSync(s.tmp, mode & 0o777)
+      if (mtimeMs !== undefined) {
+        // A Date, not seconds: Bun reads a negative number of seconds as
+        // "now", and a Date before 1970 as itself (Bun 1.4.2).
+        const t = new Date(mtimeMs)
         utimesSync(s.tmp, t, t)
       }
       renameSync(s.tmp, s.target)
