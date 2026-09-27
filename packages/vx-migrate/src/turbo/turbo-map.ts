@@ -41,6 +41,8 @@ interface TurboJson {
   globalDotEnv?: string[]
   /** A package config's parents: `//` (the root) first, then packages by name. */
   extends?: string[]
+  /** Turbo 2.11 `futureFlags.globalConfiguration`: the global lists live here. */
+  global?: { inputs?: string[]; env?: string[]; passThroughEnv?: string[] }
 }
 
 const KNOWN_TASK_KEYS = new Set([
@@ -325,9 +327,35 @@ function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]
     if (d === undefined) continue
     const own: TurboTask = { ...d }
     delete own.extends
+    if (Array.isArray(own.inputs)) own.inputs = flatInputs(own.inputs)
     def = withOverlay(def, own)
   }
   return def
+}
+
+/**
+ * Turbo 2.11's structured inputs as the strings they stand for: a
+ * `startup` or `jit` entry is its globs (and every file with
+ * `withDefaults`), keyed as the other inputs are (vx has no separate
+ * just-in-time pass). `dependencyOutputs` is nothing: vx folds each
+ * dependency's key instead (its outputs follow from it). Read as strings,
+ * an object crashed the plugin and failed the whole run.
+ */
+function flatInputs(inputs: readonly unknown[]): string[] {
+  return inputs.flatMap((i): string[] => {
+    if (typeof i === 'string') return [i]
+    if (i === null || typeof i !== 'object') return []
+    const { mode, globs, withDefaults } = i as {
+      mode?: unknown
+      globs?: unknown
+      withDefaults?: unknown
+    }
+    if (mode !== 'startup' && mode !== 'jit') return []
+    return [
+      ...(withDefaults === true ? ['$TURBO_DEFAULT$'] : []),
+      ...(Array.isArray(globs) ? globs.filter((g): g is string => typeof g === 'string') : []),
+    ]
+  })
 }
 
 /**
@@ -386,6 +414,24 @@ function optedOut(def: TurboTask | undefined): boolean {
   return def?.extends === false && Object.keys(def).length === 1
 }
 
+/**
+ * Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) in the
+ * top-level fields it replaces, as Turbo's `resolve_global_config` moves
+ * them. Unread, its `inputs` and `env` keyed nothing: an edit to a global
+ * file was a hit everywhere.
+ */
+function withGlobal(cfg: TurboJson): TurboJson {
+  const g = cfg.global
+  if (g === undefined || g === null || typeof g !== 'object') return cfg
+  const { globalDependencies: _d, globalEnv: _e, globalPassThroughEnv: _p, ...rest } = cfg
+  return {
+    ...rest,
+    ...(g.inputs === undefined ? {} : { globalDependencies: g.inputs }),
+    ...(g.env === undefined ? {} : { globalEnv: g.env }),
+    ...(g.passThroughEnv === undefined ? {} : { globalPassThroughEnv: g.passThroughEnv }),
+  }
+}
+
 export async function mapTurboWorkspace(
   root: string,
   metas: readonly ProjectMeta[],
@@ -399,7 +445,7 @@ export async function mapTurboWorkspace(
       `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from vx.workspace.ts`,
     )
   }
-  const rootCfg = await readTurboJson(rootFile, root)
+  const rootCfg = withGlobal(await readTurboJson(rootFile, root))
   const rootTasks = tasksOf(rootCfg)
 
   // Turbo 1 lists an env var as `$NAME` among `globalDependencies` (and a

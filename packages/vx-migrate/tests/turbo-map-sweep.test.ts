@@ -672,3 +672,44 @@ describe('turbo-map: a package config that extends another package', () => {
     ])
   })
 })
+
+// Turbo 2.11's `futureFlags.globalConfiguration` moves the global lists
+// under `global`. Unread, a global file's edit and a global env var keyed
+// nothing: every task a stale hit. `global` replaces the top-level fields,
+// as Turbo's `resolve_global_config` does.
+describe('turbo-map: the `global` block', () => {
+  it('maps global inputs, env and passThroughEnv, and replaces the top-level lists', async () => {
+    const m = await map(
+      {
+        futureFlags: { globalConfiguration: true },
+        globalEnv: ['OLD'],
+        global: { inputs: ['tsconfig.base.json'], env: ['GLOBAL_V'], passThroughEnv: ['PT'] },
+        tasks: { build: {} },
+      },
+      { a: { scripts: { build: 'b' } } },
+    )
+    expect(m.globals).toEqual({ inputs: ['tsconfig.base.json'], env: ['GLOBAL_V'], pass: ['PT'] })
+  })
+})
+
+// Turbo 2.11's structured inputs: `{ mode, globs, withDefaults }` entries.
+// Read as strings, an object crashed the plugin (`i.startsWith is not a
+// function`) and the whole run failed.
+describe('turbo-map: structured inputs', () => {
+  it('maps startup and jit globs, withDefaults as every file; dependencyOutputs adds none', async () => {
+    const files = async (inputs: unknown[]) => {
+      const t = await taskOf({ tasks: { build: { inputs } } }, { a: { scripts: { build: 'b' } } })
+      return (t.task as { cache?: { inputs?: { files?: string[] } } }).cache?.inputs?.files
+    }
+    expect([
+      await files([
+        { mode: 'startup', globs: ['src/**'] },
+        { mode: 'jit', globs: ['gen/**'] },
+        { mode: 'dependencyOutputs' },
+      ]),
+      await files([{ mode: 'startup', withDefaults: true, globs: ['!docs/**'] }]),
+      await files([{ mode: 'dependencyOutputs' }]),
+      await files(['src/**']),
+    ]).toEqual([['src/**', 'gen/**'], ['**/*', '!docs/**'], ['**/*'], ['src/**']])
+  })
+})
