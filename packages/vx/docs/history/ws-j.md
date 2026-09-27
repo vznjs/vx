@@ -45,6 +45,22 @@
   exits early carries no captured stderr; a failing runtime input fails
   only its task; `aborted` fails the run; a diff-scoped empty run is
   `ok: true`.
+- **J-5** `caching.md`: the trust note said env/runtime values land
+  verbatim in `cache.db`; `entry_inputs` stores their xxh3 digest. Also
+  package.json folds its blob OID, the enumeration spawns, stat not
+  lstat for the fingerprint check (item 760), the 8,192 output-dir cap,
+  capture before spawn, the inputs warning on every miss, what a schema
+  reset keeps, step cross-references, `runs_failed`, the `plugin` kind.
+
+- **J-6** `flows.md`, `patterns.md`, `optimizations.md`: git
+  enumeration moved to `git-inputs.ts` (`ls-files -s -v` + `status`);
+  hit-restore checks inode/ctime and wipes outputs itself; no dep-edge
+  short-circuit gate; skipped tasks are listed; foreground persistent
+  tasks outlive the summary; patterns.md denied executor plugins.
+- **J-7** Site guides: Nx `runtime` and Turbo `dotEnv` mappings,
+  `deny`/`ignore` keys, the CI sample's missing `GITHUB_TOKEN`, what the
+  lock holds, sandbox vs `cache.inputs`, `VX_RUN_*` env, the
+  quickstart's second-run output, the npm launcher.
 
 ## Leads for other streams
 
@@ -66,3 +82,10 @@
 - **G** `vx-schedule-history/src/index.ts:37-39` says the reservation
   includes "the most CPU parallelism seen, rounded to a core"; its
   README says cores are never learned, only declared.
+- **E** `vx completions` scrapes every `--word` from a verb's help cut: `watch` completes only the flags it refuses, `show`/`info` get `--run --list`, `lock` gets `--frozen` (cli/completions.ts:14-18).
+- **E** A non-dry `vx cache prune` in a workspace that never ran creates `.vx/cache/` (cli/cache.ts:146); cli.md says none of why/last/info/prune creates anything.
+- **A** `output_dirs` is not in the schema-reset DROP list (cache.ts:528-530); verify the FK cascade clears it.
+- **J (test)** `tests/site-samples.unsafe.test.ts` pins the quickstart's second-run comment to `formatTaskHitLine`'s full-mode row; the default frame closes `up-to-date` (`outcomeWord`). Retarget needs an owner-approved test edit.
+- **F** `vx-reapi/tests/wedged.test.ts:372` "RST_STREAM(CANCEL) reads as CANCELLED and is not retried" failed once in a full gate (after F-1's INTERNAL retry), 3/3 green alone. A race under load, not a flake to ignore.
+- **B** `orchestrator/sandbox-request.ts:99` comment cites sandbox-manager.js 0.0.75; installed is 0.0.76 (check at line 238).
+- **D** `config.ts` SandboxConfig comment says grant paths are prefixes, never globs; the schema accepts patterns (config-schema.ts:974-976) and the runtime expands them.
