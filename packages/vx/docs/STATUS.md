@@ -328,6 +328,19 @@ test is telling the truth.
       - Row: `workspace.test.ts` › a package under a matched directory with
         no manifest is not claimed, with a member's manifest-less
         subdirectory as the control. Red without the fix.
+990.  DONE (2026-09-27, the discovery review's lead 6, its last). With an
+      outer `pnpm-workspace.yaml` listing `apps/*` and one in `apps/inner`
+      listing `pkgs/*`, `vx` from `apps/inner` took the outer root (it
+      claims `apps/inner`) and from `apps/inner/pkgs/x` the inner one: two
+      roots and two cache directories for one tree. pnpm takes the nearest
+      workspace file.
+      - Fix (`workspace.ts`): the root walk stops at the first directory
+        holding a `pnpm-workspace.yaml`, read through the load's memo (the
+        walk makes its own when the caller passes none), so no extra read.
+        `modules/workspace.md` says so.
+      - Row: `workspace.test.ts` › the nearest pnpm-workspace.yaml is the
+        root, from any depth, with an outer member as the control. Red
+        without the fix.
 
 ## In flight
 

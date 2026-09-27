@@ -67,7 +67,10 @@ const decoder = new TextDecoder()
  * A load that goes on to `loadWorkspace` passes its `reads`, so the
  * root's manifest is read once for both.
  */
-export async function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string> {
+export async function findWorkspaceRoot(
+  start: string,
+  reads: LoadReads = new Map(),
+): Promise<string> {
   let dir = path.resolve(start)
   const below: string[] = []
   let nearest: string | null = null
@@ -84,6 +87,11 @@ export async function findWorkspaceRoot(start: string, reads?: LoadReads): Promi
     if (globs !== null) {
       nearest ??= dir
       if (claimsMember(dir, below, globs)) return dir
+      // pnpm takes the nearest `pnpm-workspace.yaml` as the root, listed or
+      // not. Walking past it, `apps/inner` resolved to the outer workspace
+      // while `apps/inner/pkgs/x` resolved to the inner one: two roots and
+      // two caches for one tree (item 990). Already read: `reads` holds it.
+      if ((await readOnce(reads, path.join(dir, 'pnpm-workspace.yaml'))) !== null) return dir
     }
     const parent = path.dirname(dir)
     if (parent === dir) break
