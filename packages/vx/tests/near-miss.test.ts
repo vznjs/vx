@@ -26,4 +26,20 @@ describe('nearMatches', () => {
     ])
     expect(nearMatches('deploy', ['deploy', 'build', 'test'])).toEqual([]) // itself never; the rest too far
   })
+
+  // E-17's sweep of edit-distance.ts: each of these could go with the
+  // suite green.
+  it('orders the edit-distance hits nearest first, whatever order they came in', () => {
+    expect(nearMatches('build', ['bxixd', 'buxld'])).toEqual(['buxld', 'bxixd'])
+  })
+
+  it('offers a candidate the query contains, and matches containment case-insensitively', () => {
+    // `vx why build-and-test` names more than the recorded `build`.
+    expect(nearMatches('build-and-test', ['build', 'lint'])).toEqual(['build'])
+    expect(nearMatches('web', ['MyWebApp', 'api'])).toEqual(['MyWebApp'])
+  })
+
+  it('never returns more than the limit, however many are near', () => {
+    expect(nearMatches('ab', ['aa', 'bb', 'ac', 'cb', 'ax'])).toEqual(['aa', 'bb', 'ac'])
+  })
 })
