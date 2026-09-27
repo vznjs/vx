@@ -302,6 +302,19 @@ test is telling the truth.
         `modules/workspace.md` and the function's comment say so.
       - Row: `workspace.test.ts` › a symlinked member is found whatever the
         glob spelling. Red without the fix.
+988.  DONE (2026-09-27, the discovery review's lead 1). A `package.json`
+      of the wrong shape was cast and trusted: `null` (root or member)
+      crashed with a TypeError and a stack; `{"name":123}` planned
+      `123#build` and crashed `vx show`; `" a"` beside `"a"` made two
+      projects.
+      - Fix (`workspace.ts`): one `parsePackageJson` for the root's and
+        every member's manifest refuses, by file, one that is not an
+        object and a `name` that is not a string or has surrounding
+        whitespace (npm refuses that too). `schema.md` lists both (pinned
+        by `schema-doc-drift.test.ts`).
+      - Row: `workspace.test.ts` › refuses a package.json of the wrong
+        shape by name: five bodies, root and member, the exact messages.
+        Red without the fix.
 
 ## In flight
 

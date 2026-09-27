@@ -180,7 +180,7 @@ async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[
   const pkgPath = path.join(dir, 'package.json')
   const pkgBytes = await readOnce(reads, pkgPath)
   if (pkgBytes === null) return yamlWithoutPackages ? [] : null
-  const pkg = parseManifest(decoder.decode(pkgBytes), pkgPath, JSON.parse) as PackageJson
+  const pkg = parsePackageJson(decoder.decode(pkgBytes), pkgPath)
   const ws = pkg.workspaces as unknown
   if (ws === undefined || ws === null) return ['.']
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
@@ -248,6 +248,25 @@ function parseManifest(text: string, file: string, parse: (t: string) => unknown
     const msg = err instanceof Error ? err.message : String(err)
     throw new UserError(`failed to parse ${file}: ${msg}`)
   }
+}
+
+/**
+ * A `package.json` as discovery reads it: a JSON object whose `name`, when
+ * present, is a string with no surrounding whitespace (npm refuses one).
+ * Parsed and cast unchecked, `null` crashed with a TypeError and a stack,
+ * `{"name":123}` planned `123#build`, and `" a"` beside `"a"` made two
+ * projects (item 988).
+ */
+function parsePackageJson(text: string, file: string): PackageJson {
+  const pkg = parseManifest(text, file, JSON.parse)
+  if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
+    throw new UserError(`${file}: must be a JSON object`)
+  }
+  const name = (pkg as { name?: unknown }).name
+  if (name !== undefined && (typeof name !== 'string' || name.trim() !== name)) {
+    throw new UserError(`${file}: "name" must be a string with no surrounding whitespace`)
+  }
+  return pkg as PackageJson
 }
 
 /**
@@ -483,7 +502,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
           .catch(() => null),
       ])
       if (text === null) return null
-      const pkg = parseManifest(text, pkgJsonPath, JSON.parse) as PackageJson
+      const pkg = parsePackageJson(text, pkgJsonPath)
       return { dir, pkg, configPath }
     }),
   )
