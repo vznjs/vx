@@ -34,6 +34,7 @@ export default defineWorkspace({ plugins: [turbo()] })
 | `persistent: true`                                          | `exec.persistent: { … }`                                                 |
 | `outputLogs`                                                | `"new-only"` is the default; other values are the run's `--output-logs` |
 | `dotEnv` (Turbo 1)                                          | `cache.inputs.files`                                                     |
+| `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `extends`                                                   | nothing: a package task merges over the root's, field by field           |
 | `$TURBO_ROOT$/file`                                         | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
 | `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | a generated `vx-preset.ts` you import; a wildcard env name is reported, not mapped |

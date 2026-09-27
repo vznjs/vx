@@ -77,6 +77,7 @@ already doing.
 | `outputLogs`                                   | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
 | `dotEnv` (Turbo 1)                              | `cache.inputs.files`                                    |
+| `command` (Turbo 2.11) | the task's `exec.command`; `null` is no task |
 | `globalDependencies`, `globalEnv`, `globalPassThroughEnv`, `globalDotEnv` | a generated `vx-preset.ts` you import and spread |
 
 Those are every key the mapper knows. Any other key in a task becomes

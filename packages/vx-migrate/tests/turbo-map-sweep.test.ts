@@ -486,3 +486,85 @@ describe('turbo-map: `.env` inputs', () => {
     }).toEqual({ globals: ['tsconfig.json'], ws: ['tsconfig.json'], probed: 1 })
   })
 })
+
+// Turbo 2.11's task `command` is authoritative over the script. Reported
+// as "no vx equivalent" and dropped, it cost turborepo itself four tasks
+// with no script and the edges to them.
+describe('turbo-map: a task `command` (Turbo 2.11)', () => {
+  const flags = { futureFlags: { experimentalTaskCommand: true } }
+  const commandOf = (m: Awaited<ReturnType<typeof map>>, pkg: string, task: string) =>
+    (
+      m.projects.find((p) => p.name === pkg)!.tasks.find((t) => t.name === task)?.task?.['exec'] as
+        | { command: string }
+        | undefined
+    )?.command
+
+  it('an argv runs where the package has no script, and an edge to it holds', async () => {
+    const m = await map(
+      { ...flags, tasks: { build: {}, schema: { dependsOn: ['types#build'] } } },
+      {
+        types: { scripts: {}, turbo: { tasks: { build: { command: ['pnpm', 'exec', 'tsc'] } } } },
+        docs: { scripts: { schema: 's' } },
+      },
+    )
+    expect(commandOf(m, 'types', 'build')).toBe('pnpm exec tsc')
+    const schema = m.projects[1]!.tasks.find((t) => t.name === 'schema')!
+    expect(schema.task!['dependsOn']).toEqual(['types#build'])
+    expect(schema.todos).toEqual([])
+  })
+
+  it('an argv replaces the script and folds none of its hooks; each word is quoted', async () => {
+    const t = await taskOf(
+      { ...flags, tasks: { build: { command: ['node', 'scripts/embed it.mjs', "it's"] } } },
+      { a: { scripts: { prebuild: 'p', build: 'b', postbuild: 'q' } } },
+    )
+    expect((t.task!['exec'] as { command: string }).command).toBe(
+      `node 'scripts/embed it.mjs' 'it'\\''s'`,
+    )
+    expect(t.todos).toEqual([])
+  })
+
+  it.each([[null], [[]]])(
+    'a command of %j runs nothing where a script exists, and its edges pass through',
+    async (command) => {
+      const m = await map(
+        {
+          ...flags,
+          tasks: {
+            build: {},
+            codegen: { command, dependsOn: ['^build'] },
+            test: { dependsOn: ['codegen'] },
+          },
+        },
+        { a: { scripts: { codegen: 'c', test: 't' } }, b: { scripts: { build: 'b' } } },
+      )
+      expect(m.projects[0]!.tasks.map((t) => t.name)).toEqual(['test'])
+      expect(m.projects[0]!.tasks[0]!.task!['dependsOn']).toEqual(['^build'])
+    },
+  )
+
+  it.each([
+    [{ javascript: ['vitest'] }, 'vitest'],
+    [{ typescript: ['jest'] }, 'jest'],
+    [{ rust: ['cargo', 'test'] }, 't'],
+  ])('a toolchain map %j runs %j in a JS package', async (command, expected) => {
+    const t = await taskOf(
+      { ...flags, tasks: { test: { command } } },
+      { a: { scripts: { test: 't' } } },
+    )
+    expect((t.task!['exec'] as { command: string }).command).toBe(expected)
+  })
+
+  it('a command Turbo would refuse keeps the script, with a todo', async () => {
+    const t = await taskOf(
+      { ...flags, tasks: { test: { command: 'vitest' } } },
+      {
+        a: { scripts: { test: 't' } },
+      },
+    )
+    expect((t.task!['exec'] as { command: string }).command).toBe('t')
+    expect(t.todos).toEqual([
+      'turbo key "command" ("vitest") is not an argv, null or a toolchain map of them — the script runs; write the command by hand',
+    ])
+  })
+})
