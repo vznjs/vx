@@ -3,6 +3,13 @@
 // layer owns the run index (history, stats, prune) so a run is recorded
 // once. Restore goes to the layer that produced the hit — remembered per
 // hash — because an entry's artifact lives wherever it was found.
+//
+// A layer that throws in a lookup is a miss there and the walk goes on; one
+// that throws in a save is skipped and the rest still save. Unisolated, a
+// plugin layer's throw ended the walk before the local floor under it: its
+// `get` failed the task, its `save` kept the entry from every later layer
+// (item 1020). A save that fails in EVERY layer still throws, so the
+// caller's own "cache save failed" line stays the one word on it.
 
 import type {
   Cache,
@@ -21,13 +28,29 @@ import type {
   RunRecord,
 } from './cache.js'
 
+/** Told of a layer's failure the chain went past: its index, the method, the error. */
+export type LayerErrorReport = (layer: number, method: string, err: unknown) => void
+
 export class ChainedCache implements CacheLayer {
   readonly hasRemote: boolean
   private readonly hitLayer = new Map<string, CacheLayer>()
 
-  constructor(readonly layers: readonly CacheLayer[]) {
+  constructor(
+    readonly layers: readonly CacheLayer[],
+    private readonly onLayerError: LayerErrorReport = () => undefined,
+  ) {
     if (layers.length < 2) throw new Error('ChainedCache needs at least two layers')
     this.hasRemote = layers.some((l) => l.hasRemote === true)
+  }
+
+  /** `layer`'s answer, or `fallback` once its failure is reported. */
+  private async ask<T>(layer: CacheLayer, method: string, call: () => Promise<T>, fallback: T) {
+    try {
+      return await call()
+    } catch (err) {
+      this.onLayerError(this.layers.indexOf(layer), method, err)
+      return fallback
+    }
   }
 
   get local(): Cache | undefined {
@@ -49,11 +72,11 @@ export class ChainedCache implements CacheLayer {
     // saved locally, in the outcome, the summary and telemetry (item 889).
     const owner = this.hitLayer.get(hash)
     if (owner !== undefined) {
-      const entry = await owner.get(hash, ctx)
+      const entry = await this.ask(owner, 'get', () => owner.get(hash, ctx), null)
       if (entry !== null) return entry
     }
     for (const layer of this.layers) {
-      const entry = await layer.get(hash, ctx)
+      const entry = await this.ask(layer, 'get', () => layer.get(hash, ctx), null)
       if (entry !== null) {
         this.hitLayer.set(hash, layer)
         return entry
@@ -64,7 +87,7 @@ export class ChainedCache implements CacheLayer {
 
   async has(hash: string): Promise<'local' | 'remote' | null> {
     for (const layer of this.layers) {
-      const where = await layer.has(hash)
+      const where = await this.ask(layer, 'has', () => layer.has(hash), null)
       if (where !== null) {
         this.hitLayer.set(hash, layer)
         return where
@@ -75,7 +98,7 @@ export class ChainedCache implements CacheLayer {
 
   async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     for (const layer of this.layers) {
-      if (await layer.prefetch(hash, ctx)) {
+      if (await this.ask(layer, 'prefetch', () => layer.prefetch(hash, ctx), false)) {
         this.hitLayer.set(hash, layer)
         return true
       }
@@ -96,7 +119,12 @@ export class ChainedCache implements CacheLayer {
     let complete = true
     for (const layer of this.layers) {
       if (layer.hasRemote !== true) continue
-      const found = (await layer.remoteHasMany?.(hashes)) ?? null
+      const found = await this.ask(
+        layer,
+        'remoteHasMany',
+        async () => (await layer.remoteHasMany?.(hashes)) ?? null,
+        null,
+      )
       if (found === null) {
         complete = false
         continue
@@ -159,12 +187,20 @@ export class ChainedCache implements CacheLayer {
     // `skipLocalWrite` and go straight to their remote upload (which reads
     // the artifact the first layer just wrote — same handle, same path).
     const seenLocals = new Set<NonNullable<CacheLayer['local']>>()
-    for (const layer of this.layers) {
+    const failures: Array<[layer: number, err: unknown]> = []
+    for (const [i, layer] of this.layers.entries()) {
       const local = layer.local
       const skip = local !== undefined && seenLocals.has(local)
-      await layer.save(skip ? { ...args, skipLocalWrite: true } : args)
+      try {
+        await layer.save(skip ? { ...args, skipLocalWrite: true } : args)
+      } catch (err) {
+        failures.push([i, err])
+        continue
+      }
       if (local !== undefined) seenLocals.add(local)
     }
+    if (failures.length === this.layers.length) throw failures[0]![1]
+    for (const [i, err] of failures) this.onLayerError(i, 'save', err)
   }
 
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {

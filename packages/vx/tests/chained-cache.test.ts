@@ -147,6 +147,77 @@ describe('ChainedCache', () => {
   )
 })
 
+/** `layer` with `methods` throwing and no local handle of its own, as a raw plugin layer. */
+function failing(layer: CacheLayer, methods: readonly string[]): CacheLayer {
+  return new Proxy(layer, {
+    get(target, prop) {
+      if (prop === 'local') return undefined
+      if (typeof prop === 'string' && methods.includes(prop)) {
+        return async () => {
+          throw new Error(`${prop} boom`)
+        }
+      }
+      const value = Reflect.get(target, prop, target) as unknown
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+}
+
+// Item 1020: a layer's throw ended the walk before the local floor under
+// it, so a plugin's broken `get` failed the task and its broken `save`
+// kept the entry from every layer after it.
+describe('ChainedCache — a layer that throws', () => {
+  it(
+    'a lookup that throws is a miss there; the next layer answers, and the failure is reported',
+    withTwo(async (a, b, proj) => {
+      await saveEntry(b, 'h1', proj)
+      const told: Array<[number, string, string]> = []
+      const chained = new ChainedCache(
+        [failing(a, ['get', 'has', 'prefetch']), b],
+        (i, method, err) => told.push([i, method, (err as Error).message]),
+      )
+      expect({
+        get: (await chained.get('h1'))?.hash,
+        has: await chained.has('h1'),
+        prefetch: await chained.prefetch('h1'),
+        told,
+      }).toEqual({
+        get: 'h1',
+        has: 'local',
+        prefetch: false,
+        told: [
+          [0, 'get', 'get boom'],
+          [0, 'has', 'has boom'],
+          [0, 'prefetch', 'prefetch boom'],
+        ],
+      })
+    }),
+  )
+
+  it(
+    'a save that throws in one layer still saves in the others; in every layer it throws',
+    withTwo(async (a, b, proj) => {
+      const told: Array<[number, string]> = []
+      await saveEntry(
+        new ChainedCache([failing(a, ['save']), b], (i, method) => told.push([i, method])),
+        'h2',
+        proj,
+      )
+      expect({ saved: (await b.get('h2'))?.hash, told }).toEqual({
+        saved: 'h2',
+        told: [[0, 'save']],
+      })
+      const all = new ChainedCache([failing(a, ['save']), failing(b, ['save'])])
+      expect(
+        await saveEntry(all, 'h3', proj).then(
+          () => 'saved',
+          (e: Error) => e.message,
+        ),
+      ).toBe('save boom')
+    }),
+  )
+})
+
 describe('resolveCache — chaining', () => {
   const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
   const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
@@ -169,6 +240,32 @@ describe('resolveCache — chaining', () => {
       const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a, policy })
       expect(resolved).toBeInstanceOf(ChainedCache)
       expect((resolved as ChainedCache).layers).toEqual([b, a])
+    }),
+  )
+
+  it(
+    'a plugin layer that throws is named once per method, and the local floor still answers (item 1020)',
+    withTwo(async (a, b, proj) => {
+      await saveEntry(a, 'h1', proj)
+      const warned: string[] = []
+      const plugins: VxPlugin[] = [testPlugin('org/broken', { cache: () => failing(b, ['get']) })]
+      const resolved = await resolveCache(plugins, {
+        ...baseCtx,
+        warn: (m) => warned.push(m),
+        localCache: a,
+        policy,
+      })
+      expect({
+        first: (await resolved.get('h1'))?.hash,
+        second: await resolved.get('absent'),
+        warned,
+      }).toEqual({
+        first: 'h1',
+        second: null,
+        warned: [
+          "[vx] plugin 'org/broken' failed in cache get: get boom; a miss there; the next layer answers",
+        ],
+      })
     }),
   )
 

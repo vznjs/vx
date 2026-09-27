@@ -8,8 +8,13 @@ When more than one plugin contributes a `cache` layer, `resolveCache`
 ## Public surface
 
 ```ts
+export type LayerErrorReport = (layer: number, method: string, err: unknown) => void
+
 export class ChainedCache implements CacheLayer {
-  constructor(readonly layers: readonly CacheLayer[]) // at least two, or it throws
+  constructor(
+    readonly layers: readonly CacheLayer[], // at least two, or it throws
+    onLayerError?: LayerErrorReport, // told of a failure the chain went past
+  )
   readonly hasRemote: boolean // any layer's
   get local(): Cache | undefined // the first layer's
 }
@@ -30,6 +35,15 @@ below; `key` goes to the first layer, like the run index.
   artifact is packed and written once, and the later layer does only its
   remote upload (two remote plugins over one local handle would otherwise
   pack every miss twice).
+- **A layer that throws is passed, not obeyed** (item 1020). A throw in
+  `get` / `has` / `prefetch` / `remoteHasMany` is a miss (or no answer)
+  in that layer and the walk goes on; a throw in `save` skips that
+  layer and the rest still save. Each is reported to `onLayerError`;
+  `resolveCache` turns that into one warning per layer and method,
+  naming the plugin. A save that fails in every layer still throws.
+  Before, a raw plugin layer's throw ended the walk above the local
+  floor: its `get` failed the task, its `save` kept every entry out of
+  the local store.
 - **Restore goes to the layer that answered** (`restoreOutputs`,
   `outputsPath`) — an entry's artifact lives wherever it was found.
 - **The first layer owns the run index** (`recordRunBundle`, `stats`, `prune`,
