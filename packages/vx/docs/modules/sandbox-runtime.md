@@ -290,7 +290,9 @@ replayed the old output; a task's own value never arrived (item 995).
 The command's prefix now cuts the host's value out of what SRT set and
 appends the task's own, so the task sees the agent flag plus exactly what
 its layers gave it. Where SRT left the variable alone it already holds
-the task's value and the prefix changes nothing.
+the task's value and the prefix changes nothing, and where the task's
+value IS the host's (passed through, or neither has one) SRT's own
+composition is right and no prefix is written (item 1007).
 
 ## Path canonicalization
 

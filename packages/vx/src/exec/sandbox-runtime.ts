@@ -691,7 +691,11 @@ export interface SandboxedRunResult extends RunResult {
  * host's value is cut out and the task's appended to what SRT added.
  */
 function javaToolOptionsFix(host: string | undefined, task: string | undefined): string {
-  if (!host && !task) return ''
+  // The same value both sides (a task that passes the host's through, or
+  // neither has one): SRT's composition is already the task's own, and a
+  // prefix quoting the value twice would only lengthen every command
+  // (item 1007).
+  if ((host ?? '') === (task ?? '')) return ''
   const cut = host
     ? `__vx_h=${shellQuote(host)}; case "$__vx_j" in *"$__vx_h"*) __vx_j="\${__vx_j%%"$__vx_h"*}\${__vx_j#*"$__vx_h"}";; esac; `
     : ''
