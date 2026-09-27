@@ -67,7 +67,9 @@ describe('vx run interactive picker', () => {
     const output = new PassThrough()
     output.on('data', () => undefined)
     expect(await pickTask(root, { input: new PassThrough(), output })).toBeNull()
-    expect(stderr).toContain('vx run: no tasks declared in any project')
+    expect(stderr).toBe(
+      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
+    )
   })
 
   it('lists tasks and returns the numbered selection', async () => {

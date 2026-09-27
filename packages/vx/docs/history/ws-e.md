@@ -214,3 +214,9 @@ task picked`; neither prints a stack. Row in
   while the run itself names the nearest task (`Did you mean build?`)
   or how to declare one. `planRun` now returns the run's own hint
   (`unresolvedHint`) and the verb prints it. Row in `tests/cli.test.ts`.
+- E-30 — Error-line audit of `src/cli` and `src/util`. Two lines named
+  no fix: `vx why --run <id>` for a task that run did not run (or an
+  unknown id) now points at `vx last --list` and `vx last <runId>`;
+  the picker's `no tasks declared in any project` now says how to
+  declare one (`tasks` in a vx.config, or `vx init`). Rows pin both
+  lines exactly (`tests/why.test.ts`, `tests/cli-picker.test.ts`).
