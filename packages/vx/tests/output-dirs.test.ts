@@ -15,6 +15,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -53,6 +54,20 @@ describe('wholeSubtreePrefixes (eligibility)', () => {
       expect(wholeSubtreePrefixes(bad)).toBeNull()
     }
     expect(wholeSubtreePrefixes([])).toBeNull()
+  })
+
+  it('accepts a bare literal as the tree it may name (Next 27)', () => {
+    // `asTrees` reads `dist` as the path or the tree under it; a literal
+    // that names a file is refused by the snapshot itself (rows below).
+    expect(wholeSubtreePrefixes(['dist'])).toEqual(['dist'])
+    expect(wholeSubtreePrefixes(['dist/', './out', 'dist/**'])).toEqual(['dist', 'out'])
+    expect(wholeSubtreePrefixes(['dist/**', 'coverage/lcov.info'])).toEqual([
+      'dist',
+      'coverage/lcov.info',
+    ])
+    for (const bad of [['!dist'], ['..'], ['../dist'], ['/abs'], ['.'], ['dist', 'src/*.js']]) {
+      expect(wholeSubtreePrefixes(bad)).toBeNull()
+    }
   })
 })
 
@@ -463,6 +478,49 @@ describe('warm hits through run() with the short-circuit', () => {
     expect(restored.outcomes.find((o) => o.node.id === 'a#build')!.status).toBe('cache-hit')
     expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(true)
     expect(recordedDirs()).toEqual(['dist', 'dist/sub'])
+  })
+
+  // Next 27: nx() maps an extensionless output to `<dir>/**`, which saves
+  // nothing under a FILE; the bare path saves either, and now keeps the
+  // directory stats a `<dir>/**` glob gets.
+  it('a bare literal directory output records its directories; a stray still forces the restore', async () => {
+    await writeFile(
+      path.join(root, 'packages/a/vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist'] } } } } }\n",
+    )
+    expect((await runBuild()).ok).toBe(true)
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
+    expect((await runBuild()).ok).toBe(true)
+    const c = db()
+    const paths = (
+      c.dbHandle().query('SELECT path FROM output_dirs ORDER BY path').all() as {
+        path: string
+      }[]
+    ).map((r) => r.path)
+    c.close()
+    expect(paths).toEqual(['dist', 'dist/sub'])
+    await Bun.sleep(5)
+    writeFileSync(path.join(dist(), 'sub', 'stray.js'), 'stale')
+    expect((await runBuild()).ok).toBe(true)
+    expect(existsSync(path.join(dist(), 'sub/stray.js'))).toBe(false)
+    expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(true)
+  })
+
+  it('a bare literal FILE output records nothing and is still restored when it changes', async () => {
+    await writeFile(
+      path.join(root, 'packages/a/vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/tool' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/tool'] } } } } }\n",
+    )
+    expect((await runBuild()).ok).toBe(true)
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
+    expect((await runBuild()).ok).toBe(true)
+    const c = db()
+    const n = (c.dbHandle().query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
+    c.close()
+    expect(n).toBe(0)
+    writeFileSync(path.join(dist(), 'tool'), 'tampered')
+    expect((await runBuild()).ok).toBe(true)
+    expect(readFileSync(path.join(dist(), 'tool'), 'utf8')).toBe('export const v = 1\n')
   })
 
   it('a root-anchored glob records nothing and keeps the walk (control)', async () => {

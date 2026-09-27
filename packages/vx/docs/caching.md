@@ -442,8 +442,10 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    wipes and rewrites the declared outputs, and a stray left in place
    would be a stale file the hit silently kept. Until Wave 6 this was a
    glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
-   1000-project run). Now, for globs of the shape `<dir>/**` (a whole
-   subtree — `wholeSubtreePrefixes`), the cache records every directory
+   1000-project run). Now, for globs of the shape `<dir>/**` or a bare
+   literal `<dir>` (a whole subtree — `wholeSubtreePrefixes`; a literal
+   that names a file refuses the snapshot, so that task keeps the walk),
+   the cache records every directory
    under `<dir>` with its mtime after each save and restore; on the next
    hit, unchanged mtimes on all of them prove the set unchanged, since a
    file added or removed anywhere the glob could see bumps its parent

@@ -9,18 +9,6 @@ interface NxOutputs {
 }
 
 /**
- * Heuristic: a bare directory path captures its whole subtree. A dot
- * past the first character is an extension (`lcov.info`); a leading
- * one is a hidden DIRECTORY (`.next`, `.output`, `.netlify` — what Nx
- * plugins and router declare), and a bare name for a directory saves
- * nothing: the output scan lists files, never a directory itself.
- */
-function dirGlob(rel: string): string {
-  const last = rel.split('/').at(-1)!
-  return !rel.includes('*') && !last.slice(1).includes('.') ? `${rel}/**` : rel
-}
-
-/**
  * Nx's `interpolate` for a path, as a workspace-relative one: `{workspaceRoot}`
  * is the root and `{projectRoot}` / `{projectName}` the project's, ANYWHERE
  * in the string — `{workspaceRoot}/coverage/{projectRoot}` is `@nx/jest`'s
@@ -119,9 +107,13 @@ export function mapNxOutputs(
     // `dist/<project>` at the root), so it is the workspace-root output it
     // is, not a gap: as a todo, every such target hit green and restored
     // NOTHING (item 593, the bench workspace's 1,000 `build` targets).
-    if (projectRel === '.') outFiles.push(dirGlob(s))
-    else if (s.startsWith(`${projectRel}/`)) outFiles.push(dirGlob(s.slice(projectRel.length + 1)))
-    else wsOutFiles.push(dirGlob(path.posix.normalize(s).replace(/^\.\//, '')))
+    // As written: core reads a literal as the path or the tree under it
+    // (`asTrees`), and keeps a hit's directory short-circuit for either. The
+    // `<rel>/**` this wrote for an extensionless name matched nothing under
+    // a FILE, so a binary like `dist/bin/tool` was never saved (Next 27).
+    if (projectRel === '.') outFiles.push(s)
+    else if (s.startsWith(`${projectRel}/`)) outFiles.push(s.slice(projectRel.length + 1))
+    else wsOutFiles.push(path.posix.normalize(s).replace(/^\.\//, ''))
   }
   return { outFiles, wsOutFiles }
 }

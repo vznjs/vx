@@ -343,6 +343,33 @@ test is telling the truth.
         plugin stage prints, extended with both (red without the change:
         the reply line could not be parsed).
 
+1070. DONE (2026-09-27, Next 27). `nx()` wrote an extensionless output
+      as `<path>/**`, which matches nothing under a FILE, so a target
+      whose output is a binary (`dist/bin/tool`) never saved it and a hit
+      restored nothing. The bare path fixes that, since core reads a
+      literal as the file or the tree under it, but a bare path lost the
+      directory-mtime short-circuit that only `<dir>/**` got. Measured in
+      item 1054: `dist/**` min 181 ms against the bare `dist` 228 at 5,000
+      files. `wholeSubtreePrefixes` now takes a bare literal too. One that
+      names a directory is snapshotted like `<dir>/**`. One that names a
+      file refuses the snapshot, so that task keeps the walk it had, and
+      one that is absent is recorded absent. The mapper emits every path
+      as written. A/B (15 interleaved warm runs, one task, 5,000 files in
+      50 directories, before arm from a worktree at 1069, each arm on its
+      own pre-warmed copy): the bare `dist` went from min 235 ms, median
+      266, to min 209, median 219. The `dist/**` control on the after arm
+      measured min 196, median 217. The before arm recorded no directory
+      rows; the after arm recorded 51. caching.md, cache.md and the
+      vx-migrate README say so.
+      - Rows: `output-dirs.test.ts` › accepts a bare literal as the tree
+        it may name; a bare literal directory output records its
+        directories, and a stray still forces the restore (both red
+        without the change); a bare literal FILE output records nothing
+        and is still restored when it changes (the control).
+        `nx-helpers-sweep.test.ts` › a glob and a bare path are kept as
+        written (`bin/tool`); the mapper's other expectations in
+        vx-migrate's suites moved from `<dir>/**` to the bare path.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
@@ -739,19 +766,7 @@ next?".
     tree's git state is the other candidate. The README says a new
     cross-package import needs an Nx command before the next run.
 
-27. **`nx()` saves an extensionless output file as a directory** (the nx
-    review's lead 4). `dirGlob` maps `{workspaceRoot}/dist/bin/tool` to
-    `dist/bin/tool/**`, which matches nothing under a file: a hit
-    restored no binary. Core's `asTrees` already reads a bare literal as
-    the path or the tree under it, so the bare path is correct for both,
-    but it takes `outputDirsCurrent`'s directory-mtime short-circuit away
-    from every nx() directory output (`{projectRoot}/dist`), which only
-    `<dir>/**` globs get. Measured (2026-09-27, one task, 5,000 output
-    files in 50 directories, warm up-to-date run, 15 interleaved runs):
-    `dist/**` min 181 ms, median 210; the bare `dist` min 228, median 241.
-    So the bare literal is not free. The candidate is teaching
-    `wholeSubtreePrefixes` a literal that was a directory at save time,
-    then taking the bare path in the mapper.
+27. DONE as item 1070 — `nx()` keeps an output path as written; a bare literal keeps the directory short-circuit.
 
 ## Decisions (this arc)
 

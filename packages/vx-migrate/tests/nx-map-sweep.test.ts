@@ -262,12 +262,12 @@ describe('a cached target that declares no outputs', () => {
       prepare: { command: 'r', cache: true, outputs: [] },
     })
     expect(got['b#build']).toEqual({
-      outputs: { files: ['dist/**'], workspaceFiles: ['dist/packages/b/**'] },
+      outputs: { files: ['dist'], workspaceFiles: ['dist/packages/b'] },
       todos: [
         'no outputs declared: Nx also caches packages/b/build and packages/b/public for this target — vx cleans an output before the run, so add them to the outputs by hand only if they hold nothing committed',
       ],
     })
-    expect(got['b#pack']?.outputs).toEqual({ files: [], workspaceFiles: ['out/pack/**'] })
+    expect(got['b#pack']?.outputs).toEqual({ files: [], workspaceFiles: ['out/pack'] })
     expect(got['b#test']?.outputs).toEqual({ files: [] })
     // CONTROL: an explicit empty list is no outputs, as under Nx.
     expect(got['b#prepare']?.outputs).toEqual({ files: [] })
