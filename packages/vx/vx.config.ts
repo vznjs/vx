@@ -18,7 +18,7 @@ const shardTask = (i: number) => ({
   description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
+    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
       define: GIT_HERMETIC,
@@ -149,7 +149,7 @@ export default defineProject({
       description: 'bun test — the files a sandbox cannot host',
       dependsOn: ['install'],
       exec: {
-        command: 'bun test ./tests/*.unsafe.test.ts',
+        command: 'bun test --only-failures ./tests/*.unsafe.test.ts',
         env: {
           passThrough: [
             'VX_REQUIRE_SANDBOX',

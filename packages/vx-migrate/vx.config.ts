@@ -61,7 +61,7 @@ export default defineProject({
     test: {
       description: 'bun test',
       exec: {
-        command: 'bun test',
+        command: 'bun test --only-failures',
         // `nx-exec-live.test.ts` runs the bin against REAL Nx when
         // VX_NX_MODULES names an install (CI puts one under `.nx-live/`,
         // inside this project, so the sandbox's read grant covers it) and

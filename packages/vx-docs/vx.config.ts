@@ -151,7 +151,7 @@ export default defineProject({
         'bun test — the landing, sidebar, redirect, diagram, playground, compare and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
-        command: 'bun test',
+        command: 'bun test --only-failures',
         sandbox: {
           allow: {
             read: [
