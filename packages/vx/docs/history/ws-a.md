@@ -133,3 +133,10 @@ Nested-project boundaries were one `<nested>/**` glob each: O(files × nested), 
 - Fix (`inputs.ts` `inNestedProject`): an ancestor-directory set lookup in `resolveFiles` and the output scan.
 - Row: `nested-boundary.test.ts`, inputs and outputs: the nested project out, `pkg-b` and `a/bc` in. Red without the fix.
 - Sweep of `key-fold.ts` (50 mutants, 49 caught, 1 a no-op): the `workspaceRuntime` and plugin-part folds were held only by the golden digest, which each `CACHE_VERSION` bump re-records. Two rows in `task-hash-derive.test.ts` pin them by behaviour; each fails with its loop deleted.
+
+### A-12 (2026-09-27, F's lead, narrowed)
+
+F asked about an upstream whose recorded outputs are partly on disk. Locally, a deterministic hit or save never leaves that state. The core case found: `gen`'s input edited while it ran, so `gen` withheld its save (item 1015) but kept its key K. `use` saved what it built from the edit under a key folding K, and once the input was put back `use` hit the edit's output.
+
+- Fix (`execute-task.ts`, `TaskOutcome.unkeyed`): a task whose key no longer held carries `unkeyed`; a dependant whose key folds one (per its `cache.inputs.tasks`; one reading it by content is judged by its bytes) saves nothing and carries it on. The public `TaskOutcome` gains the optional field (contract regenerated). `caching.md` says so.
+- Row: `unkeyed-upstream.test.ts` (gen → use → pack, the edit on a marker): neither dependant saves; the next run rebuilds. Red without the fix (both hit).
