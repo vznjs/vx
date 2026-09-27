@@ -46,7 +46,11 @@
 // user cannot write), the run says so once and proceeds unlocked: the
 // lock is a courtesy between cooperating runs, and refusing to run would
 // be worse than the race. Machines sharing a workspace over a network file
-// system do not share `/tmp`, so they do not share this.
+// system do not share `/tmp`, so they do not share this; nor do two shells
+// whose `TMPDIR` differs (`nix develop` sets its own, item 970). Kept here
+// anyway: under the workspace the lock would outlive a reboot, and off
+// Linux, where an entry names no start time, a reused pid would read as a
+// live holder for good.
 //
 // Runs inside ONE process share the lock: an embedder that runs two at
 // once coordinates them itself (`RunOptions.inflight` joins duplicate

@@ -764,6 +764,16 @@ test is telling the truth.
         least-recently-used first.
       - Row: `cache-retention.test.ts` › refuses the bounds that evict
         every entry after every run. Red without the fix.
+970.  DONE (2026-09-27, the cache-prune review's lead 3; docs only). The
+      run lock lives under the temp directory each process sees, so two
+      shells with different `TMPDIR`s (a `nix develop` shell sets its
+      own) held two locks: a prune evicted five entries while a run was
+      inside its task. `caching.md`, `cli.md`, `orchestrator.md` and the
+      `run-lock.ts` header said runs on one workspace take turns; they
+      now say only under one `TMPDIR`, and why the lock stays there: under
+      the workspace it would outlive a reboot, and off Linux an entry
+      names no start time, so a reused pid would read as a live holder
+      forever.
 
 ## In flight
 

@@ -219,7 +219,8 @@ persistent task's wait. The lock is keyed by the workspace root's real
 path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
 `/var` → `/private/var`) name one lock. It lives under the temp
 directory, keyed by the resolved workspace root (`--cache-dir` does not
-make two runs strangers; a read-only checkout can take it), and is a
+make two runs strangers; a read-only checkout can take it; two
+processes whose `TMPDIR` differs hold two locks, item 970), and is a
 directory HELD exactly while it is not empty. Its one entry,
 `h-<pid>-<start>-<n>`, names the holder and is unique to that taking.
 The lock is built beside its name and renamed onto it, which succeeds
