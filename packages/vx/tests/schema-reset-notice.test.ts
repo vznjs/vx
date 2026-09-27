@@ -216,6 +216,19 @@ describe('a schema reset says so once', () => {
     expect(await runOnce()).toEqual([])
   })
 
+  // A reading verb wrote the new format over the old one, so the run after
+  // it missed everything with no word of why (item 1080).
+  for (const args of [['info'], ['cache', 'prune', '--older-than', '30d', '--dry-run']]) {
+    it(`\`vx ${args.join(' ')}\` leaves the format notice to the next run`, async () => {
+      expect(await runOnce()).toEqual([])
+      pokeFormat('vx-cache-v0')
+      expect((await verb(args)).threw).toBeNull()
+      expect(await runOnce()).toEqual([
+        `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+      ])
+    })
+  }
+
   it('a store with entries and no recorded format predates the record, and says so', async () => {
     expect(await runOnce()).toEqual([])
     pokeFormat(null)

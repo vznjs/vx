@@ -499,6 +499,15 @@ pid namespace's), gone within 21 ms`. That is `slow`'s backgrounded
         elsewhere in the tree", red without the change; the file's other
         rows still hold.
 
+1080. DONE (2026-09-27, prune review #2). A reading verb's cache open
+      (`vx info`, `why`, `last`, `cache prune --dry-run`) wrote the new
+      `cache_version` over the old, so the run after an upgrade missed
+      every task and never printed "cache format changed". The inspect
+      open now records nothing. caching.md says so.
+      - Rows: `schema-reset-notice.test.ts` › "`vx info` …" and
+        "`vx cache prune … --dry-run` leaves the format notice to the next
+        run", both red without the change.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**

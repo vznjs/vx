@@ -1432,7 +1432,9 @@ status line or a verb's stderr: `[vx] cache format changed:
 vx-cache-v27 → vx-cache-v28 (vx upgraded); …`. The index survives, so
 the old entries stay until they age out under `vx cache prune
 --older-than` or `cacheRetention`; no key derives to them again. A
-bump that lands with a `SCHEMA_VERSION` reset says the reset alone.
+bump that lands with a `SCHEMA_VERSION` reset says the reset alone. A
+reading verb (`vx info`, `why`, `last`, `cache prune --dry-run`) records
+nothing, so the notice waits for the first open that writes (item 1080).
 
 Required when:
 
