@@ -25,6 +25,7 @@ import {
   isExecutableMissing,
   isLiteralPattern,
   normalizeGlob,
+  slashBraceExpansions,
   taskGlob,
   UserError,
 } from '../util/index.js'
@@ -1062,7 +1063,10 @@ async function scanUnion(
   cwd: string,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
-  for (const pattern of positive) {
+  // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
+  // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
+  // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
+  for (const pattern of positive.flatMap(slashBraceExpansions)) {
     const glob = globFor(pattern)
     for (const rel of glob.scanSync({ cwd, onlyFiles: false, followSymlinks: false, dot: true })) {
       if (excludeGlobs.some((g) => g.match(rel))) continue
