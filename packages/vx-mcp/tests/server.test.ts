@@ -389,6 +389,64 @@ it('the fixture really has one entry', () => {
 // The stdio framing, fed chunks directly. A chunk boundary inside a
 // multi-byte character is the case a per-chunk decoder cannot survive: it
 // yielded `p��#build`, and the tool answered for a task that does not exist.
+describe('JSON-RPC edges (F-10)', () => {
+  // A 2025-03-26 client is answered 2025-03-26, which requires batches; a
+  // batch was refused whole with -32600.
+  it('a batch is answered as one array of its replies; notifications add nothing', async () => {
+    const batch = JSON.stringify([
+      { jsonrpc: '2.0', id: 1, method: 'ping' },
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      { jsonrpc: '2.0', id: 2, method: 'resources/list' },
+      5,
+    ])
+    expect(await handleMessage(batch, ctx)).toEqual([
+      { jsonrpc: '2.0', id: 1, result: {} },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        error: { code: -32601, message: 'method not found: resources/list' },
+      },
+      { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'invalid request' } },
+    ])
+    expect(
+      await handleMessage(JSON.stringify([{ jsonrpc: '2.0', method: 'notifications/x' }]), ctx),
+    ).toBeNull()
+  })
+
+  it('each known protocol version is echoed; an unknown one gets 2025-06-18', async () => {
+    const asked = ['2024-11-05', '2025-03-26', '2025-06-18', '1999-01-01']
+    const got: unknown[] = []
+    for (const [i, v] of asked.entries()) {
+      const r = (await handleMessage(req(i, 'initialize', { protocolVersion: v }), ctx)) as {
+        result: { protocolVersion: string }
+      }
+      got.push(r.result.protocolVersion)
+    }
+    expect(got).toEqual(['2024-11-05', '2025-03-26', '2025-06-18', '2025-06-18'])
+  })
+
+  it('no id is a notification, answered by silence; `id: null` is a request', async () => {
+    expect([
+      await handleMessage(JSON.stringify({ jsonrpc: '2.0', method: 'ping' }), ctx),
+      await handleMessage(JSON.stringify({ jsonrpc: '2.0', id: null, method: 'ping' }), ctx),
+    ]).toEqual([null, { jsonrpc: '2.0', id: null, result: {} }])
+  })
+
+  // A client waits for `initialize`'s reply before it sends more, so a
+  // server that answered only at end of input hung every real session.
+  it('each reply is written before the next request is read', async () => {
+    const lines: string[] = []
+    let sawFirst = false
+    async function* client(): AsyncGenerator<Uint8Array> {
+      yield new TextEncoder().encode(`${req(1, 'ping')}\n`)
+      sawFirst = lines.length === 1
+      yield new TextEncoder().encode(`${req(2, 'ping')}\n`)
+    }
+    await serve(client(), (l) => lines.push(l), ctx)
+    expect([sawFirst, lines.length]).toEqual([true, 2])
+  })
+})
+
 describe('serve (stdio framing)', () => {
   async function* chunks(...parts: Uint8Array[]): AsyncGenerator<Uint8Array> {
     for (const p of parts) {

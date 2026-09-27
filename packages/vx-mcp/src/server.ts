@@ -24,20 +24,43 @@ type Response =
   | { jsonrpc: '2.0'; id: number | string | null; result: unknown }
   | { jsonrpc: '2.0'; id: number | string | null; error: { code: number; message: string } }
 
-/** One message in, at most one message out (a notification answers nothing). */
-export async function handleMessage(raw: string, ctx: ToolContext): Promise<Response | null> {
+const INVALID: Response = {
+  jsonrpc: '2.0',
+  id: null,
+  error: { code: -32600, message: 'invalid request' },
+}
+
+/**
+ * One line in, at most one line out (a notification answers nothing). A
+ * batch array is answered as one array of its replies: 2025-03-26, a
+ * version this server echoes, requires batches, and they were refused
+ * whole with -32600 (F-10). An empty batch is invalid, as JSON-RPC says.
+ */
+export async function handleMessage(
+  raw: string,
+  ctx: ToolContext,
+): Promise<Response | Response[] | null> {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
     return { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } }
   }
-  // Valid JSON that is not a request object (`null`, `5`, a batch array) is
-  // an invalid request. Read as one, `null` threw outside every catch and
-  // ended the session: the next request was never answered (item 808).
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'invalid request' } }
+  if (!Array.isArray(parsed)) return handleOne(parsed, ctx)
+  if (parsed.length === 0) return INVALID
+  const replies: Response[] = []
+  for (const item of parsed) {
+    const r = await handleOne(item, ctx)
+    if (r !== null) replies.push(r)
   }
+  return replies.length === 0 ? null : replies
+}
+
+async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | null> {
+  // Valid JSON that is not a request object (`null`, `5`) is an invalid
+  // request. Read as one, `null` threw outside every catch and ended the
+  // session: the next request was never answered (item 808).
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return INVALID
   const msg = parsed as Request
   const id = msg.id ?? null
   if (typeof msg.method !== 'string') {
@@ -106,7 +129,7 @@ export async function serve(
   write: (line: string) => void,
   options: ServerOptions,
 ): Promise<void> {
-  const out = (r: Response): void => {
+  const out = (r: Response | Response[]): void => {
     write(`${JSON.stringify(r)}\n`)
   }
   const decoder = new TextDecoder()
