@@ -147,7 +147,9 @@ describe('vx why (e2e)', () => {
     async () => {
       const r = await vx(root, ['why', 'app#build', '--run', 'nope'])
       expect(r.code).toBe(1)
-      expect(r.err).toContain('has no row')
+      expect(r.err).toBe(
+        'vx why: run nope has no row for app#build; `vx last --list` shows the recorded runs, `vx last <runId>` what one ran\n',
+      )
     },
     TIMEOUT,
   )

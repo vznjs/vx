@@ -353,7 +353,9 @@ export async function pickTask(
     }
   }
   if (entries.length === 0) {
-    process.stderr.write(`vx run: no tasks declared in any project\n`)
+    process.stderr.write(
+      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
+    )
     return null
   }
   const out = io.output ?? process.stdout
