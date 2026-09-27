@@ -225,7 +225,10 @@ busy worker pool is legitimate and unbounded. A wedged server still cannot
 reach Execute, because the deadline-bounded Capabilities call runs first.
 A stream that drops with a transient status, or ends cleanly before its
 operation is done, re-attaches with `WaitExecution` (three times, backing
-off 100, 400 and 1600 ms) rather than running the action again.
+off 100, 400 and 1600 ms) rather than running the action again. If
+`WaitExecution` answers NOT_FOUND — the server lost the operation, as a
+restart does — nothing is left running to re-attach to, and the action is
+executed again on the same budget.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
 `executeTimeoutMs`) bounds the wait, and the bound holds across a
 re-attach: firing during the backoff between a dropped stream and its
@@ -233,8 +236,10 @@ re-attach: firing during the backoff between a dropped stream and its
 
 A ByteStream Read, like every unary call, retries UNAVAILABLE,
 RESOURCE_EXHAUSTED and INTERNAL three times (100, 400 and 1600 ms) before it
-counts as failed; a streamed read retries only until its first message
-reaches a reader. INTERNAL is on the list because it is how the gRPC client
+counts as failed. A streamed read (the artifact of a remote hit) spends
+the same budget across the whole blob: a cut after bytes have reached the
+reader re-opens the Read at `read_offset` = what the reader has, and the
+digest is checked over the joined bytes as before. INTERNAL is on the list because it is how the gRPC client
 reports a call cut in transit: the RST_STREAM(INTERNAL_ERROR) a proxy sends
 when the server behind it goes away, or a stream that ends with no gRPC
 status. The same three statuses are what re-attach a dropped execution

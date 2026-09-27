@@ -81,3 +81,10 @@ Lead 6 (`getRunHistory`'s DISTINCT order) is REFUTED on the real
 schema: `runs_started_at` makes SQLite scan newest-first and keep each
 pair's first, which is its latest; the five-run repro that drops `a`
 on a bare table returns `[a, c]` there, filtered or not.
+
+F-3. vx-reapi heals two transport losses. WaitExecution's NOT_FOUND (a
+restart lost the operation) executes the action again instead of
+failing the task; Execute's own NOT_FOUND still throws. A streamed
+read cut after its first message re-opens at `read_offset` = bytes
+read, instead of turning a remote hit into a miss. Rows red without
+each fix.

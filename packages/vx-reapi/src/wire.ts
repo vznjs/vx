@@ -1075,35 +1075,49 @@ export class ReapiClient {
    */
   async readBlobStream(digest: Digest): Promise<ReadableStream<Uint8Array> | null> {
     const resource = `${this.instance ? `${this.instance}/` : ''}blobs/${digest.hash}/${digest.size_bytes}`
-    // Until the first message nothing has reached a reader, so a transient
-    // status there is retried as `readBlob`'s is; past it, the stream errors.
-    let call: AsyncIterable<{ data: Uint8Array }> & { cancel(): void }
-    let messages: AsyncIterator<{ data: Uint8Array }>
-    let first: IteratorResult<{ data: Uint8Array }>
-    for (let attempt = 0; ; attempt++) {
+    type Message = { data: Uint8Array }
+    let call: AsyncIterable<Message> & { cancel(): void }
+    let messages: AsyncIterator<Message>
+    const open = (offset: number): void => {
       call = (this.svc.bs as unknown as Record<string, Function>)['read']!(
-        { resource_name: resource, read_offset: 0, read_limit: 0 },
+        { resource_name: resource, read_offset: offset, read_limit: 0 },
         this.meta(),
         this.bounded(),
-      ) as AsyncIterable<{ data: Uint8Array }> & { cancel(): void }
+      ) as AsyncIterable<Message> & { cancel(): void }
       messages = call[Symbol.asyncIterator]()
-      try {
-        first = await messages.next()
-        break
-      } catch (err) {
-        const code = (err as grpc.ServiceError).code
-        if (code === NOT_FOUND) return null
-        const delay = RETRY_DELAYS_MS[attempt]
-        if (delay === undefined || !isRetryable(code)) throw err
-        await Bun.sleep(delay)
-      }
     }
     const hasher = hasherFor(this.digestFunction)
     let size = 0
-    let next: IteratorResult<{ data: Uint8Array }> | undefined = first
+    let attempt = 0
+    // A transient status is retried as `readBlob`'s is, and not only before
+    // the first message: a cut past it (a proxy's RST, a server's GOAWAY)
+    // re-opens the Read at `read_offset` = the bytes the reader already has,
+    // so the hash carries on over the same byte sequence. The budget is one
+    // for the whole blob. Before the first message a NOT_FOUND is a miss.
+    const take = async (): Promise<IteratorResult<Message>> => {
+      for (;;) {
+        try {
+          return await messages.next()
+        } catch (err) {
+          const code = (err as grpc.ServiceError).code
+          const delay = RETRY_DELAYS_MS[attempt++]
+          if (delay === undefined || !isRetryable(code)) throw err
+          await Bun.sleep(delay)
+          open(size)
+        }
+      }
+    }
+    open(0)
+    let next: IteratorResult<Message> | undefined
+    try {
+      next = await take()
+    } catch (err) {
+      if ((err as grpc.ServiceError).code === NOT_FOUND) return null
+      throw err
+    }
     return new ReadableStream<Uint8Array>({
       pull: async (controller) => {
-        const got = next ?? (await messages.next())
+        const got = next ?? (await take())
         next = undefined
         if (got.done) {
           assertServed(size, hasher && (() => hasher.digest('hex')), digest)
@@ -1184,7 +1198,13 @@ export class ReapiClient {
           `reapi: execution stream for ${operationName} closed before the operation finished`,
         )
       } catch (err) {
-        if (!isRetryable((err as grpc.ServiceError).code)) throw err
+        const code = (err as grpc.ServiceError).code
+        // WaitExecution's NOT_FOUND: the server no longer knows the operation
+        // (a restart lost it). Nothing is running to re-attach to, and the
+        // action is the same bytes, so it is executed again, on the same
+        // budget — as Bazel's executor does.
+        if (code === NOT_FOUND && operationName !== '') operationName = ''
+        else if (!isRetryable(code)) throw err
         failure = err
       }
       const delay = RETRY_DELAYS_MS[attempt]
