@@ -364,12 +364,18 @@ row, so a hit replays it without opening the artifact.
 
 `save()`:
 
-1. Packs the artifact into a temp beside it,
-   `<cacheDir>/<hash>.tar.zst.tmp-<pid>-<hrtime>-<rand>`.
-2. Scans the temp back (it must carry `stdout` and its own key), then
-   `rename(2)`s it to `<cacheDir>/<hash>.tar.zst` — atomic, replacing
-   any existing file.
-3. Writes the `entries` and `output_files` rows.
+1. Packs the entry — `stdout`, `outputs/<rel>`,
+   `workspace-outputs/<rel>` and the `.vx-meta.json` sidecar — into
+   `<cacheDir>/<hash>.tar.zst.tmp-<pid>-…` (streamed; an artifact of
+   4 MiB or less is packed in memory and written there).
+2. Scans the temp as a restore would (a readable archive, a `stdout`
+   entry, its own key in the sidecar); a failure removes the temp.
+3. In one `BEGIN IMMEDIATE` transaction, `rename(2)`s the temp to
+   `<cacheDir>/<hash>.tar.zst` and writes the `entries` row
+   (`ON CONFLICT(hash) DO UPDATE …`), the `output_files` rows and the
+   `entry_inputs` rows, so bytes and rows go live together. A commit
+   that fails after the rename unlinks the artifact: the old rows then
+   name none, and the key misses (A-3). `ingest()` takes the same path.
 
 Reads via `get()` are non-blocking thanks to WAL.
 

@@ -26,8 +26,8 @@
 // layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
-import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { accessSync, constants, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
+import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   UserError,
@@ -1405,18 +1405,8 @@ export class Cache implements CacheLayer {
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
     const { entries } = scanned
-    // POSIX rename atomically REPLACES the destination if it exists,
-    // so we don't need a pre-rm. The pre-rm was actively harmful —
-    // it opened a race window where writer B could delete writer A's
-    // just-renamed file BEFORE A's subsequent stat, producing a
-    // spurious ENOENT. The rename itself preserves the "either-or"
-    // semantics for concurrent readers.
-    const endRename = span('save: rename')
-    await rename(tmpPath, finalPath)
-    endRename()
-
     const totalBytes =
-      compressed instanceof Uint8Array ? compressed.byteLength : Bun.file(finalPath).size
+      compressed instanceof Uint8Array ? compressed.byteLength : Bun.file(tmpPath).size
     const outputFileRows: Array<[string, number, number, number]> = []
     // Per-output-file fingerprint rows feed the skip-restore check.
     // Row paths: project entries store the bare rel (`outputs/`
@@ -1455,7 +1445,23 @@ export class Cache implements CacheLayer {
     const outputs = this.outputs
     const insertEntryInput = this.insertEntryInput
     const inputComponents = meta.inputComponents
+    // The artifact goes live INSIDE the write transaction, taken
+    // IMMEDIATE: the rename happens only once this writer holds the
+    // database's write lock, and its rows commit before any other writer
+    // can rename. Renamed first and indexed after, a commit that failed
+    // (`SQLITE_BUSY` past the busy timeout, `SQLITE_FULL`) left these bytes
+    // beside the previous save's rows, and two writers of one key (two
+    // workspaces on one `--cache-dir`) could pair one's bytes with the
+    // other's rows: every later hit failed the task on an artifact
+    // "missing" a recorded output (A-3). POSIX rename replaces the
+    // destination atomically, so a reader holding the old file reads it
+    // whole. A commit that fails after the rename takes the artifact back
+    // out: the old rows then name no artifact, which a probe reads as a
+    // miss.
+    let renamed = false
     const tx = this.db.transaction(() => {
+      renameSync(tmpPath, finalPath)
+      renamed = true
       insertEntry.run(
         hash,
         project,
@@ -1487,8 +1493,14 @@ export class Cache implements CacheLayer {
       }
     })
     const endTx = span('save: index tx')
-    tx()
-    endTx()
+    try {
+      tx.immediate()
+    } catch (err) {
+      await unlink(renamed ? finalPath : tmpPath).catch(() => undefined)
+      throw err
+    } finally {
+      endTx()
+    }
   }
 
   /** Apply the deferred accessed_at bumps in one statement. */
