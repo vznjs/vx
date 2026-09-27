@@ -1532,6 +1532,27 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--dry', '--profile']).error).toMatch(/need a real run/)
   })
 
+  it('rejects --report / --report-file with --dry or --graph (item 992)', () => {
+    // Accepted and ignored, `--report-file="$GITHUB_STEP_SUMMARY" --dry`
+    // exited 0 having written nothing.
+    const refusals = [
+      ['--dry', '--report'],
+      ['--dry', '--report-file=r.md'],
+      ['--graph', '--report'],
+      ['--graph=g.dot', '--report-file=r.md'],
+    ].map((flags) => parseRunArgs(['build', ...flags]).error)
+    const tail =
+      'skips execution; --summarize / --profile / --report / --report-file need a real run'
+    expect(refusals).toEqual([
+      `--dry ${tail}`,
+      `--dry ${tail}`,
+      `--graph ${tail}`,
+      `--graph ${tail}`,
+    ])
+    // Control: a real run takes both.
+    expect(parseRunArgs(['build', '--report', '--report-file=r.md']).error).toBeUndefined()
+  })
+
   it('parses --retry <n> / --retry=<n> and validates it', () => {
     expect(parseRunArgs(['build', '--retry', '3']).retries).toBe(3)
     expect(parseRunArgs(['build', '--retry=0']).retries).toBe(0)

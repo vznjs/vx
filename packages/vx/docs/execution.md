@@ -564,8 +564,9 @@ The two flags differ only in output format:
   `formatGraphDot`.
 
 Mutually exclusive: `--dry` and `--graph` together is a parse error.
-Combining either with `--summarize` or `--profile` is a parse error
-(those need a real run).
+Combining either with `--summarize`, `--profile`, `--report` or
+`--report-file` is a parse error (those need a real run; the last two
+were accepted and wrote nothing until item 992).
 
 ## Run artifacts
 

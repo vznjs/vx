@@ -343,8 +343,9 @@ stays clean).
 Mutual exclusion:
 
 - `--dry` and `--graph` — both skip execution; pick one.
-- `--dry` or `--graph` with `--summarize` or `--profile` — the latter
-  two need a real run.
+- `--dry` or `--graph` with `--summarize`, `--profile`, `--report` or
+  `--report-file` — each needs a real run to write about. `--report` and
+  `--report-file` were accepted and silently wrote nothing until item 992.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest documented `vx run` flag when one is within two edits
