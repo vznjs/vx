@@ -446,6 +446,11 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await expect(cache.restoreOutputs('stray', projectDir)).rejects.toThrow(
       /was blocked by what is on disk \(EISDIR/,
     )
+    // Item 1094: `dist/**` covers this path, and the message said the globs
+    // did not; what the clean leaves is a directory where a file goes.
+    await expect(cache.restoreOutputs('stray', projectDir)).rejects.toThrow(
+      /removes the files the output globs select, not a directory standing where the entry holds a file, nor a path the globs do not cover — remove it and re-run\.$/,
+    )
 
     // And a FILE standing where the entry needs a DIRECTORY — the same
     // arm reached by a different code (measured: `mkdir 'dist'` over a

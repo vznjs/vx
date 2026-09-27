@@ -118,6 +118,17 @@ test is telling the truth.
       `docs/history/2026-09-improvement-loop-1053-1092.md`, a prefix as
       item 373 set the rule.
 
+1094. DONE (2026-09-27, restore review, low). A hit blocked by a
+      directory standing where the entry holds a file (`rm dist/out.js;
+mkdir dist/out.js`) failed with "a path the output globs do not
+      cover", yet `dist/**` covers it. The clean removes the files the
+      globs select and the directories that removal emptied, and an empty
+      directory where a file goes is neither. The refusal itself stays:
+      it fails closed (item 427). Its message now says what the clean
+      leaves, both cases named.
+      - Row: `artifact-roundtrip.test.ts` › "names a STRAY on disk as
+        such" pins the new sentence, red without the change.
+
 ## In flight
 
 **The parallel plan (2026-09-27, `docs/design/plan-2026-09-27.md`).**
