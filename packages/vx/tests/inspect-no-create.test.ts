@@ -17,17 +17,27 @@ const VERBS = [
   ['info'],
   ['why', 'app#build'],
   ['cache', 'prune', '--older-than', '1d', '--dry-run'],
+  // Not a reading verb, but with no cache there is nothing for it to
+  // delete, and opening one to find that out made it.
+  ['cache', 'prune', '--older-than', '1d'],
 ]
 
-async function vx(cwd: string, args: string[]): Promise<{ code: number; err: string }> {
+async function vx(
+  cwd: string,
+  args: string[],
+): Promise<{ code: number; out: string; err: string }> {
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd,
-    stdout: 'ignore',
+    stdout: 'pipe',
     stderr: 'pipe',
     env: { ...process.env, NO_COLOR: '1' },
   })
-  const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
-  return { code, err: err.trim() }
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { code, out, err: err.trim() }
 }
 
 describe('a reading verb makes nothing on disk', () => {
@@ -54,6 +64,20 @@ describe('a reading verb makes nothing on disk', () => {
       // The positive: a run does make it, so the check above can see one.
       expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
       expect(existsSync(path.join(root, '.vx', 'cache', 'cache.db'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a prune with no cache prunes nothing and exits 0, dry or not',
+    async () => {
+      const dry = await vx(root, ['cache', 'prune', '--max-size', '1G', '--dry-run'])
+      const real = await vx(root, ['cache', 'prune', '--max-size', '1G'])
+      expect([dry, real]).toEqual([
+        { code: 0, out: 'Would prune 0 entries (0 B)\n', err: '' },
+        { code: 0, out: 'Pruned 0 entries (0 B freed)\n', err: '' },
+      ])
+      expect(existsSync(path.join(root, '.vx'))).toBe(false)
     },
     TIMEOUT,
   )

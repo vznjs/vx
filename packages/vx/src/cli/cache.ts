@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { seeHelp } from './help.js'
 import { nearest, parseDuration, parseSize } from '../util/index.js'
@@ -143,6 +144,16 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   // wrong path.
   // A dry run only reads: it never resets the index (item 896).
   const dir = await cliCacheDir(root, parsed.cacheDir)
+  // A workspace that never ran has nothing to prune, and opening the cache
+  // to find that out made it: `.vx/cache` with a database and a
+  // `.gitignore`, where item 900 had held the dry run to making nothing
+  // (and a read-only checkout was refused as unwritable instead).
+  if (!existsSync(dir)) {
+    process.stdout.write(
+      parsed.dryRun === true ? 'Would prune 0 entries (0 B)\n' : 'Pruned 0 entries (0 B freed)\n',
+    )
+    return 0
+  }
   const cache = parsed.dryRun === true ? Cache.inspect(dir) : new Cache(dir)
   // A prune deletes rows and artifacts; a cache this user cannot write is
   // refused up front with the directory named, as a run refuses it, rather
