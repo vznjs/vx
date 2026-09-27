@@ -64,6 +64,28 @@ export function clampJobSummary(markdown: string): string {
   return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
 }
 
+/**
+ * A task id as inline markdown: `a#*x*` rendered as `a#` and an italic
+ * `x` (item 1058). Table cells escape their pipes on top of this.
+ */
+function escapeInline(s: string): string {
+  return s.replace(/[\\`*_[\]<>]/g, '\\$&')
+}
+
+/**
+ * A code span that holds any text: its fence is one backtick longer than
+ * the longest run inside, padded when the text starts or ends with one.
+ * The footer cell-escaped the command instead, which is for tables: a `|`
+ * showed as `\|`, and a backtick ended the span early (item 1058).
+ */
+function codeSpan(raw: string): string {
+  const s = raw.replace(/\r?\n/g, ' ')
+  const longest = Math.max(0, ...(s.match(/`+/g) ?? []).map((r) => r.length))
+  const fence = '`'.repeat(longest + 1)
+  const pad = s.startsWith('`') || s.endsWith('`') ? ' ' : ''
+  return `${fence}${pad}${s}${pad}${fence}`
+}
+
 /** Render the whole job summary. Deterministic for a given record. */
 export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string {
   const failed = summary.tasks.filter((t) => t.status === 'failed')
@@ -99,9 +121,9 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       // (the record's `blockedBy` names the root of each block).
       const blocked = summary.tasks
         .filter((s) => s.status === 'skipped' && s.blockedBy === t.taskId)
-        .map((s) => escapeMarkdownCell(s.taskId))
+        .map((s) => escapeMarkdownCell(escapeInline(s.taskId)))
       lines.push(
-        `- **${escapeMarkdownCell(t.taskId)}** — ${t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
+        `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
       )
     }
     lines.push('')
@@ -114,7 +136,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   // order as delivered.
   const ordered = [...failed, ...summary.tasks.filter((t) => t.status !== 'failed')]
   for (const t of ordered) {
-    const cells = [escapeMarkdownCell(t.taskId), statusLabel(t), fmtMs(t.durationMs)]
+    const cells = [escapeMarkdownCell(escapeInline(t.taskId)), statusLabel(t), fmtMs(t.durationMs)]
     lines.push(`| ${cells.join(' | ')} |`)
   }
   lines.push('')
@@ -123,7 +145,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   const hits = summary.tasks.filter((t) => isCacheHit(t.status)).length
   const passed = summary.tasks.filter((t) => isPassStatus(t.status)).length
   lines.push(
-    `<sub>vx ${summary.run.vxVersion} · \`${escapeMarkdownCell(summary.run.command)}\` · ${passed}/${summary.taskCount} passed · ${hits} restored</sub>`,
+    `<sub>vx ${summary.run.vxVersion} · ${codeSpan(summary.run.command)} · ${passed}/${summary.taskCount} passed · ${hits} restored</sub>`,
   )
   lines.push('')
   return lines.join('\n')

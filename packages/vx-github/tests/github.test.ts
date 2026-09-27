@@ -661,8 +661,22 @@ describe('every output the vx-github sweep found unheld', () => {
         { run: { ...RUN, command: 'vx run a|b' } },
       ),
     )
-    expect(md).toContain('· `vx run a\\|b` · 2/4 passed · 1 restored</sub>')
+    // Outside a table a `|` needs no escape, and `\\|` rendered literally
+    // inside the code span (item 1058).
+    expect(md).toContain('· `vx run a|b` · 2/4 passed · 1 restored</sub>')
     expect(md).toContain('· blocked p\\|q#t')
+  })
+
+  // A backtick in the command ended the footer's code span early, and a
+  // task id's `*` rendered as emphasis (item 1058).
+  it('the footer holds any command in one code span; an id is escaped as inline markdown', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'a#*x*', status: 'failed', exitCode: 1 })], {
+        run: { ...RUN, command: 'vx run `echo` -- x' },
+      }),
+    )
+    expect(md).toContain('· ``vx run `echo` -- x`` · ')
+    expect(md).toContain('- **a#\\*x\\*** — exit 1')
   })
 
   it('the check-run payload: its times, its title in both numbers, its summary clamped', async () => {
