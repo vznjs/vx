@@ -169,3 +169,9 @@ task picked`; neither prints a stack. Row in
   awaited I/O after `run()` returned, and the signal path exits once
   stdout drains. The write is now synchronous, done before that exit.
   Row in `tests/run-exit-codes.test.ts`, red without the fix.
+- E-24 — `vx stats` (deprecated alias of `vx info`) said nothing of its
+  deprecation. It now prints `vx stats is deprecated; use vx info` once
+  on stderr; stdout stays byte-identical. Row in `tests/show-info.test.ts`.
+  Also `vx run`'s exit-code table (C's lead) now names nothing
+  affected (0), an unknown task and a persistent task that exits after
+  ready (1), each already held by a row.

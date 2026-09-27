@@ -104,8 +104,8 @@ Exit codes:
 
 | Code                  | When                                                                                                                                                                                                                      |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`                   | Every task finished `success` or `cache-hit` (local or remote).                                                                                                                                                           |
-| `1`                   | At least one task ended `failed` or `skipped`; or parse/setup error.                                                                                                                                                      |
+| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                   |
+| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited after it was ready; a task name no project declares; or parse/setup error.                                                                        |
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
@@ -1825,7 +1825,8 @@ declared }`, `declared` the count of tasks with `exec.sandbox`). The
   pretty rows render this object;
   there is no second source.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
-  it); it prints byte-identical output.
+  it); its stdout is byte-identical, and it prints
+  `vx stats is deprecated; use vx info` once on stderr.
 
 ## `vx why`
 
