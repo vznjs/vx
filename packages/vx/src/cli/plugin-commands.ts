@@ -10,6 +10,7 @@
 import type { VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { loadCliWorkspace } from './workspace-config.js'
+import { machineParallelism } from '../util/index.js'
 
 export interface ResolvedPluginCommand {
   plugin: VxPlugin
@@ -41,7 +42,7 @@ export interface UnresolvedPluginCommand {
 async function workspacePlugins(
   cwd: string,
 ): Promise<
-  | { workspaceRoot: string; cacheDir: string; plugins: readonly VxPlugin[] }
+  | { workspaceRoot: string; cacheDir: string; concurrency: number; plugins: readonly VxPlugin[] }
   | UnresolvedPluginCommand
   | null
 > {
@@ -57,7 +58,13 @@ async function workspacePlugins(
   } catch (err) {
     return { loadError: err instanceof Error ? err.message : String(err) }
   }
-  return { workspaceRoot, cacheDir: ws.cacheDir, plugins: ws.plugins }
+  return {
+    workspaceRoot,
+    cacheDir: ws.cacheDir,
+    // What run.ts takes when no --concurrency is given.
+    concurrency: ws.workspaceConfig?.concurrency ?? machineParallelism(),
+    plugins: ws.plugins,
+  }
 }
 
 /**
@@ -84,6 +91,7 @@ export async function resolvePluginCommand(
       ctx: {
         workspaceRoot: ws.workspaceRoot,
         cacheDir: ws.cacheDir,
+        concurrency: ws.concurrency,
         warn: (m) => process.stderr.write(`${m}\n`),
       },
     }

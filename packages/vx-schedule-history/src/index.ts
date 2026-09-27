@@ -20,7 +20,6 @@ import {
   type TaskNode,
   type VxPlugin,
   loadResolvedProjects,
-  machineParallelism,
   UserError,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
@@ -351,7 +350,7 @@ async function historyCmd(
   }
   const reservations = reservationsFor(ids, table, options)
   const budgets: Budgets = {
-    cpus: machineParallelism(),
+    cpus: ctx.concurrency,
     memory: memoryBudgetMb(options),
   }
   const rows: HistoryRow[] = ids.map((id) => {

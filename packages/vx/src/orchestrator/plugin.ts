@@ -224,7 +224,15 @@ export interface PluginCommand {
   run(argv: readonly string[], ctx: CommandContext): number | Promise<number>
 }
 
-export interface CommandContext extends BaseContext {}
+export interface CommandContext extends BaseContext {
+  /**
+   * The worker count a `vx run` here uses unless `--concurrency` says
+   * otherwise: `vx.workspace`'s `concurrency`, else what the machine allows.
+   * A verb that budgets a run (`vx history`) reads it here; its own
+   * `machineParallelism()` said 4 cores beside `concurrency: 1` (item 1068).
+   */
+  readonly concurrency: number
+}
 
 /** `config` runs before the cache dir is known — it may be what the hook changes. */
 export interface WorkspaceHookContext {

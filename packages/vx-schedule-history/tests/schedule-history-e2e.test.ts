@@ -422,4 +422,27 @@ describe('schedule-history plugin end to end', () => {
     },
     TIMEOUT,
   )
+
+  // Item 1068: the verb budgeted the machine's cores, 4 beside a workspace
+  // that says `concurrency: 1`, which is what a run there uses.
+  it(
+    '`vx history` budgets the worker count a run here uses',
+    async () => {
+      await pkg('a', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          'export default { concurrency: 1, plugins: [scheduleHistoryPlugin()] }\n',
+      )
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      expect(json.exitCode).toBe(0)
+      expect(
+        (JSON.parse(json.stdout.toString()) as { budgets: { cpus: number } }).budgets.cpus,
+      ).toBe(1)
+    },
+    TIMEOUT,
+  )
 })
