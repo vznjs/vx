@@ -33,6 +33,7 @@ export interface ApplyFiltersOptions {
   affectedByFilter?: Map<ParsedFilter, Set<string>>
   /** Called once per filter that matched zero projects, before expansion — a typo among several filters otherwise under-selects silently. */
   onNoMatch?: (filter: ParsedFilter) => void
+  onEmptyWalk?: (filter: ParsedFilter, matched: readonly string[]) => void
 }
 
 export function applyFilters(opts: ApplyFiltersOptions): Set<string>
@@ -60,7 +61,9 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 3. **Apply in argv order**:
    - Compute matched names (glob match on `name`, path-prefix or
      path-glob on `dir`, or the pre-resolved git-affected set); a
-     filter that matched nothing is reported through `onNoMatch`.
+     filter that matched nothing is reported through `onNoMatch`, and one
+     that matched but whose walk selected nothing through `onEmptyWalk`
+     (item 1030).
    - Expand per flags (add transitive deps / dependents; or restrict
      to deps-only).
    - Add to the selection (include) or remove from it (negate).

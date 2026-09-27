@@ -952,6 +952,20 @@ selectExecutor …`) naming no plugin, and a `demand()` throw from
         layer's close logged). Red without the teardown, and without the
         close.
 
+1030. DONE (2026-09-27, the graph review's lead 5). Three filter shapes
+      misled. `...^c` for a `c` nothing depends on (and `a^...` for an
+      `a` that depends on nothing) said "no projects matched filter(s)",
+      a typo's message for a pattern that matched. `...` was hinted "Did
+      you mean one?". A bare `!` (`--filter "!$UNSET"`) excluded nothing
+      and every project ran behind one warning line.
+      - Fix: `parseFilter` refuses a filter that names no project;
+        `applyFilters` reports a matched pattern with an empty walk
+        (`onEmptyWalk`), and `select.ts` names what it matched. `cli.md`
+        says so.
+      - Row: `cli.test.ts` › a filter that matched but walked to nothing,
+        or names no project, says so (four shapes, exact messages). Red
+        without either piece.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

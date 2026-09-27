@@ -17,7 +17,7 @@
 // given, the base set is "all projects" and excluded packages are removed.
 
 import path from 'node:path'
-import { BUN_GLOB_WILDCARDS } from '../util/index.js'
+import { BUN_GLOB_WILDCARDS, UserError } from '../util/index.js'
 import type { PackageGraph } from './package-graph.js'
 import type { ProjectMeta } from './workspace.js'
 
@@ -81,6 +81,12 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
       gitSince: s.slice(1, -1),
     }
   }
+
+  // `...`, `!`, `^...`: the operators with no project between them. An
+  // empty name glob matched nothing and was hinted "Did you mean a?", and
+  // an empty exclude (`!$UNSET`) excluded nothing, so every project ran
+  // with one warning line (item 1030).
+  if (s === '') throw new UserError(`filter "${raw}" names no project`)
 
   let isPath = false
   let matcher = s
@@ -191,6 +197,12 @@ export interface ApplyFiltersOptions {
    * several filters silently under-selects.
    */
   onNoMatch?: (filter: ParsedFilter) => void
+  /**
+   * Called once per filter whose pattern matched projects but whose walk
+   * selected none (`...^c` for a `c` nothing depends on), with what it
+   * matched. Reported as a no-match, it read as a typo (item 1030).
+   */
+  onEmptyWalk?: (filter: ParsedFilter, matched: readonly string[]) => void
 }
 
 export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
@@ -216,6 +228,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
         for (const d of opts.graph.transitiveDependents(name)) expanded.add(d)
       }
     }
+    if (matched.length > 0 && expanded.size === 0) opts.onEmptyWalk?.(f, matched)
     if (f.negate) excludes.push(expanded)
     else for (const name of expanded) selected.add(name)
   }
