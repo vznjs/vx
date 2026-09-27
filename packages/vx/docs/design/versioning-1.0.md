@@ -35,6 +35,18 @@ change is a reviewed diff of that file and never a side effect.
   surface cannot drift apart. A deliberate change regenerates the
   record with `VX_UPDATE_CONTRACT=1` (the command is in the test's
   header) and names the change in the release notes.
+- **The plugin API and the package's exports.**
+  `tests/contract-package-api.test.ts` reads, from the source, every
+  declaration `src/index.ts` exports and every type those name,
+  transitively (followed through imports and re-exports, so an internal
+  type a plugin meets in a signature is held too): a type in full, a
+  function to its signature, a class to its public members, comments
+  dropped. With the runtime values of the exported constants
+  (`PLUGIN_HOOKS`, `TASK_STATUSES`, `TELEMETRY_SCHEMA_VERSION`, …) it is
+  compared with `tests/contract/package-api.txt`. A second row holds
+  `VxPlugin`'s members to `PLUGIN_HOOKS`. The façade snapshot in
+  `package-boundaries.unsafe.test.ts` still pins the export names;
+  this pins their shapes. Regenerate the same way.
 
 ## Not the contract
 
