@@ -597,11 +597,32 @@ describe('detectFlaky', () => {
     })
   })
 
-  it('judges every candidate past the first chunk of 500', async () => {
-    const rows = [mkRun({ hash: 'K1100', project: 'pkg', task: 'test', status: 'failed' })]
+  it('judges every candidate past the first chunk of 500, and the last of each chunk', async () => {
+    const rows = ['K499', 'K1100'].map((hash) =>
+      mkRun({ hash, project: 'pkg', task: 'test', status: 'failed' }),
+    )
     await withRuns(rows, (db) => {
       const many = Array.from({ length: 1200 }, (_, i) => cand(`K${i}`))
-      expect(detectFlaky(db, many).map((f) => f.hash)).toEqual(['K1100'])
+      expect(detectFlaky(db, many).map((f) => f.hash)).toEqual(['K499', 'K1100'])
+    })
+  })
+
+  it('does not mix two tasks of one project that share a key string', async () => {
+    const rows = [mkRun({ hash: 'K', project: 'pkg', task: 'lint', status: 'failed' })]
+    await withRuns(rows, (db) => {
+      expect(detectFlaky(db, [cand('K')])).toEqual([])
+      expect(detectFlaky(db, [cand('K', 'success', 1, 'pkg', 'lint')])).toHaveLength(1)
+    })
+  })
+
+  it('probes only first-attempt passes: a failure or a retry goes straight to the scan', async () => {
+    await withRuns([], (real) => {
+      const { db, queries } = countingDb(real)
+      expect(detectFlaky(db, [cand('K', 'failed'), cand('R', 'success', 2)])).toEqual([
+        { ...cand('R', 'success', 2), taskId: 'pkg#test', passes: 1, failures: 0 },
+      ])
+      expect(queries).toHaveLength(1)
+      expect(queries[0]).toContain('passes')
     })
   })
 })
@@ -640,6 +661,22 @@ describe('flakyTasks', () => {
         { taskId: 'web#test', project: 'web', task: 'test', keys: 2, passes: 3, failures: 3 },
         { taskId: 'api#e2e', project: 'api', task: 'e2e', keys: 1, passes: 1, failures: 1 },
       ])
+    })
+  })
+
+  it('breaks a failure tie by passes, then project, then task', async () => {
+    const mixed = (project: string, task: string, passes: number) => [
+      mkRun({ hash: `${project}-${task}`, project, task, status: 'failed' }),
+      ...Array.from({ length: passes }, () => mkRun({ hash: `${project}-${task}`, project, task })),
+    ]
+    const rows = [
+      ...mixed('b', 'a', 1),
+      ...mixed('a', 'z', 1),
+      ...mixed('a', 'y', 1),
+      ...mixed('c', 'c', 2),
+    ]
+    await withRuns(rows, (db) => {
+      expect(flakyTasks(db).map((t) => t.taskId)).toEqual(['c#c', 'a#y', 'a#z', 'b#a'])
     })
   })
 })
