@@ -888,7 +888,12 @@ failed.
 vx's warm rows are one task: `@unocss/vscode#build` runs
 `vscode-ext-gen`, which rewrites `README.md` and its generated `meta.ts` with the same bytes, so vx withholds its save
 (`README.md changed after its key was taken`) and runs it again every
-time, 550–900 ms. The other 41 are a 160 ms no-op.
+time, 550–900 ms. The other 41 are a 160 ms no-op. The gap is kept on
+purpose: saving when the bytes match again is the check item 1015
+replaced, and with it the edited-and-reverted row in
+`tests/inputs-moved.test.ts` replays the edit's output (H-34). Closing
+it needs to know the task was the only writer (`caching.md` § the
+re-check before a save).
 
 ## Real repos re-measured (2026-09-27)
 
