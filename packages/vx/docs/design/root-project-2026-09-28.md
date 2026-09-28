@@ -2,11 +2,13 @@
 
 **Status: shipped as D-39 (`docs/history/ws-d.md`).**
 
-Every adoption path dropped a task that lives at the workspace root:
-Turbo's `//#task`, Nx's root project, wireit and lage root scripts.
-microsoft/fluentui-react-native builds with one root `tsc -b` that all
-85 packages' `test` wait on; under `lage()` they tested with nothing
-built (stream N, `docs/history/ws-n.md`).
+The two runners vx adopts both have tasks that live at the workspace
+root: Turbo's root tasks (`//#lint` in turbo.json, run from the root
+`package.json` scripts) and Nx's root project (a `project.json` or
+`package.json` at `.` with its own targets). vx had no way to hold
+one, so both adoption
+paths dropped them, and an edge from a package task to one refused
+(stream N, `docs/history/ws-n.md`).
 
 Core already runs a root project: a workspace whose package globs list
 `.` (this repo does) makes the root package a project with the same
@@ -34,10 +36,11 @@ root project's directory is the whole workspace, so every member is a
 nested project: `nested-dirs.ts` drops a member's paths from the root's
 globs, and the sandbox grants the root task none of them. A root task
 owns only the files no member owns. A root task whose command reads
-members' sources (FURN's `tsc -b`) cannot cache on its own globs: it
+members' sources (a root `tsc -b`) cannot cache on its own globs: it
 declares those files through `cache.inputs.workspaceFiles`, the
 documented boundary exception, or runs uncached. A mapper that emits
-one says which.
+one says which. The mapper also owns the name: Turbo writes the root as
+`//` (`//#lint`), and vx names it by the root `package.json` `name`.
 
 ## `--affected`
 
