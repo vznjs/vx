@@ -43,6 +43,22 @@ export async function nxTargetHint(tasks: readonly string[], cwd: string): Promi
   return `\`${tasks.join(' ')}\` is Nx's project:target: vx run ${specs.join(' ')}`
 }
 
+/**
+ * The task names `vx run <task>` can take here: the cwd project's, else
+ * every project's, sorted; null when no workspace loads. What a run with
+ * no task and no terminal for the picker names instead of a guess.
+ */
+export async function taskNamesHere(cwd: string): Promise<string[] | null> {
+  const projects = await workspaceProjects(cwd)
+  if (projects === null) return null
+  const own = await findCwdProject(cwd)
+  const names = new Set<string>()
+  for (const p of projects.values())
+    if (own === null || p.name === own)
+      for (const t of Object.keys(p.config.tasks ?? {})) names.add(t)
+  return [...names].sort()
+}
+
 async function workspaceProjects(
   cwd: string,
 ): Promise<Awaited<ReturnType<typeof loadCliProjects>> | null> {

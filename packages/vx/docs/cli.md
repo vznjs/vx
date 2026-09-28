@@ -104,7 +104,9 @@ If no task name is given:
   A workspace with no task exits `1` naming how to declare one (under
   `tasks` in a vx.config, or `vx init`).
 - **Not a TTY** — exits `1` with
-  `missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build)`.
+  `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`,
+  naming the cwd project's tasks, else every project's (twelve, then
+  `and N more`); outside a workspace it reads `vx run <task>, e.g. vx run build`.
 
 Exit codes:
 
