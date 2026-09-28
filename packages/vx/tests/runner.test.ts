@@ -15,6 +15,8 @@ import {
   runPersistent,
   shellQuote,
   signalExitCode,
+  streamToString,
+  CAPTURE_HEAD_CHARS,
   withForwardArgs,
   RSS_FLOOR_SLACK_BYTES,
 } from '../src/exec/runner.js'
@@ -451,6 +453,26 @@ describe('runPersistent', () => {
     8_000,
   )
 
+  it('readyWhen matches a character split across two writes', async () => {
+    // `€` is three bytes; the child writes two, pauses, then the third.
+    const spawn = runPersistent({
+      command: `printf '\\342\\202'; sleep 0.2; printf '\\254 up\\n'; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: '€ up',
+    })
+    try {
+      const settled = await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(1_500).then(() => 'timed out'),
+      ])
+      expect(settled).toBe('ready')
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  }, 8_000)
+
   it('rejects ready when the child exits before the marker appears', async () => {
     const spawn = runPersistent({
       command: 'echo nope; exit 1',
@@ -687,7 +709,52 @@ describe('execWord', () => {
   })
 })
 
+describe('streamToString', () => {
+  const bytes = (...chunks: number[][]): ReadableStream<Uint8Array> =>
+    new ReadableStream({
+      start(c) {
+        for (const b of chunks) c.enqueue(new Uint8Array(b))
+        c.close()
+      },
+    })
+
+  it('joins a character split across chunks', async () => {
+    expect(await streamToString(bytes([0xe2, 0x82], [0xac]))).toBe('€')
+  })
+
+  it('flushes a truncated last character to the text and to onChunk', async () => {
+    const seen: string[] = []
+    expect(await streamToString(bytes([0x61, 0xe2]), (s) => seen.push(s))).toBe('a\ufffd')
+    expect(seen.join('')).toBe('a\ufffd')
+  })
+
+  it('keeps every character across the head/tail seam', async () => {
+    const text = 'a'.repeat(CAPTURE_HEAD_CHARS) + 'bcd'
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(text))
+        c.close()
+      },
+    })
+    const got = await streamToString(stream)
+    expect([got.length, got.slice(-4)]).toEqual([text.length, 'abcd'])
+  })
+
+  it('reads nothing from an inherited fd or no stream', async () => {
+    expect([await streamToString(1), await streamToString(undefined)]).toEqual(['', ''])
+  })
+
+  it('stops at once on a signal already aborted', async () => {
+    const endless = new ReadableStream<Uint8Array>({ pull: () => new Promise(() => {}) })
+    expect(await streamToString(endless, undefined, AbortSignal.abort())).toBe('')
+  })
+})
+
 describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
+  it('reports nothing without a usage', () => {
+    expect(resourceUsageToCpuRss(undefined)).toEqual({})
+  })
+
   it("passes Bun's maxRSS through and converts cpu microseconds to ms", () => {
     // Only the fields the converter reads; cast through unknown for the rest.
     const usage = {

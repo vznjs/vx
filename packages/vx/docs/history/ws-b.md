@@ -31,6 +31,15 @@ In order of harm:
 
 ## Leads for other streams
 
+- Windows CI (not required), 2026-09-28, on #1514: every row of
+  `local-shortcircuit.test.ts` hit `EBUSY` in its fixture `rm`, and
+  `output-wipe-guard.test.ts` expects `dist/a.js` where Windows gives
+  `dist\\a.js`; the job then timed out at 8 minutes.
+
+- Cache: `execute-task.test.ts` › "trusts recorded directories without
+  re-recording them…" failed once in a full local gate (restore false
+  after a `utimes` on the dir), 2026-09-28; 3/3 alone.
+
 - E/C: a task failing on a vx sandbox refusal (`exec.sandbox.allow.write: …`)
   gets "(no output)" in the failure footer; the reason prints only above.
 
@@ -532,3 +541,16 @@ once per process. `vx info` here, 15 interleaved runs per arm: median
 - Row: `sandbox-runtime.unsafe.test.ts` › initializes without asking npm
   where the global root is (a fake `npm` on PATH; SRT's own init asks,
   the control; red without the fix).
+
+B-26. Sweep of the rest of `runner.ts`'s pure parts (capture, decode,
+RSS), 24 mutants: 10 caught (the tail `>=` hangs capture-cap: caught),
+5 equivalent or unobservable (`<=` at two capture edges, a zero peak,
+the abort listener's removal, `/proc` VmHWM vs rss), 8 now held. One
+mutant stood on the wrong site: `runPersistent`'s ready watcher also
+decodes `{ stream: true }`, and nothing held it.
+
+- Rows: `runner.test.ts` › streamToString (a character split across
+  chunks, a truncated last character to text and onChunk, the head/tail
+  seam, an fd or no stream, an already-aborted signal) › reports
+  nothing without a usage › readyWhen matches a character split across
+  two writes.
