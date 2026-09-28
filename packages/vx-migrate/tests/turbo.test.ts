@@ -325,6 +325,66 @@ describe('turbo()', () => {
   )
 })
 
+describe('root tasks (D-39)', () => {
+  const setUp = async (rootConfig: boolean) => {
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        name: 'ws',
+        private: true,
+        scripts: { gen: 'mkdir -p out && echo g > out/g.txt' },
+      }),
+    )
+    await writeFile(path.join(root, '.gitignore'), 'dist\nout\n')
+    await pkg('app', { build: 'cat ../../out/g.txt' })
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({
+        tasks: { '//#gen': { outputs: ['out/**'] }, build: { dependsOn: ['//#gen'] } },
+      }),
+    )
+    if (rootConfig)
+      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+  }
+
+  it(
+    "a root with a vx.config runs Turbo's `//#task`, and `//#gen` is an edge to it",
+    async () => {
+      await setUp(true)
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'ws#gen'])
+      expect(plan.tasks.find((t) => t.node.id === 'app#build')!.node.deps).toEqual(['ws#gen'])
+      expect(log.lines.join('\n')).not.toContain('root task')
+      const result = await run({
+        cwd: root,
+        tasks: ['app#build'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(result.ok).toBe(true)
+      expect(await Bun.file(path.join(root, 'out', 'g.txt')).text()).toBe('g\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROL: without one, the root task is a note and the edge a todo',
+    async () => {
+      await setUp(false)
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['app#build'])
+      const text = log.lines.join('\n')
+      expect(text).toContain(
+        'note: root task //#gen not migrated — the workspace root is no project; a vx.config at the root makes it one',
+      )
+      expect(text).toContain('dependsOn "//#gen": // declares no gen script — edge dropped')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('turbo.json is a claimed root file (item 961)', () => {
   it('turbo() claims turbo.json at the root and cannot tell which tasks an edit moved', () => {
     const claim = turbo().fingerprint!
