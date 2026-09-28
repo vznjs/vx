@@ -59,6 +59,11 @@
     API names unchecked, but refuses the bytes unless they match the
     SHA-256 the same API publishes, before any rename. The npm launcher's
     source fallback runs `vxSourceEntry` from its own package.json. No bug.
+13. What reaches GitHub. vx-github never prints its token and refuses one
+    no header can carry; the check-run posts the summary only, and the
+    invocation line it and telemetry carry counts what follows `--`
+    instead of quoting it (item 1057; the CLI passes no line of its own).
+    No bug.
 
 ## Items
 
@@ -192,6 +197,13 @@
   "JSONC Parse error": its patch files are read before the digest, outside
   the wrapper that names the file and the install that fixes it. Both
   reads go through one wrapper now. Row in `refusal-message.test.ts`.
+- L-17. `fix(workspace)`: a config-eval row cut short (a crash
+  mid-write, a bad disk) failed every later run with a `SyntaxError`
+  stack from the loader until the cache was wiped (probed). A row that is
+  not a JSON object is a miss now: evaluated again, the row replaced. The
+  tar reader held under 3,000 mutations (TarFormatError only, no hang),
+  and the cache wraps anything else a restore or ingest throws as a
+  corrupt artifact. Supervisor backlog 2. Row in `config-cache.test.ts`.
 
 ## Leads for other streams
 
