@@ -287,8 +287,9 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         log: collectingLogger(fixture),
       })
       expect(r.outcomes[0]?.status).toBe('failed')
+      // The message names the real path: macOS's temp dir is `/var`, a link.
       expect(fixture.log.join('\n')).toContain(
-        `the grant binding ${path.join(projDir, '.vxcache')} would make`,
+        `the grant binding ${realpathSync(path.join(projDir, '.vxcache'))} would make`,
       )
       expect(existsSync(path.join(projDir, '.vxcache', 'cache.db'))).toBe(true)
       expect(existsSync(path.join(projDir, '.vxcache', 'planted'))).toBe(false)
