@@ -10,7 +10,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
-import { applyScheduleHooks, buildAdmission } from '../src/orchestrator/plugin-host.js'
+import {
+  applyConfigHooks,
+  applyKeyHooks,
+  applyProjectHooks,
+  applyScheduleHooks,
+  buildAdmission,
+  fingerprintClaims,
+  hasHook,
+} from '../src/orchestrator/plugin-host.js'
+import type { VxPlugin } from '../src/orchestrator/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 
 const TIMEOUT = 20_000
@@ -1183,4 +1192,174 @@ describe('project stage context', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('plugin-host, called directly', () => {
+  // Every fixture above declares one plugin per stage, so a plugin that
+  // lacks a hook never stood in front of one that has it.
+  const bare = testPlugin('org/bare', { teardown: () => {} })
+  const nodes = (): Map<string, TaskNode> => new Map([['a#build', { id: 'a#build' } as TaskNode]])
+
+  it('a plugin without a stage is passed over; the plugin after it still answers', async () => {
+    const seen: string[] = []
+    const late = testPlugin('org/late', {
+      config: () => void seen.push('config'),
+      project: () => void seen.push('project'),
+      key: () => ({ k: 'v' }),
+      schedule: () => new Map([['a#build', 7]]),
+      fingerprint: { files: ['pnpm-lock.yaml'], affected: () => undefined },
+    })
+    const plugins = [bare, late]
+    const graph = nodes()
+    await applyConfigHooks(plugins, {} as never, {} as never)
+    await applyProjectHooks(plugins, {} as never, {} as never)
+    await applyKeyHooks(plugins, graph, {} as never)
+    expect({
+      seen,
+      keyParts: graph.get('a#build')!.keyParts,
+      weights: [...(await applyScheduleHooks(plugins, graph, {} as never))],
+      claims: [...fingerprintClaims(plugins)].map(([file, p]) => [file, p.name]),
+    }).toEqual({
+      seen: ['config', 'project'],
+      keyParts: [['org/late/k', 'v']],
+      weights: [['a#build', 7]],
+      claims: [['pnpm-lock.yaml', 'org/late']],
+    })
+  })
+
+  it('a stage counts as declared only by a plugin that declares that stage', () => {
+    const admitOnly = [bare, testPlugin('org/gate', { admit: () => true })]
+    const stages = ['config', 'project', 'graph', 'key', 'schedule', 'admit'] as const
+    expect(stages.map((s) => [s, hasHook(admitOnly, s)])).toEqual([
+      ['config', false],
+      ['project', false],
+      ['graph', false],
+      ['key', false],
+      ['schedule', false],
+      ['admit', true],
+    ])
+  })
+
+  it('the config stage hands each plugin the context it was given', async () => {
+    const ctx = { workspaceRoot: '/ws', warn: () => {} }
+    let got: unknown
+    await applyConfigHooks(
+      [testPlugin('org/cfg', { config: (_ws, c) => void (got = c) })],
+      {} as never,
+      ctx,
+    )
+    expect(got).toBe(ctx)
+  })
+
+  it('three parts named alike are numbered #2 and #3, in value order', async () => {
+    const twin = (v: string): VxPlugin => testPlugin('org/twin', { key: () => ({ v }) })
+    const graph = nodes()
+    await applyKeyHooks([twin('3'), twin('1'), twin('2')], graph, {} as never)
+    expect(graph.get('a#build')!.keyParts).toEqual([
+      ['org/twin/v', '1'],
+      ['org/twin/v#2', '2'],
+      ['org/twin/v#3', '3'],
+    ])
+  })
+
+  it('schedule refuses a plain object and an infinite weight, by name', async () => {
+    const said = (weights: unknown): Promise<string> =>
+      applyScheduleHooks(
+        [testPlugin('org/w', { schedule: () => weights as Map<string, number> })],
+        nodes(),
+        {} as never,
+      ).then(
+        (m) => JSON.stringify([...m]),
+        (e: Error) => e.message,
+      )
+    expect([
+      await said({ 'a#build': 5 }),
+      await said(new Map([['a#build', Infinity]])),
+      await said(new Map([['a#build', 5]])),
+    ]).toEqual([
+      "plugin 'org/w' failed in schedule: returned an object, not a Map of task id → weight",
+      "plugin 'org/w' failed in schedule: weight for a#build is not a finite number",
+      '[["a#build",5]]',
+    ])
+  })
+
+  it(
+    'a graph the plugins broke is blamed on the last plugin that edited it',
+    async () => {
+      await pkg('a', build)
+      await workspace([
+        pluginSource('org/first', `{ graph() {} }`),
+        pluginSource(
+          'org/second',
+          `{ graph(nodes) { nodes.get('a#build').deps.push('zz#nope') } }`,
+        ),
+      ])
+      const said = await planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+        () => 'planned',
+        (e: Error) => e.message,
+      )
+      expect(said).toBe(
+        "plugin 'org/second' failed in graph: a#build depends on 'zz#nope', which is not a task in this run's graph",
+      )
+    },
+    TIMEOUT,
+  )
+
+  describe('admit', () => {
+    const graph = new Map([
+      ['a', { id: 'a' } as TaskNode],
+      ['b', { id: 'b' } as TaskNode],
+    ])
+    const busy = new Set(['a'])
+
+    it('every answering plugin is asked, not only the first', () => {
+      const admit = buildAdmission(
+        [
+          testPlugin('org/yes', { admit: () => true }),
+          testPlugin('org/solo', { admit: (_t, ctx) => ctx.running.length === 0 }),
+        ],
+        graph,
+        2,
+        () => {},
+      )!
+      // CONTROL: with nothing running both admit.
+      expect([admit('b', busy), admit('b', new Set())]).toEqual([false, true])
+    })
+
+    it('a policy that returns nothing admits with no word, even beside a running task', () => {
+      const said: string[] = []
+      const admit = buildAdmission(
+        [testPlugin('org/mute', { admit: () => undefined as never })],
+        graph,
+        2,
+        (m) => said.push(m),
+      )!
+      expect({ busy: admit('b', busy), idle: admit('a', new Set()), said }).toEqual({
+        busy: true,
+        idle: true,
+        said: [],
+      })
+    })
+
+    it('a policy that throws admits the task it threw on, beside a running task too', () => {
+      const said: string[] = []
+      const admit = buildAdmission(
+        [
+          testPlugin('org/boom', {
+            admit: () => {
+              throw new Error('boom')
+            },
+          }),
+        ],
+        graph,
+        2,
+        (m) => said.push(m),
+      )!
+      expect({ first: admit('b', busy), next: admit('b', busy), said }).toEqual({
+        first: true,
+        next: true,
+        said: ["plugin 'org/boom' failed in admit: boom; admitting every task from here on"],
+      })
+    })
+  })
 })

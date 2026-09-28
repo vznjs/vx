@@ -306,6 +306,21 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     expect(await said(undefined)).toBe('ok')
   })
 
+  it('resolveExecutors: an empty executor name is refused like a missing one', async () => {
+    const said = await resolveExecutors(
+      [
+        testPlugin('org/anon', {
+          executor: () => ({ name: '', execute: () => Promise.reject(new Error('unused')) }),
+        }),
+      ],
+      { ...baseCtx, concurrency: 1 },
+    ).then(
+      () => 'ok',
+      (e: Error) => e.message,
+    )
+    expect(said).toBe("plugin 'org/anon' returned an executor with no name")
+  })
+
   it('resolveExecutors: a throwing executor factory aborts with a named UserError', async () => {
     const plugins: VxPlugin[] = [
       testPlugin('org/broken-exec', {
