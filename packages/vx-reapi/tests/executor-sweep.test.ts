@@ -144,6 +144,41 @@ describe.if(CHUNKING_SUPPORTED)('an input rewritten at the same size and mtime (
 })
 
 describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
+  // F-35: the outputs came down only after the logs were read, and a
+  // large stdout the server kept in CAS was hashed and probed again.
+  it('outputs start coming down before a CAS-held stdout is read', async () => {
+    const stdout = put('x'.repeat(100_000))
+    const out = put('built')
+    fake.onExecute = () => ({
+      response: {
+        result: {
+          exit_code: 0,
+          stdout_digest: D(stdout),
+          output_files: [{ path: 'out.txt', digest: D(out), is_executable: false }],
+        },
+      },
+    })
+    const from = fake.calls.length
+    await withExecutor((run) => run(request({ cacheKey: 'k-logs' })))
+    const after = fake.calls.slice(from)
+    const exec = after.findIndex((c) => c.method === 'Execute')
+    const order = after
+      .slice(exec + 1)
+      .map((c) => c.method)
+      .filter((m) => m === 'Read' || m === 'BatchReadBlobs')
+    expect(order).toEqual(['BatchReadBlobs', 'Read'])
+    // The record names the server's stdout blob, and nothing probed for it.
+    const probed = after
+      .filter((c) => c.method === 'FindMissingBlobs')
+      .flatMap((c) => (c.request['blob_digests'] as { hash: string }[]).map((d) => d.hash))
+    expect(probed).not.toContain(stdout.hash)
+    const record = fake.actions.get(execDigestFor('k-logs').hash) as {
+      stdout_digest?: { hash: string }
+    }
+    expect(record.stdout_digest?.hash).toBe(stdout.hash)
+    expect(await readFile(path.join(root, 'pkg', 'out.txt'), 'utf8')).toBe('built')
+  })
+
   it('a record whose blobs exist is replayed: no Execute, stdout and outputs restored', async () => {
     const out = put('from the record')
     const stdout = put('recorded stdout')

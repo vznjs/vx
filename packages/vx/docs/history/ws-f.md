@@ -370,3 +370,13 @@ set for gzip sent every export as raw JSON. It and each signal's own
 value warns and sends uncompressed. A 1 000-task trace: 971 KB → 33 KB
 for 4 ms of gzip. A live collector (0.161.0) took the gzipped export.
 Rows red without the fix.
+
+F-35. vx-reapi read an execution's stdout and stderr before its outputs
+started coming down, so a server that keeps stdout in CAS (Buildbarn)
+cost every remote execution a Read in series; and a stdout over 64 KiB
+was hashed and probed again to be recorded, though the server already
+held it. The outputs now start first and the record names the server's
+own stdout digest. Execute to restored through a proxy adding 15 ms
+each way, 100 KB stdout in CAS: 256 → 220 ms (min of 7, interleaved).
+Rows red without the fix; the record's failed-Tree-read row now runs
+remote-only, since the download's read of that Tree comes first.
