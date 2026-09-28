@@ -303,7 +303,19 @@ describe('cli run()', () => {
   // muscle-memory verbs but must name NO specific plugin package — core has
   // zero references to any cloud/service package.
   it.each(['serve', 'dev'])("gives a neutral, plugin-pointing hint for '%s'", async (cmd) => {
-    expect(await run([cmd])).toBe(1)
+    // Outside any workspace: in one whose project declares `dev` (this
+    // repo does), the task's own `vx run` line is the answer (task-verb.test.ts).
+    const os = await import('node:os')
+    const { mkdtemp } = await import('node:fs/promises')
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-noservice-'))
+    const origCwd = process.cwd()
+    process.chdir(dir)
+    try {
+      expect(await run([cmd])).toBe(1)
+    } finally {
+      process.chdir(origCwd)
+      await rm(dir, { recursive: true, force: true })
+    }
     expect(stderr).toContain('plugin')
     expect(stderr).not.toContain('unknown command')
     // Core must not name any specific service package.
