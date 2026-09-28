@@ -116,6 +116,15 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
     at = Array.isArray(deps) ? byName.get(String(deps[0])) : undefined
   }
   if (at === undefined || at.name === 'build' || at.task === null || at.task === undefined) return
+  // The worker IS `build`'s work, and so is every group on the way to it:
+  // a `typecheck` behind `build: npm run typecheck` waited for `build`,
+  // and the run refused the cycle (D-16).
+  for (const name of [...seen, at.name]) {
+    const t = byName.get(name)!.task!
+    if (name !== 'build' && Array.isArray(t['dependsOn'])) {
+      t['dependsOn'] = (t['dependsOn'] as string[]).filter((d) => d !== 'build')
+    }
+  }
   const deps = Array.isArray(at.task['dependsOn']) ? (at.task['dependsOn'] as string[]) : []
   if (!deps.includes('^build')) at.task['dependsOn'] = ['^build', ...deps]
   if (!at.todos.includes(CACHE_TODO)) at.todos.push(CACHE_TODO)

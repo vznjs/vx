@@ -259,6 +259,25 @@ describe('migrateScripts', () => {
     expect(chained['b1']).toEqual({ dependsOn: ['b2'] })
   })
 
+  it('the task a delegating `build` reaches never waits for `build` (D-16)', () => {
+    // `typecheck` waits for `build` by convention, but behind
+    // `build: npm run typecheck` it IS the build: the edge was a cycle.
+    const direct = mapped({ build: 'npm run typecheck', typecheck: 'tsc -b' })
+    expect(direct['typecheck']).toEqual({ exec: { command: 'tsc -b' }, dependsOn: ['^build'] })
+    // A group on the way that waits for `build` closes the same cycle.
+    const chained = mapped({ build: 'npm run check', check: 'npm run tsc', tsc: 'tsc -b' })
+    expect(chained['check']).toEqual({ dependsOn: ['tsc'] })
+    expect(chained['tsc']).toEqual({ exec: { command: 'tsc -b' }, dependsOn: ['^build'] })
+    // Two groups over each other end the walk; the cycle is npm's too.
+    const mutual = mapped({ build: 'npm run compile', compile: 'npm run build' })
+    expect(mutual['build']).toEqual({ dependsOn: ['compile'] })
+    // CONTROL: a `typecheck` beside a `build` that works still waits.
+    expect(mapped({ build: 'tsc', typecheck: 'tsc --noEmit' })['typecheck']).toEqual({
+      exec: { command: 'tsc --noEmit' },
+      dependsOn: ['build'],
+    })
+  })
+
   // The cache TODO went only on a `build` with a command, so a delegating
   // `build` wrote none anywhere, while the header said `build` carries one
   // (item 1045). It rides with `^build`, on the task that works.

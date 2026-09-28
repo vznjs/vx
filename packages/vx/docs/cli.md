@@ -1639,7 +1639,8 @@ over `<other>` — `dependsOn` and no command — so the graph runs and
 caches the target instead of a package-manager subprocess it cannot
 see. When `build` is such a group, the task it reaches that runs a
 command takes `^build` and the cache TODO, since a group has nothing
-to cache. Bare, a package manager's own command is not a script: `bun test`
+to cache; it and the groups on the way drop the wait on `build` a
+`typecheck` or `test` would carry, since they are the build (D-16). Bare, a package manager's own command is not a script: `bun test`
 is Bun's test runner, `bun build` its bundler, `pnpm install` and `yarn
 add` the managers' verbs, so each stays a command (item 908); `pnpm
 test` and `yarn test` do run the script. Arguments, flags or a `&&`
