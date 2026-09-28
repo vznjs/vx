@@ -87,6 +87,10 @@
     file write grant is refused before the bind (item 1003's check, probed
     with a target outside the workspace). The cache directory was walled
     only as `.vx` (L-24).
+20. What a task sees of the host's temp dir. Each task's directory under
+    `vx-tasks` is its own (probed: a sibling's is absent), and the rest of
+    `/tmp` is readable, as documented; vx's own strace logs sat there
+    (L-25).
 
 ## Items
 
@@ -281,6 +285,13 @@
   Rows: the request refuses the grant (control: without the cache dir it
   binds) and an e2e run fails the task with nothing planted, red without
   the plumbing from `run.ts`.
+- L-25. `fix(sandbox)`: the Linux trace log was written to
+  `os.tmpdir()/vx-strace-<tag>.log`, readable by every sandboxed task, so a
+  concurrent task read the paths another opened (probed). It now sits in
+  the task root beside the task directories, which every sandbox replaces
+  with its own. Row: a concurrent task greps the shared temp dir while the
+  other runs and finds nothing, red without the move; the rows that follow
+  the log now look in the task root.
 
 ## Leads for other streams
 
@@ -309,7 +320,8 @@
     namespace (pids 1, 2, 6) and `environ` was denied, so no leak here;
     a box where the weaker profile is the one that runs is unprobed.
   - Strace logs (`os.tmpdir()/vx-strace-<tag>.log`) are readable by a
-    concurrent task: every path another task opened.
+    concurrent task: every path another task opened. Probed and fixed
+    (L-25).
   - A write grant's realpath is checked before bwrap mounts it; a
     concurrent task that can write the parent may swap in a link between.
 - D (config): the purity gate lets `new Worker('./x.ts')` through; the

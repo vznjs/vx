@@ -258,8 +258,9 @@ export function refusedWrites(
    `run()` probes the weaker mode only when every sandboxed task opts
    in). Memoized per mode. A throw from the runtime itself is the same
    one-line verdict, and one about its own temp files (the observer
-   directory, the bridge sockets, the strace log all live under
-   `os.tmpdir()`) names the knob: the sandbox runtime needs a writable
+   directory and the bridge sockets live under `os.tmpdir()`; the strace
+   log beside the task directories, which every sandbox replaces with its
+   own, since a concurrent task read it there, L-25) names the knob: the sandbox runtime needs a writable
    temp directory and the one it has is not one, point TMPDIR at a
    writable directory. The probe also refuses up front a temp directory
    whose socket path is past the OS limit (`sun_path`, 108 bytes on

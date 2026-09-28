@@ -76,6 +76,13 @@ function expectOk(r: RunSummary, fixture: Fixture): void {
   throw new Error(`run was not ok (${exits}); task output:\n${fixture.log.join('\n')}`)
 }
 
+// Where a traced task's log lives: the task root in the sandbox runtime's
+// temp dir, which every sandbox replaces with its own (L-25).
+function taskRoot(env: NodeJS.ProcessEnv = process.env): string {
+  const named = env['CLAUDE_CODE_TMPDIR'] ?? env['CLAUDE_TMPDIR']
+  return path.join(named !== undefined && named !== '' ? named : '/tmp/claude', 'vx-tasks')
+}
+
 const collectingLogger = (fixture: Fixture): Logger => ({
   status(line) {
     fixture.log.push(line)
@@ -2388,6 +2395,41 @@ describe.skipIf(!available)("a task's temp directory is its own", () => {
     },
     TIMEOUT,
   )
+  // The Linux trace log sat in the shared temp dir, readable by every
+  // sandboxed task: a concurrent one read the paths this one opened (L-25).
+  // `hold` waits for `peek` to have looked, so the log is live when it does.
+  it.skipIf(process.platform !== 'linux')(
+    'a concurrent task finds no trace log of another in the shared temp dir',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-trace-own-' })
+      try {
+        const wait = (file: string) =>
+          `i=0; while [ ! -s ${file} ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done`
+        await addProject(root, 'app', {
+          files: { 'opened-l25.txt': 'x', 'm1/.keep': '', 'm2/.keep': '' },
+          config: `export default { tasks: {
+            hold: { exec: { command: 'cat opened-l25.txt > /dev/null; echo up > m1/up; ${wait('m2/looked')}', sandbox: { allow: { read: ['.'], write: ['m1/'] } } } },
+            peek: { exec: { command: '${wait('m1/up')}; grep -l opened-l25 ${os.tmpdir()}/vx-strace-*.log 2>/dev/null; echo looked > m2/looked', sandbox: { allow: { read: ['.'], write: ['m2/'] } } } },
+          } }`,
+        })
+        const out: string[] = []
+        const log = {
+          status() {},
+          taskStdout(_n: unknown, chunk: string) {
+            out.push(chunk)
+          },
+          taskStderr() {},
+          taskComplete() {},
+        } as never
+        const r = await run({ cwd: root, tasks: ['hold', 'peek'], log })
+        expect(r.outcomes.map((o) => o.status)).toEqual(['success', 'success'])
+        expect(out.join('')).toBe('')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('resolveSandboxConfig', () => {
@@ -4434,7 +4476,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const during: boolean[] = []
     const logOf = (): string | undefined => {
       const { tag } = traced(spy.mock.calls)
-      return tag === undefined ? undefined : path.join(os.tmpdir(), `vx-strace-${tag}.log`)
+      return tag === undefined ? undefined : path.join(taskRoot(), `vx-strace-${tag}.log`)
     }
     try {
       const r = await runSandboxed(
@@ -5135,7 +5177,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             cwd: root,
             stdout: 'pipe',
             stderr: 'pipe',
-            env: { ...process.env, TMPDIR: tmp },
+            env: { ...process.env, TMPDIR: tmp, CLAUDE_CODE_TMPDIR: tmp },
           })
           const ready = path.join(dir, 'ready.txt')
           const deadline = Date.now() + 20_000
@@ -5143,7 +5185,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
             if (existsSync(ready) && readFileSync(ready, 'utf8').trim() === 'up') break
             await Bun.sleep(20)
           }
-          const logs = (): string[] => readdirSync(tmp).filter((n) => n.startsWith('vx-strace-'))
+          const logs = (): string[] =>
+            readdirSync(taskRoot({ CLAUDE_CODE_TMPDIR: tmp })).filter((n) =>
+              n.startsWith('vx-strace-'),
+            )
           // The positive first: the running task has its log here.
           expect(logs().length).toBe(1)
           proc.kill('SIGINT')

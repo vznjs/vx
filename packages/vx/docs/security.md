@@ -57,8 +57,8 @@ A task with `exec.sandbox` runs where only what it declares exists:
   none);
 - the network is closed except to the domains granted, one union per
   run: a task granted any domain reaches every domain the run grants;
-- its temp directory and port-bridge socket are its own (mode 0700),
-  unreachable from another task and another local user;
+- its temp directory, port-bridge socket and trace log are its own
+  (mode 0700), unreachable from another task and another local user;
 - vx's own cache directory, wherever `cacheDir` puts it in the
   workspace, is a wall like `.vx`: a broad grant stops at it, and a write
   grant that would bind it is refused (L-24);
