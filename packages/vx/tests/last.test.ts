@@ -357,6 +357,11 @@ describe('parseLastArgs', () => {
       'a run id and --failed do not combine: replay 01a0',
     )
     expect(parseLastArgs(['--list=0']).error).toMatch(/1\.\.500/)
+    // The ceiling: 500 is taken, 501 is refused.
+    expect([parseLastArgs(['--list=500']).list, parseLastArgs(['--list=501']).error]).toEqual([
+      500,
+      'invalid --list: 501 (expected 1..500)',
+    ])
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
     expect(parseLastArgs(['--format', 'yaml']).error).toMatch(/pretty \| json/)
