@@ -225,17 +225,18 @@ export default defineWorkspace({ plugins: [workspaceScripts()] })
 
 For a repo whose root `package.json` scripts fan one script out through the package manager. Each fan-out becomes a task in every package it selects (the package's script, its `pre`/`post` hooks folded), uncached:
 
-| Root script                                                                | vx                                                                                             |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `pnpm -r [run] build`, `pnpm --filter <sel> build`                         | `build` in each selected package, `dependsOn: ['^build']` (pnpm sorts by the graph)            |
-| `--filter ./packages/*`, `@scope/*`, `!name`, `name...`, `...name`         | the same selection: a path glob, a name glob, an exclusion, with dependencies, with dependents |
-| `--parallel`, `--no-sort`                                                  | no `^` edge                                                                                    |
-| `npm run build --workspaces`, `--workspace <name>`                         | `^build` (npm runs in declaration order; the graph's order holds for any declaration)          |
-| `yarn workspaces run build`, `yarn workspaces foreach [-t] [-p] run build` | `^build`, none under `-p` without `-t`                                                         |
-| `bun --filter <sel> build`                                                 | `^build`                                                                                       |
-| `lerna run build [--scope] [--ignore] [--parallel] [--no-sort]`            | as pnpm                                                                                        |
-| `a && b` in one root script                                                | `b`'s task depends on `a`'s in the same package (every `a` runs before any `b`)                |
-| `dev`, `start`, `serve`, `watch`, `preview`                                | `exec.persistent`                                                                              |
+| Root script                                                                    | vx                                                                                             |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `pnpm -r [run] build`, `pnpm --filter <sel> build`                             | `build` in each selected package, `dependsOn: ['^build']` (pnpm sorts by the graph)            |
+| `--filter ./packages/*`, `@scope/*`, `!name`, `name...`, `...name`             | the same selection: a path glob, a name glob, an exclusion, with dependencies, with dependents |
+| `--parallel`, `--no-sort`                                                      | no `^` edge                                                                                    |
+| `pnpm -C <dir> build`, `pnpm --dir <dir> build`, `yarn workspace <name> build` | `build` in that one package                                                                    |
+| `npm run build --workspaces`, `--workspace <name>`                             | `^build` (npm runs in declaration order; the graph's order holds for any declaration)          |
+| `yarn workspaces run build`, `yarn workspaces foreach [-t] [-p] run build`     | `^build`, none under `-p` without `-t`                                                         |
+| `bun --filter <sel> build`                                                     | `^build`                                                                                       |
+| `lerna run build [--scope] [--ignore] [--parallel] [--no-sort]`                | as pnpm                                                                                        |
+| `a && b` in one root script                                                    | `b`'s task depends on `a`'s in the same package (every `a` runs before any `b`)                |
+| `dev`, `start`, `serve`, `watch`, `preview`                                    | `exec.persistent`                                                                              |
 
 A package takes a task when any root script fans it out to it: `build` and `build:examples` over different packages are one `build`, which `vx run build --filter …` narrows. A root script whose name differs is reported once (`` `ci` is `vx run build test` ``); a root command that is not a fan-out (`tsc -p scripts && pnpm -r typecheck`) runs at the root, which vx has no task for, and is reported. A `[ref]` selector (changed since a git ref) selects every package. Checked against `pnpm -r` 10.34 at concurrency 1 on pinia, starlight and react-day-picker: the same packages, and pnpm's order breaks no vx edge.
 

@@ -783,6 +783,20 @@ TypeScript compiler loaded from one package to the next, where
 per task). `isolatedTypes` and `types` both claim `lib/**/*.d.{ts,mts}`,
 so `lage()` runs `isolatedTypes` uncached.
 
+### vuejs/pinia (pnpm 11.21, `workspaceScripts()`, `98587ca`)
+
+`pnpm build` (`pnpm run -C packages/pinia build && pnpm run -C
+packages/nuxt build && pnpm run -C packages/testing build`) against
+`vx run build --all`. Neither tool caches a package script, so every
+run is a cold run: the table is the orchestration.
+
+| `build`   | vx         | pnpm 11.21     |
+| --------- | ---------- | -------------- |
+| every run | **10.0 s** | 13.6 s (1.36×) |
+
+The root script runs the three one after another; vx runs `nuxt` and
+`testing` side by side once `pinia`, which both depend on, is built.
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and

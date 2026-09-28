@@ -89,6 +89,22 @@ describe('parseFanOut', () => {
         'lerna run build --scope @x/* --no-sort',
         { tool: 'lerna', script: 'build', include: ['@x/*'], exclude: [], sorted: false },
       ],
+      [
+        'pnpm run -C packages/pinia build',
+        { tool: 'pnpm', script: 'build', include: ['./packages/pinia'], exclude: [], sorted: true },
+      ],
+      [
+        'pnpm --dir=./packages/nuxt run build',
+        { tool: 'pnpm', script: 'build', include: ['./packages/nuxt'], exclude: [], sorted: true },
+      ],
+      [
+        'yarn workspace @x/app run build',
+        { tool: 'yarn', script: 'build', include: ['@x/app'], exclude: [], sorted: true },
+      ],
+      [
+        'yarn workspace @x/app test',
+        { tool: 'yarn', script: 'test', include: ['@x/app'], exclude: [], sorted: true },
+      ],
       ['pnpm -r exec attw --pack .', null],
       ['pnpm run test:types', null],
       ['npm run build', null],
