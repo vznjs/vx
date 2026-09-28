@@ -71,6 +71,9 @@ function decodeDuration(raw: Uint8Array | undefined): number | undefined {
   }
 }
 
+/** Artifacts up to this size are batch-uploaded without a FindMissingBlobs probe. */
+const SMALL_PUT_BYTES = 256 * 1024
+
 export class ReapiRemoteCache {
   private readonly client: ReapiClient
   /** Named in core's degrade line: a gRPC status carries no server. */
@@ -162,10 +165,21 @@ export class ReapiRemoteCache {
    */
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
     const digest = await streamedDigestOf(body)
-    // Upload only what the server lacks. The artifact is content-addressed and
-    // immutable, so a hit here is a free skip rather than an optimisation.
-    const missing = await this.client.findMissingBlobs([digest])
-    if (missing.length > 0) await this.client.writeBlob(digest, body)
+    if (body.size <= SMALL_PUT_BYTES) {
+      // A small artifact is sent in one batch without asking first: the
+      // probe was a round trip of its own to save an upload no larger than
+      // it (102 → 71 ms per save at 15 ms one-way, F-26). Content-addressed,
+      // so a re-send is harmless.
+      // A server whose batch limit is smaller refuses it; stream instead.
+      await this.client
+        .batchUpdateBlobs([{ digest, data: await body.bytes() }])
+        .catch(() => this.client.writeBlob(digest, body))
+    } else {
+      // Upload only what the server lacks: for a large artifact the probe is
+      // cheap next to the bytes it can skip.
+      const missing = await this.client.findMissingBlobs([digest])
+      if (missing.length > 0) await this.client.writeBlob(digest, body)
+    }
     await this.client.updateActionResult(actionDigestFor(hash), {
       exit_code: 0,
       output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],

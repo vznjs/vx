@@ -290,3 +290,10 @@ digest; a mismatch streams. A 64 KiB hit: 132 ms on main, 99 with F-24,
 66 now (15 ms each way, min of 15, interleaved). A replayed execution
 record's read asks for its stdout inline too. Live suite 17 of 17. Rows
 red without the fix.
+
+F-26. vx-reapi's cache save probed FindMissingBlobs before every upload,
+a round trip of its own that could skip at most a small artifact's bytes.
+An artifact up to 256 KiB is now sent in one BatchUpdateBlobs unprobed
+(a refused batch streams); larger ones keep the probe. A 64 KiB save:
+102 → 69 ms through a proxy adding 15 ms each way (min of 15,
+interleaved). Live suite 17 of 17. Row red without the fix.

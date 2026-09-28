@@ -362,8 +362,9 @@ describe('the REAPI cache layer, exactly', () => {
     })
   })
 
-  it('a put of a blob the server has uploads nothing, and records the one output file', async () => {
-    const body = bytes('same bytes')
+  it('a put of a large blob the server has uploads nothing, and records the one output file', async () => {
+    // Past the small-artifact batch (F-26), where a probe can skip the bytes.
+    const body = random(300 * 1024)
     await withCache(async (c) => {
       await c.put('k-dup-1', new Blob([body]), { durationMs: 1 })
       const before = writes.length
