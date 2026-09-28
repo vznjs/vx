@@ -519,3 +519,9 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   (differential under a temp HOME: without it the row hung, with it it
   passed in 4.5 s; proxy variables refuted, `NO_PROXY` holds the
   registry). `test.bun.unsafe` now passes it through.
+- **D-53** Turbo's env exclusion `!SECRET` in `cache.inputs.env`,
+  `exec.env.passThrough` or `exec.env.secret` loaded clean (probed): vx
+  has no env wildcards, so it was a variable named `!SECRET` and nothing
+  was excluded. A leading `!` is now refused in all three lists, the way
+  their wildcards are. Row: the D-53 row of
+  `tests/config-schema-refusals.test.ts`.

@@ -346,6 +346,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           // `VITE_*` passed nothing through and loaded clean (Turbo's
           // passThroughEnv expands it), where `cache.inputs.env` refused the
           // same text below: one refusal for the class (item 1090).
+          assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
           const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
           if (wild !== undefined) {
             throw new UserError(
@@ -364,6 +365,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
             `${where}.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
           )
         }
+        if (secret !== undefined)
+          assertNoEnvNegation(secret as string[], `${where}.exec.env.secret`)
         const define = (env as { define?: unknown }).define
         if (define !== undefined) {
           if (typeof define !== 'object' || define === null || Array.isArray(define)) {
@@ -485,6 +488,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
             `${where}.cache.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
           )
         }
+        assertNoEnvNegation(envList as string[], `${where}.cache.inputs.env`)
         for (const name of envList as string[]) {
           // Reject wildcards explicitly so users don't silently miss
           // env vars they thought they were tracking. Turbo supports
@@ -872,7 +876,21 @@ function assertNoForeignToken(glob: string, where: string): void {
 /**
  * `.`, `./`, `././` (with or without a `!`) name the directory itself, which
  * no matcher expands: the entry selected nothing and said so nowhere.
- * `./src/**` is fine — the resolver strips the `./` (`normalizeGlob`).
+ * `./src/**
+ * Turbo's `!NAME` takes a name back out of a wildcard (`env`,
+ * `passThroughEnv`). vx has no wildcards, so the entry was a variable
+ * named `!NAME`: nothing excluded, nothing said (D-53).
+ */
+function assertNoEnvNegation(names: readonly string[], where: string): void {
+  const neg = names.find((n) => n.startsWith('!'))
+  if (neg !== undefined) {
+    throw new UserError(
+      `${where}: "${neg}" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave ${neg.slice(1)} out`,
+    )
+  }
+}
+
+/**` is fine — the resolver strips the `./` (`normalizeGlob`).
  */
 function namesDirItself(glob: string): boolean {
   const g = normalizeGlob(glob.startsWith('!') ? glob.slice(1) : glob)

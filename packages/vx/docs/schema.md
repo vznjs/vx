@@ -707,6 +707,11 @@ To both forward AND track, list it in both places. Yes, the
 double-declaration is mild noise; a preset helper
 (`envTracked('NODE_ENV')`) can sugar it.
 
+Names are exact: a wildcard (`NEXT_PUBLIC_*`) is refused, and so is
+Turbo's `!NAME` exclusion, here, in `exec.env.passThrough` and in
+`exec.env.secret` (D-53). With no wildcard to take it out of, `!NAME`
+was a variable of that name, and nothing was excluded.
+
 ```ts
 inputs: {
   files: ['src/**'],
