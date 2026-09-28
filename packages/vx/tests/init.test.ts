@@ -557,6 +557,33 @@ describe('migrateScripts', () => {
     ).toEqual([])
   })
 
+  it('the workspace root among members is not mapped; a lone package is (D-45)', () => {
+    // A root's scripts run the workspace (`npm run build --workspaces`):
+    // mapped, its `build` ran every member's build again under `--all`,
+    // and since D-39 `--force` replaced a hand-written root config so.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const rootMeta = meta('root', '/w', { build: 'npm run build --workspaces', lint: 'eslint .' })
+    const a = meta('a', '/w/packages/a', { build: 'tsc' })
+    const plan = migrateScripts([rootMeta, a])
+    expect(plan.projects.map((p) => p.name)).toEqual(['a'])
+    expect(plan.notes).toEqual([
+      'root (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand',
+    ])
+    // CONTROL: a single-package repo's root is its project; siblings with
+    // no root among them all map.
+    expect(migrateScripts([rootMeta]).projects.map((p) => p.name)).toEqual(['root'])
+    const b = meta('b', '/w/packages/b', { build: 'tsc' })
+    expect(migrateScripts([a, b]).projects.map((p) => p.name)).toEqual(['a', 'b'])
+    // A sibling whose dir only starts with the root's name is no member.
+    const w2 = meta('w2', '/w2', { build: 'tsc' })
+    expect(migrateScripts([rootMeta, w2]).projects.map((p) => p.name)).toEqual(['root', 'w2'])
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.
