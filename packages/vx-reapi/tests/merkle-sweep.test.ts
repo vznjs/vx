@@ -296,9 +296,15 @@ describe('buildInputTree', () => {
     for (const p of paths) await writeFile(path.join(root, p), p)
     let inFlight = 0
     let peak = 0
+    // Each read holds until all five have started: a 5 ms sleep let the
+    // first finish before the fifth began under a loaded gate (peak 4).
+    // A serial reader never gets there and is released after 200 ms.
+    let allIn: () => void = () => {}
+    const started = new Promise<void>((r) => (allIn = r))
     const readFile = async (abs: string): Promise<Uint8Array> => {
       peak = Math.max(peak, ++inFlight)
-      await Bun.sleep(5)
+      if (inFlight === paths.length) allIn()
+      await Promise.race([started, Bun.sleep(200)])
       inFlight--
       return new Uint8Array(await Bun.file(abs).arrayBuffer())
     }

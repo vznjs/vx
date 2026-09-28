@@ -39,6 +39,8 @@ let reply: Reply = { status: 200, body: '{}' }
 /** Answered first, one per request, before `reply`; `hits` counts requests. */
 let queue: (Reply & { retryAfter?: string })[] = []
 let hits = 0
+/** Each request's path and `content-encoding`, in arrival order. */
+let seen: { path: string; encoding: string | null; json: boolean }[] = []
 let server: ReturnType<typeof Bun.serve>
 let url: string
 
@@ -47,7 +49,18 @@ beforeAll(() => {
     port: 0,
     idleTimeout: 0,
     async fetch(req) {
-      await req.text()
+      const raw = new Uint8Array(await req.arrayBuffer())
+      let json = true
+      try {
+        JSON.parse(new TextDecoder().decode(raw))
+      } catch {
+        json = false
+      }
+      seen.push({
+        path: new URL(req.url).pathname,
+        encoding: req.headers.get('content-encoding'),
+        json,
+      })
       hits++
       const next = queue.shift()
       if (next !== undefined) {
@@ -290,8 +303,15 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
 
   // F-49: `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` was not read; one timeout
   // served all three signals.
-  it('a signal’s own timeout ends its POST', async () => {
-    const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) })
+  it('a signal’s own timeout ends its POST, which is not retried', async () => {
+    let tries = 0
+    const hang = Bun.serve({
+      port: 0,
+      fetch: () => {
+        tries++
+        return new Promise<Response>(() => {})
+      },
+    })
     try {
       const warnings: string[] = []
       const sink = new OtelSink({
@@ -309,7 +329,9 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
       driveOneTask(sink)
       const t0 = Date.now()
       await sink.flush()
-      expect([Date.now() - t0 < 5_000, warnings.length]).toEqual([true, 1])
+      // F-53: its own timeout is this side's abort, never retried: two more
+      // tries held the flush three timeouts and a second.
+      expect([Date.now() - t0 < 600, warnings.length, tries]).toEqual([true, 1, 1])
     } finally {
       await hang.stop(true)
     }
@@ -439,6 +461,83 @@ describe('a refused certificate', () => {
       true,
       true,
       false,
+    ])
+  })
+})
+
+// F-53: a mutation sweep of sink.ts found these unheld.
+describe('the sink, as its second sweep found it unheld', () => {
+  const at = (path: string) => `[vx-otel] export failed for ${url}${path}: `
+
+  it('a partialSuccess reports each rejected count by its noun, message or not; null is none', async () => {
+    const warned = async (partialSuccess: unknown) =>
+      exportWith({ status: 200, body: JSON.stringify({ partialSuccess }) })
+    expect([
+      await warned({ rejectedSpans: '2' }),
+      await warned({ rejectedDataPoints: '3' }),
+      await warned({ rejectedLogRecords: '4' }),
+      await warned(null),
+    ]).toEqual([
+      [`${at('/v1/traces')}the collector dropped part of the export: 2 spans`],
+      [`${at('/v1/traces')}the collector dropped part of the export: 3 datapoints`],
+      [`${at('/v1/traces')}the collector dropped part of the export: 4 logrecords`],
+      [],
+    ])
+  })
+
+  it('a 502 and a 504 are retried; a 500 is not', async () => {
+    const tries = async (status: number) => {
+      queue = [{ status, body: '' }]
+      hits = 0
+      await exportWith({ status: 200, body: '{}' })
+      return hits
+    }
+    expect([await tries(502), await tries(504), await tries(500)]).toEqual([2, 2, 1])
+  })
+
+  it('a Retry-After past 2 s waits 2 s, not what the collector names', async () => {
+    queue = [{ status: 429, body: '', retryAfter: '5' }]
+    hits = 0
+    const t0 = Date.now()
+    expect(await exportWith({ status: 200, body: '{}' })).toEqual([])
+    const ms = Date.now() - t0
+    expect([hits, ms >= 1_900, ms < 3_000]).toEqual([2, true, true])
+  }, 10_000)
+
+  it('only a signal asked to gzip is sent gzipped', async () => {
+    reply = { status: 200, body: '{}' }
+    seen = []
+    const sink = new OtelSink({
+      tracesUrl: `${url}/v1/traces`,
+      metricsUrl: `${url}/v1/metrics`,
+      logsUrl: `${url}/v1/logs`,
+      serviceName: 'vx',
+      headers: {},
+      metricsEnabled: true,
+      logsEnabled: false,
+      timeoutMs: 2_000,
+      gzip: ['traces'],
+    })
+    driveOneTask(sink)
+    sink.onRunSummary({
+      v: 1,
+      run: RUN,
+      startedAt: 0,
+      endedAt: 100,
+      totalDurationMs: 100,
+      taskCount: 1,
+      failedCount: 0,
+      abortedCount: 0,
+      hitCount: 0,
+      hitLocalCount: 0,
+      hitRemoteCount: 0,
+      exitOk: true,
+      tasks: [],
+    })
+    await sink.flush()
+    expect(seen.sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+      { path: '/v1/metrics', encoding: null, json: true },
+      { path: '/v1/traces', encoding: 'gzip', json: false },
     ])
   })
 })

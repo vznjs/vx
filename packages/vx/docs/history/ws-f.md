@@ -547,3 +547,19 @@ name holds no `#`) and answered an empty success; it is refused, naming
 the two filters to pass. And `whyDidThisRerun` on a task whose runs
 predate run ids said it had no recorded runs; it answers the latest
 cache entry, as `vx why` does. Rows red without each fix.
+
+F-53. A mutation sweep of vx-otel's `sink.ts` (145 mutants: 108 caught,
+19 real survivors, 17 equivalent, 1 lint artifact) found no bug and
+these unheld: a `partialSuccess` rejecting data points or log records,
+or with counts and no message, passed silently; `partialSuccess: null`
+warned; gzip reached a signal not asked for it; a Retry-After past 2 s
+was waited whole; 502 and 504 retried, 500 not; a POST's own timeout
+not retried (F-49's row had a bound three timeouts wide); and the 4 MiB
+request limit counted in bytes (an ASCII fixture passed a count of
+characters). Each row now fails with its mutant (12 driven). Left:
+cosmetic trims, the deadline's sleep-then-throw path, the logs'
+`vx.workspace.id` wiring (the builder's own row holds it).
+Also: F-36's concurrency row slept 5 ms per read and read a peak of 4
+in one gate under load (the first read ended before the fifth began);
+each read now holds until all five have started, released after 200 ms
+for a serial reader, which fails on the peak (1).
