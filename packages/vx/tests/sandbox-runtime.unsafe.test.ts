@@ -267,6 +267,35 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // `.vx` is walled wherever it sits, but a `cacheDir` inside a project
+  // was not: a task granted `.vxcache/` wrote into the store it could then
+  // poison (L-24). The run's own cache dir reaches the request.
+  it(
+    "a cache directory inside the task's project is not writable to it",
+    async () => {
+      const projDir = await addProject(fixture.root, 'app', {
+        files: {},
+        config: `export default { tasks: { build: { exec: {
+          command: 'mkdir -p .vxcache && echo x > .vxcache/planted',
+          sandbox: { allow: { read: ['.'], write: ['.vxcache/'] } },
+        } } } }\n`,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        cacheDir: path.join(projDir, '.vxcache'),
+        log: collectingLogger(fixture),
+      })
+      expect(r.outcomes[0]?.status).toBe('failed')
+      expect(fixture.log.join('\n')).toContain(
+        `the grant binding ${path.join(projDir, '.vxcache')} would make`,
+      )
+      expect(existsSync(path.join(projDir, '.vxcache', 'cache.db'))).toBe(true)
+      expect(existsSync(path.join(projDir, '.vxcache', 'planted'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
   it(
     'an executor that THROWS still takes back the placeholder it never wrote',
     async () => {

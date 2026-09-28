@@ -174,6 +174,12 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined,
   /** The projects nested in this one (their dirs): a wall its grants do not reach. */
   nested: readonly string[] = [],
+  /**
+   * The run's cache directory. `.vx` is walled wherever it is; a
+   * `cacheDir` configured inside a project was not, and a task whose write
+   * grant covered it could plant artifacts and index rows (L-24).
+   */
+  cacheDir?: string,
 ): Promise<SandboxRequest> {
   const depDirs = [
     path.join(node.projectDir, 'node_modules'),
@@ -192,9 +198,15 @@ export async function sandboxRequestFor(
   // Pre-create what the task said it will write — after the grants are
   // resolved, which refuses one that leaves the project through a link
   // before anything is created along it (item 1003).
-  const walls = [...nested, path.join(workspaceRoot, '.git'), path.join(workspaceRoot, '.vx')].map(
-    toRealPath,
-  )
+  const walls = [
+    ...nested,
+    path.join(workspaceRoot, '.git'),
+    path.join(workspaceRoot, '.vx'),
+    ...(cacheDir !== undefined &&
+    toRealPath(cacheDir).startsWith(toRealPath(workspaceRoot) + path.sep)
+      ? [cacheDir]
+      : []),
+  ].map(toRealPath)
   const config = wallOff(
     resolveSandboxConfig(sandbox, node.projectDir, walls),
     workspaceRoot,

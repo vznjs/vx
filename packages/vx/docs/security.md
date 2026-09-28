@@ -59,6 +59,9 @@ A task with `exec.sandbox` runs where only what it declares exists:
   run: a task granted any domain reaches every domain the run grants;
 - its temp directory and port-bridge socket are its own (mode 0700),
   unreachable from another task and another local user;
+- vx's own cache directory, wherever `cacheDir` puts it in the
+  workspace, is a wall like `.vx`: a broad grant stops at it, and a write
+  grant that would bind it is refused (L-24);
 - a symlinked output must resolve inside its project: vx packs outputs
   outside the sandbox, and a link to another project's file would have
   carried that file into the cache (L-23).
