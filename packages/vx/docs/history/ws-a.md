@@ -352,3 +352,9 @@ A restore refused on the artifact itself (`EACCES` on `<hash>.tar.zst`) said "co
 Lead from C. Under `ulimit -n 30`, 16 of 20 `echo hi` tasks failed to spawn (`EMFILE`, `socketpair`), exited 127, and `execute-task` added the shell's "command not found … install it" line under each. `RunResult.spawnFailed` now marks a spawn that threw (runner and sandbox), the verdict skips it, and `spawnFailureText` names `OUT_OF_FDS_HINT` for `EMFILE`/`ENFILE`.
 
 - Row (`execute-task.test.ts` › "execute-task edges"): `Bun.spawn` throwing `EMFILE`; exact stderr, red without either half; control: a word the shell did not find keeps its line. `sandbox-runtime.unsafe.test.ts`'s spawn row asserts the flag, red without it. `spawnFailed?: true` is additive on the plugin API's `RunResult` (`tests/contract/package-api.txt` regenerated; 0.x).
+
+### A-42 — A-38's row holds the even-second rule it names (2026-09-28)
+
+A-38's row stamped a multiple of four seconds and hashed 1.2 s in, so a rule of `% 4000` and a widening down to 1.15 s both passed it. The row now stamps an even second that is not a multiple of four and hashes at 1.99 s; `% 4000`, `+ 1900` and a dropped rule are each red.
+
+- Sweep of A-39/A-40's refusal branches (`cache.ts`): four mutants, four caught — the artifact-read gate's `err.path === src` (the "cannot write" row, driven as `probe`) and its `isFsRefusal` (the fd row), the save wrapper's rethrow (`artifact-ceiling.test.ts`), the EMFILE branches (A-39's rows). A `probe` run needs a `TMPDIR` outside `/tmp/claude-0` (mode 0700).
