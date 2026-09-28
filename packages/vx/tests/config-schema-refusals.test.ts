@@ -556,4 +556,17 @@ describe("Turbo's and Nx's glob tokens (D-50)", () => {
     // path is a character.
     expect(cacheRefusal({ files: ['default', 'a^b/**'] })).toBeNull()
   })
+
+  it("Nx's option and project-name interpolations are refused (D-52)", () => {
+    // `{options.outputPath}` as an output matched nothing: the miss saved an
+    // empty artifact and a later hit restored no build.
+    expect(cacheRefusal({ files: ['src/**'] }, { files: ['{options.outputPath}'] })).toBe(
+      `${CFG}: tasks.t.cache.outputs.files: "{options.outputPath}" holds {options.…}, an Nx target option, which vx does not interpolate — write the path the option names`,
+    )
+    expect(cacheRefusal({ files: ['**'] }, { files: ['dist/{projectName}/**'] })).toBe(
+      `${CFG}: tasks.t.cache.outputs.files: "dist/{projectName}/**" holds {projectName}, Nx's project name, which vx does not interpolate — write the name`,
+    )
+    // CONTROL: a brace set whose alternative starts `options` is a glob.
+    expect(cacheRefusal({ files: ['**'] }, { files: ['{options,dist}/**'] })).toBeNull()
+  })
 })
