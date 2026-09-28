@@ -17,6 +17,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { resolveInputs, resolveOutputs } from '../src/cache/inputs.js'
+import { relPosix } from '../src/util/index.js'
 
 // A git init plus ~40 resolutions; the default hook budget is tight under
 // a loaded shard (inputs-resolution.test.ts does the same).
@@ -127,7 +128,7 @@ afterAll(async () => {
 })
 
 const rel = (files: readonly string[]): string[] =>
-  files.map((f) => path.relative(projectDir, f).split(path.sep).join('/')).sort()
+  files.map((f) => relPosix(projectDir, f).split(path.sep).join('/')).sort()
 
 /** What a list selects, or the refusal it meets (a refusal is semantics too). */
 async function outcome(resolve: () => Promise<readonly string[]>): Promise<string[] | string> {

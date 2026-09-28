@@ -39,6 +39,7 @@ import {
 } from '../src/cache/inputs.js'
 import { loadProjectConfig, validateProjectConfig } from '../src/workspace/project-loader.js'
 import type { CacheInputs } from '../src/config.js'
+import { relPosix } from '../src/util/index.js'
 
 // Every fixture git-inits a real repo; under full-suite load the default 5s
 // hook budget is tight. File-scoped, matching tests/inputs.test.ts.
@@ -108,7 +109,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
       inputs: { files },
       ownOutputs: [],
       nestedProjectDirs: [],
-    }).then((r) => r.files.map((f) => path.relative(projectDir, f)))
+    }).then((r) => r.files.map((f) => relPosix(projectDir, f)))
   }
 
   it('a negation-only list folds ZERO files', async () => {
@@ -162,7 +163,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
       ownOutputs: ['src/a.ts'],
       nestedProjectDirs: [],
     })
-    const seen = got.files.map((f) => path.relative(projectDir, f))
+    const seen = got.files.map((f) => relPosix(projectDir, f))
     expect(seen).not.toContain(path.join('src', 'a.ts'))
     expect(seen).toContain(path.join('src', 'b.ts'))
   })
@@ -298,9 +299,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(root, f))).toEqual([
-      path.join('pkg', 'vendor', 'v.js'),
-    ])
+    expect(got.files.map((f) => relPosix(root, f))).toEqual([path.join('pkg', 'vendor', 'v.js')])
   })
 
   it('a negation-only workspaceFiles list contributes nothing, leaving project files intact', async () => {
@@ -317,7 +316,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([
       path.join('src', 'a.ts'),
       path.join('src', 'b.ts'),
     ])
@@ -391,7 +390,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    return got.files.map((f) => path.relative(projectDir, f))
+    return got.files.map((f) => relPosix(projectDir, f))
   }
 
   // "Every ALWAYS_IGNORE pattern" is a claim about a list `inputs.ts` owns,
@@ -468,7 +467,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    const seen = got.files.map((f) => path.relative(root, f))
+    const seen = got.files.map((f) => relPosix(root, f))
     expect(seen).toContain('tsconfig.json')
     expect(seen).not.toContain(path.join('node_modules', 'dep', 'index.js'))
     expect(seen).not.toContain('vx-lock.json')
@@ -517,7 +516,7 @@ describe('the hard project boundary holds in both directions', () => {
       ownOutputs: [],
       nestedProjectDirs: [nested],
     })
-    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([
       path.join('outer', 'src', 'parent.ts'),
     ])
   })
@@ -541,7 +540,7 @@ describe('the hard project boundary holds in both directions', () => {
       ownOutputs: [],
       nestedProjectDirs: [nested],
     })
-    const seen = got.files.map((f) => path.relative(projectDir, f))
+    const seen = got.files.map((f) => relPosix(projectDir, f))
     expect(seen).toContain(path.join('inner-utils', 'util.ts'))
     expect(seen).toContain('inner.config.ts')
     expect(seen).not.toContain(path.join('inner', 'nested.ts'))
@@ -562,7 +561,7 @@ describe('the hard project boundary holds in both directions', () => {
       ownOutputs: [],
       nestedProjectDirs: [deep],
     })
-    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([
       path.join('a', 'b', 'parent.ts'),
     ])
   })
@@ -762,7 +761,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
       outputs: ['dist/**', '!dist/*.map'],
       nestedProjectDirs: [],
     })
-    expect(out.map((f) => path.relative(projectDir, f))).toEqual([
+    expect(out.map((f) => relPosix(projectDir, f))).toEqual([
       path.join('dist', 'a.js'),
       path.join('dist', 'a.map'),
     ])
@@ -887,7 +886,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
       ownOutputs: [],
       nestedProjectDirs: [projB],
     })
-    expect(got.files.map((f) => path.relative(root, f))).toEqual([
+    expect(got.files.map((f) => relPosix(root, f))).toEqual([
       path.join('packages', 'b', 'src', 'b.ts'),
     ])
   })
@@ -905,7 +904,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
       ownWorkspaceOutputs: ['packages/b/**'],
       nestedProjectDirs: [],
     })
-    const seen = got.files.map((f) => path.relative(root, f))
+    const seen = got.files.map((f) => relPosix(root, f))
     expect(seen).toContain('tsconfig.json')
     expect(seen).not.toContain(path.join('packages', 'b', 'src', 'b.ts'))
   })
@@ -925,7 +924,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
       nestedProjectDirs: [],
     })
     expect(new Set(got.files).size).toBe(got.files.length)
-    expect(got.files.map((f) => path.relative(root, f))).toEqual([
+    expect(got.files.map((f) => relPosix(root, f))).toEqual([
       path.join('packages', 'a', 'src', 'a.ts'),
       path.join('packages', 'b', 'src', 'b.ts'),
       'tsconfig.json',
@@ -946,7 +945,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(root, f))).toEqual([
+    expect(got.files.map((f) => relPosix(root, f))).toEqual([
       'README.md',
       path.join('packages', 'a', 'src', 'a.ts'),
     ])
@@ -1016,7 +1015,7 @@ describe('resolved file order is stable regardless of enumeration order', () => 
       nestedProjectDirs: [],
       gitFilesCache: memo,
     })
-    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([
       path.join('src', 'a.ts'),
       path.join('src', 'b.ts'),
       path.join('src', 'c.ts'),
@@ -1219,7 +1218,7 @@ describe('a declared literal settles on its own tree, and only its own', () => {
         ownOutputs: [],
         nestedProjectDirs: [],
       })
-    ).files.map((f) => path.relative(projectDir, f))
+    ).files.map((f) => relPosix(projectDir, f))
 
   it('a literal naming a DIRECTORY is settled by a file inside it', async () => {
     // A literal is settled by `rel === lit` OR `rel.startsWith(lit + '/')`,
@@ -1334,7 +1333,7 @@ describe('the per-run files memo is keyed on everything that decides the answer'
         projectFilesCache,
       })
     ).files
-      .map((f) => path.relative(projectDir, f))
+      .map((f) => relPosix(projectDir, f))
       .sort()
 
   it('two tasks in one project with different NEGATIONS get different sets', async () => {
@@ -1570,7 +1569,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(broad.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+    expect(broad.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
   })
 
   it('a glob whose own text is ALSO a real filename is still treated as a glob', async () => {
@@ -1622,7 +1621,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
         ownOutputs: [],
         nestedProjectDirs: [],
       })
-      expect(got.files.map((f) => path.relative(projectDir, f)).sort()).toEqual([
+      expect(got.files.map((f) => relPosix(projectDir, f)).sort()).toEqual([
         path.join('src', 'a.ts'),
         path.join('src', 'deep', 'b.ts'),
       ])
@@ -1637,7 +1636,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(minus.files.map((f) => path.relative(projectDir, f))).toEqual(['other.ts'])
+    expect(minus.files.map((f) => relPosix(projectDir, f))).toEqual(['other.ts'])
     const one = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1646,7 +1645,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(one.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+    expect(one.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
   })
 
   it('a literal output directory captures and cleans its whole tree', async () => {
@@ -1654,7 +1653,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
     await write(path.join(projectDir, 'dist', 'deep', 'b.js'), 'b')
     await write(path.join(projectDir, 'src', 'a.ts'), 'a')
     const resolved = await resolveOutputs({ projectDir, outputs: ['dist'], nestedProjectDirs: [] })
-    expect(resolved.map((f) => path.relative(projectDir, f)).sort()).toEqual([
+    expect(resolved.map((f) => relPosix(projectDir, f)).sort()).toEqual([
       path.join('dist', 'a.js'),
       path.join('dist', 'deep', 'b.js'),
     ])
@@ -1667,9 +1666,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: ['dist'],
       nestedProjectDirs: [],
     })
-    expect(inputs.files.map((f) => path.relative(projectDir, f))).toEqual([
-      path.join('src', 'a.ts'),
-    ])
+    expect(inputs.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
     await cleanOutputs({ projectDir, outputs: ['dist/'], nestedProjectDirs: [] })
     expect(existsSync(path.join(projectDir, 'dist', 'a.js'))).toBe(false)
     expect(existsSync(path.join(projectDir, 'dist', 'deep'))).toBe(false)
@@ -1688,7 +1685,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
   })
 
   it('a literal that git DOES report resolves normally', async () => {
@@ -1704,7 +1701,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual(['tsconfig.json'])
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual(['tsconfig.json'])
   })
 
   it('a task naming its OWN declared output is not refused', async () => {
@@ -1723,7 +1720,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: ['dist/**'],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
   })
 
   it('the workspace half is refused too, and names its own field', async () => {
@@ -1764,7 +1761,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(root, f)).sort()).toEqual([
+    expect(got.files.map((f) => relPosix(root, f)).sort()).toEqual([
       'package.json',
       'tsconfig.json',
     ])
@@ -1790,7 +1787,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       ownWorkspaceOutputs: ['dist/built.js'],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => path.relative(root, f))).toEqual(['tsconfig.json'])
+    expect(got.files.map((f) => relPosix(root, f))).toEqual(['tsconfig.json'])
   })
 
   it('declared OUTPUTS are exempt — they are globbed off the live tree, not the git set', async () => {

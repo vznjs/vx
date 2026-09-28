@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
+import { relPosix } from '../src/util/index.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 
@@ -61,7 +62,7 @@ describe('docs/modules/README.md indexes every source module', () => {
       } else named.add(ref)
     }
     const unindexed = walk(path.join(pkg, 'src'), '.ts')
-      .map((p) => path.relative(path.join(pkg, 'src'), p).split(path.sep).join('/'))
+      .map((p) => relPosix(path.join(pkg, 'src'), p))
       .filter((rel) => !rel.endsWith('index.ts') && !named.has(rel))
     expect(unindexed).toEqual([])
   })
