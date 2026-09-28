@@ -120,6 +120,29 @@ describe('cache declarations that match nothing', () => {
     expect(await Bun.file(stray).exists()).toBe(false)
   })
 
+  it('and the root-anchored twin: a stray under a workspaceFiles glob that saved nothing is wiped', async () => {
+    // The project glob still matches nothing here; only the root-anchored
+    // one sees the stray (C-24: the hit read the project side alone).
+    const outcomes = async (): Promise<Record<string, boolean | undefined>> => {
+      const summary = await run({
+        cwd: root,
+        tasks: ['wslost'],
+        projects: ['app'],
+        log: logger([]),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.restored]))
+    }
+    await outcomes()
+    expect(await outcomes()).toEqual({ wslost: false })
+    const stray = path.join(root, 'nowhere', 'stray.js')
+    await mkdir(path.dirname(stray), { recursive: true })
+    await writeFile(stray, 'x')
+    expect(await outcomes()).toEqual({ wslost: true })
+    expect(await Bun.file(stray).exists()).toBe(false)
+  })
+
   it('the output warning blames the sandbox only when there IS one', async () => {
     // `app#lost` is not sandboxed, so the cause clause added for sandboxed
     // tasks with no write grant (item 444) must not appear here. The

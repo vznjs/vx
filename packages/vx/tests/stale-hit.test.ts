@@ -590,6 +590,61 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a root-anchored file the hit RESTORES is recorded for a consumer that reads it',
+    async () => {
+      // The other half of the hit's workspace mark: what the artifact put
+      // back, not what the clean took. `gen/new.ts` is untracked and gone at
+      // run start, so the snapshot lacks it; codegen's hit restores it, and
+      // only the mark sends consume back to git to see it (C-24: marking the
+      // wiped paths alone passed the suite).
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             early: {
+               exec: { command: 'true' },
+               cache: { inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, outputs: { files: [] } },
+             },
+             codegen: {
+               dependsOn: ['early'],
+               exec: { command: 'mkdir -p gen && printf N > gen/new.ts' },
+               cache: {
+                 inputs: { files: ['package.json'], tasks: [] },
+                 outputs: { files: [], workspaceFiles: ['gen/**'] },
+               },
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt && echo ran >> runs.log' },
+               cache: {
+                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
+                 outputs: { files: ['out/**'] },
+               },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/\nruns.log\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('N')
+      await rm(path.join(root, 'gen'), { recursive: true })
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'gen/new.ts'), 'utf8')).toBe('N')
+      // consume's input set holds the restored file, as in the cold run: a hit.
+      expect(await readFile(path.join(root, 'runs.log'), 'utf8')).toBe('ran\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the ROOT-ANCHORED twin of that wipe is recorded too',
     async () => {
       // `cache.outputs.workspaceFiles` is wiped by `cleanWorkspaceOutputs`

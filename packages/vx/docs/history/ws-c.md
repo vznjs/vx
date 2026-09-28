@@ -292,6 +292,24 @@ popcount past the first word), counts on a graph inserted dependents
 first (the topo pass), and an override of 1 above a baseline of
 2^20 - 1 (the scale). No defect in the file.
 
+## C-24: hold `hit-restore.ts`'s surviving mutants
+
+A sweep of 92 mutants over the 74 files that name the restore's outputs
+(the other 47 cache-hit files not run): 62 caught, 30 survived, 15 of
+them equivalent (`covers`, item 638; `path.sep` on POSIX; the set-size,
+rows-present and root-anchored conjuncts, each redundant with
+`isOutputsCurrent`'s stat of every row; the rows-empty and no-output
+guards; the empty-output clean guards; the additive clean by rows, whose
+files the extract renames over anyway, and a directory there fails
+either way). The other 15 are held now: `execute-task.test.ts` drives
+`restoreHit` for the rows a layer hands over or leaves to load, the
+trusted directories (no walk, no re-record), the snapshot left to run
+end, and the duration and wallclock window; `overlapping-outputs.test.ts`
+(a root-anchored upstream keeps its own rows under a project dependant),
+`cache-declaration-warnings.test.ts` (a root-anchored stray on an empty
+entry) and `stale-hit.test.ts` (a root-anchored file the hit restores is
+marked). No defect in the file.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -345,3 +363,11 @@ first (the topo pass), and an override of 1 above a baseline of
   scanning `/tmp/claude/vx-tasks/vx-task-<pid>-x`: the row reads the
   bridge socket's directory after the task went, and the directory can
   be gone by then. Green in the same PR's local gate.
+- **A:** an ADDITIVE task's miss still cleans its `workspaceFiles` by
+  glob (`execute-task.ts`, the `wsOutputs` clean after the stamp): in a
+  same-tree root-anchored pair (`build` and `individual` both on `gen`)
+  it deleted `build`'s `gen/a.txt` before `individual` ran (probed: the
+  dependant's `cp` into `gen/` failed). Only project outputs are stamped.
+  And `cleanOutputPaths` refuses a directory at an additive task's
+  recorded path (`ERR_FS_EISDIR`, the task fails, named), where the glob
+  clean replaces one.
