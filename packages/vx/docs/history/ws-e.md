@@ -66,6 +66,11 @@ What did not:
 - C: a failed task's output is not kept: `vx last` can name the task
   and the re-run (E-55) but not show the lines that failed it. A tail
   stored with the run row would let the replay print them.
+- G: `turbo()` drops Turbo's root tasks (`"//#format": {}` over a root
+  `format` script) with a note that a root vx.config would make the
+  root a project; `vx run format --all` then reads "No projects
+  declare task(s)". Common in create-turbo repos, so "runs a Turbo repo
+  unchanged" stops short there (walk, 2026-09-28).
 
 ## Merged
 
