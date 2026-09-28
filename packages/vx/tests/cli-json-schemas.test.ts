@@ -32,8 +32,12 @@ import type {
   InvocationDetail,
   RunSummaryRow,
   WhyDidThisRerun,
+  PlanPrediction,
+  RunPlan,
 } from '../src/orchestrator/index.js'
 import type { PruneResult } from '../src/cache/layer.js'
+import type { TaskNode } from '../src/graph/index.js'
+import { formatPlanJson, type PlanTaskJson } from '../src/cli/plan-format.js'
 import { declaredPaths, validate } from './helpers/json-schema.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -95,7 +99,14 @@ const KITCHEN = `export default {
 }`
 
 let root: string
-const outputs: Record<string, unknown[]> = { show: [], info: [], why: [], last: [], cache: [] }
+const outputs: Record<string, unknown[]> = {
+  show: [],
+  info: [],
+  why: [],
+  last: [],
+  cache: [],
+  plan: [],
+}
 
 function vx(args: string[]): { code: number; out: string; err: string } {
   const p = Bun.spawnSync({
@@ -143,6 +154,36 @@ beforeAll(async () => {
   json('last', [])
   json('last', ['--list'])
   json('last', ['--failed'])
+  const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
+  expect(dry.code).toBe(0)
+  outputs['plan']!.push(JSON.parse(dry.out))
+  // What a workspace with two executors and a remote shows, built by hand:
+  // the fields only those plugins provoke.
+  const node = (id: string, description?: string) =>
+    ({
+      id,
+      projectName: id.split('#')[0],
+      taskName: id.split('#')[1],
+      config: description === undefined ? {} : { description },
+    }) as unknown as TaskNode
+  outputs['plan']!.push(
+    JSON.parse(
+      formatPlanJson({
+        tasks: [
+          {
+            node: node('a#build', 'compile'),
+            hash: 'k1',
+            cacheStatus: 'hit-remote',
+            deps: [],
+            executor: 'remote',
+            download: 'deferred',
+          },
+          { node: node('a#ci'), hash: 'k2', cacheStatus: 'group', deps: ['a#build'] },
+        ],
+        downloadDowngrades: [{ taskId: 'a#build', reason: 'a dependant reads its outputs' }],
+      }),
+    ),
+  )
   // History older than run ids: `vx why` falls back to the cache entry.
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
   db.run("UPDATE runs SET run_id = NULL WHERE project = 'lib' AND task = 'build'")
@@ -159,7 +200,7 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const VERBS = ['show', 'info', 'why', 'last', 'cache']
+const VERBS = ['show', 'info', 'why', 'last', 'cache', 'plan']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
   it('ships one schema per read verb, and nothing else', () => {
@@ -374,6 +415,29 @@ describe('each schema object is its source type', () => {
         orphans: true,
         orphanBytes: true,
       }),
+    )
+  })
+
+  it('plan', () => {
+    expect(props('plan', 'properties', 'tasks', 'items')).toEqual(
+      keys<PlanTaskJson>({
+        id: true,
+        project: true,
+        task: true,
+        hash: true,
+        cacheStatus: true,
+        deps: true,
+        p50Ms: true,
+        executor: true,
+        download: true,
+        description: true,
+      }),
+    )
+    expect(props('plan', 'properties', 'predicted')).toEqual(
+      keys<PlanPrediction>({ wallMs: true, workMs: true, unknownCount: true }),
+    )
+    expect(props('plan', 'properties', 'downloadDowngrades', 'items')).toEqual(
+      keys<NonNullable<RunPlan['downloadDowngrades']>[number]>({ taskId: true, reason: true }),
     )
   })
 

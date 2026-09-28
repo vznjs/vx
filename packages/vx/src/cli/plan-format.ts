@@ -96,11 +96,25 @@ export function formatPlanText(plan: RunPlan): string {
   return lines.join('\n') + '\n'
 }
 
+/** One task of `vx run --dry=json`: the wire, stated by `schemas/plan.json`. */
+export interface PlanTaskJson {
+  id: string
+  project: string
+  task: string
+  hash: string
+  cacheStatus: CacheStatus
+  deps: readonly string[]
+  p50Ms?: number
+  executor?: string
+  download?: 'deferred'
+  description?: string
+}
+
 export function formatPlanJson(plan: RunPlan): string {
   return (
     JSON.stringify(
       {
-        tasks: plan.tasks.map((t) => ({
+        tasks: plan.tasks.map((t): PlanTaskJson => ({
           id: t.node.id,
           project: t.node.projectName,
           task: t.node.taskName,

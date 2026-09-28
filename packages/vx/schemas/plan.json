@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx run --dry=json",
+  "description": "The task graph a run would execute and what the cache predicts for each task; nothing runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tasks"],
+  "properties": {
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "project", "task", "hash", "cacheStatus", "deps"],
+        "properties": {
+          "id": { "type": "string", "description": "project#task" },
+          "project": { "type": "string" },
+          "task": { "type": "string" },
+          "hash": { "type": "string", "description": "the cache key" },
+          "cacheStatus": { "enum": ["hit-local", "hit-remote", "miss", "no-cache", "group"] },
+          "deps": { "type": "array", "items": { "type": "string" } },
+          "p50Ms": {
+            "type": "number",
+            "description": "typical executed duration, when history has one"
+          },
+          "executor": {
+            "type": "string",
+            "description": "where it would run; only when the workspace declares more than one executor"
+          },
+          "download": {
+            "const": "deferred",
+            "description": "outputs would stay remote (--download)"
+          },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "predicted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wallMs", "workMs", "unknownCount"],
+      "properties": {
+        "wallMs": { "type": "number" },
+        "workMs": { "type": "number" },
+        "unknownCount": {
+          "type": "integer",
+          "description": "would-run tasks with no history; the times are lower bounds when above 0"
+        }
+      }
+    },
+    "downloadDowngrades": {
+      "type": "array",
+      "description": "producers --download wanted to defer but could not, and why",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "reason"],
+        "properties": { "taskId": { "type": "string" }, "reason": { "type": "string" } }
+      }
+    }
+  }
+}
