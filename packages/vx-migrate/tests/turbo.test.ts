@@ -368,6 +368,33 @@ describe('root tasks (D-39)', () => {
     TIMEOUT,
   )
 
+  // Turbo hashes a root task over the whole repo. As the root project's own
+  // `**/*`, core stopped its globs at every member (D-39): a root lint over
+  // the repo replayed green after a member file broke (react-notion-x).
+  it(
+    "a root task's inputs are the workspace's: a member edit re-keys it",
+    async () => {
+      await setUp(true)
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({
+          name: 'ws',
+          private: true,
+          scripts: { gen: 'mkdir -p out && cat packages/app/src/index.js > out/g.txt' },
+        }),
+      )
+      const gen = async () => {
+        const r = await run({ cwd: root, tasks: ['ws#gen'], log: silent(), handleSignals: false })
+        expect(r.ok).toBe(true)
+        return Bun.file(path.join(root, 'out', 'g.txt')).text()
+      }
+      expect(await gen()).toBe('// app\n')
+      await writeFile(path.join(root, 'packages', 'app', 'src', 'index.js'), '// edited\n')
+      expect(await gen()).toBe('// edited\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'CONTROL: without one, the root task is a note and the edge a todo',
     async () => {
@@ -379,7 +406,9 @@ describe('root tasks (D-39)', () => {
       expect(text).toContain(
         'note: root task //#gen not migrated — the workspace root is no project; a vx.config at the root makes it one',
       )
-      expect(text).toContain('dependsOn "//#gen": // declares no gen script — edge dropped')
+      expect(text).toContain(
+        'dependsOn "//#gen": the workspace root is no project — edge dropped; a vx.config at the root makes it one',
+      )
     },
     TIMEOUT,
   )
