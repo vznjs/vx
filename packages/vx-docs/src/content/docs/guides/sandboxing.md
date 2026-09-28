@@ -50,7 +50,7 @@ export default defineProject({
 | `write`        | paths or globs; a directory ends in `/` or is a glob (`dist/**`)  |
 | `network`      | `true`, or a list of domains (`*.sentry.io`)                      |
 | `localBinding` | bind localhost ports; a list (`[3000]`) makes them reachable from outside |
-| `unixSockets`  | `true`, or socket paths                                           |
+| `unixSockets`  | `true`, or socket paths (Linux: any path)                         |
 | `systemInfo`   | sysctl names a tool probes (`vfs.disk-space`)                     |
 | `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
 | `pty`          | a terminal                                                        |
@@ -65,7 +65,7 @@ task, and a failed task is never cached.
 
 ## Requirements & platform support
 
-- **Linux:** `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`); `strace` to name an undeclared read. `vx info` says if your host can.
+- **Linux:** `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`); `strace` to fail and name an undeclared read. `vx info` says if your host can.
 - **macOS:** the system sandbox. Its report can miss a record under load; the denial never does.
 - **Windows:** under WSL.
 
@@ -76,7 +76,7 @@ task, and a failed task is never cached.
 
 ## Common problems
 
-- **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true`.
+- **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true` on every sandboxed task.
 - **`File exists` from the task's own `mkdir`.** A write grant with no trailing slash is a file. Write `'coverage/'`.
 - **On Linux a file made during the run is denied.** A glob expands when the task starts: grant its directory.
 - **`read packages/ui through packages/app/node_modules/@x/ui, and its key folds no task of @x/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself.
