@@ -121,6 +121,15 @@ same plugin in every arm: 3e927f9c 449 ms median (min 382), 4b7c396a
 vx 48.0 s / 478 ms / 249 ms (cold / restore / no-op) against Turbo
 57.9 s / 1.43 s / 1.38 s.
 
+I-11. refine's full table on 4b7c396a (benchmarks.md), three
+interleaved reps: vx 96.2 s / 1.06 s / 303 ms (cold / restore / no-op)
+against Nx 105.9 s / 1.19 s / 1.16 s. CI's runner queue, 119 CI runs
+22:37–23:30: the macOS job waits 105 s median before I-8 and 426 after
+(max 1,010), runs 253 s either way; Linux jobs wait 2–18 s. So macOS
+job-minutes set the queue. A CI cache hits the core shards on 4 of
+369 of the day's commits, 52 with `docs/history/**` out of their key
+(nothing reads it): not worth a cache step on every macOS job.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15

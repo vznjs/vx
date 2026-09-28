@@ -777,6 +777,18 @@ against its parent, A/A 260), three interleaved reps:
 | no-op              | **249 ms** | 1.38 s (5.55×) |
 | second no-op       | **264 ms** | 1.35 s (5.13×) |
 
+refine on the same commit, three interleaved reps. Nx itself ran
+faster on this box than at 889a95c (cold 178 → 106 s), so read the
+ratios; vx's no-op fell 396 → 303 ms, while item 1075's whole-repo
+`git status` still costs ~90 ms of it (a G lead):
+
+| refine `build` (35) | vx         | Nx 18.2.2       |
+| ------------------- | ---------- | --------------- |
+| cold                | **96.2 s** | 105.9 s (1.10×) |
+| restore             | **1.06 s** | 1.19 s (1.13×)  |
+| no-op               | **303 ms** | 1.16 s (3.84×)  |
+| second no-op        | **271 ms** | 1.19 s (4.40×)  |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
