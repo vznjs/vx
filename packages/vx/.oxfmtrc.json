@@ -17,6 +17,7 @@
     ".claude",
     "docs/api.md",
     "docs/turbo-nx-support.md",
-    "tests/contract/turbo-nx"
+    "tests/contract/turbo-nx",
+    "tests/contract/vx-lock.json"
   ]
 }

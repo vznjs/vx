@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "projects": {
+    "app": {
+      "configPath": "packages/app/vx.config.mjs",
+      "configHash": "b24dc90afd7280fa",
+      "config": {
+        "tasks": {
+          "build": {
+            "dependsOn": [
+              "^build"
+            ],
+            "exec": {
+              "command": "echo app ci"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "src/**"
+                ]
+              },
+              "outputs": {
+                "files": []
+              }
+            }
+          },
+          "dev": {
+            "exec": {
+              "command": "echo dev",
+              "persistent": {}
+            }
+          }
+        }
+      }
+    },
+    "lib": {
+      "configPath": "packages/lib/vx.config.mjs",
+      "configHash": "df65827e7ba31346",
+      "config": {
+        "tasks": {
+          "build": {
+            "description": "compile",
+            "exec": {
+              "command": "echo lib",
+              "env": {
+                "passThrough": [
+                  "HOME"
+                ]
+              },
+              "timeout": 60000,
+              "retries": 1
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "src/**"
+                ],
+                "env": [
+                  "LOCK_FIXTURE_MODE"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/**"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
