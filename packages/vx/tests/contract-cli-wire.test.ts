@@ -1,6 +1,8 @@
 // The machine-readable run outputs are a 1.0 contract surface
-// (docs/design/versioning-1.0.md): a script reads `--dry=json` and the
-// `--summarize` file instead of the terminal. Both are hand-enumerated wire
+// (docs/design/versioning-1.0.md): a script reads `--dry=json`, the
+// `--summarize` file and `--graph`'s DOT instead of the terminal. The DOT
+// is recorded whole, line by line, for the same fixture plan: a renderer
+// keys on the graph's name, the node ids and the edge direction. Both are hand-enumerated wire
 // objects (`formatPlanJson`, `writeRunSummary`), not a serialized type, so
 // the type pin (contract-package-api.test.ts) does not hold them: a renamed
 // key there passed every test. This file renders each from a fixture that
@@ -18,7 +20,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { formatPlanJson } from '../src/cli/plan-format.js'
+import { formatGraphDot, formatPlanJson } from '../src/cli/plan-format.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { FlakyFinding } from '../src/orchestrator/failure-mode.js'
 import type { PlannedTask, PlanPrediction, RunPlan } from '../src/orchestrator/plan.js'
@@ -68,7 +70,7 @@ function node(id: string, description?: string): TaskNode {
   }
 }
 
-function dryJson(): unknown {
+function fixturePlan(): Required<RunPlan> {
   const full: Required<PlannedTask> = {
     node: node('a#build', 'builds a'),
     hash: 'h1',
@@ -87,7 +89,11 @@ function dryJson(): unknown {
     unresolvedHint: '',
     downloadDowngrades: [{ taskId: 'a#build', reason: 'r' }],
   }
-  return JSON.parse(formatPlanJson(plan))
+  return plan
+}
+
+function dryJson(): unknown {
+  return JSON.parse(formatPlanJson(fixturePlan()))
 }
 
 const scratch: string[] = []
@@ -171,6 +177,7 @@ describe('the machine-readable run outputs (versioning-1.0.md)', () => {
     const live = {
       'dry=json': flatten(shapeOf(dryJson())),
       summarize: flatten(shapeOf(await summarizeJson())),
+      graph: formatGraphDot(fixturePlan()).trimEnd().split('\n'),
     }
     if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
       writeFileSync(RECORD, JSON.stringify(live, null, 2) + '\n')

@@ -15,7 +15,7 @@ adds to them, and only a major removes or changes one.
 | The config schema: every field `vx.config.ts` and `vx.workspace.ts` accept, and what each means                                                                        | `src/workspace/config-schema.ts`, `docs/schema.md`; recorded in `tests/contract/config-schema.json`                                                                                     |
 | The plugin API: the hooks in `PLUGIN_HOOKS`, `definePlugin`, `CacheLayer` / `RemoteCacheLayer`, `TaskExecutor`, and the telemetry records (`TELEMETRY_SCHEMA_VERSION`) | `src/orchestrator/plugin.ts`, `src/cache/layer.ts`, `src/cache/layered-cache.ts`, `src/exec/executor.ts`, `src/orchestrator/telemetry.ts`; recorded in `tests/contract/package-api.txt` |
 | The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                         |
-| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`                                                                                                                                                                           |
+| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`                                                                                     |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                     |
 
 ## What 1.0 freezes, exactly
@@ -132,7 +132,10 @@ sets `VX_REQUIRE_TAGS=1`, so a missing tag fails there instead of passing.
   (`Required<…>`, so a new field must be given a value before the file
   compiles) and compares every key path and the JSON types at it with
   `tests/contract/cli-wire.json`. The samples `cli.md` prints may show
-  only keys the wire has, with its types.
+  only keys the wire has, with its types. `--graph`'s DOT is recorded
+  there whole, line by line, for the same fixture plan: its graph name,
+  node ids, labels and edge direction (dependency → dependant) are what a
+  renderer keys on (H-24).
 - **Task-glob semantics.** `tests/contract-task-globs.test.ts`
   resolves 32 input lists and 8 output lists against one fixed project
   tree (dotfiles, a gitignored file, `node_modules`, `[id]`, `(group)`,
