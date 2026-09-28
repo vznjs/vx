@@ -266,3 +266,10 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 - Equivalent: a pax record with an empty key (never read), a ustar split leaving an empty name (read back the same), the checksum's last space (already written by the fill), an empty chunk pushed.
 - `policy.ts` and `config-evals.ts` swept: 24 mutants, 23 caught; the survivor dropped the segment trim, now held by `cache.test.ts` › "reads segments with spaces around them".
 - The zero-length pax record (T6) hangs the reader under its mutant, so `bun test` never ends: caught by a timeout, not a row.
+
+### A-30 (2026-09-28, sweep: `zstd.ts`)
+
+25 mutants over the eight files that reach it: 15 caught, 10 survived. No defect; the frame check and the size gate were right but partly unheld.
+
+- Rows: `zstd-frames.test.ts` › RLE blocks, a content checksum and an empty body keep the one-call decode; a file past the stream threshold is refused by its declaration; the stream count refuses past the cap, not at it. `cache.test.ts` › a 4-byte dictionary ID; a header cut inside its size field. Each red under its mutant.
+- Equivalent: a reserved block (the decoder refuses it on either path), the result-length backstop (unreachable, as its comment says), and the 4 MiB threshold's `<=` (either path decodes the same bytes).
