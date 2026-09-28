@@ -660,6 +660,25 @@ construction held for groups, aborted tasks and restored hits, but
 the terminal's half is a second copy of the filter: the comment now
 says so and a row holds all three equal. No defect.
 
+## C-49: `history.ts` read a warm task's success rate as 0
+
+Swept `orchestrator/history.ts` (56 mutants, 13 files): 41 caught (five
+by the type-check alone), 15 survived. Defect: `successRate` counted
+only `status = 'success'`, but the recorder writes a hit as `cache-hit`
+/ `cache-hit-remote`, so an always-warm task read 0 (the MCP history
+tool shows it). It now counts the pass statuses, derived from
+`isPassStatus`. Dead guards went: the empty-percentile return, its
+`Math.min`, the `total > 0` rates and the `|| 0` sums (a group holds a
+row). New rows in `history.test.ts` hold the rest: exact rates and
+fatal/recoverable verdicts with hits, a NULL `cache_hit` row as an
+execution, p50 for odd and even counts, the window from the first row
+of its oldest invocation, the default window of 50, and a query spy for
+the two cost gates (no ids, the key pass). Equivalent: the `> 0`
+division guards (SQLite `x/0` is NULL), the entries join's hit filter,
+and `<> 'failed'` for the pass list (no other status is recorded). A
+corrupt cache.db is refused at open by `Cache`; a missing one plans
+with no prediction; a history read error fails open in both callers.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, vi } from 'bun:test'
 import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/orchestrator/index.js'
 
@@ -712,6 +712,210 @@ describe('LocalHistoryProvider', () => {
       rmSync(dir, { recursive: true, force: true })
       cache.close()
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a hit replays a success: the rates read the recorded statuses (C-49)', async () => {
+    // The recorder writes a hit as status `cache-hit` / `cache-hit-remote`,
+    // never `success`; a rate that counted only `success` read an always-warm
+    // task as 0 % successful.
+    const cache = makeCache()
+    try {
+      const at = (i: number, task: string, status: RunRecord['status'], extra = {}): RunRecord => ({
+        ...mkRun({
+          hash: `${task}${i}`,
+          project: 'pkg',
+          task,
+          status,
+          durationMs: 10,
+          startedAt: 1000 + i,
+        }),
+        cacheHit: status === 'cache-hit' || status === 'cache-hit-remote',
+        ...extra,
+      })
+      const shape = (task: string, last: RunRecord['status']) => [
+        at(1, task, 'success', { attempts: 2 }),
+        at(2, task, 'cache-hit'),
+        at(3, task, 'cache-hit-remote'),
+        at(4, task, 'success'),
+        at(5, task, last),
+      ]
+      cache.recordRuns([...shape('test', 'failed'), ...shape('lint', 'success')])
+      const table = await new LocalHistoryProvider(cache.dbHandle()).loadFor([
+        'pkg#test',
+        'pkg#lint',
+      ])
+      const pick = (id: string) => {
+        const h = table.get(id)!
+        return {
+          runs: h.runs,
+          successRate: h.successRate,
+          hitRate: h.hitRate,
+          failureMode: h.failureMode,
+        }
+      }
+      // A retry is the flaky signal; one failure in five is not under a fifth, so fatal.
+      expect(pick('pkg#test')).toEqual({
+        runs: 5,
+        successRate: 4 / 5,
+        hitRate: 2 / 5,
+        failureMode: 'flaky-fatal',
+      })
+      // No `failed` row: a hit is not a failure.
+      expect(pick('pkg#lint')).toEqual({
+        runs: 5,
+        successRate: 1,
+        hitRate: 2 / 5,
+        failureMode: 'flaky-recoverable',
+      })
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a row that never said whether it hit is an execution', async () => {
+    // `RunRecord.cacheHit` is optional and the column stores NULL for it.
+    const cache = makeCache()
+    try {
+      const { cacheHit: _hit, ...row } = mkRun({
+        hash: 'n1',
+        project: 'pkg',
+        task: 'build',
+        status: 'success',
+        durationMs: 250,
+        startedAt: 1000,
+      })
+      cache.recordRuns([{ ...row, peakRssBytes: 4096, cpuMs: 500 }])
+      const h = (await new LocalHistoryProvider(cache.dbHandle()).loadFor(['pkg#build'])).get(
+        'pkg#build',
+      )!
+      expect([
+        h.p50DurationMs,
+        h.p99DurationMs,
+        h.maxPeakRssBytes,
+        h.maxCpuParallelism,
+        h.hitRate,
+      ]).toEqual([250, 250, 4096, 2, 0])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('p50 is the upper middle for an even count and the middle for an odd one', async () => {
+    const cache = makeCache()
+    try {
+      const rows = (task: string, ms: number[]) =>
+        ms.map((d, i) =>
+          mkRun({
+            hash: `${task}${i}`,
+            project: 'pkg',
+            task,
+            status: 'success',
+            durationMs: d,
+            startedAt: 1000 + i,
+          }),
+        )
+      cache.recordRuns([...rows('odd', [30, 10, 20, 50, 40]), ...rows('even', [40, 10, 30, 20])])
+      const table = await new LocalHistoryProvider(cache.dbHandle()).loadFor([
+        'pkg#odd',
+        'pkg#even',
+      ])
+      expect([table.get('pkg#odd')!.p50DurationMs, table.get('pkg#even')!.p50DurationMs]).toEqual([
+        30, 30,
+      ])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('the window starts at the FIRST row of its oldest invocation', async () => {
+    // Every other window row records one row per invocation, where the
+    // invocation's first and last row are the same row.
+    const cache = makeCache()
+    try {
+      const r = (hash: string, task: string, durationMs: number, startedAt: number) =>
+        mkRun({ hash, project: 'pkg', task, status: 'success', durationMs, startedAt })
+      const bundle = (runId: string, at: number, runs: RunRecord[]) =>
+        cache.recordRunBundle({
+          runs: runs.map((x) => ({ ...x, runId })),
+          invocation: mkInvocation(runId, at),
+        })
+      bundle('i1', 1000, [r('a', 'test', 9000, 1000)])
+      bundle('i2', 2000, [r('b', 'test', 200, 2000), r('c', 'lint', 1, 2001)])
+      bundle('i3', 3000, [r('d', 'test', 100, 3000)])
+      const h = (await new LocalHistoryProvider(cache.dbHandle(), 2).loadFor(['pkg#test'])).get(
+        'pkg#test',
+      )!
+      expect([h.runs, h.p99DurationMs]).toEqual([2, 200])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('the default window is the last 50 invocations', async () => {
+    const cache = makeCache()
+    try {
+      recordAsInvocations(
+        cache,
+        Array.from({ length: 51 }, (_, i) =>
+          mkRun({
+            hash: `w${i}`,
+            project: 'pkg',
+            task: 'test',
+            status: i === 0 ? 'failed' : 'success',
+            durationMs: 10,
+            startedAt: 1000 + i,
+          }),
+        ),
+      )
+      const h = (await new LocalHistoryProvider(cache.dbHandle()).loadFor(['pkg#test'])).get(
+        'pkg#test',
+      )!
+      expect([h.runs, h.successRate]).toEqual([50, 1])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('issues no query for no ids, and the key pass only for a failed, unretried pair', async () => {
+    // Both are cost gates: the verdicts agree without them, so the row
+    // counts what reaches the database.
+    const cache = makeCache()
+    try {
+      const run = (task: string, status: RunRecord['status'], attempts: number) => ({
+        ...mkRun({ hash: task, project: 'pkg', task, status, durationMs: 10, startedAt: 1000 }),
+        attempts,
+      })
+      cache.recordRuns([
+        run('green', 'success', 1),
+        run('retried', 'failed', 2),
+        run('broke', 'failed', 1),
+      ])
+      const db = cache.dbHandle()
+      const bound: unknown[][] = []
+      const query = db.query.bind(db)
+      vi.spyOn(db, 'query').mockImplementation(((sql: string) => {
+        const stmt = query(sql)
+        return {
+          get: (...args: unknown[]) => (bound.push(['get', ...args]), stmt.get(...(args as []))),
+          all: (...args: unknown[]) => (
+            bound.push([sql.includes('VALUES') ? 'keys' : 'all', ...args]),
+            stmt.all(...(args as []))
+          ),
+        }
+      }) as never)
+      const provider = new LocalHistoryProvider(db)
+      expect((await provider.loadFor([])).size).toBe(0)
+      expect(bound).toEqual([])
+      await provider.loadFor(['pkg#green', 'pkg#retried', 'pkg#broke'])
+      expect(bound).toEqual([
+        ['get', 49],
+        ['all', 0],
+        ['keys', 0, 'pkg', 'broke'],
+      ])
+    } finally {
+      vi.restoreAllMocks()
+      cache.close()
     }
   })
 
