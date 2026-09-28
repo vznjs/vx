@@ -52,9 +52,10 @@ jobs:
       # reads, so every binary would have reported `vx 0.0.0`; proven by
       # reproduction 2026-09-03 and asserted below. Ephemeral (CI only).
       - name: Stamp version
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          VERSION="${{ github.event.release.tag_name || inputs.tag }}"
-          VERSION="${VERSION#v}"
+          VERSION="${TAG#v}"
           bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "$VERSION"
 
       # What a Linux runner needs before `vx run` executes a sandboxed task:
@@ -103,11 +104,12 @@ jobs:
           name: darwin-unsigned
           path: dist
       - name: Re-sign ad hoc and prove the arm64 binary launches
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           chmod +x dist/vx-darwin-*
           for f in dist/vx-darwin-*; do codesign -s - --force "$f"; codesign --verify --verbose=2 "$f"; done
-          VERSION="${{ github.event.release.tag_name || inputs.tag }}"
-          VERSION="${VERSION#v}"
+          VERSION="${TAG#v}"
           GOT="$(./dist/vx-darwin-arm64 --version)"
           test "$GOT" = "vx $VERSION" || { echo "binary reports '$GOT', expected 'vx $VERSION' — the version stamp missed the manifest the binary inlines"; exit 1; }
       # Attested after the re-sign: the bytes that ship are the signed ones.

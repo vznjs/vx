@@ -96,11 +96,15 @@ jobs:
             echo "repaired — 'sigstore' now resolves"
           fi
 
+      # The tag or input arrives through env, never pasted into the script,
+      # and must be a version: later steps paste this output (L-28).
       - name: Resolve version
         id: version
+        env:
+          RAW: ${{ github.event.inputs.version || github.event.release.tag_name }}
         run: |
-          RAW="${{ github.event.inputs.version || github.event.release.tag_name }}"
           if [ -z "$RAW" ]; then echo "no version (not a release and no input)"; exit 1; fi
+          if ! printf '%s' "${RAW#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then echo "not a version: $RAW"; exit 1; fi
           echo "version=${RAW#v}" >> "$GITHUB_OUTPUT"
       - run: bun install --frozen-lockfile
       # packages/vx/package.json is the manifest `src/version.ts` inlines;
@@ -226,9 +230,11 @@ jobs:
 
       - name: Resolve version
         id: version
+        env:
+          RAW: ${{ github.event.inputs.version || github.event.release.tag_name }}
         run: |
-          RAW="${{ github.event.inputs.version || github.event.release.tag_name }}"
           if [ -z "$RAW" ]; then echo "no version (not a release and no input)"; exit 1; fi
+          if ! printf '%s' "${RAW#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then echo "not a version: $RAW"; exit 1; fi
           VERSION="${RAW#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Publishing version $VERSION"
