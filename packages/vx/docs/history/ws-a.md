@@ -242,3 +242,10 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 - Rows (`miss-save-marks.test.ts`): a same-run `workspaceFiles` reader keys a workspace output and a project output its upstream just wrote; a workspace output landing in another project's dir is keyed by that project's reader; an undeclared write in the saving task's project is keyed by a workspace reader; the run-end snapshot of a task with workspace outputs counts its project rows only. Each red under its mutant.
 - `key-fold.ts` swept (2026-09-27): 19 mutants (every fold part, the sorts, path vs content, a partial provided-hash list), all caught by `key-fold.test.ts`. No row needed.
 - `task-hash.ts` swept (2026-09-27): 9 mutants (the moved-input checks, the remote strip, the group hash, the requested-only forward args), 8 caught. The survivor drops the workspace-OID merge: those files then hash from disk to the same OID, so it is equivalent for correctness (a read the merge saves).
+
+### A-27 (2026-09-28, sweep: `output-index.ts`)
+
+15 mutants over the 35 files that reach the index: 7 caught, 8 survived. The skip-restore proof's size, mode, mtime and inode compares were masked by ctime (as in A-23), and a stamp for a file that no longer matched its row had no row.
+
+- Rows (`output-dirs.test.ts`): `isOutputsCurrent` trusts a row only when every field agrees (a planted row off by one field); a stamp is taken only for a file that still matches its row, with a control. Five survivors red under them.
+- Equivalent, no row: an unstamped row (`ino` undefined never equals a real inode), a dir recorded absent that now exists (its mtime is never −1), and the walk's symlink guard (a symlink's dirent never reports a directory).
